@@ -170,6 +170,7 @@ public:
 private:
     __aicore__ inline void CopyIn(TQue<QuePosition::VECIN, 1>& inQ, GlobalTensor<T>& src, int64_t pos, int64_t len);
     __aicore__ inline void CopyOut(TQue<QuePosition::VECOUT, 1>& outQ, GlobalTensor<T>& dst, int64_t pos, int64_t len);
+    __aicore__ inline LocalTensor<float> CastInputToFloat(LocalTensor<T>& input, uint32_t elemCnt);
     __aicore__ inline void ProcessTile(int64_t pos, int64_t len);
 
 private:
@@ -180,7 +181,7 @@ private:
     TQue<QuePosition::VECIN, 1> gradInQK_, xInQK_, rotInQK_;
     TQue<QuePosition::VECOUT, 1> cosOutQ_, sinOutQ_;
     TBuf<TPosition::VECCALC> tmpBuf_;
-    int64_t blkIdx_, bStart_, bLen_, ubB_, D_;
+    int64_t blkIdx_, bStart_, bLen_, ubB_, D_, inputTOffset_;
 };
 
 template <typename T>
@@ -190,6 +191,10 @@ __aicore__ inline void ApplyDcosDsin<T>::Init(GM_ADDR gradQ, GM_ADDR gradK, GM_A
     if (GetBlockIdx() >= tilingData_->usedCoreNum) return;
     D_ = tilingData_->d;
     ubB_ = tilingData_->ubFactorS;
+    inputTOffset_ = 0;
+    if constexpr (sizeof(T) != sizeof(float)) {
+        inputTOffset_ = ubB_ * D_ * sizeof(float) / sizeof(T);
+    }
     gqGm_.SetGlobalBuffer((__gm__ T*)gradQ);
     gkGm_.SetGlobalBuffer((__gm__ T*)gradK);
     qGm_.SetGlobalBuffer((__gm__ T*)query);
@@ -198,15 +203,19 @@ __aicore__ inline void ApplyDcosDsin<T>::Init(GM_ADDR gradQ, GM_ADDR gradK, GM_A
     wsKGm_.SetGlobalBuffer((__gm__ T*)wsK);
     ocGm_.SetGlobalBuffer((__gm__ T*)gradCosOut);
     osGm_.SetGlobalBuffer((__gm__ T*)gradSinOut);
-    pipe_->InitBuffer(gradInQQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(xInQQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(rotInQQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(gradInQK_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(xInQK_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(rotInQK_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(cosOutQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(sinOutQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(T));
-    pipe_->InitBuffer(tmpBuf_, ubB_ * D_ * sizeof(T));
+    int64_t inputBufferSize = ubB_ * D_ * sizeof(T);
+    if constexpr (sizeof(T) != sizeof(float)) {
+        inputBufferSize = ubB_ * D_ * (sizeof(T) + sizeof(float));
+    }
+    pipe_->InitBuffer(gradInQQ_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(xInQQ_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(rotInQQ_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(gradInQK_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(xInQK_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(rotInQK_, DOUBLE_BUFFER, inputBufferSize);
+    pipe_->InitBuffer(cosOutQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(float));
+    pipe_->InitBuffer(sinOutQ_, DOUBLE_BUFFER, ubB_ * D_ * sizeof(float));
+    pipe_->InitBuffer(tmpBuf_, ubB_ * D_ * sizeof(float));
     blkIdx_ = GetBlockIdx();
     bLen_ = tilingData_->blockFactorB;
     bStart_ = blkIdx_ * tilingData_->blockFactorB;
@@ -237,10 +246,16 @@ __aicore__ inline void ApplyDcosDsin<T>::ProcessTile(int64_t pos, int64_t len)
     LocalTensor<T> gradQUb = gradInQQ_.template DeQue<T>();
     LocalTensor<T> queryUb = xInQQ_.template DeQue<T>();
     LocalTensor<T> rotQUb = rotInQQ_.template DeQue<T>();
-    LocalTensor<T> cosAcc = cosOutQ_.template AllocTensor<T>();
-    LocalTensor<T> sinAcc = sinOutQ_.template AllocTensor<T>();
-    Mul(cosAcc, queryUb, gradQUb, elemCnt);
-    Mul(sinAcc, rotQUb, gradQUb, elemCnt);
+    LocalTensor<float> gradQFloat = CastInputToFloat(gradQUb, elemCnt);
+    LocalTensor<float> queryFloat = CastInputToFloat(queryUb, elemCnt);
+    LocalTensor<float> rotQFloat = CastInputToFloat(rotQUb, elemCnt);
+    PipeBarrier<PIPE_V>();
+    LocalTensor<T> cosOut = cosOutQ_.template AllocTensor<T>();
+    LocalTensor<T> sinOut = sinOutQ_.template AllocTensor<T>();
+    LocalTensor<float> cosAcc = cosOut.template ReinterpretCast<float>();
+    LocalTensor<float> sinAcc = sinOut.template ReinterpretCast<float>();
+    Mul(cosAcc, queryFloat, gradQFloat, elemCnt);
+    Mul(sinAcc, rotQFloat, gradQFloat, elemCnt);
     gradInQQ_.FreeTensor(gradQUb);
     xInQQ_.FreeTensor(queryUb);
     rotInQQ_.FreeTensor(rotQUb);
@@ -251,17 +266,26 @@ __aicore__ inline void ApplyDcosDsin<T>::ProcessTile(int64_t pos, int64_t len)
     LocalTensor<T> gradKUb = gradInQK_.template DeQue<T>();
     LocalTensor<T> keyUb = xInQK_.template DeQue<T>();
     LocalTensor<T> rotKUb = rotInQK_.template DeQue<T>();
-    LocalTensor<T> tmp = tmpBuf_.Get<T>();
-    Mul(tmp, keyUb, gradKUb, elemCnt);
+    LocalTensor<float> gradKFloat = CastInputToFloat(gradKUb, elemCnt);
+    LocalTensor<float> keyFloat = CastInputToFloat(keyUb, elemCnt);
+    LocalTensor<float> rotKFloat = CastInputToFloat(rotKUb, elemCnt);
+    PipeBarrier<PIPE_V>();
+    LocalTensor<float> tmp = tmpBuf_.Get<float>();
+    Mul(tmp, keyFloat, gradKFloat, elemCnt);
     Add(cosAcc, cosAcc, tmp, elemCnt);
-    Mul(tmp, rotKUb, gradKUb, elemCnt);
+    Mul(tmp, rotKFloat, gradKFloat, elemCnt);
     Add(sinAcc, sinAcc, tmp, elemCnt);
     gradInQK_.FreeTensor(gradKUb);
     xInQK_.FreeTensor(keyUb);
     rotInQK_.FreeTensor(rotKUb);
 
-    cosOutQ_.EnQue(cosAcc);
-    sinOutQ_.EnQue(sinAcc);
+    if constexpr (sizeof(T) != sizeof(float)) {
+        Cast(cosOut, cosAcc, RoundMode::CAST_RINT, elemCnt);
+        Cast(sinOut, sinAcc, RoundMode::CAST_RINT, elemCnt);
+        PipeBarrier<PIPE_V>();
+    }
+    cosOutQ_.EnQue(cosOut);
+    sinOutQ_.EnQue(sinOut);
     CopyOut(cosOutQ_, ocGm_, pos, len);
     CopyOut(sinOutQ_, osGm_, pos, len);
 }
@@ -273,7 +297,11 @@ __aicore__ inline void ApplyDcosDsin<T>::CopyIn(
     LocalTensor<T> t = inQ.template AllocTensor<T>();
     DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
-    DataCopyPad(t, src[pos * D_], ep, pp);
+    if constexpr (sizeof(T) != sizeof(float)) {
+        DataCopyPad(t[inputTOffset_], src[pos * D_], ep, pp);
+    } else {
+        DataCopyPad(t, src[pos * D_], ep, pp);
+    }
     inQ.EnQue(t);
 }
 
@@ -285,6 +313,16 @@ __aicore__ inline void ApplyDcosDsin<T>::CopyOut(
     DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
     DataCopyPad(dst[pos * D_], s, ep);
     outQ.FreeTensor(s);
+}
+
+template <typename T>
+__aicore__ inline LocalTensor<float> ApplyDcosDsin<T>::CastInputToFloat(LocalTensor<T>& input, uint32_t elemCnt)
+{
+    LocalTensor<float> inputFloat = input.template ReinterpretCast<float>();
+    if constexpr (sizeof(T) != sizeof(float)) {
+        Cast(inputFloat, input[inputTOffset_], RoundMode::CAST_NONE, elemCnt);
+    }
+    return inputFloat;
 }
 
 } // namespace ApplyRotaryPosEmbGrad

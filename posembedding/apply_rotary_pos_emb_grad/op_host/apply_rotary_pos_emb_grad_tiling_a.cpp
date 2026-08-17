@@ -21,9 +21,11 @@ constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t HALF_COEF = 2;
 // 三阶段架构（kernel 侧 a.h / dcos_dsin.h）单 tile 内 UB 队列份数，ComputeUbFactor 须严格对应：
 //   阶段1 ApplyRotaryPosEmbGradA : 6 队列 × 双缓冲 = 12 份（D/2 对齐双半行布局）
-//   阶段3 ApplyDcosDsin          : 8 队列 × 双缓冲 + 1 tmpBuf = 17 份（连续 D 布局，Q/K 独立队列）
+//   阶段3 ApplyDcosDsin          : 6 输入队列 × 双缓冲 + 2 输出队列 × 双缓冲 + 1 tmpBuf
 constexpr int64_t STG1_BUF_NUM = 12;
-constexpr int64_t STG3_BUF_NUM = 17;
+constexpr int64_t STG3_INPUT_BUF_NUM = 12;
+constexpr int64_t STG3_OUTPUT_BUF_NUM = 4;
+constexpr int64_t STG3_TMP_BUF_NUM = 1;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassA : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
@@ -76,9 +78,15 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
     int64_t dBufBytes = Ops::Base::CeilAlign(d_ / HALF_COEF * typeSize, blockSize_) * HALF_COEF;
     int64_t ubMaxBytes = STG1_BUF_NUM * dBufBytes;
     if (dCosFlag_ == 1) {
-        // 阶段3（ApplyDcosDsin）：连续 D 布局，Q/K 各自独立输入队列，份数最多最紧。
-        int64_t dContigBytes = d_ * typeSize;
-        ubMaxBytes = std::max(ubMaxBytes, STG3_BUF_NUM * dContigBytes);
+        // 阶段3（ApplyDcosDsin）：输入 T 先 cast 到 float buffer，dcos/dsin 用 float 累加后写回 T。
+        int64_t inputBytes = d_ * typeSize;
+        if (typeSize != static_cast<int64_t>(sizeof(float))) {
+            inputBytes = d_ * (typeSize + static_cast<int64_t>(sizeof(float)));
+        }
+        int64_t accBytes = d_ * static_cast<int64_t>(sizeof(float));
+        int64_t stg3Bytes = STG3_INPUT_BUF_NUM * inputBytes +
+                            (STG3_OUTPUT_BUF_NUM + STG3_TMP_BUF_NUM) * accBytes;
+        ubMaxBytes = std::max(ubMaxBytes, stg3Bytes);
     }
     int64_t numDAvail = Ops::Base::FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), ubMaxBytes);
     OP_CHECK_IF(numDAvail < 1,
