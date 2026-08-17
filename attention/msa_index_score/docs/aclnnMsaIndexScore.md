@@ -19,7 +19,7 @@
     - 非量化场景：
 
     $$
-    score = Maxpool[ Q_{idx}@K_{idx}^{T} ] 
+    score = Maxpool[ Q_{idx}@K_{idx}^{T} ]
     $$
 
     - int8/fp8量化场景：
@@ -55,7 +55,7 @@ aclnnStatus aclnnMsaIndexScoreGetWorkspaceSize(
     const aclTensor *key,
     const aclTensor *blockTableOptional,
     const aclTensor *scaleOptional,
-    const aclTensor *attenMaskOptional, 
+    const aclTensor *attenMaskOptional,
     const aclTensor *actualSeqQlenOptional,
     const aclTensor *actualSeqKlenOptional,
     const aclTensor *startLoc,
