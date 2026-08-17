@@ -567,7 +567,6 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     constInfo.gS1End = gS1End[aiCoreIdx];
     constInfo.s2End = s2End[aiCoreIdx];
 
-
     // 首个S1G块、最后一个S1G块的S2是否被切分，在sparse模式下，需要和mask之后的起止点对比才能确定
     constInfo.headS2Split = false;
     constInfo.tailS2Split = false;
@@ -600,7 +599,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         while (taskId < usedCoreNum &&
                (bN2IdxOfFdHead[taskId] != curbN2Idx ||
                 gS1IdxOfFdHead[taskId] * constInfo.mBaseSize !=
-                    info.gS1Idx)) { // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
+                    info.gS1Idx)) {                       // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
             accumTmpOutNum += s2SplitNumOfFdHead[taskId]; // 计算前面的workspace数
             taskId++;
         }
@@ -1054,7 +1053,6 @@ FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::CalcCurS2Star
     }
     return;
 }
-
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::FlashAttention()
