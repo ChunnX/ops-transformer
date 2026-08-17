@@ -42,7 +42,8 @@ case_loader.normalize_params), computes tensor shapes, and writes a
 TTK E2E CSV file compatible with:
     python3 -m ttk e2e -i flash_attn_stc.csv --plugin .
 
-Tensor order in CSV (matches flash_attn_ttk signature keyword-only order):
+Tensor order in CSV (matches torch.ops.cann_ops_transformer.flash_attn
+signature keyword-only order):
     [0] q              [3] block_table       [6] seqused_q
     [1] k              [4] cu_seqlens_q      [7] seqused_kv
     [2] v              [5] cu_seqlens_kv      [8] sinks
@@ -51,7 +52,9 @@ Tensor order in CSV (matches flash_attn_ttk signature keyword-only order):
 
 Unused positions use None. Small integer tensors (cu_seqlens, seqused)
 get their values from attributes dict → override_tensors_from_attributes.
-block_table is filled by customize_inputs.
+block_table is filled by customize_inputs. The metadata slot is a fixed
+(1024,) int32 placeholder, zeroed by customize_inputs and filled by the
+pre-NPU stage via torch.ops.cann_ops_transformer.flash_attn_metadata.
 """
 
 import argparse
@@ -66,7 +69,34 @@ _PYTESTS = os.path.join(_HERE, "..", "pytests")
 if _PYTESTS not in sys.path:
     sys.path.insert(0, _PYTESTS)
 
-API_NAME = "flash_attn_ttk_ops.flash_attn_ttk"
+API_NAME = "torch.ops.cann_ops_transformer.flash_attn"
+
+# metadata 槽位大小单一来源: 优先复用算子侧公式
+# torch_extension/cann_ops_transformer/ops/flash_attn.py 的
+# _calculate_metadata_size, 算子包不可用时回退到本地同构公式
+# ((36+72)*B*num_heads_kv+1)*16 对齐 4096。
+def _op_metadata_size(batch_size, num_heads_kv):
+    size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    return ((size + 4095) // 4096) * 4096
+
+
+try:
+    from cann_ops_transformer.ops.flash_attn import (
+        _calculate_metadata_size as _resolve_metadata_size,
+    )
+except Exception:
+    _resolve_metadata_size = _op_metadata_size
+
+
+def _metadata_shape(p):
+    layout_q = p.get("layout_q", "BNSD")
+    if layout_q == "TND":
+        cu_q = p.get("cu_seqlens_q")
+        batch_size = len(cu_q) - 1 if cu_q else 1
+    else:
+        batch_size = int(p.get("B", 1))
+    num_heads_kv = int(p.get("N2", p.get("N1", 1)))
+    return (int(_resolve_metadata_size(batch_size, num_heads_kv)),)
 
 HEADER = [
     "testcase_name",
@@ -332,7 +362,7 @@ def _build_attrs(p):
     sq = p.get("seqused_q")
     skv = p.get("seqused_kv")
     # 小整数张量的值不直接放同名 attr: TTK match_overload 会把
-    # "张量参数名出现在 attrs" 重复计入输入数, 超出 flash_attn_ttk 的
+    # "张量参数名出现在 attrs" 重复计入输入数, 超出 flash_attn 的
     # 11 参数上限导致 PARAM_PLAN_FAILURE。改用 *_values 键,
     # 由 impl/inputs.py customize_inputs 填入对应张量。
     _set("cu_seqlens_q_values", list(cu_q) if cu_q else None)
@@ -440,7 +470,7 @@ def _build_row(case_name, p):
         skv_shape,
         None,
         attn_mask_shape,
-        None,
+        _metadata_shape(p),
     ]
     dtype_str = DTYPE_MAP.get(p.get("Dtype", "fp16"), "float16")
 

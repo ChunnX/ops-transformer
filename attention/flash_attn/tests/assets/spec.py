@@ -42,26 +42,19 @@ class FlashAttnSpec:
     Attributes are loaded lazily on first access to defer import errors.
     """
 
-    @staticmethod
-    def golden(*args, **kwargs):
-        return _load_impl_module("golden").cpu_flash_attn(*args, **kwargs)
+    golden = _load_impl_module("golden").cpu_flash_attn
+    customize_inputs = _load_impl_module("inputs").customize_inputs
 
-    @staticmethod
-    def customize_inputs(*args, **kwargs):
-        return _load_impl_module("inputs").customize_inputs(*args, **kwargs)
+    pre_npu = _load_impl_module("pre_npu").run
 
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    @staticmethod
-    def compare(*outputs, **kwargs):
-        return _load_impl_module("compare").compare(*outputs, **kwargs)
-
-    torch_graph = _load_impl_module("graph").FlashAttnAclGraph
+    compare = _load_impl_module("compare").compare
 
 
 __spec__ = {
-    "flash_attn_ttk_ops.flash_attn_ttk": "FlashAttnSpec",
+    "torch.ops.cann_ops_transformer.flash_attn": "FlashAttnSpec",
 }
