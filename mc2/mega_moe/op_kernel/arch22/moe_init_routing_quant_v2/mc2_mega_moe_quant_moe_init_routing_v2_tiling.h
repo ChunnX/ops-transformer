@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_INIT_ROUTING_V2_QUANT_TILING_H
 #define MC2_MOE_INIT_ROUTING_V2_QUANT_TILING_H
 
-#include "../moe_init_routing_v2/mc2_mega_moe_quant_moe_init_routing_v2_tiling.h"
+#include "../moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 #include <cmath>
 
 namespace Mc2Tiling {

@@ -46,7 +46,7 @@
 #include "utils/layout3d.hpp"
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-#include "moe_init_routing_v2/mc2_mega_moe_quant_moe_init_routing_v2_tiling.h"
+#include "moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.hpp"
 // Non-quant routing dispatcher (used by the BF16/FP16 weight path).
 // Lives alongside the quant dispatcher in the same `moe_init_routing_quant_v2`
