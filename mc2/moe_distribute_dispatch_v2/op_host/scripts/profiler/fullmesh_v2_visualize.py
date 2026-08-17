@@ -59,6 +59,12 @@ EVENT_NAMES = {
     0x0151: "NO_ASSIGNED_STATUS_END",
     0x0160: "NO_VALID_EXPERT",
     0x0161: "NO_VALID_EXPERT_END",
+    0x0170: "SEND_PROFILE_MODE",
+    0x0171: "SEND_TASK_COUNT",
+    0x0172: "SEND_POSITION_CYCLES",
+    0x0173: "SEND_INPUT_CYCLES",
+    0x0174: "SEND_QUANT_CYCLES",
+    0x0175: "SEND_BUFFER_WAIT_CYCLES",
     0x00FF: "KERNEL_END",
     0xFFFF: "OVERFLOW",
 }
@@ -156,6 +162,25 @@ TIMELINE_STAGES = (
     "NO_ACTIVE_TOKENS",
     "NO_ASSIGNED_STATUS",
     "NO_VALID_EXPERT",
+)
+SEND_METRIC_FIELDS = {
+    0x0170: "mode",
+    0x0171: "tasks",
+    0x0172: "position_cycles",
+    0x0173: "input_cycles",
+    0x0174: "quant_cycles",
+    0x0175: "buffer_wait_cycles",
+}
+SEND_SUMMARY_FIELDS = (
+    "mode",
+    "rank",
+    "core_id",
+    "tasks",
+    "transfer_cycles",
+    "position_cycles",
+    "input_cycles",
+    "quant_cycles",
+    "buffer_wait_cycles",
 )
 
 
@@ -288,6 +313,40 @@ def build_core_summary(pairs: list[dict[str, int | str]]) -> list[dict[str, int 
     return summaries
 
 
+def build_send_summary(rows: list[dict[str, int | str]],
+                       pairs: list[dict[str, int | str]]) -> list[dict[str, int | str]]:
+    lane_metrics: dict[tuple[int, int], dict[str, int]] = defaultdict(dict)
+    for row in rows:
+        event_id = int(row["event_id"])
+        if event_id not in SEND_METRIC_FIELDS:
+            continue
+        lane = (int(row["rank"]), int(row["core_id"]))
+        lane_metrics[lane][SEND_METRIC_FIELDS[event_id]] = int(row["payload"])
+
+    transfer_pairs = [pair for pair in pairs if pair["stage"] == "TRANSFER_TOKENS"]
+    transfer_pairs = [pair for pair in transfer_pairs
+                      if (int(pair["rank"]), int(pair["core_id"])) in lane_metrics]
+    if not transfer_pairs:
+        return []
+
+    slowest = max(transfer_pairs, key=lambda pair: int(pair["duration_cycles"]))
+    rank = int(slowest["rank"])
+    core_id = int(slowest["core_id"])
+    metrics = lane_metrics[(rank, core_id)]
+    mode = "bypass_quant" if metrics.get("mode", 0) != 0 else "normal"
+    return [{
+        "mode": mode,
+        "rank": rank,
+        "core_id": core_id,
+        "tasks": metrics.get("tasks", ""),
+        "transfer_cycles": int(slowest["duration_cycles"]),
+        "position_cycles": metrics.get("position_cycles", ""),
+        "input_cycles": metrics.get("input_cycles", ""),
+        "quant_cycles": metrics.get("quant_cycles", ""),
+        "buffer_wait_cycles": metrics.get("buffer_wait_cycles", ""),
+    }]
+
+
 def align_cycles(rows: list[dict[str, int | str]], pairs: list[dict[str, int | str]], keep_origin: bool) -> None:
     if keep_origin:
         return
@@ -411,6 +470,7 @@ def main() -> None:
     pairs = pair_events(rows)
     align_cycles(rows, pairs, args.keep_cycle_origin)
     summaries = build_core_summary(pairs)
+    send_summary = build_send_summary(rows, pairs)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.output_dir / "fullmesh_v2_events.csv", rows,
@@ -425,9 +485,14 @@ def main() -> None:
                "drain_end_cycle", "wait_cumsum_cycles", "wait_cumsum_polls", "wait_cumsum_end_cycle",
                "assigned_status", "valid_status", "assigned_tokens", "copy_batches", "format_cycles",
                "format_end_cycle", "local_window_cycles", "local_window_end_cycle", "local_tail_cycles"])
+    write_csv(args.output_dir / "fullmesh_v2_send_summary.csv", send_summary, list(SEND_SUMMARY_FIELDS))
     write_trace(args.output_dir / "fullmesh_v2_trace.json", pairs, args.freq_mhz)
     write_svg(args.output_dir / "fullmesh_v2_timeline.svg", pairs, args.freq_mhz)
-    print(f"parsed {len(rows)} events and {len(pairs)} stage intervals into {args.output_dir}")
+    if send_summary:
+        print(",".join(SEND_SUMMARY_FIELDS))
+        print(",".join(str(send_summary[0][field]) for field in SEND_SUMMARY_FIELDS))
+    else:
+        print(f"parsed {len(rows)} events and {len(pairs)} stage intervals into {args.output_dir}")
 
 
 if __name__ == "__main__":
