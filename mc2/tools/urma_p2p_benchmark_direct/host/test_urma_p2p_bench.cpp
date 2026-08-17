@@ -595,9 +595,10 @@ int Sample(void *arg)
         aclrtMemcpy(timingHost, sizeof(timingHost), timingGm, sizeof(timingHost), ACL_MEMCPY_DEVICE_TO_HOST);
 
         // [0-3]=累计值, [4-7]=最后一轮单轮值
-        // 两种模式都除以 loopCount 得平均单次时间
-        // benchMode=0: assemble=平均单次Write, wait=单次Drain(只1次Drain所以同总量)
-        // benchMode=1: assemble=平均单次Write, wait=平均单次Drain
+        // slot 语义:
+        //   mc2_native: [0]=assemble [1]=issue(=assemble) [2]=wait(Drain) [3]=total
+        //   hcomm benchMode=0: [0]=assemble [1]=commit [2]=drain [3]=total
+        //   hcomm benchMode=1: [0]=assemble [1]=issue(=assemble) [2]=drain [3]=total
         double divisor = (double)args->loopCount;
         double avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / divisor;
         double avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE / divisor;
@@ -620,13 +621,17 @@ int Sample(void *arg)
         double avgBwGBs = avgData / avgTotalNs;
         double lastBwGBs = lastData / lastTotalNs;
 
-        printf("[rank %u (dev %u)] avg  assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
+        // hcomm benchMode=0: issue=commit, wait=drain
+        const char* issueLabel = (args->sqeMode == 2 && args->benchMode == 0) ? "commit" : "issue";
+        const char* waitLabel  = (args->sqeMode == 2) ? "drain" : "wait";
+
+        printf("[rank %u (dev %u)] avg  assemble=%.2fus %s=%.2fus %s=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
                rank, physicalDev,
-               avgAssembleNs / 1000.0, avgIssueNs / 1000.0, avgWaitNs / 1000.0,
+               avgAssembleNs / 1000.0, issueLabel, avgIssueNs / 1000.0, waitLabel, avgWaitNs / 1000.0,
                avgTotalNs / 1000.0, avgBwGBs, args->loopCount);
-        printf("[rank %u (dev %u)] last assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (last loop)\n",
+        printf("[rank %u (dev %u)] last assemble=%.2fus %s=%.2fus %s=%.2fus total=%.2fus bw=%.2fGB/s (last loop)\n",
                rank, physicalDev,
-               lastAssembleNs / 1000.0, lastIssueNs / 1000.0, lastWaitNs / 1000.0,
+               lastAssembleNs / 1000.0, issueLabel, lastIssueNs / 1000.0, waitLabel, lastWaitNs / 1000.0,
                lastTotalNs / 1000.0, lastBwGBs);
     } else {
         if (!args->verify) {

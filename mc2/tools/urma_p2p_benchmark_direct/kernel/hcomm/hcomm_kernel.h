@@ -90,17 +90,18 @@ public:
             }
             int64_t t1 = AscendC::GetSystemCycle();
             hcomm.Commit(channelHandle);
-            hcomm.Drain(channelHandle);
             int64_t t2 = AscendC::GetSystemCycle();
+            hcomm.Drain(channelHandle);
+            int64_t t3 = AscendC::GetSystemCycle();
 
             timingLocal.SetValue(0, t1 - t0);  // assemble: 全部 WriteNbi
-            timingLocal.SetValue(1, t1 - t0);  // issue: 同 assemble
-            timingLocal.SetValue(2, t2 - t1);  // wait: Commit + Drain
-            timingLocal.SetValue(3, t2 - t0);  // total
-            timingLocal.SetValue(4, t1 - t0);
-            timingLocal.SetValue(5, t1 - t0);
-            timingLocal.SetValue(6, t2 - t1);
-            timingLocal.SetValue(7, t2 - t0);
+            timingLocal.SetValue(1, t2 - t1);  // commit: Commit (敲一次 DoorBell)
+            timingLocal.SetValue(2, t3 - t2);  // drain: Drain (poll CQ 等完成)
+            timingLocal.SetValue(3, t3 - t0);  // total
+            timingLocal.SetValue(4, t1 - t0);  // last assemble
+            timingLocal.SetValue(5, t2 - t1);  // last commit
+            timingLocal.SetValue(6, t3 - t2);  // last drain
+            timingLocal.SetValue(7, t3 - t0);  // last total
         } else {
             // ========== benchMode=1: 循环 loopCount 次 { WriteNbi<commit=true> → Drain } ==========
             int64_t sumWrite = 0, sumDrain = 0, sumTotal = 0;
