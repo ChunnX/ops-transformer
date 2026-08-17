@@ -97,29 +97,33 @@ for i in [0, curParaNum):
     InverseCompute(attnWs_[i*C*C], gammaUB)
     CrossCoreSetFlag<PIPE_MTE3>(0x7)               // → AIC: 求逆完成
 
-// ===== 步骤 4: 列缩放 (R4+R5 新增) =====
+// ===== 步骤 4: R4 列缩放 β → A_beta (供 matmul5 v_inner) =====
 for i in [0, curParaNum):
     CrossCoreWaitFlag(0xB)                         // ← AIC: AttnInverseMMCompute 完成
-    // 读 A from attnWs (GM, H×C FP32 → Cast)
+    // 读 A from attnWs (GM, H×C BF16 → Cast FP32)
     DataCopyIn(attnWs_[i*C*C], H*C) → A_local(H,C)
     // R4: A_beta = A * beta[None,:] (列缩放, 第 j 列乘 beta[j])
     Broadcast(betaFullUB, (1,C)) → Mul(A_local, A_local, betaBroad, H*C)
     // 写 A_beta → attnWs (给 matmul5)
     Cast BF16 → DataCopyPad → attnWs_[i*C*C]
+    CrossCoreSetFlag<PIPE_MTE3>(0x5)               // → AIC: A_beta 就绪
+
+// ===== 步骤 5: R5 列缩放 g_exp → A_beta_gexp (供 matmul4 k_cumdecay) =====
+for i in [0, curParaNum):
+    // A_beta 仍在 A_local (UB, 未释放)
     // R5: A_beta_gexp = A_beta * g_exp[None,:] (列缩放, 第 j 列乘 g_exp[j])
     Broadcast(gCumExpUB, (1,C)) → Mul(A_beta_local, A_beta_local, gExpBroad, H*C)
     // 写 A_beta_gexp → attnWsNegGm_ (给 matmul4)
     Cast BF16 → DataCopyPad → attnWsNegGm_[i*C*C]
-    CrossCoreSetFlag<PIPE_MTE3>(0x5)               // → AIC: A_beta 就绪
     CrossCoreSetFlag<PIPE_MTE3>(0x6)               // → AIC: A_beta_gexp 就绪
 
-// ===== 步骤 5: q_prime (R2: Q 从 strided GM) =====
+// ===== 步骤 6: q_prime (R2: Q 从 strided GM) =====
 for i in [0, curParaNum):
     qk_base = chunkStartRow[i]*Nk*Dk + nId[i]*(Nk/Nv)*Dk
     QPrimeCompute(qPrimeGm, gCumSumUB[i*C], gCumExpUB[i*C],
                   queryGm_[qk_base + subOffset*qkStride], subValidLen[i], qkStride)
 
-// ===== 步骤 6: KgCompute (保留, R7 待删除) =====
+// ===== 步骤 7: KgCompute (保留, R7 待删除) =====
 for i in [0, curParaNum):
     // kg = K * exp(g[-1]-g_cum)[...,None] → kg_ GM
     KgCompute(kgGm_[chunkRowBase[i]*Dk], gCumSumUB[i*C], keyGm_[qk_base], qkStride)
@@ -186,11 +190,12 @@ InverseCompute (求逆 A → attnWs)
 SetFlag(0x7) ─────────────────────────→   WaitFlag(0x7)
                                             AttnInverseMMCompute (读/写 attnWs 的 A)
                                             SetFlag(0xB) ──────────→ WaitFlag(0xB)  // 新增
-[R4+R5: 列缩放]
+[R4: 列缩放 β → A_beta]
 读 A → 列缩放 β → A_beta → 写 attnWs
-列缩放 g_exp → A_beta_gexp → 写 attnWsNegGm_
-SetFlag(0x5) + SetFlag(0x6) ─────────→   WaitFlag(0x5) → matmul5: A_beta @ V (strided)
-                                          WaitFlag(0x6) → matmul4: -A_beta_gexp @ K (strided)
+SetFlag(0x5) ─────────────────────────→   WaitFlag(0x5) → matmul5: A_beta @ V (strided)
+[R5: 列缩放 g_exp → A_beta_gexp]
+A_beta (UB) → 列缩放 g_exp → A_beta_gexp → 写 attnWsNegGm_
+SetFlag(0x6) ─────────────────────────→   WaitFlag(0x6) → matmul4: -A_beta_gexp @ K (strided)
 KgCompute (→ kg_ GM)                      QKT matmul (strided GM → qkt_)  ← R2
                                           SetFlag(0xA) ──────────→ WaitFlag(0xA)
 QPrimeCompute (Q 从 strided GM)           ← R2
