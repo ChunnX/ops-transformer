@@ -32,12 +32,12 @@
 #include "../../tiling/quant_matmul_tiling_data.h"
 #include "../../tiling/comm_tiling_data.h"
 #include "../../block/aiv_comm/collective_comm_context.h"
+// CommContext 定义来自 all_to_all_matmul_tiling_data.h（复用，不重定义）
 
 struct CommContext {
     Apace::AivComm::CommUdmaContext udmaCtx;
     Apace::AivComm::CommUbmemContext ubmemCtx;
 };
-
 struct ApaceQuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
     QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径 + tail tile)

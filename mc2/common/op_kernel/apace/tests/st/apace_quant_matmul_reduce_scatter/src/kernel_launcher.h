@@ -19,7 +19,7 @@
 
 #include "apace/kernel/apace_quant_matmul_reduce_scatter/apace_quant_matmul_reduce_scatter_udma_impl.h"
 
-__global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma(
+__global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma_Udma(
                           __gm__ CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,

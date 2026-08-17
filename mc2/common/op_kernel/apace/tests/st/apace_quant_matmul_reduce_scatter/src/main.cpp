@@ -297,7 +297,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
 
     if (mode == "precision") {
         INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, GET mode)", rankId, tilingData.mmTilingData.usedCoreNum);
-        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma_Udma<<<
             tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                 devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                 deviceWorkspace, deviceOutput, tilingData);
@@ -334,7 +334,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma_Udma<<<
                 tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                     deviceWorkspace, deviceOutput, tilingData);
