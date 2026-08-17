@@ -319,7 +319,8 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self.assertRtolEqual(
         kv_centric.float().numpy(), npu_out_cpu.float().numpy(), prec=prec)
 
-  def _run_constant_boundary_npu_test(self, q_seqlens, kv_seqlens, label):
+  def _run_constant_boundary_npu_test(
+      self, q_seqlens, kv_seqlens, label, inner_precise=4):
     """Validate large indexing boundaries with an exact constant result."""
     batch = len(q_seqlens)
     self.assertEqual(batch, len(kv_seqlens))
@@ -373,12 +374,13 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
 
     print(
         f"[{label}] launch total_q={total_q} kv={kv_seqlens} "
+        f"inner_precise={inner_precise} "
         f"physical_blocks={physical_blocks}")
     torch.npu.synchronize()
     start = time.perf_counter()
     output = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
         query, key, value, *metadata,
-        kv_heads, 1.0 / (head_dim ** 0.5), block_size, top_k, 4)
+        kv_heads, 1.0 / (head_dim ** 0.5), block_size, top_k, inner_precise)
     torch.npu.synchronize()
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
@@ -475,6 +477,9 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     with self.subTest(q=[4], kv=[512], inner_precise=1):
       self._run_npu_lse_test(
           1, [4], [512], 8, 2, 3, 604, inner_precise=1, prec=1.5e-2)
+    with self.subTest(q=[4], kv=[512], inner_precise=0):
+      self._run_npu_lse_test(
+          1, [4], [512], 8, 2, 3, 606, inner_precise=0, prec=7e-3)
 
   def test_bf16_single_batch_small(self):
     print("[test_bf16_single_batch_small]")
@@ -515,27 +520,70 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
             top_k=3, seed=1800 + inner_precise, prec=prec,
             inner_precise=inner_precise)
 
+  def test_bf16_gqa16_head_dim_256_precision_paths(self):
+    """D=256 and groupSize=16 work together for every precision path."""
+    for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=1, q_seqlens=[4], kv_seqlens=[512],
+            q_heads=16, kv_heads=1, head_dim=256, block_size=128,
+            top_k=4, seed=1850 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
+
+  def test_bf16_max_heads_d256_mid_block_precision_paths(self):
+    """H=64, GQA16, D=256, and blockSize=64 work on every precision path."""
+    for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=1, q_seqlens=[4], kv_seqlens=[288],
+            q_heads=64, kv_heads=4, head_dim=256, block_size=64,
+            top_k=4, seed=1870 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
+
   def test_bf16_paged_block_size_sweep(self):
     """Paged KV accepts every positive multiple of 16 through 128."""
     for index, block_size in enumerate(range(16, 129, 16)):
       kv_len = block_size * 4 + block_size // 2
-      with self.subTest(block_size=block_size, kv_len=kv_len):
-        self._run_npu_test(
-            batch=1, q_seqlens=[4], kv_seqlens=[kv_len],
-            q_heads=8, kv_heads=2, head_dim=128, block_size=block_size,
-            top_k=3, seed=1700 + index, prec=7e-3, inner_precise=4)
+      for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+        with self.subTest(
+            block_size=block_size, kv_len=kv_len,
+            inner_precise=inner_precise):
+          self._run_npu_test(
+              batch=1, q_seqlens=[4], kv_seqlens=[kv_len],
+              q_heads=8, kv_heads=2, head_dim=128, block_size=block_size,
+              top_k=3, seed=1700 + index * 10 + inner_precise,
+              prec=prec, inner_precise=inner_precise)
 
   def test_bf16_kv_seqlen_256k_boundary(self):
     """The maximum advertised paged KV sequence length executes correctly."""
-    self._run_constant_boundary_npu_test(
-        q_seqlens=[128], kv_seqlens=[262144], label="kv_256k_boundary")
+    for inner_precise in (0, 1, 4):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_constant_boundary_npu_test(
+            q_seqlens=[128], kv_seqlens=[262144],
+            label=f"kv_256k_boundary_inner{inner_precise}",
+            inner_precise=inner_precise)
+
+  def test_bf16_kv256k_gqa16_sample_precision_paths(self):
+    """Random 256K KV data matches sampled CPU golden for all precision paths."""
+    data = make_case(
+        batch=1, q_seqlens=[16], kv_seqlens=[262144],
+        q_heads=16, kv_heads=1, head_dim=128, block_size=128,
+        top_k=16, seed=1880)
+    for inner_precise in (0, 1, 4):
+      with self.subTest(inner_precise=inner_precise):
+        data["inner_precise"] = inner_precise
+        self._run_arch22_precision_once(
+            data, [0, 8, 15], f"kv256k_gqa16_inner{inner_precise}")
 
   def test_bf16_total_q_1024k_boundary(self):
     """The maximum advertised total Q length works across packed batches."""
     q_seqlens = [262144] * 4
-    self._run_constant_boundary_npu_test(
-        q_seqlens=q_seqlens, kv_seqlens=q_seqlens,
-        label="total_q_1024k_boundary")
+    for inner_precise in (0, 1, 4):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_constant_boundary_npu_test(
+            q_seqlens=q_seqlens, kv_seqlens=q_seqlens,
+            label=f"total_q_1024k_boundary_inner{inner_precise}",
+            inner_precise=inner_precise)
 
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
@@ -574,38 +622,49 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self.assertRtolEqual(golden.float().numpy(), strided_cpu.float().numpy(), prec=7e-3)
 
   def test_bf16_continuous_kv_multi_batch(self):
-    """block_size=0 consumes concatenated TND K/V without a block table."""
+    """blockSize=0 supports D=128/256, GQA16, and every precision path."""
     print("[test_bf16_continuous_kv_multi_batch]")
-    data = make_case(
-        batch=2, q_seqlens=[8, 6], kv_seqlens=[144, 70],
-        q_heads=8, kv_heads=2, head_dim=128, block_size=128, top_k=2, seed=406)
+    configs = (
+        (128, 8, 2, 406),
+        (256, 16, 1, 407),
+    )
+    for head_dim, q_heads, kv_heads, seed in configs:
+      data = make_case(
+          batch=2, q_seqlens=[8, 6], kv_seqlens=[144, 70],
+          q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
+          block_size=128, top_k=2, seed=seed)
 
-    dense_key = []
-    dense_value = []
-    for batch_idx, kv_len in enumerate(data["actual_seq_lengths_kv"].tolist()):
-      num_blocks = (kv_len + data["block_size"] - 1) // data["block_size"]
-      physical = data["block_table"][batch_idx, :num_blocks].to(torch.long)
-      dense_key.append(data["key"][physical].reshape(-1, data["kv_heads"], 128)[:kv_len])
-      dense_value.append(data["value"][physical].reshape(-1, data["kv_heads"], 128)[:kv_len])
-    dense_key = torch.cat(dense_key, dim=0)
-    dense_value = torch.cat(dense_value, dim=0)
+      dense_key = []
+      dense_value = []
+      for batch_idx, kv_len in enumerate(data["actual_seq_lengths_kv"].tolist()):
+        num_blocks = (kv_len + data["block_size"] - 1) // data["block_size"]
+        physical = data["block_table"][batch_idx, :num_blocks].to(torch.long)
+        dense_key.append(
+            data["key"][physical].reshape(-1, data["kv_heads"], head_dim)[:kv_len])
+        dense_value.append(
+            data["value"][physical].reshape(-1, data["kv_heads"], head_dim)[:kv_len])
+      dense_key = torch.cat(dense_key, dim=0)
+      dense_value = torch.cat(dense_value, dim=0)
 
-    golden = cpu_golden_prefill_bf16(
-        data["query"], data["key"], data["value"], data["k2q_row_ptr"],
-        data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
-        data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
-        data["block_size"], data["top_k"], data["scale_value"], 4)
-    out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
-        data["query"].npu(), _npu_axis0_strided(dense_key, 2),
-        _npu_axis0_strided(dense_value, 3), None,
-        data["k2q_row_ptr"].npu(), data["k2q_q_indices"].npu(),
-        data["k2q_slot_indices"].npu(), data["actual_seq_lengths"].npu(),
-        data["actual_seq_lengths_kv"].npu(), data["kv_heads"],
-        data["scale_value"], 0, data["top_k"], 4).cpu()
+      for inner_precise, prec in ((0, 1e-2), (1, 1.5e-2), (4, 1e-2)):
+        with self.subTest(head_dim=head_dim, inner_precise=inner_precise):
+          golden = cpu_golden_prefill_bf16(
+              data["query"], data["key"], data["value"], data["k2q_row_ptr"],
+              data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
+              data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
+              data["block_size"], data["top_k"], data["scale_value"], inner_precise)
+          out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+              data["query"].npu(), _npu_axis0_strided(dense_key, 2),
+              _npu_axis0_strided(dense_value, 3), None,
+              data["k2q_row_ptr"].npu(), data["k2q_q_indices"].npu(),
+              data["k2q_slot_indices"].npu(), data["actual_seq_lengths"].npu(),
+              data["actual_seq_lengths_kv"].npu(), data["kv_heads"],
+              data["scale_value"], 0, data["top_k"], inner_precise).cpu()
 
-    self.assertFalse(torch.any(torch.isnan(out.float())))
-    self.assertFalse(torch.any(torch.isinf(out.float())))
-    self.assertRtolEqual(golden.float().numpy(), out.float().numpy(), prec=1e-2)
+          self.assertFalse(torch.any(torch.isnan(out.float())))
+          self.assertFalse(torch.any(torch.isinf(out.float())))
+          self.assertRtolEqual(
+              golden.float().numpy(), out.float().numpy(), prec=prec)
 
   def test_bf16_single_batch_medium(self):
     print("[test_bf16_single_batch_medium]")
@@ -667,11 +726,39 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         batch=1, q_seqlens=[16], kv_seqlens=[1024],
         q_heads=32, kv_heads=4, top_k=6, seed=789)
 
+  def test_bf16_group_size_sweep(self):
+    """Every GQA group size has a golden; G=1/8 also cover inner 0 and 1."""
+    for group_size in range(1, 17):
+      inner_modes = (0, 1, 4) if group_size in (1, 8) else (4,)
+      for inner_precise in inner_modes:
+        with self.subTest(group_size=group_size, inner_precise=inner_precise):
+          self._run_npu_test(
+              batch=1, q_seqlens=[2], kv_seqlens=[256],
+              q_heads=group_size, kv_heads=1, head_dim=128,
+              block_size=128, top_k=2,
+              seed=1900 + group_size * 10 + inner_precise,
+              prec=(1.5e-2 if inner_precise == 1 else 1e-2),
+              inner_precise=inner_precise)
+
   def test_bf16_partial_last_block(self):
     print("[test_bf16_partial_last_block]")
-    self._run_npu_test(
-        batch=1, q_seqlens=[8], kv_seqlens=[300],
-        q_heads=8, kv_heads=2, top_k=3, seed=101)
+    for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=1, q_seqlens=[8], kv_seqlens=[300],
+            q_heads=8, kv_heads=2, top_k=3,
+            seed=101 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
+
+  def test_bf16_gqa16_uneven_batch_precision_paths(self):
+    """Uneven multi-batch offsets and GQA16 work on every precision path."""
+    for inner_precise, prec in ((0, 1e-2), (1, 1.5e-2), (4, 1e-2)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=2, q_seqlens=[1, 8], kv_seqlens=[256, 512],
+            q_heads=64, kv_heads=4, head_dim=128, block_size=128,
+            top_k=4, seed=1950 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
 
   def test_bf16_top_k_1(self):
     print("[test_bf16_top_k_1]")
@@ -787,7 +874,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     torch.npu.synchronize()
     torch.npu.empty_cache()
     data = self._make_arch22_133120_case(q_seqlen=16)
-    for inner_precise in (0, 4):
+    for inner_precise in (0, 1, 4):
       with self.subTest(inner_precise=inner_precise):
         data["inner_precise"] = inner_precise
         self._run_arch22_precision_once(
@@ -838,14 +925,28 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         inner_precise=inner_precise)
 
   def test_prod_inner_precise_matrix(self):
-    """All published precision modes on the same production GQA layout."""
+    """All precision modes have a full-output golden on production GQA."""
     for inner_precise, prec in ((0, 1e-2), (1, 1.5e-2), (4, 1e-2)):
       with self.subTest(inner_precise=inner_precise):
         self._run_prod_config(
-            batch=1, q_seqlens=[64], kv_seqlens=[4096],
+            batch=1, q_seqlens=[16], kv_seqlens=[4096],
             seed=9700 + inner_precise, prec=prec,
             tag=f"inner_precise/{inner_precise}",
             inner_precise=inner_precise)
+
+  def test_prod_inner_precise_hot_csr_sample(self):
+    """Q=64 exercises repeated M=64 batches with sampled CPU references."""
+    sample_tokens = [0, 32, 63]
+    for inner_precise in (0, 1, 4):
+      with self.subTest(inner_precise=inner_precise):
+        data = make_case(
+            batch=1, q_seqlens=[64], kv_seqlens=[4096],
+            q_heads=self._Q_HEADS, kv_heads=self._KV_HEADS,
+            head_dim=self._HEAD_DIM, block_size=self._BLOCK_SIZE,
+            top_k=self._TOP_K, seed=9750 + inner_precise)
+        data["inner_precise"] = inner_precise
+        self._run_arch22_precision_once(
+            data, sample_tokens, f"prod_hot_csr_inner{inner_precise}")
 
   def test_prod_topk16_seed_sweep(self):
     """Same representative shape, many seeds -> reproduce 偶现 precision flakes.
