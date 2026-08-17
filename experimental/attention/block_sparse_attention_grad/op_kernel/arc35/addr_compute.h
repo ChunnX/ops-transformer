@@ -169,6 +169,13 @@ private:
         // --- 步骤 1：吐出当前 base 块 ---
         base_s1_start_idx = this->s1_start_idx_;                              // 记录起点
         base_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_); // 算长度（末尾不足则截断）
+        // 当 base 块跨越 mask block 边界时，截断到 mask 边界
+        // 避免 blockShape 不能被 base_m 整除时（如 192），base 块跨越两个不同 mask 值的 block
+        int32_t q_block_idx_cur = base_s1_start_idx / const_info.block_x;     // 起点所在的 mask block 索引
+        int32_t mask_boundary = (q_block_idx_cur + 1) * const_info.block_x;   // 当前 mask block 的右边界
+        if (base_s1_start_idx + base_s1_len > mask_boundary) {
+            base_s1_len = mask_boundary - base_s1_start_idx;                  // 截断到 mask 边界
+        }
         this->s1_start_idx_ += base_s1_len;                                   // 推进到下一个 base 块起点
 
         // --- 步骤 2：检查是否到达 SingleBlock 末尾 ---
@@ -189,8 +196,14 @@ private:
             if (IsValidBlock(const_info, b_idx, n1_idx, q_block_idx, kv_block_idx, block_sparse_mask)) {
                 break;  // 命中有效块，退出循环
             }
-            // 无效块：跳过整个 base 块
+            // 无效块：跳过
             int32_t tmp_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_);
+            // 跳过时也需截断到 mask 边界，避免跳过属于下一个有效 mask block 的区间
+            int32_t skip_q_block_idx = this->s1_start_idx_ / const_info.block_x;
+            int32_t skip_mask_boundary = (skip_q_block_idx + 1) * const_info.block_x;
+            if (this->s1_start_idx_ + tmp_s1_len > skip_mask_boundary) {
+                tmp_s1_len = skip_mask_boundary - this->s1_start_idx_;
+            }
             this->s1_start_idx_ += tmp_s1_len;                          // 推进到下一个 base 块
             q_block_idx = this->s1_start_idx_ / const_info.block_x;     // 更新 mask block 索引
             if (this->s1_start_idx_ >= this->s1_end_idx_) {
@@ -382,6 +395,13 @@ public:
             int32_t vaild_s1_idx;
             int32_t vaild_s1_len;
             int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);  // 当前 S2 方向 base 块长度
+            // 当 base 块跨越 mask block 边界时，截断到 mask 边界（与 S1 方向同理）
+            // 避免 blockShape 不能被 base_n 整除时（如 192），base 块跨越两个不同 mask 值的 block
+            int32_t kv_block_idx_cur = s2Idx_ / block_y_;
+            int32_t kv_mask_boundary = (kv_block_idx_cur + 1) * block_y_;
+            if (s2Idx_ + s2_len > kv_mask_boundary) {
+                s2_len = kv_mask_boundary - s2Idx_;  // 截断到 mask 边界
+            }
 
             // 检查当前 SingleBlock 内是否至少含一个有效 base 块
             if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
@@ -465,6 +485,13 @@ private:
         // 遍历顺序 s1->s2->n1->batch
         int32_t recoderS1 = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);  // 当前 SingleBlock 的 S1 长度
         int32_t recoderS2 = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);   // 当前 BaseBlock 的 S2 长度
+        // S2 方向也需截断到 mask 边界，与 GetRunTimeInfo 中的截断保持一致
+        // 否则 s2Idx_ 推进时会跨过 mask 边界，漏算属于下一个 mask block 的区间
+        int32_t init_kv_block_idx = s2Idx_ / block_y_;
+        int32_t init_kv_mask_boundary = (init_kv_block_idx + 1) * block_y_;
+        if (s2Idx_ + recoderS2 > init_kv_mask_boundary) {
+            recoderS2 = init_kv_mask_boundary - s2Idx_;
+        }
 
         // 首次调用：只记录步长，不推进（避免跳过 [0,*) 任务）
         if (unlikely(first_loop_ == 0)) {
