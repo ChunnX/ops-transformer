@@ -71,9 +71,23 @@ if _PYTESTS not in sys.path:
 
 API_NAME = "torch.ops.cann_ops_transformer.flash_attn"
 
-# metadata 槽位 shape 由算子侧公式推导, 与
+# metadata 槽位大小单一来源: 优先复用算子侧公式
 # torch_extension/cann_ops_transformer/ops/flash_attn.py 的
-# _calculate_metadata_size 保持一致: ((36+72)*B*num_heads_kv+1)*16 对齐 4096。
+# _calculate_metadata_size, 算子包不可用时回退到本地同构公式
+# ((36+72)*B*num_heads_kv+1)*16 对齐 4096。
+def _op_metadata_size(batch_size, num_heads_kv):
+    size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    return ((size + 4095) // 4096) * 4096
+
+
+try:
+    from cann_ops_transformer.ops.flash_attn import (
+        _calculate_metadata_size as _resolve_metadata_size,
+    )
+except Exception:
+    _resolve_metadata_size = _op_metadata_size
+
+
 def _metadata_shape(p):
     layout_q = p.get("layout_q", "BNSD")
     if layout_q == "TND":
@@ -82,9 +96,7 @@ def _metadata_shape(p):
     else:
         batch_size = int(p.get("B", 1))
     num_heads_kv = int(p.get("N2", p.get("N1", 1)))
-    size = (36 + 72) * batch_size * num_heads_kv
-    size = (size + 1) * 16
-    return (int(((size + 4095) // 4096) * 4096),)
+    return (int(_resolve_metadata_size(batch_size, num_heads_kv)),)
 
 HEADER = [
     "testcase_name",
