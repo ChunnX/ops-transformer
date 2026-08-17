@@ -102,6 +102,10 @@ int launchOneThreadDispatchAndCombine(Args &args)
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
+    if(IS_TEST_A3A5){
+        sharedExpertNum = 1;
+        sharedExpertRankNum = 0;
+    }
     int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -233,6 +237,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
 
     /* 依次执行dispatch及combine算子 */
     // 调用dispatch算子第一阶段接口
+    LOG_PRINT("[INFO] BEFORE aclnnMoeDistributeDispatchGetWorkspaceSize\n");
     ret = aclnnMoeDistributeDispatchGetWorkspaceSize(
         x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, hcomEpName, EP_WORLD_SIZE,
         args.epRankId, moeExpertNum, nullptr, 0, 0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode,
