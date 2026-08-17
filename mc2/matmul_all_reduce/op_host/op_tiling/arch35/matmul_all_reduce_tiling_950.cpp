@@ -265,18 +265,37 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
         constexpr uint32_t alignDataSize = 32U;
         uint32_t dtypeSize = static_cast<uint32_t>(D_MTYPE_SIZE_MAP.at(args_.cType));
         uint32_t alignedN = mc2tiling::AlignUp(static_cast<uint32_t>(args_.orgNValue), alignDataSize / dtypeSize);
-        uint32_t biasBufNum = (matmulAllReduce910TilingData_.param.isAdd != 0U) ? 7U : 5U;
+        constexpr uint32_t BIAS_ADD_UB_BUF_FACTOR = 7U;
+        constexpr uint32_t BIAS_ONLY_UB_BUF_FACTOR = 5U;
+        uint32_t biasBufNum = (matmulAllReduce910TilingData_.param.isAdd != 0U) ? BIAS_ADD_UB_BUF_FACTOR : BIAS_ONLY_UB_BUF_FACTOR;
         uint32_t biasUbFactor = biasBufNum * alignedN * dtypeSize;
+        uint32_t biasUbRows = 0U;
+        uint32_t tileN = 0U;
         if (biasUbFactor == 0U) {
-            matmulAllReduce910TilingData_.extTiling.biasUbRows = 1U;
-            return ge::GRAPH_SUCCESS;
-        }
-        uint32_t ubSizeForBias = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
-        uint32_t biasUbRows = mc2tiling::AlignDown(ubSizeForBias, alignDataSize);
-        if (biasUbRows == 0U) {
             biasUbRows = 1U;
+        } else if (biasUbFactor <= static_cast<uint32_t>(aicoreParams_.ubSize)) {
+            uint32_t ubSizeForBias = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
+            biasUbRows = mc2tiling::AlignDown(ubSizeForBias, alignDataSize);
+            if (biasUbRows == 0U) {
+                biasUbRows = 1U;
+            }
+        } else {
+            uint32_t maxTileN = static_cast<uint32_t>(aicoreParams_.ubSize) / (biasBufNum * dtypeSize);
+            tileN = mc2tiling::AlignDown(maxTileN, alignDataSize / dtypeSize);
+            if (tileN == 0U) {
+                OP_LOGE(opName_, "biasUbFactor %u exceeds ubSize %lu, cannot fit bias path.",
+                        biasUbFactor, aicoreParams_.ubSize);
+                return ge::GRAPH_FAILED;
+            }
+            biasUbFactor = biasBufNum * tileN * dtypeSize;
+            uint32_t ubSizeForBias = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
+            biasUbRows = mc2tiling::AlignDown(ubSizeForBias, alignDataSize);
+            if (biasUbRows == 0U) {
+                biasUbRows = 1U;
+            }
         }
         matmulAllReduce910TilingData_.extTiling.biasUbRows = biasUbRows;
+        matmulAllReduce910TilingData_.extTiling.tileN = tileN;
     }
     return ge::GRAPH_SUCCESS;
 }
