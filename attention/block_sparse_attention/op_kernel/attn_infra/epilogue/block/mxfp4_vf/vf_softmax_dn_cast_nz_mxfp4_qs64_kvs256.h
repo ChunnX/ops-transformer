@@ -30,7 +30,7 @@ using namespace MicroAPI;
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBase = 256, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexes_ub, const T dScale,
+                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexes_ub,
                                                   const T NEG_LOG2_CX)
 {
     // ====================== 寄存器定义 ======================
@@ -82,7 +82,6 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *p_des
         Max(curr_group_max, curr_group_max, src_c2, preg_VL64_16bit);
     }
 
-    Muls(curr_group_max, curr_group_max, dScale, preg_VL64_16bit);
     Muls(curr_group_max, curr_group_max, INV_LN2, preg_VL64_16bit);
     
     if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
@@ -127,11 +126,6 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *p_des
             LoadAlign(src_c1, s + (rowOffset_cur * QsBase + 1 * QsBase)*2);
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
-
-            Muls(src_c0, src_c0, dScale, preg_VL64_16bit);
-            Muls(src_c1, src_c1, dScale, preg_VL64_16bit);
-            Muls(src_c2, src_c2, dScale, preg_VL64_16bit);
-            Muls(src_c3, src_c3, dScale, preg_VL64_16bit);
 
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
@@ -190,11 +184,6 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *p_des
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
 
-            Muls(src_c0, src_c0, dScale, preg_VL64_16bit);
-            Muls(src_c1, src_c1, dScale, preg_VL64_16bit);
-            Muls(src_c2, src_c2, dScale, preg_VL64_16bit);
-            Muls(src_c3, src_c3, dScale, preg_VL64_16bit);
-
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
             Sub(src_c2, src_c2, curr_group_max, preg_VL64_16bit);
@@ -234,7 +223,6 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *p_des
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(global_max, group_gmax, preg_invalid_max);
 
         // 下一块最大值归一化
-        Muls(next_group_max, next_group_max, dScale, preg_valid_max);
         Muls(next_group_max, next_group_max, INV_LN2, preg_valid_max);
         if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
             Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
@@ -263,7 +251,7 @@ __aicore__ inline void SoftmaxWithGroupMaxQs64Kvs256CallVF(const LocalTensor<T2>
                                                   const LocalTensor<T> &localGroupMax,
                                                   const LocalTensor<T> &globalMax,
                                                   const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T scale, const T NEG_LOG2_CX)
+                                                  const T NEG_LOG2_CX)
 {
     __ubuf__ T2 *p_dest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -272,7 +260,7 @@ __aicore__ inline void SoftmaxWithGroupMaxQs64Kvs256CallVF(const LocalTensor<T2>
     __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_qs64_kvs256_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBase, QsBase>(
-        p_dest, s_ub, local_group_max, global_max, indexes_ub, scale, NEG_LOG2_CX);
+        p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX);
 }
 
 }
