@@ -15,7 +15,7 @@
 #ifndef MOE_V2_MRGSORT_OUT_H
 #define MOE_V2_MRGSORT_OUT_H
 
-#include "moe_v2_mrgsort.h"
+#include "moe_v2_mrgsort_arch35.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingV2 {

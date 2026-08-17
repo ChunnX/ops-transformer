@@ -15,7 +15,7 @@
 #ifndef MOE_V2_FULL_LOAD_H
 #define MOE_V2_FULL_LOAD_H
 
-#include "moe_v2_mrgsort.h"
+#include "moe_v2_mrgsort_arch35.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
