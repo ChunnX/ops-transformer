@@ -65,3 +65,13 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+from .ffn_to_attention_v2 import (
+    ffn_to_attention_v2,
+    FFNToAttentionV2Buffer,
+    get_ffn_to_attention_v2_ccl_buffer_size,
+)
+from .attention_to_ffn_v2 import (
+    attention_to_ffn_v2,
+    AttentionToFfnV2Buffer,
+    get_attention_to_ffn_v2_ccl_buffer_size,
+)
