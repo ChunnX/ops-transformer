@@ -1,0 +1,69 @@
+api: pytorch
+api_type: executor_lightning_indexer_kl_loss
+aclnn_api_type: executor_lightning_indexer_kl_loss_aclnn
+version: v2.1
+name: aclnnLightningIndexerKLLoss
+generate: generate_lightning_indexer_kl_loss
+aclnn_name: LightningIndexerKLLoss
+dtype_numbers: 67
+extra_numbers: 0
+expected_error_msg: null
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 2
+      avg_re_ratio: 1.2
+      root_mean_squared_ratio: 1.2
+  perf: [0.95, 0.95]
+inputs:
+  - name: targetScore
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16, fp32]
+    ranges:
+      valid:
+        random_types:
+          - name: nd
+          - name: default
+        custom_dist_ratio: default
+    shapes:
+      dim_numbers:
+        values: [2, 3]
+      dim_values:
+        values: [[1, 8000]]
+      max_length: 2147483648
+  - name: indexProbs
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16, fp32]
+    ranges:
+      valid:
+        values: [[0, 1]]
+    shapes:
+      dim_numbers:
+        values: [2, 3]
+      dim_values:
+        values: [[1, 8000]]
+      max_length: 2147483648
+  - name: eps
+    type: attr
+    required: false
+    dtypes:
+      values: [float]
+    ranges:
+      valid:
+        values: [[1.0e-9, 1]]
+      invalid:
+        values: []
+  - name: weightType
+    type: attr
+    required: false
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: [["logits"], ["probs"]]
+      invalid:
+        values: []

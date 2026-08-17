@@ -52,3 +52,8 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+tests/st/aclnnLightningIndexerKLLoss
+torch_extension/extra-info
+torch_extension/fag_profiling
+torch_extension/1.log
