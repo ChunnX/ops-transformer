@@ -46,8 +46,14 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
-    normalized_params["ori_kv_topk_mode"] = params.get("ori_kv_topk_mode")
-    normalized_params["cmp_kv_topk_mode"] = params.get("cmp_kv_topk_mode")
+    ori_kv_topk_mode = params.get("ori_kv_topk_mode")
+    cmp_kv_topk_mode = params.get("cmp_kv_topk_mode")
+    normalized_params["ori_kv_topk_mode"] = (
+        "fullK" if ori_kv_topk_mode == "fullk" else ori_kv_topk_mode
+    )
+    normalized_params["cmp_kv_topk_mode"] = (
+        "fullK" if cmp_kv_topk_mode == "fullk" else cmp_kv_topk_mode
+    )
     normalized_params["ori_sparse_indices_mode"] = (
         params.get("ori_sparse_indices_mode") or "full"
     )

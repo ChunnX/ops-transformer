@@ -626,14 +626,11 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 bool s2NoNeedCalc = ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(
                     bnIdx, gS1Index, this->cuSeqlensQGm, oriTopkLengthGm, cmpTopkLengthGm, runParam, this->constInfo);
                 if constexpr (IS_BATCH_CONSISTENCY) {
-                    int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx +
-                        runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-                    int64_t rawReductionBlockSize = (s2Load + 31LL) / 32LL;
-                    int64_t reductionBlockSize =
-                        (rawReductionBlockSize + constInfo.s2BaseSize - 1) /
-                        constInfo.s2BaseSize * constInfo.s2BaseSize;
-                    runParam.baseBlockNumPerReductionBlock = reductionBlockSize > 0 ?
-                        reductionBlockSize / constInfo.s2BaseSize : 1LL;
+                    int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + runParam.s2CmpLineEndIdx;
+                    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
+                    int64_t s2PerReduceBlock = (s2Load / 32LL + s2BaseSize - 1) >> 7 << 7;
+                    int64_t baseBlockNum = s2PerReduceBlock >> 7;
+                    runParam.baseBlockNumPerReductionBlock = baseBlockNum > 0 ? baseBlockNum : 1LL;
                 }
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask =

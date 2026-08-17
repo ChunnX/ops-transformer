@@ -96,9 +96,10 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
-    OP_LOGD(opName_, "deterministic_level=%d", context_->GetDeterministicLevel());
-
+    int64_t deterministicLevel = context_->GetDeterministicLevel();
+    batchConsistency_ = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
+    OP_LOGI(opName_, "[QSMLA_BC_ROUTE] main level=%lld enabled=%d.", static_cast<long long>(deterministicLevel),
+            static_cast<int32_t>(batchConsistency_));
     return ge::GRAPH_SUCCESS;
 }
 

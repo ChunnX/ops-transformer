@@ -79,6 +79,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     }
     OP_LOGD("deterministic_level=%lld", batchConsistencyLevel);
     bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
+    OP_LOGI("[QSMLA_BC_ROUTE] metadata level=%lld enabled=%d.",
+            static_cast<long long>(batchConsistencyLevel), static_cast<int32_t>(isBatchConsistency));
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,
