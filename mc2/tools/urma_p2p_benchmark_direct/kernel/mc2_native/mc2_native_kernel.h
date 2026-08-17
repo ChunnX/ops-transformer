@@ -262,8 +262,8 @@ public:
                               + P2P_STATE_OFFSET * (uint64_t)epRankId_;
         uint64_t notifyData = P2P_NOTIFY_DATA_FLAG;
 
-        // 填充 SQE 数据字段 (cqe=0: 不生成 CQE, 因为后面会统一 Drain)
-        SetCommWriteWithNotifySQE(sqeTensor_, localAddr, remoteAddr, length, notifyAddr, notifyData, 0);
+        // 填充 SQE 数据字段 (cqe=1: 硬件完成后写 CQE, Drain 的 PollCQ 才能真正等到完成)
+        SetCommWriteWithNotifySQE(sqeTensor_, localAddr, remoteAddr, length, notifyAddr, notifyData, 1);
         // 同步: S→MTE3, 确保 S 标量写 sqeTensor_ 完成后, MTE3 才开始 DataCopy 读 sqeTensor_
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         // 拷 SQE 到 SQ ring (不敲 DoorBell), 更新 outSqPi
