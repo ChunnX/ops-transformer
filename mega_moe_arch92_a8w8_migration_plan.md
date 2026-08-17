@@ -1,0 +1,1261 @@
+# MegaMoe A6（arch92）A8W8 迁移详细方案
+
+## 1. 文档目的
+
+本文档用于指导后续将 A5 `arch35` 的 MegaMoe A8W8 能力迁移到 A6 `arch92`。方案以当前仓库代码为基线，目标不是简单复制 A5 Kernel，而是在保持 A5 已有功能和性能路径不变的前提下，建立适配 A6 `AIC:AIV = 1:1` 拓扑的 A8W8 Wave 流水。
+
+本文档覆盖：
+
+- Kernel 入口、核心映射、Wave 调度和同步协议。
+- Dispatch 前处理、共享专家、MoE 专家流水和 Unpermute 后处理。
+- Workspace、Win 区和 UB 使用约束。
+- A5/A6 源码隔离、可复用头文件边界和 arch92 本地副本策略。
+- ACLNN、OpDef、InferShape、Tiling、CMake、SoC 注册和打包依赖。
+- 支持能力边界、实施顺序、验证矩阵和主要风险。
+
+本阶段不新增或迁移测试代码，但正式实现后仍需使用已有编译、精度和性能用例进行验证。
+
+## 2. 已确认约束
+
+1. A6 使用独立 `mc2/mega_moe/op_kernel/arch92` 目录。
+2. A6 默认物理拓扑是一个 AIC 配一个 AIV，Kernel task 类型使用 `KERNEL_TYPE_MIX_AIC_1_1`。
+3. 函数名、变量名和类型名不使用 `OneAiv`、`SingleAiv`、`Aiv1Pipeline` 等名称。1C1V 是默认架构事实，不是特殊业务模式。
+4. 当前只支持 A8W8，不支持 A8W4、A4W4 和 A4W4_NZ。
+5. A6 不支持 URMA，只支持 MTE。
+6. 除 URMA 和非 A8W8 数据类型路径外，A5 当前 A8W8 已支持的功能均需要保留。
+7. A5 `arch35` 保持零修改。A6 需要改变的 Workspace、Dispatch、GMM1、GMM2、reset 和主类实现复制到 `arch92` 后独立修改。
+8. arch92 不复制整套 arch35 目录；仅复制 A6 必须改变的文件，其余类型、工具、Blaze 和独立 stage 仍引用 arch35 稳定头文件。
+9. Dispatch 前处理和 Combine 后的 Unpermute 仍由全部 AIV 参与，按实际 AIV 核数分核。
+10. MoE 专家主体采用 A8W4 Wave 的专家调度骨架，但计算使用 A8W8 Generic MMAD，不复用 A8W4 FP4 Prologue。
+
+## 3. 基线代码与关键事实
+
+主要参考文件：
+
+- `mc2/mega_moe/op_kernel/arch35/mega_moe_apt.cpp`
+- `mc2/mega_moe/op_kernel/arch35/mega_moe.h`
+- `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h`
+- `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w4.h`
+- `mc2/mega_moe/op_kernel/arch35/common/mega_moe_workspace.h`
+- `mc2/mega_moe/op_kernel/arch35/common/mega_moe_types.h`
+- `mc2/mega_moe/op_kernel/arch35/common/mega_moe_gmm_common.h`
+- `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h`
+- `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h`
+- `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h`
+- `mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp`
+
+### 3.1 A5 入口隐含的是 1C2V
+
+当前 `mega_moe_apt.cpp` 使用：
+
+```cpp
+KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+```
+
+当前 `MegaMoe` 主类还直接使用：
+
+```cpp
+blockNum_ = GetBlockNum();
+blockAivNum_ = GetBlockNum() * 2;
+blockIdx_ = GetBlockIdx() / GetTaskRation();
+aivCoreIdx_ = GetBlockIdx();
+```
+
+因此 arch92 不能直接继承现有 `MegaMoe` 主类并只删除 AIV0 分支。核心数量、AIV 编号、Combine 参与核、Scratch 初始化和若干同步槽都隐含了 1C2V。
+
+### 3.2 A8W4 Wave 的“2”只约束 GMM1 调度目标
+
+当前 A8W4 Wave 使用：
+
+```cpp
+A8W4_GMM1_TILES_PER_JOB_TARGET = 2U;
+waveTileTarget = 2U * gmm1Config_.blockJob.totalJobs;
+```
+
+准确含义是：常规 Wave 以每个逻辑 AIC 约两个 GMM1 scheduler tile 为目标负载，而不是每个 Wave 固定执行两次 GMM1 和两次 GMM2。
+
+- 尾 Wave 可以少于目标。
+- 完整专家不会为了凑 Wave 被截断。
+- 单个大专家可以独自超过目标。
+- `MIN_EXPERTS_FOR_NEXT_A8W4_WAVE = 2` 是尽量给下一 Wave 保留两个专家，不表示当前 Wave 必须有两个专家。
+- GMM2 没有独立的两轮目标，只处理当前 Wave 已纳入的全部专家。
+
+非交织Weight1下，GMM1和GMM2的tile数分别近似为：
+
+```text
+GMM1: sum(ceil(expertTokens / 256) * ceil((hiddenDim / 2) / 256))
+GMM2: sum(ceil(expertTokens / 256) * ceil(h / 256))
+```
+
+当 `MEGA_MOE_WEIGHT1_INTERLEAVED=1` 时，Generic GMM1 scheduler使用完整 `hiddenDim`，Wave负载计算必须改用实际 `schedulerN`，不能继续固定使用 `hiddenDim / 2`。
+
+### 3.3 不能直接复用 A8W4 MMAD 函数
+
+`MegaMoeA8W4Wave` 静态限制 FP8 Activation + FP4 Weight；`RunGmm1A8W4` 和 `RunGmm2A8W4` 还依赖 AIV0 的 FP4 Prologue。A6 A8W8 必须使用 Generic A8W8 BlockMmad，只复用 A8W4 的 Wave 专家划分和 AIV 调度顺序。
+
+### 3.4 不能直接使用 A5 A8W8 Wave 主流程
+
+A5 A8W8 Wave 是围绕 1C2V 设计的：一个 AIV 长时间负责 SwiGLU，另一个 AIV 负责 Dispatch/Combine。A6 只有一个 AIV，三个阶段共享 UB，无法保留这种角色并行。
+
+采用 A8W4 Wave 骨架的原因是：它已经在同一个 AIV 角色上组织 Dispatch、Activation 和 Combine，并通过 GM 承接 GMM 输出。A6 只需要删除 FP4 Prologue 角色，并将 GMM 替换为 A8W8 Generic 实现。
+
+## 4. A6 总体执行流程
+
+### 4.1 Phase 1：Dispatch 前处理
+
+全部 AIV 按 `jobIndex = physicalAivIdx`、`totalJobs = aivNum` 分核执行：
+
+1. `QuantizeLocalTokens`
+2. `GatherAndSendExpertMasks`
+3. `ResetSyncStatus`
+4. 存在共享专家时执行 `PrepareSharedExpertInput`
+5. AIV 完成必要的 `PipeBarrier<PIPE_ALL>()`
+6. AIC/AIV 共同进入 `SyncAll<false>()`
+
+要求：
+
+- `blockAivNum` 必须等于平台真实 AIV 数，不能使用 `GetBlockNum() * 2`。
+- Quant、SendMask、Reset、Shared input 和 Unpermute 已接收 JobContext，原则上直接复用。
+- Host 侧 SendMask/Reset/Unpermute UB 配置必须按 A6 的真实 AIV 数重新计算。
+- `SyncAll` 的调用次数和顺序必须保证 AIC/AIV 两侧一致，不能因某个功能关闭而只让一侧跳过全核同步。
+
+### 4.2 Phase 2：共享专家 GMM1
+
+共享专家仍位于 routed expert 流水之前，保持 A5 现有语义：
+
+1. 使用 `sharedExpertInputDataPtr/sharedExpertInputScalePtr` 作为 GMM1 输入。
+2. 使用 A8W8 Generic GMM1。
+3. AIV执行激活和量化，写入 `sharedExpertActivationDataPtr/sharedExpertActivationScalePtr`。
+4. 不参与 Dispatch，也不进入 routed expert 的 Wave 划分。
+
+共享专家阶段没有并发 Dispatch，可以优先复用 1C1V 下的 AIC/AIV CV 握手；如果 arch92 的 CV/UB 接口与 A5 Generic 路径不兼容，则再为共享专家切到 GM handoff。不能复用 A8W4 Prologue。
+
+### 4.3 Phase 3：跨卡同步
+
+调用 `CrossRankSyncInWorldSize`：
+
+- 各 AIV 按实际 `aivNum` 分摊 rank。
+- 每个 AIV 的本地 sequence 位仍使用 `48KB + physicalAivIdx * 64B`。
+- rank 同步区仍位于 Win 区头部 60KB 保留区中。
+- 完成远端握手后执行本卡 AIV 同步。
+
+### 4.4 Phase 4：MoE专家Wave流水
+
+整体沿用 A8W4 Wave 的专家循环形态：
+
+```text
+启动：AIV开始Dispatch第一个Wave；AIC不等整个Wave完成，按tile-ready flag启动GMM1。
+
+稳态：
+  AIV：Dispatch(next wave expert) -> Activation(current wave expert)
+  AIC：GMM1(current wave expert)
+
+当前Wave的GMM1/Activation完成后：
+  AIC：GMM2(current wave experts)
+  AIV：Combine(current wave experts)
+
+随后进入下一Wave。
+```
+
+关键点：
+
+- 启动阶段没有“Dispatch整个Wave完成”的全局 barrier。AIC只等待当前 GMM1 tile 所需的 Dispatch 行数到齐。
+- AIV 在内层循环中先做下一 Wave 的一个专家 Dispatch，再消费当前 Wave 的一个专家 GMM1 输出。
+- AIC 跳过 Dispatch 代码，直接推进当前 Wave GMM1；AIV和AIC允许在时间上不同步，但必须计算出相同的当前 Wave 专家边界。
+- 当前 Wave 的 GMM2/Combine 完成后才推进 `currentWaveBegin`。
+- Dispatch、SwiGLU 和 Combine 在同一 AIV 上共享 UB，因此只能串行调用，不能尝试在同一 AIV 内做并发 UB 生命周期重叠。
+
+建议的上层控制伪代码：
+
+```cpp
+if constexpr (g_coreType == AIV) {
+    DispatchFirstWave();
+}
+
+while (currentWaveBegin < expertCount) {
+    while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
+        if constexpr (g_coreType == AIV) {
+            if (nextWaveNeedsDispatch) {
+                RunMoeExpertDispatchJob(dispatchExpert);
+                AdvanceNextDispatchWaveBoundary();
+            }
+        }
+
+        if (currentWaveNeedsGmm1) {
+            LoadExpertTokenCountFromPhysicalWorkspace();
+            if constexpr (g_coreType == AIC) {
+                WaitRequiredDispatchRowsAndRunGmm1ToGm();
+                NotifyGmm1ResultReady();
+            } else {
+                WaitGmm1ResultReadyAndRunActivationFromGm();
+                NotifyGmm2InputReady();
+            }
+            AdvanceCurrentGmm1WaveBoundary();
+        }
+    }
+
+    for (expertIdx : currentWave) {
+        LoadExpertTokenCountFromPhysicalWorkspace();
+        if constexpr (g_coreType == AIC) {
+            WaitActivationReadyAndRunGmm2ToGm();
+            NotifyCombineReady();
+        } else {
+            WaitOwnedGmm2ResultsAndRunCombineFromGm();
+        }
+    }
+    currentWaveBegin = currentWaveEnd;
+}
+```
+
+Generic A8W8 BlockMmad应使用持久上下文跨专家和Wave复用，避免在每个专家边界重复构造/析构。ND和NZ分别实例化对应的 `PersistentBlockMmadContext`，由arch92主类在整个专家流水期间持有。
+
+### 4.5 Phase 5：导出专家Token数
+
+- 每个物理 block 对应的 AIV都将本 block 的专家 token 数写入 `expertRevTokenNumsPtr`。
+- 只选一个明确的 AIV Job 将本卡各专家 token 数导出到 `expertTokenNumsOut`。
+- 参与者判断应由上层主流程根据 `jobIndex == 0` 控制，不在可复用底层函数中硬编码 `GetSubBlockIdx() == 1`。
+- A6继续使用 `BlockWorkspaceContext{physicalBlockIdx, aicNum}`，保证 count producer 和 AIC consumer 使用相同 workspace 槽。
+
+### 4.6 Phase 6：共享专家GMM2
+
+保持现有顺序：routed expert 阶段结束并完成本卡同步后，再执行共享专家 GMM2。
+
+- 使用 A8W8 Generic GMM2。
+- 输出到 `sharedExpertResultPtr`。
+- AIC按 token group 更新 `sharedExpertGmm2TileCounterPtr`。
+- Unpermute 在累加共享专家输出前等待自己所需 token group 就绪。
+
+### 4.7 Phase 7：Unpermute后处理
+
+1. 全部AIV再次执行跨卡同步，确保Combine发送完成。
+2. 全部AIV按 `aivNum` 对本卡 `bs` 分核。
+3. 从Combine接收区读取MoE专家结果。
+4. 按需读取topk weights并累加。
+5. 存在共享专家时累加共享专家结果。
+6. 写出 `y`。
+
+## 5. 核心编号与上下文设计
+
+### 5.1 初始化原则
+
+arch92 主类在 `Init` 中根据 TilingData 显式初始化核心上下文，不使用 `GetBlockNum() * 2`：
+
+```cpp
+physicalBlockIdx = static_cast<uint32_t>(GetBlockIdx() / GetTaskRation());
+physicalBlockCount = tilingData->aicNum;
+physicalAivIdx = static_cast<uint32_t>(GetBlockIdx());
+physicalAivCount = tilingData->blockAivNum;
+```
+
+Host Tiling必须保证：
+
+```text
+aicNum > 0
+aivNum > 0
+aicNum == aivNum
+blockAivNum = aivNum
+```
+
+`GetTaskRation()` 在 1C1V Kernel task 下预期为1，但仍应在目标编译器/模拟器上确认。业务代码不应依靠 `GetSubBlockIdx()` 区分“哪个AIV参加流水”。
+
+### 5.2 Context职责
+
+- `BlockJobContext`：描述某次GMM scheduler的逻辑Job编号和Job总数。
+- `BlockWorkspaceContext`：描述物理block对应的count/flag workspace槽。A6中与物理1C1V block一一对应。
+- `AivJobContext`：描述AIV任务池中的分核编号，用于Quant、SendMask、Reset、Combine量化和Unpermute。
+- `MoeStageCommonConfig`：保存所有stage共享且在一次Kernel执行期间不变的shape、rank和专家配置。
+
+不要因为A6当前1C1V就删除 `BlockWorkspaceContext`。Job调度编号和物理workspace编号仍属于不同语义，后续部分核调度时二者可能再次不同。
+
+## 6. Wave划分方案
+
+### 6.1 保留A8W4现有划分公式
+
+初版继续使用：
+
+```cpp
+waveTileTarget = GMM1_TILES_PER_JOB_TARGET * gmm1BlockJob.totalJobs;
+GMM1_TILES_PER_JOB_TARGET = 2;
+```
+
+专家的GMM1 tile数按真实token数和实际scheduler N计算：
+
+```cpp
+ceil(expertTokenCount / GMM1_TILE_M) *
+ceil(schedulerN / L1_TILE_N)
+
+schedulerN = IsGmm1Interleaved ? hiddenDim : hiddenDim / 2;
+```
+
+当前Wave在满足目标且能为下一Wave保留足够专家时结束。
+
+### 6.2 AIC与AIV如何得到一致Wave边界
+
+- AIV在 `ComputeExpertTokenCountAndNotify` 中得到 `sendCnt`。
+- 每个物理block将相同专家token数写入 `expertRevTokenNumsPtr[expert][physicalBlock]`。
+- AIC和AIV都从自己的物理block槽读取专家token数，再使用相同公式累计Wave tile数。
+- Wave边界不能依赖只有AIV本地可见的临时变量。
+
+### 6.3 GMM2不重新划Wave
+
+GMM2直接处理当前GMM1 Wave包含的专家区间 `[currentWaveBegin, currentWaveEnd)`，不根据GMM2 tile数重新分Wave。这样才能保持与A8W4已验证调度骨架一致。
+
+### 6.4 后续优化TODO：以两轮GMM1负载为下限切分热点专家
+
+该优化不进入A6第一版。第一版继续保持A8W4现有的整专家Wave划分，不拆分专家，不改变Dispatch、GMM1、Activation、GMM2和Combine的流水顺序及同步粒度。
+
+后续可评估如下混合Wave策略：
+
+1. 保留A8W4的目标负载：
+
+   ```text
+   targetTiles = 2 * gmm1JobCount
+   ```
+
+2. Wave tile数不选择“距离target最近”的值，而是选择可达到的、最小的且不小于target的值：
+
+   ```text
+   waveTiles = min(reachableTiles >= targetTiles)
+   ```
+
+3. 当前专家使Wave超过target时，允许按256行M-group切分；已放入当前Wave的部分立即处理，剩余token通过 `(expertIdx, rowOffsetInExpert)` 游标留到下一Wave。
+
+4. 每个M-group贡献的GMM1 scheduler tile数按实际调度宽度计算：
+
+   ```text
+   gmm1TilesPerMGroup = ceil(schedulerN / 256)
+   schedulerN = IsGmm1Interleaved ? hiddenDim : hiddenDim / 2
+   ```
+
+   因此常规Wave应满足：
+
+   ```text
+   targetTiles <= waveTiles < targetTiles + gmm1TilesPerMGroup
+   ```
+
+5. 如果切分后剩余总工作量不足一个target，应考虑并入当前Wave，避免产生欠载尾Wave；整个case总工作量本身不足target时除外。
+
+6. 使用独立的Dispatch游标和GMM游标，正常阶段保持Dispatch至少领先两个完整专家。热点专家被拆分时，该专家只执行一次完整Dispatch，后续row segment直接复用已发布的数据和m-group ready flag。
+
+7. `MIN_EXPERTS_FOR_NEXT_WAVE = 2`只能用于避免生成过小的专家尾Wave，不能替代Dispatch领先水位判断。
+
+8. 该优化只能保证常规Wave的GMM1 scheduler任务不少于两轮，不能单独保证绝无流水等待。后续评估必须同时观察：
+
+   - Dispatch是否仍能在两轮GMM1时间内维持领先水位。
+   - 单AIV优先补Dispatch时是否推迟Activation并导致GMM2等待。
+   - 专家切分后Activation/GMM2是否需要改为M-group粒度flag。
+   - GMM2的tile数由 `h` 决定，不能沿用GMM1的两轮负载结论。
+   - Combine对部分专家row segment的启动和完成语义。
+
+只有在A6第一版功能、精度和性能稳定后，才实施并验证该TODO。
+
+## 7. 分阶段同步协议
+
+### 7.1 SendCount发布
+
+Producer：每个AIV block。
+
+Data：
+
+- `expertRevTokenNumsPtr[expert][physicalBlock]`
+- A8W4式持久cumsum（A6同样需要）
+
+Notification：
+
+- `flagSendCntCalToUpdParamsPtr[expert][physicalBlock]`
+
+Consumer：对应物理block的AIC和AIV。
+
+SendCount发布属于Dispatch stage自身职责，保持“写count后发布flag”的现有原子语义，不需要由上层拆开。
+
+### 7.2 Dispatch到GMM1
+
+Producer：所有AIV Job共同Dispatch当前专家。
+
+Data：
+
+- `dispatchRevDataPtr`
+- `dispatchRevScalePtr`
+- 可选topk weight/meta数据
+
+Notification：
+
+- `flagDispatchToGmm1Ptr[expert][mGroup]`
+- 每个完成的Dispatch shard按其与256行m-group的重叠行数执行AtomicAdd。
+
+Consumer：负责对应GMM1 tile的AIC。
+
+启动条件：当前flag值等于该m-group真实需要的行数。只等待当前tile，不等待整个专家或整个Wave Dispatch结束。
+
+该通知属于Dispatch完成定义的一部分，继续保留在Dispatch底层函数内部。
+
+### 7.3 GMM1到Activation
+
+Data：AIC将BF16 GMM1结果写入 `gmm1MmadResPtr`。
+
+非topk预取路径：
+
+- 每个AIC使用独立的 `flagGmmToEpiloguePtr[physicalBlock]` 单调sequence。
+- AIC完成FIX到GM的可见性保证后递增sequence。
+- 配对AIV等待期望sequence，再从GM取回对应tile。
+
+topk预取路径：
+
+- 可继续使用 `gmm1TileStatusPtr[expert][schedulerTile]` 和 `expertIdx + 1` round tag。
+- 状态位写入必须发生在GMM1结果对GM可见之后。
+- AIV等待当前expert/tile对应tag，不读取上一轮残留状态。
+
+上层Wave控制器负责“等待/通知”；纯MMAD tile函数和纯Activation tile函数不嵌入对另一stage的调度假设。
+
+### 7.4 Activation到GMM2
+
+Data：
+
+- `activationQuantDataPtr`
+- `activationQuantScalePtr`
+
+Notification：
+
+- `flagActivationToGmm2Ptr[expert]`
+- 每个Activation scheduler tile完成后AtomicAdd。
+
+A8W4专家Wave骨架在进入某专家GMM2前等待该专家全部Activation tile完成。初版保持这一语义，不改成A5 A8W8 Wave的m-group级GMM2启动。
+
+### 7.5 GMM2到非量化Combine
+
+Data：AIC将每个GMM2 BF16 tile写入 `gmm2MmadResPtr`。
+
+Notification：复用每物理block的单调GM sequence。AIC保证FIX结果可见后发布，配对AIV按相同scheduler顺序等待并消费。
+
+特点：
+
+- 一个AIC tile只由配对AIV消费。
+- 不等待当前专家全部AIC完成。
+- 不使用A5 A8W8 Wave的 `gmm2ReadyPtr[expert][aic]` 全专家barrier。
+
+### 7.6 GMM2到量化Combine
+
+量化Combine按专家token group分配给全部AIV Job，不要求AIV与产生该token的AIC物理配对。
+
+- group大小保持256 token。
+- AIC每完成一个 `(mGroup, nTile)`，向该group对应的consumer slot计数。
+- 某group需要等待的目标值为 `ceil(h / 256)`。
+- AIV只等待自己负责的group，然后一次处理该group中分配给自己的token范围。
+- `logicalCoreCount` 必须显式传入实际Combine Job数，A6为 `aivNum`，不能继续通过 `config.blockNum * 2` 推导。
+
+### 7.7 全核和跨卡同步
+
+必须保留的全局顺序点：
+
+1. Reset完成后，AIC才能进入后续flag轮询。
+2. 共享专家GMM1后、routed expert通信前的跨卡同步。
+3. routed expert结束后，导出count和共享专家GMM2前的本卡同步。
+4. Unpermute前确保Combine远端发送完成的跨卡同步。
+
+所有分支必须保证同一种core type执行相同次数的 `SyncAll`，防止部分核心跳过造成超时。
+
+## 8. AIV阶段顺序与UB生命周期
+
+### 8.1 AIV串行顺序
+
+同一个AIV在稳态内执行：
+
+```text
+Dispatch(next wave expert)
+Activation(current wave expert)
+Combine(current wave expert，在GMM2阶段)
+```
+
+这不是三段并行流水。SwiGLU/量化会占用大部分或全部UB，Dispatch和Combine必须在函数边界上与其串行。
+
+### 8.2 cumsum必须落GM
+
+Dispatch的 `cumsumInfoTensor` 位于UB，而Activation会覆盖UB。A6必须像A8W4一样：
+
+- 每次需要时从 `cumsumInfoPtr` 恢复前序cumsum。
+- 当前专家SendCount计算完成后写回GM。
+- arch92 本地副本将 `EnableA8W4` 中与数据类型无关的持久化语义抽象为 `PersistDispatchCumsum`；A5 原文件不修改。
+
+### 8.3 Scratch对象只保存视图和标量状态
+
+Scratch中LocalTensor只是UB地址视图，不能被误认为跨stage保存了数据。跨Dispatch/Activation/Combine仍需保留的数据必须位于GM或明确的Scalar状态中。
+
+### 8.4 Event ID审计
+
+虽然三个stage串行，仍需检查每个函数退出前是否已回收其MTE/V event：
+
+- Dispatch ring的MTE3_MTE2/MTE3_S事件必须drain。
+- Activation GM2UB和V_MTE2事件必须闭合。
+- Combine发送ring必须在函数返回前等待所有已发slot。
+- 不能把未完成event跨stage复用，否则下一个stage可能错误等待同一event ID。
+
+## 9. 384KB UB优化
+
+### 9.1 优化边界
+
+A6每个Vector核的UB从A5的256KB增加到384KB。UB容量增加不会直接提高Vector指令吞吐，主要用于：
+
+- 扩大批处理粒度，减少Scalar循环、DataCopy指令和Event同步次数。
+- 增加ping-pong/ring buffer深度，使MTE2、Vector和MTE3流水获得更多重叠空间。
+- 让严格串行的阶段复用同一片UB，避免为不同阶段同时保留互不重叠的buffer。
+
+A6的Dispatch、Activation和Combine虽然由同一个AIV执行，但它们的Vector计算仍然只能串行。384KB UB不能让三段Vector代码同时执行，只能通过独立buffer和Event管理，让某一阶段的MTE搬运与另一阶段的Vector计算适度重叠。
+
+第一版必须继续保持以下边界：
+
+- 不修改A8W4 Wave骨架、Wave目标负载和完整专家划分。
+- 不修改Dispatch使用的256行分组语义。
+- 不修改GMM1/GMM2的scheduler tile和AIC分核方式。
+- 不修改Activation到GMM2、GMM2到Combine的同步粒度。
+- 不因为UB增大而把GMM `TileM`改成384；GMM tile同时受L1、L0、MMAD和同步协议约束。
+- 不尝试把整个专家常驻UB；专家token数动态且数据需要跨物理核心消费。
+
+### 9.2 第一版启用：按平台UB容量生成自适应buffer配置
+
+第一版只启用不改变Kernel控制流和同步语义的自适应UB优化。
+
+Host Tiling必须通过平台接口读取arch92实际可用UB容量，并将其作为 `availableUbBytes` 传给公共buffer配置计算。禁止在Host或Kernel中直接写死 `384 * 1024`；实际可用上限以平台返回值、编译器保留空间和对齐要求为准。
+
+沿用A5现有自适应策略后，384KB可自动用于：
+
+1. Dispatch优先增加copy ring深度，最大仍受Event ID数量约束为6；达到ring上限后，用剩余UB扩大 `routeItemsPerBatch`，减少route batch循环。
+2. SendMask优先增加mask ring深度；达到ring上限后扩大route batch，减少Gather、mask生成和发送批次。
+3. Unpermute优先增加输入ring深度；达到ring上限后扩大 `tokensPerBatch` 和topk weight batch，减少后处理批次。
+4. Reset继续使用固定上限的分批清零策略，不因UB增加而扩大Workspace或改变flag布局。
+
+arch92 Host复用公共Tiling实现时，必须确认以下字段使用A6的1C1V物理数量重新计算，而不是继承A5的 `blockAivNum = 2 * aicNum`：
+
+- 每个AIV负责的token数和专家数。
+- Dispatch/SendMask的实际批次数。
+- Unpermute的full/tail token chunk。
+- buffer数达到Event上限后可用于扩大batch的剩余UB预算。
+
+该优化不会改变Workspace、Win区、GM数据布局、Wave边界和阶段间flag，可以直接进入第一版。第一版的GMM1/Activation和GMM2/Combine主流水仍可继续使用A5的256KB安全UB布局，暂不消费额外128KB。
+
+### 9.3 后续TODO：GMM1输出到Activation的128行双缓冲
+
+A6采用A8W8 Generic GMM1写GM、AIV从GM读取并执行SwiGLU/量化。一个非交织的256行Activation输入包含两块BF16数据：
+
+```text
+gate = 256 * 256 * sizeof(bfloat16_t) = 128KB
+up   = 256 * 256 * sizeof(bfloat16_t) = 128KB
+total                                     256KB
+```
+
+在256KB UB上，完整输入已占满主要空间，只能按“等待GMM1、GM2UB、Activation/量化、UB2GM、下一tile”串行推进。后续可保持AIC GMM1 tile为256行，仅把AIV消费粒度改为128行：
+
+```text
+one 128-row input bank = gate 64KB + up 64KB = 128KB
+two input banks                                        = 256KB
+remaining UB                                           = 128KB
+```
+
+目标流水为：
+
+```text
+MTE2搬入half 0
+Vector计算/量化half 0  || MTE2搬入half 1
+MTE3写回half 0         || Vector计算/量化half 1 || MTE2预取下一tile
+```
+
+实现约束：
+
+- 只改变AIV从GM消费GMM1结果的子tile粒度，不改变GMM1 scheduler、Dispatch分组和Wave边界。
+- 每个128行bank内部可继续利用生命周期覆盖：Activation结果覆盖已消费的gate区，量化结果覆盖已消费的up区。
+- topk weights预取开关开启时，weight UB和metadata不能与任一活跃bank重叠。
+- 两个half以及当前256行token group所需的全部N方向tile处理完成后，才能按既有协议发布GMM2-ready状态。
+- 若改为按128行累计ready count，Host预留的flag数量、AIC等待目标和Reset范围必须同步更新；优先保持外部256行同步语义不变。
+- 需要分别验证SwiGLU、SituGLU、topk weights预取开关和Weight1交织路径。
+
+这是主流水中优先级最高的384KB专项优化，因为A6的GMM1到Activation必须经过GM中转，双缓冲有机会隐藏一部分GM2UB时间。
+
+### 9.4 后续TODO：GMM2输出到非量化Combine的tile双缓冲
+
+一个 `256 * 256` BF16 GMM2输出tile约为128KB。384KB可规划为：
+
+```text
+[0KB,   128KB)  GMM2 tile bank 0
+[128KB, 256KB)  GMM2 tile bank 1
+[256KB, 384KB)  metadata、ready scan和临时区
+```
+
+目标是在非量化Combine路径中重叠：
+
+```text
+MTE3发送当前GMM2 tile || MTE2搬入下一GMM2 tile
+```
+
+实现约束：
+
+- 每个bank复用前必须等待该bank关联的MTE3操作完成。
+- AIV仍按AIC发布的sequence消费tile，不能因预取而越过未完成的GMM2 tile。
+- 当前 `META_INFO_TENSOR_ADDR = 200KB` 会与第二个128KB bank重叠，实施时必须通过arch UB layout policy把metadata移到256KB以上。
+- 非量化Combine仍按当前GMM2 tile粒度启动，不改变其与AIC的对应关系。
+- 量化Combine按完整token行读取GMM2结果，不直接套用该tile双缓冲设计。
+
+### 9.5 后续TODO：前后处理阶段独占并复用UB
+
+当前 `SendAndQuantBuffInit` 同时为Reset、Quant和SendMask建立互不重叠的UB视图，但三个阶段在主流程中严格串行。后续可拆成阶段级UB布局：
+
+```text
+Quant阶段     独占绝大部分UB
+SendMask阶段  复用同一片UB
+Reset阶段     再次复用同一片UB
+```
+
+这样可以避免Host在计算SendMask batch时长期扣除Quant和Reset的buffer预算，并支持以下优化：
+
+1. Quant从“单token双缓冲”扩展为“多token batch双缓冲”，一次搬入连续token，减少逐token DataCopy和Event开销。
+2. SendMask使用更大的route batch，减少Gather和mask发送循环。
+3. Unpermute继续独占后处理阶段UB，根据384KB容量扩大输入ring或weight batch。
+
+A6前处理可用AIV数是A5的一半，该优化在大BS场景可能获得更直接的端到端收益。实施前必须保证上一阶段所有异步MTE操作和Event均已回收，再重新解释同一片UB。
+
+### 9.6 后续TODO：量化Combine ring深度与跨阶段MTE重叠
+
+量化Combine当前使用双row buffer。后续应先通过profiling观察 `MTE3_MTE2` 等待占比，再决定是否扩大到3或4个slot：
+
+- 只有MTE3回收等待明显时，增加slot才可能有收益。
+- slot上限同时受MTE2_V、V_MTE3、MTE3_MTE2 Event ID数量约束。
+- 扩大ring不能改变“所需GMM2 token全部ready后才启动量化Combine”的外部同步语义。
+
+更激进的优化是把额外128KB作为Dispatch/Combine的MTE旁路buffer，使其搬运与SwiGLU的Vector计算重叠。但该方案需要：
+
+- Dispatch、Activation和Combine使用互不重叠的UB区间。
+- 为跨函数存活的异步操作分配独立Event集合。
+- 将函数末尾的Event drain提升到上层Wave控制逻辑统一管理。
+- 重新验证Dispatch领先水位、Activation对GMM2的阻塞和Combine完成时机。
+
+该方案会改变阶段内部流水和Event生命周期，不进入第一版。
+
+### 9.7 UB布局公共化要求
+
+后续启用384KB专项优化前，应将以下固定地址或容量判断收敛为架构UB layout policy或模板参数：
+
+- `block_epilogue_activation_mx_quant.h` 中的 `256U * 1024U` 容量判断。
+- `mega_moe_gmm2_combine.h` 中的 `META_INFO_TENSOR_ADDR = 200KB`。
+- Wave Combine的 `WAVE_COMBINE_UB_BASE = 64KB`。
+- GMM2 ready scan的 `WAVE_GMM2_READY_SCAN_UB_ADDR = 184KB`。
+
+A5 arch35 继续使用未修改的 256KB 布局，arch92 本地 stage 实例化 384KB 布局。后续对稳定 Blaze 头文件做 UB layout 抽象时，应使用独立兼容性 PR，不在 A6 迁移中修改 A5 热路径。
+
+### 9.8 优化实施优先级
+
+建议顺序如下：
+
+1. 第一版：平台UB容量驱动的Dispatch、SendMask和Unpermute自适应配置。
+2. 后续第一优先级：GMM1输出到Activation的128行双缓冲。
+3. 后续第二优先级：非量化GMM2输出到Combine的tile双缓冲。
+4. 后续第三优先级：前后处理阶段独占UB和Quant多token batch。
+5. Profiling驱动：量化Combine扩大ring。
+6. 最后评估：Dispatch/Activation/Combine跨阶段MTE重叠。
+
+每项优化均应独立提交和测试，并同时记录AIC等待、AIV Vector占用、MTE2/MTE3等待及端到端耗时，避免将UB容量优化与Wave调度变化混在同一次验证中。
+
+## 10. Workspace布局
+
+### 10.1 设计原则
+
+在 `arch92/common/mega_moe_workspace.h` 本地副本中增加行为命名的布局策略，例如：
+
+```cpp
+enum class WorkspaceLayoutPolicy {
+    DEFAULT,
+    GM_HANDOFF_EXPERT_WAVE
+};
+```
+
+A5 Workspace 不修改；A6 Host Tiling 和 Kernel Init 都显式传入 `GM_HANDOFF_EXPERT_WAVE`。不要通过 `blockAivNum == aicNum` 猜测布局。
+
+### 10.2 A6必需区域
+
+| 区域 | 大小/布局 | 用途 |
+|---|---|---|
+| `dispatchRevDataPtr` | `Align512(maxOutputSize * h)` bytes | A8W8 Dispatch接收数据 |
+| `dispatchRevScalePtr` | `Align512(maxOutputSize * ceil(h/32) * MXFP_MULTI_BASE_SIZE)` bytes | Dispatch接收scale |
+| `dispatchRevWeightsPtr` | topk预取开启时按现有布局 | 可选topk weight记录 |
+| `activationQuantDataPtr` | `Align512(maxOutputSize * hiddenDim/2)` bytes | SwiGLU量化输出 |
+| `activationQuantScalePtr` | 按现有MXFP scale公式 | GMM2输入scale |
+| `expertRevTokenNumsPtr` | `Align512(moeExpertPerRank * 32B * aicNum)` | 每专家、每物理block token数 |
+| `metaInfoPtr` | `Align512(maxOutputSize * 32B)` | token来源rank/row/topk元数据 |
+| `flagActivationToGmm2Ptr` | `moeExpertPerRank * 64B` | 每专家Activation完成计数 |
+| `flagDispatchToGmm1Ptr` | `moeExpertPerRank * ceil(maxOutputSize/256) * 64B` | Dispatch m-group就绪行数 |
+| `flagSendCntCalToUpdParamsPtr` | `moeExpertPerRank * aicNum * 64B` | 专家token数发布 |
+| `flagGmmToEpiloguePtr` | `aicNum * 64B` | GMM1/GMM2到配对AIV的单调sequence |
+| `gmm2CombineSyncCounterPtr` | 仅combine量化时分配 | GMM2 token-group计数 |
+| `cumsumInfoPtr` | `aicNum * Align32(moeExpertPerRank * worldSize * 4B)` | Dispatch cumsum持久化 |
+| `gmm1MmadResPtr` | `maxOutputSize * hiddenDim * sizeof(BF16)` | GMM1 GM handoff |
+| `gmm2MmadResPtr` | `maxOutputSize * h * sizeof(BF16)` | GMM2 GM handoff |
+| `gmm1TileStatusPtr` | 仅topk预取路径按现有上限分配 | GMM1 tile round tag |
+| 共享专家区域 | 按A5现有公式 | 共享专家输入、GMM1/Activation/GMM2结果 |
+
+### 10.3 A6不需要的区域
+
+- A5 A8W8 Wave专属的 `gmm2ReadyPtr[expert][aic]` 全专家完成数组。
+- 所有URMA专属的 `maskSlotPtr`、`dispatchL1CommPtr`、`dispatchCursorPtr`、`dispatchDonePtr` 和 `dispatchL2CommPtr`。
+
+### 10.4 Reset区域必须同步更新
+
+`WorkspaceInfo`中连续flag区、Host的 `CalcHostFlagElementCount` 和Kernel的 `CalcResetFlagElementCount` 必须使用同一布局策略。新增、删除或改变任何flag槽时，三处必须一起修改，否则可能出现未清零旧flag导致越过等待，或Reset越界覆盖后续workspace。
+
+### 10.5 对齐要求
+
+- 所有独立flag/sequence/counter槽继续独占64B cache line。
+- 大型GMM输出至少保持512B区域对齐。
+- Host和Kernel必须调用同一个Workspace布局实现，禁止分别手写偏移。
+- `workspaceSize`仍叠加系统workspace和当前保留的50MB `RESERVED_WORKSPACE_SIZE`，除非平台规范明确要求调整。
+
+## 11. Win区布局
+
+A6只使用MTE布局，保持：
+
+```text
+base
+├─ [0, 60KB) rank同步及本地sequence保留区
+├─ maskRecv
+│  └─ Align512(moeExpertPerRank * epWorldSize * (maskAlignSize + 32B))
+├─ quantTokenScale
+│  └─ bs * tokenScaleBytes
+└─ combineSend
+   └─ bs * topK * combineRecordBytes
+```
+
+其中：
+
+```text
+maskAlignSize = Align32(Align256(bs * topK * sizeof(int32)) / sizeof(int32) / 8)
+tokenScaleBytes = Align32(Align256(h) + Align32(ceil(h/32)))
+topk预取开启时，tokenScaleBytes额外包含Align32(topK * sizeof(float))
+```
+
+非量化Combine记录：
+
+```text
+combineRecordBytes = h * sizeof(OutputType)
+```
+
+量化Combine记录：
+
+```text
+tokenBytes = Align256(h)
+scaleBytes = Align(ceil(h/32), MXFP_MULTI_BASE_SIZE)
+combineRecordBytes = Align32(tokenBytes + scaleBytes)
+```
+
+注意事项：
+
+- Win布局本身不依赖1C2V，因此可复用。
+- SendMask、跨rank同步的任务分配依赖实际AIV数，相关stride必须改为 `aivNum`。
+- ACLNN传入的 `cclBufferSize` 校验必须继续使用与Kernel完全一致的公式。
+- A6 Tiling必须拒绝URMA，不能只在tiling key中默默落到MTE而保留URMA布局校验。
+
+## 12. A5/A6 源码隔离方案
+
+### 12.1 总原则
+
+1. `arch35` Kernel 和 Host tiling 必须与 A6 迁移前 HEAD 保持一致。
+2. 只要 A6 需要修改文件内的同步、分核或 Workspace 语义，就将该文件复制到 `arch92` 后修改。
+3. 不需要修改的类型、工具、Blaze MMAD/Epilogue、Quant、SendMask、Shared input 和 Unpermute 仍直接引用 arch35 头文件。
+4. arch92 不包含 A5 `mega_moe.h` 或 `mega_moe_wave_a8w4.h`，避免把 1C2V 主类和 A8W4 模板带入 A6。
+5. 同步等待/通知与纯计算函数保持分层；Dispatch 自身完成定义中的 Wave 计数发布除外。
+
+### 12.2 arch92 本地副本
+
+以下文件从 arch35 复制后在 arch92 内独立演进：
+
+- `mega_moe.h`
+- `common/mega_moe_workspace.h`
+- `stage/mega_moe_workspace_reset.h`
+- `stage/mega_moe_token_dispatch.h`
+- `stage/mega_moe_gmm1_activation.h`
+- `stage/mega_moe_gmm2_combine.h`
+- Host `op_tiling/arch92/mega_moe_tiling.cpp`
+
+Workspace 本地副本增加：
+
+- 架构无关的 `WorkspaceLayoutPolicy`。
+- A6 GM handoff Wave布局构造入口。
+- A6需要的 `flagGmmToEpilogue/cumsum/gmm1MmadRes/gmm2MmadRes/group-counter` 条件。
+- Host 与 Kernel 都显式使用 `GM_HANDOFF_EXPERT_WAVE`。
+- A5 Workspace 构造函数不修改。
+
+### 12.3 仍直接复用的稳定头文件
+
+- `common/mega_moe_constants.h`
+- `common/mega_moe_types.h`
+- `common/mega_moe_utils.h`
+- `common/mega_moe_gmm_common.h`
+- `common/mega_moe_mxfp8_utils.h`
+- `stage/mega_moe_token_quant.h`
+- `stage/mega_moe_send_mask.h`
+- `stage/mega_moe_shared_expert_input.h`
+- `stage/mega_moe_unpermute.h`
+- Generic `block_scheduler_swizzle.h`
+- Generic A8W8 BlockMmad，前提是arch92编译接口兼容
+
+`arch92` 必须先包含本地 `common/mega_moe_workspace.h`，再包含 arch35 `mega_moe_types.h`。两个 Workspace 头文件保留相同 include guard，藉此使稳定公共头文件在 A6 翻译单元中解析到 arch92 Workspace 定义。
+
+### 12.4 隔离验证标准
+
+- `git diff -- mc2/mega_moe/op_kernel/arch35 mc2/mega_moe/op_host/op_tiling/arch35` 必须为空。
+- arch92 不得包含 `../arch35/mega_moe.h` 或 `mega_moe_wave_a8w4.h`。
+- arch92 活跃路径不得使用 `GetBlockIdx() / GetTaskRation()` 映射物理 block。
+- Host tiling 使用 arch92 本地 Workspace 和 tiling key，不通过宏复用 arch35 `.cpp`。
+
+## 13. arch92 Kernel目录与文件职责
+
+当前第一版结构：
+
+```text
+mc2/mega_moe/op_kernel/arch92/
+├─ mega_moe_apt.cpp
+├─ mega_moe.h
+├─ mega_moe_a8w8_wave.h
+├─ mega_moe_tiling.h
+├─ mega_moe_tiling_key.h
+├─ common/
+│  ├─ mega_moe_core_context.h
+│  └─ mega_moe_workspace.h
+└─ stage/
+   ├─ mega_moe_workspace_reset.h
+   ├─ mega_moe_token_dispatch.h
+   ├─ mega_moe_gmm1_activation.h
+   └─ mega_moe_gmm2_combine.h
+```
+
+### 13.1 `mega_moe_apt.cpp`
+
+- `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1)`。
+- 保留 `MEGA_MOE_WEIGHT1_INTERLEAVED` 编译期开关和0/1合法性检查，并将其传入A6 Generic GMM1调度。
+- 注册与arch92 Host一致的TilingData。
+- 只实例化MTE。
+- 只接受以下A8W8组合：
+  - Dispatch E5M2 + Weight E5M2。
+  - Dispatch E4M3FN + Weight E4M3FN。
+- Combine支持NoQuant、E5M2、E4M3FN。
+- 不包含Layered/URMA入口，不包含A8W4/A4W4 fallback。
+
+### 13.2 `mega_moe.h`
+
+负责：
+
+- 参数和TensorList地址绑定。
+- 1C1V核心上下文初始化。
+- arch92 本地 stage 的 Config/Scratch 绑定。
+- Phase 1、共享专家、跨卡同步、导出count、共享专家GMM2和Unpermute。
+- 保留从 A5 复制而来的公共初始化框架，但核心数量、Workspace 布局和 stage 调用均按 1C1V 改造。
+
+不建议直接继承arch35 `MegaMoe`，因为其中包含大量1C2V成员初始化和subBlock参与判断。
+
+> 实施更新：arch92 不继承、不包含 arch35 `MegaMoe`，而是使用本地副本作为基类。上述“不建议直接继承”已落实为强制的源码隔离约束。
+
+### 13.3 `mega_moe_a8w8_wave.h`
+
+负责：
+
+- Wave边界计算。
+- `currentWaveBegin/currentWaveEnd/dispatchExpert`游标。
+- Dispatch、GMM1、Activation、GMM2和Combine调用顺序。
+- 所有跨stage等待与通知。
+- AIC/AIV scheduler cursor和GM sequence状态。
+
+业务函数命名使用：
+
+```text
+MegaMoeA8W8Wave
+RunGmm1ToGm
+RunActivationFromGm
+RunGmm2ToGm
+RunCombineFromGm
+PipelineJobContext
+```
+
+### 13.4 `common/stage/blaze`
+
+- `common/stage` 只复制 A6 需要改变行为的文件。
+- 若只是转发 A5 公共类型，不创建无内容的重复文件。
+- 当前 Generic A8W8 Blaze 头文件直接复用 arch35；只有 arch92 指令、L1 策略或 BlockMmad 接口不兼容时才新增 `blaze` 本地实现。
+- 新文件名称继续以 `mega_moe_` 开头。
+
+## 14. arch35头文件跨arch92复用的编译问题
+
+### 14.1 芯片宏
+
+当前公共头文件使用：
+
+```cpp
+__DAV_C310__
+__DAV_C310_CUBE__
+__DAV_C310_VEC__
+```
+
+例如：
+
+- `common/mega_moe_workspace.h` 只在C310宏下定义Kernel侧 `PeermemInfo`。
+- `common/mega_moe_utils.h` 和 `stage/mega_moe_workspace_reset.h` 使用C310宏控制Kernel实现。
+- `blaze/epilogue/block_epilogue_activation_mx_quant.h` 整体受 `__DAV_C310__` 控制。
+
+arch92 不能假设这些宏仍会定义，也不能为了兼容 A6 而原地修改 A5 头文件。实际 A6 工具链验证时：
+
+- 若稳定 Blaze/工具头在 arch92 上可直接编译，继续跨目录复用。
+- 若某头文件确实被 C310 宏限制，将该文件复制到 arch92 并使用行为能力条件，不修改 arch35。
+- 不得伪造 `__DAV_C310__`，否则可能让底层库错误选择 A5 指令实现。
+
+### 14.2 Include和打包
+
+构建系统默认只复制当前SoC映射到的arch目录。arch92直接include `../arch35/...` 时，源码树编译可能成功，但生成binary目录或安装包中可能没有arch35头文件。
+
+需要：
+
+- CMake 同时安装 MegaMoe `arch92` 目录和已有 `arch35` 目录，保证稳定头文件可见。
+- 只复制 A6 需要修改的文件，不把 arch35 入口 `.cpp` 带入 arch92。
+- 检查生成的 `build/binary/<soc>/src/mega_moe_apt` 目录中 arch92 本地副本和 arch35 稳定依赖是否完整。
+
+## 15. Host Tiling方案
+
+### 15.1 第一版复制 arch35 Tiling 后隔离修改
+
+为保证 A5 零侵入，第一版将 arch35 Host Tiling 机械复制为 `op_host/op_tiling/arch92/mega_moe_tiling.cpp`，然后只在 arch92 副本中增加 A6 能力校验、1C1V 核数检查、Workspace layout 和精简 tiling key。
+
+这会带来 Host 校验公式双份维护的成本，但不会改变 A5 源码或产物。后续若 A5/A6 公共 Tiling 演进频繁，可再以独立 PR 抽取 `op_tiling/common`，不在首版迁移中实施。
+
+### 15.2 平台策略建议
+
+```cpp
+struct MegaMoePlatformPolicy {
+    bool requireEqualCoreCounts;
+    bool supportUrma;
+    bool supportA8W4;
+    bool supportA4W4;
+    WorkspaceLayoutPolicy workspaceLayout;
+    PipelineMode pipelineMode;
+};
+```
+
+A6策略：
+
+```text
+requireEqualCoreCounts = true
+supportUrma = false
+supportA8W4 = false
+supportA4W4 = false
+workspaceLayout = GM_HANDOFF_EXPERT_WAVE
+pipelineMode = EXPERT_WAVE
+```
+
+命名描述行为，不描述“OneAiv”。
+
+### 15.3 A6平台信息
+
+Tiling读取：
+
+```cpp
+aivNum = ascendcPlatform.GetCoreNumAiv();
+aicNum = ascendcPlatform.GetCoreNumAic();
+```
+
+检查二者相等后：
+
+```cpp
+tilingData->aicNum = aicNum;
+tilingData->blockAivNum = aivNum;
+context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+context->SetScheduleMode(1);
+```
+
+### 15.4 A6能力校验
+
+必须接受：
+
+- `x/y = BF16`，保持A5当前A8W8约束。
+- Dispatch Quant Mode = MXFP。
+- Dispatch dtype = E5M2或E4M3FN。
+- Weight1/Weight2 dtype与Dispatch dtype一致。
+- General ND和A5当前支持的A8W8_NZ组合。
+- Combine NoQuant/E5M2/E4M3FN。
+- `swiglu`与`situglu`及其现有activationParams语义。
+- topk weight关闭/开启。
+- 共享专家0到4。
+- 每专家TensorList和堆叠Tensor布局。
+- A5当前的Weight1交织编译路径；Wave tile统计必须与Generic scheduler的 `schedulerN` 一致。
+- xActiveMask、maxRecvTokenNum、numMaxTokensPerRank等A5现有A8W8参数。
+
+必须拒绝：
+
+- `topoType != TOPO_TYPE_MTE`。
+- FP4 weight或FP4 Dispatch输出。
+- A8W4/A4W4/A4W4_NZ groupedMatmulMode。
+- A5本身未支持的dtype、format、activation和通信算法。
+
+### 15.5 Tiling key
+
+arch92使用独立的精简 `mega_moe_tiling_key.h`：
+
+- Dispatch mode只含MXFP。
+- Dispatch输出只含E5M2/E4M3FN。
+- Combine含0/3/4。
+- 通信模式只含MTE，或直接去掉通信维度。
+- 保留topk weights bool。
+
+由于arch92二进制本身已隔离1C1V，不需要把核心比例加入tiling key。
+
+### 15.6 A6专属计算
+
+- `combineSyncSlotCountPerExpert` 的逻辑Job数使用 `aivNum`，不能 `/2`。
+- combine非量化不分配group counter。
+- combine量化按 `max(maxTokenGroupCountForOneExpert, aivNum)` 预留slot。
+- Dispatch flag每专家按 `ceil(maxOutputSize/256)` 个cache line分配。
+- Activation flag每专家一个cache line。
+- 分配 `flagGmmToEpilogue`、cumsum、GMM1/GMM2 GM结果。
+- 不分配A5 A8W8 Wave `gmm2Ready`。
+- `mGroupsPerWave` 对A6专家Wave不参与边界计算，可保留字段兼容但不能误用。
+
+## 16. ACLNN、OpDef与InferShape
+
+### 16.1 ACLNN
+
+`aclnnMegaMoeGetWorkspaceSize/aclnnMegaMoe` 接口不新增arch92版本，继续调用同一个InnerOp。
+
+需要审计：
+
+- 当前只有 `DAV_2201` 使用 `ACL_UINT64` weight scale，A6应使用 `ACL_FLOAT8_E8M0`。
+- 建议将判断封装为“是否使用UINT64 scale”的显式能力函数，避免将“非arch22”隐式等同于A5。
+- Int32到Int4 weight view转换仍只用于arch22，A6不能进入该分支。
+- 可选共享专家dummy TensorList继续继承MoE weight dtype和format。
+- ACLNN保留 `topoType` 参数，但A6的MTE限制由Tiling返回明确错误。
+
+### 16.2 OpDef
+
+在 `mega_moe_def.cpp` 为 `${A6_SOC}` 增加AICore配置：
+
+- 以现有 `ascend950` 配置为基础复用A8W8输入输出定义。
+- `opFile.value`仍为 `mega_moe_apt`。
+- 保留ACLLN、dynamic shape、multi-kernel等现有配置。
+- SoC能力列表只暴露A6实际支持的A8W8 dtype/format组合，避免Host认为FP4可用。
+- 共享专家输入、weight scale和输出定义与A5 A8W8保持一致。
+
+`${A6_SOC}` 是占位符，正式实现前需由平台侧确认产品字符串，不能直接把 `arch92` 当作SoC名称。
+
+### 16.3 InferShape/InferDataType
+
+无需新增arch92实现：
+
+- `y.shape = [bs, h]`
+- `expert_token_nums.shape = [moeExpertNum / epWorldSize]`
+- `y.dtype = x.dtype`
+- `expert_token_nums.dtype = int32`
+
+## 17. CMake、SoC映射和打包
+
+正式接入 `${A6_SOC}` 时至少检查：
+
+1. 根目录 `CMakeLists.txt`
+   - `ASCEND_ALL_COMPUTE_UNIT`
+   - `SOC_VERSION_LIST`
+   - `ARCH_DIRECTORY_LIST`，映射到 `arch92`
+2. `build.sh`
+   - 支持SoC短名列表
+   - 产品名映射和特殊分支
+3. `scripts/util/soc_validator.sh`
+4. `cmake/scripts/get_soc_version.py`
+5. `cmake/scripts/util/opdesc_parser.py`
+6. `cmake/scripts/util/const_var.py`
+7. `scripts/ci/gen_ops_soc.py`
+8. `scripts/ci/ops_st_test.sh` 和相关SoC到arch映射；本阶段不新增测试代码，但构建路由仍要可识别arch92
+9. `mc2/mega_moe/op_host/CMakeLists.txt`
+   - A6同样使用 `--cce-auto-sync=off`
+   - 添加公共头文件include和copy依赖
+10. `mega_moe_def.cpp` 的SoC注册
+
+构建系统当前会根据arch映射过滤整个 `arch*` 目录，因此必须专门解决arch92引用arch35公共头文件时的打包问题，不能只在本地源码include路径上验证。
+
+## 18. Blaze与指令兼容性
+
+### 18.1 优先复用
+
+优先复用：
+
+- Generic A8W8 BlockMmad。
+- BlockScheduler和swizzle。
+- A8W8 ND/NZ DispatchPolicy。
+- Activation MX Quant epilogue。
+
+### 18.2 必须确认的接口
+
+- GM到L1、L1到L0和FIX到GM接口在arch92是否保持兼容。
+- `BlockMmad`写GM的Tensor layout是否一致。
+- `SetFlag/WaitFlag` event和`FIX_S`可见性语义是否一致。
+- `ReadGmByPassDCache/WriteGmByPassDCache`是否可用。
+- `AtomicAdd`到GM cache-line flag是否保持一致。
+- `SyncAll`和`KERNEL_TYPE_MIX_AIC_1_1`组合的参与核语义。
+- `InitSocState`和Tensor API版本宏。
+- `block_epilogue_activation_mx_quant.h` 的C310条件需要能力宏适配。
+
+只有这些接口不兼容时，才在 `arch92/blaze` 新增对应文件。
+
+## 19. 功能支持矩阵
+
+| 功能 | A6初版 | 说明 |
+|---|---|---|
+| A8W8 E5M2 | 支持 | weight dtype一致 |
+| A8W8 E4M3FN | 支持 | weight dtype一致 |
+| A8W8_NZ | 支持 | 以A5现有E4M3FN NZ约束为准 |
+| A8W4/A4W4 | 不支持 | Tiling和OpDef共同拒绝 |
+| MTE | 支持 | 唯一通信拓扑 |
+| URMA/Layered | 不支持 | 不实例化、不分配workspace |
+| Combine非量化 | 支持 | 每物理block的GM sequence |
+| Combine E5M2/E4M3FN量化 | 支持 | token-group counter |
+| topk weights预取 | 支持 | 保留meta和tile status路径 |
+| SwiGLU | 支持 | 参数语义与A5一致 |
+| SituGLU | 支持 | beta/linear_beta校验不变 |
+| 共享专家0到4 | 支持 | Generic GMM路径 |
+| xActiveMask | 支持 | 沿用A5前处理语义 |
+| 每专家TensorList | 支持 | 地址解析不变 |
+| 堆叠weight Tensor | 支持 | 地址偏移解析不变 |
+| Weight1交织编译路径 | 支持 | Wave负载按实际schedulerN统计 |
+
+## 20. 实施顺序
+
+### 阶段A：建立 arch92 本地副本
+
+1. 复制 A6 必须修改的 Workspace、Dispatch、GMM1、GMM2、reset 和主类文件。
+2. 在 arch92 本地副本中加入 Workspace layout policy。
+3. 在 arch92 本地 stage 中增加无 subBlock 的 Dispatch 入口、GM handoff GMM/Activation 入口和显式 Combine Job 数。
+4. 将 arch35 本次迁移产生的所有差异恢复到 HEAD。
+
+完成标准：arch35 Kernel/Host tiling 差异为空，arch92 不包含 A5 主类或 A8W4 Wave 主文件。
+
+### 阶段B：Host Tiling 隔离
+
+1. 机械复制 arch35 Host Tiling 到 `op_tiling/arch92`。
+2. 在 arch92 副本中增加 1C1V、MTE-only、A8W8-only 和 dtype pair 校验。
+3. 使用 arch92 本地 Workspace 布局和精简 tiling key。
+4. 将 Host common 抽取保留为后续独立重构，不进入首版。
+
+### 阶段C：arch92入口和前后处理
+
+1. 新增arch92 tiling key和apt入口。
+2. 设置1C1V Kernel task。
+3. 完成 Init、核心上下文和 arch92 本地 stage 配置绑定。
+4. 先打通Quant/SendMask/Reset/CrossRank/Unpermute空流水。
+
+### 阶段D：专家Wave主体
+
+1. 接入SendCount和Dispatch。
+2. 接入A8W8 Generic GMM1到GM。
+3. 接入Activation从GM和Activation ready计数。
+4. 接入GMM2到GM。
+5. 分别接入非量化Combine和量化Combine。
+6. 接入expert token count导出。
+
+### 阶段E：特性补齐
+
+1. E5M2/E4M3FN。
+2. General/NZ。
+3. topk weights预取开关。
+4. SwiGLU/SituGLU。
+5. 共享专家。
+6. per-expert/stacked weight布局。
+7. Weight1交织编译路径。
+
+### 阶段F：构建和注册
+
+1. SoC到arch92映射。
+2. OpDef能力注册。
+3. ACLNN平台dtype分支审计。
+4. 公共头文件打包。
+5. 自同步编译选项。
+
+## 21. 验证计划
+
+本阶段不新增test代码，但正式实现时至少执行以下验证。
+
+### 21.1 编译检查
+
+- arch35 A5全量模板编译。
+- arch92 E5M2/E4M3FN、General/NZ、Combine 0/3/4、topk预取0/1组合编译。
+- 确认没有C++11窄化、dependent template、宏重复和未声明芯片宏问题。
+- 检查生成binary目录中arch35公共依赖齐全。
+
+### 21.2 Tiling检查
+
+- `aicNum == aivNum`成功；不相等明确失败。
+- URMA明确失败。
+- FP4明确失败。
+- Host和Kernel Workspace总大小、每段偏移一致。
+- CCL buffer最小值与PeermemInfo公式一致。
+- Combine量化slot数与Kernel `combineJobCount`一致。
+
+### 21.3 精度场景
+
+- 小BS/大BS。
+- token极度不均衡、空专家和单个超大专家。
+- 尾Wave不足目标。
+- 专家数小于、等于、大于核心数。
+- Combine非量化、E5M2、E4M3FN。
+- topk预取开/关。
+- sharedExpertNum 0、1、4。
+- SwiGLU/SituGLU。
+- General/NZ和两种weight布局。
+- Weight1交织开/关，确认Wave边界和Activation完成计数一致。
+
+### 21.4 同步稳定性
+
+- 所有核心无timeout/trap。
+- 无MTE DDR越界。
+- Reset后所有flag为0。
+- 多轮连续执行无上一轮sequence污染。
+- 空专家不会导致AIC/AIV游标或sequence不一致。
+- AIV因Dispatch变慢时，AIC只在正确flag上等待。
+
+### 21.5 性能观察
+
+- 分别记录Dispatch、GMM1、Activation、GMM2、Combine时间。
+- 观察唯一AIV是否成为bound。
+- 观察GMM2是否因Activation延迟长期自旋。
+- 对比A8W4 Wave骨架目标值2和其他目标值，但初版不修改已验证值。
+- 对比GM handoff额外带宽与避免UB/CV阻塞的收益。
+
+## 22. 主要风险与应对
+
+### 22.1 唯一AIV成为瓶颈
+
+Dispatch、Activation和Combine全部串行在AIV上。该风险无法通过UB内并行解决，只能依靠Wave预取和GMM时间掩盖。初版优先保证正确流水，不调整Wave目标。
+
+### 22.2 GMM2等待Activation
+
+如果Dispatch或上一阶段Combine拖慢Activation，AIC可能在GMM2输入flag上等待。需要性能数据确认是否AIV已成为整体bound；不能为了减少自旋破坏Dispatch预取。
+
+### 22.3 GM handoff带宽
+
+GMM1和GMM2都写BF16 GM，增加带宽和workspace。它是单AIV复用UB、保持Dispatch/GMM重叠的必要代价。后续只有在arch92提供更合适的AIC/AIV直接通道时才重新评估。
+
+### 22.4 sequence错位
+
+AIC和AIV必须以相同scheduler顺序和相同专家边界推进 `startBlockIdx/gmTileSequence`。空专家、尾tile和topk预取分支都不能只让一侧增加sequence。
+
+### 22.5 A5回归
+
+A6 迁移不修改 arch35 Kernel 或 Host tiling，因此不应改变 A5 控制流、模板实例、Workspace 布局或寄存器占用。每次提交都要将 arch35 零差异作为强制检查。
+
+### 22.6 Host/Kernel布局分叉
+
+Workspace、Win区、flag数量和Combine Job数必须由共享策略计算。禁止arch92 Host和Kernel分别维护一份公式。
+
+### 22.7 跨arch头文件未被打包
+
+本地include成功不代表安装包成功。必须检查生成源码和最终包内容，显式声明arch35公共头文件依赖。
+
+## 23. 最终评审结论
+
+方案可行，推荐的实现形态是：
+
+> A8W4 Wave的完整专家调度骨架 + A8W8 Generic MMAD + GMM结果GM中转 + 单调sequence/group-counter同步 + arch92独立Host/Kernel入口。
+
+它能够在不保留 AIV0 Prologue 的情况下适配 A6 1C1V。A6 需要改变的 stage/common/Host tiling 采用 arch92 本地副本；仅对无架构行为差异的类型、工具、Blaze 和独立 stage 继续复用 arch35。A5 主流程和公共头文件保持零修改。
+
+正式抽取前最先需要验证的三个技术前提是：
+
+1. arch92 Generic A8W8 BlockMmad和Activation epilogue指令兼容性。
+2. `KERNEL_TYPE_MIX_AIC_1_1` 下 `GetBlockIdx/GetTaskRation/SyncAll` 的实际语义。
+3. 跨arch35公共头文件的构建、生成源码和安装包依赖是否完整。
