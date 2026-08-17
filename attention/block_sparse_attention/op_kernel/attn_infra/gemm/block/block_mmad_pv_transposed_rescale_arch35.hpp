@@ -385,8 +385,8 @@ public:
                         l0TileNAct,
                         l0TileKAct,
                         (kL0Itr == 0));
-                    AscendC::printf("tkd tileMmad pv\n");
-                    AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
+                    // AscendC::printf("tkd tileMmad pv\n");
+                    // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }

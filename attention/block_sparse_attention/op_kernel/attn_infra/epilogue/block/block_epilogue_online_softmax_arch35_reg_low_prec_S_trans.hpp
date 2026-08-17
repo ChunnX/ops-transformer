@@ -189,9 +189,9 @@ public:
             }
         }
 
-        AscendC::printf("tkd p\n");
+        // AscendC::printf("tkd p\n");
         // AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 32);
-        AscendC::printf("tkd l\n");
+        // AscendC::printf("tkd l\n");
         // AscendC::DumpTensor(llUbTensor, 1, 32);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
