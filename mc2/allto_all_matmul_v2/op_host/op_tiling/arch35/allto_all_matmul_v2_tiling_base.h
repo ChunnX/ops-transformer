@@ -281,13 +281,6 @@ protected:
                 "x1_quant_mode and x2_quant_mode must be MX_QUANT(6)");
             return false;
         }
-        if (x1QuantMode != x2QuantMode) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_quant_mode, x2_quant_mode",
-                (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
-                "x1_quant_mode and x2_quant_mode must be consistent");
-            return false;
-        }
         auto *yDtypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_Y_DTYPE);
         if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED) &&
             *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) && *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
