@@ -13,6 +13,8 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include <algorithm>
+#include <cstdint>
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -108,6 +110,7 @@ protected:
         const gert::StorageShape *valueShape = context_->GetInputShape(3);
         const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
         const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
+        const int64_t maskType = *context_->GetAttrs()->GetAttrPointer<int64_t>(3);
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
@@ -233,6 +236,34 @@ protected:
         layout_ = qInputLayout;
         blockShapeX_ = blockShapeList[0];
         blockShapeY_ = blockShapeList[1];
+        maskType_ = maskType;
+
+        // maskType=1 时校验 attenMaskOptional shape: [B, N, maxBlockNum, 2]
+        if (maskType == 1) {
+            auto attenMaskOptional = context_->GetOptionalInputTensor(7);
+            if (attenMaskOptional == nullptr) {
+                OP_LOGE(context_->GetNodeName(), "attenMaskOptional must not be null when maskType=1.");
+                return ge::GRAPH_FAILED;
+            }
+            if (attenMaskOptional->GetDataType() != ge::DT_INT32) {
+                OP_LOGE(context_->GetNodeName(), "attenMaskOptional dtype must be INT32 when maskType=1.");
+                return ge::GRAPH_FAILED;
+            }
+            auto &maskShape = attenMaskOptional->GetStorageShape();
+            if (maskShape.GetDimNum() != 4 || maskShape.GetDim(3) != 2) {
+                OP_LOGE(context_->GetNodeName(),
+                        "attenMaskOptional must be 4D [B, N, maxBlockNum, 2] when maskType=1.");
+                return ge::GRAPH_FAILED;
+            }
+            if (maskShape.GetDim(0) != q_batch_num || maskShape.GetDim(1) != q_head_num) {
+                OP_LOGE(context_->GetNodeName(),
+                        "attenMaskOptional shape[0]/[1] must equal to batch_num/q_head_num.");
+                return ge::GRAPH_FAILED;
+            }
+        } else if (maskType != 0) {
+            OP_LOGE(context_->GetNodeName(), "maskType only supports 0 or 1, got %ld.", maskType);
+            return ge::GRAPH_FAILED;
+        }
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
                           {k_batch_num, k_head_num, k_seq_len, k_head_dim},
@@ -255,12 +286,40 @@ protected:
         uint32_t block_num_x = q_seq_len_ / blockShapeX_;
         uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
 
+        // ---- 计算 maxBlockNum 用于 PerBlockSizeMask ----
+        // maxQSeq/maxKvSeq: TND 取各 batch 最大值；非 TND 用固定序列长度
+        uint32_t maxQSeq = 0;
+        uint32_t maxKvSeq = 0;
+        if (strcmp(layout_, TND_STR) == 0) {
+            auto actualSeqLengths = context_->GetOptionalInputTensor(9);
+            auto actualKVSeqLengths = context_->GetOptionalInputTensor(10);
+            const int64_t *qSeqData = actualSeqLengths->GetData<int64_t>();
+            const int64_t *kvSeqData = actualKVSeqLengths->GetData<int64_t>();
+            int64_t prevQ = 0;
+            int64_t prevKv = 0;
+            for (int32_t i = 0; i < batch_num_; i++) {
+                maxQSeq = std::max(maxQSeq, static_cast<uint32_t>(qSeqData[i] - prevQ));
+                maxKvSeq = std::max(maxKvSeq, static_cast<uint32_t>(kvSeqData[i] - prevKv));
+                prevQ = qSeqData[i];
+                prevKv = kvSeqData[i];
+            }
+        } else {
+            maxQSeq = static_cast<uint32_t>(q_seq_len_);
+            maxKvSeq = static_cast<uint32_t>(kv_seq_len_);
+        }
+        uint32_t qBlockNum = (maxQSeq + blockShapeX_ - 1) / blockShapeX_;
+        uint32_t kvBlockNum = (maxKvSeq + blockShapeY_ - 1) / blockShapeY_;
+        uint32_t maxBlockNum = std::max(qBlockNum, kvBlockNum);
+        uint8_t hasPerBlockSizeMask = (maskType_ == 1) ? 1 : 0;
+
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
         tilingData_.set_cubeCoreNum(cubeCoreNum);
         tilingData_.set_baseM(baseM);
         tilingData_.set_baseN(baseN);
         tilingData_.set_singleM(singleM);
+        tilingData_.set_hasPerBlockSizeMask(hasPerBlockSizeMask);
+        tilingData_.set_maxBlockNum(maxBlockNum);
         context_->SetBlockDim(cubeCoreNum);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
@@ -366,6 +425,7 @@ private:
     int32_t blockShapeY_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
+    int64_t maskType_ = 0;
 };
 
 

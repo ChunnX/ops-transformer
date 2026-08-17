@@ -41,6 +41,8 @@ TILING_DATA_FIELD_DEF(float, softmaxScale);
 TILING_DATA_FIELD_DEF(uint32_t, sftgTmpSpaceSize);
 TILING_DATA_FIELD_DEF(uint32_t, BlockX);
 TILING_DATA_FIELD_DEF(uint32_t, BlockY);
+TILING_DATA_FIELD_DEF(uint8_t, hasPerBlockSizeMask); // maskType=1 时为 1，否则为 0
+TILING_DATA_FIELD_DEF(uint32_t, maxBlockNum);        // max(ceilDiv(maxQSeq, blockX), ceilDiv(maxKvSeq, blockY))
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradFrontTilingData);
 END_TILING_DATA_DEF;
 

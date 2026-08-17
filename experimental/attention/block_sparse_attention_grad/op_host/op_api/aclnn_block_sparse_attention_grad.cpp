@@ -176,13 +176,23 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
         CHECK_COND(valueShape.GetDim(3) == dvShape.GetDim(3), ACLNN_ERR_PARAM_INVALID, "The dim's 3 of value and dvOut must be same.");
     }
 
-    if (params.attenMaskOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMaskOptional currently only supports nullptr.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (params.maskType != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "maskType only supports 0, got %ld.", params.maskType);
+    // maskType 校验：0=无 attenMask（原逻辑），1=PerBlockSizeMask（attenMaskOptional 为 INT32 4D）
+    if (params.maskType == 0) {
+        CHECK_COND(params.attenMaskOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "attenMaskOptional must be nullptr when maskType=0.");
+    } else if (params.maskType == 1) {
+        CHECK_COND(params.attenMaskOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "attenMaskOptional must not be nullptr when maskType=1.");
+        DataType attenMaskDtype = params.attenMaskOptional->GetDataType();
+        CHECK_COND(attenMaskDtype == ACL_INT32, ACLNN_ERR_PARAM_INVALID,
+                   "attenMaskOptional dtype must be INT32 when maskType=1.");
+        auto attenMaskShape = params.attenMaskOptional->GetViewShape();
+        CHECK_COND(attenMaskShape.GetDimNum() == 4, ACLNN_ERR_PARAM_INVALID,
+                   "attenMaskOptional must be 4D [B, N, maxBlockNum, 2] when maskType=1.");
+        CHECK_COND(attenMaskShape.GetDim(3) == 2, ACLNN_ERR_PARAM_INVALID,
+                   "attenMaskOptional last dim must be 2 when maskType=1.");
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "maskType only supports 0 or 1, got %ld.", params.maskType);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
