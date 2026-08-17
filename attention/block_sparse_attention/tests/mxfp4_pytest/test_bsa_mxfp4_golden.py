@@ -708,7 +708,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                         S_fp32 = (K_blk @ Q_blk.t()).to(torch.float32)   # [npos, nq] (DN: S=K@Q^T, 对齐 qfa s_layout="DN" + kernel)
                         if _DUMP_ENABLED: 
                             _dump_tensor(S_fp32.to(s_torch_dtype), "mm1Res.bin")   # dump: QK result(对应 kernel desc=5/6)
-                        S_s = S_fp32.to(s_torch_dtype) * scale_s
+                        S_s = (S_fp32 * scale_s).to(s_torch_dtype)
                         if p_quant == 'snap_local':
                             # P 量化在 s_dtype; snap_local 内部已 dump p_packed_x4/p_scale_e8m0/
                             # local_group_max/global_max。m_run 跨 chunk online。
