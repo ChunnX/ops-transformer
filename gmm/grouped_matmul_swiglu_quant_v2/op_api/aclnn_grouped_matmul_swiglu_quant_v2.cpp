@@ -48,6 +48,69 @@ public:
     }
 };
 
+static aclnnStatus CheckRequiredPointer(const void *pointer, const char *parameterName)
+{
+    if (pointer != nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In op [%s], parameter [%s] does not support nullptr.",
+            GMM_SWIGLU_QUANT_V2_OP_NAME, parameterName);
+    return ACLNN_ERR_PARAM_NULLPTR;
+}
+
+static aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, const char *parameterName)
+{
+    auto status = CheckRequiredPointer(tensorList, parameterName);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    if (tensorList->Size() == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], parameter [%s] does not support an empty tensor list.",
+                GMM_SWIGLU_QUANT_V2_OP_NAME, parameterName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    for (size_t i = 0; i < tensorList->Size(); ++i) {
+        if ((*tensorList)[i] == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                    "In op [%s], parameter [%s[%zu]] does not support nullptr.",
+                    GMM_SWIGLU_QUANT_V2_OP_NAME, parameterName, i);
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckRequiredInputs(const aclTensor *x, const aclTensorList *weight,
+                                       const aclTensorList *weightScale, const aclTensor *xScale,
+                                       const aclTensor *groupList, const aclTensor *output,
+                                       const aclTensor *outputScale)
+{
+    auto status = CheckRequiredPointer(x, "x");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckRequiredTensorList(weight, "weight");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckRequiredTensorList(weightScale, "weightScale");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    const struct {
+        const void *pointer;
+        const char *name;
+    } tensorInputs[] = {
+        {xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}, {outputScale, "outputScale"}};
+    for (const auto &input : tensorInputs) {
+        status = CheckRequiredPointer(input.pointer, input.name);
+        if (status != ACLNN_SUCCESS) {
+            return status;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* apiName,
     GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -110,13 +173,13 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    auto status = CheckRequiredInputs(x, weight, weightScale, xScale, groupList, output, outputScale);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale));
-    CHECK_COND((output != nullptr), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], output must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
-    CHECK_COND((outputScale != nullptr), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], outputScale must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
         .SetXScale(xScale).SetSmoothScale(smoothScale)
@@ -199,15 +262,14 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    auto status = CheckRequiredInputs(x, weight, weightScale, xScale, groupList, output, outputScale);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale));
-    CHECK_RET(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(output != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(outputScale != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     size_t wLength = weight->Size();
-    CHECK_RET(wLength > 0, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET((*weight)[0] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     auto firstWeightViewDimNum = (*weight)[0]->GetViewShape().GetDimNum();
     bool isSingleWeightTensor = wLength == 1 &&
                                 (firstWeightViewDimNum == WEIGHT_ND_DIM_LIMIT ||

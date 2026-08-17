@@ -321,6 +321,26 @@ const GroupedMatmulSwigluQuantV2TilingCase *FindAscend950Case(const string &pref
     return iter == cases.end() ? nullptr : &(*iter);
 }
 
+TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, RequiredInputNullptrErrorCase)
+{
+    const auto *testCase = FindAscend950Case("test_mxa8w4_sms_wb002_wq_nz_ws_nd_g2_glt1_min_k_n");
+    ASSERT_NE(testCase, nullptr);
+
+    const array<pair<uint32_t, const char *>, 5> requiredInputs = {{{optiling::GroupedMatmulSwigluQuantV2Tiling::X_INDEX, "x"},
+                                                                    {optiling::GroupedMatmulSwigluQuantV2Tiling::X_SCALE_INDEX, "xScale"},
+                                                                    {optiling::GroupedMatmulSwigluQuantV2Tiling::GROUPLIST_INDEX, "groupList"},
+                                                                    {optiling::GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX, "weight"},
+                                                                    {optiling::GroupedMatmulSwigluQuantV2Tiling::WEIGHT_SCALE_INDEX, "weightScale"}}};
+    for (const auto &[inputIndex, inputName] : requiredInputs) {
+        SCOPED_TRACE(inputName);
+        auto nullInputCase = *testCase;
+        nullInputCase.inputs[inputIndex].clear();
+        auto compileInfoForRun = nullInputCase.compileInfo;
+        auto tilingContextPara = nullInputCase.BuildContext(&compileInfoForRun);
+        ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    }
+}
+
 TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, SmsTilingKeyAndDataFields)
 {
     const auto *testCase = FindAscend950Case("test_mxa8w4_sms_wb002_wq_nz_ws_nd_g2_glt1_min_k_n");

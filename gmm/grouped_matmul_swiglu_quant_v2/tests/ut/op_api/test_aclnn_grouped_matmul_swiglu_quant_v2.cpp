@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,74 @@ using ops::ut::BuildAclTensorListDesc;
 using ops::ut::MakeAclTensorDesc;
 
 constexpr size_t kSwigluCsvColumnCount = 45;
+
+template <typename WorkspaceApi>
+void ExpectRequiredInputNullChecks(WorkspaceApi workspaceApi)
+{
+    auto x = TensorDesc({4, 32}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto weightTensor = TensorDesc({1, 32, 64}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto weightScaleTensor = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+    auto xScale = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+    auto groupList = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND).ToAclType();
+    auto output = TensorDesc({4, 32}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto outputScale = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+
+    const aclTensor *weightItems[] = {weightTensor.get()};
+    const aclTensor *weightScaleItems[] = {weightScaleTensor.get()};
+    aclTensor *nullTensor = nullptr;
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
+        aclCreateTensorList(weightItems, 1), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
+        aclCreateTensorList(weightScaleItems, 1), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> emptyList(
+        aclCreateTensorList(nullptr, 0), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> nullElementList(
+        aclCreateTensorList(&nullTensor, 1), aclDestroyTensorList);
+
+    auto invoke = [&](const aclTensor *xArg, const aclTensorList *weightArg,
+                      const aclTensorList *weightScaleArg, const aclTensor *xScaleArg,
+                      const aclTensor *groupListArg, aclTensor *outputArg, aclTensor *outputScaleArg) {
+        uint64_t workspaceSize = 0;
+        aclOpExecutor *executor = nullptr;
+        return workspaceApi(xArg, weightArg, weightScaleArg, nullptr, nullptr, xScaleArg, nullptr,
+                            groupListArg, 0, 0, 0, 0, nullptr, outputArg, outputScaleArg,
+                            &workspaceSize, &executor);
+    };
+
+    EXPECT_EQ(invoke(nullptr, weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), nullptr, weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), emptyList.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(invoke(x.get(), nullElementList.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), nullptr, xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), emptyList.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(invoke(x.get(), weight.get(), nullElementList.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), nullptr, groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), nullptr,
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     nullptr, outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), nullptr),
+              ACLNN_ERR_PARAM_NULLPTR);
+}
 
 aclDataType ParseDtype(const string &dtype)
 {
@@ -441,6 +510,12 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, direct_launch_entry_error_
     EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
 }
 
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, required_input_nullptr_error_case)
+{
+    ExpectRequiredInputNullChecks(aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize);
+    ExpectRequiredInputNullChecks(aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize);
+}
+
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_case)
  {
      int64_t m = 192;
@@ -470,8 +545,7 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
      uint64_t workspace_size = 0;
      aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
      EXPECT_EQ(aclRet, 0);
-}
-
+ }
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_nz_workspace_case)
 {
