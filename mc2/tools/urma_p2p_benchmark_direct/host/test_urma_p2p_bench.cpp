@@ -77,6 +77,24 @@ static size_t g_verifyBytes = 0;
 static uint32_t g_verifyChunks = 0;
 static uint64_t g_verifyDataOffset = 0;
 
+struct BenchResult {
+    bool valid = false;
+    uint32_t rank = 0;
+    uint32_t physicalDev = 0;
+    double avgAssembleUs = 0;
+    double avgIssueUs = 0;
+    double avgDrainUs = 0;
+    double avgTotalUs = 0;
+    double avgBwGBs = 0;
+    double lastBwGBs = 0;
+    double lastAssembleUs = 0;
+    double lastDrainUs = 0;
+    double lastTotalUs = 0;
+    bool verifyPass = false;
+    bool hasVerify = false;
+};
+static BenchResult g_result;
+
 struct BenchCtx {
     uint32_t rank{0};
     uint32_t worldSize{0};
@@ -634,6 +652,20 @@ int Sample(void *arg)
                rank, physicalDev,
                lastAssembleNs / 1000.0, issueLabel, lastIssueNs / 1000.0, waitLabel, lastWaitNs / 1000.0,
                lastTotalNs / 1000.0, lastBwGBs);
+
+        g_result.valid = true;
+        g_result.rank = rank;
+        g_result.physicalDev = physicalDev;
+        g_result.avgAssembleUs = avgAssembleNs / 1000.0;
+        g_result.avgIssueUs = avgIssueNs / 1000.0;
+        g_result.avgDrainUs = avgWaitNs / 1000.0;
+        g_result.avgTotalUs = avgTotalNs / 1000.0;
+        g_result.avgBwGBs = avgBwGBs;
+        g_result.lastBwGBs = lastBwGBs;
+        g_result.lastAssembleUs = lastAssembleNs / 1000.0;
+        g_result.lastDrainUs = lastWaitNs / 1000.0;
+        g_result.lastTotalUs = lastTotalNs / 1000.0;
+        g_result.hasVerify = args->verify;
     } else {
         if (!args->verify) {
             std::this_thread::sleep_for(std::chrono::seconds(10));
@@ -661,12 +693,14 @@ int Sample(void *arg)
             if (pass) {
                 printf("[rank %u (dev %u)] VERIFY: PASS (%zu bytes, %u chunks)\n",
                        rank, physicalDev, g_verifyBytes, g_verifyChunks);
+                g_result.verifyPass = true;
             } else {
                 uint32_t chunkIdx = (uint32_t)(mismatchOff / args->sqeBytes);
                 size_t offsetInChunk = mismatchOff % args->sqeBytes;
                 printf("[rank %u (dev %u)] VERIFY: FAIL at byte %zu (chunk %u, offset %zu): expected 0x%02x, got 0x%02x\n",
                        rank, physicalDev, mismatchOff, chunkIdx, offsetInChunk,
                        g_verifyPattern[mismatchOff], recvBuf[mismatchOff]);
+                g_result.verifyPass = false;
             }
             free(recvBuf);
         }
@@ -729,14 +763,19 @@ int main(int argc, char *argv[])
     fprintf(stderr, "[INFO] ===== URMA P2P Bench =====\n");
     fprintf(stderr, "[INFO] dev_ids=");
     for (auto d : g_args.devIds) fprintf(stderr, "%u ", d);
-    fprintf(stderr, "dev_count=%u num_sqe=%u sqe_bytes=%lu buf_bytes=%lu "
-            "db_interval=%u loop=%u sqe_mode=%u(%s) bench_mode=%u(%s)",
-            g_args.devCount, g_args.numSqe, g_args.sqeBytes, g_args.bufBytes,
-            g_args.dbInterval, g_args.loopCount, g_args.sqeMode,
+    fprintf(stderr, "dev_count=%u sqe_bytes=%lu buf_bytes=%lu "
+            "loop=%u sqe_mode=%u(%s) bench_mode=%u(%s)",
+            g_args.devCount, g_args.sqeBytes, g_args.bufBytes,
+            g_args.loopCount, g_args.sqeMode,
+            g_args.sqeMode == 0 ? "Write" :
             g_args.sqeMode == 1 ? "WriteWithNotify(mc2)" :
             g_args.sqeMode == 2 ? "Hcomm(WriteNbi+Drain)" :
-            g_args.sqeMode == 3 ? "mc2_native(moe_distribute_base)" : "Write(samples)",
+            g_args.sqeMode == 3 ? "mc2_native(moe_distribute_base)" : "unknown",
             g_args.benchMode, g_args.benchMode == 0 ? "batch_write" : "write_drain_loop");
+    // -m 0/1 才用 num_sqe 和 db_interval
+    if (g_args.sqeMode == 0 || g_args.sqeMode == 1) {
+        fprintf(stderr, " num_sqe=%u db_interval=%u", g_args.numSqe, g_args.dbInterval);
+    }
     if (g_args.hasPeer) fprintf(stderr, " peer=rank %u", g_args.peerOverride);
     if (g_args.verify) fprintf(stderr, " verify=ON");
     fprintf(stderr, "\n");
@@ -766,5 +805,28 @@ int main(int argc, char *argv[])
 
     aclrtFreeHost(rootInfoBuf);
     aclFinalize();
+
+    // 用例总结
+    printf("\n");
+    printf("========== Case Summary ==========\n");
+    const char* modeName = g_args.sqeMode == 0 ? "Write" :
+                           g_args.sqeMode == 1 ? "WriteWithNotify" :
+                           g_args.sqeMode == 2 ? "hcomm" :
+                           g_args.sqeMode == 3 ? "mc2_native" : "unknown";
+    const char* benchName = g_args.benchMode == 0 ? "batch_write" : "write_drain_loop";
+    printf("mode=%s bench=%s sqe_bytes=%lu loop=%u\n",
+           modeName, benchName, g_args.sqeBytes, g_args.loopCount);
+    if (g_result.valid) {
+        printf("avg  (over %u loops): assemble=%.2fus drain=%.2fus total=%.2fus bw=%.2fGB/s\n",
+               g_args.loopCount, g_result.avgAssembleUs, g_result.avgDrainUs, g_result.avgTotalUs, g_result.avgBwGBs);
+        // benchMode=0 只有一轮, last=avg (非独立最后一轮); benchMode=1 last 为最后一组单次值
+        const char* lastNote = (g_args.benchMode == 0) ? "(=avg, only 1 batch)" : "(last loop)";
+        printf("last %s:      assemble=%.2fus drain=%.2fus total=%.2fus bw=%.2fGB/s\n",
+               lastNote, g_result.lastAssembleUs, g_result.lastDrainUs, g_result.lastTotalUs, g_result.lastBwGBs);
+        if (g_result.hasVerify) {
+            printf("verify: %s\n", g_result.verifyPass ? "PASS" : "FAIL");
+        }
+    }
+    printf("==================================\n");
     return 0;
 }

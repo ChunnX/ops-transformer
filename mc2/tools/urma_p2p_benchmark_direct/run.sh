@@ -73,7 +73,11 @@ fi
 if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== URMA P2P Bench =========="
-    echo "dev_count=$DEV_COUNT dev_ids=$DEV_IDS num_sqe=$NUM_SQE sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES db_interval=$DB_INTERVAL"
+    if [[ "$SQE_MODE" == "0" || "$SQE_MODE" == "1" ]]; then
+        echo "dev_count=$DEV_COUNT dev_ids=$DEV_IDS num_sqe=$NUM_SQE sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES db_interval=$DB_INTERVAL"
+    else
+        echo "dev_count=$DEV_COUNT dev_ids=$DEV_IDS sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES"
+    fi
     echo "loop_count=$LOOP_COUNT sqe_mode=$SQE_MODE bench_mode=$BENCH_MODE peer=$PEER verify=$VERIFY"
     echo "====================================="
     RUN_ARGS="--dev_count ${DEV_COUNT} --num_sqe ${NUM_SQE} --sqe_bytes ${SQE_BYTES} --buf_bytes ${BUF_BYTES} --db_interval ${DB_INTERVAL} --loop_count ${LOOP_COUNT} --sqe_mode ${SQE_MODE} --bench_mode ${BENCH_MODE} --verify ${VERIFY}"
