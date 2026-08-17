@@ -2250,7 +2250,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTen
     }
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
 __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                                      __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
                                                      __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
@@ -2258,8 +2258,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
                                                      const uint32_t m, const uint32_t n, const uint32_t originN,
                                                      const T scale, float deScaleQK, float pScale, const T minValue,
                                                      float keepProb, const float dScale, const uint32_t blockStride,
-                                                     const uint32_t repeatStride, int32_t subLoop)
+                                                     const uint32_t repeatStride)
 {
+    static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
     constexpr uint32_t mConst = 64;                                                        // m = 64
     constexpr uint32_t m2Const = 128;                                                      // m * 2 = 128
     constexpr uint32_t m3Const = 192;                                                      // m * 3 = 192
@@ -2412,7 +2413,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Muls(max0, max0, LN2, preg_108);
     Select(max0, vreg_min, max0, preg_invalid_cur);
 
-    if (subLoop == 1) {
+    if constexpr (SUB_LOOP == 1U) {
         LoadAlign(vreg_x_max_f32_b, new_global_max);
         Max(max0, max0, vreg_x_max_f32_b, preg_108);
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -2432,7 +2433,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
 
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
@@ -2518,7 +2519,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    if (subLoop == 0) {
+    if constexpr (SUB_LOOP == 0U) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
@@ -2550,7 +2551,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     }
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
 __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                                   const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                                   const LocalTensor<T> &expMaxTensor,
@@ -2558,7 +2559,7 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTens
                                                   const LocalTensor<uint8_t> &maskTensor, const uint32_t m,
                                                   const uint32_t n, const uint32_t originN, const T scale,
                                                   float deScaleQK, float pScale, const T minValue, float keepProb,
-                                                  int32_t subLoop, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
+                                                  const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -2577,20 +2578,21 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTens
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(
+    ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN, SUB_LOOP>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub, m,
-        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, subLoop);
+        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
 __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb,
     __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     float deScaleQK, float pScale, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
     const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum,
-    __ubuf__ float *first_loop_sum, int32_t subLoop)
+    __ubuf__ float *first_loop_sum)
 {
+    static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
     constexpr uint32_t mConst = 64;                                                        // m = 64
     constexpr uint32_t m2Const = 128;                                                      // m * 2 = 128
     constexpr uint32_t m3Const = 192;                                                      // m * 3 = 192
@@ -2744,7 +2746,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     Select(max0, vreg_min, max0, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
-    if (subLoop == 0) {
+    if constexpr (SUB_LOOP == 0U) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     } else {
@@ -2770,7 +2772,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
 
-    if constexpr (hasAtten == true) {
+    if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
@@ -2862,7 +2864,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
     RegTensor<float> vreg_l0;
-    if (subLoop == 0) {
+    if constexpr (SUB_LOOP == 0U) {
         LoadAlign(vreg_l0, new_global_sum);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)pre_loop_sum, vreg_l0, preg_134);
         Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
@@ -2902,13 +2904,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     }
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
 __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     float deScaleQK, float pScale, const T minValue, float keepProb, const LocalTensor<float> &preLoopMaxTensor,
-    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, int32_t subLoop,
+    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor,
     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
@@ -2931,10 +2933,10 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
 
-    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
-                                                     new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub, m, n, originN,
-                                                     scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride,
-                                                     repeatStride, pre_loop_max, pre_loop_sum, first_loop_sum, subLoop);
+    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN, SUB_LOOP>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub, m,
+        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, pre_loop_max,
+        pre_loop_sum, first_loop_sum);
 }
 
 /*
@@ -2955,27 +2957,28 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
  * @param [in] oriNRange originN 范围
  */
 
-template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256>
+template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
+          uint32_t SUB_LOOP = 0U>
 __aicore__ inline void ProcessVec1VfDnMxfp8(
     const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
     const LocalTensor<uint8_t> &maskTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const uint32_t m,
     const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue,
     float keepProb, const LocalTensor<T> &preLoopMaxTensor, const LocalTensor<T> &preLoopSumTensor,
-    const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop)
+    const LocalTensor<T> &firstLoopSumTensor)
 {
     // 将 256-column C1 转为 P(e4m3)/PScale(e8m0)；isUpdate 控制 online-softmax 更新。
     LocalTensor<uint8_t> indexesTensor;
     indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
     if constexpr (!isUpdate) {
-        ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                         indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                         pScale, minValue, keepProb, subLoop, pScaleSubLoop0Tensor);
+        ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN, SUB_LOOP>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, pScale, minValue, keepProb, pScaleSubLoop0Tensor);
     } else {
-        ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                       indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                       pScale, minValue, keepProb, preLoopMaxTensor, preLoopSumTensor,
-                                                       firstLoopSumTensor, subLoop, pScaleSubLoop0Tensor);
+        ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN, SUB_LOOP>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, pScale, minValue, keepProb, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor,
+            pScaleSubLoop0Tensor);
     }
 }
 
