@@ -200,7 +200,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
             fBaseParams.n2 = keyShape->GetStorageShape().GetDim(1);
             fBaseParams.d = queryShape->GetStorageShape().GetDim(DIM_NUM_2);
             fBaseParams.dv = valueShape->GetStorageShape().GetDim(DIM_NUM_2);
-            OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
+            OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "The OP [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
             fBaseParams.g = fBaseParams.n1 / fBaseParams.n2;
             fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());

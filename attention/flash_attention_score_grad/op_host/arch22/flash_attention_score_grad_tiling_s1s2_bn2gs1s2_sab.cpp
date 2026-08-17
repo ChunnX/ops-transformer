@@ -190,7 +190,7 @@ bool FlashAttentionScoreGradTilingSameABDeterministic::IsCapable()
 
     // fp32不支持
     OP_CHECK_IF(context_->GetInputDesc(QUERY) == nullptr,
-               OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [InputDesc of query is null]"), return false);
+               OP_LOGE(context_, "The OP [FlashAttentionScoreGrad] received bad params, the reason is: [InputDesc of query is null]"), return false);
     if (context_->GetInputDesc(QUERY)->GetDataType() == ge::DT_FLOAT) {
         OP_LOGI(context_, "FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb not support fp32.");
         return false;
