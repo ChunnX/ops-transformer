@@ -8,6 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+# 构建约束：最低 CANN 版本（不满足则跳过本算子）
+require_cann_version(MIN_VERSION "8.5.0")
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         matmul_all_reduce_def.cpp

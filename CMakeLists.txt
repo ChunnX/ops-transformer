@@ -352,6 +352,7 @@ set(OP_LIST)
 set(OP_DIR_LIST)
 op_add_subdirectory(OP_LIST OP_DIR_LIST)
 
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 foreach (OP_DIR ${OP_DIR_LIST})
     if (EXISTS "${OP_DIR}/op_host")
         add_subdirectory(${OP_DIR}/op_host)
@@ -397,6 +398,7 @@ op_add_depend_directory(
         OP_DIR_LIST OP_DEPEND_DIR_LIST
 )
 
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DEPENDENCY")
 foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     if (EXISTS "${OP_DEPEND_DIR}/op_host")
         add_subdirectory(${OP_DEPEND_DIR}/op_host)
@@ -404,6 +406,7 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
         add_subdirectory(${OP_DEPEND_DIR})
     endif()
 endforeach ()
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
@@ -608,6 +611,11 @@ if (BUILD_OPS_RTY_KERNEL)
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
     foreach (_op_name ${OP_LIST})
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install adapt py for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
@@ -629,6 +637,12 @@ if (BUILD_OPS_RTY_KERNEL)
 
     foreach (op_dir ${OP_DIR_LIST})
         get_filename_component(_op_name "${op_dir}" NAME)
+
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install kernel files for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
 
         if (EXISTS "${op_dir}/op_kernel")
             file(GLOB KERNEL_FILES
