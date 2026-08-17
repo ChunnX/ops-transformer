@@ -1146,12 +1146,14 @@ static inline aclnnStatus CheckInputParamsForWeightNzV2(const aclTensor *x, cons
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (antiquantScaleOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "antiquantScaleOptional must be nullptr.");
-        return ACLNN_ERR_PARAM_INVALID;
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                "GroupedMatmulFinalizeRoutingWeightNzV2 does not support antiquantScaleOptional, it must be nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (antiquantOffsetOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "antiquantOffsetOptional must be nullptr.");
-        return ACLNN_ERR_PARAM_INVALID;
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                "GroupedMatmulFinalizeRoutingWeightNzV2 does not support antiquantOffsetOptional, it must be nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
 }
