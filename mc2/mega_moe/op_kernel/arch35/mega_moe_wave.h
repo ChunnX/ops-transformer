@@ -764,9 +764,10 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(ExpertRowCursor &gmm1W
     uint32_t processedMGroupCount = 0U;
     while (gmm1WaveCursor.expertIdx < moeExpertPerRank_ && processedMGroupCount < mGroupsPerWave_) {
         if (gmm1WaveCursor.rowOffsetInExpert == 0U) {
-            WaitForMoeExpertTokenCountReady(countWorkspace_, params_.workspaceInfo, gmm1WaveCursor.expertIdx);
-            uint32_t expertTokenCount =
-                GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm1WaveCursor.expertIdx);
+            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                            gmm1WaveCursor.expertIdx);
+            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                         countWorkspace_, gmm1WaveCursor.expertIdx);
             UpdateExpertLoopState(gmm1ExpertState, gmm1WaveCursor.expertIdx, expertTokenCount);
         }
 
@@ -826,8 +827,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 
     while (!IsSameExpertRowCursor(gmm2WaveCursor, waveEndCursor) && gmm2WaveCursor.expertIdx < moeExpertPerRank_) {
         if (gmm2WaveCursor.rowOffsetInExpert == 0U) {
-            uint32_t expertTokenCount =
-                GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm2WaveCursor.expertIdx);
+            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                         countWorkspace_, gmm2WaveCursor.expertIdx);
             UpdateExpertLoopState(gmm2ExpertState, gmm2WaveCursor.expertIdx, expertTokenCount);
         }
 
@@ -877,7 +878,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
-        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, expertIdx);
+        uint32_t expertTokenCount =
+            GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
         UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
         if (expertTokenCount == 0U) {
             continue;

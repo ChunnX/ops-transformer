@@ -980,23 +980,6 @@ __aicore__ inline void RunGmm1A8W4(
                                                                   expertBeforeCnt, expertIdx);
 }
 
-/*
- * 等待 Dispatch 发布当前专家的 token 总数。这里只同步专家级元数据；
- * 每个 256-row group 的 Dispatch 数据就绪依赖由 WaitForGmm1InputReady 处理。
- */
-__aicore__ inline void WaitForMoeExpertTokenCountReady(const BlockWorkspaceContext &countWorkspace,
-                                                       const WorkspaceInfo &workspace, uint32_t expertIdx)
-{
-    __gm__ int32_t *sendCntFlag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSendCntCalToUpdParamsPtr) +
-                                  static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
-                                  static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
-        int64_t startCycle = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - startCycle < 100) {
-        }
-    }
-}
-
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, bool EnableA8W4, bool TopkWeightsPrefetch, typename BlockEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
