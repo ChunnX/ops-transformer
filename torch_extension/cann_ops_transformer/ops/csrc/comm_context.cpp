@@ -409,7 +409,7 @@ public:
             uint32_t dstRank = i;
             uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
             CommLink *links = nullptr;
-            layerId = netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[dstRank];
+            layerId = 2;//netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[dstRank];
             GetHcclCommLink(commHandle, layerId, srcRankId, dstRank, protocol, links);
             channelDesc[channelId].channelProtocol = protocol;
             channelDesc[channelId].remoteRank = dstRank;
