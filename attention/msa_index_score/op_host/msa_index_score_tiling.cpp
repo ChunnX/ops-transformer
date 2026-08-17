@@ -10,7 +10,7 @@
 
 /*!
  * \file msa_index_score_tiling.cpp
- * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND + sparse_mode 0/3；不支持 Ascend 950 / FP8）。
+ * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND/BNBD + TND packed key；sparse_mode 0/3）。
  */
 
 #include "msa_index_score_tiling.h"
@@ -22,9 +22,11 @@ using namespace MsaIndexScoreNs;
 namespace optiling {
 namespace {
 constexpr uint32_t MSA_QUERY_DIM_NUM = 3;
-constexpr uint32_t MSA_KEY_BBND_DIM_NUM = 4;
+constexpr uint32_t MSA_KEY_TND_DIM_NUM = 3;
+constexpr uint32_t MSA_KEY_PA_DIM_NUM = 4;
 constexpr uint32_t MSA_BLOCK_TABLE_DIM_NUM = 2;
-constexpr uint32_t MSA_SCALE_DIM_NUM = 3;
+constexpr uint32_t MSA_SCALE_PA_DIM_NUM = 3;
+constexpr uint32_t MSA_SCALE_TND_DIM_NUM = 2;
 constexpr uint32_t MSA_ATTEN_MASK_DIM_NUM = 2;
 
 inline uint32_t RoundUpU32(uint32_t value, uint32_t align)
@@ -42,44 +44,100 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     const gert::StorageShape *keyShape = context->GetInputShape(MSA_IDX_KEY);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
-    // P0：PageAttention 必须传 block_table
     const gert::StorageShape *blockTableShape = context->GetOptionalInputShape(MSA_IDX_BLOCK_TABLE);
-    OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "PageAttention requires block_table."),
-                return ge::GRAPH_FAILED);
     const gert::StorageShape *actualSeqQlenShape = context->GetOptionalInputShape(MSA_IDX_ACTUAL_SEQ_QLEN);
     OP_CHECK_IF(actualSeqQlenShape == nullptr, OP_LOGE(context, "TND query requires actual_seq_qlen."),
                 return ge::GRAPH_FAILED);
     const gert::StorageShape *actualSeqKlenShape = context->GetOptionalInputShape(MSA_IDX_ACTUAL_SEQ_KLEN);
-    OP_CHECK_IF(actualSeqKlenShape == nullptr, OP_LOGE(context, "PageAttention requires actual_seq_klen."),
+    OP_CHECK_IF(actualSeqKlenShape == nullptr, OP_LOGE(context, "actual_seq_klen is required."),
                 return ge::GRAPH_FAILED);
     const gert::StorageShape *startLocShape = context->GetInputShape(MSA_IDX_START_LOC);
     OP_CHECK_NULL_WITH_CONTEXT(context, startLocShape);
 
     const gert::Shape &q = queryShape->GetStorageShape();
     const gert::Shape &kc = keyShape->GetStorageShape();
-    const gert::Shape &bt = blockTableShape->GetStorageShape();
+    const gert::Shape &qlen = actualSeqQlenShape->GetStorageShape();
+    const gert::Shape &klen = actualSeqKlenShape->GetStorageShape();
 
     OP_CHECK_IF(q.GetDimNum() != MSA_QUERY_DIM_NUM,
                 OP_LOGE(context, "query must be TND(3 dims), got %zu.", q.GetDimNum()), return ge::GRAPH_FAILED);
-    // P0：仅 BBND [block_num, block_size, N2, D]
-    OP_CHECK_IF(kc.GetDimNum() != MSA_KEY_BBND_DIM_NUM,
-                OP_LOGE(context, "P0 only supports key BBND(4 dims), got %zu.", kc.GetDimNum()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(bt.GetDimNum() != MSA_BLOCK_TABLE_DIM_NUM,
-                OP_LOGE(context, "block_table must have 2 dims, got %zu.", bt.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qlen.GetDimNum() != 1 || qlen.GetDim(0) < 2,
+                OP_LOGE(context, "actual_seq_qlen must be 1D [B+1]."), return ge::GRAPH_FAILED);
 
     info.totalQ = static_cast<uint32_t>(q.GetDim(0));
     info.numQHeads = static_cast<uint32_t>(q.GetDim(1));
     info.headDim = static_cast<uint32_t>(q.GetDim(2));
-    info.numPages = static_cast<uint32_t>(kc.GetDim(0));
-    info.blockSize = static_cast<uint32_t>(kc.GetDim(1));
-    info.numKvHeads = static_cast<uint32_t>(kc.GetDim(2));
-    info.batch = static_cast<uint32_t>(bt.GetDim(0));
-    info.maxBlocksPerBatch = static_cast<uint32_t>(bt.GetDim(1));
+    info.batch = static_cast<uint32_t>(qlen.GetDim(0) - 1);
 
-    OP_CHECK_IF(static_cast<uint32_t>(kc.GetDim(3)) != info.headDim,
-                OP_LOGE(context, "key headDim(%ld) must equal query headDim(%u).", kc.GetDim(3), info.headDim),
-                return ge::GRAPH_FAILED);
+    if (kc.GetDimNum() == MSA_KEY_TND_DIM_NUM) {
+        info.keyLayout = MSA_KEY_LAYOUT_TND;
+        info.totalK = static_cast<uint32_t>(kc.GetDim(0));
+        info.numKvHeads = static_cast<uint32_t>(kc.GetDim(1));
+        info.blockSize = MSA_BLOCK_SIZE;
+        info.numPages = 0;
+        OP_CHECK_IF(static_cast<uint32_t>(kc.GetDim(2)) != info.headDim,
+                    OP_LOGE(context, "TND key headDim(%ld) must equal query headDim(%u).", kc.GetDim(2),
+                            info.headDim),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(blockTableShape != nullptr,
+                    OP_LOGE(context, "TND key must not pass block_table."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(klen.GetDimNum() != 1 || static_cast<uint32_t>(klen.GetDim(0)) != info.batch + 1,
+                    OP_LOGE(context, "TND actual_seq_klen must be [B+1] prefix-sum."),
+                    return ge::GRAPH_FAILED);
+    } else if (kc.GetDimNum() == MSA_KEY_PA_DIM_NUM) {
+        OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "PageAttention requires block_table."),
+                    return ge::GRAPH_FAILED);
+        const gert::Shape &bt = blockTableShape->GetStorageShape();
+        OP_CHECK_IF(bt.GetDimNum() != MSA_BLOCK_TABLE_DIM_NUM,
+                    OP_LOGE(context, "block_table must have 2 dims, got %zu.", bt.GetDimNum()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(static_cast<uint32_t>(bt.GetDim(0)) != info.batch,
+                    OP_LOGE(context, "block_table batch(%ld) must equal actual_seq_qlen batch(%u).",
+                            bt.GetDim(0), info.batch),
+                    return ge::GRAPH_FAILED);
+        info.maxBlocksPerBatch = static_cast<uint32_t>(bt.GetDim(1));
+        info.numPages = static_cast<uint32_t>(kc.GetDim(0));
+        if (static_cast<uint32_t>(kc.GetDim(1)) == MSA_BLOCK_SIZE) {
+            info.keyLayout = MSA_KEY_LAYOUT_BBND;
+            info.blockSize = static_cast<uint32_t>(kc.GetDim(1));
+            info.numKvHeads = static_cast<uint32_t>(kc.GetDim(2));
+            OP_CHECK_IF(static_cast<uint32_t>(kc.GetDim(3)) != info.headDim,
+                        OP_LOGE(context, "BBND key headDim(%ld) must equal query headDim(%u).", kc.GetDim(3),
+                                info.headDim),
+                        return ge::GRAPH_FAILED);
+        } else if (static_cast<uint32_t>(kc.GetDim(2)) == MSA_BLOCK_SIZE) {
+            info.keyLayout = MSA_KEY_LAYOUT_BNBD;
+            info.numKvHeads = static_cast<uint32_t>(kc.GetDim(1));
+            info.blockSize = static_cast<uint32_t>(kc.GetDim(2));
+            OP_CHECK_IF(static_cast<uint32_t>(kc.GetDim(3)) != info.headDim,
+                        OP_LOGE(context, "BNBD key headDim(%ld) must equal query headDim(%u).", kc.GetDim(3),
+                                info.headDim),
+                        return ge::GRAPH_FAILED);
+        } else {
+            OP_LOGE(context, "PA key must be BBND[NP,P,N2,D] or BNBD[NP,N2,P,D] with P=%u.", MSA_BLOCK_SIZE);
+            return ge::GRAPH_FAILED;
+        }
+        OP_CHECK_IF(klen.GetDimNum() != 1 || static_cast<uint32_t>(klen.GetDim(0)) != info.batch,
+                    OP_LOGE(context, "PA actual_seq_klen must be [B] visible S2."), return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGE(context, "key must be TND(3 dims) or PA BBND/BNBD(4 dims), got rank %zu.", kc.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+
+    if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
+        const gert::StorageShape *scoreShape = context->GetOutputShape(0);
+        OP_CHECK_NULL_WITH_CONTEXT(context, scoreShape);
+        const gert::Shape &scOut = scoreShape->GetStorageShape();
+        OP_CHECK_IF(scOut.GetDimNum() != MSA_QUERY_DIM_NUM,
+                    OP_LOGE(context, "score must be 3D [N1,T1,stride]."), return ge::GRAPH_FAILED);
+        info.maxBlocksPerBatch = static_cast<uint32_t>(scOut.GetDim(2));
+        OP_CHECK_IF(info.maxBlocksPerBatch == 0, OP_LOGE(context, "TND score last dim must be positive."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((info.maxBlocksPerBatch % MSA_SCORE_STRIDE_ALIGN) != 0,
+                    OP_LOGE(context, "TND score last dim(%u) must be a multiple of %u.", info.maxBlocksPerBatch,
+                            MSA_SCORE_STRIDE_ALIGN),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(info.blockSize != MSA_BLOCK_SIZE,
                 OP_LOGE(context, "only blockSize == %u is supported, got %u.", MSA_BLOCK_SIZE, info.blockSize),
                 return ge::GRAPH_FAILED);
@@ -94,9 +152,11 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
                 OP_LOGE(context, "numQHeads(%u) must be divisible by numKvHeads(%u).", info.numQHeads,
                         info.numKvHeads),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(info.batch == 0 || info.totalQ == 0 || info.maxBlocksPerBatch == 0 || info.numPages == 0,
-                OP_LOGE(context, "batch/totalQ/maxBlocksPerBatch/numPages must be positive."),
+    OP_CHECK_IF(info.batch == 0 || info.totalQ == 0 || info.maxBlocksPerBatch == 0,
+                OP_LOGE(context, "batch/totalQ/maxBlocksPerBatch must be positive."),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(info.keyLayout != MSA_KEY_LAYOUT_TND && info.numPages == 0,
+                OP_LOGE(context, "PA numPages must be positive."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint32_t>(startLocShape->GetStorageShape().GetDim(0)) != info.batch,
                 OP_LOGE(context, "start_loc size must equal batch."), return ge::GRAPH_FAILED);
 
@@ -120,19 +180,32 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
 
     const gert::StorageShape *scaleShape = context->GetOptionalInputShape(MSA_IDX_SCALE);
     if (info.isQuant) {
-        OP_CHECK_IF(scaleShape == nullptr,
-                    OP_LOGE(context, "int8 key requires scale of shape [NP, N_kv, block_size]."),
+        OP_CHECK_IF(scaleShape == nullptr, OP_LOGE(context, "int8 key requires dequant scale."),
                     return ge::GRAPH_FAILED);
         const gert::Shape &sc = scaleShape->GetStorageShape();
-        OP_CHECK_IF(sc.GetDimNum() != MSA_SCALE_DIM_NUM,
-                    OP_LOGE(context, "dequant scale must be 3D [NP, N_kv, block_size], got rank %zu.", sc.GetDimNum()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(static_cast<uint32_t>(sc.GetDim(0)) != info.numPages ||
-                        static_cast<uint32_t>(sc.GetDim(1)) != info.numKvHeads ||
-                        static_cast<uint32_t>(sc.GetDim(2)) != info.blockSize,
-                    OP_LOGE(context, "dequant scale shape must be [%u, %u, %u], got [%ld, %ld, %ld].", info.numPages,
-                            info.numKvHeads, info.blockSize, sc.GetDim(0), sc.GetDim(1), sc.GetDim(2)),
-                    return ge::GRAPH_FAILED);
+        if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
+            const bool ok2d = (sc.GetDimNum() == MSA_SCALE_TND_DIM_NUM &&
+                               static_cast<uint32_t>(sc.GetDim(0)) == info.totalK &&
+                               static_cast<uint32_t>(sc.GetDim(1)) == info.numKvHeads);
+            const bool ok1d = (sc.GetDimNum() == 1 && info.numKvHeads == 1 &&
+                               static_cast<uint32_t>(sc.GetDim(0)) == info.totalK);
+            OP_CHECK_IF(!ok2d && !ok1d,
+                        OP_LOGE(context, "TND dequant scale must be [%u, %u] or [%u] (N2=1).", info.totalK,
+                                info.numKvHeads, info.totalK),
+                        return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(sc.GetDimNum() != MSA_SCALE_PA_DIM_NUM,
+                        OP_LOGE(context, "PA dequant scale must be 3D [NP, N_kv, P], got rank %zu.",
+                                sc.GetDimNum()),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(static_cast<uint32_t>(sc.GetDim(0)) != info.numPages ||
+                            static_cast<uint32_t>(sc.GetDim(1)) != info.numKvHeads ||
+                            static_cast<uint32_t>(sc.GetDim(2)) != info.blockSize,
+                        OP_LOGE(context, "dequant scale shape must be [%u, %u, %u], got [%ld, %ld, %ld].",
+                                info.numPages, info.numKvHeads, info.blockSize, sc.GetDim(0), sc.GetDim(1),
+                                sc.GetDim(2)),
+                        return ge::GRAPH_FAILED);
+        }
         const auto *scaleDesc = context->GetOptionalInputDesc(MSA_IDX_SCALE);
         OP_CHECK_NULL_WITH_CONTEXT(context, scaleDesc);
         OP_CHECK_IF(scaleDesc->GetDataType() != ge::DT_FLOAT,
@@ -187,7 +260,8 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     // S workspace：非量化路径元素为 fp16（AIC fixpipe F322F16 直接写出），int8 路径 fp32。
     const uint32_t sWsBytes = aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM *
                               (info.isQuant ? sizeof(float) : sizeof(uint16_t));
-    const uint32_t kScratchBytes = info.isQuant ? (aicNum * MSA_K_SCRATCH_ELEM_NUM * sizeof(uint16_t)) : 0U;
+    const bool useKScratch = info.isQuant || (info.keyLayout == MSA_KEY_LAYOUT_TND);
+    const uint32_t kScratchBytes = useKScratch ? (aicNum * MSA_K_SCRATCH_ELEM_NUM * sizeof(uint16_t)) : 0U;
     // K scratch 基址以 4B 为单位表达（kernel 内按 float* 折算），S 变 fp16 后偏移减半。
     const uint32_t kScratchOffsetElems = sWsBytes / sizeof(float);
 
@@ -207,13 +281,27 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     tilingData.set_initBlocks(info.initBlocks);
     tilingData.set_localBlocks(info.localBlocks);
     tilingData.set_numPages(info.numPages);
+    tilingData.set_keyLayout(info.keyLayout);
+    tilingData.set_totalK(info.totalK);
 
     tilingData.set_strideQt(info.numQHeads * info.headDim);
     tilingData.set_strideQn(info.headDim);
-    tilingData.set_strideKvBlock(info.blockSize * info.numKvHeads * info.headDim);
-    tilingData.set_strideKvToken(info.numKvHeads * info.headDim);
-    tilingData.set_strideScalePage(info.numKvHeads * info.blockSize);
-    tilingData.set_strideScaleHead(info.blockSize);
+    if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
+        tilingData.set_strideKvBlock(0);
+        tilingData.set_strideKvToken(info.numKvHeads * info.headDim);
+        tilingData.set_strideScalePage(info.numKvHeads);
+        tilingData.set_strideScaleHead(1);
+    } else if (info.keyLayout == MSA_KEY_LAYOUT_BNBD) {
+        tilingData.set_strideKvBlock(info.numKvHeads * info.blockSize * info.headDim);
+        tilingData.set_strideKvToken(info.headDim);
+        tilingData.set_strideScalePage(info.numKvHeads * info.blockSize);
+        tilingData.set_strideScaleHead(info.blockSize);
+    } else {
+        tilingData.set_strideKvBlock(info.blockSize * info.numKvHeads * info.headDim);
+        tilingData.set_strideKvToken(info.numKvHeads * info.headDim);
+        tilingData.set_strideScalePage(info.numKvHeads * info.blockSize);
+        tilingData.set_strideScaleHead(info.blockSize);
+    }
     tilingData.set_strideOutHead(info.totalQ * scoreBlockStride);
     tilingData.set_strideOutToken(scoreBlockStride);
     tilingData.set_kScratchOffsetElems(kScratchOffsetElems);

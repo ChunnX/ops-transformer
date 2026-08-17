@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
-# Atlas A2/A3 only; does not support Ascend 950 / FP8.
+# Atlas A2/A3 only; key layouts: PA BBND/BNBD and TND packed. Does not support Ascend 950 / FP8.
 
 try:
     import torch

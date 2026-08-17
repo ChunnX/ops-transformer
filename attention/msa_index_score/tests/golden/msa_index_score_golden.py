@@ -57,43 +57,64 @@ def msa_index_score_golden(
 
     Args:
         query:       [T1, N1, D]
-        key:         [NP, P, N2, D] BBND；非量化与 query 同 dtype；量化为 int8
-        block_table: [B, MB]
+        key:         PA BBND [NP, P, N2, D]、BNBD [NP, N2, P, D]，或 TND [T2, N2, D]
+        block_table: PA [B, MB]；TND 为 None
         actual_seq_qlen:    [B+1]
-        actual_seq_klen:      [B]
+        actual_seq_klen:    PA [B]；TND 前缀和 [B+1]
         start_loc:   [B]，当前 query 所在逻辑 block 索引（local_mask）
         sparse_mode: 0 或 3
-        scale:       int8 时 [NP, N2, P]；非量化为 None
+        scale:       int8 时 PA [NP, N2, P] 或 TND [T2, N2]；非量化为 None
     """
     total_q, num_q_heads, head_dim = query.shape
-    batch = len(actual_seq_klen)
-    max_blocks = block_table.shape[1]
+    is_tnd = key.ndim == 3
+    if is_tnd:
+        batch = len(actual_seq_klen) - 1
+        max_blocks = 0
+        for b in range(batch):
+            kv = int(actual_seq_klen[b + 1]) - int(actual_seq_klen[b])
+            blocks = (kv + block_size - 1) // block_size
+            if blocks > max_blocks:
+                max_blocks = blocks
+        num_kv_heads = key.shape[1]
+        k = key.astype(np.float32)[:, 0, :]
+    else:
+        batch = len(actual_seq_klen)
+        max_blocks = block_table.shape[1]
+        is_bnbd = key.shape[2] == block_size and key.shape[1] != block_size
+        num_kv_heads = key.shape[1] if is_bnbd else key.shape[2]
+        if is_bnbd:
+            k = key.astype(np.float32)[:, 0, :, :]
+        else:
+            k = key.astype(np.float32)[:, :, 0, :]
     score_stride = round_up(max_blocks, SCORE_STRIDE_ALIGN)
-    num_kv_heads = key.shape[2]
     is_quant = np.issubdtype(key.dtype, np.integer)
 
     if is_quant:
         if scale is None:
-            raise ValueError("int8 key requires dequant scale of shape [NP, N_kv, P]")
-        if scale.shape != (key.shape[0], num_kv_heads, block_size):
-            raise ValueError(
-                f"dequant scale shape must be {(key.shape[0], num_kv_heads, block_size)}, got {scale.shape}"
-            )
+            raise ValueError("int8 key requires dequant scale")
     elif scale is not None:
         raise ValueError("non-quant path must not pass scale")
 
     q = query.astype(np.float32)
-    k = key.astype(np.float32)[:, :, 0, :]
     deq = None
     if is_quant:
-        deq = scale.astype(np.float32)[:, 0, :]
+        deq = scale.astype(np.float32)
+        if is_tnd:
+            deq = deq.reshape(-1) if deq.ndim == 1 else deq[:, 0]
+        else:
+            deq = deq[:, 0, :]
 
     out = np.full((num_q_heads, total_q, score_stride), NEG_INF, dtype=np.float32)
 
     for b in range(batch):
         q_begin, q_end = int(actual_seq_qlen[b]), int(actual_seq_qlen[b + 1])
         q_len = q_end - q_begin
-        kv = int(actual_seq_klen[b])
+        if is_tnd:
+            cu_k = int(actual_seq_klen[b])
+            kv = int(actual_seq_klen[b + 1]) - cu_k
+        else:
+            cu_k = 0
+            kv = int(actual_seq_klen[b])
         num_blocks = (kv + block_size - 1) // block_size
         q_block = int(start_loc[b])
         local_start = max(0, q_block + 1 - int(local_blocks))
@@ -106,14 +127,19 @@ def msa_index_score_golden(
                 valid = min(visible_key_end - key_lo, block_size)
                 if valid <= 0:
                     continue
-                page = int(block_table[b, blk])
-                k_page = k[page, :valid, :]
-                if deq is not None:
-                    k_page = k_page * deq[page, :valid, None]
+                if is_tnd:
+                    tok = cu_k + key_lo
+                    k_page = k[tok : tok + valid, :]
+                    if deq is not None:
+                        k_page = k_page * deq[tok : tok + valid, None]
+                else:
+                    page = int(block_table[b, blk])
+                    k_page = k[page, :valid, :]
+                    if deq is not None:
+                        k_page = k_page * deq[page, :valid, None]
                 s = q[t] @ k_page.T
                 out[:, t, blk] = s.max(axis=1)
 
-            # local_mask：强制选中 block 写高分（覆盖 maxpool 结果）
             for blk in range(num_blocks):
                 boost = None
                 if blk < int(init_blocks):

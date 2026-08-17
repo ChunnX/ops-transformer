@@ -56,13 +56,26 @@ class MsaIndexScoreOpBuilder(OpBuilder):
             local_blocks: int = DEFAULT_LOCAL_BLOCKS,
         ):
             torch._check(query.dim() == 3, lambda: "query must be 3D [T, Hq, D]")
-            torch._check(
-                block_table is not None and block_table.dim() == 2,
-                lambda: "block_table must be 2D [B, MB]",
-            )
             total_q = query.size(0)
             num_q_heads = query.size(1)
-            max_blocks = block_table.size(1)
+            if block_table is not None:
+                torch._check(
+                    block_table.dim() == 2, lambda: "block_table must be 2D [B, MB]"
+                )
+                max_blocks = int(block_table.size(1))
+            else:
+                torch._check(
+                    actual_seq_klen is not None and actual_seq_klen.dim() == 1,
+                    lambda: "TND key requires actual_seq_klen [B+1]",
+                )
+                pref = [int(v) for v in actual_seq_klen.tolist()]
+                max_blocks = 0
+                for i in range(len(pref) - 1):
+                    kv = pref[i + 1] - pref[i]
+                    blocks = 0 if kv <= 0 else (kv + 127) // 128
+                    if blocks > max_blocks:
+                        max_blocks = blocks
+                torch._check(max_blocks > 0, lambda: "TND maxBlocks must be positive")
             score_stride = _round_up(int(max_blocks), SCORE_STRIDE_ALIGN)
             return torch.empty(
                 (num_q_heads, total_q, score_stride),
@@ -129,22 +142,24 @@ def msa_index_score(
     """MSA Index Branch block score，封装 aclnnMsaIndexScore。
 
     当前仅 Atlas A2/A3；不支持 Ascend 950 / FP8。
+    key 支持 PA BBND ``[NP, P, N2, D]``、BNBD ``[NP, N2, P, D]``、TND ``[T2, N2, D]``。
 
     Args:
         query: ``[T1, N1, D]`` float16 / bfloat16
-        key: PA BBND ``[NP, P, N2, D]``；也接受 Triton 风格 ``[NP, P, D]``（自动扩 N2=1）
+        key: PA BBND/BNBD，或 TND packed；也接受 Triton 风格 ``[NP, P, D]``（P=128 时自动扩 N2=1）
         start_loc: ``[B]``，当前 query 所在逻辑 block 索引（local_mask）
-        block_table: ``[B, MB]``，PA 必选
-        scale: int8 反量化 ``[NP, N2, P]``；非量化为 None
+        block_table: ``[B, MB]``，PA 必选；TND 不传
+        scale: int8 反量化。PA 为 ``[NP, N2, P]``；TND 为 ``[T2, N2]``；非量化为 None
         atten_mask: sparse_mode=3 时 ``[2048, 2048]`` int8
-        actual_seq_qlen / actual_seq_klen: TND/PA 长度元数据
+        actual_seq_qlen: query 前缀和 ``[B+1]``
+        actual_seq_klen: PA 为各请求 S2 ``[B]``；TND 为 key 前缀和 ``[B+1]``
         sparse_mode: 0 或 3
         init_blocks / local_blocks: local_mask 强制选块；与 Triton raw score 对齐时置 0
 
     Returns:
         ``[N1, T1, RoundUp(MB, 16)]`` float32
     """
-    if key.dim() == 3:
+    if key.dim() == 3 and int(key.size(1)) == 128:
         key = key.unsqueeze(2)
     return torch.ops.cann_ops_transformer.msa_index_score(
         query,

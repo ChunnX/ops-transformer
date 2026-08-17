@@ -14,7 +14,7 @@
  *
  * 用例矩阵覆盖：Prefill 多 M-tile、prefix 非 128 对齐的边界 block、varlen 多 batch、
  * Decode(q_len=1)、投机解码(q_len>1)、长序列多 S-tile 轮转、block_table 乱序、
- * 无效尾填充、bf16 / fp16 双 dtype、int8 key 前融合反量化。
+ * 无效尾填充、bf16 / fp16 双 dtype、int8 key 前融合反量化、PA BNBD、TND packed key。
  */
 
 #include <cmath>
@@ -38,6 +38,12 @@ constexpr float kNegInf = -3.4028234663852886e+38F;
 constexpr float kAtol = 1e-3F;
 constexpr float kRtol = 1e-3F;
 
+enum class KeyLayout {
+    BBND = 0,
+    BNBD = 1,
+    TND = 2,
+};
+
 struct TestCase {
     const char *name;
     int64_t numQHeads;
@@ -47,8 +53,9 @@ struct TestCase {
     std::vector<int32_t> kvLen;    // 每个请求可见的 kv 长度
     std::vector<int32_t> startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     bool useBf16;
-    bool useInt8Key;        // true: key=int8，scale=[NP,N_kv,P] 反量化
+    bool useInt8Key;        // true: key=int8，scale=[NP,N_kv,P] 或 TND [T2,N2]
     int64_t sparseMode = 3; // 0 / 3
+    KeyLayout keyLayout = KeyLayout::BBND;
 };
 
 constexpr float kLocalScoreInit = 1.0e30F;
@@ -142,37 +149,57 @@ private:
 
 /// CPU 参考：score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask
 void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen,
-                   const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride,
-                   int64_t totalQ, const std::vector<float> &queryF, const std::vector<float> &keyF,
-                   const std::vector<float> &deqScale, std::vector<float> &golden)
+                   const std::vector<int32_t> &actualSeqKlen, const std::vector<int32_t> &blockTable,
+                   int64_t maxBlocks, int64_t scoreStride, int64_t totalQ, const std::vector<float> &queryF,
+                   const std::vector<float> &keyF, const std::vector<float> &deqScale,
+                   std::vector<float> &golden)
 {
     const int64_t batch = static_cast<int64_t>(tc.qLen.size());
     golden.assign(static_cast<size_t>(tc.numQHeads * totalQ * scoreStride), kNegInf);
+
+    auto keyAt = [&](int64_t pageOrTok, int64_t n, int64_t d) -> float {
+        if (tc.keyLayout == KeyLayout::TND) {
+            return keyF[static_cast<size_t>(((pageOrTok + n) * NUM_KV_HEADS) * tc.headDim + d)];
+        }
+        // BBND [NP,P,1,D] 与 BNBD [NP,1,P,D] 在 N2=1 时同址
+        return keyF[static_cast<size_t>(((pageOrTok * BLOCK_SIZE) + n) * tc.headDim + d)];
+    };
+    auto scaleAt = [&](int64_t pageOrTok, int64_t n) -> float {
+        if (!tc.useInt8Key) {
+            return 1.0F;
+        }
+        if (tc.keyLayout == KeyLayout::TND) {
+            return deqScale[static_cast<size_t>(pageOrTok + n)];
+        }
+        return deqScale[static_cast<size_t>(pageOrTok * BLOCK_SIZE + n)];
+    };
 
     for (int64_t b = 0; b < batch; ++b) {
         const int32_t qBegin = actualSeqQlen[b];
         const int32_t qEnd = actualSeqQlen[b + 1];
         const int32_t qLen = qEnd - qBegin;
-        const int64_t numBlocks = CeilDivI64(tc.kvLen[b], BLOCK_SIZE);
+        const int32_t kvLen = tc.kvLen[b];
+        const int64_t numBlocks = CeilDivI64(kvLen, BLOCK_SIZE);
         const int32_t qBlock = tc.startLoc[b];
         const int32_t localStart =
             (qBlock + 1 > static_cast<int32_t>(kLocalBlocks)) ? (qBlock + 1 - static_cast<int32_t>(kLocalBlocks)) : 0;
+        const int32_t cuK = (tc.keyLayout == KeyLayout::TND) ? actualSeqKlen[b] : 0;
 
         for (int32_t t = qBegin; t < qEnd; ++t) {
             const int32_t tOff = t - qBegin;
-            int32_t visibleKeyEnd = tc.kvLen[b];
+            int32_t visibleKeyEnd = kvLen;
             if (tc.sparseMode == 3) {
-                visibleKeyEnd = tc.kvLen[b] - qLen + tOff + 1;
+                visibleKeyEnd = kvLen - qLen + tOff + 1;
                 if (visibleKeyEnd < 0) {
                     visibleKeyEnd = 0;
                 }
-                if (visibleKeyEnd > tc.kvLen[b]) {
-                    visibleKeyEnd = tc.kvLen[b];
+                if (visibleKeyEnd > kvLen) {
+                    visibleKeyEnd = kvLen;
                 }
             }
             for (int64_t h = 0; h < tc.numQHeads; ++h) {
                 for (int64_t blk = 0; blk < numBlocks; ++blk) {
-                    const int32_t page = blockTable[b * maxBlocks + blk];
+                    const int32_t pageOrTok = (tc.keyLayout == KeyLayout::TND) ? (cuK + static_cast<int32_t>(blk * BLOCK_SIZE)) : blockTable[b * maxBlocks + blk];
                     float best = 0.0F;
                     bool any = false;
                     for (int64_t n = 0; n < BLOCK_SIZE; ++n) {
@@ -180,10 +207,9 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen
                             break;
                         }
                         float acc = 0.0F;
-                        const float s = tc.useInt8Key ? deqScale[static_cast<size_t>(page) * BLOCK_SIZE + n] : 1.0F;
+                        const float s = scaleAt(pageOrTok, n);
                         for (int64_t d = 0; d < tc.headDim; ++d) {
-                            acc += queryF[((t * tc.numQHeads) + h) * tc.headDim + d] *
-                                   (keyF[(page * BLOCK_SIZE + n) * tc.headDim + d] * s);
+                            acc += queryF[((t * tc.numQHeads) + h) * tc.headDim + d] * (keyAt(pageOrTok, n, d) * s);
                         }
                         if (!any || acc > best) {
                             best = acc;
@@ -195,7 +221,6 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen
                     }
                     golden[(h * totalQ + t) * scoreStride + blk] = best;
                 }
-                // local_mask
                 for (int64_t blk = 0; blk < numBlocks; ++blk) {
                     float boost = 0.0F;
                     if (blk < kInitBlocks) {
@@ -356,8 +381,18 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     }
 
     // fp32 参考数据；再按 dtype 转成低精度输入，golden 用转换后的值以对齐数值路径。
+    const bool isTnd = (tc.keyLayout == KeyLayout::TND);
+    int64_t totalK = 0;
+    std::vector<int32_t> actualSeqKlenPrefix(static_cast<size_t>(batch + 1), 0);
+    if (isTnd) {
+        for (int64_t b = 0; b < batch; ++b) {
+            actualSeqKlenPrefix[b + 1] = actualSeqKlenPrefix[b] + tc.kvLen[b];
+        }
+        totalK = actualSeqKlenPrefix[batch];
+    }
+    const int64_t keyTokens = isTnd ? totalK : (tc.numPages * BLOCK_SIZE);
     std::vector<float> queryF(static_cast<size_t>(totalQ * tc.numQHeads * tc.headDim));
-    std::vector<float> keyF(static_cast<size_t>(tc.numPages * BLOCK_SIZE * tc.headDim));
+    std::vector<float> keyF(static_cast<size_t>(keyTokens * tc.headDim));
     std::vector<uint16_t> queryBf(queryF.size());
     std::vector<uint16_t> keyBf(keyF.size());
     std::vector<aclFloat16> queryHf(queryF.size());
@@ -390,8 +425,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
             }
         }
     }
-    // 反量化 scale：[NP, N_kv=1, P]，非量化路径不传。
-    std::vector<float> deqScale(static_cast<size_t>(tc.numPages * BLOCK_SIZE), 1.0F);
+    // 反量化 scale：PA [NP, N_kv=1, P]；TND [T2, N2=1]。
+    std::vector<float> deqScale(static_cast<size_t>(keyTokens), 1.0F);
     std::vector<int8_t> keyI8;
     if (tc.useInt8Key) {
         keyI8.resize(keyF.size());
@@ -405,7 +440,14 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
 
     DeviceBuffer buf;
     const std::vector<int64_t> queryShape = {totalQ, tc.numQHeads, tc.headDim};
-    const std::vector<int64_t> keyShape = {tc.numPages, BLOCK_SIZE, NUM_KV_HEADS, tc.headDim};
+    std::vector<int64_t> keyShape;
+    if (isTnd) {
+        keyShape = {totalK, NUM_KV_HEADS, tc.headDim};
+    } else if (tc.keyLayout == KeyLayout::BNBD) {
+        keyShape = {tc.numPages, NUM_KV_HEADS, BLOCK_SIZE, tc.headDim};
+    } else {
+        keyShape = {tc.numPages, BLOCK_SIZE, NUM_KV_HEADS, tc.headDim};
+    }
     const std::vector<int64_t> scoreShape = {tc.numQHeads, totalQ, scoreStride};
 
     aclTensor *queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
@@ -415,11 +457,21 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     } else {
         keyT = tc.useBf16 ? buf.Create(keyBf, keyShape, ACL_BF16) : buf.Create(keyHf, keyShape, ACL_FLOAT16);
     }
-    aclTensor *blockTableT = buf.Create(blockTable, {batch, maxBlocks}, ACL_INT32);
-    aclTensor *scaleT =
-        tc.useInt8Key ? buf.Create(deqScale, {tc.numPages, NUM_KV_HEADS, BLOCK_SIZE}, ACL_FLOAT) : nullptr;
+    aclTensor *blockTableT = nullptr;
+    if (!isTnd) {
+        blockTableT = buf.Create(blockTable, {batch, maxBlocks}, ACL_INT32);
+    }
+    aclTensor *scaleT = nullptr;
+    if (tc.useInt8Key) {
+        if (isTnd) {
+            scaleT = buf.Create(deqScale, {totalK, NUM_KV_HEADS}, ACL_FLOAT);
+        } else {
+            scaleT = buf.Create(deqScale, {tc.numPages, NUM_KV_HEADS, BLOCK_SIZE}, ACL_FLOAT);
+        }
+    }
     aclTensor *actualSeqQlenT = buf.Create(actualSeqQlen, {batch + 1}, ACL_INT32);
-    aclTensor *actualSeqKlenT = buf.Create(tc.kvLen, {batch}, ACL_INT32);
+    aclTensor *actualSeqKlenT =
+        isTnd ? buf.Create(actualSeqKlenPrefix, {batch + 1}, ACL_INT32) : buf.Create(tc.kvLen, {batch}, ACL_INT32);
     aclTensor *startLocT = buf.Create(tc.startLoc, {batch}, ACL_INT32);
     std::vector<int8_t> attenMaskHost(static_cast<size_t>(kAttenMaskSize * kAttenMaskSize), 0);
     aclTensor *attenMaskT = nullptr;
@@ -431,8 +483,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     void *scoreDev = nullptr;
     aclTensor *scoreT = buf.Create(scoreInit, scoreShape, ACL_FLOAT, &scoreDev);
 
-    if (queryT == nullptr || keyT == nullptr || blockTableT == nullptr || actualSeqQlenT == nullptr ||
-        actualSeqKlenT == nullptr || startLocT == nullptr || scoreT == nullptr ||
+    if (queryT == nullptr || keyT == nullptr || actualSeqQlenT == nullptr || actualSeqKlenT == nullptr ||
+        startLocT == nullptr || scoreT == nullptr || (!isTnd && blockTableT == nullptr) ||
         (tc.sparseMode == 3 && attenMaskT == nullptr)) {
         (void)printf("  [%s] create tensor failed -> FAIL\n", tc.name);
         return false;
@@ -469,7 +521,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     }
 
     std::vector<float> golden;
-    ComputeGolden(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale, golden);
+    ComputeGolden(tc, actualSeqQlen, isTnd ? actualSeqKlenPrefix : tc.kvLen, blockTable, maxBlocks, scoreStride,
+                  totalQ, queryF, keyF, deqScale, golden);
     if (std::strstr(tc.name, "debug-trace") != nullptr) {
         PrintTracePipeline(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
                            actual);
@@ -505,6 +558,11 @@ int main()
         {"L1-heads-16", 16, 128, 8, {13}, {300}, {2}, false, false},
         {"L1-int8-dequant", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true},
         {"L2-tiny-kv", 8, 128, 4, {1, 1}, {1, 3}, {0, 0}, false, false},
+        {"L1-bnbd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, 3, KeyLayout::BNBD},
+        {"L1-bnbd-int8", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true, 3, KeyLayout::BNBD},
+        {"L1-tnd-unaligned", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, false, 3, KeyLayout::TND},
+        {"L1-tnd-int8", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, true, 3, KeyLayout::TND},
+        {"L0-tnd-tiny", 2, 16, 0, {2}, {5}, {16}, false, false, 3, KeyLayout::TND},
     };
 
     size_t passed = 0;
