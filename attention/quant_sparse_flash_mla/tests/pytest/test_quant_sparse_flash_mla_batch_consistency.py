@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import ctypes
 import hashlib
 import json
 import os
@@ -24,6 +25,9 @@ testcase_path = Path(os.environ.get("QSMLA_PT_DIR", "qsmla_testcase"))
 device_id = int(os.environ.get("QSMLA_DEVICE_ID", 0))
 testcase_files = sorted(testcase_path.glob("*.pt")) if testcase_path.is_dir() else []
 testcase_ids = [path.stem for path in testcase_files]
+
+ACL_OPT_DETERMINISTIC = 0
+ACL_BATCH_CONSISTENCY_LEVEL = 1
 
 Q_BATCH_TENSORS = (
     "q",
@@ -145,10 +149,10 @@ def _refresh_metadata_shape_fields(test_data):
             cu_seqlens_q[1:] - cu_seqlens_q[:-1]
         )
     metadata["max_seqlen_ori_kv"] = _max_tensor_value(
-        metadata.get("seqused_ori_kv"), metadata.get("max_seqlen_ori_kv", 0)
+        metadata.get("seqused_ori_kv")
     )
     metadata["max_seqlen_cmp_kv"] = _max_tensor_value(
-        metadata.get("seqused_cmp_kv"), metadata.get("max_seqlen_cmp_kv", 0)
+        metadata.get("seqused_cmp_kv")
     )
 
 
@@ -462,11 +466,26 @@ def run_batch_consistency_case(
 def batch_consistency_level(target_device_id=device_id):
     import torch_npu
     torch_npu.npu.set_device(target_device_id)
+
+    acl = ctypes.CDLL("libascendcl.so")
+    acl.aclrtGetSysParamOpt.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_int64)]
+    acl.aclrtGetSysParamOpt.restype = ctypes.c_int
+    acl.aclrtSetSysParamOpt.argtypes = [ctypes.c_int, ctypes.c_int64]
+    acl.aclrtSetSysParamOpt.restype = ctypes.c_int
+
     old_level = torch_npu.npu._get_deterministic_level()
-    torch_npu.npu.set_deterministic_level(3)
+    old_acl_level = ctypes.c_int64()
+    if acl.aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, ctypes.byref(old_acl_level)) != 0:
+        raise RuntimeError("failed to read ACL deterministic level")
+
+    torch_npu.npu.set_deterministic_level(1)
+    if acl.aclrtSetSysParamOpt(ACL_OPT_DETERMINISTIC, ACL_BATCH_CONSISTENCY_LEVEL) != 0:
+        torch_npu.npu.set_deterministic_level(old_level)
+        raise RuntimeError("failed to enable metadata batch consistency")
     try:
         yield
     finally:
+        acl.aclrtSetSysParamOpt(ACL_OPT_DETERMINISTIC, old_acl_level.value)
         torch_npu.npu.set_deterministic_level(old_level)
 
 

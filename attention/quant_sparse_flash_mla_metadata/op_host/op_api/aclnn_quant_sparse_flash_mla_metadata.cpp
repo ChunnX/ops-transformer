@@ -30,7 +30,7 @@
 #include "acl/acl_rt.h"
 #include "../quant_sparse_flash_mla_metadata_check.h"
 
-constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 1;
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +78,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
         OP_LOGW("aclnnQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
     }
     bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
+    OP_LOGI("[QSMLA_BC_ROUTE] metadata level=%lld enabled=%d.",
+            static_cast<long long>(batchConsistencyLevel), static_cast<int32_t>(isBatchConsistency));
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,

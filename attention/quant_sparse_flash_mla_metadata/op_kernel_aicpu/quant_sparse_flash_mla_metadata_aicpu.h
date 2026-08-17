@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef quant_sparse_flash_mla_metadata_AICPU_H
-#define quant_sparse_flash_mla_metadata_AICPU_H
+#ifndef QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
+#define QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
 
 #include <array>
 #include <string>
@@ -116,7 +116,6 @@ struct SplitResult {
     int64_t maxCost { 0 };            // 慢核开销
     uint32_t numOfFdHead { 0U };        // 归约任务数量
     uint32_t maxS2SplitNum { 0U };      // 单个归约任务最大分核数量
-    uint32_t maxS2GBaseNum { 0U };      // 单个核最大s2基本块数量
     uint32_t maxS2LoopNum { 0U };                      // 单个核最大s2计算轮次数量
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
@@ -257,6 +256,7 @@ private:
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
     bool ParamsCheck();
+    int32_t GetSumOfQuerySeq();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
@@ -265,8 +265,10 @@ private:
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
     uint32_t GetCmpS2SeqSize(uint32_t bIdx);
     uint64_t GetRevertS2Size(uint32_t bIdx);
-    uint32_t GetOriTopkLength();
-    uint32_t GetCmpTopkLength();
+    uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
+    uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
+    uint32_t GetOriTopkLength(uint32_t bsStride);
+    uint32_t GetCmpTopkLength(uint32_t bsStride);
     int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
