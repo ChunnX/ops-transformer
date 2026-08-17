@@ -1415,22 +1415,24 @@ TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeX_not_multiple_of_16)
 }
 
 // ============================================================================
-// 用例 32c: A2 blockShapeX 可不对齐128；仅要求 blockShapeY 为128倍数
+// 用例 32c: A2 blockShapeX 可不对齐128；仅要求 blockShapeY 为16倍数
 // ============================================================================
-TEST_F(block_sparse_attention_tiling_ut, A2_blockShape_not_multiple_of_128)
+TEST_F(block_sparse_attention_tiling_ut, A2_blockShapeX_not_multiple_of_128)
 {
     struct BlockSparseAttentionCompileInfo {
     } compileInfo;
     constexpr int64_t unalignedBlockShapeX = 64;
-    constexpr int64_t validBlockShapeY = 128;
+    constexpr int64_t validBlockShapeY = 64;
     int64_t blockShapeDataLocal[] = {unalignedBlockShapeX, validBlockShapeY};
     constexpr int64_t smallQBlockNum = (qSeqlen + unalignedBlockShapeX - 1) / unalignedBlockShapeX;
+    constexpr int64_t smallKvBlockNum = (kvSeqlen + validBlockShapeY - 1) / validBlockShapeY;
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
         {{{{tokenQ, numHeads, headDim}, {tokenQ, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{batch, numHeads, smallQBlockNum, kvBlockNum}, {batch, numHeads, smallQBlockNum, kvBlockNum}},
+         {{{batch, numHeads, smallQBlockNum, smallKvBlockNum},
+           {batch, numHeads, smallQBlockNum, smallKvBlockNum}},
           ge::DT_INT8,
           ge::FORMAT_ND},
          {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
@@ -1544,6 +1546,100 @@ TEST_F(block_sparse_attention_tiling_ut, A5_blockShapeY_gt256_not_multiple_of_12
          {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", 56, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 9050000030400002);
+}
+
+// ============================================================================
+// 用例 32f: A2 FP16 16对齐小粒度blockShape正常场景
+// ============================================================================
+TEST_F(block_sparse_attention_tiling_ut, A2_fp16_small_blockShape_16_64_tnd_normal)
+{
+    struct BlockSparseAttentionCompileInfo {
+    } compileInfo;
+    constexpr int64_t smallBlockShapeX = 16;
+    constexpr int64_t smallBlockShapeY = 64;
+    int64_t smallBlockShapeData[] = {smallBlockShapeX, smallBlockShapeY};
+    constexpr int64_t smallQBlockNum = (qSeqlen + smallBlockShapeX - 1) / smallBlockShapeX;
+    constexpr int64_t smallKvBlockNum = (kvSeqlen + smallBlockShapeY - 1) / smallBlockShapeY;
+    gert::TilingContextPara tilingContextPara(
+        "BlockSparseAttention",
+        {{{{tokenQ, numHeads, headDim}, {tokenQ, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{batch, numHeads, smallQBlockNum, smallKvBlockNum},
+           {batch, numHeads, smallQBlockNum, smallKvBlockNum}},
+          ge::DT_INT8,
+          ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, smallBlockShapeData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{tokenQ, numHeads, headDim}, {tokenQ, numHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{tokenQ, numHeads, 1}, {tokenQ, numHeads, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"qInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"kvInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"numKeyValueHeads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numKvHeads)},
+         {"maskType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
+         {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"blockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend910B", 64, 196608, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX);
+}
+
+// ============================================================================
+// 用例 32g: A2 BF16 16对齐且非64/128粒度blockShape正常场景
+// ============================================================================
+TEST_F(block_sparse_attention_tiling_ut, A2_bf16_small_blockShape_16_48_bnsd_normal)
+{
+    struct BlockSparseAttentionCompileInfo {
+    } compileInfo;
+    constexpr int64_t smallBlockShapeX = 16;
+    constexpr int64_t smallBlockShapeY = 48;
+    int64_t smallBlockShapeData[] = {smallBlockShapeX, smallBlockShapeY};
+    constexpr int64_t smallQBlockNum = (qSeqlen + smallBlockShapeX - 1) / smallBlockShapeX;
+    constexpr int64_t smallKvBlockNum = (kvSeqlen + smallBlockShapeY - 1) / smallBlockShapeY;
+    gert::TilingContextPara tilingContextPara(
+        "BlockSparseAttention",
+        {{{{batch, numHeads, qSeqlen, headDim}, {batch, numHeads, qSeqlen, headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{batch, numKvHeads, kvSeqlen, headDim}, {batch, numKvHeads, kvSeqlen, headDim}},
+          ge::DT_BF16,
+          ge::FORMAT_ND},
+         {{{batch, numKvHeads, kvSeqlen, headDim}, {batch, numKvHeads, kvSeqlen, headDim}},
+          ge::DT_BF16,
+          ge::FORMAT_ND},
+         {{{batch, numHeads, smallQBlockNum, smallKvBlockNum},
+           {batch, numHeads, smallQBlockNum, smallKvBlockNum}},
+          ge::DT_INT8,
+          ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, smallBlockShapeData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{batch, numHeads, qSeqlen, headDim}, {batch, numHeads, qSeqlen, headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{batch, numHeads, qSeqlen, 1}, {batch, numHeads, qSeqlen, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"qInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kvInputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"numKeyValueHeads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numKvHeads)},
+         {"maskType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(scaleValue)},
+         {"innerPrecise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"blockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2147483647)},
+         {"softmaxLseFlag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend910B", 64, 196608, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX);
 }
 
 // ============================================================================
