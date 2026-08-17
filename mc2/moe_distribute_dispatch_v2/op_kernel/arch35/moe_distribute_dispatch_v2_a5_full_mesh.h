@@ -143,6 +143,8 @@ private:
                                                 uint32_t toExpertId, uint32_t toExpertIndex);
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
                                          uint32_t srcTokenIndex, uint32_t toExpertIndex);
+    __aicore__ inline void WaitSendBuffer(uint32_t bufferId);
+    __aicore__ inline void RecordSendProfileMetrics();
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
@@ -292,6 +294,13 @@ private:
     uint32_t copyInAxisH_{0};
     uint32_t copyOutAxisH_{0};
     uint64_t totalUbSize_{0};
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    uint64_t sendPositionCycles_{0};
+    uint64_t sendInputCycles_{0};
+    uint64_t sendQuantCycles_{0};
+    uint64_t sendBufferWaitCycles_{0};
+    uint32_t sendTaskCount_{0};
+#endif
 
     // 统一上下文持有器：v2 走 HcclOpParam，v3 走 Mc2MoeContext
     ContextHolder ctx_;
@@ -496,26 +505,54 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::FillTriple(Loc
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitSendBuffer(uint32_t bufferId)
+{
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    uint64_t waitBeginCycle = AscendC::GetSystemCycle();
+#endif
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(bufferId);
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    sendBufferWaitCycles_ += AscendC::GetSystemCycle() - waitBeginCycle;
+#endif
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::TokenToExpertInQuant(
     GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue, uint32_t srcTokenIndex,
     uint32_t fillExpertIdx, uint32_t quantExpertIdx)
 {
     DataCopyPadParams copyPadParams{true, 0U, 0U, 0U};
     LocalTensor<XInType> xInTensor = inQueue.AllocTensor<XInType>();
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    uint64_t inputBeginCycle = AscendC::GetSystemCycle();
+#endif
     DataCopyPad(xInTensor, xGMTensor_[srcTokenIndex * axisH_], hCopyParams_, copyPadParams);
     inQueue.EnQue(xInTensor);
     xInTensor = inQueue.DeQue<XInType>();
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    sendInputCycles_ += AscendC::GetSystemCycle() - inputBeginCycle;
+    uint64_t quantBeginCycle = AscendC::GetSystemCycle();
+#endif
+#if FULLMESH_BYPASS_QUANT
+    LocalTensor<int32_t> bypassQuantTensor = tempTensor_.template ReinterpretCast<int32_t>();
+    Duplicate<int32_t>(bypassQuantTensor, 0, hOutSizeAlign_ / sizeof(int32_t));
+#else
     if constexpr (QuantMode > UNQUANT) {
         quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
     } else { // 非量化直转hifp8
         Cast(floatLocalTemp_, xInTensor, RoundMode::CAST_NONE, axisH_);
         Cast(tempTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
     }
+#endif
     inQueue.FreeTensor<XInType>(xInTensor);
     SyncFunc<AscendC::HardEvent::V_S>();
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    sendQuantCycles_ += AscendC::GetSystemCycle() - quantBeginCycle;
+#endif
     FillTriple(tempTensor_, srcTokenIndex, fillExpertIdx);
     SyncFunc<AscendC::HardEvent::S_V>();
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
+    WaitSendBuffer(syncFlagId_ % sendTokenBufNum_);
     LocalTensor<int32_t> tempTensorInt32 = tempTensor_.template ReinterpretCast<int32_t>();
     LocalTensor<int32_t> outTensorInt32 =
         (outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_]).template ReinterpretCast<int32_t>();
@@ -553,7 +590,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     FillTriple(xInTensor, srcTokenIndex, toExpertIndex);
     SyncFunc<AscendC::HardEvent::S_V>();
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
+    WaitSendBuffer(syncFlagId_ % sendTokenBufNum_);
     LocalTensor<int32_t> xInTensorInt32 = xInTensor.template ReinterpretCast<int32_t>();
     LocalTensor<int32_t> outTensorInt32 =
         (outTensor_[(syncFlagId_ % sendTokenBufNum_) * axisHCommu_]).template ReinterpretCast<int32_t>();
@@ -634,6 +671,9 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendToSharedEx
         if (isExpertMaskFlag_) {
             srcTokenIndex = validBsIndexTensor_.GetValue(sendTokenIndex);
         }
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+        ++sendTaskCount_;
+#endif
         if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t fillExpertIdx = axisK_ + toSharedExpertIndex;
             uint32_t quantExpertIdx = toSharedExpertIndex;
@@ -643,7 +683,7 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendToSharedEx
         }
     }
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        WaitSendBuffer(i % sendTokenBufNum_);
     }
 }
 
@@ -676,7 +716,13 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendToMoeExper
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
 
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+        uint64_t positionBeginCycle = AscendC::GetSystemCycle();
+#endif
         CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+        sendPositionCycles_ += AscendC::GetSystemCycle() - positionBeginCycle;
+#endif
 
         dstWinGMTensor.SetGlobalBuffer(
             (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
@@ -689,6 +735,9 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendToMoeExper
                                                                                       expertId % moeExpertNumPerRank_) +
                                                                dstTokenIdx * hCommuSize_));
         }
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+        ++sendTaskCount_;
+#endif
         if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t quantExpertIdx = expertId + sharedExpertNum_;
             TokenToExpertInQuant(dstWinGMTensor, inQueue, tokenId, topKId, quantExpertIdx);
@@ -698,8 +747,22 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendToMoeExper
     }
 
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        WaitSendBuffer(i % sendTokenBufNum_);
     }
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::RecordSendProfileMetrics()
+{
+#if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
+    profiler_.Mark(EVT_SEND_PROFILE_MODE, FULLMESH_BYPASS_QUANT != 0 ? 1U : 0U);
+    profiler_.Mark(EVT_SEND_TASK_COUNT, sendTaskCount_);
+    profiler_.Mark(EVT_SEND_POSITION_CYCLES, static_cast<uint32_t>(sendPositionCycles_));
+    profiler_.Mark(EVT_SEND_INPUT_CYCLES, static_cast<uint32_t>(sendInputCycles_));
+    profiler_.Mark(EVT_SEND_QUANT_CYCLES, static_cast<uint32_t>(sendQuantCycles_));
+    profiler_.Mark(EVT_SEND_BUFFER_WAIT_CYCLES, static_cast<uint32_t>(sendBufferWaitCycles_));
+#endif
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -799,6 +862,7 @@ MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::AllToAllDispat
         SendToMoeExpert(inQueue, outBuf);
     }
     profiler_.Mark(EVT_TRANSFER_TOKENS_END, activeMaskBsCnt_);
+    RecordSendProfileMetrics();
 }
 
 template <TemplateMC2A5FullMeshTypeClass>

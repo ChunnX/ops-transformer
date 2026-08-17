@@ -12,7 +12,7 @@
 | Core counts | 64 | 72 个槽，每槽 64 字节；槽首 `uint32_t` 是该核有效记录数 |
 | Records | 4672 | 72 核 × 32 条 × 16 字节；每条为 `{uint32 eventId, uint32 payload, uint64 cycle}` |
 
-`payload` 含义随事件变化：kernel begin/end 的高 16 位为 token 发送核数、低 16 位为 CumSum 核数；其他阶段记录该阶段处理的专家数、状态数或有效专家数。
+`payload` 含义随事件变化：kernel begin/end 的高 16 位为 token 发送核数、低 16 位为 CumSum 核数；其他阶段记录该阶段处理的专家数、状态数或有效专家数。格式版本 3 新增发送侧累计指标，分别记录量化旁路模式、发送任务数、发送位置计算、BF16 输入搬运、FP8 量化和发送 buffer 等待的累计 cycle。
 
 可视化按以下关键阶段拆分：
 
@@ -60,7 +60,22 @@ python3 fullmesh_v2_visualize.py fullmesh_v2_prof_rank*.bin --output-dir prof_ou
 
 - `fullmesh_v2_events.csv`：每核原始事件；
 - `fullmesh_v2_stages.csv`：配对后的阶段耗时；
+- `fullmesh_v2_send_summary.csv`：所有输入 rank 中 `TRANSFER_TOKENS` 最慢发送核的累计指标；
 - `fullmesh_v2_timeline.svg`：按 rank/core 分行的静态甘特图，顶部图例说明各颜色对应的执行阶段；
 - `fullmesh_v2_trace.json`：可由 Chrome `chrome://tracing` 或 MindStudio Insight 打开，时间戳和时长单位为微秒；点开事件可查看阶段说明和 payload。
 
 多 rank 默认各自以最早事件对齐到 0；传 `--keep-cycle-origin` 可保留设备 cycle 原点。
+
+脚本在读取到格式版本 3 的发送累计指标时，终端只打印表头和最慢发送核的一行数据：
+
+```text
+mode,rank,core_id,tasks,transfer_cycles,position_cycles,input_cycles,quant_cycles,buffer_wait_cycles
+normal,0,12,...
+```
+
+## 量化旁路对照
+
+正常量化保持 `FULLMESH_BYPASS_QUANT=0`。诊断量化关键路径时，使用编译定义
+`FULLMESH_BYPASS_QUANT=1` 重新编译；该模式保留 BF16 输入搬运、FP8 通信布局、三元组、flag、格式重排和远端发送，只将量化计算替换为 FP8 空数据填充。
+
+旁路模式的业务输出数值无效，只能用于性能诊断，不能进行精度校验或将输出交给后续算子。正常和旁路版本应使用相同输入、warmup 和循环次数，分别运行一次，并对比脚本打印的两行摘要。

@@ -22,6 +22,12 @@
 #define MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING 1
 #endif
 
+// Debug-only switch. Keep the BF16 input and FP8 communication path unchanged,
+// but replace quantization with zero fill.
+#ifndef FULLMESH_BYPASS_QUANT
+#define FULLMESH_BYPASS_QUANT 0
+#endif
+
 namespace MoeDistributeDispatchV2FullMeshProfiler {
 constexpr uint32_t PROFILER_MAX_CORE_NUM = 72U;
 constexpr uint32_t PROFILER_MAX_EVENT_NUM = 32U;
@@ -34,7 +40,7 @@ constexpr uint32_t PROFILER_DATA_OFFSET =
 constexpr uint64_t PROFILER_BUFFER_SIZE =
     PROFILER_DATA_OFFSET + PROFILER_MAX_CORE_NUM * PROFILER_MAX_EVENT_NUM * PROFILER_RECORD_SIZE;
 constexpr uint32_t PROFILER_MAGIC = 0x50524F46U;
-constexpr uint32_t PROFILER_FORMAT_VERSION = 2U;
+constexpr uint32_t PROFILER_FORMAT_VERSION = 3U;
 constexpr uint32_t PROFILER_LAYOUT_AIV_ONLY = 1U;
 constexpr uint32_t PROFILER_OVERFLOW_EVENT = 0xFFFFU;
 
@@ -82,6 +88,12 @@ enum FullMeshV2ProfilerEvent : uint32_t {
     EVT_NO_ASSIGNED_STATUS_END = 0x0151U,
     EVT_NO_VALID_EXPERT_BEGIN = 0x0160U,
     EVT_NO_VALID_EXPERT_END = 0x0161U,
+    EVT_SEND_PROFILE_MODE = 0x0170U,
+    EVT_SEND_TASK_COUNT = 0x0171U,
+    EVT_SEND_POSITION_CYCLES = 0x0172U,
+    EVT_SEND_INPUT_CYCLES = 0x0173U,
+    EVT_SEND_QUANT_CYCLES = 0x0174U,
+    EVT_SEND_BUFFER_WAIT_CYCLES = 0x0175U,
     EVT_KERNEL_END = 0x00FFU,
 };
 
