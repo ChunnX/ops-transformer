@@ -80,6 +80,7 @@ namespace RfaKenelCommon {
 
     constexpr uint32_t Q_TILE_CEIL = 128;
     constexpr uint32_t MAX_KV_STACK_LEN = 512;
+    constexpr uint32_t MAX_CORE_NUM = 25; //A2最大核数量
 
     template <typename T>
     __aicore__ inline T AlignUp(T a, T b)
