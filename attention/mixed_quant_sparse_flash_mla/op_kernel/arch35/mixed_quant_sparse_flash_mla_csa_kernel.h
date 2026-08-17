@@ -419,19 +419,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    if ASCEND_IS_AIV {
-        bmm2Buffers.Get().SetCrossCore();
-    }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    if ASCEND_IS_AIV {
-        bmm1Buffers.Get().SetCrossCore();
-        bmm1Buffers.Get().SetCrossCore();
-    }
-
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
     uint64_t totalOffset = IS_SPLIT_G ? static_cast<uint64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
                                         static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
@@ -546,6 +538,15 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
+    if ASCEND_IS_AIV {
+        bmm1Buffers.Get().SetCrossCore();
+        bmm1Buffers.Get().SetCrossCore();
+        bmm2Buffers.Get().SetCrossCore();
+        this->vecBlock.AllocEventID(constInfo);
+    } else {
+        this->cubeBlock.AllocEventID();
+    }
+
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -558,6 +559,20 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                     CrossCoreWaitFlag<0, PIPE_MTE2>(15);
                 }
             }
+        }
+        if ASCEND_IS_AIV {
+            this->vecBlock.FreeEventID(constInfo);
+        } else {
+            this->cubeBlock.FreeEventID();
+            bmm1Buffers.Get().WaitCrossCore();
+            bmm1Buffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
+        }
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            intraCoreCombineBuffer.Uninit(fdStagingBufferManager);
+            crossCoreCombineBuffer.Uninit(fdStagingBufferManager);
+        } else {
+            fdStagingBuffer.Uninit(fdStagingBufferManager);
         }
         return;
     }
@@ -712,6 +727,21 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 CrossCoreWaitFlag<0, PIPE_MTE2>(15);
             }
         }
+    }
+
+    if ASCEND_IS_AIV {
+        this->vecBlock.FreeEventID(constInfo);
+    } else {
+        this->cubeBlock.FreeEventID();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
+    }
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        intraCoreCombineBuffer.Uninit(fdStagingBufferManager);
+        crossCoreCombineBuffer.Uninit(fdStagingBufferManager);
+    } else {
+        fdStagingBuffer.Uninit(fdStagingBufferManager);
     }
 }
 

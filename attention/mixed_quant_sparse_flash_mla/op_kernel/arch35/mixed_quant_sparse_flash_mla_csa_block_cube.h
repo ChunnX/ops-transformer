@@ -80,6 +80,8 @@ public:
                                        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
                                        ConstInfo &constInfo);
+    __aicore__ inline void AllocEventID();
+    __aicore__ inline void FreeEventID();
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
@@ -163,7 +165,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
     mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
     tPipe->InitBuffer(mmL0CBuffers, BUFFER_SIZE_256K);
     mmL0CTensor = mmL0CBuffers.Get<T>();
+}
 
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::AllocEventID()
+{
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId);
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId);
@@ -172,6 +178,21 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEventID()
+{
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId);
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
+    mmL0ABuffers.Uninit(l0aBufferManager);
+    mmL0BBuffers.Uninit(l0bBufferManager);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
