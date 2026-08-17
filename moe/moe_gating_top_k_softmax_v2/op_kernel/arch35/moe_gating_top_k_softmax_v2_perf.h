@@ -44,35 +44,34 @@ constexpr MicroAPI::CastTrait castTraitINT82INT32 = {
     MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
 template <typename T, int32_t renorm>
-class MoeGatingTopKSoftmaxV2Perf
-{
+class MoeGatingTopKSoftmaxV2Perf {
 public:
     __aicore__ inline MoeGatingTopKSoftmaxV2Perf(){};
     __aicore__ inline void Init(
         GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut, GM_ADDR softmaxOut, GM_ADDR workspace,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         // init gm inputs
         int64_t formerblockLength = tilingData->blockFormer * tilingData->col;
         this->softmaxFlag = tilingData->softmaxFlag;
         int64_t blockLength =
             (GetBlockIdx() != tilingData->blockNum - 1) ? formerblockLength : tilingData->blockTail * tilingData->col;
-        gatingTensorGM.SetGlobalBuffer((__gm__ T*)gating + formerblockLength * GetBlockIdx(), blockLength);
+        gatingTensorGM.SetGlobalBuffer((__gm__ T *)gating + formerblockLength * GetBlockIdx(), blockLength);
         if (finished != nullptr) {
             exitFinished = true;
             int64_t blockLengthFinished =
                 (GetBlockIdx() != tilingData->blockNum - 1) ? tilingData->blockFormer : tilingData->blockTail;
             finishedTensorGM.SetGlobalBuffer(
-                (__gm__ bool*)finished + tilingData->blockFormer * GetBlockIdx(), blockLengthFinished);
+                (__gm__ bool *)finished + tilingData->blockFormer * GetBlockIdx(), blockLengthFinished);
         }
         // init gm outputs
         int64_t outFormerBlockLength = tilingData->blockFormer * tilingData->k;
         int64_t outBlockLength =
             (GetBlockIdx() != tilingData->blockNum - 1) ? outFormerBlockLength : tilingData->blockTail * tilingData->k;
-        outTensorGM.SetGlobalBuffer((__gm__ T*)out + outFormerBlockLength * GetBlockIdx(), outBlockLength);
+        outTensorGM.SetGlobalBuffer((__gm__ T *)out + outFormerBlockLength * GetBlockIdx(), outBlockLength);
         indicesOutTensorGM.SetGlobalBuffer(
-            (__gm__ int32_t*)indicesOut + outFormerBlockLength * GetBlockIdx(), outBlockLength);
-        softmaxResultGM.SetGlobalBuffer((__gm__ float*)softmaxOut + formerblockLength * GetBlockIdx(), blockLength);
+            (__gm__ int32_t *)indicesOut + outFormerBlockLength * GetBlockIdx(), outBlockLength);
+        softmaxResultGM.SetGlobalBuffer((__gm__ float *)softmaxOut + formerblockLength * GetBlockIdx(), blockLength);
         // init queues
         int32_t bufferSize = tilingData->bufferElemSize * sizeof(int32_t);
         pipe.InitBuffer(gatingQueue, DB_BUFFER_NUM, tilingData->bufferElemSize * sizeof(T));
@@ -84,7 +83,7 @@ public:
         pipe.InitBuffer(softmaxResultOutQueue, 1, bufferSize);
     }
 
-    __aicore__ inline void Process(const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+    __aicore__ inline void Process(const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         int32_t ubLoopCount = (GetBlockIdx() == tilingData->blockNum - 1) ? tilingData->ubLoopOfTailBlock :
                                                                             tilingData->ubLoopOfFormerBlock;
@@ -104,7 +103,7 @@ public:
 private:
     __aicore__ inline void CopyIn(
         const int32_t OuterIdx, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         LocalTensor<T> gatingLocal = gatingQueue.AllocTensor<T>();
         DataCopyPadParams padParams{false, 0, 0, 0};
@@ -136,8 +135,8 @@ private:
     }
 
     __aicore__ inline void Rearrange(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dst, const LocalTensor<float> &src, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         // softmax is 32 bytes aligned while topk must be 32 element aligned
         DataCopyParams intriParams;
@@ -149,8 +148,8 @@ private:
     }
 
     __aicore__ inline void DuplicatePad(
-        const LocalTensor<float>& dst, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dst, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         if (tilingData->colAlign - tilingData->col != 0) {
             uint32_t tmp = 0xFF800000; // -inf
@@ -159,16 +158,16 @@ private:
                     << (SORT_UNIT - (tilingData->colAlign - tilingData->col)),
                 0};
             Duplicate(
-                dst[tilingData->colAlign - SORT_UNIT], *((float*)&tmp), mask, curRowsNum, 1,
+                dst[tilingData->colAlign - SORT_UNIT], *((float *)&tmp), mask, curRowsNum, 1,
                 tilingData->colAlign / CONSTANT_EIGHT);
         }
     }
 
     __aicore__ inline void InitIndex(
-        const LocalTensor<int32_t>& dst, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<int32_t> &dst, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
-        __ubuf__ int32_t* ubDst = (__ubuf__ int32_t*)dst.GetPhyAddr();
+        __ubuf__ int32_t *ubDst = (__ubuf__ int32_t *)dst.GetPhyAddr();
         uint16_t loops = curRowsNum;
         uint16_t repeatTime = Ops::Base::CeilDiv(tilingData->colAlign, static_cast<uint32_t>(REPEAT_B32_SIZE));
 
@@ -181,26 +180,26 @@ private:
                 mask = MicroAPI::UpdateMask<int32_t>(sregMask);
                 MicroAPI::Arange(vreg, i * REPEAT_B32_SIZE);
                 for (uint16_t j = 0; j < loops; j++) {
-                    MicroAPI::DataCopy(ubDst + i * REPEAT_B32_SIZE + j * tilingData->colAlign, vreg, mask);
+                    MicroAPI::StoreAlign(ubDst + i * REPEAT_B32_SIZE + j * tilingData->colAlign, vreg, mask);
                 }
             }
         }
     }
 
     __aicore__ inline void SortFP32Perf(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src0, const LocalTensor<int32_t>& src1,
-        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dst, const LocalTensor<float> &src0, const LocalTensor<int32_t> &src1,
+        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         Sort32(dst, src0, src1.ReinterpretCast<uint32_t>(), tilingData->colAlign * curRowsNum / SORT_UNIT);
     }
 
     __aicore__ inline void MergeSortFP32PerfCopy(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src, const int32_t curRowsNum,
+        const LocalTensor<float> &dst, const LocalTensor<float> &src, const int32_t curRowsNum,
         const int32_t srcColsNum, const int32_t dstColsNum)
     {
         if (srcColsNum != dstColsNum * MERGE_LIST_MAX_NUM) {
             uint32_t tmp = 0xFF800000; // -inf
-            Duplicate(dst, *((float*)&tmp), dstColsNum * CONSTANT_TWO * curRowsNum);
+            Duplicate(dst, *((float *)&tmp), dstColsNum * CONSTANT_TWO * curRowsNum);
         }
         DataCopyParams intriParams;
         intriParams.blockCount = curRowsNum;
@@ -214,7 +213,7 @@ private:
     }
 
     __aicore__ inline void MergeSortFP32PerfBlockMerge(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src, const int32_t repeatTimes)
+        const LocalTensor<float> &dst, const LocalTensor<float> &src, const int32_t repeatTimes)
     {
         MrgSort4Info params;
         MrgSortSrcList<float> srcList;
@@ -233,7 +232,7 @@ private:
     }
 
     __aicore__ inline void MergeSortFP32Perf2To1(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src, const LocalTensor<float>& tmpBuffer,
+        const LocalTensor<float> &dst, const LocalTensor<float> &src, const LocalTensor<float> &tmpBuffer,
         const int32_t curRowsNum, const int32_t tailOffset)
     {
         // former + tail -> 1
@@ -260,8 +259,8 @@ private:
     }
 
     __aicore__ inline void MergeSortFP32Perf(
-        const LocalTensor<float>& dst, const LocalTensor<float>& src, const LocalTensor<float>& tmpBuffer,
-        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dst, const LocalTensor<float> &src, const LocalTensor<float> &tmpBuffer,
+        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         if (tilingData->colAlign <= MERGE_UNIT * MERGE_LIST_MAX_NUM) {
             int32_t curColsNum = tilingData->colAlign;
@@ -290,7 +289,7 @@ private:
             int32_t tailOffset = MERGE_UNIT * CONSTANT_TWO * curRowsNum;
             if (tailColsNum != dstColsNum * MERGE_LIST_MAX_NUM) {
                 uint32_t tmp = 0xFF800000; // -inf
-                Duplicate(tmpBuffer[tailOffset], *((float*)&tmp), dstColsNum * CONSTANT_TWO * curRowsNum);
+                Duplicate(tmpBuffer[tailOffset], *((float *)&tmp), dstColsNum * CONSTANT_TWO * curRowsNum);
             }
             intriParams.dstStride = (dstColsNum - BLOCK_B32_SIZE) * CONSTANT_TWO / CONSTANT_EIGHT;
             for (int32_t i = 0; i < tailColsNum / SORT_UNIT; i++) {
@@ -315,12 +314,12 @@ private:
     }
 
     __aicore__ inline void ExtractKFP32Perf(
-        const LocalTensor<float>& dstValues, const LocalTensor<int32_t>& dstIndices, const LocalTensor<int32_t>& src,
-        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dstValues, const LocalTensor<int32_t> &dstIndices, const LocalTensor<int32_t> &src,
+        const int32_t curRowsNum, const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
-        __ubuf__ float* ubValue = (__ubuf__ float*)dstValues.GetPhyAddr();
-        __ubuf__ int32_t* ubIndex = (__ubuf__ int32_t*)dstIndices.GetPhyAddr();
-        __ubuf__ int32_t* ubSrc = (__ubuf__ int32_t*)src.GetPhyAddr();
+        __ubuf__ float *ubValue = (__ubuf__ float *)dstValues.GetPhyAddr();
+        __ubuf__ int32_t *ubIndex = (__ubuf__ int32_t *)dstIndices.GetPhyAddr();
+        __ubuf__ int32_t *ubSrc = (__ubuf__ int32_t *)src.GetPhyAddr();
         uint16_t loops = curRowsNum;
         uint32_t sregMask;
 
@@ -328,36 +327,36 @@ private:
         {
             MicroAPI::RegTensor<int32_t> vreg0;
             MicroAPI::RegTensor<int32_t> vreg1;
-            MicroAPI::UnalignReg ureg0;
-            MicroAPI::UnalignReg ureg1;
+            MicroAPI::UnalignRegForStore ureg0;
+            MicroAPI::UnalignRegForStore ureg1;
             MicroAPI::MaskReg mask;
 
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopy<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, ubSrc + i * VL_FP32);
+                MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, ubSrc + i * VL_FP32);
                 if constexpr (renorm == 0) {
-                    MicroAPI::DataCopyUnAlign(ubValue, (MicroAPI::RegTensor<float>&)vreg0, ureg0, tilingData->k);
+                    MicroAPI::StoreUnAlign(ubValue, (MicroAPI::RegTensor<float> &)vreg0, ureg0, tilingData->k);
                 } else {
                     sregMask = tilingData->kAlign;
                     mask = MicroAPI::UpdateMask<float>(sregMask);
-                    MicroAPI::DataCopy(ubValue + i * tilingData->kAlign, (MicroAPI::RegTensor<float>&)vreg0, mask);
+                    MicroAPI::StoreAlign(ubValue + i * tilingData->kAlign, (MicroAPI::RegTensor<float> &)vreg0, mask);
                 }
-                MicroAPI::DataCopyUnAlign(ubIndex, vreg1, ureg1, tilingData->k);
+                MicroAPI::StoreUnAlign(ubIndex, vreg1, ureg1, tilingData->k);
             }
             if constexpr (renorm == 0) {
-                MicroAPI::DataCopyUnAlignPost(ubValue, ureg0, 0);
+                MicroAPI::StoreUnAlignPost(ubValue, ureg0, 0);
             }
-            MicroAPI::DataCopyUnAlignPost(ubIndex, ureg1, 0);
+            MicroAPI::StoreUnAlignPost(ubIndex, ureg1, 0);
         }
     }
 
     __aicore__ inline void UpdateIndices(
-        const LocalTensor<int32_t>& src, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<int32_t> &src, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         LocalTensor<bool> finishedLocal = finishedQueue.DeQue<bool>();
-        __ubuf__ int8_t* finishedUb = (__ubuf__ int8_t*)finishedLocal.GetPhyAddr();
-        __ubuf__ int32_t* srcUb = (__ubuf__ int32_t*)src.GetPhyAddr();
-        __ubuf__ int32_t* dstUb = (__ubuf__ int32_t*)src.GetPhyAddr();
+        __ubuf__ int8_t *finishedUb = (__ubuf__ int8_t *)finishedLocal.GetPhyAddr();
+        __ubuf__ int32_t *srcUb = (__ubuf__ int32_t *)src.GetPhyAddr();
+        __ubuf__ int32_t *dstUb = (__ubuf__ int32_t *)src.GetPhyAddr();
 
         uint16_t loops = curRowsNum;
         __VEC_SCOPE__
@@ -366,9 +365,9 @@ private:
             MicroAPI::RegTensor<int32_t> vreg1;
             MicroAPI::RegTensor<int32_t> vreg2;
             MicroAPI::RegTensor<int32_t> vregSrc;
-            MicroAPI::UnalignReg uregX;
-            MicroAPI::UnalignReg uregSrc;
-            MicroAPI::UnalignReg uregDst;
+            MicroAPI::UnalignRegForLoad uregX;
+            MicroAPI::UnalignRegForLoad uregSrc;
+            MicroAPI::UnalignRegForStore uregDst;
             MicroAPI::MaskReg preg1;
             MicroAPI::MaskReg preg2;
 
@@ -377,26 +376,26 @@ private:
             preg1 = MicroAPI::UpdateMask<int8_t>(finCount);
             preg2 = MicroAPI::UpdateMask<int32_t>(srcCount);
 
-            MicroAPI::DataCopyUnAlignPre(uregX, finishedUb);
-            MicroAPI::DataCopyUnAlignPre(uregSrc, srcUb);
+            MicroAPI::LoadUnAlignPre(uregX, finishedUb);
+            MicroAPI::LoadUnAlignPre(uregSrc, srcUb);
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopyUnAlign(vreg0, uregX, finishedUb, 1);
-                MicroAPI::DataCopyUnAlign(vregSrc, uregSrc, srcUb, tilingData->k);
+                MicroAPI::LoadUnAlign(vreg0, uregX, finishedUb, 1);
+                MicroAPI::LoadUnAlign(vregSrc, uregSrc, srcUb, tilingData->k);
                 MicroAPI::Cast<int32_t, int8_t, castTraitINT82INT32>(vreg1, vreg0, preg1);
                 MicroAPI::Muls(vreg1, vreg1, int32_t(tilingData->col), preg1);
                 MicroAPI::Duplicate(vreg2, vreg1, preg2);
                 MicroAPI::Max(vreg2, vreg2, vregSrc, preg2);
-                MicroAPI::DataCopyUnAlign(dstUb, vreg2, uregDst, tilingData->k);
+                MicroAPI::StoreUnAlign(dstUb, vreg2, uregDst, tilingData->k);
             }
-            MicroAPI::DataCopyUnAlignPost(dstUb, uregDst, 0);
+            MicroAPI::StoreUnAlignPost(dstUb, uregDst, 0);
         }
         finishedQueue.FreeTensor(finishedLocal);
     }
 
     __aicore__ inline void TopKFP32Perf(
-        const LocalTensor<float>& dstValues, const LocalTensor<int32_t>& dstIndices, const LocalTensor<float>& src,
-        const LocalTensor<float>& tmpBuffer, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<float> &dstValues, const LocalTensor<int32_t> &dstIndices, const LocalTensor<float> &src,
+        const LocalTensor<float> &tmpBuffer, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         if (tilingData->k == 1 && tilingData->colBytesAlign <= REDUCE_MAX_SIZE) {
             WholeReduceMax(
@@ -418,8 +417,8 @@ private:
     }
 
     __aicore__ inline void CopyOutSoftmax(
-        const int32_t outerIdx, const int32_t curRowsNum, LocalTensor<float>& softmaxResultOutLocal,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const int32_t outerIdx, const int32_t curRowsNum, LocalTensor<float> &softmaxResultOutLocal,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         softmaxResultOutQueue.EnQue<float>(softmaxResultOutLocal);
         softmaxResultOutLocal = softmaxResultOutQueue.DeQue<float>();
@@ -439,29 +438,29 @@ private:
     }
 
     __aicore__ inline void GatherSoftmaxResult(
-        const LocalTensor<int32_t>& softmaxResult, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const LocalTensor<int32_t> &softmaxResult, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
-        __ubuf__ float* ubSrc = (__ubuf__ float*)softmaxResult.GetPhyAddr();
-        __ubuf__ float* ubDst = (__ubuf__ float*)softmaxResult.GetPhyAddr();
+        __ubuf__ float *ubSrc = (__ubuf__ float *)softmaxResult.GetPhyAddr();
+        __ubuf__ float *ubDst = (__ubuf__ float *)softmaxResult.GetPhyAddr();
         uint16_t loops = curRowsNum;
 
         __VEC_SCOPE__
         {
             MicroAPI::RegTensor<float> vregx;
-            MicroAPI::UnalignReg ureg;
+            MicroAPI::UnalignRegForStore ureg;
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopy(vregx, ubSrc + i * BLOCK_B32_SIZE);
-                MicroAPI::DataCopyUnAlign(ubDst, vregx, ureg, tilingData->k);
+                MicroAPI::LoadAlign(vregx, ubSrc + i * BLOCK_B32_SIZE);
+                MicroAPI::StoreUnAlign(ubDst, vregx, ureg, tilingData->k);
             }
-            MicroAPI::DataCopyUnAlignPost(ubDst, ureg, 0);
+            MicroAPI::StoreUnAlignPost(ubDst, ureg, 0);
         }
     }
 
     __aicore__ inline void ComputeRenorm(
-        LocalTensor<T>& gatingLocal, const LocalTensor<int32_t>& topKOutsLocal,
-        const LocalTensor<float>& tmpTensorLocal, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        LocalTensor<T> &gatingLocal, const LocalTensor<int32_t> &topKOutsLocal,
+        const LocalTensor<float> &tmpTensorLocal, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         SoftMaxShapeInfo softmaxShapeInfo;
         softmaxShapeInfo.srcK =
@@ -505,7 +504,7 @@ private:
 
     __aicore__ inline void ComputePhase1(
         const int32_t OuterIdx, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         LocalTensor<T> gatingLocal = gatingQueue.DeQue<T>();
         LocalTensor<int32_t> topKOutsLocal = topKOutsQueue.AllocTensor<int32_t>();
@@ -528,11 +527,11 @@ private:
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
                 TopKFP32Perf(topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
-                    softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
+                             softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
             } else {
                 if (tilingData->col < CONSTANT_EIGHT) {
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
-                        {1, 1, 1, 1});
+                         {1, 1, 1, 1});
                 } else {
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
@@ -544,9 +543,9 @@ private:
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
                 TopKFP32Perf(topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
-                    softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
+                             softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
                 Cast(topKOutsLocal.ReinterpretCast<T>(), topKOutsLocal.ReinterpretCast<float>(), RoundMode::CAST_RINT,
-                    curRowsNum * tilingData->k);
+                     curRowsNum * tilingData->k);
             }
         } else {
             ComputeRenorm(gatingLocal, topKOutsLocal, tmpTensorLocal, curRowsNum, tilingData);
@@ -557,7 +556,7 @@ private:
 
     __aicore__ inline void CopyOutPhase0(
         const int32_t OuterIdx, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData *__restrict tilingData)
     {
         LocalTensor<int32_t> topKOutsLocal = topKOutsQueue.DeQue<int32_t>();
         int64_t gmIndex = tilingData->ubFormer * tilingData->k * OuterIdx;

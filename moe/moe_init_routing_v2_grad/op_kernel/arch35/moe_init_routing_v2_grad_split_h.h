@@ -19,10 +19,9 @@
 
 namespace MoeInitRoutingV2Grad {
 template <typename T, int64_t Mode = 0>
-class MoeInitRoutingV2GradSplitHCompute
-{
+class MoeInitRoutingV2GradSplitHCompute {
 public:
-    __aicore__ inline MoeInitRoutingV2GradSplitHCompute(const MoeInitRoutingV2GradRegbaseSplitHTilingData* tilingData)
+    __aicore__ inline MoeInitRoutingV2GradSplitHCompute(const MoeInitRoutingV2GradRegbaseSplitHTilingData *tilingData)
     {
         this->n = tilingData->n;
         this->kUbFactor = tilingData->kUbFactor;
@@ -34,14 +33,14 @@ public:
         this->numBlocks = tilingData->numBlocks;
     }
 
-    __aicore__ inline void Init(GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, TPipe* tPipe)
+    __aicore__ inline void Init(GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, TPipe *tPipe)
     {
         this->blockIdx = GetBlockIdx();
 
         int64_t outputGmOffset = this->hBlockFactor * this->blockIdx; // 输出stride = H
-        inputGm.SetGlobalBuffer((__gm__ T*)gradExpandedX);
-        indexGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-        outputGm.SetGlobalBuffer((__gm__ T*)gradX + outputGmOffset);
+        inputGm.SetGlobalBuffer((__gm__ T *)gradExpandedX);
+        indexGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+        outputGm.SetGlobalBuffer((__gm__ T *)gradX + outputGmOffset);
         auto hUbAlignFactor = Ops::Base::CeilAlign(static_cast<int64_t>(this->hUbFactor * sizeof(T)), BLOCK_SIZE);
         tPipe->InitBuffer(inputQueue, DOUBLE_BUFFER, this->kUbFactor * this->k * hUbAlignFactor);
         tPipe->InitBuffer(outputQueue, 1, this->kUbFactor * hUbAlignFactor);
@@ -123,8 +122,8 @@ private:
     {
         LocalTensor<T> inputUb = inputQueue.template DeQue<T>();
         LocalTensor<T> outputUb = outputQueue.AllocTensor<T>();
-        __local_mem__ T* inputUbAddr = (__local_mem__ T*)inputUb.GetPhyAddr();
-        __local_mem__ T* outputUbAddr = (__local_mem__ T*)outputUb.GetPhyAddr();
+        __ubuf__ T *inputUbAddr = (__ubuf__ T *)inputUb.GetPhyAddr();
+        __ubuf__ T *outputUbAddr = (__ubuf__ T *)outputUb.GetPhyAddr();
         SequenceReduceSum<T, T, true>(
             inputUbAddr, outputUbAddr, currkUbFactor, this->k, currSubhLen, currSubhAlign, this->k);
         inputQueue.FreeTensor(inputUb);
