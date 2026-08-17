@@ -267,6 +267,10 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     // 计算地址偏移所需的参数
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+    if constexpr (IsFp4<AType>()) {
+        // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
+        baseParams_.rankDataBytes >>= 1;
+    }
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>

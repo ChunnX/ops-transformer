@@ -448,6 +448,13 @@ protected:
                 ("The K dimension must be divisible by " + std::to_string(MX_SCALE_ALIGN) + ".").c_str());
             return false;
         }
+        if ((x1K / MX_SCALE_ALIGN) % 2 != 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "x1_k",
+                ("Ka=" + std::to_string(x1K)).c_str(),
+                ("CeilDiv(Ka, " + std::to_string(MX_SCALE_ALIGN) + ") must be even.").c_str());
+            return false;
+        }
         if (x2K != x1K * worldSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName, "x2_k",
@@ -620,14 +627,29 @@ protected:
 
         auto *td = reinterpret_cast<allToAllMatmulTilingData *>(rt->GetData());
 
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-        tilingEngine.SetPlatformInfo(quantPlatformInfo_);
-        tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
+        // MXFP4 使用打包存储(2 个 fp4 占 1 字节)，tiling 引擎需要按 fp4 数据类型
+        // 推导 baseK 块大小(256 vs 128)与 L1 布局，其余 dtype 均按 fp8 处理。
+        auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+            tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
+        } else {
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+            tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
+        }
 
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
 
         apace::CommTilingBase::GetCommTilingData(m_, n_, ka, mm, td->commTilingData, td->scaleCommTilingData);
+
+        // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
+        // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
+        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+            td->commTilingData.nonSplitAxisSize = ka / 2;
+        }
 
         OP_LOGI(opName,
                 "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
