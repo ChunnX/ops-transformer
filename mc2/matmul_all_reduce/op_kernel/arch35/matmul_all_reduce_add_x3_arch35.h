@@ -137,14 +137,12 @@ public:
     __aicore__ inline MatmulAllReduceAddBiasX3() {}
 
     __aicore__ inline void Init(GM_ADDR mmOutput, GM_ADDR bias, GM_ADDR add, uint64_t totalElements,
-                                uint64_t nValue, uint64_t tileCnt, TPipe *tPipe, uint32_t coreNum, bool hasX3)
+                                uint64_t nValue, uint64_t tileCnt, TPipe *tPipe, uint32_t coreNum, bool hasX3,
+                                uint32_t tileN)
     {
         pipe_ = tPipe;
         nValue_ = nValue;
         hasX3_ = hasX3;
-        // Align nValue so that each UB row stride (alignedN_ * sizeof(T)) is 32-byte aligned.
-        // This ensures per-row Add start addresses (row * alignedN_ * sizeof(T)) are always 32-byte aligned,
-        // fixing errcode 340 "The address for VEC to access UB is not aligned".
         alignElements_ = static_cast<uint64_t>(ALIGN_BYTES / sizeof(T));
         alignedN_ = CeilAlign(nValue_, alignElements_);
 
@@ -163,20 +161,31 @@ public:
             addGm_.SetGlobalBuffer((__gm__ T *)add + rowOffset_ * nValue_, blockRows_ * nValue_);
         }
 
-        // UB buffers use alignedN_ per row so each row start is 32-byte aligned
-        pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
-        pipe_->InitBuffer(biasBuf_, alignedN_ * sizeof(T));
-        pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
-        if (hasX3_) {
-            pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
+        if (tileN == 0U || tileN >= alignedN_) {
+            nChunked_ = false;
+            effTileN_ = alignedN_;
+            pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
+            pipe_->InitBuffer(biasBuf_, alignedN_ * sizeof(T));
+            pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
+            if (hasX3_) {
+                pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
+            }
+            LocalTensor<T> biasLocal = biasBuf_.Get<T>();
+            DataCopyExtParams biasCopyParams = {1, static_cast<uint32_t>(nValue_ * sizeof(T)), 0, 0, 0};
+            DataCopyPadExtParams<T> biasPadParams = {false, 0, 0, 0};
+            DataCopyPad(biasLocal, biasGm_, biasCopyParams, biasPadParams);
+            PipeBarrier<PIPE_V>();
+        } else {
+            nChunked_ = true;
+            effTileN_ = tileN;
+            nChunks_ = Ceil(nValue_, static_cast<uint64_t>(tileN));
+            pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt_ * effTileN_ * sizeof(T));
+            pipe_->InitBuffer(biasBuf_, effTileN_ * sizeof(T));
+            pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt_ * effTileN_ * sizeof(T));
+            if (hasX3_) {
+                pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt_ * effTileN_ * sizeof(T));
+            }
         }
-
-        // Copy bias from GM to UB (1D, single block, start address is aligned)
-        LocalTensor<T> biasLocal = biasBuf_.Get<T>();
-        DataCopyExtParams biasCopyParams = {1, static_cast<uint32_t>(nValue_ * sizeof(T)), 0, 0, 0};
-        DataCopyPadExtParams<T> biasPadParams = {false, 0, 0, 0};
-        DataCopyPad(biasLocal, biasGm_, biasCopyParams, biasPadParams);
-        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void Process(uint64_t progress)
@@ -186,9 +195,16 @@ public:
         }
         uint64_t calcRows = (progress == (tileNum_ - 1)) ? (blockRows_ - progress * tileCnt_) : tileCnt_;
 
-        // 2D DataCopyPad with per-row 32-byte padding in UB.
-        // isPad=true pads each block to 32-byte boundary so the next row starts at an aligned address.
-        // dstStride=0: no additional gap (alignedN_ * sizeof(T) == CeilAlign(nValue * sizeof(T), 32)).
+        if (!nChunked_) {
+            ProcessFullRow(progress, calcRows);
+        } else {
+            ProcessChunked(progress, calcRows);
+        }
+    }
+
+private:
+    __aicore__ inline void ProcessFullRow(uint64_t progress, uint64_t calcRows)
+    {
         uint32_t blockLen = static_cast<uint32_t>(nValue_ * sizeof(T));
         uint32_t padBytes = (ALIGN_BYTES - blockLen % ALIGN_BYTES) % ALIGN_BYTES;
         uint8_t rightPad = static_cast<uint8_t>(padBytes / static_cast<uint32_t>(sizeof(T)));
@@ -203,7 +219,6 @@ public:
         LocalTensor<T> zLocal = outQueueZ_.AllocTensor<T>();
         LocalTensor<T> biasLocal = biasBuf_.Get<T>();
 
-        // Per-row Add: row * alignedN_ * sizeof(T) is always 32-byte aligned
         for (uint64_t row = 0; row < calcRows; row++) {
             Add(zLocal[row * alignedN_], xLocal[row * alignedN_], biasLocal, nValue_);
         }
@@ -214,10 +229,7 @@ public:
             DataCopyPad(addLocal, addGm_[progress * tileCnt_ * nValue_], rowCopyParams, padParams);
             inQueueY_.EnQue(addLocal);
             LocalTensor<T> yLocal = inQueueY_.DeQue<T>();
-            // Per-row Add for x3: all addresses aligned via alignedN_ stride
-            for (uint64_t row = 0; row < calcRows; row++) {
-                Add(zLocal[row * alignedN_], zLocal[row * alignedN_], yLocal[row * alignedN_], nValue_);
-            }
+            Add(zLocal, zLocal, yLocal, calcRows * alignedN_);
             PipeBarrier<PIPE_V>();
             inQueueY_.FreeTensor(addLocal);
         }
@@ -225,14 +237,62 @@ public:
         outQueueZ_.EnQue<T>(zLocal);
         inQueueX_.FreeTensor(mmOutLocal);
 
-        // Copy back: srcStride=0 means UB blocks are at CeilAlign(blockLen, 32) stride (auto-aligned).
-        // dstStride=0 means GM rows are contiguous.
         DataCopyExtParams outCopyParams = {static_cast<uint16_t>(calcRows), blockLen, 0, 0, 0};
         LocalTensor<T> outLocal = outQueueZ_.DeQue<T>();
         DataCopyPad<T>(mmOutGm_[progress * tileCnt_ * nValue_], outLocal, outCopyParams);
         outQueueZ_.FreeTensor(zLocal);
     }
 
+    __aicore__ inline void ProcessChunked(uint64_t progress, uint64_t calcRows)
+    {
+        for (uint64_t nc = 0; nc < nChunks_; nc++) {
+            uint64_t nOffset = nc * effTileN_;
+            uint64_t nCount = (nc == nChunks_ - 1) ? (nValue_ - nOffset) : effTileN_;
+            uint32_t blockLen = static_cast<uint32_t>(nCount * sizeof(T));
+
+            LocalTensor<T> biasLocal = biasBuf_.Get<T>();
+            DataCopyExtParams biasCopyParams = {1, blockLen, 0, 0, 0};
+            DataCopyPadExtParams<T> biasPadParams = {false, 0, 0, 0};
+            DataCopyPad(biasLocal, biasGm_[nOffset], biasCopyParams, biasPadParams);
+            PipeBarrier<PIPE_V>();
+
+            uint32_t srcStrideBytes = static_cast<uint32_t>((nValue_ - nCount) * sizeof(T));
+            DataCopyExtParams rowCopyParams = {static_cast<uint16_t>(calcRows), blockLen, srcStrideBytes, 0, 0};
+            DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
+
+            LocalTensor<T> mmOutLocal = inQueueX_.AllocTensor<T>();
+            DataCopyPad(mmOutLocal, mmOutGm_[progress * tileCnt_ * nValue_ + nOffset], rowCopyParams, padParams);
+            inQueueX_.EnQue(mmOutLocal);
+
+            LocalTensor<T> xLocal = inQueueX_.DeQue<T>();
+            LocalTensor<T> zLocal = outQueueZ_.AllocTensor<T>();
+
+            for (uint64_t row = 0; row < calcRows; row++) {
+                Add(zLocal[row * effTileN_], xLocal[row * effTileN_], biasLocal, nCount);
+            }
+            PipeBarrier<PIPE_V>();
+
+            if (hasX3_) {
+                LocalTensor<T> addLocal = inQueueY_.AllocTensor<T>();
+                DataCopyPad(addLocal, addGm_[progress * tileCnt_ * nValue_ + nOffset], rowCopyParams, padParams);
+                inQueueY_.EnQue(addLocal);
+                LocalTensor<T> yLocal = inQueueY_.DeQue<T>();
+                Add(zLocal, zLocal, yLocal, calcRows * effTileN_);
+                PipeBarrier<PIPE_V>();
+                inQueueY_.FreeTensor(addLocal);
+            }
+
+            outQueueZ_.EnQue<T>(zLocal);
+            inQueueX_.FreeTensor(mmOutLocal);
+
+            DataCopyExtParams outCopyParams = {static_cast<uint16_t>(calcRows), blockLen, 0, srcStrideBytes, 0};
+            LocalTensor<T> outLocal = outQueueZ_.DeQue<T>();
+            DataCopyPad<T>(mmOutGm_[progress * tileCnt_ * nValue_ + nOffset], outLocal, outCopyParams);
+            outQueueZ_.FreeTensor(zLocal);
+        }
+    }
+
+public:
     TPipe *pipe_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueX_;
     TBuf<TPosition::VECCALC> biasBuf_;
@@ -249,12 +309,15 @@ public:
     uint64_t tileNum_;
     uint64_t tileCnt_;
     bool hasX3_;
+    bool nChunked_ = false;
+    uint64_t effTileN_ = 0;
+    uint64_t nChunks_ = 0;
 };
 
 template <class T>
 __aicore__ inline void MatmulAllReduceAddBiasX3Kernel(GM_ADDR mmOutput, GM_ADDR bias, GM_ADDR add,
                                                       uint64_t totalCnt, uint64_t nValue, uint64_t tileCnt,
-                                                      TPipe *tPipe, bool hasX3)
+                                                      TPipe *tPipe, bool hasX3, uint32_t tileN)
 {
     uint32_t coreNum = GetBlockNum() * GetTaskRation();
     if (g_coreType == AIC || (GetBlockIdx() >= coreNum)) {
@@ -262,7 +325,7 @@ __aicore__ inline void MatmulAllReduceAddBiasX3Kernel(GM_ADDR mmOutput, GM_ADDR 
     }
     tPipe->Reset();
     MatmulAllReduceAddBiasX3<T> op;
-    op.Init(mmOutput, bias, add, totalCnt, nValue, tileCnt, tPipe, coreNum, hasX3);
+    op.Init(mmOutput, bias, add, totalCnt, nValue, tileCnt, tPipe, coreNum, hasX3, tileN);
     for (uint64_t i = 0; i < op.tileNum_; i++) {
         op.Process(i);
     }

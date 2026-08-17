@@ -64,6 +64,7 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
 struct MatmulAllReduceExtTiling {
     uint32_t isVecBias;
     uint32_t biasUbRows;
+    uint32_t tileN;
 };
 
 #pragma pack(push, 8)
