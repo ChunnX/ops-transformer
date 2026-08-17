@@ -15,6 +15,7 @@
 
 #include <thread>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 #include "acl/acl.h"
@@ -101,14 +102,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
-    // if (!rank_table_file && !first_rank_id) {  //确认是否要删
-    //     sharedExpertNum = 1;
-    //     sharedExpertRankNum = 1;
-    // }
-    // if (rank_table_file && !first_rank_id) {
-    //     sharedExpertNum = 1;
-    //     sharedExpertRankNum = 0;
-    // }
     int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -370,42 +363,54 @@ int launchOneThreadDispatchAndCombine(Args &args)
     return 0;
 }
 
-int run_example_on_A2(int rankId, const char *RANK_TABLE_FILE, const char *FIRST_RANK_ID)
+int run_example_on_A2()
 {
-    Args args;
-    aclrtStream dispatchStream;
-    aclrtStream combineStream;
-    aclrtContext context;
+    int ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
 
-    int ret = aclrtSetDevice(rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d", ret));
-    ret = aclrtCreateContext(&context, rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d", ret));
-    ret = aclrtCreateStream(&dispatchStream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
-    ret = aclrtCreateStream(&combineStream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d", ret));
-
-    int first_rank_id = std::stoi(std::string(FIRST_RANK_ID));
-    HcclComm hcclComm = nullptr;
-    int rank_id = rankId + first_rank_id;
-    ret = HcclCommInitClusterInfo(RANK_TABLE_FILE, rank_id, &hcclComm);
-    if (ret != HCCL_SUCCESS) {
-        std::cout << "[ERROR] HCCL CommInitClusterInfo failed. ret = " << ret << std::endl;
-        return ret;
+    aclrtStream dispatchStream[DEV_NUM];
+    aclrtStream combineStream[DEV_NUM];
+    aclrtContext context[DEV_NUM];
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        ret = aclrtSetDevice(rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
+        ret = aclrtCreateContext(&context[rankId], rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
+        ret = aclrtCreateStream(&dispatchStream[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
+        ret = aclrtCreateStream(&combineStream[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
     }
-    std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
-              << ", hcclComm:" << hcclComm << std::endl;
-    uint32_t epRankId = rank_id;
 
-    args.rankId = rankId;
-    args.epRankId = epRankId;
-    args.hcclEpComm = hcclComm;
-    args.dispatchStream = dispatchStream;
-    args.combineStream = combineStream;
-    args.context = context;
+    int32_t devicesEp[EP_WORLD_SIZE];
+    for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
+        devicesEp[epId] = epId;
+    }
 
-    launchOneThreadDispatchAndCombine(args);
+    HcclComm commsEp[EP_WORLD_SIZE];
+    ret = HcclCommInitAll(EP_WORLD_SIZE, devicesEp, commsEp);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll ep failed. ret = %d\n", ret); return ret);
+
+    Args args[DEV_NUM];
+    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        uint32_t epRankId = rankId;
+
+        args[rankId].rankId = rankId;
+        args[rankId].epRankId = epRankId;
+        args[rankId].hcclEpComm = commsEp[epRankId];
+        args[rankId].dispatchStream = dispatchStream[rankId];
+        args[rankId].combineStream = combineStream[rankId];
+        args[rankId].context = context[rankId];
+        threads[rankId].reset(new (std::nothrow)
+                                  std::thread(&launchOneThreadDispatchAndCombine, std::ref(args[rankId])));
+    }
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        threads[rankId]->join();
+    }
+
+    aclFinalize();
+    LOG_PRINT("[INFO] aclFinalize success\n");
     return 0;
 }
 
@@ -479,23 +484,11 @@ int main(int argc, char *argv[])
         EP_WORLD_SIZE = 8;
         DEV_NUM = EP_WORLD_SIZE;
         int ret = run_example_on_A3A5();
-    }else if (IS_TEST_A3A5) {
+    }else if (IS_TEST_A2) {
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 16;
         DEV_NUM = EP_WORLD_SIZE;
-        uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
-        std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
-        int ret = aclInit(nullptr);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
-        for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-            threads[rankId] = std::make_unique<std::thread>(
-                [rankId, &ret]() { int ret = run_example_on_A2(rankId, rank_table_file, first_rank_id); });
-        }
-        for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-            threads[rankId]->join();
-        }
-        aclFinalize();
-        LOG_PRINT("[INFO] aclFinalize success\n");
+        int ret = run_example_on_A2();
     } else {
         LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
     }
