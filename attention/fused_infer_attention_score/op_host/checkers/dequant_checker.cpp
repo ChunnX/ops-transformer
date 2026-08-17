@@ -2203,7 +2203,7 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND" && fiaInfo.kvCacheNzD0 != NUM_32),
+    OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 && inputLayout == "TND"),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     fiaInfo.opName, "input_layout", inputLayout.c_str(),
                     "In keyAntiquant/valueAntiquant split mode and data type of key/value is INT8 scenario, "
@@ -2462,20 +2462,6 @@ ge::graphStatus DequantChecker::CheckFeatureNzD32ForAntiquant(const FiaTilingInf
                     fiaInfo.opName, "post_quant",
                     "When PA_NZ D0=32 antiquant is enabled, post quantization is not supported"),
                 return ge::GRAPH_FAILED);
-
-    int64_t keyAntiquantMode = 0;
-    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-    }
-    const std::string inputLayout = fiaInfo.opParamInfo.layOut;
-    if (inputLayout == "TND") {
-        OP_CHECK_IF(keyAntiquantMode != PER_CHANNEL_MODE,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        fiaInfo.opName, "key_antiquant_mode", std::to_string(keyAntiquantMode).c_str(),
-                        "When PA_NZ D0=32 antiquant is enabled and inputLayout is TND, "
-                        "only per-channel mode (keyAntiquantMode=0) is supported"),
-                    return ge::GRAPH_FAILED);
-    }
 
     if (fiaInfo.s1Size == 1) {
         OP_CHECK_IF(fiaInfo.sparseMode != SPARSE_MODE_NO_MASK ||
