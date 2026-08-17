@@ -80,7 +80,7 @@ public:
         AscendC::LocalTensor<ElementDm> dm = dmUBTensor[tileInfo.updateScaleIdx];
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
             Mxfp4VF::ProcessUpdateCallVF<false>(oUBTensor, oTmpUBTensor, dm,
                                           globalRowSumUBTensor, localRowSumUBTensor);
         } else {
@@ -97,8 +97,8 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
             if (actMSizeThisCore != 0) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
                 Mxfp4VF::ProcessOutCallVF<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -109,10 +109,10 @@ public:
                 AscendC::DataCopy(oUBTensorB16, oTransUBTensorB16, actMSizeThisCore * embedColumnCnt);
                 AscendC::PipeBarrier<PIPE_V>();
 
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTN_BUF_FLAG);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTN_BUF_FLAG);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
 
                 // copyUBOToGm
                 uint32_t embdingSize = actualOriShape.m();
@@ -127,7 +127,7 @@ public:
                 auto ubOTensorTla = tla::MakeTensor(oUBTensorB16, ubOLayoutTla, Arch::PositionUB{});
                 copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
         }
     }
 
