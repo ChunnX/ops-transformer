@@ -207,12 +207,12 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2::SetQKVStartIdx()
     }
     auto qStartIdxTensor = context_->GetOptionalInputTensor(Q_START_IDX);
     if (qStartIdxTensor == nullptr) {
-        OP_LOGW(context_, "[%s]qStartIdxTensor is null pointer", templateNameS1S2);
+        OP_LOGW(context_, "[%s]QStartIdxTensor is null pointer", templateNameS1S2);
         return;
     }
     auto &qStartIdxShape = qStartIdxTensor->GetShape().GetStorageShape();
     if (qStartIdxShape.GetDimNum() != 1 || qStartIdxShape.GetDim(0) <= 0) {
-        OP_LOGW(context_, "[%s]qStartIdxShape is invalid %lu %ld", templateNameS1S2, qStartIdxShape.GetDimNum(),
+        OP_LOGW(context_, "[%s]QStartIdxShape is invalid %lu %ld", templateNameS1S2, qStartIdxShape.GetDimNum(),
                   qStartIdxShape.GetDim(0));
         return;
     }

@@ -120,7 +120,7 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
     auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
 
     if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-        OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
+        OP_LOGE(context_, "The OP [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
         return ge::GRAPH_FAILED;
     }
     if (qStartTensor != nullptr || kvStartTensor != nullptr) {

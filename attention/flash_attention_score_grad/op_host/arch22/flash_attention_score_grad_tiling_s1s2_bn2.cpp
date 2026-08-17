@@ -172,7 +172,7 @@ bool FlashAttentionScoreGradTilingDeterministic::IsCapable()
     const char *tndSoftmaxIn = context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(TND_SOFTMAX_IN) ? context_->GetAttrs()->GetAttrPointer<char>(TND_SOFTMAX_IN) : "";
     if (strcmp(tndSoftmaxIn, "") != 0) return false;
 
-    OP_LOGD(context_, "Get deterministic flag is %d", context_->GetDeterministic());
+    OP_LOGD(context_, "Get Deterministic flag is %d", context_->GetDeterministic());
     if (context_->GetDeterministic() != 1) {
         return false;
     }
