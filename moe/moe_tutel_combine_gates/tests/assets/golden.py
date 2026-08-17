@@ -129,6 +129,14 @@ def _combine_gates(x, y_grad, indices, locations, compute_dtype):
     # stays legal instead of tripping the ambiguous -1 dimension.
     y_work = y_grad.to(compute_dtype).reshape(y_grad.shape[0] * y_grad.shape[1], hidden)
 
+    # C == 0 (and E == 0) leave y_grad with no rows at all, so every route is
+    # out of range by definition and the whole output is 0.  Short-circuit here:
+    # index_select refuses a zero-length indexing axis even when the clamped
+    # index would be discarded afterwards ("self indexing axis dim should be
+    # positive"), which would turn a legal empty-tensor case into a crash.
+    if y_work.shape[0] == 0:
+        return torch.zeros(tuple(indices.shape), dtype=compute_dtype)
+
     rows = torch.index_select(y_work, 0, safe_flat.reshape(-1))  # [E * S, H]
     tokens = torch.index_select(
         x_work, 0, torch.arange(x.shape[0], dtype=torch.int64).repeat(indices.shape[0])
