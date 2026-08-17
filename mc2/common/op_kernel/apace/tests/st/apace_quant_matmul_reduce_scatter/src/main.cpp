@@ -171,33 +171,56 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
             tilingData.subMmTilingData.mBaseTailSplitCnt = 1U;
             tilingData.subMmTilingData.mTailMain = 0U;
         }
+        // tail tile tiling: m=rankSize*tailMSize (FragmentTensor 的 totalLogicalM)
+        if (tailTileCnt > 0 && tailMSize > 0) {
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tailTilingEngine;
+            uint32_t tailLogicalM = static_cast<uint32_t>(rankNum) * tailMSize;
+            tailTilingEngine.GetTilingData(tailLogicalM, n, k, false, true, tilingData.tailMmTilingData);
+        } else {
+            tilingData.tailMmTilingData = {};
+        }
     } else {
         tilingData.subMmTilingData = {};
+        tilingData.tailMmTilingData = {};
     }
 
-    INFO_LOG("chunkM=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, tailTileCnt=%u, tileCnt=%u (PUT multi-tile), rankSize=%d",
-             chunkM, headMSize, headTileCnt, tailMSize, tailTileCnt, tileCnt, rankNum);
+    if (rankId == 0) {
+        INFO_LOG("chunkM=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, tailTileCnt=%u, tileCnt=%u (PUT multi-tile), rankSize=%d",
+                 chunkM, headMSize, headTileCnt, tailMSize, tailTileCnt, tileCnt, rankNum);
 
-    INFO_LOG("[Tiling] mmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u usedCoreNum=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
-             tilingData.mmTilingData.m, tilingData.mmTilingData.n, tilingData.mmTilingData.k,
-             tilingData.mmTilingData.baseM, tilingData.mmTilingData.baseN, tilingData.mmTilingData.baseK,
-             tilingData.mmTilingData.stepK, tilingData.mmTilingData.usedCoreNum,
-             tilingData.mmTilingData.dbL0c, tilingData.mmTilingData.nBufferNum,
-             tilingData.mmTilingData.scaleKL1,
-             tilingData.mmTilingData.mTailTile, tilingData.mmTilingData.nTailTile,
-             tilingData.mmTilingData.mBaseTailSplitCnt, tilingData.mmTilingData.nBaseTailSplitCnt,
-             tilingData.mmTilingData.mTailMain, tilingData.mmTilingData.nTailMain);
+        INFO_LOG("[Tiling] mmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u usedCoreNum=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
+                 tilingData.mmTilingData.m, tilingData.mmTilingData.n, tilingData.mmTilingData.k,
+                 tilingData.mmTilingData.baseM, tilingData.mmTilingData.baseN, tilingData.mmTilingData.baseK,
+                 tilingData.mmTilingData.stepK, tilingData.mmTilingData.usedCoreNum,
+                 tilingData.mmTilingData.dbL0c, tilingData.mmTilingData.nBufferNum,
+                 tilingData.mmTilingData.scaleKL1,
+                 tilingData.mmTilingData.mTailTile, tilingData.mmTilingData.nTailTile,
+                 tilingData.mmTilingData.mBaseTailSplitCnt, tilingData.mmTilingData.nBaseTailSplitCnt,
+                 tilingData.mmTilingData.mTailMain, tilingData.mmTilingData.nTailMain);
 
-    if (tileCnt > 1) {
-        INFO_LOG("[Tiling] subMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
-                 tilingData.subMmTilingData.m, tilingData.subMmTilingData.n, tilingData.subMmTilingData.k,
-                 tilingData.subMmTilingData.baseM, tilingData.subMmTilingData.baseN, tilingData.subMmTilingData.baseK,
-                 tilingData.subMmTilingData.stepK,
-                 tilingData.subMmTilingData.dbL0c, tilingData.subMmTilingData.nBufferNum,
-                 tilingData.subMmTilingData.scaleKL1,
-                 tilingData.subMmTilingData.mTailTile, tilingData.subMmTilingData.nTailTile,
-                 tilingData.subMmTilingData.mBaseTailSplitCnt, tilingData.subMmTilingData.nBaseTailSplitCnt,
-                 tilingData.subMmTilingData.mTailMain, tilingData.subMmTilingData.nTailMain);
+        if (tileCnt > 1) {
+            INFO_LOG("[Tiling] subMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
+                     tilingData.subMmTilingData.m, tilingData.subMmTilingData.n, tilingData.subMmTilingData.k,
+                     tilingData.subMmTilingData.baseM, tilingData.subMmTilingData.baseN, tilingData.subMmTilingData.baseK,
+                     tilingData.subMmTilingData.stepK,
+                     tilingData.subMmTilingData.dbL0c, tilingData.subMmTilingData.nBufferNum,
+                     tilingData.subMmTilingData.scaleKL1,
+                     tilingData.subMmTilingData.mTailTile, tilingData.subMmTilingData.nTailTile,
+                     tilingData.subMmTilingData.mBaseTailSplitCnt, tilingData.subMmTilingData.nBaseTailSplitCnt,
+                     tilingData.subMmTilingData.mTailMain, tilingData.subMmTilingData.nTailMain);
+
+            if (tailTileCnt > 0 && tailMSize > 0) {
+                INFO_LOG("[Tiling] tailMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
+                         tilingData.tailMmTilingData.m, tilingData.tailMmTilingData.n, tilingData.tailMmTilingData.k,
+                         tilingData.tailMmTilingData.baseM, tilingData.tailMmTilingData.baseN, tilingData.tailMmTilingData.baseK,
+                         tilingData.tailMmTilingData.stepK,
+                         tilingData.tailMmTilingData.dbL0c, tilingData.tailMmTilingData.nBufferNum,
+                         tilingData.tailMmTilingData.scaleKL1,
+                         tilingData.tailMmTilingData.mTailTile, tilingData.tailMmTilingData.nTailTile,
+                         tilingData.tailMmTilingData.mBaseTailSplitCnt, tilingData.tailMmTilingData.nBaseTailSplitCnt,
+                         tilingData.tailMmTilingData.mTailMain, tilingData.tailMmTilingData.nTailMain);
+            }
+        }
     }
 
     INFO_LOG("[Rank %d] Step 1: aclInit", rankId);
@@ -288,10 +311,15 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     GM_ADDR deviceOutput = nullptr;
     GM_ADDR deviceWorkspace = nullptr;
 
-    ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
+    // A 和 ScaleA 分配 padded 大小 (tail tile fragment 对齐到 32 行, 可能超出实际 m)
+    uint32_t paddedM = (static_cast<uint32_t>(m) + 31U) & ~31U;
+    std::vector<uint8_t> hostAPadded(paddedM * k, 0);
+    std::vector<uint8_t> hostScaleAPadded(paddedM * CeilDiv(k, 64) * 2, 0);
+
+    ACL_CHECK(aclrtMalloc((void**)&deviceA, paddedM * k, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, paddedM * CeilDiv(k, 64) * 2, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
     // cGm: 最终输出 [chunkM, n] bfloat16
     size_t sizeC = static_cast<size_t>(chunkM) * n * sizeof(uint16_t);
     ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeC, ACL_MEM_MALLOC_HUGE_ONLY));
@@ -301,9 +329,11 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, sizeWorkspace, ACL_MEM_MALLOC_HUGE_ONLY));
     INFO_LOG("[Rank %d] workspace size=%zu bytes (m=%d, n=%d)", rankId, sizeWorkspace, m, n);
 
-    ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
+    std::copy(hostA.begin(), hostA.end(), hostAPadded.begin());
+    std::copy(hostScaleA.begin(), hostScaleA.end(), hostScaleAPadded.begin());
+    ACL_CHECK(aclrtMemcpy(deviceA, paddedM * k, hostAPadded.data(), paddedM * k, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
+    ACL_CHECK(aclrtMemcpy(deviceScaleA, paddedM * CeilDiv(k, 64) * 2, hostScaleAPadded.data(), paddedM * CeilDiv(k, 64) * 2, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
     INFO_LOG("[Rank %d] Step 10: data loaded to device", rankId);
 

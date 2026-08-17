@@ -395,14 +395,16 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
         addrListScale[r] = params.aScaleGM + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
         addrListC[r] = cFragAddrs_[r];
     }
-    // fragmentSize = headRows / rankSize = curTileM (每个 rank 段在当前 tile 的行数)
+    // fragmentSize = headRows / rankSize = paddedCurTileM (32 对齐, 用于 layout stride)
+    // realFragmentSize = tileM (实际行数, 限制 FragmentTensor 读取范围)
     uint64_t fragM = fp.headRows / fp.rankSize;
+    uint64_t realFragM = fp.tileM;
     headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.k), addrListA);
+        MakeFragParam(fragM, realFragM, fp.rankSize, fp.k), addrListA);
     headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, fp8_e8m0_t>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.scaleKLen), addrListScale);
+        MakeFragParam(fragM, realFragM, fp.rankSize, fp.scaleKLen), addrListScale);
     headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.n), addrListC);
+        MakeFragParam(fragM, realFragM, fp.rankSize, fp.n), addrListC);
 }
 
 template <typename AType, typename BType, typename CType>

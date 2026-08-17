@@ -265,21 +265,23 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
                           ? static_cast<uint32_t>(commTd.splitAxisTileSize)
                           : static_cast<uint32_t>(commTd.splitAxisTailSize);
 
-        // 选择 tiling: head tile 用子问题 tiling (baseM=128, T>1时), tail tile 用全量 tiling
+        // 选择 tiling: T=1 用 mmT, T>1 时 head tile 用 subMmT, tail tile 用 tailMmT
         const auto& subMmT = tilingData_->subMmTilingData;
-        const auto& tileT = (isHeadTile && commTurn > 1) ? subMmT : mmT;
+        const auto& tailMmT = tilingData_->tailMmTilingData;
+        const auto& tileT = (commTurn == 1) ? mmT : (isHeadTile ? subMmT : tailMmT);
 
         // Fragment 参数 — 单一 HEAD region (per-tile 调用, 无 MAIN/TAIL)
-        // headRows = R * curTileM (当前 tile 跨所有 rank 段的总 M)
-        // tileCnt = 0, tailCnt = 0 → 只有 HEAD region, 无 MAIN/TAIL
+        // headRows = R * paddedCurTileM (padded 到 32 对齐, 使 scheduler 无 unaligned tail)
+        // tileM = curTileM (实际行数, 用于 FragmentTensor realFragmentSize 限制读取范围)
+        uint32_t paddedCurTileM = (curTileM + 31U) & ~31U;
         FragFragmentParams fragParams;
         fragParams.tileCnt = 0;
         fragParams.tileM = curTileM;
         fragParams.tailCnt = 0;
         fragParams.tailM = 0;
         fragParams.paddedTailM = 0;
-        fragParams.commTurn = 1; // 单次调用, 无 comm 流水
-        fragParams.headRows = R * curTileM;
+        fragParams.commTurn = 1;
+        fragParams.headRows = R * paddedCurTileM;
         fragParams.rankId = baseParams_.rankId;
         fragParams.rankSize = R;
         fragParams.mPerRank = baseParams_.chunkM;

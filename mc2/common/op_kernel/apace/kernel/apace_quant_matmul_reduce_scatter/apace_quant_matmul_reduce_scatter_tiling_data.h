@@ -18,8 +18,9 @@
  *   - 无 localMatmul 字段（无 LOCAL/REMOTE 双阶段）
  *
  * Tiling 结构:
- *   - mmTilingData: 全量 matmul tiling (m=完整M), 用于 T=1 退化路径和 tail tile
+ *   - mmTilingData: 全量 matmul tiling (m=完整M), 用于 T=1 退化路径
  *   - subMmTilingData: 子问题 tiling (m=headMSize), 用于 T>1 per-tile head tile 路径 (baseM 减半优化)
+ *   - tailMmTilingData: tail tile tiling (m=rankSize*tailMSize), 用于 T>1 tail tile 路径
  *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随子问题 tiling 变化）
  */
 
@@ -37,6 +38,7 @@
 
 struct QuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
-    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径 + tail tile)
+    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, T>1 per-tile head tile 路径)
+    QuantMatmulTilingData tailMmTilingData; // tail tile tiling (m=rankSize*tailMSize, T>1 tail tile 路径)
 };
