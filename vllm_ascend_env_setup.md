@@ -1,0 +1,1146 @@
+# vllm-ascend 容器环境搭建完整步骤
+
+## 步骤一：宿主机清除代理
+
+```bash
+export http_proxy=""
+export https_proxy=""
+export no_proxy="localhost,127.0.0.1"
+```
+
+## 步骤二：基于镜像创建容器
+
+```bash
+docker run --name tyy_b120 -it -d --net=host --shm-size=500g \
+    --privileged=true \
+    -w /home \
+    --device=/dev/davinci_manager \
+    --device=/dev/hisi_hdc \
+    --device=/dev/devmm_svm \
+    --entrypoint=bash \
+    -v /mnt:/mnt \
+    -v /data:/data \
+    -v /dev:/dev \
+    -v /dev/nvme1n1p2:/dev/nvme1n1p2 \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -v /usr/local/dcmi:/usr/local/dcmi \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+    -v /usr/local/sbin:/usr/local/sbin \
+    -v /home:/home \
+    -v /etc/hccn.conf:/etc/hccn.conf \
+    -v /tmp:/tmp \
+    -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime \
+    -e http_proxy= \
+    -e https_proxy= \
+    quay.io/ascend/vllm-ascend:v0.20.2rc1
+```
+
+> 注：原指南镜像 `ddfa90673e90` 不存在，选用了 `quay.io/ascend/vllm-ascend:v0.20.2rc1`
+
+## 步骤三：进入容器
+
+```bash
+docker exec -it tyy_b120 bash
+```
+
+## 步骤四：配置代理与 pip 镜像源
+
+```bash
+# 配置代理（按需）
+HOST_IP=xxx
+export http_proxy="http://${HOST_IP}:3128"
+export https_proxy=${http_proxy}
+export ftp_proxy=${http_proxy}
+
+# 清除 git 代理和 insteadOf 重写
+git config --global http.sslVerify false
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+git config --global --unset url.https://gh-proxy.org/https://github.com/.insteadof
+git config --global --unset url.https://mirror.ghproxy.com/https://github.com/.insteadof
+
+# 配置 pip 镜像源
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+pip config set global.trusted-host mirrors.aliyun.com
+pip config set global.extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
+```
+
+## 步骤五：卸载镜像自带的 vllm 和 vllm-ascend
+
+```bash
+pip uninstall vllm vllm_ascend -y
+```
+
+## 步骤六：克隆代码仓库
+
+```bash
+cd /home
+git clone https://github.com/vllm-project/vllm.git
+git clone https://github.com/ader47/vllm-ascend.git
+git clone https://gitcode.com/yrewzjsx/memcache.git
+git clone https://gitcode.com/Ascend/memfabric_hybrid
+```
+
+> vllm-ascend 克隆超时，改用 `git clone --depth 1`，后台 nohup 克隆成功
+
+## 步骤七：切换 vllm 到 v0.19.0
+
+```bash
+cd /home/vllm
+git fetch --depth 1 origin tag v0.19.0
+git checkout v0.19.0
+```
+
+## 步骤八：源码安装 vllm（可编辑模式）
+
+```bash
+cd /home/vllm
+pip install -r requirements/build.txt
+VLLM_TARGET_DEVICE=empty pip install -v -e .
+```
+
+## 步骤九：源码安装 vllm-ascend（可编辑模式）
+
+```bash
+cd /home/vllm-ascend
+pip install -v -e .
+```
+
+### 编译失败排查与修复（关键问题）
+
+**问题1**：`TILINGKEY_PAR_COMPILE=1` 导致 opc 并行编译冲突 `Another process is using this dir`
+
+**修复**：修改 `build.sh` 限制并行度 + 禁用 `TILINGKEY_PAR_COMPILE`
+
+```bash
+# 限制编译并行度为1（完全串行）
+sed -i 's/JOB_NUM="-j${CPU_NUM}"/JOB_NUM="-j1"/' /home/vllm-ascend/csrc/build.sh
+
+# 禁用 TILINGKEY_PAR_COMPILE
+find /home/vllm-ascend/csrc -maxdepth 2 -name 'CMakeLists.txt' -o -name '*.cmake' | \
+    xargs grep -l 'TILINGKEY_PAR_COMPILE' | while read f; do
+    sed -i 's/TILINGKEY_PAR_COMPILE=1/TILINGKEY_PAR_COMPILE=0/g' "$f"
+done
+
+# 彻底清理 build 目录后重新安装
+rm -rf /home/vllm-ascend/csrc/build
+cd /home/vllm-ascend
+pip install -v -e . > /tmp/install_vllm_ascend_j1.log 2>&1
+```
+
+## 步骤十：监控编译进度
+
+```bash
+# 检查安装是否完成
+grep INSTALL_EXIT_CODE /tmp/install_vllm_ascend_j1.log
+
+# 查看编译进度
+grep -o '\[[0-9]*/533\]' /tmp/install_vllm_ascend_j1.log | tail -1
+
+# 检查错误数
+grep -c "Another process" /tmp/install_vllm_ascend_j1.log
+grep -c "FAILED" /tmp/install_vllm_ascend_j1.log
+
+# 查看最新日志
+tail -3 /tmp/install_vllm_ascend_j1.log
+```
+
+## 步骤六：安装 memfabric_hybrid 和 memcache
+
+> 必须先安装 memfabric_hybrid，再安装 memcache（memcache 依赖 memfabric）
+
+### 6.1 安装 memfabric_hybrid
+
+```bash
+# 下载代码（切换到 v1.0.0 分支）
+cd /home
+git clone -b v1.0.0 https://gitcode.com/Ascend/memfabric_hybrid
+cd memfabric_hybrid
+git clean -xdf
+git reset --hard
+
+# 拉取第三方库
+git submodule update --recursive --init
+
+# pybind11 版本不能超过 3.0.1（否则编译报错：def_property family does not currently support call_guard）
+pip install pybind11==3.0.1
+
+# 编译
+# build_and_pack_run.sh 支持三个参数：<build_mode> <build_python> <xpu_type>
+# build_mode: RELEASE 或 DEBUG，默认 RELEASE
+# build_python: ON 或 OFF，默认 ON
+# xpu_type: NPU 或 GPU，默认 NPU
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
+
+# 安装，编译完后会生成 run 包到 output 目录，格式为 memfabric-hybrid-${version}_${os}_${arch}.run
+cd output
+bash memfabric_hybrid-1.0.0_linux_aarch64.run
+source /usr/local/memfabric_hybrid/set_env.sh
+
+# 检查 whl 包是否安装成功，未安装则手动安装
+pip show memfabric_hybrid
+cd /usr/local/memfabric_hybrid/1.0.0/aarch64-linux/wheel
+pip install memfabric_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+```
+
+#### memfabric_hybrid 安装目录结构
+
+```
+/usr/local/memfabric_hybrid
+├── 1.0.0
+│   ├── aarch64-linux
+│   │   ├── bin
+│   │   ├── include
+│   │   │   ├── hybm
+│   │   │   │   ├── hybm.h
+│   │   │   │   ├── hybm_big_mem.h
+│   │   │   │   ├── hybm_data_op.h
+│   │   │   │   └── hybm_def.h
+│   │   │   └── smem
+│   │   │       ├── device
+│   │   │       │   ├── smem_shm_aicore_base_api.h
+│   │   │       │   ├── smem_shm_aicore_base_copy.h
+│   │   │       │   ├── smem_shm_aicore_base_define.h
+│   │   │       │   ├── smem_shm_aicore_base_meta.h
+│   │   │       │   └── smem_shm_aicore_base_rdma.h
+│   │   │       └── host
+│   │   │           ├── smem.h
+│   │   │           ├── smem_bm.h
+│   │   │           ├── smem_bm_def.h
+│   │   │           ├── smem_shm.h
+│   │   │           ├── smem_shm_def.h
+│   │   │           ├── smem_trans.h
+│   │   │           └── smem_trans_def.h
+│   │   ├── lib64
+│   │   │   ├── libmf_hybm_core.so
+│   │   │   └── libmf_smem.so
+│   │   ├── script
+│   │   │   ├── certs
+│   │   │   │   ├── generate_client_cert.py
+│   │   │   │   ├── generate_crl.py
+│   │   │   │   ├── generate_root_cert.py
+│   │   │   │   └── generate_server_cert.py
+│   │   │   └── mock_server
+│   │   └── wheel
+│   │       ├── mf_adapter-1.0.0-cp311-cp311-linux_aarch64.whl
+│   │       └── memfabric_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+│   ├── uninstall.sh
+│   └── version.info
+├── latest -> 1.0.0
+└── set_env.sh
+```
+
+### 6.2 安装 memcache
+
+```bash
+# 下载代码（切换到 v1.0.0 分支）
+cd /home
+git clone -b v1.0.0 https://gitcode.com/Ascend/memcache
+cd memcache
+git clean -xdf
+git reset --hard
+
+# 拉取第三方库
+git submodule update --recursive --init
+git submodule update --remote 3rdparty/memfabric_hybrid
+
+# 编译
+# build_and_pack_run.sh 支持两个参数：<build_mode> <build_python>
+# build_mode: RELEASE 或 DEBUG
+# build_python: ON 或 OFF
+bash script/build_and_pack_run.sh --build_mode RELEASE
+
+# 安装，编译完后会生成 run 包到 output 目录，格式为 memcache_hybrid-${version}_${os}_${arch}.run
+cd output
+bash memcache_hybrid-1.0.0_linux_aarch64.run
+source /usr/local/memcache_hybrid/set_env.sh
+
+# 检查 whl 包是否安装成功，未安装则手动安装
+pip show memcache_hybrid
+cd /usr/local/memcache_hybrid/1.0.0/aarch64-linux/wheel
+pip install memcache_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+```
+
+#### memcache 安装目录结构
+
+```
+/usr/local/memcache_hybrid/
+├── 1.0.0
+│   ├── aarch64-linux
+│   │   ├── bin
+│   │   │   └── mmc_meta_service
+│   │   ├── include
+│   │   │   └── memcache
+│   │   │       ├── cpp
+│   │   │       │   └── mmcache.h
+│   │   │       ├── mmc.h
+│   │   │       ├── mmc_client.h
+│   │   │       ├── mmc_def.h
+│   │   │       └── mmc_service.h
+│   │   ├── lib64
+│   │   │   ├── _pymmc.cpython-311-aarch64-linux-gnu.so
+│   │   │   └── libmf_memcache.so
+│   │   ├── logs
+│   │   │   ├── mmc-meta-audit.log
+│   │   │   └── mmc-meta.log
+│   │   ├── script
+│   │   │   ├── ha
+│   │   │   │   └── test-mmc-meta-ha.py
+│   │   │   ├── k8s_deploy
+│   │   │   │   ├── account-role-demo.yaml
+│   │   │   │   ├── local-pods-demo.yaml
+│   │   │   │   ├── meta-cluster-ip-demo.yaml
+│   │   │   │   ├── meta-lease-lock-demo.yaml
+│   │   │   │   └── meta-pods-demo.yaml
+│   │   │   └── mock_server
+│   │   │       ├── server.py
+│   │   │       └── smem_bm_server.py
+│   │   └── wheel
+│   │       └── memcache_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+│   ├── config
+│   │   ├── mmc-local.conf
+│   │   └── mmc-meta.conf
+│   ├── uninstall.sh
+│   └── version.info
+├── latest -> 1.0.0
+└── set_env.sh
+```
+
+### 6.3 编译问题排查
+
+**问题**：pybind11 版本过高导致编译失败
+
+```
+error: static assertion failed: def_property family does not currently support call_guard. Use a py::cpp_function instead.
+```
+
+**修复**：降级 pybind11 到 3.0.1
+
+```bash
+pip install pybind11==3.0.1
+```
+
+然后清理 build 目录重新编译：
+
+```bash
+cd /home/memfabric_hybrid  # 或 /home/memcache
+git clean -xdf
+git reset --hard
+git submodule update --recursive --init
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
+```
+
+## 步骤七：拉起 memcache 后端服务
+
+### 7.1 修改配置文件
+
+```bash
+# 拷贝配置文件到自己的目录
+mkdir -p /home/lsy/layerwise
+cp /usr/local/memcache_hybrid/latest/config/mmc-meta.conf /home/lsy/layerwise/mmc-meta.conf
+cp /usr/local/memcache_hybrid/latest/config/mmc-local.conf /home/lsy/layerwise/mmc-local.conf
+
+# 修改 mmc-local.conf
+# 1. protocol 改为 device_sdma（适合A3）
+sed -i 's/ock.mmc.local_service.protocol = host_rdma/ock.mmc.local_service.protocol = device_sdma/' /home/lsy/layerwise/mmc-local.conf
+
+# 2. dram.size 改为 10GB
+sed -i 's/ock.mmc.local_service.dram.size = 1GB/ock.mmc.local_service.dram.size = 10GB/' /home/lsy/layerwise/mmc-local.conf
+```
+
+### 7.2 拉起 MetaService 服务
+
+```bash
+# 设置环境变量
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+export MMC_META_CONFIG_PATH=/home/lsy/layerwise/mmc-meta.conf
+
+# 方法一：二进制方式拉起（后台运行）
+nohup /usr/local/memcache_hybrid/latest/aarch64-linux/bin/mmc_meta_service > /tmp/mmc_meta_service.log 2>&1 &
+echo $! > /tmp/mmc_meta_pid.txt
+
+# 方法二：Python 方式拉起
+# python3 -c "from memcache_hybrid import MetaService; MetaService.main()"
+```
+
+### 7.3 验证 MetaService 服务
+
+```bash
+# 检查进程
+ps -p $(cat /tmp/mmc_meta_pid.txt) -o pid,stat,etime,args
+
+# 检查端口（5000=MetaService, 6000=ConfigStore, 8000=HTTP）
+cat /proc/net/tcp | awk '{print $2}' | grep -i ":1388"  # port 5000
+cat /proc/net/tcp | awk '{print $2}' | grep -i ":1770"  # port 6000
+
+# 查看日志
+tail -5 /var/log/memcache_hybrid/logs/mmc-meta.log
+```
+
+### 7.4 常见报错
+
+**端口被占用**：
+```
+address in use for bind listen on 127.0.0.1:5000
+```
+解决：修改 mmc-meta.conf 和 mmc-local.conf 中的端口号（如改为 5001）
+
+## 步骤八：版本兼容性修复（关键）
+
+> vllm-ascend 与 vllm 版本必须严格匹配，否则会出现各种 ImportError
+
+### 8.1 版本兼容性问题说明
+
+| vllm 版本 | vllm-ascend 版本 | 兼容性 |
+|-----------|------------------|--------|
+| v0.19.0 | fork main | ❌ 缺少 `_approximate_gcd` |
+| latest main | fork main | ❌ triton 3.5 gluon 不兼容 |
+| v0.20.2 | fork main | ❌ `FusedMoE` 改名为 `FusedMoEFactory` |
+| latest main | 官方 v0.20.2rc | ❌ `Glm47MoeModelToolParser._extract_tool_call_regions` 不存在 |
+| latest main | 官方 v0.20.2rc | ❌ `get_total_cp_world_size` 不存在 |
+| **v0.20.2** | **官方 v0.20.2rc** | ✅ **兼容** |
+
+### 8.2 正确的版本组合安装
+
+```bash
+# 1. 安装 vllm v0.20.2
+cd /home/vllm
+git checkout v0.20.2
+pip uninstall vllm -y
+VLLM_TARGET_DEVICE=empty pip install -v -e .
+
+# 2. 克隆官方 vllm-ascend v0.20.2rc 分支
+cd /home
+git clone -b releases/v0.20.2rc --depth 1 https://github.com/vllm-project/vllm-ascend.git vllm-ascend-official
+
+# 3. 安装 vllm-ascend
+cd /home/vllm-ascend-official
+pip install -v -e .
+
+# 4. 验证
+pip show vllm | grep Version   # 0.20.2+empty
+pip show vllm_ascend | grep Version  # 0.1.dev1+gface36594
+python3 -c "import vllm_ascend; print('OK')"
+```
+
+### 8.3 triton 兼容性修复（关键步骤，必须执行）
+
+triton-ascend 3.2.1 自带 triton 3.2.0，缺少 `next_power_of_2` 函数，会导致 Worker 在 KV cache 初始化时崩溃。
+**必须先卸载可能残留的 triton 3.5.0，再重新安装 triton-ascend 3.2.1，然后 patch。**
+
+```bash
+# Step 1: 卸载所有 triton 相关包（防止 triton 3.5.0 C 扩展冲突）
+pip uninstall triton triton-ascend -y
+
+# Step 2: 重新安装 triton-ascend 3.2.1（会自动拉取 triton 3.2.0）
+pip install triton-ascend==3.2.1
+
+# Step 3: 验证 triton 可以正常导入
+python3 -c "import triton; print('version:', triton.__version__)"
+
+# Step 4: 检查 next_power_of_2 是否存在
+python3 -c "import triton; print('has next_power_of_2:', hasattr(triton, 'next_power_of_2'))"
+
+# Step 5: 如果缺失，手动添加到 triton __init__.py
+TRITON_INIT=$(python3 -c "import triton; import os; print(os.path.join(os.path.dirname(triton.__file__), '__init__.py'))")
+if ! grep -q "next_power_of_2" "$TRITON_INIT"; then
+    echo '' >> "$TRITON_INIT"
+    echo 'def next_power_of_2(n):' >> "$TRITON_INIT"
+    echo '    if n <= 0:' >> "$TRITON_INIT"
+    echo '        return 1' >> "$TRITON_INIT"
+    echo '    return 1 << (n - 1).bit_length()' >> "$TRITON_INIT"
+    echo "patched $TRITON_INIT"
+else
+    echo "already has next_power_of_2"
+fi
+
+# Step 6: 最终验证
+python3 -c "import triton; print('version:', triton.__version__); print('has next_power_of_2:', hasattr(triton, 'next_power_of_2'))"
+# 预期输出: version: 3.2.0  has next_power_of_2: True
+```
+
+> **注意**：如果之前安装过 triton 3.5.0，会导致 `ModuleNotFoundError: No module named 'triton._C.libtriton.ascend'`。
+> 必须执行 `pip uninstall triton triton-ascend -y` 后重新安装 triton-ascend==3.2.1 才能修复。
+
+### 8.4 vllm-ascend 编译问题修复（TILINGKEY_PAR_COMPILE）
+
+```bash
+# 问题：opc 并行编译冲突 "Another process is using this dir"
+# 修复：限制编译并行度 + 禁用 TILINGKEY_PAR_COMPILE
+
+# 限制编译并行度为1（完全串行）
+sed -i 's/JOB_NUM="-j${CPU_NUM}"/JOB_NUM="-j1"/' /home/vllm-ascend-official/csrc/build.sh
+
+# 禁用 TILINGKEY_PAR_COMPILE
+find /home/vllm-ascend-official/csrc -maxdepth 2 -name 'CMakeLists.txt' -o -name '*.cmake' | \
+    xargs grep -l 'TILINGKEY_PAR_COMPILE' | while read f; do
+    sed -i 's/TILINGKEY_PAR_COMPILE=1/TILINGKEY_PAR_COMPILE=0/g' "$f"
+done
+
+# 清理 build 目录后重新安装
+rm -rf /home/vllm-ascend-official/csrc/build
+cd /home/vllm-ascend-official
+pip install -v -e .
+```
+
+## 步骤九：拉起 vllm 实例
+
+### 9.1 创建 run.sh 脚本（已验证成功的最终版本）
+
+```bash
+cat > /home/lsy/run.sh << 'RUNEOF'
+#!/bin/bash
+rm -rf /root/ascend/log/*
+
+echo "/tmp/core.%p" | tee /proc/sys/kernel/core_pattern
+
+export PYTHONPATH=$PYTHONPATH:/home/vllm
+export PYTHONPATH=$PYTHONPATH:/home/vllm-ascend-official
+
+nic_name="enp189s0f0"
+local_ip="172.28.1.10"
+export HCCL_IF_IP=$local_ip
+export GLOO_SOCKET_IFNAME=$nic_name
+export TP_SOCKET_IFNAME=$nic_name
+export HCCL_SOCKET_IFNAME=$nic_name
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=1024
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+
+export VLLM_USE_V1=1
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+export VLLM_VERSION=0.20.2
+
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf
+
+vllm serve /mnt/sfs_turbo/weights/Qwen3.5-35B-A3B \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --enforce-eager \
+    --seed 1024 \
+    --served-model-name qwen3 \
+    --enable-expert-parallel \
+    --max-num-seqs 100 \
+    --max-model-len 70000 \
+    --max-num-batched-tokens 16384 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --gpu-memory-utilization 0.80 \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":false}}' > /home/lsy/log_p.log 2>&1
+RUNEOF
+chmod +x /home/lsy/run.sh
+```
+
+### 9.2 执行 run.sh
+
+```bash
+cd /home/lsy
+bash run.sh
+
+# 查看日志
+tail -f log_p.log
+```
+
+### 9.3 带 memcache KV transfer 的 run.sh（可选）
+
+如果需要使用 memcache 作为 KV transfer backend：
+
+```bash
+vllm serve /mnt/sfs_turbo/weights/Qwen3.5-35B-A3B \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --enforce-eager \
+    --seed 1024 \
+    --served-model-name qwen3 \
+    --enable-expert-parallel \
+    --max-num-seqs 100 \
+    --max-model-len 70000 \
+    --max-num-batched-tokens 16384 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.25 \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":false}}' \
+    --kv-transfer-config \
+    '{"kv_connector": "AscendStoreConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {"backend": "memcache","use_layerwise": false,"mooncake_rpc_port":"0"}}'
+```
+
+### 9.4 验证服务接口
+
+```bash
+# 新窗口执行
+unset http_proxy
+unset https_proxy
+curl -X POST -s http://127.0.0.1:8004/v1/completions -H "Content-Type: application/json" -d '{
+"model": "qwen3",
+"prompt": "The sun dipped below the horizon painting the sky in hues of orange and purple.",
+"max_tokens": 200,
+"temperature": 0
+}'
+```
+
+### 9.5 常见启动问题排查
+
+**问题1：HCCL 端口冲突**
+```
+Communication_Error_Bind_IP_Port(EI0020): Failed to enable listening for the NPU network adapter socket.
+```
+解决：添加环境变量 `export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000`
+
+**问题2：NPU 显存不足**
+```
+ValueError: Free memory on device (27.62/60.96 GiB) on startup is less than desired GPU memory utilization (0.9, 54.86 GiB).
+```
+解决：降低 `--gpu-memory-utilization`（如 0.25），或释放被其他进程占用的 NPU 显存
+
+**问题3：Hybrid KV cache manager 冲突**
+```
+ValueError: Hybrid KV cache manager is disabled but failed to convert the KV cache specs to one unified type.
+```
+解决：添加 `--no-disable-hybrid-kv-cache-manager` 参数（使用 kv-transfer-config 时需要）
+
+**问题4：triton next_power_of_2 缺失**
+```
+RuntimeError: Worker failed with error 'module 'triton' has no attribute 'next_power_of_2''
+```
+解决：参考步骤 8.3 手动添加 `next_power_of_2` 函数
+
+**问题5：DP=2 + TP=8 设备分配失败**
+```
+set default device id failed, ret:107001
+```
+解决：DP=2 + TP=8 总共需要 16 个 Worker，但只有 8 张 NPU。改为 DP=1 + TP=8
+
+## 环境信息
+
+- 服务器：121.37.53.41 (SSH端口 10001)
+- NPU：910B3 x 8（注意：NPU 1 和 2 被其他进程占用约 37GB 显存）
+- 容器：tyy_b120
+- 基础镜像：quay.io/ascend/vllm-ascend:v0.20.2rc1
+- Python：3.11.15
+- vllm：0.20.2+empty (源码可编辑安装, /home/vllm)
+- vllm-ascend：0.1.dev1+gface36594 (官方 releases/v0.20.2rc 分支, /home/vllm-ascend-official)
+- memfabric_hybrid：1.0.8
+- memcache_hybrid：1.0.4
+- pybind11：3.0.1
+- triton-ascend：3.2.1 (triton 3.2.0 + next_power_of_2 patch)
+- 模型：Qwen3.5-35B-A3B (/mnt/sfs_turbo/weights/Qwen3.5-35B-A3B, bfloat16, 66.97 GiB)
+- MetaService：运行中 (端口 5000/6000/8000)
+
+### 最终运行状态（已验证成功）
+
+- ✅ vllm v0.20.2 + vllm-ascend v0.20.2rc 安装成功
+- ✅ MetaService 后端服务运行中（端口 5000/6000/8000）
+- ✅ 模型权重加载成功（14/14 shards, 373秒, 每卡 8.36GB）
+- ✅ HCCL 分布式通信初始化成功（8 Worker, world_size=8, backend=hccl）
+- ✅ KV cache 初始化成功（38.00 GiB/卡, 3,833,500 tokens, 54.76x 并发）
+- ✅ Engine init 完成（profile + create kv cache + warmup model, 210.35s）
+- ✅ API server 启动成功（端口 8004, `Application startup complete`）
+- ✅ 推理请求验证成功（`POST /v1/completions HTTP/1.1 200 OK`）
+- ✅ 推理吞吐量：~1.7 tokens/s（eager 模式首次推理）
+
+### 关键成功配置
+
+```
+--tensor-parallel-size 8
+--gpu-memory-utilization 0.80
+--enforce-eager
+--enable-expert-parallel
+--max-model-len 70000
+--max-num-batched-tokens 16384
+--max-num-seqs 100
+--no-enable-prefix-caching
+HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+triton next_power_of_2 patch 已应用
+```
+
+## 附录：完整复现命令（按顺序执行）
+
+> 以下命令从零开始，按顺序执行即可复现到 vllm serve 成功启动的状态。
+
+```bash
+# ============================================================
+# 1. 宿主机清除代理
+# ============================================================
+export http_proxy=""
+export https_proxy=""
+export no_proxy="localhost,127.0.0.1"
+
+# ============================================================
+# 2. 创建容器
+# ============================================================
+docker run --name tyy_b120 -it -d --net=host --shm-size=500g \
+    --privileged=true \
+    -w /home \
+    --device=/dev/davinci_manager \
+    --device=/dev/hisi_hdc \
+    --device=/dev/devmm_svm \
+    --entrypoint=bash \
+    -v /mnt:/mnt \
+    -v /data:/data \
+    -v /dev:/dev \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -v /usr/local/dcmi:/usr/local/dcmi \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+    -v /usr/local/sbin:/usr/local/sbin \
+    -v /home:/home \
+    -v /etc/hccn.conf:/etc/hccn.conf \
+    -v /tmp:/tmp \
+    -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime \
+    -e http_proxy= \
+    -e https_proxy= \
+    quay.io/ascend/vllm-ascend:v0.20.2rc1
+
+# ============================================================
+# 3. 进入容器，配置 git 和 pip
+# ============================================================
+docker exec -it tyy_b120 bash
+
+# 容器内执行：
+git config --global http.sslVerify false
+git config --global --unset http.proxy 2>/dev/null
+git config --global --unset https.proxy 2>/dev/null
+git config --global --unset url.https://gh-proxy.org/https://github.com/.insteadof 2>/dev/null
+git config --global --unset url.https://mirror.ghproxy.com/https://github.com/.insteadof 2>/dev/null
+
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+pip config set global.trusted-host mirrors.aliyun.com
+pip config set global.extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
+
+# ============================================================
+# 4. 卸载自带 vllm 和 vllm-ascend
+# ============================================================
+pip uninstall vllm vllm_ascend -y
+
+# ============================================================
+# 5. 克隆代码仓库
+# ============================================================
+cd /home
+git clone https://github.com/vllm-project/vllm.git
+git clone -b releases/v0.20.2rc --depth 1 https://github.com/vllm-project/vllm-ascend.git vllm-ascend-official
+git clone -b v1.0.0 https://gitcode.com/Ascend/memfabric_hybrid
+git clone -b v1.0.0 https://gitcode.com/yrewzjsx/memcache.git
+
+# ============================================================
+# 6. 切换 vllm 到 v0.20.2 tag
+# ============================================================
+cd /home/vllm
+git fetch --depth 1 origin tag v0.20.2
+git checkout v0.20.2
+
+# ============================================================
+# 7. 源码安装 vllm v0.20.2
+# ============================================================
+cd /home/vllm
+pip install -r requirements/build.txt
+VLLM_TARGET_DEVICE=empty pip install -v -e .
+
+# ============================================================
+# 8. 源码安装 vllm-ascend v0.20.2rc
+# ============================================================
+cd /home/vllm-ascend-official
+pip install -v -e .
+
+# 验证
+pip show vllm | grep Version       # 预期: 0.20.2+empty
+pip show vllm_ascend | grep Version  # 预期: 0.1.dev1+gxxxxxxx
+python3 -c "import vllm_ascend; print('OK')"
+
+# ============================================================
+# 9. triton 兼容性修复（关键步骤）
+# ============================================================
+pip uninstall triton triton-ascend -y
+pip install triton-ascend==3.2.1
+
+# patch next_power_of_2
+TRITON_INIT=$(python3 -c "import triton; import os; print(os.path.join(os.path.dirname(triton.__file__), '__init__.py'))")
+if ! grep -q "next_power_of_2" "$TRITON_INIT"; then
+    echo '' >> "$TRITON_INIT"
+    echo 'def next_power_of_2(n):' >> "$TRITON_INIT"
+    echo '    if n <= 0:' >> "$TRITON_INIT"
+    echo '        return 1' >> "$TRITON_INIT"
+    echo '    return 1 << (n - 1).bit_length()' >> "$TRITON_INIT"
+fi
+
+# 验证
+python3 -c "import triton; print('version:', triton.__version__); print('has next_power_of_2:', hasattr(triton, 'next_power_of_2'))"
+# 预期: version: 3.2.0  has next_power_of_2: True
+
+# ============================================================
+# 10. 安装 memfabric_hybrid
+# ============================================================
+cd /home/memfabric_hybrid
+git clean -xdf
+git reset --hard
+git submodule update --recursive --init
+pip install pybind11==3.0.1
+
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
+
+cd output
+bash memfabric_hybrid-*.run
+source /usr/local/memfabric_hybrid/set_env.sh
+
+pip show memfabric_hybrid  # 预期已安装
+# 如果未安装，手动安装 whl
+cd /usr/local/memfabric_hybrid/latest/aarch64-linux/wheel
+pip install memfabric_hybrid-*.whl
+
+# ============================================================
+# 11. 安装 memcache
+# ============================================================
+cd /home/memcache
+git clean -xdf
+git reset --hard
+git submodule update --recursive --init
+git submodule update --remote 3rdparty/memfabric_hybrid
+
+bash script/build_and_pack_run.sh --build_mode RELEASE
+
+cd output
+bash memcache_hybrid-*.run
+source /usr/local/memcache_hybrid/set_env.sh
+
+pip show memcache_hybrid  # 预期已安装
+# 如果未安装，手动安装 whl
+cd /usr/local/memcache_hybrid/latest/aarch64-linux/wheel
+pip install memcache_hybrid-*.whl
+
+# ============================================================
+# 12. 修改 memcache 配置文件
+# ============================================================
+mkdir -p /home/lsy/layerwise
+cp /usr/local/memcache_hybrid/latest/config/mmc-meta.conf /home/lsy/layerwise/mmc-meta.conf
+cp /usr/local/memcache_hybrid/latest/config/mmc-local.conf /home/lsy/layerwise/mmc-local.conf
+
+sed -i 's/ock.mmc.local_service.protocol = host_rdma/ock.mmc.local_service.protocol = device_sdma/' /home/lsy/layerwise/mmc-local.conf
+sed -i 's/ock.mmc.local_service.dram.size = 1GB/ock.mmc.local_service.dram.size = 10GB/' /home/lsy/layerwise/mmc-local.conf
+
+# ============================================================
+# 13. 拉起 MetaService 服务
+# ============================================================
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+export MMC_META_CONFIG_PATH=/home/lsy/layerwise/mmc-meta.conf
+
+nohup /usr/local/memcache_hybrid/latest/aarch64-linux/bin/mmc_meta_service > /tmp/mmc_meta_service.log 2>&1 &
+echo $! > /tmp/mmc_meta_pid.txt
+
+# 验证（等待5秒后）
+sleep 5
+ps -p $(cat /tmp/mmc_meta_pid.txt) -o pid,stat,etime,args
+# 预期: 进程状态 Sl，正在运行
+cat /proc/net/tcp | awk '{print $2}' | grep -i ":1388"
+# 预期: 有输出，端口 5000 正在监听
+
+# ============================================================
+# 14. 创建 run.sh 脚本
+# ============================================================
+cat > /home/lsy/run.sh << 'RUNEOF'
+#!/bin/bash
+rm -rf /root/ascend/log/*
+
+echo "/tmp/core.%p" | tee /proc/sys/kernel/core_pattern
+
+export PYTHONPATH=$PYTHONPATH:/home/vllm
+export PYTHONPATH=$PYTHONPATH:/home/vllm-ascend-official
+
+nic_name="enp189s0f0"
+local_ip="172.28.1.10"
+export HCCL_IF_IP=$local_ip
+export GLOO_SOCKET_IFNAME=$nic_name
+export TP_SOCKET_IFNAME=$nic_name
+export HCCL_SOCKET_IFNAME=$nic_name
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=1024
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+
+export VLLM_USE_V1=1
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+export VLLM_VERSION=0.20.2
+
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf
+
+vllm serve /mnt/sfs_turbo/weights/Qwen3.5-35B-A3B \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --enforce-eager \
+    --seed 1024 \
+    --served-model-name qwen3 \
+    --enable-expert-parallel \
+    --max-num-seqs 100 \
+    --max-model-len 70000 \
+    --max-num-batched-tokens 16384 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --gpu-memory-utilization 0.80 \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":false}}' > /home/lsy/log_p.log 2>&1
+RUNEOF
+chmod +x /home/lsy/run.sh
+
+# ============================================================
+# 15. 启动 vllm serve（后台运行）
+# ============================================================
+cd /home/lsy
+nohup bash run.sh > /dev/null 2>&1 &
+
+# 查看日志（模型加载约需 5-7 分钟）
+tail -f /home/lsy/log_p.log
+
+# 关键日志标志（看到这些说明成功）：
+# "Loading safetensors checkpoint shards: 100% Completed | 14/14"
+# "Loading model weights took 8.3579 GB"
+# "Available KV cache memory: 38.00 GiB"
+# "GPU KV cache size: 3,833,500 tokens"
+# "init engine (profile, create kv cache, warmup model) took 210.35 s"
+# "Application startup complete."
+
+# ============================================================
+# 16. 验证推理接口
+# ============================================================
+# 等待日志出现 "Application startup complete." 后执行
+curl -X POST -s http://127.0.0.1:8004/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3",
+    "prompt": "The sun dipped below the horizon painting the sky in hues of orange and purple.",
+    "max_tokens": 50,
+    "temperature": 0
+  }'
+
+# 预期返回 JSON，包含 choices[0].text 为生成的文本
+# 日志中出现: "POST /v1/completions HTTP/1.1" 200 OK
+```
+
+## 步骤十：DeepSeek-V4 + Layerwise PD 混部
+
+### 10.1 下载 DeepSeek-V4-Flash-w8a8-mtp 模型
+
+```bash
+cd /mnt/sfs_turbo/weights
+
+python3 -c "
+import requests
+import urllib3
+from modelscope import snapshot_download
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_original_request = requests.Session.request
+def _patched_request(self, method, url, *args, **kwargs):
+    kwargs['verify'] = False
+    return _original_request(self, method, url, *args, **kwargs)
+requests.Session.request = _patched_request
+
+print('开始下载 DeepSeek-V4-Flash-w8a8-mtp...')
+model_dir = snapshot_download(
+    'Eco-Tech/DeepSeek-V4-Flash-w8a8-mtp',
+    local_dir='/mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp'
+)
+print(f'下载完成！模型位于: {model_dir}')
+"
+
+# 模型约 280GB，70 个 safetensors 文件
+ls /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp/*.safetensors | wc -l  # 预期 70
+du -sh /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp/  # 预期约 280G
+```
+
+### 10.2 确认 NPU 显存充足
+
+```bash
+# 检查所有 NPU 显存占用
+npu-smi info
+
+# 确保每张卡至少有 48GB 空闲（HBM-Usage 应小于 ~16000MB）
+# 如果有其他进程占用（如 atk），需要杀掉：
+pkill -9 -f atk 2>/dev/null
+
+# 再次确认
+npu-smi info | grep HBM-Usage
+```
+
+### 10.3 创建 DeepSeek-V4 layerwise PD 混部 run.sh
+
+```bash
+cat > /home/lsy/run.sh << 'RUNEOF'
+#!/bin/bash
+rm -rf /root/ascend/log/*
+
+echo "/tmp/core.%p" | tee /proc/sys/kernel/core_pattern
+
+export PYTHONPATH=$PYTHONPATH:/home/vllm
+export PYTHONPATH=$PYTHONPATH:/home/vllm-ascend-official
+
+nic_name="enp189s0f0"
+local_ip="172.28.1.10"
+export HCCL_IF_IP=$local_ip
+export GLOO_SOCKET_IFNAME=$nic_name
+export TP_SOCKET_IFNAME=$nic_name
+export HCCL_SOCKET_IFNAME=$nic_name
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=1024
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+
+export VLLM_USE_V1=1
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+export VLLM_VERSION=0.20.2
+
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf
+
+vllm serve /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --seed 1024 \
+    --served-model-name deepseek_v4 \
+    --enable-expert-parallel \
+    --max-num-seqs 40 \
+    --max-model-len 16384 \
+    --max-num-batched-tokens 4096 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.85 \
+    --quantization ascend \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":true}}' \
+    --kv-transfer-config \
+    '{"kv_connector": "AscendStoreConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {"backend": "memcache","use_layerwise": true,"mooncake_rpc_port":"0"}}' > /home/lsy/log_p.log 2>&1
+RUNEOF
+chmod +x /home/lsy/run.sh
+```
+
+### 10.4 关键配置说明
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `--tensor-parallel-size 8` | 8 | 8 卡张量并行 |
+| `--gpu-memory-utilization 0.85` | 0.85 | NPU 显存利用率，如显存不足可降到 0.75 |
+| `--quantization ascend` | ascend | Ascend 量化（不能用 deepseek_v4_fp8，NPU 不支持） |
+| `--no-disable-hybrid-kv-cache-manager` | - | DeepSeekV4 有 hybrid KV cache，必须启用 |
+| `--torchair_graph_config {"enabled":true}` | true | 启用 torchair graph，支持 PIECEWISE cudagraph |
+| `kv_connector: AscendStoreConnector` | - | KV transfer 连接器 |
+| `kv_role: kv_both` | kv_both | PD 混部（同一个实例同时做 prefill 和 decode） |
+| `use_layerwise: true` | true | 启用 layerwise KV transfer |
+| `backend: memcache` | memcache | 使用 memcache 作为 KV transfer backend |
+| `HCCL_NPU_SOCKET_PORT_RANGE=20000-25000` | - | 避免 HCCL 端口冲突 |
+
+> **注意**：layerwise 需要 PIECEWISE cudagraph 模式，不能加 `--enforce-eager`。
+> `AscendStoreConnector.requires_piecewise_for_cudagraph` 返回 True，vllm 会自动启用 PIECEWISE。
+
+### 10.5 启动 vllm serve
+
+```bash
+cd /home/lsy
+
+# 杀掉旧的 vllm 进程
+pkill -9 -f vllm 2>/dev/null
+sleep 5
+
+# 启动
+nohup bash run.sh > /dev/null 2>&1 &
+
+# 查看日志（模型加载约需 38 分钟，280GB 模型）
+tail -f /home/lsy/log_p.log
+```
+
+### 10.6 关键日志标志
+
+```
+# 模型加载中
+Loading safetensors checkpoint shards:  50% Completed | 35/70 [...]
+Loading safetensors checkpoint shards: 100% Completed | 70/70 [38:11<00:00, 32.73s/it]
+Loading weights took 2291.39 seconds
+Loading model weights took 36.0575 GB
+
+# PIECEWISE 编译
+PIECEWISE compilation enabled on NPU
+Compiling a graph for compile range (1, 4096) takes 34.38 s
+torch.compile took 62.11 s in total
+
+# KV cache 初始化
+Available KV cache memory: XX GiB
+GPU KV cache size: XXX tokens
+
+# 服务启动成功
+Application startup complete.
+```
+
+### 10.7 验证推理接口
+
+```bash
+# 等待日志出现 "Application startup complete." 后执行
+curl -X POST -s http://127.0.0.1:8004/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek_v4",
+    "prompt": "The sun dipped below the horizon painting the sky in hues of orange and purple.",
+    "max_tokens": 50,
+    "temperature": 0
+  }'
+```
+
+### 10.8 常见问题
+
+**问题1：`deepseek_v4_fp8 quantization is currently not supported in npu`**
+解决：使用 `--quantization ascend` 而不是 `--quantization deepseek_v4_fp8`
+
+**问题2：`No available memory for the cache blocks`**
+解决：模型 36GB/卡 + 编译开销占了大部分显存。降低 `--gpu-memory-utilization`（如 0.75）或减小 `--max-model-len`（如 8192）
+
+**问题3：`Free memory on device (XX/60.96 GiB) on startup is less than desired GPU memory utilization`**
+解决：NPU 被其他进程占用。执行 `pkill -9 -f atk` 释放显存，或降低 `--gpu-memory-utilization`
+
+**问题4：NPU 0 被 atk 进程占用**
+```bash
+# 查看 NPU 0 上的进程
+npu-smi info | grep "0       0"
+
+# 杀掉 atk 进程
+pkill -9 -f atk
+
+# 确认显存释放
+npu-smi info | grep HBM-Usage
+```
+
+### 10.9 DeepSeek-V4 环境信息
+
+- 模型：DeepSeek-V4-Flash-w8a8-mtp（W8A8 量化, 280GB, 70 shards）
+- 架构：DeepseekV4ForCausalLM（256 专家, 43 层, MTP）
+- TP=8, EP=8（每卡 32 个专家）
+- 每卡权重：36.06 GB
+- PIECEWISE cudagraph + layerwise KV transfer
+- PD 混部（kv_role=kv_both）
+- 模型加载时间：约 38 分钟
+- 图编译时间：约 62 秒
