@@ -90,6 +90,15 @@ ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3Tili
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
     ge::graphStatus ret = MoeDistributeCombineV2TilingFuncNew(context, config);
+    if (ret == ge::GRAPH_SUCCESS) {
+        // config.isMc2Context 保持 true：attr 语义（免读 group_ep、CheckMc2Context 校验 context 输入）不变。
+        // 但下发给 kernel 的标志位置 false：context Const 是 GE 图资产，其 device 显存生命周期不受控
+        // （内存池复用导致 kernel 晚读垃圾），kernel 改为运行期 GetHcclContext 取 context，
+        // 与 dispatch V3、combine V2 图模式同一条已验证路径。
+        MoeDistributeCombineV2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineV2TilingData>();
+        tilingData->moeDistributeCombineV2Info.isMc2Context = false;
+        OP_LOGI(nodeName, "MoeDistributeCombineV3 use runtime hccl context instead of mc2 context const.");
+    }
     return ret;
 }
 } // namespace optiling

@@ -542,11 +542,14 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
     if (tilingData->moeDistributeCombineV2Info.isMc2Context) {
         isMc2Context_ = true;
         mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
-    } else {
+    }
+    InitAttrs(mc2Context, tilingData);
+    if (!isMc2Context_) {
+        // winSize 校验必须在 InitCommContext 之后：epWinContext_ 在 InitCommContext 里才赋值，
+        // 提前读会解引用空指针（scalar 越界）。
         auto realWinSize = Mc2Kernel::GetWinSize(epWinContext_);
         CheckWindowSize(totalWinSizeEp_, realWinSize, tpipe_, XOut);
     }
-    InitAttrs(mc2Context, tilingData);
 
     PipeBarrier<PIPE_ALL>();
     // 当前win区划分为前后两半区，连续两次dispatch，切换半区
