@@ -1250,6 +1250,19 @@ moe:
     options:
       - moe_token_unpermute_with_routing_map_grad
 
+  moe_tutel_dispatch:
+    module: True
+    src:
+      - moe/moe_tutel_dispatch
+    exclude:
+      - moe/moe_tutel_dispatch/docs
+      - moe/moe_tutel_dispatch/README.md
+    ut_cov_exclude:
+      - moe/moe_tutel_dispatch/op_graph
+      - moe/moe_tutel_dispatch/op_kernel
+    options:
+      - moe_tutel_dispatch
+
 posembedding:
   apply_rotary_pos_emb:
     module: True
