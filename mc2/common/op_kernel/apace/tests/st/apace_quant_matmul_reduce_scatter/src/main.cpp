@@ -151,6 +151,13 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
 
     uint32_t headTileCnt = chunkM / headMSize;
     uint32_t tailMSize = chunkM % headMSize;
+    // tailMSize 必须 16 对齐 (Blaze matmul 最小行粒度)
+    if (tailMSize > 0 && tailMSize % 16 != 0) {
+        throw std::invalid_argument(
+            "ERROR: tailMSize=" + std::to_string(tailMSize) + " not 16-aligned. "
+            "chunkM=" + std::to_string(chunkM) + " headMSize=" + std::to_string(headMSize) +
+            ". Use a headMSize that divides chunkM into 16-aligned segments.");
+    }
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
     uint32_t tileCnt = headTileCnt + tailTileCnt;
 
@@ -171,7 +178,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
             tilingData.subMmTilingData.mBaseTailSplitCnt = 1U;
             tilingData.subMmTilingData.mTailMain = 0U;
         }
-        // tail tile tiling: m=rankSize*tailMSize (FragmentTensor 的 totalLogicalM)
+        // tail tile tiling: m=rankSize*tailMSize (tailMSize 已保证 16 对齐)
         if (tailTileCnt > 0 && tailMSize > 0) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tailTilingEngine;
             uint32_t tailLogicalM = static_cast<uint32_t>(rankNum) * tailMSize;
@@ -311,15 +318,10 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     GM_ADDR deviceOutput = nullptr;
     GM_ADDR deviceWorkspace = nullptr;
 
-    // A 和 ScaleA 分配 padded 大小 (tail tile fragment 对齐到 32 行, 可能超出实际 m)
-    uint32_t paddedM = (static_cast<uint32_t>(m) + 31U) & ~31U;
-    std::vector<uint8_t> hostAPadded(paddedM * k, 0);
-    std::vector<uint8_t> hostScaleAPadded(paddedM * CeilDiv(k, 64) * 2, 0);
-
-    ACL_CHECK(aclrtMalloc((void**)&deviceA, paddedM * k, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, paddedM * CeilDiv(k, 64) * 2, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
+    ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
     // cGm: 最终输出 [chunkM, n] bfloat16
     size_t sizeC = static_cast<size_t>(chunkM) * n * sizeof(uint16_t);
     ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeC, ACL_MEM_MALLOC_HUGE_ONLY));
@@ -329,11 +331,9 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, sizeWorkspace, ACL_MEM_MALLOC_HUGE_ONLY));
     INFO_LOG("[Rank %d] workspace size=%zu bytes (m=%d, n=%d)", rankId, sizeWorkspace, m, n);
 
-    std::copy(hostA.begin(), hostA.end(), hostAPadded.begin());
-    std::copy(hostScaleA.begin(), hostScaleA.end(), hostScaleAPadded.begin());
-    ACL_CHECK(aclrtMemcpy(deviceA, paddedM * k, hostAPadded.data(), paddedM * k, ACL_MEMCPY_HOST_TO_DEVICE));
+    ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACL_CHECK(aclrtMemcpy(deviceScaleA, paddedM * CeilDiv(k, 64) * 2, hostScaleAPadded.data(), paddedM * CeilDiv(k, 64) * 2, ACL_MEMCPY_HOST_TO_DEVICE));
+    ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
     INFO_LOG("[Rank %d] Step 10: data loaded to device", rankId);
 
