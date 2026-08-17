@@ -1,0 +1,8 @@
+# ---------------------------------------------------------------------
+# 算子构建约束配置（可选文件，缺省=不限制）
+#   supported_soc    : 支持的 SoC 列表，逗号分隔，缺省=支持全部
+#   min_cann_version : 要求的最低 CANN 版本（三段式），缺省=不限制
+# 依据：op_kernel/arch22(ascend910b/ascend910_93)、arch31(ascend310p)、arch35(ascend950)
+# ---------------------------------------------------------------------
+supported_soc=ascend310p,ascend910b,ascend910_93,ascend950
+min_cann_version=8.5.0
