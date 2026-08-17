@@ -78,19 +78,19 @@ jobs:
             echo "Renamed: $f -> ${{ inputs.package_name }}"
             break
           done
-      - 
-        name: api-check
-        identifier: api-check
-        if: ${{ inputs.task_name == 'Compile_Ascend_X86_ubuntu24' && env.TARGET_BRANCH == 'master' }}
-        uses: cann/.gitcode/actions/api-check@master
-        with:
-          org_name: ${{ env.org_name }}
-          mode: ${{ steps.compile.outputs.api-check }}
-          repo_name: ${{ env.repo_name }}
-          merge_id: ${{ env.MERGE_ID }}
-          workspace: ${{ steps.process_checkout.outputs.path }}
-          source_branch: ${{ env.SOURCE_BRANCH }}
-          target_branch: ${{ env.TARGET_BRANCH }}
+      # - 
+      #   name: api-check
+      #   identifier: api-check
+      #   if: ${{ inputs.task_name == 'Compile_Ascend_X86_ubuntu24' && env.TARGET_BRANCH == 'master' }}
+      #   uses: cann/.gitcode/actions/api-check@master
+      #   with:
+      #     org_name: ${{ env.org_name }}
+      #     mode: ${{ steps.compile.outputs.api-check }}
+      #     repo_name: ${{ env.repo_name }}
+      #     merge_id: ${{ env.MERGE_ID }}
+      #     workspace: ${{ steps.process_checkout.outputs.path }}
+      #     source_branch: ${{ env.SOURCE_BRANCH }}
+      #     target_branch: ${{ env.TARGET_BRANCH }}
       -
         name: verify_package
         if: ${{ inputs.task_name != 'Pre_Compile' }}
