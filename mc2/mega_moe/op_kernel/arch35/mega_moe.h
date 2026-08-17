@@ -697,8 +697,10 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmm1ExpertState(
     ExpertLoopState &state, uint32_t expertIdx, uint32_t sendCnt)
 {
     if (GetSubBlockIdx() == 0) {
-        WaitForMoeExpertTokenCountReady(countWorkspace_, params_.workspaceInfo, expertIdx);
-        sendCnt = GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, expertIdx);
+        WaitForMoeExpertTokenCountReady(
+            params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, expertIdx);
+        sendCnt = GetExpertTokenCountFromWorkspace(
+            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
     }
     UpdateExpertLoopState(state, expertIdx, sendCnt);
     return sendCnt != 0U;
@@ -775,7 +777,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
     for (uint32_t expertIdx = 0U; expertIdx < commonConfig_.moeExpertPerRank; ++expertIdx) {
         uint32_t expertTokenCount =
-            GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, expertIdx);
+            GetExpertTokenCountFromWorkspace(
+                params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
         UpdateExpertLoopState(gmm2State, expertIdx, expertTokenCount);
         if (expertTokenCount == 0U) {
             continue;
