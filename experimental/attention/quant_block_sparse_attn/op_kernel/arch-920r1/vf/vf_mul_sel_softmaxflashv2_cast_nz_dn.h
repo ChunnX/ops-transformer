@@ -27,17 +27,51 @@ using namespace MicroAPI;
 // Empty-row lse sentinel, equivalent to common.h QBSA_EMPTY_LSE_VALUE(-FLT_MAX).
 constexpr float VF_QBSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
 
-// Layout selectors for unpacking the four FP8 lanes produced by a B32 -> B8
-// cast.  The unpacked values are accumulated into the softmax denominator so
-// C2's numerator and denominator use exactly the same quantized P.
+// DIST_UNPACK4_B8 places each FP8 value in byte zero of a B32 lane.
 constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_ZERO = {
     RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_ONE = {
-    RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_TWO = {
-    RegLayout::TWO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_THREE = {
-    RegLayout::THREE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+
+__simd_vf__ inline void RescaleRound0VF(
+    __ubuf__ fp8_e4m3fn_t *pTensor, __ubuf__ float *alphaTensor, const uint32_t realK)
+{
+    constexpr uint32_t BLOCK_ELEMS = 32U;
+    constexpr uint32_t FORM_STRIDE_BLOCKS = 65U;
+    constexpr uint32_t GROUP_STRIDE_BLOCKS = 130U;
+    const uint32_t repeat = (realK + 63U) >> 6U;
+
+    RegTensor<fp8_e4m3fn_t> pFp8Reg;
+    RegTensor<float> pFp32Reg;
+    RegTensor<float> alphaReg;
+    MaskReg fp32Mask = CreateMask<float, MaskPattern::VL32>();
+
+    for (uint32_t group = 0U; group < repeat; ++group) {
+        uint32_t validColumns = realK - group * 64U;
+        validColumns = validColumns > 64U ? 64U : validColumns;
+        for (uint32_t form = 0U; form < 2U; ++form) {
+            LoadAlign(alphaReg, alphaTensor + form * BLOCK_ELEMS);
+            const uint32_t formBase =
+                (group * GROUP_STRIDE_BLOCKS + form * FORM_STRIDE_BLOCKS) * BLOCK_ELEMS;
+            for (uint32_t column = 0U; column < validColumns; ++column) {
+                __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + formBase + column * BLOCK_ELEMS;
+                LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
+                    (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
+                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32Mask);
+                Mul(pFp32Reg, pFp32Reg, alphaReg, fp32Mask);
+                Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32Mask);
+                StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
+                    (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32Mask);
+            }
+        }
+    }
+}
+
+__aicore__ inline void RescaleRound0(
+    LocalTensor<fp8_e4m3fn_t> &pTensor, LocalTensor<float> &alphaTensor, const uint32_t realK)
+{
+    __ubuf__ fp8_e4m3fn_t *pUb = (__ubuf__ fp8_e4m3fn_t *)pTensor.GetPhyAddr();
+    __ubuf__ float *alphaUb = (__ubuf__ float *)alphaTensor.GetPhyAddr();
+    RescaleRound0VF(pUb, alphaUb, realK);
+}
 
 // Safe pre-pad value for AttenTail variants. Must be a large negative finite float
 // so that (pad_value * qScale * kScale) does NOT overflow to -inf/NaN before the
