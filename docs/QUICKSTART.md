@@ -2,7 +2,7 @@
 
 ## 使用须知
 
-本指南旨在帮助您快速上手CANN和`ops-transformer`算子仓的使用。为方便快速了解算子开发全流程，以**AddExample**算子为实践对象，算子源码位于`ops-transformer/examples/add_example`，操作流程如下：
+本指南旨在帮助开发者快速上手CANN和`ops-transformer`算子仓的使用。为方便快速了解算子开发全流程，以**AddExample**算子为实践对象，算子源码位于`ops-transformer/examples/add_example`，操作流程如下：
 
 1. **[前提条件](../README.md)**：参考项目README完成环境准备和源码下载，此处不再赘述。快速入门场景**推荐CANNLab或Docker部署**，操作简单。
 
@@ -55,11 +55,15 @@
 bash build.sh --pkg --soc=${soc_version} --ops=add_example -j16
 ```
 
+**SoC 取值映射表**<a id="soc-version-mapping"></a>
+
 产品名对应的${soc_version}取值如下，请按实际场景传参。
 
-- Atlas A2 训练系列产品/Atlas A2 推理系列产品：取值为ascend910b
-- Atlas A3 训练系列产品/Atlas A3 推理系列产品：取值为ascend910_93
-- 950系列产品：取值为ascend950
+| 产品系列 | ${soc_version} 取值 |
+| -------- | ------------------- |
+| Atlas A2 系列（训练/推理） | ascend910b |
+| Atlas A3 系列（训练/推理） | ascend910_93 |
+| 950 系列 | ascend950 |
 
 若提示如下信息，说明编译成功。
 
@@ -140,8 +144,10 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
     先回到项目根目录，编译命令如下：
 
     ```bash
-    bash build.sh --pkg --soc=ascend910b --ops=add_example -j16
+    bash build.sh --pkg --soc=${soc_version} --ops=add_example -j16
     ```
+
+    产品名对应的${soc_version}取值参考[SoC 取值映射表](#soc-version-mapping)，请按实际场景传参。
 
 2. **重新安装**：
 
@@ -269,4 +275,4 @@ int main() {
 
 ## 结语
 
-体验完上述流程，您已基本完成算子开发过程，如果您想进一步贡献新算子或学习更多高阶开发、调试等技能，请访问本项目README学习[进阶教程](../README.md#学习教程)和[贡献指南](../README.md#相关信息)等。
+体验完上述流程，已基本完成算子开发过程，如果想进一步贡献新算子或学习更多高阶开发、调试等技能，请访问本项目README学习[进阶教程](../README.md#学习教程)和[贡献指南](../README.md#相关信息)等。

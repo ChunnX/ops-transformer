@@ -43,11 +43,28 @@ private:
     ge::graphStatus CheckSingleParaVDescale(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckSingleParaPScale(const QfaTilingInfo &qfaInfo);
 
+    // --- SinglePara: descale shape dim 校验 (按量化场景分发) ---
+    ge::graphStatus CheckQDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+
+    // --- ParaExistence: 场景化必选参数 ---
+    ge::graphStatus CheckParaExistenceGqaFp8(const QfaTilingInfo &qfaInfo) const;
+
     // --- MultiPara: descale shape consistency (descale_shape匹配关系表) ---
     ge::graphStatus CheckDescaleShape(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckQDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
 
     // --- MultiPara: descale dtype 校验 ---
     // MxFP8 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
@@ -76,6 +93,12 @@ private:
     // 校验实际 shape 与期望 shape 的每个维度是否相等
     ge::graphStatus CheckShapeEqual(const gert::StorageShape &actual, const std::vector<int64_t> &expected,
                                     const std::string &paraName, const char *opName) const;
+
+    // --- Feature: N1/N2/G 上限校验 (全量化场景) ---
+    ge::graphStatus CheckN1SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckN2SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const;
 
 private:
     std::shared_ptr<QfaTilingShapeCompare> queryShapeCmp_ = nullptr;

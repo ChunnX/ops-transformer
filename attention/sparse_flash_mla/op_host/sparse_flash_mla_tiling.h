@@ -37,6 +37,7 @@ struct SMLATilingRequiredParaInfo {
 struct SMLATilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
+    const gert::StorageShape *shape;
 };
 
 enum class SMLALayout : uint32_t {
@@ -92,6 +93,7 @@ constexpr uint32_t SINKS_INDEX = 16;
 constexpr uint32_t METADATA_INDEX = 17;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
+constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;
@@ -212,6 +214,7 @@ struct SMLAParaInfo {
     SMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     SMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     SMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+    SMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
     const float *softmaxScale = nullptr;
     const uint32_t *cmpRatio = nullptr;
@@ -313,7 +316,8 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class SMLATilingCheck {
 public:
-    explicit SMLATilingCheck(const SMLATilingInfo &smlaInfo) : smlaInfo_(smlaInfo) {};
+    explicit SMLATilingCheck(const SMLATilingInfo &smlaInfo)
+        : smlaInfo_(smlaInfo) {};
     ~SMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
@@ -455,7 +459,8 @@ inline T Align(T num, T rnd)
 
 class SMLAInfoParser {
 public:
-    explicit SMLAInfoParser(gert::TilingContext *context) : context_(context)
+    explicit SMLAInfoParser(gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~SMLAInfoParser() = default;
@@ -589,7 +594,8 @@ public:
 // ---------------算子Tiling类---------------
 class SparseFlashMlaTiling {
 public:
-    explicit SparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
+    explicit SparseFlashMlaTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoOpTiling(SMLATilingInfo *tilingInfo);
 
 private:
@@ -597,6 +603,7 @@ private:
     void CalcUbBmm(SMLATilingInfo *tilingInfo);
     uint32_t CalcFdLogicalSlotCount(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const;
     uint64_t CalcFdStagingWorkspaceSize(const SMLATilingInfo *tilingInfo, uint32_t aicNum) const;
+    uint64_t CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATilingInfo *tilingInfo, uint32_t &vectorizeFlag) const;
     gert::TilingContext *context_ = nullptr;
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
     SparseFlashMlaTilingData tilingData_;
