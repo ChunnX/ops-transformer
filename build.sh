@@ -622,6 +622,15 @@ function build_example()
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
+    ci_filtered_files=()
+    for file in "${files[@]}"; do
+        if [[ "$file" == *"/experimental/"* ]]; then
+            echo "Skip experimental example: $file"
+        else
+            ci_filtered_files+=("$file")
+        fi
+    done
+    files=("${ci_filtered_files[@]}")
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
         if [ -z "$files" ]; then
