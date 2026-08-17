@@ -59,7 +59,7 @@ public:
     using LayoutPL1 = typename OutputType_::Layout;
     using LayoutPUB = layout::RowMajor;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue, ElementInput NEG_LOG2_CX)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementInput NEG_LOG2_CX)
     {
         // FIXPIPE<->V 区
         for (uint32_t i = 0; i < MXFP4::UB_S_BUF_CNT; i++) {
@@ -85,7 +85,6 @@ public:
         indexUBTensor = resource.ubBuf.template GetBufferByByte<ElementIndex>(MXFP4::UB_INDEX_BUF_OFFSET);
 
         NEG_LOG2_CX_ = NEG_LOG2_CX;
-        scaleValue_ = static_cast<ElementInput>(scaleValue);
         //  Init Tensor
         Mxfp4VF::InitIndexesAndDuplicateCallVF<ElementMax>(indexUBTensor, localGlobalMaxUBTensor[0]);
     }
@@ -114,14 +113,14 @@ public:
                     MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    indexUBTensor, NEG_LOG2_CX_);
             } else {
                 // qs=64, kvs=256 softmax
                 Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    indexUBTensor, NEG_LOG2_CX_);
             }
             
         } else {
@@ -147,13 +146,13 @@ public:
                     Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                        indexUBTensor, NEG_LOG2_CX_);
                 } else {
                     // softmax padding 32, qs=64
                     Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                        indexUBTensor, NEG_LOG2_CX_);
                 }
             } else {
                 if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
@@ -162,7 +161,7 @@ public:
                         MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                        indexUBTensor, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 } else {
                     // softmax padding 32 multi >= 64, qs=64
@@ -170,7 +169,7 @@ public:
                         MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                        indexUBTensor, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 }
             }
@@ -272,7 +271,6 @@ private:
     AscendC::LocalTensor<ElementMax>   localGroupMaxUBTensor[MXFP4::UB_LOCAL_GROUP_MAX_CNT]; // LocalGroupMax
     AscendC::LocalTensor<ElementMax>   localGlobalMaxUBTensor[MXFP4::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
     AscendC::LocalTensor<ElementIndex> indexUBTensor;                        // Index
-    ElementInput scaleValue_;
     ElementInput NEG_LOG2_CX_;
 };
 
