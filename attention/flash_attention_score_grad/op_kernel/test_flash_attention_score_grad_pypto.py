@@ -42,10 +42,14 @@ def golden_flash_attention_grad(q, k, v, dy, scale):
 
     s = torch.matmul(q_f32, k_f32.transpose(-1, -2)) * scale
 
+    # LSE 约定(对标 Dao-AILab/flash-attention)：前向输出单个
+    #   lse = max + log(sum(exp(s - max)))        (自然对数)
+    # 反向据此一步算出归一化的 P = exp(s - lse)，行和恒为 1。
     s_max = s.max(dim=-1, keepdim=True).values
     s_exp = torch.exp(s - s_max)
     s_sum = s_exp.sum(dim=-1, keepdim=True)
-    p = s_exp / s_sum
+    softmax_lse_t = s_max + torch.log(s_sum)
+    p = torch.exp(s - softmax_lse_t)
 
     # Forward output y = P @ V — the kernel reads this to build softmaxGradFront
     y_f32 = torch.matmul(p, v_f32)
@@ -59,12 +63,9 @@ def golden_flash_attention_grad(q, k, v, dy, scale):
     dq_pt = torch.matmul(ds, k_f32) * scale
     dk_pt = torch.matmul(ds.transpose(-1, -2), q_f32) * scale
 
-    softmax_max = s_max.squeeze(-1)
-    softmax_sum = s_sum.squeeze(-1)
-
     return (dq_pt.half().transpose(1, 2), dk_pt.half().transpose(1, 2),
             dv.half().transpose(1, 2), y_f32.half().transpose(1, 2),
-            softmax_max, softmax_sum, sfmg.squeeze(-1))
+            softmax_lse_t.squeeze(-1), sfmg.squeeze(-1))
 
 
 def run_kernel_with_timeout(launch, timeout_s=KERNEL_TIMEOUT_S):
@@ -112,13 +113,12 @@ def run_case(B, N, S1, S2, D, num_cores):
     dy = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
 
     # Compute golden reference
-    (dq_gold, dk_gold, dv_gold, y_gold, smax_gold, ssum_gold,
+    (dq_gold, dk_gold, dv_gold, y_gold, lse_gold,
      _sfmg_ref) = golden_flash_attention_grad(
         q.cpu(), k.cpu(), v.cpu(), dy.cpu(), scale)
 
     y_in = y_gold.to(device).contiguous()
-    smax_gold = smax_gold.to(device).contiguous()
-    ssum_gold = ssum_gold.to(device).contiguous()
+    lse_gold = lse_gold.to(device).contiguous()
 
     # workspace 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
     # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
@@ -148,7 +148,7 @@ def run_case(B, N, S1, S2, D, num_cores):
     run_kernel_with_timeout(
         lambda: flash_attention_score_grad[None, num_cores](
             q, k, v, dy, y_in,
-            smax_gold, ssum_gold,
+            lse_gold,
             dq_ws, dk_ws, dv_ws,
             dq_out_t, dk_out_t, dv_out_t,
             tiling,

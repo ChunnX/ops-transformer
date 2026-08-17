@@ -202,11 +202,11 @@ UB_NZP     = 0x2C000   # fp16[65,128] 16.25KB
 # sfmg 两个分段结果地址连续，故可用一个 [64,1] 视图整体读取
 UB_SFMG    = 0x3C000   # fp32[64,1]  256B  softmaxGradResBuf
 UB_SFMG_HI = 0x3C080   # 后 32 行 (32*4 = 128B 偏移)
-UB_MAX_0   = 0x3C200   # maxSumQue[2] 双缓冲
-UB_MAX_1   = 0x3C400
-UB_SUM_0   = 0x3C600
-UB_SUM_1   = 0x3C800
-# 末尾 0x3CA00 = 243KB，未超 248KB 上限
+# lseQue[2] 双缓冲。原先是 max/sum 两组共四块，改用 LSE 后合成一组：
+# lse = max + log(sum(exp(s-max)))，前向已把两者合进一个张量。
+UB_LSE_0   = 0x3C200   # fp32[64,1] 256B
+UB_LSE_1   = 0x3C400
+# 末尾 0x3C600 = 241.5KB，未超 248KB 上限
 
 
 @dataclass
@@ -280,7 +280,6 @@ def make_run_infos():
         taskIdMod2=0,
         queryOffset=0,
         keyOffset=0,
-        maxSumOffset=0,
         isS2IdxNoChange=0,
     )
 
@@ -495,8 +494,6 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     # BSND 布局的 GM 偏移
     runInfo.queryOffset = runInfo.s1oIdx * CUBE_BASEM
     runInfo.keyOffset = runInfo.s2oIdx * CUBE_BASEN
-    # softmax_max / softmax_sum 排布 [B,N,S1]
-    runInfo.maxSumOffset = runInfo.boIdx * constInfo.n2Size + runInfo.n2oIdx
 
     # isS2IdxNoChange 决定 dK/dV 能否在 L0C 上累加。本配置下
     # IS_DKV_RESIDENT_L0C 为 true，但当前实现仍走 atomicAdd，
@@ -782,42 +779,46 @@ def process_vec1(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
 #  无 pse / attenMask，仅 muls + simpleSoftmax
 # ==================================================================
 @pl.vector_function
-def muls_simple_softmax_vf(mm2_ub, max_ub, sum_ub, scale: pl.DT_FP32,
+def muls_simple_softmax_vf(mm2_ub, lse_ub, scale: pl.DT_FP32,
                            srcM: pl.DT_INT64, rowShift: pl.DT_INT64):
-    """P = exp(S * scale - max) / sum，逐行处理。
+    """P = exp(S * scale - lse)，逐行处理。
 
-    对应 AscendC MulsSelVF 去掉 pse/attenMask 后的主体：max/sum 用
-    BRC_B32 广播载入，S 按 VECTOR_BASEN=128 分两个 64 lane 寄存器。
+    对标 Dao-AILab/flash-attention 的 LSE 约定：前向输出
+      lse = max + log(sum(exp(s - max)))            (自然对数)
+    故反向只需一次 exp_sub 就得到归一化后的 P，行和恒为 1 ——
+    相比原先的 exp(S*scale - max) / sum 省掉一条 vf.div，
+    也少读一个 GM 张量。两式数值差异约 6e-08。
+
+    lse 用 BRC_B32 广播载入，S 按 VECTOR_BASEN=128 分两个 64 lane 寄存器。
     """
     pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     for m in pl.range(0, srcM):
-        # rowShift：max/sum 的 GM 读取起点被钳位到界内，逻辑第 m 行
+        # rowShift：lse 的 GM 读取起点被钳位到界内，逻辑第 m 行
         # 实际落在 tile 的 m + rowShift 处（见 process_vec2）
-        vregMax = vf.load_align(max_ub, m + rowShift, dist=pl.LoadDist.BRC_B32)
-        vregSum = vf.load_align(sum_ub, m + rowShift, dist=pl.LoadDist.BRC_B32)
+        vregLse = vf.load_align(lse_ub, m + rowShift, dist=pl.LoadDist.BRC_B32)
         for n in pl.range(0, VECTOR_BASEN // VF_LANES):
             vregSrc = vf.load_align(mm2_ub, m * VECTOR_BASEN + n * VF_LANES)
             vregMuls = vf.muls(vregSrc, scale, pregFullExe)
-            vregExp = vf.exp_sub(vregMuls, vregMax, pregFullExe)
-            vregDiv = vf.div(vregExp, vregSum, pregFullExe)
+            vregExp = vf.exp_sub(vregMuls, vregLse, pregFullExe)
             vf.store_align(mm2_ub + m * VECTOR_BASEN + n * VF_LANES,
-                           vregDiv, pregFullExe)
+                           vregExp, pregFullExe)
 
 
-def process_vec2(constInfo, runInfo, subIdx, tensor_smax, tensor_ssum,
-                 mm2_ub, max_ub, sum_ub):
+def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub):
     s1Base = runInfo.queryOffset + subIdx * runInfo.firstHalfS1RealSize
-    # max/sum 的 tile 是 [VECTOR_BASEM,1]，load 总是搬 VECTOR_BASEM 行。
+    # lse 的 tile 是 [VECTOR_BASEM,1]，load 总是搬 VECTOR_BASEM 行。
     # S1 非对齐时 s1Base + 64 会越过 s1Size(实测 AIV 507015)，故把起点
     # 钳位到界内，再把差值 rowShift 传给 VF 做索引补偿 —— 这样搬入的行
     # 一定在界内，且逻辑行号仍对得上。
     loadBase = pl.min(s1Base, constInfo.s1Size - VECTOR_BASEM)
     loadBase = pl.max(loadBase, 0)
     rowShift = s1Base - loadBase
-    # CopyMaxSum: 前向的 max/sum 直接复用，无需再求极值
-    pl.load(max_ub, tensor_smax, [runInfo.maxSumOffset, loadBase], order=[1, 0])
-    pl.load(sum_ub, tensor_ssum, [runInfo.maxSumOffset, loadBase], order=[1, 0])
-    muls_simple_softmax_vf(mm2_ub, max_ub, sum_ub, constInfo.scaleValue,
+    # CopyLse: 前向的 lse 直接复用，无需再求极值或行和
+    # lse 形状 [B,N,S1]，按 (b, n2, s1) 三维索引；order=[2,0] 指明
+    # 搬运沿 S1(轴 2) 展开、落到 tile 的行方向
+    pl.load(lse_ub, tensor_lse,
+            [runInfo.boIdx, runInfo.n2oIdx, loadBase], order=[2, 0])
+    muls_simple_softmax_vf(mm2_ub, lse_ub, constInfo.scaleValue,
                            runInfo.halfS1RealSize, rowShift)
 
 
@@ -1062,8 +1063,7 @@ def flash_attention_score_grad(
     value: pl.Ptr[pl.DT_UINT8],
     dy: pl.Ptr[pl.DT_UINT8],
     y: pl.Ptr[pl.DT_UINT8],
-    softmax_max: pl.Ptr[pl.DT_UINT8],
-    softmax_sum: pl.Ptr[pl.DT_UINT8],
+    softmax_lse: pl.Ptr[pl.DT_UINT8],
     dq_workspace: pl.Ptr[pl.DT_UINT8],
     dk_workspace: pl.Ptr[pl.DT_UINT8],
     dv_workspace: pl.Ptr[pl.DT_UINT8],
@@ -1095,11 +1095,11 @@ def flash_attention_score_grad(
                                [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     tensor_y = pl.make_tensor(y, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                               [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    # softmax_max / softmax_sum : [B,N,S1]
-    tensor_smax = pl.make_tensor(softmax_max, [constInfo.bSize * constInfo.n2Size, constInfo.s1Size],
-                                 [constInfo.s1Size, 1], dtype=pl.DT_FP32)
-    tensor_ssum = pl.make_tensor(softmax_sum, [constInfo.bSize * constInfo.n2Size, constInfo.s1Size],
-                                 [constInfo.s1Size, 1], dtype=pl.DT_FP32)
+    # softmax_lse : [B,N,S1]
+    tensor_lse = pl.make_tensor(
+        softmax_lse, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size],
+        [constInfo.n2Size * constInfo.s1Size, constInfo.s1Size, 1],
+        dtype=pl.DT_FP32)
     # dq/dk/dv workspace 为 fp32，供 atomicAdd 累加
     tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                                   [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
@@ -1409,14 +1409,10 @@ def flash_attention_score_grad(
             type=pl.TileType(shape=[SFMG_LOOP_SIZE, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
             addrs=[UB_SFMG_HI], mutex_ids=[29])
-        max_ub = pl.make_tile_group(
+        lse_ub = pl.make_tile_group(
             type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_MAX_0, UB_MAX_1], mutex_ids=[24, 25])
-        sum_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_SUM_0, UB_SUM_1], mutex_ids=[26, 27])
+            addrs=[UB_LSE_0, UB_LSE_1], mutex_ids=[24, 25])
 
         runInfos = make_run_infos()
         # ---------------- Process() 主循环 (AIV 侧) ----------------
@@ -1443,8 +1439,7 @@ def flash_attention_score_grad(
                 gIdx = global_idx(constInfo, cBlockIdx, coreNum, localIdx)
                 set_run_info(constInfo, curInfo, taskId, gIdx, subIdx)
                 # CopyMaxSum：max/sum 双缓冲随 taskId 轮转
-                max_ub.next()
-                sum_ub.next()
+                lse_ub.next()
 
             if taskId > 1:
                 prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
@@ -1458,8 +1453,8 @@ def flash_attention_score_grad(
                 # 正向：等 mm2 结果
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V, event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
-                process_vec2(constInfo, prevInfo, subIdx, tensor_smax, tensor_ssum,
-                             mm2_t, max_ub.previous(), sum_ub.previous())
+                process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
+                             mm2_t, lse_ub.previous())
                 # 正向：等 mm1 结果
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V, event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
