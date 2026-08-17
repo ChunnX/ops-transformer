@@ -56,8 +56,10 @@ class MsaIndexScoreOpBuilder(OpBuilder):
             local_blocks: int = DEFAULT_LOCAL_BLOCKS,
         ):
             torch._check(query.dim() == 3, lambda: "query must be 3D [T, Hq, D]")
-            torch._check(block_table is not None and block_table.dim() == 2,
-                         lambda: "block_table must be 2D [B, MB]")
+            torch._check(
+                block_table is not None and block_table.dim() == 2,
+                lambda: "block_table must be 2D [B, MB]",
+            )
             total_q = query.size(0)
             num_q_heads = query.size(1)
             max_blocks = block_table.size(1)
