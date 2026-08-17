@@ -419,19 +419,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    if ASCEND_IS_AIV {
-        bmm2Buffers.Get().SetCrossCore();
-    }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    if ASCEND_IS_AIV {
-        bmm1Buffers.Get().SetCrossCore();
-        bmm1Buffers.Get().SetCrossCore();
-    }
-
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
     uint64_t totalOffset = IS_SPLIT_G ? static_cast<uint64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
                                         static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
@@ -560,6 +552,15 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             }
         }
         return;
+    }
+
+    if ASCEND_IS_AIV {
+        bmm1Buffers.Get().SetCrossCore();
+        bmm1Buffers.Get().SetCrossCore();
+        bmm2Buffers.Get().SetCrossCore();
+        this->vecBlock.AllocEventID(constInfo);
+    } else {
+        this->cubeBlock.AllocEventID();
     }
 
     // 从meta data解析分核信息
@@ -712,6 +713,15 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 CrossCoreWaitFlag<0, PIPE_MTE2>(15);
             }
         }
+    }
+
+    if ASCEND_IS_AIV {
+        this->vecBlock.FreeEventID(constInfo);
+    } else {
+        this->cubeBlock.FreeEventID();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
     }
 }
 

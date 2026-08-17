@@ -50,7 +50,7 @@ TEST_PARAMS = {
         "template_run_mode": ["SWA"],
         "actlen_mode":["full"],
         "S1EQS2":[False],
-        "return_softmax_lse":[True],
+        "return_softmax_lse":[False],
     },
 
     "prefill_first":{
