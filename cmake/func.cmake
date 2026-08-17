@@ -69,6 +69,52 @@ function(add_target_source)
     endforeach()
 endfunction()
 
+# ------------------------------------------------------------------------------------------------------------
+# require_build_support([SUPPORTED_SOC <soc...>] [MIN_CANN_VERSION <x.y.z>])
+#   在算子 op_host/CMakeLists.txt 最开头调用；条件不满足时 return，跳过整个算子的 host/kernel 编译。
+#   - SUPPORTED_SOC    : 支持的 SoC 列表（空格分隔），缺省=支持全部；与 ASCEND_COMPUTE_UNIT 无交集则跳过
+#   - MIN_CANN_VERSION : 三段式最低 CANN 版本，缺省=不限制；CANN_TOOLKIT_VERSION 低于该值则跳过
+#   注意：必须是 macro（return 从调用者 CMakeLists 返回），与 require_pypto_pro 同理。
+# ------------------------------------------------------------------------------------------------------------
+macro(require_build_support)
+    set(_req_options "")
+    set(_req_oneValueArgs MIN_CANN_VERSION)
+    set(_req_multiValueArgs SUPPORTED_SOC)
+    cmake_parse_arguments(REQ "${_req_options}" "${_req_oneValueArgs}" "${_req_multiValueArgs}" ${ARGN})
+
+    get_filename_component(_req_op_root "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
+    get_filename_component(_req_op_name "${_req_op_root}" NAME)
+
+    if(REQ_SUPPORTED_SOC)
+        set(_req_soc_hit FALSE)
+        foreach(_req_cu IN LISTS ASCEND_COMPUTE_UNIT)
+            if(_req_cu IN_LIST REQ_SUPPORTED_SOC)
+                set(_req_soc_hit TRUE)
+                break()
+            endif()
+        endforeach()
+        if(NOT _req_soc_hit)
+            if(_req_op_name IN_LIST ASCEND_OP_NAME)
+                message(WARNING "Op ${_req_op_name} skipped: soc not supported (requested: ${ASCEND_COMPUTE_UNIT}).")
+            else()
+                message(STATUS "Op ${_req_op_name} skipped: soc not supported (requested: ${ASCEND_COMPUTE_UNIT}).")
+            endif()
+            return()
+        endif()
+    endif()
+
+    if(REQ_MIN_CANN_VERSION)
+        if(CANN_TOOLKIT_VERSION STREQUAL "" OR CANN_TOOLKIT_VERSION VERSION_LESS "${REQ_MIN_CANN_VERSION}")
+            if(_req_op_name IN_LIST ASCEND_OP_NAME)
+                message(WARNING "Op ${_req_op_name} skipped: CANN version ${CANN_TOOLKIT_VERSION} < ${REQ_MIN_CANN_VERSION}.")
+            else()
+                message(STATUS "Op ${_req_op_name} skipped: CANN version ${CANN_TOOLKIT_VERSION} < ${REQ_MIN_CANN_VERSION}.")
+            endif()
+            return()
+        endif()
+    endif()
+endmacro()
+
 function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     set(_OP_LIST)
     set(_OP_DIR_LIST)
