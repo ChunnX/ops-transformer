@@ -40,9 +40,19 @@ def _visible_key_end(sparse_mode, actual_seq_klen, q_len, t_off):
     return int(actual_seq_klen)
 
 
-def msa_index_score_golden(query, key, block_table, actual_seq_qlen, actual_seq_klen, start_loc,
-                           sparse_mode=SPARSE_MODE_RIGHT_DOWN, block_size=128, scale=None,
-                           init_blocks=DEFAULT_INIT_BLOCKS, local_blocks=DEFAULT_LOCAL_BLOCKS):
+def msa_index_score_golden(
+    query,
+    key,
+    block_table,
+    actual_seq_qlen,
+    actual_seq_klen,
+    start_loc,
+    sparse_mode=SPARSE_MODE_RIGHT_DOWN,
+    block_size=128,
+    scale=None,
+    init_blocks=DEFAULT_INIT_BLOCKS,
+    local_blocks=DEFAULT_LOCAL_BLOCKS,
+):
     """计算 MSA index block score。
 
     Args:
@@ -67,7 +77,8 @@ def msa_index_score_golden(query, key, block_table, actual_seq_qlen, actual_seq_
             raise ValueError("int8 key requires dequant scale of shape [NP, N_kv, P]")
         if scale.shape != (key.shape[0], num_kv_heads, block_size):
             raise ValueError(
-                f"dequant scale shape must be {(key.shape[0], num_kv_heads, block_size)}, got {scale.shape}")
+                f"dequant scale shape must be {(key.shape[0], num_kv_heads, block_size)}, got {scale.shape}"
+            )
     elif scale is not None:
         raise ValueError("non-quant path must not pass scale")
 

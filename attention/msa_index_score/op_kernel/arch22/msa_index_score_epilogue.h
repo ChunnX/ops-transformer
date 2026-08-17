@@ -269,27 +269,27 @@ private:
 #endif
         if (!allInvalid) {
             if (!sLoaded) {
-            // 短 pass 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
-            // 满 16 行时 DataCopy 覆盖整块 ubS_，可跳过 Duplicate。
-            if (rows < MSA_ROWS_PER_PASS) {
-                if constexpr (IS_QUANT) {
-                    AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
-                } else {
-                    AscendC::Duplicate(ubS16_, static_cast<half>(MSA_FILL_VALUE), MSA_ROWS_PER_PASS * STILE_WIDTH);
+                // 短 pass 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
+                // 满 16 行时 DataCopy 覆盖整块 ubS_，可跳过 Duplicate。
+                if (rows < MSA_ROWS_PER_PASS) {
+                    if constexpr (IS_QUANT) {
+                        AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+                    } else {
+                        AscendC::Duplicate(ubS16_, static_cast<half>(MSA_FILL_VALUE), MSA_ROWS_PER_PASS * STILE_WIDTH);
+                    }
+                    AscendC::PipeBarrier<PIPE_V>();
                 }
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-            // 上一 pass 的归约还在读 ubS_/ubS16_（score 已改为暂存在 UB，不再有
-            // 逐 pass 的 MTE3 顺带排空 V），MTE2 覆盖该缓冲前必须显式等 V。
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            if constexpr (IS_QUANT) {
-                AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
-            } else {
-                AscendC::DataCopy(ubS16_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
-            }
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                // 上一 pass 的归约还在读 ubS_/ubS16_（score 已改为暂存在 UB，不再有
+                // 逐 pass 的 MTE3 顺带排空 V），MTE2 覆盖该缓冲前必须显式等 V。
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+                if constexpr (IS_QUANT) {
+                    AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
+                } else {
+                    AscendC::DataCopy(ubS16_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
+                }
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             }
 
 #if MSA_INDEX_SCORE_DEBUG
@@ -518,9 +518,7 @@ private:
         }
         const int32_t qBlock = task.startLoc;
         const int32_t localStart =
-            (qBlock + 1 > static_cast<int32_t>(task.localBlocks))
-                ? (qBlock + 1 - static_cast<int32_t>(task.localBlocks))
-                : 0;
+            (qBlock + 1 > static_cast<int32_t>(task.localBlocks)) ? (qBlock + 1 - static_cast<int32_t>(task.localBlocks)) : 0;
 
         uint64_t initBits = 0;
         uint64_t localBits = 0;

@@ -145,8 +145,7 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     const auto *attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *sparseModeAttr = attrs->GetInt(MSA_ATTR_SPARSE_MODE);
-    info.sparseMode = (sparseModeAttr == nullptr) ? MSA_SPARSE_MODE_RIGHT_DOWN
-                                                  : static_cast<uint32_t>(*sparseModeAttr);
+    info.sparseMode = (sparseModeAttr == nullptr) ? MSA_SPARSE_MODE_RIGHT_DOWN : static_cast<uint32_t>(*sparseModeAttr);
     OP_CHECK_IF(info.sparseMode != MSA_SPARSE_MODE_DEFAULT && info.sparseMode != MSA_SPARSE_MODE_RIGHT_DOWN,
                 OP_LOGE(context, "sparse_mode must be 0 or 3, got %u.", info.sparseMode), return ge::GRAPH_FAILED);
 
@@ -169,10 +168,8 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
 
     const int64_t *initBlocksAttr = attrs->GetInt(MSA_ATTR_INIT_BLOCKS);
     const int64_t *localBlocksAttr = attrs->GetInt(MSA_ATTR_LOCAL_BLOCKS);
-    info.initBlocks = (initBlocksAttr == nullptr) ? MSA_DEFAULT_INIT_BLOCKS
-                                                  : static_cast<uint32_t>(*initBlocksAttr);
-    info.localBlocks = (localBlocksAttr == nullptr) ? MSA_DEFAULT_LOCAL_BLOCKS
-                                                   : static_cast<uint32_t>(*localBlocksAttr);
+    info.initBlocks = (initBlocksAttr == nullptr) ? MSA_DEFAULT_INIT_BLOCKS : static_cast<uint32_t>(*initBlocksAttr);
+    info.localBlocks = (localBlocksAttr == nullptr) ? MSA_DEFAULT_LOCAL_BLOCKS : static_cast<uint32_t>(*localBlocksAttr);
     OP_CHECK_IF(info.initBlocks > info.maxBlocksPerBatch || info.localBlocks > info.maxBlocksPerBatch,
                 OP_LOGE(context, "init_blocks/local_blocks must be <= maxBlocksPerBatch."),
                 return ge::GRAPH_FAILED);

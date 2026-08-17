@@ -53,7 +53,7 @@ public:
     using QType = Catlass::Gemm::GemmType<ElementQ, LayoutQ>;
     using KType = Catlass::Gemm::GemmType<ElementQ, LayoutK>;
     // S workspace 元素：非量化 fp16（fixpipe F322F16 直接写，写读流量减半），int8 fp32
-    //（S 幅值大、1e-3 容差下 fp16 精度余量不足 15%，保持 fp32 反量化）。
+    // （S 幅值大、1e-3 容差下 fp16 精度余量不足 15%，保持 fp32 反量化）。
     using ElementS = std::conditional_t<IS_QUANT, float, half>;
     using SType = Catlass::Gemm::GemmType<ElementS, LayoutS>;
 
