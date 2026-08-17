@@ -8,11 +8,11 @@
 | --------------------------------------------------------- | :------: |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品</term> |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    √     |
-| <term>Ascend 950PR/Ascend 950DT</term>                    |    √     |
+| <term>Ascend 950PR/Ascend 950DT</term>                    |    ×     |
 
 ## 功能说明
 
-- **算子功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8/fp8 反量化）的"matmul+maxpool"运算获得逐block的重要性分数score，用作 Index Branch 中后续的 TopK 输入。Prefill 与 Decode 由同一接口承载。
+- **算子功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8 反量化）的"matmul+maxpool"运算获得逐block的重要性分数score，用作 Index Branch 中后续的 TopK 输入。Prefill 与 Decode 由同一接口承载。
 
 - **计算公式**：
 
@@ -22,7 +22,7 @@
     score = Maxpool[ Q_{idx}@K_{idx}^{T} ]
     $$
 
-    - int8/fp8量化场景：
+    - int8量化场景：
 
     $$
     score = Maxpool[ scale \cdot Q_{idx}@K_{idx}^{T}  ]
@@ -78,8 +78,8 @@ aclnnStatus aclnnMsaIndexScore(
 
 | 参数名                        | 输入/输出 | 描述                                              | 使用说明                                                     | 数据类型                     | 数据格式 | 维度                                                         |
 | ----------------------------- | --------- | ------------------------------------------------- | ------------------------------------------------------------ | ---------------------------- | -------- | ------------------------------------------------------------ |
-| query                         | 输入      | 公式中的$Q_{idx}$                                 | 支持的shape为：TND                                           | BFLOAT16, FLOAT16, FP8       | ND       | 3（$[T1, N1, D]$）                                           |
-| key                           | 输入      | 公式中的$K_{idx}$                                 | 支持的shape为：TND、BNBD、BBND                               | BFLOAT16, FLOAT16, FP8, INT8 | ND, NZ   | 3（$[T2, N2, D]$）或 4（$[block\_num, N2, block\_size, D]$、$[block\_num, block\_size, N2, D]$） |
+| query                         | 输入      | 公式中的$Q_{idx}$                                 | 支持的shape为：TND                                           | BFLOAT16, FLOAT16            | ND       | 3（$[T1, N1, D]$）                                           |
+| key                           | 输入      | 公式中的$K_{idx}$                                 | 支持的shape为：TND、BNBD、BBND                               | BFLOAT16, FLOAT16, INT8      | ND, NZ   | 3（$[T2, N2, D]$）或 4（$[block\_num, N2, block\_size, D]$、$[block\_num, block\_size, N2, D]$） |
 | blockTableOptional            | 输入      | 表示当前传入的使用PageAttention存储的block映射表  | PageAttention场景下，blockTableOptional需为2维；第二维长度不能小于 $maxBlockNumPerSeq$ | INT32                        | ND       | 2（$[B, S2/block\_size]$）                                   |
 | scaleOptional                 | 输入      | 公式中的$scale$，反量化系数                       | 非量化场景传入`nullptr`；量化场景时必选，支持的shape为：BNB、BBN | FLOAT                        | ND, NZ   | 3（$[block\_num, N2, block\_size]$、$[block\_num, block\_size, N2]$） |
 | attenMaskOptional             | 输入      | 控制因果可见的mask掩码。                          | 仅在sparseMode=3时使用，作为base mask控制causal可见；取值为1代表该位不参与计算，为0代表该位参与计算 | INT8                         | ND       | 2（$[2048, 2048]$）                                          |
@@ -123,7 +123,7 @@ aclnnStatus aclnnMsaIndexScore(
 
 - 当前 $block\_size$ 值使用128。
 - PageAttention 场景下，`blockTableOptional` 必须传入，
-- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16 / FP8），`scaleOptional` 必须为 `nullptr`；量化场景下，FP8量化场景仅Ascend 950PR/Ascend 950DT支持，`scaleOptional` 必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，dtype 为 FLOAT。
+- 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scaleOptional` 必须为 `nullptr`；量化场景下仅支持 INT8，`scaleOptional` 必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 - `sparseMode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`attenMaskOptional` 传入 `nullptr`；
     - 为 3 时，代表 rightDownCausal 模式，`attenMaskOptional` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。

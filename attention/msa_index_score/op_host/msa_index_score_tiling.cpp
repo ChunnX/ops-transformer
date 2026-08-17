@@ -10,7 +10,7 @@
 
 /*!
  * \file msa_index_score_tiling.cpp
- * \brief MsaIndexScore Tiling 实现（A2/A3 P0：PA BBND + sparse_mode 0/3）。
+ * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND + sparse_mode 0/3；不支持 Ascend 950 / FP8）。
  */
 
 #include "msa_index_score_tiling.h"

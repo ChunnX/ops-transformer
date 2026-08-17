@@ -17,7 +17,7 @@
  *   1: query=fp16, key=fp16  （非量化）
  *   2: query=fp16, key=int8  （前融合 int8，scale 为反量化系数）
  *
- * A2/A3 P0：PageAttention BBND key + sparse_mode∈{0,3}；FP8 / Ascend 950 暂不注册。
+ * A2/A3：PageAttention BBND key + sparse_mode∈{0,3}。不支持 FP8 / Ascend 950（不注册 ascend950）。
  */
 
 #include <cstdint>
@@ -96,6 +96,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
+        // Atlas A2（ascend910b）/ A3（ascend910_93）；不注册 Ascend 950。
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
     }
