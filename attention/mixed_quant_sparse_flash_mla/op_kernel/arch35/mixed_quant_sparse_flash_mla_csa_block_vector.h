@@ -163,8 +163,7 @@ public:
     }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -230,11 +229,9 @@ private:
         return stagingMOffset;
     }
 
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                            const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                              Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                               const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalProcessSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKeyOffset(int64_t s2Idx, int64_t &realKeyOffset, int64_t &realScaleOffset,
@@ -249,15 +246,9 @@ private:
                                               const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
                                      int64_t s2ProcessBaseSize, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                          LocalTensor<Q_T> antiKvTensorAsB16, int64_t v0Loop, int64_t dealRow,
-                                          int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                           LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
                                           const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                             int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset,
                                           int64_t scaleOffset);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
@@ -415,16 +406,30 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase,
                                                                  const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    uint32_t sparseBlockCount = runInfo.isCmp ? constInfo.cmpSparseBlockCount : constInfo.oriSparseBlockCount;
-    uint32_t alignedSparseBlockCount =
-        runInfo.isCmp ? constInfo.alignedCmpSparseBlockCount : constInfo.alignedOriSparseBlockCount;
+    uint32_t sparseBlockCount = 0;
+    uint32_t alignedSparseBlockCount = 0;
     int64_t curS2LoopCnt = runInfo.s2LoopCount;
     GlobalTensor<int64_t> phyAddrGm;
-    if (runInfo.isCmp) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+        sparseBlockCount = constInfo.cmpSparseBlockCount;
+        alignedSparseBlockCount = constInfo.alignedCmpSparseBlockCount;
         curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
         phyAddrGm = cmpKvPhyAddrGm.template ReinterpretCast<int64_t>();
-    } else {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        sparseBlockCount = constInfo.oriSparseBlockCount;
+        alignedSparseBlockCount = constInfo.alignedOriSparseBlockCount;
         phyAddrGm = oriKvPhyAddrGm.template ReinterpretCast<int64_t>();
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (runInfo.isCmp) {
+            sparseBlockCount = constInfo.cmpSparseBlockCount;
+            alignedSparseBlockCount = constInfo.alignedCmpSparseBlockCount;
+            curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
+            phyAddrGm = cmpKvPhyAddrGm.template ReinterpretCast<int64_t>();
+        } else {
+            sparseBlockCount = constInfo.oriSparseBlockCount;
+            alignedSparseBlockCount = constInfo.alignedOriSparseBlockCount;
+            phyAddrGm = oriKvPhyAddrGm.template ReinterpretCast<int64_t>();
+        }
     }
     uint64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -920,22 +925,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> an
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1, LocalTensor<Q_T> antiKvTensorAsB16,
-    int64_t v0Loop, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
-{
-    uint64_t blockElementNum = 16;
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
-    dataCopyParams.blockLen = dealRow;
-    dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
-    dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
-
-    LocalTensor<Q_T> dst = outputL1.GetTensor<Q_T>();
-    DataCopy(dst[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
     int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
@@ -952,7 +941,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (processSize == 0) {
@@ -1131,7 +1119,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalProcessSize(const RunInfo 
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     bool isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
@@ -1154,22 +1141,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     CalProcessSize(runInfo, constInfo);
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (isCmp) {
-            ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessSparseKv(v0ResGm, runInfo, constInfo);
         } else {
-            ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
         }
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                          TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+        ProcessSparseKv(v0ResGm, runInfo, constInfo);
     } else {
-        ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+        ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
     }
     v0ResGm.SetCrossCore();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (processSize == 0) {

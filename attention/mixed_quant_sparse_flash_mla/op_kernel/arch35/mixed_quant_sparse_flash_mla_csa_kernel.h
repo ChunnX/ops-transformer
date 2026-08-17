@@ -122,7 +122,6 @@ private:
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    BuffersPolicy3buffSFA<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
@@ -396,20 +395,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
-    uint32_t mm1RightSize = constInfo.s2BaseSize * 512 * sizeof(Q_T);
-    l1BufferManager.Init(pipe, 416 * 1024);
+    l1BufferManager.Init(pipe, mm2LeftSize * 2);
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Init(l1BufferManager, mm1RightSize);
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
@@ -655,8 +646,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if ASCEND_IS_AIV {
                     if (notLastThreeLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 4];
-                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                                                   v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
+                        this->vecBlock.ProcessVec0(v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
                     }
                     if (taskId > 1 && notLast) {
                         auto &runInfo2 = runInfo[(taskId + 2) % 4];
@@ -670,8 +660,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 } else {
                     if (taskId > 0 && notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
-                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                                                      v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
+                        this->cubeBlock.IterateLoadQK(v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo,
+                                                      isFirstLoop);
                         isFirstLoop = false;
                     } else {
                         if constexpr (IS_SPLIT_G) {
@@ -686,14 +676,13 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 4];
                         RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
-                                                    this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                                     v0ResGmBuffers.Get(runInfo2.taskIdMod3), notLastTwoLoop,
                                                     runInfoNext, runInfo2, this->constInfo);
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                                                    this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
+                                                    runInfo3, this->constInfo);
                     }
                 }
                 ++taskId;
