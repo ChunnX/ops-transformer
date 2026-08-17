@@ -1,0 +1,440 @@
+=== Perf Case M=2048 K=3584 N=4096 R=2 H=512 ===
+Generated golden data for m=2048, k=3584, n=4096, rank_num=2
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] Forked Rank 0 -> PID 1263492
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1263492
+[INFO] Forked Rank 1 -> PID 1263494
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1263494
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=0.684 min=0.678 max=0.708 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=0.684 min=0.678 max=0.708 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=0.682 min=0.677 max=0.687 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=0.682 min=0.677 max=0.687 (excl warmup)
+
+=== Perf Case M=2048 K=3584 N=4096 R=4 H=512 ===
+Generated golden data for m=2048, k=3584, n=4096, rank_num=4
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] Forked Rank 0 -> PID 1264802
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1264802
+[INFO] Forked Rank 1 -> PID 1264803
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1264803
+[INFO] Forked Rank 2 -> PID 1264805
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 2 -> PID 1264805
+[INFO] Forked Rank 3 -> PID 1264807
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 3 -> PID 1264807
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 2] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 2] Step 1: aclInit
+[INFO] [Rank 3] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 3] Step 1: aclInit
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 2] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 2] Step 2: device set, stream created
+[INFO] [Rank 2] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 2] Step 3: exchanging rootInfo
+[INFO] [Rank 3] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 3] Step 2: device set, stream created
+[INFO] [Rank 3] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 3] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 2] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 2] Step 4: rootInfo exchanged
+[INFO] [Rank 2] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 2] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 3] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 3] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 3] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 3] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 3] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 3] Step 6: HCCL comm initialized
+[INFO] [Rank 3] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 3] Step 7: CreateDeviceContext
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 2] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 2] Step 6: HCCL comm initialized
+[INFO] [Rank 2] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 2] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 2] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 2] Step 8: device context created
+[INFO] [Rank 3] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 3] Step 8: device context created
+[INFO] [Rank 2] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 2] Step 9: exchanger barrier + close
+[INFO] [Rank 3] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 3] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 2] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 2] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 3] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 3] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 2] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 2] Step 10: data loaded to device
+[INFO] [Rank 3] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 3] Step 10: data loaded to device
+[INFO] [Rank 3] GET mode single tile | per-iter ms: avg=0.421 min=0.400 max=0.523 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 3] GET mode single tile | per-iter ms: avg=0.421 min=0.400 max=0.523 (excl warmup)
+[INFO] [Rank 2] GET mode single tile | per-iter ms: avg=0.414 min=0.405 max=0.461 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 2] GET mode single tile | per-iter ms: avg=0.414 min=0.405 max=0.461 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=0.416 min=0.402 max=0.481 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=0.416 min=0.402 max=0.481 (excl warmup)
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=0.410 min=0.404 max=0.419 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=0.410 min=0.404 max=0.419 (excl warmup)
+
+=== Perf Case M=4096 K=3584 N=4096 R=2 H=512 ===
+Generated golden data for m=4096, k=3584, n=4096, rank_num=2
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] Forked Rank 0 -> PID 1266251
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1266251
+[INFO] Forked Rank 1 -> PID 1266252
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1266252
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=1.390 min=1.385 max=1.396 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=1.390 min=1.385 max=1.396 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=1.394 min=1.384 max=1.431 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=1.394 min=1.384 max=1.431 (excl warmup)
+
+=== Perf Case M=1024 K=3584 N=4096 R=2 H=512 ===
+Generated golden data for m=1024, k=3584, n=4096, rank_num=2
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] Forked Rank 0 -> PID 1267493
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1267493
+[INFO] Forked Rank 1 -> PID 1267494
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1267494
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=8388608 bytes (m=1024, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=8388608 bytes (m=1024, n=4096)
+[INFO] [Rank 1] workspace size=8388608 bytes (m=1024, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=8388608 bytes (m=1024, n=4096)
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=0.372 min=0.365 max=0.396 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=0.372 min=0.365 max=0.396 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=0.370 min=0.366 max=0.375 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=0.370 min=0.366 max=0.375 (excl warmup)
+
+=== Perf Case M=4096 K=3584 N=4096 R=4 H=512 ===
+Generated golden data for m=4096, k=3584, n=4096, rank_num=4
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] Forked Rank 0 -> PID 1268717
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1268717
+[INFO] Forked Rank 1 -> PID 1268719
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1268719
+[INFO] Forked Rank 2 -> PID 1268720
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 2 -> PID 1268720
+[INFO] Forked Rank 3 -> PID 1268722
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 3 -> PID 1268722
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 2] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 2] Step 1: aclInit
+[INFO] [Rank 3] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 3] Step 1: aclInit
+[INFO] [Rank 3] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 3] Step 2: device set, stream created
+[INFO] [Rank 3] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 3] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 2] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 2] Step 2: device set, stream created
+[INFO] [Rank 2] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 2] Step 3: exchanging rootInfo
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 2] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 2] Step 4: rootInfo exchanged
+[INFO] [Rank 2] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 2] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 3] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 3] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 3] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 3] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 3] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 3] Step 6: HCCL comm initialized
+[INFO] [Rank 3] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 3] Step 7: CreateDeviceContext
+[INFO] [Rank 2] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 2] Step 6: HCCL comm initialized
+[INFO] [Rank 2] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 2] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 3] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 3] Step 8: device context created
+[INFO] [Rank 2] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 2] Step 8: device context created
+[INFO] [Rank 2] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 2] Step 9: exchanger barrier + close
+[INFO] [Rank 3] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 3] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 3] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 3] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 2] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 2] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 3] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 3] Step 10: data loaded to device
+[INFO] [Rank 2] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 2] Step 10: data loaded to device
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=0.742 min=0.734 max=0.769 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=0.742 min=0.734 max=0.769 (excl warmup)
+[INFO] [Rank 2] GET mode single tile | per-iter ms: avg=0.742 min=0.733 max=0.765 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 2] GET mode single tile | per-iter ms: avg=0.742 min=0.733 max=0.765 (excl warmup)
+[INFO] [Rank 3] GET mode single tile | per-iter ms: avg=0.742 min=0.730 max=0.768 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 3] GET mode single tile | per-iter ms: avg=0.742 min=0.730 max=0.768 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=0.743 min=0.734 max=0.773 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=0.743 min=0.734 max=0.773 (excl warmup)
+
+=== Perf Case M=2048 K=3584 N=4096 R=2 H=256 ===
+Generated golden data for m=2048, k=3584, n=4096, rank_num=2
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] Forked Rank 0 -> PID 1270127
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 0 -> PID 1270127
+[INFO] Forked Rank 1 -> PID 1270128
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:393 Forked Rank 1 -> PID 1270128
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 0] Step 1: aclInit
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:181 [Rank 1] Step 1: aclInit
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:187 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:191 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:196 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:209 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:215 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:223 [Rank 1] Step 8: device context created
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:227 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 0] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:280 [Rank 1] workspace size=16777216 bytes (m=2048, n=4096)
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:286 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 1] GET mode single tile | per-iter ms: avg=0.701 min=0.695 max=0.732 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 1] GET mode single tile | per-iter ms: avg=0.701 min=0.695 max=0.732 (excl warmup)
+[INFO] [Rank 0] GET mode single tile | per-iter ms: avg=0.698 min=0.695 max=0.704 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:344 [Rank 0] GET mode single tile | per-iter ms: avg=0.698 min=0.695 max=0.704 (excl warmup)
+
