@@ -88,6 +88,7 @@ struct BenchResult {
     double avgBwGBs = 0;
     double lastBwGBs = 0;
     double lastAssembleUs = 0;
+    double lastIssueUs = 0;
     double lastDrainUs = 0;
     double lastTotalUs = 0;
     bool verifyPass = false;
@@ -663,6 +664,7 @@ int Sample(void *arg)
         g_result.avgBwGBs = avgBwGBs;
         g_result.lastBwGBs = lastBwGBs;
         g_result.lastAssembleUs = lastAssembleNs / 1000.0;
+        g_result.lastIssueUs = lastIssueNs / 1000.0;
         g_result.lastDrainUs = lastWaitNs / 1000.0;
         g_result.lastTotalUs = lastTotalNs / 1000.0;
         g_result.hasVerify = args->verify;
@@ -814,17 +816,29 @@ int main(int argc, char *argv[])
                            g_args.sqeMode == 2 ? "hcomm" :
                            g_args.sqeMode == 3 ? "mc2_native" : "unknown";
     const char* benchName = g_args.benchMode == 0 ? "batch_write" : "write_drain_loop";
-    printf("mode=%s bench=%s sqe_bytes=%lu loop=%u\n",
-           modeName, benchName, g_args.sqeBytes, g_args.loopCount);
+    const char* issueName = (g_args.benchMode == 0) ? "commit" : "issue";
+    printf("  mode:       %s\n", modeName);
+    printf("  bench:      %s\n", benchName);
+    printf("  sqe_bytes:  %lu\n", g_args.sqeBytes);
+    printf("  loop:       %u\n", g_args.loopCount);
     if (g_result.valid) {
-        printf("avg  (over %u loops): assemble=%.2fus drain=%.2fus total=%.2fus bw=%.2fGB/s\n",
-               g_args.loopCount, g_result.avgAssembleUs, g_result.avgDrainUs, g_result.avgTotalUs, g_result.avgBwGBs);
-        // benchMode=0 只有一轮, last=avg (非独立最后一轮); benchMode=1 last 为最后一组单次值
-        const char* lastNote = (g_args.benchMode == 0) ? "(=avg, only 1 batch)" : "(last loop)";
-        printf("last %s:      assemble=%.2fus drain=%.2fus total=%.2fus bw=%.2fGB/s\n",
-               lastNote, g_result.lastAssembleUs, g_result.lastDrainUs, g_result.lastTotalUs, g_result.lastBwGBs);
+        printf("  --- avg (over %u loops) ---\n", g_args.loopCount);
+        printf("  assemble: %.2f us\n", g_result.avgAssembleUs);
+        printf("  %s: %.2f us\n", issueName, g_result.avgIssueUs);
+        printf("  drain:    %.2f us\n", g_result.avgDrainUs);
+        printf("  total:    %.2f us\n", g_result.avgTotalUs);
+        printf("  bw:       %.2f GB/s\n", g_result.avgBwGBs);
+
+        const char* lastNote = (g_args.benchMode == 0) ? "= avg (only 1 batch)" : "last loop";
+        printf("  --- last (%s) ---\n", lastNote);
+        printf("  assemble: %.2f us\n", g_result.lastAssembleUs);
+        printf("  %s: %.2f us\n", issueName, g_result.lastIssueUs);
+        printf("  drain:    %.2f us\n", g_result.lastDrainUs);
+        printf("  total:    %.2f us\n", g_result.lastTotalUs);
+        printf("  bw:       %.2f GB/s\n", g_result.lastBwGBs);
+
         if (g_result.hasVerify) {
-            printf("verify: %s\n", g_result.verifyPass ? "PASS" : "FAIL");
+            printf("  verify:   %s\n", g_result.verifyPass ? "PASS" : "FAIL");
         }
     }
     printf("==================================\n");
