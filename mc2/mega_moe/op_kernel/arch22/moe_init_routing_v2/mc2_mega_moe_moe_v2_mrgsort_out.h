@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_V2_MRGSORT_OUT_H
 #define MC2_MOE_V2_MRGSORT_OUT_H
 
-#include "mc2_mega_moe_quant_moe_v2_mrgsort.h"
+#include "mc2_mega_moe_moe_v2_mrgsort.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingV2 {

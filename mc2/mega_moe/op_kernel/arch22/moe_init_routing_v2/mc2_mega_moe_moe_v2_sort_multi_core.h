@@ -16,9 +16,9 @@
 #ifndef MC2_MOE_V2_SORT_MULTI_CORE_H
 #define MC2_MOE_V2_SORT_MULTI_CORE_H
 
-#include "mc2_mega_moe_quant_moe_v2_sort_base.h"
-#include "mc2_mega_moe_quant_moe_v2_mrgsort.h"
-#include "mc2_mega_moe_quant_moe_v2_mrgsort_out.h"
+#include "mc2_mega_moe_moe_v2_sort_base.h"
+#include "mc2_mega_moe_moe_v2_mrgsort.h"
+#include "mc2_mega_moe_moe_v2_mrgsort_out.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;

@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_V2_INIT_ROUTING_FULLLOAD_H
 #define MC2_MOE_V2_INIT_ROUTING_FULLLOAD_H
 
-#include "mc2_mega_moe_quant_moe_v2_mrgsort.h"
+#include "mc2_mega_moe_moe_v2_mrgsort.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
