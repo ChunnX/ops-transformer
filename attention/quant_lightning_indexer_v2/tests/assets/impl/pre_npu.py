@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -58,6 +59,7 @@ NON_INPUT_CSV_FIELDS = {
     "absolute_precision",
     "metadata_only",
 }
+PORTABLE_CONTRACT_DEFAULTS = {}
 
 
 def csv_contract_digest(context):
@@ -75,6 +77,28 @@ def csv_contract_digest(context):
         attributes = dict(attributes)
         attributes.pop("metadata_only", None)
         contract["attributes"] = attributes
+    serialized = json.dumps(
+        contract,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def portable_contract_digest(context):
+    """Hash mode-neutral attributes so E2E and ACLNN can share metadata state."""
+    attributes = dict(getattr(context, "attributes", None) or {})
+    attributes.pop("metadata_only", None)
+    contract = {}
+    for name, value in attributes.items():
+        normalized_name = re.sub(r"[^a-z0-9]", "", name.lower())
+        if normalized_name.endswith("optional"):
+            normalized_name = normalized_name[: -len("optional")]
+        contract[normalized_name] = value
+    for name, value in PORTABLE_CONTRACT_DEFAULTS.items():
+        contract.setdefault(name, value)
     serialized = json.dumps(
         contract,
         ensure_ascii=True,
@@ -129,6 +153,7 @@ def persist_metadata_inputs(testcase_name, metadata_input, context):
         "operator": OPERATOR,
         "testcase_name": name,
         "csv_contract": csv_contract_digest(context),
+        "portable_contract": portable_contract_digest(context),
         "metadata_input": clone_metadata_value(metadata_input),
     }
     context.state[METADATA_INPUTS_STATE_KEY] = payload
@@ -173,7 +198,13 @@ def load_metadata_inputs(context):
         raise ValueError(
             "QuantLightningIndexer V2 metadata state has an incompatible schema"
         )
-    if payload.get("csv_contract") != csv_contract_digest(context):
+    portable_contract = payload.get("portable_contract")
+    contract_matches = (
+        payload.get("csv_contract") == csv_contract_digest(context)
+        if portable_contract is None
+        else portable_contract == portable_contract_digest(context)
+    )
+    if not contract_matches:
         raise ValueError(
             "QuantLightningIndexer V2 metadata state does not match the current CSV contract"
         )

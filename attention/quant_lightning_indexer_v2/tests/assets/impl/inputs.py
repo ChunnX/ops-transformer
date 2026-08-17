@@ -271,7 +271,8 @@ class QuantLightningIndexerV2InputAdapter:
         else:
             raise ValueError(f"unsupported QLI_V2 query layout: {layout_query}")
 
-        if quant_mode == QUANT_MODE_MXFP4:
+        is_aclnn_float4 = isinstance(query, np.ndarray) and "float4" in str(query.dtype)
+        if quant_mode == QUANT_MODE_MXFP4 and not is_aclnn_float4:
             head_dim *= 2
 
         if layout_key == "BSND":
@@ -410,7 +411,12 @@ class QuantLightningIndexerV2InputAdapter:
             return
 
         dst_array = np.asarray(dst)
-        src_array = np.asarray(src_cpu)
+        if "float8" in str(src_cpu.dtype):
+            from ttk.utilities.dtypes import torch_to_numpy_tensor
+
+            src_array = torch_to_numpy_tensor(src_cpu)
+        else:
+            src_array = np.asarray(src_cpu)
         if "hifloat8" in str(dst_array.dtype):
             np.copyto(dst_array.view(np.uint8), src_array.view(np.uint8))
         else:
@@ -790,12 +796,20 @@ class QuantLightningIndexerV2InputAdapter:
             ("block_table", block_table, "block_table"),
             ("output_idx_offset", output_idx_offset, "output_idx_offset"),
         ):
+            src = data.get(src_name)
+            if (
+                quant_mode == QUANT_MODE_MXFP4
+                and name in ("query", "key")
+                and isinstance(dst, np.ndarray)
+                and "float4" in str(dst.dtype)
+            ):
+                src = self.unpack_mxfp4(src, pytest_golden.FP4_E2M1_VALUES)
             packed_dtype = (
                 torch.float8_e4m3fn
                 if quant_mode == QUANT_MODE_MXFP8 and name in ("query", "key")
                 else None
             )
-            self.copy_tensor(dst, data.get(src_name), name, packed_dtype)
+            self.copy_tensor(dst, src, name, packed_dtype)
         return data
 
 
