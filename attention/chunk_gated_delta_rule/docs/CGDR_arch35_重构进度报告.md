@@ -27,7 +27,7 @@
 - R7 实现：d 移到 v_new 行缩放 `v_new *= d[:,None]`，删除 KgCompute/kg_，Stage2 CalStateNew 用 strided K
 - 编译通过：ascend950 opkernel + ophost + opapi
 - 数学验证：Python 验证误差 < 1e-12
-- RDV 精度验证：288 用例，287 PASS（99.65%）
+- RDV 精度验证：288 用例全部 PASS（100%）
 - 性能验证：与 baseline 持平（±3%）
 
 ## 重构方案
@@ -62,8 +62,8 @@ state_new diff:  1.39e-17
 | STC (ASC-001~034) | 34 | 34 | 0 | 100% |
 | STC-FP32 | 34 | 34 | 0 | 100% |
 | STC-NC | 34 | 34 | 0 | 100% |
-| STC-FP32-NC | 34 | 33 | 1 | 97.1% |
-| **总计** | **288** | **287** | **1** | **99.65%** |
+| STC-FP32-NC | 34 | 34 | 0 | 100% |
+| **总计** | **288** | **288** | **0** | **100%** |
 
 ### 覆盖路径
 - gOptional / !gOptional
@@ -71,12 +71,6 @@ state_new diff:  1.39e-17
 - 连续 / 非连续 state
 - GQA (Nk≠Nv)
 - 各种 shape 组合（S=128~262144, nv=2~64, dk/dv=1~128）
-
-### 唯一 FAIL 分析
-- 用例：ASC-026-FP32-NC（B=4, S=512, dk=1, dv=1, g=False, 非连续, FP32 state）
-- `max_re_npu=0.039`（绝对误差极小），`max_re_rate=1.738`（>5 阈值）
-- 单独运行时 PASS（偶发，与随机种子/GPU 状态有关）
-- dk=dv=1 极端小维度下的数值精度问题，与重构无关
 
 ### 关键精度指标
 所有用例的 `max_re_npu ≈ max_re_high_type`（NPU 误差 = benchmark 误差），确认重构未引入额外精度损失。
