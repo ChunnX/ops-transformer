@@ -384,6 +384,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 
     // 全局排序保证唯一尾块位于最后一个有效slot，P和V可以使用一致的连续布局。
     IdxSortBySparseIdx(runInfo);
+    runInfo.hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -535,61 +536,57 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                 RunInfo &currentRun = runInfo[static_cast<uint64_t>(taskId) & 3U];
                 SetRunInfo(currentRun, runParam, taskId, logicalLoop, logicalLoopLimit, multiCoreInnerIdx,
                            sparseBase);
-                bool currentHasRound1 =
-                    currentRun.s2SparseBlkRealSize[2] + currentRun.s2SparseBlkRealSize[3] > 0;
                 if ASCEND_IS_AIC {
-                  cubeBlock.IterateBmm1_0(bmm1Buffers.Get(), currentRun, constInfo);
-                  if (currentHasRound1) {
-                    cubeBlock.IterateBmm1_1(bmm1Buffers.Get(), currentRun, constInfo);
-                  }
+                    cubeBlock.IterateBmm1_0(bmm1Buffers.Get(), currentRun, constInfo);
+                    if (currentRun.hasRound1) {
+                        cubeBlock.IterateBmm1_1(bmm1Buffers.Get(), currentRun, constInfo);
+                    }
                 }
                 if ASCEND_IS_AIV {
-                  int64_t delta = currentRun.nextTokensPerBatch;
-                  uint32_t s1Offset = currentRun.s1oIdx * constInfo.s1BaseSize;
-                  for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
-                    if (currentRun.sparseBlkIdx[slot] >= 0) {
-                      AttentionMaskFullProcessingOrRequired(
-                          s1Offset, currentRun.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize, delta,
-                          currentRun.s2SparseBlkRealSize[slot], currentRun.sparseBlkIdx[slot],
-                          currentRun.sparseBlkPartialMask[slot]);
+                    int64_t delta = currentRun.nextTokensPerBatch;
+                    uint32_t s1Offset = currentRun.s1oIdx * constInfo.s1BaseSize;
+                    for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
+                        if (currentRun.sparseBlkIdx[slot] >= 0) {
+                        AttentionMaskFullProcessingOrRequired(
+                            s1Offset, currentRun.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize, delta,
+                            currentRun.s2SparseBlkRealSize[slot], currentRun.sparseBlkIdx[slot],
+                            currentRun.sparseBlkPartialMask[slot]);
+                        }
                     }
-                  }
                 }
 
                 if (likely(taskId > 0)) {
-                  if ASCEND_IS_AIV {
-                    RunInfo &vec1Run = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
-                    bool vec1HasRound1 =
-                        vec1Run.s2SparseBlkRealSize[2] + vec1Run.s2SparseBlkRealSize[3] > 0;
-                    auto &pBuffer = l1PBuffers.Get();
-                    auto &round0Bmm1 = bmm1Buffers.Get();
-                    vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, vec1Run, constInfo);
-                    if (vec1HasRound1) {
-                      vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), vec1Run, constInfo);
-                    } else {
-                      vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, vec1Run, constInfo);
+                    if ASCEND_IS_AIV {
+                        RunInfo &vec1Run = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
+                        auto &pBuffer = l1PBuffers.Get();
+                        auto &round0Bmm1 = bmm1Buffers.Get();
+                        vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, vec1Run, constInfo);
+                        if (vec1Run.hasRound1) {
+                            vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), vec1Run, constInfo);
+                        } else {
+                            vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, vec1Run, constInfo);
+                        }
                     }
-                  }
                 }
                 if (likely(taskId > 1)) {
-                  if ASCEND_IS_AIC {
-                    RunInfo &bmm2Run = runInfo[static_cast<uint64_t>(taskId + 2) & 3U];
-                    if constexpr (bmm2Write2Ub) {
-                      cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, bmm2Run, constInfo);
-                    } else {
-                      cubeBlock.IterateBmm2(bmm2ResGmBuffers.Get(), l1PBuffers, bmm2Run, constInfo);
+                    if ASCEND_IS_AIC {
+                        RunInfo &bmm2Run = runInfo[static_cast<uint64_t>(taskId + 2) & 3U];
+                        if constexpr (bmm2Write2Ub) {
+                            cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, bmm2Run, constInfo);
+                        } else {
+                            cubeBlock.IterateBmm2(bmm2ResGmBuffers.Get(), l1PBuffers, bmm2Run, constInfo);
+                        }
                     }
-                  }
                 }
                 if (likely(taskId > 2)) {
-                  if ASCEND_IS_AIV {
-                    RunInfo &vec2Run = runInfo[static_cast<uint64_t>(taskId + 1) & 3U];
-                    if constexpr (bmm2Write2Ub) {
-                      vecBlock.ProcessVec2(bmm2Buffers.Get(), vec2Run, constInfo);
-                    } else {
-                      vecBlock.ProcessVec2(bmm2ResGmBuffers.Get(), vec2Run, constInfo);
+                    if ASCEND_IS_AIV {
+                        RunInfo &vec2Run = runInfo[static_cast<uint64_t>(taskId + 1) & 3U];
+                        if constexpr (bmm2Write2Ub) {
+                            vecBlock.ProcessVec2(bmm2Buffers.Get(), vec2Run, constInfo);
+                        } else {
+                            vecBlock.ProcessVec2(bmm2ResGmBuffers.Get(), vec2Run, constInfo);
+                        }
                     }
-                  }
                 }
                 ++taskId;
               }
@@ -605,11 +602,10 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
       if (likely(taskId > 0 && taskId - 1 < realTaskCount)) {
         if ASCEND_IS_AIV {
           RunInfo &vec1Run = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
-          bool vec1HasRound1 = vec1Run.s2SparseBlkRealSize[2] + vec1Run.s2SparseBlkRealSize[3] > 0;
           auto &pBuffer = l1PBuffers.Get();
           auto &round0Bmm1 = bmm1Buffers.Get();
           vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, vec1Run, constInfo);
-          if (vec1HasRound1) {
+          if (vec1Run.hasRound1) {
             vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), vec1Run, constInfo);
           } else {
             vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, vec1Run, constInfo);

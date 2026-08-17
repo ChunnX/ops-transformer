@@ -161,6 +161,7 @@ struct RunInfo {
     int64_t sparseBlkIdx[4]; /* V121 S2=512基本块内的四个sparse块 */
     int64_t phyBlkNumIdx[4]; // blockTable映射后的blockNum的Idx
     bool sparseBlkPartialMask[4]; // true表示部分计算  false表示全量计算
+    bool hasRound1;               // 排序后slot 2/3中存在有效sparse块
     // lse 输出offset
     int64_t softmaxLseOffset;
 };
