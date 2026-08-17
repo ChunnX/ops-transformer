@@ -14,6 +14,8 @@
  */
 
 #include "sparse_flash_mla_tiling.h"
+#include "checkers/checker_adapter.h"
+#include "checkers/sparse_flash_mla_checker.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
@@ -362,40 +364,27 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
 
 void SMLAInfoParser::GetOptionalInputParaInfo()
 {
-    opParamInfo_.oriKv.tensor = context_->GetOptionalInputTensor(ORI_KV_INDEX);
-    opParamInfo_.oriKv.desc = context_->GetOptionalInputDesc(ORI_KV_INDEX);
-    opParamInfo_.cmpKv.tensor = context_->GetOptionalInputTensor(CMP_KV_INDEX);
-    opParamInfo_.cmpKv.desc = context_->GetOptionalInputDesc(CMP_KV_INDEX);
-    opParamInfo_.oriSparseIndices.tensor = context_->GetOptionalInputTensor(ORI_SPARSE_INDICES_INDEX);
-    opParamInfo_.oriSparseIndices.desc = context_->GetOptionalInputDesc(ORI_SPARSE_INDICES_INDEX);
-    opParamInfo_.cmpSparseIndices.tensor = context_->GetOptionalInputTensor(CMP_SPARSE_INDICES_INDEX);
-    opParamInfo_.cmpSparseIndices.desc = context_->GetOptionalInputDesc(CMP_SPARSE_INDICES_INDEX);
-    opParamInfo_.oriBlockTable.tensor = context_->GetOptionalInputTensor(ORI_BLOCK_TABLE_INDEX);
-    opParamInfo_.oriBlockTable.desc = context_->GetOptionalInputDesc(ORI_BLOCK_TABLE_INDEX);
-    opParamInfo_.cmpBlockTable.tensor = context_->GetOptionalInputTensor(CMP_BLOCK_TABLE_INDEX);
-    opParamInfo_.cmpBlockTable.desc = context_->GetOptionalInputDesc(CMP_BLOCK_TABLE_INDEX);
-    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
-    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
-    opParamInfo_.cuSeqLensQ.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INDEX);
-    opParamInfo_.cuSeqLensQ.desc = context_->GetOptionalInputDesc(CU_SEQLENS_Q_INDEX);
-    opParamInfo_.cuSeqLensOriKv.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_ORI_KV_INDEX);
-    opParamInfo_.cuSeqLensOriKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_ORI_KV_INDEX);
-    opParamInfo_.cuSeqLensCmpKv.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_CMP_KV_INDEX);
-    opParamInfo_.cuSeqLensCmpKv.desc = context_->GetOptionalInputDesc(CU_SEQLENS_CMP_KV_INDEX);
-    opParamInfo_.seqUsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
-    opParamInfo_.seqUsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
-    opParamInfo_.sequsedOriKv.tensor = context_->GetOptionalInputTensor(SEQUSED_ORI_KV_INDEX);
-    opParamInfo_.sequsedOriKv.desc = context_->GetOptionalInputDesc(SEQUSED_ORI_KV_INDEX);
-    opParamInfo_.sequsedCmpKv.tensor = context_->GetOptionalInputTensor(SEQUSED_CMP_KV_INDEX);
-    opParamInfo_.sequsedCmpKv.desc = context_->GetOptionalInputDesc(SEQUSED_CMP_KV_INDEX);
-    opParamInfo_.cmpResidualKv.tensor = context_->GetOptionalInputTensor(CMP_RESIDUAL_KV_INDEX);
-    opParamInfo_.cmpResidualKv.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_KV_INDEX);
-    opParamInfo_.oriTopkLength.tensor = context_->GetOptionalInputTensor(ORI_TOPK_LENGTH_INDEX);
-    opParamInfo_.oriTopkLength.desc = context_->GetOptionalInputDesc(ORI_TOPK_LENGTH_INDEX);
-    opParamInfo_.cmpTopkLength.tensor = context_->GetOptionalInputTensor(CMP_TOPK_LENGTH_INDEX);
-    opParamInfo_.cmpTopkLength.desc = context_->GetOptionalInputDesc(CMP_TOPK_LENGTH_INDEX);
-    opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
-    opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_KV_INDEX, opParamInfo_.oriKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_KV_INDEX, opParamInfo_.cmpKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_SPARSE_INDICES_INDEX,
+                                                    opParamInfo_.oriSparseIndices);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_SPARSE_INDICES_INDEX,
+                                                    opParamInfo_.cmpSparseIndices);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_BLOCK_TABLE_INDEX, opParamInfo_.oriBlockTable);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_BLOCK_TABLE_INDEX, opParamInfo_.cmpBlockTable);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, SINKS_INDEX, opParamInfo_.sinks);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_Q_INDEX, opParamInfo_.cuSeqLensQ);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_ORI_KV_INDEX,
+                                                    opParamInfo_.cuSeqLensOriKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CU_SEQLENS_CMP_KV_INDEX,
+                                                    opParamInfo_.cuSeqLensCmpKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_Q_INDEX, opParamInfo_.seqUsedQ);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_ORI_KV_INDEX, opParamInfo_.sequsedOriKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, SEQUSED_CMP_KV_INDEX, opParamInfo_.sequsedCmpKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_RESIDUAL_KV_INDEX, opParamInfo_.cmpResidualKv);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, ORI_TOPK_LENGTH_INDEX, opParamInfo_.oriTopkLength);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, CMP_TOPK_LENGTH_INDEX, opParamInfo_.cmpTopkLength);
+    sparse_mla_checker::PopulateOptionalTensorParam(context_, METADATA_INDEX, opParamInfo_.metadata);
 }
 
 void SMLAInfoParser::GetInputParaInfo()
@@ -409,6 +398,8 @@ void SMLAInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
     opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
+    opParamInfo_.softmaxLse.desc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
+    opParamInfo_.softmaxLse.shape = context_->GetOutputShape(SOFTMAX_LSE_INDEX);
 }
 
 ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
@@ -889,7 +880,6 @@ ge::graphStatus SMLAInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus SMLAInfoParser::GetSparseBlockCount()
 {
     if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
@@ -964,7 +954,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
                 A2_A3_PLATFORM_LOG.c_str());
         return ge::GRAPH_FAILED;
     }
-
     if (kvLayout_ == SMLALayout::PA_BBND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
             if (qLayout_ == SMLALayout::BSND) {
@@ -1990,7 +1979,7 @@ void SparseFlashMlaTiling::CalcUbBmm(SMLATilingInfo *tilingInfo)
         cubeMSize = maxMSize;
     }
     mmResUbSize_ = sInnerSizeAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
-    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
+    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U);  // kernel按照16对齐写出，tiling按照这个原则分配内存
 }
 
 void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
@@ -2037,6 +2026,63 @@ uint64_t SparseFlashMlaTiling::CalcFdStagingWorkspaceSize(const SMLATilingInfo *
         return (intraCoreSlots + crossCoreSlots) * bytesPerSlot;
     }
     return logicalCoreSlots * FD_MAX_S2_SPLIT_NUM * bytesPerSlot;
+}
+
+uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATilingInfo *tilingInfo,
+                                                                   uint32_t &vectorizeFlag) const
+{
+    vectorizeFlag = 0U;
+    if (tilingInfo->npuArch != NpuArch::DAV_3510) {
+        return 0ULL;
+    }
+    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
+    constexpr uint32_t UB_SIZE = 248 * 1024;
+    uint32_t alignedOriSparseBlockCount =
+        (tilingInfo->oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
+    uint32_t alignedCmpSparseBlockCount =
+        (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
+    bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
+    uint32_t oriBlocksizeFlag =
+        static_cast<uint32_t>((tilingInfo->oriBlockSize & (tilingInfo->oriBlockSize - 1)) == 0);
+    uint32_t cmpBlocksizeFlag =
+        static_cast<uint32_t>((tilingInfo->cmpBlockSize & (tilingInfo->cmpBlockSize - 1)) == 0);
+    uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
+                                         oriBlocksizeFlag :
+                                         (oriBlocksizeFlag && cmpBlocksizeFlag)) :
+                                    1U;
+    uint64_t paExtraUb = std::max(
+        static_cast<uint64_t>(tilingInfo->oriMaxBlockNumPerBatch) * sizeof(int32_t),
+        static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t));
+    uint64_t cmpUbSize = (isPa ? paExtraUb : 0U) +
+                         static_cast<uint64_t>(alignedCmpSparseBlockCount) * sizeof(int32_t) +
+                         static_cast<uint64_t>(alignedCmpSparseBlockCount) * sizeof(int64_t);
+    uint64_t oriUbSize = (isPa ? paExtraUb : 0U) +
+                         static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int32_t) +
+                         static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int64_t);
+    uint64_t vectorizeUbSize = std::max(cmpUbSize, oriUbSize);
+    vectorizeFlag = static_cast<uint32_t>(
+        (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+         tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+         tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+        (vectorizeUbSize <= UB_SIZE) && blocksizeFlag);
+
+    if (vectorizeFlag == 0U) {
+        return 0ULL;
+    }
+    uint32_t totalBS1 = (tilingInfo->qLayout == SMLALayout::TND) ?
+                            tilingInfo->s1Size :
+                            (tilingInfo->bSize * tilingInfo->s1Size);
+    uint64_t oriPhyAddrSize = 0;
+    if (tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        oriPhyAddrSize = static_cast<uint64_t>(totalBS1) * alignedOriSparseBlockCount * sizeof(int64_t);
+    }
+    uint64_t cmpPhyAddrSize = 0;
+    if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+        tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        cmpPhyAddrSize = static_cast<uint64_t>(totalBS1) * alignedCmpSparseBlockCount * sizeof(int64_t);
+    }
+    return oriPhyAddrSize + cmpPhyAddrSize;
 }
 
 // --------------------------SparseFlashMlaTiling类成员函数定义----------------------
@@ -2087,6 +2133,11 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum;
         }
     }
+
+    // 计算vectorizeFlag (稀疏KV物理地址向量化)
+    uint32_t vectorizeFlag = 0U;
+    workspaceSize += CalcVectorizeKvPhyAddrWorkspaceSize(tilingInfo, vectorizeFlag);
+
     workspaceSize += CalcFdStagingWorkspaceSize(tilingInfo, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
@@ -2147,7 +2198,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64);
     }
     tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency));
+                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 
@@ -2174,10 +2225,19 @@ ge::graphStatus TilingForSparseFlashMla(gert::TilingContext *context)
     if (smlaInfoParser.Parse(smlaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    SMLATilingCheck smlaTilingChecker(smlaInfo);
-    if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+
+    if (smlaInfo.npuArch == NpuArch::DAV_2201) {
+        SMLATilingCheck smlaTilingChecker(smlaInfo);
+        if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        SparseFlashMlaChecker smlaTilingChecker(smlaInfo);
+        if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
+
     SparseFlashMlaTiling tiling(context);
     return tiling.DoOpTiling(&smlaInfo);
 }

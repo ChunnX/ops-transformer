@@ -195,6 +195,12 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
             baseInfo.kvSeqSize =
                 std::max(static_cast<int64_t>(baseInfo.kvSeqSize), sequsedKv[i]);
         }
+        if (maxSeqlenKv_ >= 0 && baseInfo.kvSeqSize != maxSeqlenKv_) {
+            KERNEL_LOG_ERROR(
+                "max(seqused_kv)=%ld must be equal to max_seqlen_kv=%ld, but got inconsistency",
+                baseInfo.kvSeqSize, maxSeqlenKv_);
+            return false;
+        }
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
@@ -212,8 +218,13 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         baseInfo.kvType = load_balance::DataType::INT8;
     }
     if (quantMode_ == 1) { // TODO：用adjust函数代替
-        mBaseSize_ = 64U;
-        s2BaseSize_ = 512U;
+        if (baseInfo.headDim == 256) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 512U;
+        }
     } else if (quantMode_ == 6) { // GQA FP8 fullquant: s2BaseSize=256
         mBaseSize_ = 64U;
         s2BaseSize_ = 256U;
