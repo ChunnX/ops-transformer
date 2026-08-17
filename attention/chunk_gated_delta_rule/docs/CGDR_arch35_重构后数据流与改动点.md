@@ -8,7 +8,7 @@
 ## 0 重构范围说明
 
 初始重构方案曾包含 R2-R7 六项改动。经与参考实现（`chunk_gated_delta_rule_golden.py`）
-逐一比对后：R3/R6 因数学错误或实现 bug 回退；R4/R5/R7 经修正后方案可行（待实现）；
+逐一比对后：R3 因数学错误回退；R6 原始代码已满足（无需改动）；R4/R5/R7 经修正后方案可行（待实现）；
 R2 已实现（纯数据流优化）。
 
 | 编号 | 需求 | 状态 | 原因 |
@@ -17,7 +17,7 @@ R2 已实现（纯数据流优化）。
 | R3 | K 衰减系数 g_exp 移至 Stage2 | **回退** | g_exp 在 matmul 内维（求和下标），不可移到结果行 |
 | R4 | beta 从 V/K 左乘移到 A 右乘（列缩放） | **待实现** | 原方案用行缩放错误，改为列缩放后数学等价 |
 | R5 | g_exp 从 K 左乘移到 A 右乘（列缩放） | **待实现** | 原方案用逐元素乘 C×C 矩阵错误，改为列缩放 C 维向量后数学等价 |
-| R6 | Stage2/3 从原始 g 重算 cumsumg | **回退** | g 布局 (T,Nv) 非连续，DataCopyPad 读到跨 head 垃圾数据 |
+| R6 | gCum_ 输出到 GM，后续 g 参数从 gCum_ 重算 | **已满足** | 原始代码已是此做法；原 R6 想删除 gCum_ 从原始 g 重算有 strided bug |
 | R7 | 删除 kg_，Stage2 直接用 K | **待实现** | 原方案标量缩放错误，改为逐行向量缩放后数学等价 |
 
 ### 数学详解
@@ -124,9 +124,15 @@ v_inner     = A_beta @ V = A @ diag(β) @ V = A @ (V·β)         ✓
 
 ---
 
-**R6 bug：** g 在 GM 中布局为 `(T, Nv)`，head `nvId` 的时间序列不连续。
-- 正确（Stage1 `GCopyInWithStride`）：`DataCopyInFp32WithStride(validLen, 1, src, nv_)`，srcStride=(nv-1)×4 字节
-- R6（Stage2/3）：`DataCopyExtParams{1, curChunkSize×4, 0, 0, 0}`，blockCount=1，srcStride=0 → 连续读取 = 跨 head 垃圾数据
+**R6 已满足：** 原始代码已采用此做法——Stage1 输出 `gCum`（cumsum 结果）到 GM，
+不输出 gCumExp；Stage2/3 后续所有 g 相关参数从 `gCum_` 重算：
+- Stage2 `CalGCumExpFp32/Bf16`：从 gCum_ 读，取 `gCum[-1]` 做 exp 得到 `exp(g[-1])`
+- Stage3 `CalMaskedQKT`：从 gCum_ 读，算 `decay_mask = exp(g_cum[:,None]-g_cum[None,:])`
+- R7 中 `d = exp(g[-1]-g_cum[j])` 同样从 gCum_ 重算
+
+原 R6 想删除 gCum_ 从原始 g(T,Nv) 重算 cumsum，但 g 布局非连续（stride=Nv），
+`DataCopyPad{1, C*4, 0, 0, 0}` 读到跨 head 垃圾数据。
+正确做法是保留 gCum_ 输出（已是连续 [Nv,Sp] 布局），后续从 gCum_ 重算——即原始代码的做法。
 
 ---
 

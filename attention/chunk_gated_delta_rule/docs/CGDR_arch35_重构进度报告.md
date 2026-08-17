@@ -21,15 +21,16 @@
 ### 已完成
 - R1 分析：建议保留批处理+去除 Stage 间 SyncAll（仅分析结论，无代码变更）
 - R2 实现：Stage1 移除 QKPreProcess，AIC matmul 直接读 strided GM（`SetOrgShape(M,N,Ka,Kb,N)`），删除 `queryConGm_`/`keyConGm_` WS，`!gOptional` 路径 kg_ 写入移至 `GBKCompute`，删除 sync0 (`0x9`)
-- **R3/R6 回退**：经与参考实现 (`chunk_gated_delta_rule_golden.py`) 比对，R3 的 g_exp 在 matmul 内维不可移，R6 存在 strided 读取 bug
+- **R3 回退**：经与参考实现 (`chunk_gated_delta_rule_golden.py`) 比对，R3 的 g_exp 在 matmul 内维不可移
+- **R6 已满足**：原始代码已采用 gCum_ 输出到 GM + 后续从 gCum_ 重算的做法，无需改动
 - **R4 待实现**：原方案用行缩放错误，修正为列缩放 `A_beta = A @ diag(beta)`（第 j 列乘 beta[j]），数学等价
 - **R5 待实现**：原方案用逐元素乘 C×C 矩阵 gamma 错误，修正为列缩放 C 维向量 g_exp `A_beta_gexp = A_beta @ diag(g_exp)`，数学等价
-- **R7 待实现**：原方案标量缩放错误，修正为逐行向量缩放 `v_new * d[:,None]`（`d[j]=exp(g[-1]-g_cum[j])`），数学等价
+- **R7 待实现**：原方案标量缩放错误，修正为逐行向量缩放 `v_new * d[:,None]`（`d[j]=exp(g[-1]-g_cum[j])`，从 gCum_ 重算），数学等价
 - 文档：`CGDR_arch35_重构前数据流伪代码.md`（638 行）— GM/WS/UB 布局、AIC/AIV 伪代码、同步图、存储总表
 - 文档：`CGDR_arch35_重构后数据流与改动点.md` — R2 改动详解、数学错误分析、WS 布局对比、伪代码、同步图、公式对比、数据流图
 - 编译通过：ascend950 opkernel + ophost + opapi
 
-### R3/R6 回退原因 + R4/R5/R7 修正方案
+### R3 回退原因 + R6 已满足 + R4/R5/R7 修正方案
 
 基于参考实现 `chunk_gated_delta_rule_golden.py:102-149` 的正确公式：
 
@@ -38,8 +39,12 @@
 | R3 | 回退 | g_exp 在 `A@diag(g)@K` 中位于 A 右边(内维), 不可移 | 移到结果行缩放, A 非对角混合后丢失 |
 | R4 | **待实现** | `A_beta=A@diag(β)`(列缩放β), `v_inner=A_beta@V` | 原方案: 从KKT删beta + 行缩放(两个错误) |
 | R5 | **待实现** | `A_beta_gexp=A_beta@diag(g_exp)`(列缩放g_exp), `k_cumdecay=-A_beta_gexp@K` | 原方案: 逐元素乘C×C矩阵gamma ≠ 列缩放C维向量g_exp |
-| R6 | 回退 | `DataCopyInFp32WithStride(len,1,src,nv)` | g(T,Nv)非连续, DataCopyPad读跨head垃圾 |
-| R7 | **待实现** | `v_new^T@diag(d)@K = (v_new·d[:,None])^T@K` (d在v^T右边可移) | 原方案: 标量exp(g[-1]) ≠ 逐行exp(g[-1]-g_cum[j]) |
+| R6 | **已满足** | gCum_ 输出到 GM, 后续 g 参数从 gCum_ 重算 | 原方案: 想删除gCum_从原始g(T,Nv)重算, strided bug |
+| R7 | **待实现** | `v_new^T@diag(d)@K = (v_new·d[:,None])^T@K` (d从gCum_重算) | 原方案: 标量exp(g[-1]) ≠ 逐行exp(g[-1]-g_cum[j]) |
+
+**R6 说明：** 原始代码已采用此做法——Stage1 输出 gCum（cumsum）到 GM（连续 [Nv,Sp] 布局），
+Stage2/3 从 gCum_ 重算 exp(g[-1])、decay_mask 等。R7 中 d=exp(g[-1]-g_cum[j]) 同样从 gCum_ 重算。
+原 R6 想删除 gCum_ 从原始 g(T,Nv) 重算，但 g 非连续导致 strided 读取 bug。正确做法即原始代码的做法。
 
 **R4 正确方案要点：**
 - 利用结合律 `A@diag(β)@V = (A@diag(β))@V`，beta 从 V/K 左边移到 A 右边
@@ -70,10 +75,11 @@
 - RDV 用例验证未通过：`torch_npu` 2.7.1 未注册 `npu_chunk_gated_delta_rule` 接口；改用 `torch.ops.cann_ops_transformer` 调用方式后出现 AI Core Error（`timeout or trap error`，errno 507015），根因是 torch_extension ACLNN_CMD 调用路径与正式 op-plugin 路径存在差异
 
 ## 关键决策
-- **R3/R6 全部回退**：R3 的 g_exp 在 matmul 内维不可移，R6 strided 读取 bug
+- **R3 回退**：g_exp 在 matmul 内维不可移
+- **R6 已满足**：原始代码已采用 gCum_ 输出 + 后续重算的做法，无需改动
 - **R4 修正后待实现**：原方案行缩放错误，改为列缩放 `A@diag(beta)` 数学等价
 - **R5 修正后待实现**：原方案逐元素乘 C×C 矩阵错误，改为列缩放 C 维向量 g_exp，基于 R4 两步列缩放
-- **R7 修正后待实现**：原方案标量缩放错误，改为逐行向量缩放 `v_new*d[:,None]` 数学等价
+- **R7 修正后待实现**：原方案标量缩放错误，改为逐行向量缩放 `v_new*d[:,None]`（d 从 gCum_ 重算）数学等价
 - **R2 已实现并修复**：纯数据流优化（strided GM 直读），不改变数学公式
 - R2 SetOrgShape 修复：strided GM 用 5 参数 `SetOrgShape(m,n,ka,kb,n)` (orgKc=n 匹配 3 参数行为)，连续矩阵仍用 3 参数 `SetOrgShape(m,n,k)`
 - R2 `!gOptional` 路径：QKPreProcess 删除后，`kg = K` 写入逻辑移至 GBKCompute 的 else 分支
