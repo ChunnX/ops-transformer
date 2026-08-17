@@ -550,24 +550,24 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                     int64_t logicalLoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
                     for (int64_t logicalLoop = 0; logicalLoop <= logicalLoopLimit; ++logicalLoop) {
                         if (notLastThreeLoop) {
-                            RunInfo &currentRun = runInfo[static_cast<uint64_t>(taskId) & 3U];
-                            SetRunInfo(currentRun, runParam, taskId, logicalLoop, logicalLoopLimit, multiCoreInnerIdx,
+                            RunInfo &curRunInfo = runInfo[static_cast<uint64_t>(taskId) & 3U];
+                            SetRunInfo(curRunInfo, runParam, taskId, logicalLoop, logicalLoopLimit, multiCoreInnerIdx,
                                        sparseBase);
                             if ASCEND_IS_AIC {
-                                cubeBlock.IterateBmm1_0(bmm1Buffers.Get(), currentRun, constInfo);
-                                if (currentRun.hasRound1) {
-                                    cubeBlock.IterateBmm1_1(bmm1Buffers.Get(), currentRun, constInfo);
+                                cubeBlock.IterateBmm1_0(bmm1Buffers.Get(), curRunInfo, constInfo);
+                                if (curRunInfo.hasRound1) {
+                                    cubeBlock.IterateBmm1_1(bmm1Buffers.Get(), curRunInfo, constInfo);
                                 }
                             }
                             if ASCEND_IS_AIV {
-                                int64_t delta = currentRun.nextTokensPerBatch;
-                                uint32_t s1Offset = currentRun.s1oIdx * constInfo.s1BaseSize;
+                                int64_t delta = curRunInfo.nextTokensPerBatch;
+                                uint32_t s1Offset = curRunInfo.s1oIdx * constInfo.s1BaseSize;
                                 for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
-                                    if (currentRun.sparseBlkIdx[slot] >= 0) {
+                                    if (curRunInfo.sparseBlkIdx[slot] >= 0) {
                                         AttentionMaskFullProcessingOrRequired(
-                                            s1Offset, currentRun.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize,
-                                            delta, currentRun.s2SparseBlkRealSize[slot],
-                                            currentRun.sparseBlkIdx[slot], currentRun.sparseBlkPartialMask[slot]);
+                                            s1Offset, curRunInfo.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize,
+                                            delta, curRunInfo.s2SparseBlkRealSize[slot],
+                                            curRunInfo.sparseBlkIdx[slot], curRunInfo.sparseBlkPartialMask[slot]);
                                     }
                                 }
                             }
@@ -575,34 +575,34 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 
                         if (likely(taskId > 0 && notLastTwoLoop)) {
                             if ASCEND_IS_AIV {
-                                RunInfo &vec1Run = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
+                                RunInfo &last1RunInfo = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
                                 auto &pBuffer = l1PBuffers.Get();
                                 auto &round0Bmm1 = bmm1Buffers.Get();
-                                vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, vec1Run, constInfo);
-                                if (vec1Run.hasRound1) {
-                                    vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), vec1Run, constInfo);
+                                vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, last1RunInfo, constInfo);
+                                if (last1RunInfo.hasRound1) {
+                                    vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), last1RunInfo, constInfo);
                                 } else {
-                                    vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, vec1Run, constInfo);
+                                    vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, last1RunInfo, constInfo);
                                 }
                             }
                         }
                         if (likely(taskId > 1 && notLast)) {
                             if ASCEND_IS_AIC {
-                                RunInfo &bmm2Run = runInfo[static_cast<uint64_t>(taskId + 2) & 3U];
+                                RunInfo &last2RunInfo = runInfo[static_cast<uint64_t>(taskId + 2) & 3U];
                                 if constexpr (bmm2Write2Ub) {
-                                    cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, bmm2Run, constInfo);
+                                    cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, last2RunInfo, constInfo);
                                 } else {
-                                    cubeBlock.IterateBmm2(bmm2ResGmBuffers.Get(), l1PBuffers, bmm2Run, constInfo);
+                                    cubeBlock.IterateBmm2(bmm2ResGmBuffers.Get(), l1PBuffers, last2RunInfo, constInfo);
                                 }
                             }
                         }
                         if (likely(taskId > 2)) {
                             if ASCEND_IS_AIV {
-                                RunInfo &vec2Run = runInfo[static_cast<uint64_t>(taskId + 1) & 3U];
+                                RunInfo &last3RunInfo = runInfo[static_cast<uint64_t>(taskId + 1) & 3U];
                                 if constexpr (bmm2Write2Ub) {
-                                    vecBlock.ProcessVec2(bmm2Buffers.Get(), vec2Run, constInfo);
+                                    vecBlock.ProcessVec2(bmm2Buffers.Get(), last3RunInfo, constInfo);
                                 } else {
-                                    vecBlock.ProcessVec2(bmm2ResGmBuffers.Get(), vec2Run, constInfo);
+                                    vecBlock.ProcessVec2(bmm2ResGmBuffers.Get(), last3RunInfo, constInfo);
                                 }
                             }
                         }
