@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1120" viewBox="0 0 1760 1120" role="img" aria-labelledby="title desc">
+  <title id="title">QkvRmsNormRopeCacheWithKScale L1 内存划分与双缓冲</title>
+  <desc id="desc">左侧展示当前 kernel 静态使用的 320 KiB L1 地址空间：64 KiB rotation 预留区，以及两个各 128 KiB 的 A_rot logical buffer。右侧展示每个 A_rot buffer 内 Q 和 K 的 NZ segment，以及两个 AIV 写入不同 token 行。底部展示 A_rot slot0 和 slot1 的 ping-pong 双缓冲时序。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e3a5f"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .header { fill: url(#header); }
+      .title { font: 700 29px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #fff; }
+      .subtitle { font: 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #cbd5e1; }
+      .section { font: 700 20px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .label { font: 700 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .body { font: 13px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .small { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #475569; }
+      .tiny { font: 11px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .addr { font: 12px "JetBrains Mono", Consolas, monospace; fill: #334155; }
+      .panel { fill: #fff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; }
+      .rotation { fill: #e0f2fe; stroke: #0284c7; stroke-width: 1.5; }
+      .unused { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.2; stroke-dasharray: 5 4; }
+      .slot0 { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.5; }
+      .slot1 { fill: #fef3c7; stroke: #d97706; stroke-width: 1.5; }
+      .q { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.3; rx: 7; }
+      .k { fill: #fce7f3; stroke: #db2777; stroke-width: 1.3; rx: 7; }
+      .aiv0 { fill: #ecfccb; stroke: #65a30d; stroke-width: 1.2; rx: 6; }
+      .aiv1 { fill: #f3e8ff; stroke: #9333ea; stroke-width: 1.2; rx: 6; }
+      .write { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.4; rx: 7; }
+      .read { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.4; rx: 7; }
+      .free { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.2; rx: 7; }
+      .sync { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.2; rx: 6; }
+      .callout { fill: #fff7ed; stroke: #fb923c; stroke-width: 1.2; rx: 8; }
+      .line { stroke: #475569; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .dep { stroke: #7c3aed; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrowPurple); }
+      .grid { stroke: #e2e8f0; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1760" height="1120" class="bg"/>
+  <rect x="0" y="0" width="1760" height="88" class="header"/>
+  <text x="52" y="40" class="title">L1 内存划分与 A_rot 双缓冲</text>
+  <text x="53" y="66" class="subtitle">当前 arch35 实现 · TPosition::TSCM · 静态使用区间 0–320 KiB（不是对物理 L1 总容量的声明）</text>
+
+  <!-- Left: memory map -->
+  <text x="48" y="126" class="section">一、L1 静态地址划分</text>
+  <rect x="40" y="143" width="675" height="568" class="panel"/>
+
+  <text x="80" y="180" class="label">低地址</text>
+  <text x="168" y="180" class="addr">offset</text>
+  <text x="590" y="180" text-anchor="end" class="body">总静态使用：320 KiB = 64 KiB + 2 × 128 KiB</text>
+
+  <!-- address axis -->
+  <line x1="145" y1="198" x2="145" y2="663" class="line"/>
+  <text x="85" y="215" class="addr">0x00000</text>
+  <text x="85" y="286" class="addr">0x08000</text>
+  <text x="85" y="358" class="addr">0x10000</text>
+  <text x="85" y="505" class="addr">0x30000</text>
+  <text x="85" y="661" class="addr">0x50000</text>
+
+  <!-- memory blocks, heights are proportional: 32/32/128/128 -->
+  <rect x="170" y="198" width="475" height="72" class="rotation"/>
+  <text x="190" y="226" class="label">rotationL1Nz_ 有效区：32 KiB</text>
+  <text x="190" y="250" class="body">[128,128] BF16，GM → L1 ND2NZ；循环前装入 L0B</text>
+
+  <rect x="170" y="270" width="475" height="72" class="unused"/>
+  <text x="190" y="298" class="label">rotation 预留余量：32 KiB</text>
+  <text x="190" y="322" class="body">当前不填充、不做 rotation double buffer</text>
+
+  <rect x="170" y="342" width="475" height="150" class="slot0"/>
+  <text x="190" y="376" class="label">A_rot logical buffer 0：128 KiB</text>
+  <text x="190" y="402" class="body">aRotL1Pool_[0] · tile 0、2、4…</text>
+  <text x="190" y="427" class="body">Q segment + K segment，均为 BF16 NZ</text>
+  <text x="190" y="452" class="small">由 AIV0/AIV1 MTE3 合作填充；由 AIC MTE1 消费</text>
+
+  <rect x="170" y="492" width="475" height="150" class="slot1"/>
+  <text x="190" y="526" class="label">A_rot logical buffer 1：128 KiB</text>
+  <text x="190" y="552" class="body">aRotL1Pool_[1] · tile 1、3、5…</text>
+  <text x="190" y="577" class="body">Q segment + K segment，均为 BF16 NZ</text>
+  <text x="190" y="602" class="small">与 buffer 0 ping-pong，允许 AIV 写与 AIC 读重叠</text>
+
+  <rect x="80" y="670" width="590" height="25" class="callout"/>
+  <text x="94" y="688" class="small">A_ROT_L1_BUFFER_NUM = (256 KiB pool) / (128 KiB logical slot) = 2</text>
+
+  <!-- Right: one logical buffer internals -->
+  <text x="752" y="126" class="section">二、一个 128 KiB A_rot logical buffer 的逻辑内容</text>
+  <rect x="742" y="143" width="978" height="568" class="panel"/>
+
+  <text x="774" y="179" class="body">这里表示逻辑 segment 与写入者；Q/K 的实际占用由 tile rows 决定，未用容量是 padding/余量。</text>
+
+  <rect x="775" y="205" width="905" height="190" class="q"/>
+  <text x="798" y="235" class="label">Q BF16 NZ segment</text>
+  <text x="798" y="260" class="body">起点：aRotL1Nz + 0</text>
+  <text x="798" y="284" class="body">大小口径：NzMatrixElements(cubeTokenSize × Nq)</text>
+
+  <rect x="1115" y="224" width="250" height="126" class="aiv0"/>
+  <text x="1190" y="252" class="label">AIV0 写入</text>
+  <text x="1140" y="278" class="body">前半 token rows</text>
+  <text x="1140" y="302" class="body">dstRowOffset = 0</text>
+  <text x="1140" y="326" class="small">local id = 0</text>
+
+  <rect x="1384" y="224" width="250" height="126" class="aiv1"/>
+  <text x="1459" y="252" class="label">AIV1 写入</text>
+  <text x="1409" y="278" class="body">后半 token rows</text>
+  <text x="1409" y="302" class="body">offset = cubeHalfToken × Nq</text>
+  <text x="1409" y="326" class="small">local id = 1</text>
+
+  <rect x="775" y="418" width="905" height="190" class="k"/>
+  <text x="798" y="448" class="label">K BF16 NZ segment</text>
+  <text x="798" y="473" class="body">起点：aRotL1Nz + NzMatrixElements(qRows)</text>
+  <text x="798" y="497" class="body">大小口径：NzMatrixElements(cubeTokenSize × Nk)</text>
+
+  <rect x="1115" y="437" width="250" height="126" class="aiv0"/>
+  <text x="1190" y="465" class="label">AIV0 写入</text>
+  <text x="1140" y="491" class="body">前半 token rows</text>
+  <text x="1140" y="515" class="body">dstRowOffset = 0</text>
+  <text x="1140" y="539" class="small">headSize = Nk</text>
+
+  <rect x="1384" y="437" width="250" height="126" class="aiv1"/>
+  <text x="1459" y="465" class="label">AIV1 写入</text>
+  <text x="1409" y="491" class="body">后半 token rows</text>
+  <text x="1409" y="515" class="body">offset = cubeHalfToken × Nk</text>
+  <text x="1409" y="539" class="small">headSize = Nk</text>
+
+  <path d="M1365 287 L1384 287" class="line"/>
+  <path d="M1365 500 L1384 500" class="line"/>
+
+  <rect x="775" y="629" width="905" height="60" class="callout"/>
+  <text x="794" y="654" class="body">两个 AIV 写的是同一个 logical slot 中不同 token 行；AIC 必须 wait 两次 A_READY，</text>
+  <text x="794" y="677" class="body">确认 AIV0 与 AIV1 都完成后，才从该 slot 加载 Q segment、再加载 K segment。</text>
+
+  <!-- Bottom: double buffer timeline -->
+  <text x="48" y="755" class="section">三、A_rot double buffer 的 ping-pong 时序</text>
+  <rect x="40" y="772" width="1680" height="300" class="panel"/>
+
+  <line x1="176" y1="814" x2="1682" y2="814" class="line"/>
+  <text x="1638" y="802" class="body">时间 →</text>
+  <text x="67" y="868" class="label">slot 0</text>
+  <text x="67" y="958" class="label">slot 1</text>
+
+  <line x1="176" y1="830" x2="176" y2="1015" class="grid"/>
+  <line x1="390" y1="830" x2="390" y2="1015" class="grid"/>
+  <line x1="605" y1="830" x2="605" y2="1015" class="grid"/>
+  <line x1="820" y1="830" x2="820" y2="1015" class="grid"/>
+  <line x1="1035" y1="830" x2="1035" y2="1015" class="grid"/>
+  <line x1="1250" y1="830" x2="1250" y2="1015" class="grid"/>
+  <line x1="1465" y1="830" x2="1465" y2="1015" class="grid"/>
+  <line x1="1680" y1="830" x2="1680" y2="1015" class="grid"/>
+
+  <rect x="186" y="836" width="190" height="58" class="write"/>
+  <text x="225" y="861" class="label">AIV 写 tile 0</text>
+  <text x="211" y="882" class="small">结束：set A_READY0</text>
+
+  <rect x="400" y="836" width="190" height="58" class="read"/>
+  <text x="439" y="861" class="label">AIC 读 tile 0</text>
+  <text x="418" y="882" class="small">结束：set A_CONSUMED0</text>
+
+  <rect x="616" y="836" width="190" height="58" class="write"/>
+  <text x="655" y="861" class="label">AIV 写 tile 2</text>
+  <text x="641" y="882" class="small">复用 slot 0</text>
+
+  <rect x="831" y="836" width="190" height="58" class="read"/>
+  <text x="870" y="861" class="label">AIC 读 tile 2</text>
+  <text x="849" y="882" class="small">释放 slot 0</text>
+
+  <rect x="186" y="926" width="190" height="58" class="free"/>
+  <text x="218" y="951" class="label">初始可写 credit</text>
+  <text x="212" y="973" class="small">A_CONSUMED × 2</text>
+
+  <rect x="400" y="926" width="190" height="58" class="write"/>
+  <text x="439" y="951" class="label">AIV 写 tile 1</text>
+  <text x="425" y="973" class="small">与 AIC 读 T0 重叠</text>
+
+  <rect x="616" y="926" width="190" height="58" class="read"/>
+  <text x="655" y="951" class="label">AIC 读 tile 1</text>
+  <text x="634" y="973" class="small">与 AIV 写 T2 重叠</text>
+
+  <rect x="831" y="926" width="190" height="58" class="write"/>
+  <text x="870" y="951" class="label">AIV 写 tile 3</text>
+  <text x="856" y="973" class="small">复用 slot 1</text>
+
+  <rect x="1046" y="926" width="190" height="58" class="read"/>
+  <text x="1085" y="951" class="label">AIC 读 tile 3</text>
+  <text x="1064" y="973" class="small">释放 slot 1</text>
+
+  <!-- sync labels -->
+  <rect x="1264" y="838" width="370" height="64" class="sync"/>
+  <text x="1282" y="862" class="label">正向：A_READY</text>
+  <text x="1282" y="885" class="body">AIV MTE3 写完 → AIC MTE1 可读</text>
+
+  <rect x="1264" y="924" width="370" height="64" class="sync"/>
+  <text x="1282" y="948" class="label">反向：A_CONSUMED</text>
+  <text x="1282" y="971" class="body">AIC 消费完 → AIV 可覆盖该 slot</text>
+
+  <path d="M376 865 C388 865 388 865 400 865" class="dep"/>
+  <path d="M590 865 C604 900 604 915 616 945" class="dep"/>
+  <path d="M806 955 C818 916 818 894 831 865" class="dep"/>
+
+  <rect x="176" y="1020" width="1488" height="33" class="callout"/>
+  <text x="193" y="1042" class="body">若只有单 buffer：AIV 必须等 AIC 消费当前 tile 后才能写下一 tile；当前双 buffer 允许“AIC 读 slot 0”与“AIV 写 slot 1”同时进行。</text>
+
+  <text x="48" y="1095" class="tiny">代码口径：rotation reserved = 2 × 32 KiB；A_rot logical slot = 2 AIV × 64 KiB = 128 KiB；A_rot pool = 2 slots = 256 KiB。</text>
+</svg>

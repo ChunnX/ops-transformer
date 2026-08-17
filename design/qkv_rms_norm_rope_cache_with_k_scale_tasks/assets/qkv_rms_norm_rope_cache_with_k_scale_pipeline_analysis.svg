@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="920" viewBox="0 0 1680 920" role="img" aria-labelledby="title desc">
+  <title id="title">Q、K、V 三条独立流水</title>
+  <desc id="desc">纵向分别展示 Q、K、V 三条数据流水，横向表示时间。Q 和 K 经过 Vector 前处理、Cube 矩阵乘和 Vector 后处理，V 只经过 Vector 缩放量化并提前写入 V Cache。</desc>
+  <defs>
+    <linearGradient id="head" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e3a5f"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .header { fill: url(#head); }
+      .title { font: 700 29px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #fff; }
+      .subtitle { font: 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #cbd5e1; }
+      .axis { stroke: #475569; stroke-width: 1.7; marker-end: url(#arrow); }
+      .time { font: 600 13px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .stageTitle { font: 700 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .stageSub { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .laneName { font: 700 38px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .laneSub { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .boxTitle { font: 700 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .boxText { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .tiny { font: 11px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .laneBg { fill: #fff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; }
+      .load { fill: #f1f5f9; stroke: #64748b; stroke-width: 1.3; rx: 8; }
+      .vector { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.5; rx: 8; }
+      .transfer { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.3; rx: 8; }
+      .cube { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.5; rx: 8; }
+      .post { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.5; rx: 8; }
+      .output { fill: #e0f2fe; stroke: #0284c7; stroke-width: 1.3; rx: 8; }
+      .vcalc { fill: #ecfccb; stroke: #65a30d; stroke-width: 1.5; rx: 8; }
+      .idle { stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 6 5; fill: none; }
+      .flow { stroke: #475569; stroke-width: 1.7; fill: none; marker-end: url(#arrow); }
+      .sync { stroke: #7c3aed; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrowPurple); }
+      .divider { stroke: #e2e8f0; stroke-width: 1; }
+      .legendText { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .callout { fill: #fff7ed; stroke: #fb923c; stroke-width: 1.2; rx: 8; }
+    </style>
+  </defs>
+
+  <rect width="1680" height="920" class="bg"/>
+  <rect x="0" y="0" width="1680" height="88" class="header"/>
+  <text x="52" y="40" class="title">QKV 三条独立流水：纵向分支，横向时间</text>
+  <text x="53" y="66" class="subtitle">ROPE_FP8_QK · 单个 token tile 的逻辑时序 · Q/K 走 Vector → Cube → Vector，V 走 Vector-only</text>
+
+  <!-- Time axis -->
+  <line x1="205" y1="126" x2="1608" y2="126" class="axis"/>
+  <text x="1560" y="115" class="time">时间 →</text>
+
+  <!-- Stage headers -->
+  <text x="266" y="157" text-anchor="middle" class="stageTitle">输入搬运</text>
+  <text x="266" y="176" text-anchor="middle" class="stageSub">AIV · MTE2</text>
+
+  <text x="557" y="157" text-anchor="middle" class="stageTitle">第一段 Vector</text>
+  <text x="557" y="176" text-anchor="middle" class="stageSub">AIV · PIPE_V / MTE3</text>
+
+  <text x="805" y="157" text-anchor="middle" class="stageTitle">送入 Cube</text>
+  <text x="805" y="176" text-anchor="middle" class="stageSub">AL1 + A_READY</text>
+
+  <text x="1023" y="157" text-anchor="middle" class="stageTitle">Cube</text>
+  <text x="1023" y="176" text-anchor="middle" class="stageSub">AIC · MTE1 / MMAD / FIXP</text>
+
+  <text x="1215" y="157" text-anchor="middle" class="stageTitle">返回 AIV</text>
+  <text x="1215" y="176" text-anchor="middle" class="stageSub">FIX_OUTPUT_READY</text>
+
+  <text x="1390" y="157" text-anchor="middle" class="stageTitle">第二段 Vector</text>
+  <text x="1390" y="176" text-anchor="middle" class="stageSub">AIV · 动态量化 / 写回</text>
+
+  <line x1="344" y1="143" x2="344" y2="754" class="divider"/>
+  <line x1="724" y1="143" x2="724" y2="754" class="divider"/>
+  <line x1="876" y1="143" x2="876" y2="754" class="divider"/>
+  <line x1="1154" y1="143" x2="1154" y2="754" class="divider"/>
+  <line x1="1272" y1="143" x2="1272" y2="754" class="divider"/>
+  <line x1="1507" y1="143" x2="1507" y2="754" class="divider"/>
+
+  <!-- Q lane -->
+  <rect x="45" y="197" width="1585" height="164" class="laneBg"/>
+  <text x="86" y="271" class="laneName">Q</text>
+  <text x="73" y="298" class="laneSub">Nq heads</text>
+
+  <rect x="196" y="226" width="130" height="102" class="load"/>
+  <text x="218" y="252" class="boxTitle">Load Q</text>
+  <text x="209" y="276" class="boxText">BF16 QKV</text>
+  <text x="209" y="298" class="boxText">q_gamma</text>
+
+  <rect x="369" y="216" width="332" height="122" class="vector"/>
+  <text x="386" y="243" class="boxTitle">Q Vector 前处理</text>
+  <text x="386" y="268" class="boxText">FP32 RMSNorm（q_gamma）</text>
+  <text x="386" y="292" class="boxText">FP32 RoPE → BF16 / NZ</text>
+  <text x="386" y="316" class="tiny">与 V 量化、V Cache 写回交叠</text>
+
+  <rect x="746" y="226" width="118" height="102" class="transfer"/>
+  <text x="772" y="252" class="boxTitle">Q AL1</text>
+  <text x="765" y="276" class="boxText">MTE3 写入</text>
+  <text x="765" y="300" class="boxText">A_READY</text>
+
+  <rect x="899" y="216" width="232" height="122" class="cube"/>
+  <text x="925" y="243" class="boxTitle">Q Cube</text>
+  <text x="925" y="270" class="boxText">Q_rope @ rotation</text>
+  <text x="925" y="294" class="boxText">FP32 L0C</text>
+  <text x="925" y="317" class="boxText">FIXP dual M</text>
+
+  <rect x="1172" y="226" width="86" height="102" class="transfer"/>
+  <text x="1187" y="253" class="boxTitle">Q UB</text>
+  <text x="1184" y="277" class="boxText">FP32</text>
+  <text x="1180" y="301" class="tiny">READY</text>
+
+  <rect x="1290" y="216" width="196" height="122" class="post"/>
+  <text x="1308" y="243" class="boxTitle">Q Vector 后处理</text>
+  <text x="1308" y="268" class="boxText">max_abs / 448</text>
+  <text x="1308" y="292" class="boxText">FP8 dynamic quant</text>
+  <text x="1308" y="316" class="boxText">MTE3 普通写回</text>
+
+  <rect x="1524" y="226" width="87" height="102" class="output"/>
+  <text x="1541" y="253" class="boxTitle">Q 输出</text>
+  <text x="1536" y="278" class="boxText">q_out</text>
+  <text x="1533" y="301" class="boxText">q_scale</text>
+
+  <path d="M326 277 L369 277" class="flow"/>
+  <path d="M701 277 L746 277" class="flow"/>
+  <path d="M864 277 L899 277" class="flow"/>
+  <path d="M1131 277 L1172 277" class="flow"/>
+  <path d="M1258 277 L1290 277" class="flow"/>
+  <path d="M1486 277 L1524 277" class="flow"/>
+
+  <!-- K lane -->
+  <rect x="45" y="379" width="1585" height="164" class="laneBg"/>
+  <text x="86" y="453" class="laneName">K</text>
+  <text x="73" y="480" class="laneSub">Nk heads</text>
+
+  <rect x="196" y="408" width="130" height="102" class="load"/>
+  <text x="218" y="434" class="boxTitle">Load K</text>
+  <text x="209" y="458" class="boxText">BF16 QKV</text>
+  <text x="209" y="480" class="boxText">k_gamma</text>
+
+  <rect x="369" y="398" width="332" height="122" class="vector"/>
+  <text x="386" y="425" class="boxTitle">K Vector 前处理</text>
+  <text x="386" y="450" class="boxText">FP32 RMSNorm（k_gamma）</text>
+  <text x="386" y="474" class="boxText">FP32 RoPE → BF16 / NZ</text>
+  <text x="386" y="498" class="tiny">位置与 Q 相同，head 数和 gamma 不同</text>
+
+  <rect x="746" y="408" width="118" height="102" class="transfer"/>
+  <text x="772" y="434" class="boxTitle">K AL1</text>
+  <text x="765" y="458" class="boxText">MTE3 写入</text>
+  <text x="765" y="482" class="boxText">A_READY</text>
+
+  <rect x="899" y="398" width="232" height="122" class="cube"/>
+  <text x="925" y="425" class="boxTitle">K Cube</text>
+  <text x="925" y="452" class="boxText">K_rope @ rotation</text>
+  <text x="925" y="476" class="boxText">FP32 L0C</text>
+  <text x="925" y="499" class="boxText">FIXP dual M</text>
+
+  <rect x="1172" y="408" width="86" height="102" class="transfer"/>
+  <text x="1187" y="435" class="boxTitle">K UB</text>
+  <text x="1184" y="459" class="boxText">FP32</text>
+  <text x="1180" y="483" class="tiny">READY</text>
+
+  <rect x="1290" y="398" width="196" height="122" class="post"/>
+  <text x="1308" y="425" class="boxTitle">K Vector 后处理</text>
+  <text x="1308" y="450" class="boxText">max_abs / 448</text>
+  <text x="1308" y="474" class="boxText">FP8 dynamic quant</text>
+  <text x="1308" y="498" class="boxText">MTE3 scatter 写回</text>
+
+  <rect x="1524" y="408" width="87" height="102" class="output"/>
+  <text x="1541" y="435" class="boxTitle">K Cache</text>
+  <text x="1535" y="460" class="boxText">k_cache</text>
+  <text x="1531" y="483" class="tiny">scale_cache</text>
+
+  <path d="M326 459 L369 459" class="flow"/>
+  <path d="M701 459 L746 459" class="flow"/>
+  <path d="M864 459 L899 459" class="flow"/>
+  <path d="M1131 459 L1172 459" class="flow"/>
+  <path d="M1258 459 L1290 459" class="flow"/>
+  <path d="M1486 459 L1524 459" class="flow"/>
+
+  <!-- V lane -->
+  <rect x="45" y="561" width="1585" height="164" class="laneBg"/>
+  <text x="86" y="635" class="laneName">V</text>
+  <text x="73" y="662" class="laneSub">Nv heads</text>
+
+  <rect x="196" y="590" width="130" height="102" class="load"/>
+  <text x="218" y="616" class="boxTitle">Load V</text>
+  <text x="209" y="640" class="boxText">BF16 QKV</text>
+  <text x="209" y="662" class="boxText">v_scale</text>
+
+  <rect x="369" y="580" width="222" height="122" class="vcalc"/>
+  <text x="388" y="607" class="boxTitle">V Vector 计算</text>
+  <text x="388" y="634" class="boxText">V × v_scale</text>
+  <text x="388" y="658" class="boxText">直接转换为 FP8</text>
+  <text x="388" y="681" class="tiny">无 RMSNorm / RoPE</text>
+
+  <rect x="632" y="580" width="194" height="122" class="post"/>
+  <text x="651" y="607" class="boxTitle">V Cache 写回</text>
+  <text x="651" y="634" class="boxText">slot → block/offset</text>
+  <text x="651" y="658" class="boxText">MTE3 scatter</text>
+  <text x="651" y="681" class="tiny">在 Q/K 送 Cube 前完成</text>
+
+  <rect x="849" y="590" width="112" height="102" class="output"/>
+  <text x="870" y="617" class="boxTitle">V Cache</text>
+  <text x="866" y="642" class="boxText">v_cache</text>
+  <text x="861" y="666" class="tiny">FP8 E4M3FN</text>
+
+  <path d="M326 641 L369 641" class="flow"/>
+  <path d="M591 641 L632 641" class="flow"/>
+  <path d="M826 641 L849 641" class="flow"/>
+  <path d="M961 641 L1510 641" class="idle"/>
+  <text x="1110" y="629" class="stageSub">V 分支到此结束：不进入 Cube，也没有第二段动态量化</text>
+
+  <!-- Synchronization annotation -->
+  <path d="M805 338 L805 398" class="sync"/>
+  <text x="817" y="372" class="tiny">Q/K 两段写入同一 tile 的 AL1 后，AIC 等待两个 AIV 的 A_READY</text>
+  <path d="M1215 338 L1215 398" class="sync"/>
+  <text x="1228" y="372" class="tiny">Q/K FIXP 输出均就绪后，AIV 才执行后处理</text>
+
+  <!-- Notes and legend -->
+  <rect x="45" y="757" width="1585" height="116" class="callout"/>
+  <text x="68" y="786" class="boxTitle">如何读这张图</text>
+  <text x="68" y="812" class="boxText">① 三条泳道表示 Q、K、V 的数学数据流；真实 kernel 会把 Q/K 的搬运、前处理和后处理组织在同一套 Vec 代码与共享 buffer 中。</text>
+  <text x="68" y="837" class="boxText">② 横向是依赖顺序，不代表严格等比例耗时。跨 tile 稳态时，AIV 的 Pre(tile i+1)、AIC 的 Cube(tile i) 和 AIV 的 Post(tile i-1) 会尽量重叠。</text>
+  <text x="68" y="861" class="boxText">③ V-first 表示先启动 V 量化；V 写 Cache 与 Q/K 的 RMSNorm、RoPE、AL1 搬运可以形成片内流水。</text>
+
+  <rect x="1116" y="785" width="18" height="14" class="vector"/>
+  <text x="1142" y="797" class="legendText">Vector 前处理</text>
+  <rect x="1249" y="785" width="18" height="14" class="cube"/>
+  <text x="1275" y="797" class="legendText">Cube</text>
+  <rect x="1340" y="785" width="18" height="14" class="post"/>
+  <text x="1366" y="797" class="legendText">Vector 后处理/写回</text>
+</svg>

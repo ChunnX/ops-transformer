@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1500" viewBox="0 0 2000 1500" role="img" aria-labelledby="title desc">
+  <title id="title">QkvRmsNormRopeCacheWithKScale UB 内存划分与双缓冲分析</title>
+  <desc id="desc">对比普通 RoPE 的 248 KiB UB 布局和 M-RoPE compact 的 226 KiB UB 布局，并总结 input、output、cos-sin、slot mapping、V output、K rotation 和 K quant 等资源的双缓冲或四缓冲深度。底部展示 input 与 V output ping-pong，以及 output DB 多角色复用的时序。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e3a5f"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .header { fill: url(#header); }
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #fff; }
+      .subtitle { font: 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #cbd5e1; }
+      .section { font: 700 21px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .label { font: 700 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .body { font: 13px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .small { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #475569; }
+      .tiny { font: 11px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .addr { font: 12px "JetBrains Mono", Consolas, monospace; fill: #334155; }
+      .panel { fill: #fff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; }
+      .input { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.4; }
+      .output { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.4; }
+      .krot { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.4; }
+      .reserve { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.4; }
+      .position { fill: #fce7f3; stroke: #db2777; stroke-width: 1.4; }
+      .unused { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.2; stroke-dasharray: 5 4; }
+      .slotA { fill: #ecfccb; stroke: #65a30d; stroke-width: 1.2; rx: 6; }
+      .slotB { fill: #fef3c7; stroke: #d97706; stroke-width: 1.2; rx: 6; }
+      .slotC { fill: #e0e7ff; stroke: #4f46e5; stroke-width: 1.2; rx: 6; }
+      .slotD { fill: #fae8ff; stroke: #c026d3; stroke-width: 1.2; rx: 6; }
+      .fixed { fill: #f8fafc; stroke: #64748b; stroke-width: 1.1; rx: 5; }
+      .write { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.3; rx: 6; }
+      .consume { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.3; rx: 6; }
+      .post { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.3; rx: 6; }
+      .guard { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.2; rx: 6; }
+      .callout { fill: #fff7ed; stroke: #fb923c; stroke-width: 1.2; rx: 8; }
+      .grid { stroke: #e2e8f0; stroke-width: 1; }
+      .axis { stroke: #475569; stroke-width: 1.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="2000" height="1500" class="bg"/>
+  <rect x="0" y="0" width="2000" height="88" class="header"/>
+  <text x="52" y="40" class="title">UB 内存划分与 double / multi buffer 分析</text>
+  <text x="53" y="66" class="subtitle">TPosition::LCM · 普通 RoPE 与 M-RoPE 使用不同的编译期静态布局 · 每个 AIV 拥有自己的本地 UB</text>
+
+  <!-- ROPE layout -->
+  <text x="48" y="126" class="section">一、普通 RoPE：248 KiB</text>
+  <rect x="40" y="143" width="930" height="700" class="panel"/>
+  <text x="65" y="177" class="body">绝对 byte offset；顶部 pool 是主要数据区，reserve 内包含常驻量与小型 ping-pong pool。</text>
+
+  <text x="65" y="218" class="addr">0x00000</text>
+  <text x="65" y="369" class="addr">0x14000</text>
+  <text x="65" y="596" class="addr">0x34000</text>
+  <text x="65" y="804" class="addr">0x3E000</text>
+
+  <rect x="145" y="198" width="775" height="155" class="input"/>
+  <text x="166" y="224" class="label">Input pool：80 KiB = 2 × 40 KiB</text>
+  <rect x="166" y="242" width="354" height="82" class="slotA"/>
+  <text x="275" y="269" class="label">input slot 0</text>
+  <text x="216" y="295" class="body">Q/K/V 当前 AIV token slice</text>
+  <rect x="545" y="242" width="354" height="82" class="slotB"/>
+  <text x="654" y="269" class="label">input slot 1</text>
+  <text x="595" y="295" class="body">MTE2 与 PIPE_V ping-pong</text>
+
+  <rect x="145" y="353" width="775" height="225" class="output"/>
+  <text x="166" y="381" class="label">Output DB pool：128 KiB = 2 × 64 KiB</text>
+  <rect x="166" y="400" width="354" height="145" class="slotA"/>
+  <text x="275" y="427" class="label">output slot 0</text>
+  <text x="191" y="454" class="body">角色 A：Q/K BF16 NZ 前处理 staging</text>
+  <text x="191" y="479" class="body">角色 B：AIC FIXP 写入 FP32 Q/K</text>
+  <text x="191" y="504" class="body">角色 C：Q/K FP8 原地 staging</text>
+  <rect x="545" y="400" width="354" height="145" class="slotB"/>
+  <text x="654" y="427" class="label">output slot 1</text>
+  <text x="570" y="454" class="body">同样承担 A/B/C 三种角色</text>
+  <text x="570" y="479" class="body">按 logical use 轮转，不绑定固定 tile 角色</text>
+  <text x="570" y="504" class="body">CrossCore + 核内 event 共同保护</text>
+
+  <rect x="145" y="578" width="775" height="209" class="reserve"/>
+  <text x="166" y="605" class="label">Reserve：40 KiB（absolute 0x34000–0x3E000）</text>
+
+  <rect x="166" y="624" width="110" height="55" class="fixed"/>
+  <text x="185" y="647" class="small">gamma</text>
+  <text x="184" y="667" class="tiny">1 KiB · 常驻</text>
+
+  <rect x="287" y="624" width="163" height="55" class="slotA"/>
+  <text x="315" y="647" class="small">cos/sin slot 0</text>
+  <text x="328" y="667" class="tiny">6 KiB</text>
+  <rect x="461" y="624" width="163" height="55" class="slotB"/>
+  <text x="489" y="647" class="small">cos/sin slot 1</text>
+  <text x="502" y="667" class="tiny">6 KiB</text>
+
+  <rect x="635" y="624" width="122" height="55" class="slotA"/>
+  <text x="651" y="647" class="small">slot map 0</text>
+  <text x="663" y="667" class="tiny">512 B</text>
+  <rect x="768" y="624" width="122" height="55" class="slotB"/>
+  <text x="784" y="647" class="small">slot map 1</text>
+  <text x="796" y="667" class="tiny">512 B</text>
+
+  <rect x="166" y="694" width="110" height="55" class="fixed"/>
+  <text x="190" y="717" class="small">v_scale</text>
+  <text x="184" y="737" class="tiny">512 B · 常驻</text>
+  <rect x="287" y="694" width="110" height="55" class="fixed"/>
+  <text x="307" y="717" class="small">NZ index</text>
+  <text x="305" y="737" class="tiny">512 B · 常驻</text>
+
+  <rect x="408" y="694" width="220" height="55" class="slotA"/>
+  <text x="463" y="717" class="small">V-out slot 0</text>
+  <text x="437" y="737" class="tiny">10 KiB；也作 Q/K scale staging</text>
+  <rect x="639" y="694" width="220" height="55" class="slotB"/>
+  <text x="694" y="717" class="small">V-out slot 1</text>
+  <text x="668" y="737" class="tiny">10 KiB；MTE3 写回保护</text>
+
+  <rect x="166" y="760" width="693" height="19" class="unused"/>
+  <text x="435" y="774" class="tiny">剩余对齐/未绑定区约 5 KiB</text>
+
+  <rect x="65" y="809" width="880" height="24" class="callout"/>
+  <text x="80" y="826" class="small">RoPE：input=2，output=2，cos/sin=2，slot_mapping=2，V-out=2；gamma/v_scale/index 为单份常驻。</text>
+
+  <!-- MROPE layout -->
+  <text x="1028" y="126" class="section">二、M-RoPE compact：226 KiB（物理 UB 上限 256 KiB）</text>
+  <rect x="1020" y="143" width="940" height="700" class="panel"/>
+  <text x="1045" y="177" class="body">为 direct-Q BF16、INT8 K 和三路 T/H/W cos/sin 单独设计；不是普通 RoPE layout 的回退模式。</text>
+
+  <text x="1045" y="218" class="addr">0x00000</text>
+  <text x="1045" y="342" class="addr">0x14000</text>
+  <text x="1045" y="466" class="addr">0x28000</text>
+  <text x="1045" y="508" class="addr">0x2B800</text>
+  <text x="1045" y="677" class="addr">0x35800</text>
+  <text x="1045" y="737" class="addr">0x38800</text>
+  <text x="1045" y="804" class="addr">0x40000</text>
+
+  <rect x="1125" y="198" width="785" height="128" class="input"/>
+  <text x="1146" y="223" class="label">Input pool：80 KiB = 4 × 20 KiB</text>
+  <rect x="1146" y="242" width="175" height="61" class="slotA"/>
+  <text x="1188" y="269" class="small">input 0</text><text x="1194" y="290" class="tiny">20 KiB</text>
+  <rect x="1333" y="242" width="175" height="61" class="slotB"/>
+  <text x="1375" y="269" class="small">input 1</text><text x="1381" y="290" class="tiny">20 KiB</text>
+  <rect x="1520" y="242" width="175" height="61" class="slotC"/>
+  <text x="1562" y="269" class="small">input 2</text><text x="1568" y="290" class="tiny">20 KiB</text>
+  <rect x="1707" y="242" width="175" height="61" class="slotD"/>
+  <text x="1749" y="269" class="small">input 3</text><text x="1755" y="290" class="tiny">20 KiB</text>
+
+  <rect x="1125" y="326" width="785" height="124" class="output"/>
+  <text x="1146" y="351" class="label">Q/K preprocess output DB：80 KiB = 2 × 40 KiB</text>
+  <rect x="1146" y="368" width="356" height="59" class="slotA"/>
+  <text x="1252" y="394" class="small">preprocess slot 0 · 40 KiB</text>
+  <text x="1244" y="416" class="tiny">只承担 Q/K BF16 NZ staging</text>
+  <rect x="1520" y="368" width="362" height="59" class="slotB"/>
+  <text x="1628" y="394" class="small">preprocess slot 1 · 40 KiB</text>
+  <text x="1605" y="416" class="tiny">Q 由 FIXP direct-GM，不回写此 pool</text>
+
+  <rect x="1125" y="450" width="785" height="43" class="krot"/>
+  <text x="1146" y="477" class="label">K rotation FP32 DB：14 KiB = 2 × 7 KiB（最多 14 K rows/AIV）</text>
+
+  <rect x="1125" y="493" width="785" height="168" class="reserve"/>
+  <text x="1146" y="519" class="label">Compact reserve：40 KiB</text>
+  <rect x="1146" y="537" width="118" height="47" class="fixed"/>
+  <text x="1176" y="557" class="small">gamma</text><text x="1174" y="576" class="tiny">1 KiB</text>
+  <rect x="1275" y="537" width="136" height="47" class="fixed"/>
+  <text x="1300" y="557" class="small">V scale</text><text x="1291" y="576" class="tiny">4 KiB [Nv,D]</text>
+  <rect x="1422" y="537" width="135" height="47" class="fixed"/>
+  <text x="1443" y="557" class="small">Q/K+gather</text><text x="1455" y="576" class="tiny">index</text>
+  <rect x="1568" y="537" width="145" height="47" class="slotA"/>
+  <text x="1592" y="557" class="small">position/slot DB</text><text x="1609" y="576" class="tiny">2 slots</text>
+  <rect x="1724" y="537" width="158" height="47" class="slotC"/>
+  <text x="1743" y="557" class="small">raw cos/sin</text><text x="1754" y="576" class="tiny">4 × 6 KiB</text>
+
+  <rect x="1146" y="596" width="230" height="47" class="slotA"/>
+  <text x="1194" y="616" class="small">V-out DB：2 × 1.75 KiB</text>
+  <text x="1198" y="635" class="tiny">V quant → MTE3 scatter</text>
+  <rect x="1388" y="596" width="250" height="47" class="slotB"/>
+  <text x="1440" y="616" class="small">K-quant DB：2 × 2.25 KiB</text>
+  <text x="1428" y="635" class="tiny">INT8 K + FP32 scale staging</text>
+  <rect x="1650" y="596" width="232" height="47" class="unused"/>
+  <text x="1704" y="625" class="small">对齐余量 1.5 KiB</text>
+
+  <rect x="1125" y="661" width="785" height="60" class="position"/>
+  <text x="1146" y="686" class="label">Persistent mrope_position window：12 KiB</text>
+  <text x="1146" y="708" class="body">1024 token × 3 axes × int32；按 window 批量 refill，不做 tile 级 double buffer</text>
+
+  <rect x="1125" y="721" width="785" height="66" class="unused"/>
+  <text x="1146" y="747" class="label">物理 UB 未使用：30 KiB</text>
+  <text x="1146" y="770" class="body">0x38800–0x40000；compact total 226 KiB ≤ 256 KiB</text>
+
+  <rect x="1045" y="809" width="890" height="24" class="callout"/>
+  <text x="1060" y="826" class="small">M-RoPE：input=4，raw cos/sin=4；output/K-rotation/V-out/K-quant/slot=2；position window=1。</text>
+
+  <!-- Buffer inventory -->
+  <text x="48" y="888" class="section">三、buffer 深度与复用保护</text>
+  <rect x="40" y="905" width="1920" height="244" class="panel"/>
+
+  <text x="70" y="938" class="label">资源</text>
+  <text x="330" y="938" class="label">RoPE 深度</text>
+  <text x="480" y="938" class="label">M-RoPE 深度</text>
+  <text x="670" y="938" class="label">owner / 选择方式</text>
+  <text x="1050" y="938" class="label">producer → consumer</text>
+  <text x="1470" y="938" class="label">复用保护</text>
+
+  <line x1="60" y1="950" x2="1935" y2="950" class="grid"/>
+  <line x1="60" y1="991" x2="1935" y2="991" class="grid"/>
+  <line x1="60" y1="1032" x2="1935" y2="1032" class="grid"/>
+  <line x1="60" y1="1073" x2="1935" y2="1073" class="grid"/>
+  <line x1="60" y1="1114" x2="1935" y2="1114" class="grid"/>
+
+  <text x="70" y="978" class="body">Input UB</text><text x="350" y="978" class="body">2</text><text x="515" y="978" class="body">4</text>
+  <text x="670" y="978" class="body">Vec · inputBufferUseId_ % N</text><text x="1050" y="978" class="body">MTE2 → PIPE_V</text><text x="1470" y="978" class="body">V→MTE2 reusable event / slot</text>
+
+  <text x="70" y="1019" class="body">Output / preprocess UB</text><text x="350" y="1019" class="body">2</text><text x="515" y="1019" class="body">2</text>
+  <text x="670" y="1019" class="body">BasicBlock · outputBufferUseId_ % 2</text><text x="1050" y="1019" class="body">AIV pre ↔ AIC FIXP ↔ AIV post</text><text x="1470" y="1019" class="body">OUTPUT_CONSUMED + MTE3→V event</text>
+
+  <text x="70" y="1060" class="body">cos/sin + slot metadata</text><text x="350" y="1060" class="body">2 + 2</text><text x="515" y="1060" class="body">4 + 2</text>
+  <text x="670" y="1060" class="body">Vec · 独立 use counters</text><text x="1050" y="1060" class="body">MTE2 → scalar/VF</text><text x="1470" y="1060" class="body">随 input 消费节奏轮转</text>
+
+  <text x="70" y="1101" class="body">V-out / K-rotation / K-quant</text><text x="350" y="1101" class="body">2 / — / —</text><text x="515" y="1101" class="body">2 / 2 / 2</text>
+  <text x="670" y="1101" class="body">Vec / BasicBlock 各自 counter</text><text x="1050" y="1101" class="body">V→MTE3；FIXP→V；V→MTE3</text><text x="1470" y="1101" class="body">逐 slot event；K-rot 用 consumed credit</text>
+
+  <text x="70" y="1138" class="tiny">注意：相同的深度“2”不代表共享 buffer id。每种资源都有自己的 counter 和 reusable event/credit。</text>
+
+  <!-- Timeline -->
+  <text x="48" y="1193" class="section">四、普通 RoPE 的双缓冲工作方式（示意）</text>
+  <rect x="40" y="1210" width="1920" height="245" class="panel"/>
+  <line x1="245" y1="1250" x2="1910" y2="1250" class="axis"/>
+  <text x="1868" y="1239" class="body">时间 →</text>
+
+  <text x="65" y="1302" class="label">input slot 0/1</text>
+  <text x="65" y="1361" class="label">V-out slot 0/1</text>
+  <text x="65" y="1420" class="label">output DB 0/1</text>
+
+  <rect x="255" y="1271" width="190" height="48" class="write"/><text x="298" y="1301" class="body">MTE2 fill T0 · s0</text>
+  <rect x="460" y="1271" width="190" height="48" class="consume"/><text x="498" y="1301" class="body">V consume T0 · s0</text>
+  <rect x="665" y="1271" width="190" height="48" class="write"/><text x="708" y="1301" class="body">MTE2 fill T1 · s1</text>
+  <rect x="870" y="1271" width="190" height="48" class="consume"/><text x="908" y="1301" class="body">V consume T1 · s1</text>
+  <rect x="1075" y="1271" width="190" height="48" class="write"/><text x="1118" y="1301" class="body">MTE2 fill T2 · s0</text>
+
+  <rect x="255" y="1330" width="190" height="48" class="write"/><text x="299" y="1360" class="body">V quant T0 · s0</text>
+  <rect x="460" y="1330" width="190" height="48" class="post"/><text x="492" y="1360" class="body">MTE3 V-cache T0</text>
+  <rect x="665" y="1330" width="190" height="48" class="write"/><text x="709" y="1360" class="body">V quant T1 · s1</text>
+  <rect x="870" y="1330" width="190" height="48" class="post"/><text x="902" y="1360" class="body">MTE3 V-cache T1</text>
+
+  <rect x="255" y="1389" width="190" height="48" class="write"/><text x="289" y="1419" class="body">Q/K preprocess · use0</text>
+  <rect x="460" y="1389" width="190" height="48" class="consume"/><text x="493" y="1419" class="body">FIXP output · use1</text>
+  <rect x="665" y="1389" width="190" height="48" class="post"/><text x="692" y="1419" class="body">Q/K postprocess · use2</text>
+  <rect x="870" y="1389" width="190" height="48" class="write"/><text x="904" y="1419" class="body">next preprocess · use3</text>
+  <rect x="1090" y="1389" width="355" height="48" class="guard"/><text x="1120" y="1419" class="body">slot 可复用需同时满足 CrossCore credit 与本核 MTE3→V event</text>
+
+  <rect x="1490" y="1271" width="410" height="107" class="callout"/>
+  <text x="1510" y="1298" class="label">double buffer 的收益</text>
+  <text x="1510" y="1325" class="body">producer 使用 slot 1 时，consumer 可处理 slot 0；</text>
+  <text x="1510" y="1350" class="body">减少 MTE2、PIPE_V、MTE3 与 FIXP 之间的串行等待。</text>
+
+  <text x="48" y="1482" class="tiny">普通 RoPE 总 UB 248 KiB；M-RoPE compact 总 UB 226 KiB。布局和 slot 数均由编译期常量确定，不由 tiling data 动态分配。</text>
+</svg>

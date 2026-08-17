@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="900" viewBox="0 0 2000 900" role="img" aria-labelledby="title desc">
+  <title id="title">VEC-PRE、CUBE、VEC-POST 跨 tile 流水</title>
+  <desc id="desc">纵向三条泳道分别为 VEC 前处理、CUBE 计算和 VEC 后处理，横向为时间。Tile 编号只出现在计算块内部，箭头连接同一 tile 的 Pre、Cube、Post，表示数据流向。</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e3a5f"/>
+    </linearGradient>
+    <marker id="arrow0" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#059669"/>
+    </marker>
+    <marker id="arrow3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#d97706"/>
+    </marker>
+    <marker id="timeArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#475569"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .header { fill: url(#header); }
+      .title { font: 700 30px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #fff; }
+      .subtitle { font: 14px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #cbd5e1; }
+      .timeAxis { stroke: #475569; stroke-width: 1.8; marker-end: url(#timeArrow); }
+      .grid { stroke: #e2e8f0; stroke-width: 1; }
+      .laneBg { fill: #fff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; }
+      .laneName { font: 700 25px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .laneUnit { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .blockTitle { font: 700 16px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #0f172a; }
+      .blockText { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .small { font: 11px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #64748b; }
+      .pre0 { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.6; rx: 9; }
+      .pre1 { fill: #f3e8ff; stroke: #7c3aed; stroke-width: 1.6; rx: 9; }
+      .pre2 { fill: #d1fae5; stroke: #059669; stroke-width: 1.6; rx: 9; }
+      .pre3 { fill: #fef3c7; stroke: #d97706; stroke-width: 1.6; rx: 9; }
+      .cube0 { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.6; rx: 9; }
+      .cube1 { fill: #f3e8ff; stroke: #7c3aed; stroke-width: 1.6; rx: 9; }
+      .cube2 { fill: #d1fae5; stroke: #059669; stroke-width: 1.6; rx: 9; }
+      .cube3 { fill: #fef3c7; stroke: #d97706; stroke-width: 1.6; rx: 9; }
+      .post0 { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.6; rx: 9; }
+      .post1 { fill: #f3e8ff; stroke: #7c3aed; stroke-width: 1.6; rx: 9; }
+      .post2 { fill: #d1fae5; stroke: #059669; stroke-width: 1.6; rx: 9; }
+      .post3 { fill: #fef3c7; stroke: #d97706; stroke-width: 1.6; rx: 9; }
+      .flow0 { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrow0); }
+      .flow1 { stroke: #7c3aed; stroke-width: 2; fill: none; marker-end: url(#arrow1); }
+      .flow2 { stroke: #059669; stroke-width: 2; fill: none; marker-end: url(#arrow2); }
+      .flow3 { stroke: #d97706; stroke-width: 2; fill: none; marker-end: url(#arrow3); }
+      .callout { fill: #fff7ed; stroke: #fb923c; stroke-width: 1.2; rx: 9; }
+      .body { font: 13px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+      .legend { font: 12px "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect width="2000" height="900" class="bg"/>
+  <rect x="0" y="0" width="2000" height="88" class="header"/>
+  <text x="52" y="40" class="title">VEC-PRE / CUBE / VEC-POST 跨 tile 流水</text>
+  <text x="53" y="66" class="subtitle">Tile 编号仅标在计算块中；同色箭头表示该 tile 的 Pre → Cube → Post 数据流</text>
+
+  <!-- Time axis only; no iteration/tile labels outside blocks -->
+  <line x1="220" y1="127" x2="1940" y2="127" class="timeAxis"/>
+  <text x="1892" y="115" class="laneUnit">时间 →</text>
+
+  <line x1="380" y1="145" x2="380" y2="700" class="grid"/>
+  <line x1="700" y1="145" x2="700" y2="700" class="grid"/>
+  <line x1="1040" y1="145" x2="1040" y2="700" class="grid"/>
+  <line x1="1380" y1="145" x2="1380" y2="700" class="grid"/>
+  <line x1="1720" y1="145" x2="1720" y2="700" class="grid"/>
+
+  <!-- Three lanes -->
+  <rect x="40" y="165" width="1920" height="150" class="laneBg"/>
+  <rect x="40" y="350" width="1920" height="150" class="laneBg"/>
+  <rect x="40" y="535" width="1920" height="150" class="laneBg"/>
+
+  <text x="60" y="229" class="laneName">VEC-PRE</text>
+  <text x="65" y="255" class="laneUnit">AIV 前处理</text>
+
+  <text x="78" y="414" class="laneName">CUBE</text>
+  <text x="65" y="440" class="laneUnit">AIC MMAD/FIXP</text>
+
+  <text x="54" y="599" class="laneName">VEC-POST</text>
+  <text x="65" y="625" class="laneUnit">AIV 后处理</text>
+
+  <!-- VEC-PRE blocks -->
+  <rect x="230" y="187" width="270" height="106" class="pre0"/>
+  <text x="330" y="216" class="blockTitle">Pre Tile 0</text>
+  <text x="252" y="244" class="blockText">Load Q/K/V；V-first</text>
+  <text x="252" y="268" class="blockText">Q/K RMSNorm + RoPE → AL1</text>
+
+  <rect x="540" y="187" width="270" height="106" class="pre1"/>
+  <text x="640" y="216" class="blockTitle">Pre Tile 1</text>
+  <text x="562" y="244" class="blockText">使用下一组 input/AL1 slot</text>
+  <text x="562" y="268" class="blockText">可与 Cube Tile 0 重叠</text>
+
+  <rect x="1050" y="187" width="270" height="106" class="pre2"/>
+  <text x="1150" y="216" class="blockTitle">Pre Tile 2</text>
+  <text x="1072" y="244" class="blockText">复用已释放的 slot 0</text>
+  <text x="1072" y="268" class="blockText">可与 Cube Tile 1 重叠</text>
+
+  <rect x="1450" y="187" width="270" height="106" class="pre3"/>
+  <text x="1550" y="216" class="blockTitle">Pre Tile 3</text>
+  <text x="1472" y="244" class="blockText">复用已释放的 slot 1</text>
+  <text x="1472" y="268" class="blockText">可与 Cube Tile 2 重叠</text>
+
+  <!-- CUBE blocks -->
+  <rect x="520" y="372" width="280" height="106" class="cube0"/>
+  <text x="620" y="401" class="blockTitle">Cube Tile 0</text>
+  <text x="542" y="429" class="blockText">Q MMAD → K MMAD</text>
+  <text x="542" y="453" class="blockText">Q FIXP → K FIXP</text>
+
+  <rect x="850" y="372" width="280" height="106" class="cube1"/>
+  <text x="950" y="401" class="blockTitle">Cube Tile 1</text>
+  <text x="872" y="429" class="blockText">与 Post Tile 0 重叠</text>
+  <text x="872" y="453" class="blockText">Q/K MMAD + FIXP</text>
+
+  <rect x="1280" y="372" width="280" height="106" class="cube2"/>
+  <text x="1380" y="401" class="blockTitle">Cube Tile 2</text>
+  <text x="1302" y="429" class="blockText">与 Post Tile 1 重叠</text>
+  <text x="1302" y="453" class="blockText">Q/K MMAD + FIXP</text>
+
+  <rect x="1680" y="372" width="260" height="106" class="cube3"/>
+  <text x="1770" y="401" class="blockTitle">Cube Tile 3</text>
+  <text x="1702" y="429" class="blockText">Q/K MMAD + FIXP</text>
+  <text x="1702" y="453" class="blockText">产生最后一拍输出</text>
+
+  <!-- VEC-POST blocks -->
+  <rect x="820" y="557" width="270" height="106" class="post0"/>
+  <text x="916" y="586" class="blockTitle">Post Tile 0</text>
+  <text x="842" y="614" class="blockText">Q quant/store</text>
+  <text x="842" y="638" class="blockText">K quant/scatter</text>
+
+  <rect x="1150" y="557" width="270" height="106" class="post1"/>
+  <text x="1246" y="586" class="blockTitle">Post Tile 1</text>
+  <text x="1172" y="614" class="blockText">Q quant/store</text>
+  <text x="1172" y="638" class="blockText">K quant/scatter</text>
+
+  <rect x="1580" y="557" width="270" height="106" class="post2"/>
+  <text x="1676" y="586" class="blockTitle">Post Tile 2</text>
+  <text x="1602" y="614" class="blockText">Q quant/store</text>
+  <text x="1602" y="638" class="blockText">K quant/scatter</text>
+
+  <rect x="1870" y="557" width="90" height="106" class="post3"/>
+  <text x="1881" y="586" class="blockTitle">Post</text>
+  <text x="1887" y="608" class="blockTitle">Tile 3</text>
+  <text x="1889" y="638" class="small">Drain</text>
+
+  <!-- Tile data-flow arrows only -->
+  <path d="M500 240 C520 280 540 330 575 372" class="flow0"/>
+  <path d="M800 425 C815 475 840 520 875 557" class="flow0"/>
+
+  <path d="M810 240 C830 280 865 330 900 372" class="flow1"/>
+  <path d="M1130 425 C1140 475 1180 520 1210 557" class="flow1"/>
+
+  <path d="M1320 240 C1335 285 1360 330 1395 372" class="flow2"/>
+  <path d="M1560 425 C1580 480 1630 520 1665 557" class="flow2"/>
+
+  <path d="M1720 240 C1740 285 1760 330 1790 372" class="flow3"/>
+  <path d="M1940 425 C1952 475 1948 520 1928 557" class="flow3"/>
+
+  <!-- Notes -->
+  <rect x="40" y="718" width="1920" height="122" class="callout"/>
+  <text x="66" y="750" class="blockTitle">说明</text>
+  <text x="66" y="781" class="body">同色块和箭头属于同一个 tile；箭头只表达 tile 数据从 VEC-PRE 到 CUBE、再到 VEC-POST 的流向。</text>
+  <text x="66" y="810" class="body">VEC-PRE 与 VEC-POST 是逻辑拆分，实际共享同一 AIV Vector 资源，控制顺序仍为 Pre Tile i → Post Tile (i-1)，不会在同一 VEC pipe 上并发。</text>
+
+  <!-- Legend -->
+  <rect x="50" y="862" width="18" height="14" class="pre0"/><text x="78" y="874" class="legend">Tile 0</text>
+  <rect x="150" y="862" width="18" height="14" class="pre1"/><text x="178" y="874" class="legend">Tile 1</text>
+  <rect x="250" y="862" width="18" height="14" class="pre2"/><text x="278" y="874" class="legend">Tile 2</text>
+  <rect x="350" y="862" width="18" height="14" class="pre3"/><text x="378" y="874" class="legend">Tile 3</text>
+  <line x1="485" y1="869" x2="545" y2="869" class="flow0"/><text x="560" y="874" class="legend">同一 tile 的数据流</text>
+  <text x="1950" y="874" text-anchor="end" class="small">横向宽度用于表达先后与重叠机会，不是实际 cycle 比例</text>
+</svg>

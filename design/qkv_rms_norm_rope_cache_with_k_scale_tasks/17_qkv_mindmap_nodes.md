@@ -1,0 +1,382 @@
+# QkvRmsNormRopeCacheWithKScale 脑图节点
+
+- QkvRmsNormRopeCacheWithKScale
+  - 节点一：所有输入的类型
+    - 基础约束
+      - `D=128`
+      - `0<Nq<=64`
+      - `Nq=8*Nk`
+      - `Nk=Nv`
+      - `0<T<262144`
+      - `headNums=[Nq,Nk,Nv]`
+    - 必选普通输入 Tensor
+      - `qkv`
+        - 类型：BF16
+        - 格式：ND
+        - TND shape：`[T,Nq+Nk+Nv,128]`
+        - NTD shape：`[Nq+Nk+Nv,T,128]`
+        - 不支持非连续 Tensor
+      - `qGamma`
+        - 类型：FP32
+        - shape：`[128]`
+        - 作用：Q 分支 RMSNorm 权重
+      - `kGamma`
+        - 类型：FP32
+        - shape：`[128]`
+        - 作用：K 分支 RMSNorm 权重
+      - `cosSin`
+        - 类型：FP32
+        - shape：`[MaxSeqLen,128]`
+        - 前 64 列：cos
+        - 后 64 列：sin
+        - 第一维必须覆盖本次访问的全部位置
+      - `slotMapping`
+        - 类型：INT32
+        - shape：`[T]`
+        - 值域：`[0,BlockNum*BlockSize-1]`
+        - 当前 800 例保证单次调用内 slot 唯一
+    - 输入输出别名 Cache Tensor
+      - 公共属性
+        - `BlockSize=16`
+        - 支持连续 Tensor
+        - 支持满足正 stride 约束的非连续 Tensor
+        - 只更新 `slotMapping` 指定的位置
+      - `kCacheRef`
+        - shape：`[BlockNum,Nk,BlockSize,128]`
+        - RoPE 类型：FP8 E4M3FN
+        - M-RoPE 类型：INT8
+      - `vCacheRef`
+        - shape：`[BlockNum,Nv,BlockSize,128]`
+        - 类型：FP8 E4M3FN
+      - `kScaleCacheRef`
+        - shape：`[BlockNum,Nk,BlockSize,1]`
+        - 类型：FP32
+    - RoPE 专属位置输入
+      - `queryStartLocOptional`
+        - 类型：INT32
+        - shape：`[Batch+1]`
+        - 语义：本次调用各 batch token 数的前缀和
+        - 约束：首元素为 0，末元素为 T
+      - `seqLensOptional`
+        - 类型：INT32
+        - shape：`[Batch]`
+        - 语义：追加本次 token 后的实际序列长度
+      - presence 规则
+        - `queryStartLocOptional` 与 `seqLensOptional` 必须同时存在
+        - `mropePositionOptional` 不传
+        - `mropeSectionOptional` 不传或为空
+    - M-RoPE 专属位置输入
+      - `mropePositionOptional`
+        - 类型：INT32
+        - shape：`[T,3]`
+        - 第 0 列：T 坐标
+        - 第 1 列：H 坐标
+        - 第 2 列：W 坐标
+      - `mropeSectionOptional`
+        - 类型：INT64 数组
+        - 内容：`[t,h,w]`
+        - 长度：3
+        - `t>=0`
+        - `0<=h<=21`
+        - `0<=w<=21`
+        - `t+h+w<=64`
+      - presence 规则
+        - `mropePositionOptional` 与非空 `mropeSectionOptional` 必须同时存在
+        - `queryStartLocOptional` 不传
+        - `seqLensOptional` 不传
+    - Q/K 公共计算输入
+      - `rotationOptional`
+        - 接口语义：必传
+        - 类型：BF16
+        - shape：`[128,128]`
+        - 作用：Q/K 完成位置编码后共享右乘该矩阵
+    - V 分支输入
+      - `vScaleOptional`
+        - 接口语义：必传
+        - 类型：FP32
+        - RoPE shape：`[Nv]`
+        - RoPE 语义：按 V head 广播
+        - M-RoPE shape：`[Nv,128]`
+        - M-RoPE 语义：按 V head 和通道逐元素缩放
+    - 属性类输入
+      - `headNums`
+        - 类型：INT64 数组
+        - 长度：3
+        - 内容：`[Nq,Nk,Nv]`
+      - `layoutQkv`
+        - 类型：字符串
+        - 可选值：`TND`、`NTD`
+        - 默认值：`TND`
+        - 大小写敏感
+      - `layoutQOut`
+        - 类型：字符串
+        - 可选值：`TND`、`NTD`
+        - 默认值：`NTD`
+        - 大小写敏感
+      - `epsilon`
+        - 类型：float
+        - 作用：RMSNorm 防除零参数
+      - `qQuantMode`
+        - 类型：字符串
+        - RoPE：`PerTokenPerHead`
+        - M-RoPE：`NoQuant`
+        - 默认值：`PerTokenPerHead`
+  - 节点二：当前支持的模式组合
+    - 场景判定
+      - RoPE
+        - 存在 `queryStartLocOptional + seqLensOptional`
+        - 不存在 M-RoPE 位置输入
+        - Q 使用 PerTokenPerHead 动态量化
+        - Q 输出 FP8 E4M3FN
+        - Q Scale 输出 FP32
+        - K Cache 为 FP8 E4M3FN
+      - M-RoPE
+        - 存在 `mropePositionOptional + 非空mropeSectionOptional`
+        - 不存在 RoPE batch 位置输入
+        - Q 使用 NoQuant
+        - Q 输出 BF16
+        - Q Scale 为 None
+        - K Cache 为 INT8
+    - 4 种实际支持的场景与布局组合
+      - M01：RoPE NTD→NTD
+        - `qkv=[Nq+Nk+Nv,T,128]`
+        - `qOut=[Nq,T,128]`
+        - `qScale=[Nq,T]`
+      - M02：RoPE TND→TND
+        - `qkv=[T,Nq+Nk+Nv,128]`
+        - `qOut=[T,Nq,128]`
+        - `qScale=[T,Nq]`
+      - M03：RoPE TND→NTD
+        - 默认布局组合
+        - `qkv=[T,Nq+Nk+Nv,128]`
+        - `qOut=[Nq,T,128]`
+        - `qScale=[Nq,T]`
+      - M04：M-RoPE TND→TND
+        - `qkv=[T,Nq+Nk+Nv,128]`
+        - `qOut=[T,Nq,128]`
+        - `qScale=None`
+    - 支持模式数量
+      - RoPE：3 种
+      - M-RoPE：1 种
+      - 合计：4 种
+  - 节点三：所有泛化用例
+    - 当前用例集合
+      - 矩阵名称：`full800`
+      - 用例总数：800
+      - 唯一用例名：800
+      - 最终结果：800 PASS、0 FAIL
+      - 每个合法模式：200 例
+      - 每个 head 组合：100 例
+      - 每个 `head × mode`：25 例
+    - Head 节点
+      - `head_index=0`：`[Nq,Nk,Nv]=[8,1,1]`
+      - `head_index=1`：`[16,2,2]`
+      - `head_index=2`：`[24,3,3]`
+      - `head_index=3`：`[32,4,4]`
+      - `head_index=4`：`[40,5,5]`
+      - `head_index=5`：`[48,6,6]`
+      - `head_index=6`：`[56,7,7]`
+      - `head_index=7`：`[64,8,8]`
+    - T 节点
+      - `token_index=0`：T=1
+      - `token_index=1`：T=2
+      - `token_index=2`：T=15
+      - `token_index=3`：T=16
+      - `token_index=4`：T=17
+      - `token_index=5`：T=127
+      - `token_index=6`：T=128
+      - `token_index=7`：T=129
+      - `token_index=8`：T=255
+      - `token_index=9`：T=256
+      - `token_index=10`：T=257
+      - `token_index=11`：T=1023
+      - `token_index=12`：T=1024
+      - `token_index=13`：T=1025
+      - `token_index=14`：T=4095
+      - `token_index=15`：T=4096
+      - `token_index=16`：T=4097
+      - `token_index=17`：T=16383
+      - `token_index=18`：T=16384
+      - `token_index=19`：T=16385
+      - `token_index=20`：T=65535
+      - `token_index=21`：T=131071
+      - `token_index=22`：T=196607
+      - `token_index=23`：T=262142
+      - `token_index=24`：T=262143
+    - 精确生成规则节点
+      - 目的
+        - 表示当前已经执行的准确 800 例
+        - Cache、slot、batch 等维度不是额外笛卡尔积
+      - 模式索引
+        - `config_index=0`：M01 RoPE NTD→NTD
+        - `config_index=1`：M02 RoPE TND→TND
+        - `config_index=2`：M03 RoPE TND→NTD
+        - `config_index=3`：M04 M-RoPE TND→TND
+      - 每个有效用例
+        - 选择一个 `head_index`，范围 0..7
+        - 选择一个 `config_index`，范围 0..3
+        - 选择一个 `token_index`，范围 0..24
+        - `rotation_index=head_index+config_index+token_index`
+      - Cache 映射
+        - `rotation_index` 为偶数：contiguous
+        - `rotation_index` 为奇数：d_pad
+        - d_pad 的 D 维 padding：8
+        - 每个模式结果：contiguous 100 例、d_pad 100 例
+      - slotMapping 映射
+        - `rotation_index mod 4=0`：linear
+        - `rotation_index mod 4=1`：reverse
+        - `rotation_index mod 4=2`：random
+        - `rotation_index mod 4=3`：affine
+        - 每个模式结果：每种 50 例
+      - RoPE batch 映射
+        - 候选数组：`[1,2,4,8,16]`
+        - `batch=min(候选数组[rotation_index mod 5],T)`
+        - 确保 T 小于候选 batch 时每个序列仍非空
+      - RoPE 历史位置映射
+        - `rotation_index` 为偶数：无历史偏移
+        - `rotation_index` 为奇数：有历史偏移
+        - 每个 RoPE 模式结果：无偏移 100 例、有偏移 100 例
+      - M-RoPE section 映射
+        - `section_index=(head_index+token_index) mod 5`
+        - `section_index=0`：`[11,20,20]`
+        - `section_index=1`：`[0,21,0]`
+        - `section_index=2`：`[0,0,21]`
+        - `section_index=3`：`[22,21,21]`
+        - `section_index=4`：`[0,21,21]`
+        - 每种 section：40 例
+      - 随机种子映射
+        - `seed=2026081400+100*head_index+25*config_index+token_index`
+        - 同一用例可确定性复现
+      - 用例名映射
+        - 格式：`full_{scene}_nq{Nq}_nk{Nk}_nv{Nv}_t{T}_{layoutQkv}_to_{layoutQOut}_{cache}_{slot}`
+        - layout 名在用例名中使用小写
+    - M01 泛化场景：RoPE NTD→NTD
+      - 用例数量：200
+      - 基础组合：8 heads × 25 T
+      - 模式专属重点
+        - NTD head-major 输入切分 Q/K/V
+        - NTD head-major Q 输出
+        - NTD `qScale[Nq,T]`
+        - 不同 head 输出地址不重叠
+        - T=1 与各类 tail 下 N/T 轴不交换
+        - 多 batch RoPE 位置
+        - 历史位置偏移
+      - 类型内场景数量
+        - contiguous Cache：100
+        - d_pad Cache：100
+        - linear slot：50
+        - reverse slot：50
+        - random slot：50
+        - affine slot：50
+        - 无历史偏移：100
+        - 有历史偏移：100
+      - 精度结果
+        - Q FP8 exact 最低：99.99348958%
+        - K FP8 exact 最低：99.96093750%
+        - Q/K 反量化 close：100%
+        - Q/K scale close：100%
+        - V FP8 exact：100%
+        - 未写 Cache 保持原值：200/200
+        - 最终：200 PASS、0 FAIL
+    - M02 泛化场景：RoPE TND→TND
+      - 用例数量：200
+      - 基础组合：8 heads × 25 T
+      - 模式专属重点
+        - TND token-major 输入切分 Q/K/V
+        - TND token-major Q 输出
+        - TND `qScale[T,Nq]`
+        - 跨 tile 后 token 顺序保持
+        - 跨 Cache block 后 slot 写入正确
+        - 多 batch 边界不改变 token 顺序
+        - 最大 `Nq=64`
+        - 最大 `T=262143`
+      - 类型内场景数量
+        - contiguous Cache：100
+        - d_pad Cache：100
+        - 四种 slot：每种 50
+        - 无历史偏移：100
+        - 有历史偏移：100
+      - 精度结果
+        - Q FP8 exact 最低：99.90234375%
+        - K FP8 exact 最低：99.98586886%
+        - Q/K 反量化 close：100%
+        - Q/K scale close：100%
+        - V FP8 exact：100%
+        - 未写 Cache 保持原值：200/200
+        - 最终：200 PASS、0 FAIL
+    - M03 泛化场景：RoPE TND→NTD
+      - 用例数量：200
+      - 基础组合：8 heads × 25 T
+      - 模式专属重点
+        - TND token-major 输入
+        - NTD head-major Q 输出
+        - TND→NTD 布局转换
+        - NTD `qScale[Nq,T]`
+        - 不同 token/head 写回不覆盖
+        - 尾 tile 的紧凑输出地址
+        - 最大 Nq、最大 T 与 d_pad Cache 组合
+      - 类型内场景数量
+        - contiguous Cache：100
+        - d_pad Cache：100
+        - 四种 slot：每种 50
+        - 无历史偏移：100
+        - 有历史偏移：100
+      - 精度结果
+        - Q FP8 exact 最低：99.99008179%
+        - K FP8 exact 最低：99.98626709%
+        - Q/K 反量化 close：100%
+        - Q/K scale close：100%
+        - V FP8 exact：100%
+        - 未写 Cache 保持原值：200/200
+        - 最终：200 PASS、0 FAIL
+    - M04 泛化场景：M-RoPE TND→TND
+      - 用例数量：200
+      - 基础组合：8 heads × 25 T
+      - 模式专属重点
+        - `[T,3]` token-major T/H/W position
+        - section 对 T/H/W cos/sin 的选择
+        - Q rotation 后直接输出 BF16
+        - `qScale=None`
+        - K 动态量化为 INT8
+        - K scale 输出 FP32
+        - V 使用 `[Nv,128]` 逐通道 scale
+        - 大 T 下 position window 分段读取
+        - 最大 Nq、最大 T 和 d_pad Cache
+      - 类型内场景数量
+        - contiguous Cache：100
+        - d_pad Cache：100
+        - 四种 slot：每种 50
+        - 普通 section `[11,20,20]`：40
+        - H 上界 `[0,21,0]`：40
+        - W 上界 `[0,0,21]`：40
+        - 总和 64 上界 `[22,21,21]`：40
+        - H/W 同时上界 `[0,21,21]`：40
+      - 精度结果
+        - Q BF16 close：100%
+        - K INT8 `abs(error)<=1`：100%
+        - K scale close：100%
+        - V FP8 exact：100%
+        - `qScale=None`：200/200
+        - 未写 Cache 保持原值：200/200
+        - 最终：200 PASS、0 FAIL
+    - 公共验收节点
+      - RoPE
+        - Q FP8 exact：不低于 99%
+        - Q 反量化 close：不低于 99%
+        - Q scale close：不低于 99%
+        - K FP8 exact：不低于 99%
+        - K 反量化 close：不低于 99%
+        - K scale close：不低于 99%
+        - V FP8 exact：100%
+      - M-RoPE
+        - Q BF16 close：不低于 99%
+        - K INT8 绝对误差不大于 1：100%
+        - K scale close：不低于 99%
+        - V FP8 exact：100%
+        - qScale：None
+      - 所有模式
+        - shape 完全一致
+        - dtype 完全一致
+        - 未写 Cache 不变
+        - 无 OOM
+        - 最终 800 PASS、0 FAIL

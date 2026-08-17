@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1380" height="520" viewBox="0 0 1380 520">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <style>
+      .title { font: 700 22px Arial, sans-serif; fill: #0f172a; }
+      .laneTitle { font: 700 16px Arial, sans-serif; fill: #0f172a; }
+      .axis { stroke: #94a3b8; stroke-width: 1.4; marker-end: url(#arrow); }
+      .grid { stroke: #e2e8f0; stroke-width: 1; }
+      .aivPre { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.4; rx: 8; }
+      .aivPost { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.4; rx: 8; }
+      .aic { fill: #ffedd5; stroke: #ea580c; stroke-width: 1.4; rx: 8; }
+      .sync { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.2; rx: 6; }
+      .rot { fill: #f8fafc; stroke: #64748b; stroke-width: 1.2; rx: 8; }
+      .text { font: 13px Arial, sans-serif; fill: #0f172a; }
+      .small { font: 12px Arial, sans-serif; fill: #334155; }
+      .flag { font: 12px Arial, sans-serif; fill: #4c1d95; }
+      .line { stroke: #334155; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #7c3aed; stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="38" y="36" class="title">AIV / AIC Rolling Pipeline View</text>
+  <line x1="120" y1="64" x2="1325" y2="64" class="axis"/>
+  <text x="1288" y="55" class="small">time</text>
+
+  <text x="38" y="130" class="laneTitle">AIV core</text>
+  <text x="38" y="260" class="laneTitle">AIC core</text>
+  <text x="38" y="405" class="laneTitle">Sync / Buffer</text>
+
+  <line x1="120" y1="90" x2="120" y2="470" class="grid"/>
+  <line x1="360" y1="90" x2="360" y2="470" class="grid"/>
+  <line x1="600" y1="90" x2="600" y2="470" class="grid"/>
+  <line x1="840" y1="90" x2="840" y2="470" class="grid"/>
+  <line x1="1080" y1="90" x2="1080" y2="470" class="grid"/>
+  <line x1="1200" y1="90" x2="1200" y2="470" class="grid"/>
+
+  <rect x="130" y="102" width="210" height="54" class="aivPre"/>
+  <text x="174" y="124" class="text">Preprocess T0 / B0</text>
+  <text x="142" y="144" class="small">V quant; QK build; V cache; AL1</text>
+
+  <rect x="370" y="102" width="210" height="54" class="aivPre"/>
+  <text x="414" y="124" class="text">Preprocess T1 / B1</text>
+  <text x="387" y="144" class="small">V-first + next A during Cube T0</text>
+
+  <rect x="610" y="102" width="210" height="54" class="aivPost"/>
+  <text x="656" y="124" class="text">Postprocess T0 / B0</text>
+  <text x="620" y="144" class="small">Q/K quant; Q out; K cache/scale</text>
+
+  <rect x="850" y="102" width="210" height="54" class="aivPre"/>
+  <text x="894" y="124" class="text">Preprocess T2 / B0</text>
+  <text x="858" y="144" class="small">B0 after FIX_OUTPUT_CONSUMED0</text>
+
+  <rect x="130" y="232" width="180" height="50" class="rot"/>
+  <text x="156" y="254" class="text">Prepare rotation</text>
+  <text x="164" y="272" class="small">ND2NZ / resident</text>
+
+  <rect x="370" y="232" width="210" height="54" class="aic"/>
+  <text x="421" y="254" class="text">Cube T0 / B0</text>
+  <text x="406" y="274" class="small">A_rot @ rotation, Fixpipe</text>
+
+  <rect x="610" y="232" width="210" height="54" class="aic"/>
+  <text x="661" y="254" class="text">Cube T1 / B1</text>
+  <text x="646" y="274" class="small">A_rot @ rotation, Fixpipe</text>
+
+  <rect x="1090" y="232" width="210" height="54" class="aic"/>
+  <text x="1141" y="254" class="text">Cube T2 / B0</text>
+  <text x="1126" y="274" class="small">after A_READY2</text>
+
+  <rect x="150" y="372" width="145" height="34" class="sync"/>
+  <text x="178" y="394" class="flag">A_READY0</text>
+  <rect x="390" y="372" width="145" height="34" class="sync"/>
+  <text x="418" y="394" class="flag">A_READY1</text>
+  <rect x="640" y="372" width="145" height="34" class="sync"/>
+  <text x="649" y="394" class="flag">FIX_OUTPUT_READY0</text>
+  <rect x="760" y="426" width="165" height="34" class="sync"/>
+  <text x="771" y="448" class="flag">FIX_OUTPUT_CONSUMED0</text>
+  <rect x="880" y="372" width="145" height="34" class="sync"/>
+  <text x="889" y="394" class="flag">FIX_OUTPUT_READY1</text>
+  <rect x="1085" y="372" width="145" height="34" class="sync"/>
+  <text x="1113" y="394" class="flag">A_READY2</text>
+
+  <path d="M235 156 L235 372" class="dash"/>
+  <path d="M295 389 C330 360 350 305 370 263" class="dash"/>
+
+  <path d="M475 156 L475 372" class="dash"/>
+  <path d="M535 389 C570 360 590 305 610 263" class="dash"/>
+
+  <path d="M580 263 C610 305 640 335 700 372" class="dash"/>
+  <path d="M715 372 L715 156" class="dash"/>
+
+  <path d="M820 263 C850 305 880 335 940 372" class="dash"/>
+
+  <path d="M715 156 C745 200 790 380 842 426" class="dash"/>
+  <path d="M842 426 C870 380 890 315 910 156" class="dash"/>
+  <path d="M955 156 L955 372" class="dash"/>
+  <path d="M1025 389 C1060 350 1070 300 1090 263" class="dash"/>
+
+  <text x="132" y="330" class="small">B0 generation 0</text>
+  <text x="372" y="330" class="small">B1 generation 0</text>
+  <text x="852" y="330" class="small">B0 generation 1 preprocess</text>
+  <text x="1092" y="330" class="small">B0 generation 1 cube</text>
+</svg>
