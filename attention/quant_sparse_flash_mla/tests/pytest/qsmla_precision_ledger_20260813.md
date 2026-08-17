@@ -9,8 +9,12 @@
 
 ### HCA 000055 定位进展（部分定位，修复待确认）
 
-- 根因类别：**状态初始化错误**（倾向），`isFirstVec2Base`/`isLastBase` 在 `safeBaseBlockNum=1` 时语义问题。
-- 根因分析：batch consistency 路径 `isFirstVec2Base = runInfo.isFirstBase`（`csa_block_vector.h:1147`），当 `safeBaseBlockNum=1`（极短 KV，如 batch=5 的 S2=17 < 128 base block）时，`baseBlockIdInReduceBlock = s2LoopCount % 1 = 0`，导致每个 S2 loop 的 `isFirstBase` 恒为 true。
+- 根因类别：**状态初始化错误**（`isFirstSoftmaxBase`/`isFirstVec2Base`/`isLastBase` 在 `safeBaseBlockNum=1` 时语义问题，以及 `softmaxFinalMaxBuf/finalSumBuf` 快照与 `MergeStagedAndCurrentChunk` 输入期望不匹配）。
+- 根因分析：
+  1. batch consistency 路径 `isFirstSoftmaxBase = isFirstBase`（Vec1, line 892）和 `isFirstVec2Base = isFirstBase`（Vec2, line 1147），当 `safeBaseBlockNum=1`（极短 KV，如 batch=5 的 S2=17 < 128 base block）时，`baseBlockIdInReduceBlock = s2LoopCount % 1 = 0`，导致每个 S2 loop 的 `isFirstBase` 恒为 true。
+  2. Vec1 的 `isFirstSoftmaxBase=true` 使 loop 1 重新从 sinks 初始化 max/sum（line 909-917），丢失 loop 0 累积。
+  3. Vec2 的 `isFirstVec2Base=true` 使 loop 1 走 `DataCopy`+`LastDivNew`（line 1149-1192），而非 `FlashUpdateLastNew`。`LastDivNew` 用 loop 1 的局部 sum 归一化 mmRes，然后 `ReduceIntraBlockAndStage` 合并。
+  4. `ReduceIntraBlockAndStage` 的 `MergeStagedAndCurrentChunk` 期望 current max/sum 是当前 reduce block 的**局部**值，`MergeTwoInputsWithLse` 的 `ComputeScaleValue_VF` 假设两个输入是独立的局部 max/sum。
 - 证据：
   - level=0（非 batch）100%，level=1（batch）90%；3 次运行零方差。
   - kernel 打印确认 batch=5 的两个 S2 loop 的 `isFirstBase=1, isLastBase=1` 同时为 true。
@@ -18,9 +22,15 @@
   - LSE 100% 正确（FP32，不经过 hifp8 cast），Main 系统性缩放偏差 0.94-1.06。
   - 无 NaN/Inf，无全零异常行（全零行 golden 也为零，是 padding）。
 - 尝试的修复（均未通过验证）：
-  1. `isFirstVec2Base = runInfo.isFirstBase && runInfo.reduceBlockId == 0`：改变了 Vec2 路径但精度不变（90.07%）。
-  2. `needIntraBlockReduce=true` 时走 `DataCopy` 而非 `FlashUpdateLastNew`：精度更差（28.63%）。
-- 下一步：深入分析 `MergeTwoInputsWithLse` 期望的 current partial-O 格式，确认 `FlashUpdateLastNew` 与 `ReduceIntraBlockAndStage` 的正确调用顺序。
+  1. 仅修 Vec2 `isFirstVec2Base = isFirstBase && reduceBlockId == 0`：精度不变（90.07%），因为 Vec1 的 max/sum 重新初始化未修复。
+  2. 仅修 Vec1 `isFirstSoftmaxBase = isFirstBase && reduceBlockId == 0`：精度更差（27.14%），因为 Vec2 仍走 `DataCopy`+`LastDivNew`，`LastDivNew` 用累积 sum 除 mmRes（只含 loop 1 贡献），过度缩小。
+  3. 同时修 Vec1+Vec2：精度 27.14%，因为 `FlashUpdateLastNew` 用 loop 0 的已归一化 vec2ResUb（`LastDivNew` 后）做累积，多除了 loop 0 的局部 sum。
+  4. 同时修 Vec1+Vec2 + `needIntraBlockReduce=true` 时走 `DataCopy` + `LastDivNew` 只在 `s2LoopCount==s2LoopLimit` 时执行：精度 27.15%，因为 `softmaxFinalMaxBuf/finalSumBuf` 是累积值，而 `MergeStagedAndCurrentChunk` 期望当前 reduce block 的局部 max/sum。
+- 深层原因：batch consistency 路径的 `softmaxFinalMaxBuf/finalSumBuf` 快照逻辑（line 974-975）在多 reduce block 场景下需要区分"当前 reduce block 的局部 max/sum"和"累积 max/sum"，当前代码用同一个 buffer 存储两者，导致 `ReduceIntraBlockAndStage` 拿到错误的值。
+- 下一步：
+  - 为 `ReduceIntraBlockAndStage` 单独提供当前 reduce block 的局部 max/sum（不使用 `softmaxFinalMaxBuf/finalSumBuf` 的累积值）
+  - 或在 `needIntraBlockReduce=true` 时，从 `softmaxMaxBuf/softmaxSumBuf`（在线状态，当前 reduce block 的局部值）读取 max/sum
+  - 需要确认 `softmaxMaxBuf/softmaxSumBuf` 在 `SFAUpdateExpSumAndExpMax` 后是否仍保留当前 reduce block 的局部值
 
 ## 2026-08-17 回归（commit de9f41a99 "qsmla"，重编译安装）
 
