@@ -94,14 +94,16 @@ run_case() {
         *) BENCH_MODE_NUM="$BENCH_MODE"; BENCH_NAME="$BENCH_MODE" ;;
     esac
 
-    echo "[INFO] Case $CASE_ID: $MODE_NAME $BENCH_NAME sqe_bytes=$SQE_BYTES loop=$LOOP_COUNT"
+    echo "----------------------------------------"
+    echo "[CASE $CASE_ID] $MODE_NAME $BENCH_NAME"
+    echo "  cmd: bash run.sh -r ON -d ${DEV_COUNT} -m $SQE_MODE_NUM -o $BENCH_MODE_NUM -s $SQE_BYTES -l $LOOP_COUNT -g ON"
 
     local RUN_ARGS="--dev_count ${DEV_COUNT} --sqe_bytes ${SQE_BYTES} --loop_count ${LOOP_COUNT} --sqe_mode ${SQE_MODE_NUM} --bench_mode ${BENCH_MODE_NUM} --verify ON"
     if [ -n "$DEV_IDS" ]; then
         RUN_ARGS="$RUN_ARGS --dev_ids=$DEV_IDS"
     fi
 
-    # 跑用例, 捕获输出
+    # 跑用例, 捕获输出 (不让子进程退出码影响脚本)
     local OUTPUT
     OUTPUT=$("$BIN" $RUN_ARGS 2>&1) || true
 
@@ -114,7 +116,18 @@ run_case() {
     BW=$(echo "$OUTPUT" | grep "bw:" | head -1 | sed 's/.*bw: *//;s/ *GB\/s.*//')
     VERIFY=$(echo "$OUTPUT" | grep "verify:" | head -1 | sed 's/.*verify: *//')
 
-    echo "  → assemble=${ASSEMBLE}us drain=${DRAIN}us total=${TOTAL_TIME}us bw=${BW}GB/s verify=${VERIFY}"
+    # 解析不到数据 = 出错, 打印日志, 跳过此 case
+    if [ -z "$ASSEMBLE" ]; then
+        echo "  [ERROR] failed to parse result, last 30 lines:"
+        echo "$OUTPUT" | tail -30
+        echo "----------------------------------------"
+        echo ""
+        echo "${CASE_ID},${SQE_MODE},${BENCH_MODE},${SQE_BYTES},${LOOP_COUNT},ERROR,ERROR,ERROR,ERROR,ERROR,ERROR" >> "$OUTPUT_CSV"
+        return 0
+    fi
+
+    echo "  result: assemble=${ASSEMBLE}us commit/issue=${ISSUE}us drain=${DRAIN}us total=${TOTAL_TIME}us bw=${BW}GB/s verify=${VERIFY}"
+    echo "----------------------------------------"
     echo ""
 
     echo "${CASE_ID},${SQE_MODE},${BENCH_MODE},${SQE_BYTES},${LOOP_COUNT},${ASSEMBLE},${ISSUE},${DRAIN},${TOTAL_TIME},${BW},${VERIFY}" >> "$OUTPUT_CSV"
@@ -157,6 +170,7 @@ while IFS=',' read -r CASE_ID SQE_MODE BENCH_MODE SQE_BYTES LOOP_COUNT; do
     fi
 
     IDX=$((IDX+1))
+    echo ""
     echo "[INFO] Progress: $IDX/$TOTAL_CASES"
     run_case "$CASE_ID" "$SQE_MODE" "$BENCH_MODE" "$SQE_BYTES" "$LOOP_COUNT"
 
