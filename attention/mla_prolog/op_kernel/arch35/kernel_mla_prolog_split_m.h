@@ -65,8 +65,7 @@ public:
         : pipe_(pipe),
           tilingData_(tilingData),
           baseParams_(baseParams)
-    {
-    }
+    {}
 
     __aicore__ inline void Init(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr,
                                 __gm__ uint8_t *weightUk, __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq,
@@ -109,10 +108,11 @@ private:
                                       int64_t numHeadOffset, int64_t mmQnLoops);
     template <typename T, typename O, typename S, bool needCheckEmptyTensor = false, bool needCheckAFullLoad = false,
               bool isContinuousCopy = true>
-    __aicore__ inline void
-    MatmulSplitM(const GlobalTensor<O> &tensorResGm, const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm,
-                 const MMParams &mmPara, const UsedBlockParams &mmBlockParams,
-                 const GlobalTensor<S> &tensorAScaleGm = {}, const GlobalTensor<S> &tensorBScaleGm = {});
+    __aicore__ inline void MatmulSplitM(const GlobalTensor<O> &tensorResGm, const GlobalTensor<T> &tensorAGm,
+                                        const GlobalTensor<T> &tensorBGm, const MMParams &mmPara,
+                                        const UsedBlockParams &mmBlockParams,
+                                        const GlobalTensor<S> &tensorAScaleGm = {},
+                                        const GlobalTensor<S> &tensorBScaleGm = {});
     __aicore__ inline void MatmulQcQr(AicOffset &aicOffset);
     template <bool needQnDynamicQuant>
     __aicore__ inline void MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int64_t weightUkOffset,
@@ -169,9 +169,7 @@ private:
         GlobalTensor<dequantScaleType> deQuantScaleCqGm_;
         TBuf<TPosition::VECCALC> deQuantScaleCqBuffer_; // 用于临时存储每一行的Scale，以及汇总最终每一行的Scale参数
         LocalTensor<dequantScaleType> deQuantScaleCqLocal_;
-        __aicore__ inline DequantTool()
-        {
-        }
+        __aicore__ inline DequantTool() {}
     };
 
     // 算子分组开关
@@ -314,10 +312,11 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
 }
 
 template <typename MLAPT>
-__aicore__ inline void
-MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
-                                     __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
-                                     __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
+                                                            __gm__ uint8_t *queryRopeOut,
+                                                            __gm__ uint8_t *dequantScaleQNopeOut,
+                                                            __gm__ uint8_t *queryNormOut,
+                                                            __gm__ uint8_t *dequantScaleQNormOut)
 {
     qrOutGm_.SetGlobalBuffer((__gm__ ropeOutputType *)queryRopeOut);
     if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) ||
@@ -341,11 +340,10 @@ MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_
 }
 
 template <typename MLAPT>
-__aicore__ inline void
-MlaPrologV3SplitM<MLAPT>::ScaleInit(__gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
-                                    __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
-                                    __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
-                                    __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *kNopeClipAlpha)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::ScaleInit(
+    __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq, __gm__ uint8_t *deqScaleQcQrW,
+    __gm__ uint8_t *dequantScaleWDkvkr, __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
+    __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *kNopeClipAlpha)
 {
     if constexpr (IsFullQuantMode<mmInputType, dequantScaleType, false>()) {
         dequantScaleXGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleX);
@@ -912,11 +910,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::AivProcess(AivOffset &aivOffset
 
 template <typename MLAPT>
 template <typename T, typename O, typename S, bool needCheckEmptyTensor, bool needCheckAFullLoad, bool isContinuousCopy>
-__aicore__ inline void
-MlaPrologV3SplitM<MLAPT>::MatmulSplitM(const GlobalTensor<O> &tensorResGm, const GlobalTensor<T> &tensorAGm,
-                                       const GlobalTensor<T> &tensorBGm, const MMParams &mmPara,
-                                       const UsedBlockParams &mmBlockParams, const GlobalTensor<S> &tensorAScaleGm,
-                                       const GlobalTensor<S> &tensorBScaleGm)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulSplitM(const GlobalTensor<O> &tensorResGm,
+                                                              const GlobalTensor<T> &tensorAGm,
+                                                              const GlobalTensor<T> &tensorBGm, const MMParams &mmPara,
+                                                              const UsedBlockParams &mmBlockParams,
+                                                              const GlobalTensor<S> &tensorAScaleGm,
+                                                              const GlobalTensor<S> &tensorBScaleGm)
 {
     if constexpr (needCheckEmptyTensor) {
         if constexpr (MLAPT::emptyMode == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
@@ -1016,9 +1015,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQcQr(AicOffset &aicOffset
 
 template <typename MLAPT>
 template <bool needQnDynamicQuant>
-__aicore__ inline void
-MlaPrologV3SplitM<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int64_t weightUkOffset,
-                                                           int64_t qnResOffset, int64_t subLoopTimes)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset,
+                                                                                  int64_t weightUkOffset,
+                                                                                  int64_t qnResOffset,
+                                                                                  int64_t subLoopTimes)
 {
     if (blockIdx_ >= baseParams_->mm4BlockNum) {
         return;
@@ -1251,13 +1251,11 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::ComputeBlkScatterOffsets(Global
 
     MaterializeOffsetsWithHeadSize<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
         paBlkId, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->headSizeCkv,
-        baseParams_->kvCacheStride0,
-        rmsNormAndScatterCkvParams);
+        baseParams_->kvCacheStride0, rmsNormAndScatterCkvParams);
 
     MaterializeOffsetsWithHeadSize<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
         paBlkId, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
-        baseParams_->krCacheStride0,
-        ropeAndScatterKrParams);
+        baseParams_->krCacheStride0, ropeAndScatterKrParams);
 }
 
 template <typename MLAPT>
@@ -1711,9 +1709,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
 }
 
 template <typename MLAPT>
-__aicore__ inline void
-MlaPrologV3SplitM<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize,
-                                                         int64_t numHeadOffset, int64_t mmQnLoops)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset,
+                                                                                int64_t curStepBatchSize,
+                                                                                int64_t numHeadOffset,
+                                                                                int64_t mmQnLoops)
 {
     // 如果curStepBatchSize是偶数，则两个核平分；如果curStepBatchSize是奇数，则奇数核比偶数核多分一个
     // >> 1 是将curStepBatchSize分到每个vec核上；

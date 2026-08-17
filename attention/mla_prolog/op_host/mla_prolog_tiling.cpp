@@ -26,7 +26,8 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 const std::unordered_map<ge::DataType, matmul_tiling::DataType> GE_TO_MM_DTYPE{
     {ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16},
@@ -58,9 +59,8 @@ inline bool GetDefaultStride0(const gert::Shape &shape, uint64_t &stride0)
     stride0 = 1U;
     for (size_t dim = 1U; dim < shape.GetDimNum(); ++dim) {
         const int64_t dimSize = shape.GetDim(dim);
-        if (dimSize < 0 ||
-            (dimSize != 0 && stride0 > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) /
-                                           static_cast<uint64_t>(dimSize))) {
+        if (dimSize < 0 || (dimSize != 0 && stride0 > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) /
+                                                          static_cast<uint64_t>(dimSize))) {
             return false;
         }
         stride0 *= static_cast<uint64_t>(dimSize);
@@ -71,8 +71,7 @@ inline bool GetDefaultStride0(const gert::Shape &shape, uint64_t &stride0)
 inline ge::graphStatus GetCacheStride0(gert::TilingContext &context, uint32_t inputIndex, const gert::Shape &shape,
                                        const char *tensorName, uint64_t &stride0)
 {
-    OP_CHECK_IF(shape.GetDimNum() == 0U,
-                OP_LOGE(context.GetNodeName(), "%s rank must be greater than 0.", tensorName),
+    OP_CHECK_IF(shape.GetDimNum() == 0U, OP_LOGE(context.GetNodeName(), "%s rank must be greater than 0.", tensorName),
                 return ge::GRAPH_FAILED);
     // Empty cache tensors have no addressable elements, so their stride is not
     // used by the kernel. In particular, krCache is required to be empty when
@@ -336,8 +335,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192 &&
+        cvRatio == 2) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -732,7 +731,7 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
     std::vector<StatusFunction> optionalTilingFuncs{
         std::bind(&MlaPrologTiling::FillMatmul1Tiling, this), std::bind(&MlaPrologTiling::FillMatmul2Tiling, this),
         std::bind(&MlaPrologTiling::FillMatmul3Tiling, this), std::bind(&MlaPrologTiling::FillMatmul4Tiling, this),
-        std::bind(&MlaPrologTiling::FillTiling, this), std::bind(&MlaPrologTiling::CalcWorkSpace, this),
+        std::bind(&MlaPrologTiling::FillTiling, this),        std::bind(&MlaPrologTiling::CalcWorkSpace, this),
         std::bind(&MlaPrologTiling::GenTilingKey, this)};
     for (const auto &func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
@@ -758,21 +757,18 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     ConvertOptionalParams(context, mlaPrologContext);
 
     OP_CHECK_IF(mlaPrologContext.kvCache.shape == nullptr || mlaPrologContext.krCache.shape == nullptr,
-                OP_LOGE(context.GetNodeName(), "kvCache or krCache shape is nullptr."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context.GetNodeName(), "kvCache or krCache shape is nullptr."), return ge::GRAPH_FAILED);
     const gert::Shape &kvCacheShape = mlaPrologContext.kvCache.shape->GetStorageShape();
     const gert::Shape &krCacheShape = mlaPrologContext.krCache.shape->GetStorageShape();
     const bool isV3 = std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0;
     const uint32_t kvCacheIndex = isV3 ? KV_CACHE_INPUT_INDEX_V3 : KV_CACHE_INPUT_INDEX;
     const uint32_t krCacheIndex = isV3 ? KR_CACHE_INPUT_INDEX_V3 : KR_CACHE_INPUT_INDEX;
-    OP_CHECK_IF(GetCacheStride0(context, kvCacheIndex, kvCacheShape, KV_CACHE_NAME,
-                                mlaPrologContext.kvCacheStride0) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context.GetNodeName(), "Failed to get or validate kvCache strides."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetCacheStride0(context, krCacheIndex, krCacheShape, KR_CACHE_NAME,
-                                mlaPrologContext.krCacheStride0) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context.GetNodeName(), "Failed to get or validate krCache strides."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetCacheStride0(context, kvCacheIndex, kvCacheShape, KV_CACHE_NAME, mlaPrologContext.kvCacheStride0) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context.GetNodeName(), "Failed to get or validate kvCache strides."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetCacheStride0(context, krCacheIndex, krCacheShape, KR_CACHE_NAME, mlaPrologContext.krCacheStride0) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context.GetNodeName(), "Failed to get or validate krCache strides."), return ge::GRAPH_FAILED);
 
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context.GetNodeName(), "attrs"), return ge::GRAPH_FAILED);

@@ -16,99 +16,35 @@
 
 using namespace std;
 
-#define PARAM_LIST_DEF __gm__ uint8_t *tokenX, \
-                       __gm__ uint8_t *weightDq, \
-                       __gm__ uint8_t *weightUqQr, \
-                       __gm__ uint8_t *weightUk, \
-                       __gm__ uint8_t *weightDkvKr, \
-                       __gm__ uint8_t *rmsnormGammaCq, \
-                       __gm__ uint8_t *rmsnormGammaCkv, \
-                       __gm__ uint8_t *ropeSin, \
-                       __gm__ uint8_t *ropeCos, \
-                       __gm__ uint8_t *kvCache, \
-                       __gm__ uint8_t *krCache, \
-                       __gm__ uint8_t *cacheIndex, \
-                       __gm__ uint8_t *dequantScaleX, \
-                       __gm__ uint8_t *dequantScaleWDq, \
-                       __gm__ uint8_t *dequantScaleWUqQr, \
-                       __gm__ uint8_t *dequantScaleWDkvKr, \
-                       __gm__ uint8_t *quantScaleCkv, \
-                       __gm__ uint8_t *quantScaleCkr, \
-                       __gm__ uint8_t *smoothScalesCq, \
-                       __gm__ uint8_t *actualSeqLen, \
-                       __gm__ uint8_t *kNopeClipAlpha, \
-                       __gm__ uint8_t *queryOut, \
-                       __gm__ uint8_t *queryRopeOut, \
-                       __gm__ uint8_t *kvCacheOut, \
-                       __gm__ uint8_t *krCacheOut, \
-                       __gm__ uint8_t *dequantScaleQNopeOut, \
-                       __gm__ uint8_t *queryNormOut, \
-                       __gm__ uint8_t *dequantScaleQNormOut, \
-                       __gm__ uint8_t *workspace, \
-                       __gm__ uint8_t *tiling
+#define PARAM_LIST_DEF \
+    __gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk, \
+        __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv, \
+        __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache, \
+        __gm__ uint8_t *cacheIndex, __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq, \
+        __gm__ uint8_t *dequantScaleWUqQr, __gm__ uint8_t *dequantScaleWDkvKr, __gm__ uint8_t *quantScaleCkv, \
+        __gm__ uint8_t *quantScaleCkr, __gm__ uint8_t *smoothScalesCq, __gm__ uint8_t *actualSeqLen, \
+        __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut, \
+        __gm__ uint8_t *kvCacheOut, __gm__ uint8_t *krCacheOut, __gm__ uint8_t *dequantScaleQNopeOut, \
+        __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace, \
+        __gm__ uint8_t *tiling
 
-#define PARAM_LIST tokenX, \
-                   weightDq, \
-                   weightUqQr, \
-                   weightUk, \
-                   weightDkvKr, \
-                   rmsnormGammaCq, \
-                   rmsnormGammaCkv, \
-                   ropeSin, \
-                   ropeCos, \
-                   kvCache, \
-                   krCache, \
-                   cacheIndex, \
-                   dequantScaleX, \
-                   dequantScaleWDq, \
-                   dequantScaleWUqQr, \
-                   dequantScaleWDkvKr, \
-                   quantScaleCkv, \
-                   quantScaleCkr, \
-                   smoothScalesCq, \
-                   actualSeqLen, \
-                   kNopeClipAlpha, \
-                   queryOut, \
-                   queryRopeOut, \
-                   kvCacheOut, \
-                   krCacheOut, \
-                   dequantScaleQNopeOut, \
-                   queryNormOut, \
-                   dequantScaleQNormOut, \
-                   workspace, \
-                   tiling
+#define PARAM_LIST \
+    tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache, \
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, \
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCacheOut, krCacheOut, \
+        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling
 
 class MlaPrologV3Kernel : public testing::Test {
 protected:
-    static void FreeAllGmMemory(
-        uint8_t *tokenX,
-        uint8_t *weightDq,
-        uint8_t *weightUqQr,
-        uint8_t *weightUk,
-        uint8_t *weightDkvKr,
-        uint8_t *rmsnormGammaCq,
-        uint8_t *rmsnormGammaCkv,
-        uint8_t *ropeSin,
-        uint8_t *ropeCos,
-        uint8_t *kvCache,
-        uint8_t *krCache,
-        uint8_t *cacheIndex,
-        uint8_t *dequantScaleX,
-        uint8_t *dequantScaleWDq,
-        uint8_t *dequantScaleWUqQr,
-        uint8_t *dequantScaleWDkvKr,
-        uint8_t *quantScaleCkv,
-        uint8_t *quantScaleCkr,
-        uint8_t *smoothScalesCq,
-        uint8_t *actualSeqLen,
-        uint8_t *kNopeClipAlpha,
-        uint8_t *queryOut,
-        uint8_t *queryRopeOut,
-        uint8_t *dequantScaleQNopeOut,
-        uint8_t *queryNormOut,
-        uint8_t *dequantScaleQNormOut,
-        uint8_t *workspace,
-        uint8_t *tiling)
+    static void FreeAllGmMemory(uint8_t *tokenX, uint8_t *weightDq, uint8_t *weightUqQr, uint8_t *weightUk,
+                                uint8_t *weightDkvKr, uint8_t *rmsnormGammaCq, uint8_t *rmsnormGammaCkv,
+                                uint8_t *ropeSin, uint8_t *ropeCos, uint8_t *kvCache, uint8_t *krCache,
+                                uint8_t *cacheIndex, uint8_t *dequantScaleX, uint8_t *dequantScaleWDq,
+                                uint8_t *dequantScaleWUqQr, uint8_t *dequantScaleWDkvKr, uint8_t *quantScaleCkv,
+                                uint8_t *quantScaleCkr, uint8_t *smoothScalesCq, uint8_t *actualSeqLen,
+                                uint8_t *kNopeClipAlpha, uint8_t *queryOut, uint8_t *queryRopeOut,
+                                uint8_t *dequantScaleQNopeOut, uint8_t *queryNormOut, uint8_t *dequantScaleQNormOut,
+                                uint8_t *workspace, uint8_t *tiling)
     {
         // 逐个释放非空指针，避免空指针访问
         if (tokenX != nullptr)
@@ -166,16 +102,8 @@ protected:
         if (tiling != nullptr)
             AscendC::GmFree(tiling);
     }
-    static void SetUpTestCase()
-    {
-        std::cout << "MlaPrologV3Kernel SetUp\n"
-                  << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MlaPrologV3Kernel TearDown\n"
-                  << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MlaPrologV3Kernel SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MlaPrologV3Kernel TearDown\n" << std::endl; }
 };
 
 // 非量化场景
@@ -278,31 +206,30 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_noQuant)
     baseParams_->kcScale = 1U;
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         1, // SCENARIO
-                                                                                         0, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             1, // SCENARIO
+                             0, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 半量化kv非量化场景
@@ -405,31 +332,30 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVNoQuant)
     baseParams_->kcScale = 1U;
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         2, // SCENARIO
-                                                                                         1, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             2, // SCENARIO
+                             1, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 半量化kv量化场景
@@ -453,16 +379,18 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuant)
     uint32_t Hcq = 1536;
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
 
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         3, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             3, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -543,20 +471,17 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuant)
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 半量化kv量化pertile场景
@@ -580,16 +505,18 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuantPerfill)
     uint32_t Hcq = 1536;
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
 
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         4, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             4, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -670,20 +597,17 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuantPerfill)
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 全量化kv非量化场景
@@ -707,16 +631,18 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVNoQuant)
     uint32_t Hcq = 1536;
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
 
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         5, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             5, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -797,20 +723,17 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVNoQuant)
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 全量化kv量化场景
@@ -834,16 +757,18 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuant)
     uint32_t Hcq = 1536;
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
 
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         5, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             5, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -924,20 +849,17 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuant)
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }
 
 // 全量化kv量化pertile场景
@@ -961,16 +883,18 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuantPerfill)
     uint32_t Hcq = 1536;
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
 
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v3<1, // CACHE_MODE
-                                                                                         6, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v3<1, // CACHE_MODE
+                             6, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -1051,18 +975,15 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuantPerfill)
     baseParams_->isQcQrScaleEnable = 0U;
     baseParams_->isKcScaleEnable = 0U;
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
-                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq,
-                dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-                actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, kvCache, krCache,
-                dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, kvCache, krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
+                queryOut, queryRopeOut, kvCache, krCache, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut,
+                workspace, tiling);
 
     MlaPrologV3Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
-        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen,
-        kNopeClipAlpha, queryOut, queryRopeOut,
-        dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache,
+        krCache, cacheIndex, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv,
+        quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha, queryOut, queryRopeOut, dequantScaleQNopeOut,
+        queryNormOut, dequantScaleQNormOut, workspace, tiling);
 }

@@ -245,7 +245,9 @@ inline const std::unordered_map<int, std::unordered_map<int, QUANT_MODE>> QUANT_
 
 // 各 weightQuantMode 下合法 kvQuantMode 集合说明（用于错误日志 reason 文本，与原实现逐字一致）
 inline const std::unordered_map<int, const char *> VALID_KV_REASON_TABLE = {
-    {0, "When weightQuantMode==0, must be {0}"}, {1, "When weightQuantMode==1, must be {0, 2, 3}"}, {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"}, {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
+    {0, "When weightQuantMode==0, must be {0}"},       {1, "When weightQuantMode==1, must be {0, 2, 3}"},
+    {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"},
+    {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
 
 // QUANT_MODE → (weightQuantMode, kvQuantMode) 反向映射表
 // 用于从 quantMode_ 反推 wq/kvq，V1/V2（按 dtype 推断 quantMode_）与 V3（正向查表得 quantMode_）通用
