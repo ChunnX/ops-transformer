@@ -68,12 +68,12 @@ using namespace AscendC;
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
-// PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
-static constexpr uint32_t HCOMM_BATCH_WQEBB_CAPACITY = 126;
+// Capacity is measured in WriteWithNotifyNbi tasks. Each task occupies two WQEBBs.
+static constexpr uint32_t HCOMM_BATCH_TASK_CAPACITY = 1;
 static constexpr uint32_t HCOMM_NOTIFY_WQEBB_COUNT = 2;
 static constexpr uint32_t HCOMM_WQEBB_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES =
-    HCOMM_BATCH_WQEBB_CAPACITY * HCOMM_WQEBB_BYTES;
+    HCOMM_BATCH_TASK_CAPACITY * HCOMM_NOTIFY_WQEBB_COUNT * HCOMM_WQEBB_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -230,7 +230,7 @@ private:
     uint32_t aivId_{0};
     HcommBatchHandle activeBatchHandle_{};
     uint64_t activeBatchChannel_{0};
-    uint32_t preparedWqebbCount_{0};
+    uint32_t preparedTaskCount_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -354,14 +354,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalToke
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites()
 {
-    if (preparedWqebbCount_ == 0) {
+    if (preparedTaskCount_ == 0) {
         return;
     }
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
-    preparedWqebbCount_ = 0;
+    preparedTaskCount_ = 0;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -370,13 +370,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
     uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len,
     GM_ADDR notifyAddr, uint64_t notifyValue)
 {
-    if (preparedWqebbCount_ != 0 && activeBatchChannel_ != commHandle) {
+    if (preparedTaskCount_ != 0 && activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
     }
-    if (preparedWqebbCount_ + HCOMM_NOTIFY_WQEBB_COUNT > HCOMM_BATCH_WQEBB_CAPACITY) {
+    if (preparedTaskCount_ == HCOMM_BATCH_TASK_CAPACITY) {
         FlushPreparedWrites();
     }
-    if (preparedWqebbCount_ == 0) {
+    if (preparedTaskCount_ == 0) {
         activeBatchHandle_ =
             hcomm_.MakeBatchHandle(commHandle, dstBase, nullptr, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
         activeBatchChannel_ = commHandle;
@@ -386,7 +386,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
     int32_t ret = hcomm_.WriteWithNotifyNbi<config>(
         activeBatchHandle_, dst, src, len, notifyAddr, notifyValue);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteWithNotifyNbi failed, ret=%d", ret);
-    preparedWqebbCount_ += HCOMM_NOTIFY_WQEBB_COUNT;
+    ++preparedTaskCount_;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -460,7 +460,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
-    preparedWqebbCount_ = 0;
+    preparedTaskCount_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
     uint32_t targetRank = epWorldSize_;
