@@ -529,12 +529,124 @@ __aicore__ inline void SyncKeyCoreOffset(RunParamStr<isInfer> &runParam, const C
 }
 ```
 
-> `GetKeyCoreOffsetParam` (line 258-292) 也需同步修改：用 `keyBnStride`/`keyN2Stride` 替代连续值，与 `CalcValueCoreOffsetBSH/BNSD/TND` 对称。
+> `GetKeyCoreOffsetParam` 也需同步修改，与 `CalcValueCoreOffsetBSH/BNSD/TND` 对称。详见修改点4b。
 
-### 修改点5: ComputeOffsetForAntiquant (line 960-979)
+### 修改点4b: GetKeyCoreOffsetParam (line 258-292)
 
-**现有代码** (非 prefix 分支):
+**现有代码**:
 ```cpp
+TEMPLATE_INTF
+__aicore__ inline void GetKeyCoreOffsetParam(RunParamStr<isInfer> &runParam,
+                                             const ConstInfo<isInfer, hasRope> &constInfo, int32_t bIdx,
+                                             __gm__ int64_t *actualSeqKvlenAddr)
+{
+    uint64_t keyInnerOffsetSize = 0;
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+        if (constInfo.isKvContinuous == 1) {
+            keyInnerOffsetSize = bIdx * constInfo.n2S2D + runParam.kvLeftPaddingSize * constInfo.n2D;
+        } else {
+            keyInnerOffsetSize = 0;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * constInfo.dSize;
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (!isPa) {
+            keyInnerOffsetSize = (bIdx == 0) ? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.n2D;
+        } else {
+            keyInnerOffsetSize = bIdx * constInfo.n2S2D;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * constInfo.dSize;
+    } else {
+        uint64_t headStrideK = 0;
+        if (constInfo.isKvContinuous == 1) {
+            headStrideK = constInfo.s2D;
+            keyInnerOffsetSize = bIdx * constInfo.n2Size * headStrideK + runParam.kvLeftPaddingSize * constInfo.dSize;
+        } else {
+            headStrideK = constInfo.dSize * runParam.s2InCurrentBatch;
+            keyInnerOffsetSize = 0;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * headStrideK;
+    }
+}
+```
+
+**改为**:
+```cpp
+TEMPLATE_INTF
+__aicore__ inline void GetKeyCoreOffsetParam(RunParamStr<isInfer> &runParam,
+                                             const ConstInfo<isInfer, hasRope> &constInfo, int32_t bIdx,
+                                             __gm__ int64_t *actualSeqKvlenAddr)
+{
+    uint64_t keyInnerOffsetSize = 0;
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+        uint64_t headStride = (constInfo.keyN2Stride != 0) ? constInfo.keyN2Stride : constInfo.dSize;
+        if (constInfo.isKvContinuous == 1) {
+            uint64_t batchStride = (constInfo.keyBnStride != 0) ? constInfo.keyBnStride : constInfo.n2S2D;
+            keyInnerOffsetSize = bIdx * batchStride + runParam.kvLeftPaddingSize * constInfo.n2D;
+        } else {
+            keyInnerOffsetSize = 0;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * headStride;
+    } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        uint64_t headStride = (constInfo.keyN2Stride != 0) ? constInfo.keyN2Stride : constInfo.dSize;
+        if constexpr (!isPa) {
+            keyInnerOffsetSize = (bIdx == 0) ? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.n2D;
+        } else {
+            uint64_t batchStride = (constInfo.keyBnStride != 0) ? constInfo.keyBnStride : constInfo.n2S2D;
+            keyInnerOffsetSize = bIdx * batchStride;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * headStride;
+    } else {
+        uint64_t headStrideK = 0;
+        if (constInfo.isKvContinuous == 1) {
+            headStrideK = (constInfo.keyN2Stride != 0) ? constInfo.keyN2Stride : constInfo.s2D;
+            uint64_t batchStride = (constInfo.keyBnStride != 0) ? constInfo.keyBnStride : constInfo.n2Size * headStrideK;
+            keyInnerOffsetSize = bIdx * batchStride + runParam.kvLeftPaddingSize * constInfo.dSize;
+        } else {
+            headStrideK = constInfo.dSize * runParam.s2InCurrentBatch;
+            keyInnerOffsetSize = 0;
+        }
+        runParam.keyCoreOffset = keyInnerOffsetSize + runParam.n2oIdx * headStrideK;
+    }
+}
+```
+
+### 修改点5: ComputeOffsetForAntiquant (line 930-981)
+
+> 此函数有两个大分支：`enableKVPrefix`（line 935-959）和 `!enableKVPrefix`（line 960-979）。
+> prefix 分支中的 **非 prefix loop 子分支**（退出 prefix 后的迭代）也用 `s2BaseN2Dv`/`s2BaseDv`，需同样替换 stride。`keyOffset = valueOffset` 需拆分。
+
+**现有代码** (完整函数, line 930-981):
+```cpp
+TEMPLATE_INTF
+__aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer> &runParam,
+                                                 const ConstInfo<isInfer, hasRope> &constInfo, uint32_t sInnerLoopIdx,
+                                                 RunInfo<isInfer> &runInfo)
+{
+    if constexpr (enableKVPrefix) {
+        const bool inPrefixLoop = sInnerLoopIdx < constInfo.prefixLoopCount;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                runInfo.valueOffset =
+                    runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseN2Dv;
+                runInfo.keyOffset = runInfo.valueOffset;
+            }
+        } else {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                runInfo.valueOffset =
+                    runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
+                runInfo.keyOffset = runInfo.valueOffset;
+            }
+        }
     } else {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
             runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
@@ -556,10 +668,51 @@ __aicore__ inline void SyncKeyCoreOffset(RunParamStr<isInfer> &runParam, const C
             }
         }
     }
+}
 ```
 
 **改为**:
 ```cpp
+TEMPLATE_INTF
+__aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer> &runParam,
+                                                 const ConstInfo<isInfer, hasRope> &constInfo, uint32_t sInnerLoopIdx,
+                                                 RunInfo<isInfer> &runInfo)
+{
+    if constexpr (enableKVPrefix) {
+        const bool inPrefixLoop = sInnerLoopIdx < constInfo.prefixLoopCount;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                uint64_t s2BaseStrideV = constInfo.s2BaseN2Dv;
+                if (constInfo.valueN2Stride != 0) {
+                    s2BaseStrideV = s2BaseSize * constInfo.n2Size * constInfo.valueN2Stride;
+                }
+                runInfo.valueOffset =
+                    runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * s2BaseStrideV;
+                uint64_t s2BaseStrideK = constInfo.s2BaseN2D;
+                if (constInfo.keyN2Stride != 0) {
+                    s2BaseStrideK = s2BaseSize * constInfo.n2Size * constInfo.keyN2Stride;
+                }
+                runInfo.keyOffset =
+                    runParam.keyCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * s2BaseStrideK;
+            }
+        } else {
+            if (inPrefixLoop) {
+                runInfo.prefixOffset = runParam.prefixCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
+                runInfo.valueOffset = 0;
+                runInfo.keyOffset = 0;
+            } else {
+                runInfo.prefixOffset = 0;
+                runInfo.valueOffset =
+                    runParam.valueCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseDv;
+                runInfo.keyOffset =
+                    runParam.keyCoreOffset + (sInnerLoopIdx - constInfo.prefixLoopCount) * constInfo.s2BaseD;
+            }
+        }
     } else {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
             uint64_t s2BaseStrideV = constInfo.s2BaseN2Dv;
@@ -592,9 +745,10 @@ __aicore__ inline void SyncKeyCoreOffset(RunParamStr<isInfer> &runParam, const C
             }
         }
     }
+}
 ```
 
-> BNSD 的 s2BaseDv/s2BaseD 不受 n2Stride 影响（bsStride=D 固定），保持原值。keyOffset 改为用 `keyCoreOffset` 独立计算。
+> BNSD 的 s2BaseDv/s2BaseD 不受 n2Stride 影响（bsStride=D 固定），保持原值。keyOffset 改为用 `keyCoreOffset` 独立计算。prefix loop 分支（`inPrefixLoop=true`）不修改——prefix GM 是独立连续缓冲区，用户 stride 不影响。
 
 ---
 
@@ -737,7 +891,19 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
 }
 ```
 
-> 需同步修改 `flash_attention_score_antiquant_block_vec.h` 中 `SetAntiqParamCommon` 的声明。
+### 修改点3b: SetAntiqParamCommon 声明 (block_vec.h line 125-126)
+
+**现有代码**:
+```cpp
+    __aicore__ inline void SetAntiqParamCommon(const RunInfo<isInfer> &runInfo, int64_t kvOffset,
+                                               ConstInfo<isInfer, hasRope> &constInfo);
+```
+
+**改为**:
+```cpp
+    __aicore__ inline void SetAntiqParamCommon(const RunInfo<isInfer> &runInfo, int64_t kvOffset,
+                                               ConstInfo<isInfer, hasRope> &constInfo, bool isKey);
+```
 
 ---
 
@@ -786,9 +952,53 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     }
 ```
 
-> `CopyKV` 的签名目前没有 taskParam 参数，无法获取 stride。需修改签名传入 `taskParam` 或单独传入 `kvN2Stride`。
+### 修改点2b: CopyKV 声明和签名 (processor.h line 140 和 544)
 
-**改为** (需先修改 `CopyKV` 签名增加 `uint64_t kvN2Stride` 参数):
+**现有声明** (line 140):
+```cpp
+    __aicore__ inline void CopyKV(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
+                                  uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType);
+```
+
+**改为**:
+```cpp
+    __aicore__ inline void CopyKV(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
+                                  uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType,
+                                  uint64_t kvN2Stride = 0);
+```
+
+**现有实现签名** (line 544):
+```cpp
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyKV(
+    LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t headDim,
+    uint32_t kvHeadNum, uint32_t paKvShapeType)
+```
+
+**改为**:
+```cpp
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyKV(
+    LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t headDim,
+    uint32_t kvHeadNum, uint32_t paKvShapeType, uint64_t kvN2Stride)
+```
+
+> 默认值 `= 0` 仅在声明处给出，实现处不重复默认值。所有调用点需传入 `taskParam.kvN2Stride`。
+
+### 修改点2c: AntiquantBaseAPI 中 CopyKV 调用 (line 489)
+
+**现有代码**:
+```cpp
+        CopyKV(tmpUb, kvGm, kvOffset, dealRowCount, taskParam.headDim, taskParam.kvHeadNum, taskParam.paKvShapeType);
+```
+
+**改为**:
+```cpp
+        CopyKV(tmpUb, kvGm, kvOffset, dealRowCount, taskParam.headDim, taskParam.kvHeadNum, taskParam.paKvShapeType,
+               taskParam.kvN2Stride);
+```
+
+> 此调用点在非 PA 分支（`!PAGE_ATTENTION`），非 PA 场景 stride 始终为 0（设计约束），但仍需传参以保持签名一致。
+
+**改为** (实现体):
 ```cpp
     if constexpr (PAGE_ATTENTION) {
         if (paKvShapeType == 0) {
@@ -885,21 +1095,79 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
         }
 ```
 
-### 修改点4: CopyAntiqParam (line 440)
+### 修改点4: CopyAntiqParam (line 416-442)
 
-**现有代码**:
+**现有代码** (完整函数):
 ```cpp
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqParam(
+    LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm, uint32_t rowCnt,
+    const AntiquantTaskParamBaseAPI &taskParam)
+{
+    if (taskParam.isPertensor) {
+        Duplicate(dstLocal, srcGm.GetValue(0), rowCnt * dBaseSize);
+    } else if (taskParam.isPerHead) {
+        Duplicate(dstLocal, srcGm.GetValue(taskParam.n2Idx), rowCnt * dBaseSize);
+    } else {
+        constexpr uint64_t BYTE_BLOCK = 32UL;
+
+        DataCopyExtParams copyInParams;
+        DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams;
+        copyInParams.blockCount = rowCnt;
+        copyInParams.blockLen = taskParam.headDim * sizeof(ANTIQ_PARAMS_T);
+        copyInParams.srcStride = static_cast<int64_t>(copyInParams.blockLen) * (-1);
+        copyInParams.dstStride = (dBaseSize - taskParam.headDim) * sizeof(ANTIQ_PARAMS_T) / BYTE_BLOCK;
+
+        copyInPadParams.isPad = false;
+        copyInPadParams.leftPadding = 0;
+        copyInPadParams.rightPadding = 0;
+        copyInPadParams.paddingValue = 0;
+
         DataCopyPad(dstLocal, srcGm[taskParam.antiqParamOffset], copyInParams, copyInPadParams);
+    }
+}
 ```
 
 **改为**:
 ```cpp
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqParam(
+    LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm, uint32_t rowCnt,
+    const AntiquantTaskParamBaseAPI &taskParam)
+{
+    if (taskParam.isPertensor) {
+        Duplicate(dstLocal, srcGm.GetValue(0), rowCnt * dBaseSize);
+    } else if (taskParam.isPerHead) {
+        uint64_t perHeadOffset = taskParam.n2Idx;
+        if (taskParam.scaleN2Stride != 0) {
+            perHeadOffset = taskParam.n2Idx * taskParam.scaleN2Stride;
+        }
+        Duplicate(dstLocal, srcGm.GetValue(perHeadOffset), rowCnt * dBaseSize);
+    } else {
+        constexpr uint64_t BYTE_BLOCK = 32UL;
+
+        DataCopyExtParams copyInParams;
+        DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams;
+        copyInParams.blockCount = rowCnt;
+        copyInParams.blockLen = taskParam.headDim * sizeof(ANTIQ_PARAMS_T);
+        copyInParams.srcStride = static_cast<int64_t>(copyInParams.blockLen) * (-1);
+        copyInParams.dstStride = (dBaseSize - taskParam.headDim) * sizeof(ANTIQ_PARAMS_T) / BYTE_BLOCK;
+
+        copyInPadParams.isPad = false;
+        copyInPadParams.leftPadding = 0;
+        copyInPadParams.rightPadding = 0;
+        copyInPadParams.paddingValue = 0;
+
         uint64_t antiqOffset = taskParam.antiqParamOffset;
         if (taskParam.scaleN2Stride != 0) {
             antiqOffset = taskParam.n2Idx * taskParam.scaleN2Stride;
         }
         DataCopyPad(dstLocal, srcGm[antiqOffset], copyInParams, copyInPadParams);
+    }
+}
 ```
+
+> per-tensor 不受 stride 影响（标量广播 `GetValue(0)`）。per-head 新增 `scaleN2Stride` 修正 `GetValue` 偏移。per-channel 的负 srcStride（`-blockLen`）控制 head 内行重复读取，与 offset 独立，不需要修改。
 
 ### 修改点5: CopyAntiquantParamsPageAttention (line 533-534)
 
@@ -986,8 +1254,79 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     } else {
 ```
 
-> 非 per-head 分支 (line 357-370) 同理：`bIdx * antiqSeqSize` → 用 `scaleBnStride` 替代。
-> `LoadAntiquantParamsPerTokenGroup` (line 257+) 同理修改 `bIdx * kvHeadNum * antiqSeqSize * grpNum` 和 `n2Idx * antiqSeqSize * grpNum`。
+### 修改点7: LoadAntiquantParamsPerToken 非 per-head 分支 (line 357-370)
+
+**现有代码** (非 per-head, !enableKVPrefix 分支, line 367-369):
+```cpp
+        } else {
+            scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+        }
+```
+
+**改为**:
+```cpp
+        } else {
+            uint64_t batchStride = taskParam.antiqSeqSize;
+            if (taskParam.scaleBnStride != 0) {
+                batchStride = taskParam.scaleBnStride;
+            }
+            scaleOffset = taskParam.bIdx * batchStride + taskParam.s2Idx * taskParam.singleSInnerSize +
+                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+        }
+```
+
+> enableKVPrefix 的 isPrefixLoop / !isPrefixLoop 子分支 (line 359-365) 同理：`bIdx * antiqSeqSize` → `bIdx * (scaleBnStride != 0 ? scaleBnStride : antiqSeqSize)`。非 per-head 模式无 n2Idx 项（所有 head 共享同一 scale），不需 scaleN2Stride。
+
+### 修改点8: LoadAntiquantParamsPerTokenGroup (line 257-323)
+
+**现有代码** (NZ 分支, line 271-273):
+```cpp
+        scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
+                      taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
+                      taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
+```
+
+**改为**:
+```cpp
+        uint64_t batchStride = taskParam.kvHeadNum * taskParam.seqSize * grpNum;
+        uint64_t headStride = taskParam.seqSize * grpNum;
+        if (taskParam.scaleBnStride != 0) {
+            batchStride = taskParam.scaleBnStride * grpNum;
+        }
+        if (taskParam.scaleN2Stride != 0) {
+            headStride = taskParam.scaleN2Stride * grpNum;
+        }
+        scaleOffset = taskParam.bIdx * batchStride +
+                      taskParam.n2Idx * headStride + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
+                      taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
+```
+
+**现有代码** (非 NZ, !enableKVPrefix 分支, line 305-308):
+```cpp
+            scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
+                          taskParam.n2Idx * taskParam.seqSize * grpNum +
+                          taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
+                          taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+```
+
+**改为**:
+```cpp
+            uint64_t batchStrideNP = taskParam.kvHeadNum * taskParam.seqSize * grpNum;
+            uint64_t headStrideNP = taskParam.seqSize * grpNum;
+            if (taskParam.scaleBnStride != 0) {
+                batchStrideNP = taskParam.scaleBnStride * grpNum;
+            }
+            if (taskParam.scaleN2Stride != 0) {
+                headStrideNP = taskParam.scaleN2Stride * grpNum;
+            }
+            scaleOffset = taskParam.bIdx * batchStrideNP +
+                          taskParam.n2Idx * headStrideNP +
+                          taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
+                          taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+```
+
+> enableKVPrefix 的 isPrefixLoop / !isPrefixLoop 子分支 (line 291-302) 同理：用 `scaleBnStride * grpNum` 替代 `kvHeadNum * antiqSeqSize * grpNum`，用 `scaleN2Stride * grpNum` 替代 `antiqSeqSize * grpNum`。
 
 ---
 
@@ -1023,6 +1362,6 @@ Phase 6: 测试 — 冒烟(连续不退化) → PA_BNBD/BBND/NZ 0轴/1轴非连�
 | 3 | `op_host/arch35/fused_infer_attention_score_tiling_impl.cpp` | 1 | 2 |
 | 4 | `op_host/checkers/dequant_checker.cpp` + `.h` | 3 | 2 |
 | 5 | `op_kernel/arch35/flash_attention_score_antiquant_kernel.h` | 1 | 3 |
-| 6 | `op_kernel/arch35/infer_flash_attention_kvcache.h` | 5 | 4 |
-| 7 | `op_kernel/arch35/flash_attention_score_antiquant_block_vec.h` | 3 | 4-5 |
-| 8 | `op_kernel/arch35/flash_attention_score_antiquant_processor.h` | 6 | 5 |
+| 6 | `op_kernel/arch35/infer_flash_attention_kvcache.h` | 6 | 4 |
+| 7 | `op_kernel/arch35/flash_attention_score_antiquant_block_vec.h` | 4 | 4-5 |
+| 8 | `op_kernel/arch35/flash_attention_score_antiquant_processor.h` | 10 | 5 |
