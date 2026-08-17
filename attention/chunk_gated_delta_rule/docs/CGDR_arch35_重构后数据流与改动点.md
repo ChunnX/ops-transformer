@@ -8,19 +8,20 @@
 ## 0 重构范围说明
 
 初始重构方案曾包含 R2-R7 六项改动，经与参考实现（`chunk_gated_delta_rule_golden.py`）
-逐一比对后，发现 R3/R4/R5/R7 存在数学公式错误，R6 存在 strided 读取 bug。
-最终仅保留 **R2**（纯数据流优化，不改变任何数学公式）。
+逐一比对后，R3/R5/R7 存在数学公式错误已回退；R4 经修正后方案可行（待实现）；
+R6 存在 strided 读取 bug 已回退。
+当前保留 **R2**（纯数据流优化），计划实现 **R4 正确方案**（beta 列缩放）。
 
 | 编号 | 需求 | 状态 | 原因 |
 |:-----|:-----|:-----|:-----|
-| R2 | 省略 QKPreProcess，matmul 直接读 strided GM | **保留** | 纯数据流优化，数学不变 |
+| R2 | 省略 QKPreProcess，matmul 直接读 strided GM | **已实现** | 纯数据流优化，数学不变 |
 | R3 | K 衰减系数移至 Stage2 | **回退** | 对 A@V_beta 项错误施加 g_cum_exp 缩放 |
-| R4 | beta 改为求逆后 A 行缩放 | **回退** | `(I-D·M)⁻¹ ≠ D·(I-M)⁻¹`，求逆不分配行缩放 |
-| R5 | kBetaInv 用 A_beta*(-gamma)@K | **回退** | 逐元素乘 γ ≠ 矩阵乘对角 g_exp |
+| R4 | beta 从 V/K 左乘移到 A 右乘（列缩放） | **待实现** | 原方案用行缩放错误，改为列缩放后数学等价 |
+| R5 | kBetaInv 用 A_beta*(-gamma)@K | **回退** | 逐元素乘 γ ≠ 矩阵乘对角 g_exp；可并入 R4 列缩放 |
 | R6 | Stage2/3 从原始 g 重算 cumsumg | **回退** | g 布局 (T,Nv) 非连续，DataCopyPad 读到跨 head 垃圾数据 |
 | R7 | 删除 kg_，Stage2 直接用 K | **回退** | `g_exp[-1]/g_exp[j] ≠ g_exp[-1]`，数学不等价 |
 
-### 数学错误详解
+### 数学错误与正确方案详解
 
 以下用参考实现 `chunk_gated_delta_rule_golden.py:102-124` 的正确公式对照说明：
 
@@ -35,10 +36,33 @@ value = attn @ v_beta                      # v_inner = A @ (V*beta)，beta 在 V
 k_cumdecay = attn @ (k_beta * g.exp())     # k_cumdecay = A @ (K*beta*g_exp)
 ```
 
-**R4 错误：** 将 beta 从 KKT/V/K 中移出，改为求逆后 `A_beta = beta·A`。
-- 正确：`A = (I - diag(β)·kk·γ)⁻¹`
-- R4：`A' = (I - kk·γ)⁻¹`，`A_β = diag(β)·A'`
-- 反例（标量）：`b/(1-ab) ≠ b·1/(1-a)`，即 `(I-D·M)⁻¹ ≠ D·(I-M)⁻¹`
+矩阵形式（`D = diag(beta)`）：
+```
+KKT 含 beta:  attn = -D @ (K@K^T) * gamma
+求逆:         A = (I - D·kk·γ)^{-1}           (beta 在求逆内部, 不可移出)
+v_inner:      A @ D @ V                        (beta 乘 V 左边 = A 右边)
+k_cumdecay:   A @ D @ diag(g_exp) @ K          (beta 乘 K 左边 = A 右边)
+```
+
+**R4 正确方案：** 利用结合律 `A @ D @ V = (A @ D) @ V`，将 beta 从 V/K 左边移到 A 右边。
+- `A_beta = A @ diag(beta)`（**列缩放**：第 j 列乘 beta[j]）
+- `v_inner = A_beta @ V`（V 不再乘 beta，可直接从 strided GM 读）
+- `k_cumdecay = A_beta @ (K * g_exp[:,None])`（K 不再乘 beta，只乘 g_exp）
+
+**R4 原方案错误：**
+1. 从 KKT 中删除 beta → `A' = (I-kk·γ)⁻¹` ≠ `A = (I-kk·β·γ)⁻¹`（求逆不分配行缩放）
+2. 用行缩放 `diag(β)·A`（第 i 行乘 beta[i]）而非列缩放 `A·diag(β)`（第 j 列乘 beta[j]）
+3. `diag(β)·A ≠ A·diag(β)`（方阵不可交换，反例见下）
+
+反例（`C=2`, `beta=[2,3]`）：
+```
+A @ diag(β) = [a b] @ [2 0] = [2a 3b]   (列缩放: 第1列×2, 第2列×3)
+              [c d]   [0 3]   [2c 3d]
+
+diag(β) @ A = [2 0] @ [a b] = [2a 2b]   (行缩放: 第1行×2, 第2行×3)
+              [0 3]   [c d]   [3c 3d]
+                                      ≠
+```
 
 **R3 错误：** 将 g_cum_exp 从 k_cumdecay 移到 vInner 整体行缩放。
 - 正确：`v_inner = A@V_beta`（无 g_exp），`k_cumdecay = A@(K·β·g_exp)`（有 g_exp）
@@ -47,7 +71,7 @@ k_cumdecay = attn @ (k_beta * g.exp())     # k_cumdecay = A @ (K*beta*g_exp)
 **R5 错误：** 用 `A_beta·(-γ)` 逐元素乘替代 `A@diag(-K·β·g_exp)` 矩阵乘。
 - 正确：`k_cumdecay = A @ (-K·β·g_exp)` = `-A @ diag(β·g_exp) @ K`（矩阵乘对角阵）
 - R5：`k_cumdecay = (β·A'·(-γ)) @ K`（逐元素乘 γ 后矩阵乘 I）
-- `A·diag(d) ≠ diag(d')·A`（除非 A 是对角阵）
+- R5 的意图（把 beta 从 K 移到 A）可由 R4 列缩放正确实现
 
 **R7 错误：** 假设 `v_new·exp(g[-1])` 等价于 `v_new·(g_exp[-1]/g_exp)`。
 - 正确：`state_new += v_new^T @ (K · exp(g[-1]-g_cum)[...,None])`（每行不同缩放）
@@ -92,6 +116,81 @@ mmRef.SetOrgShape(M, N, K);
 重构前 `QKPreProcess` 在 `!gOptional` 时将 K 拷贝到 `kg_` GM（此时 `kg = K`）。
 R2 删除 `QKPreProcess` 后，此逻辑移至 `GBKCompute` 的 `else` 分支：
 从 `kUbFloatCon_`（已从 strided GM 读入 UB 的 K）Cast 到 BF16 写出 `kg_`。
+
+---
+
+## 1.5 R4 正确方案详解（待实现）
+
+### 动机
+
+原始代码中 beta 分别乘到 V 和 K 的左边（`v_beta = V*beta`, `k_beta = K*beta`），
+AIC matmul5 读 `vBetaWsGm_`（V*beta 的连续 WS），AIV 需额外做 VBetaCompute。
+R4 将 beta 从 V/K 左边移到 A 右边（列缩放），使 AIC 直接读原始 V（strided GM），
+省掉 `vBetaWsGm_` WS 和 VBetaCompute 计算。
+
+### 数学推导
+
+利用矩阵乘法结合律（`D = diag(beta)`）：
+```
+原始: v_inner    = A @ D @ V        = A @ (V * beta[:,None])
+      k_cumdecay = A @ D @ G @ K    = A @ (K * beta[:,None] * g_exp[:,None])  (G=diag(g_exp))
+
+R4:   A_beta = A @ D                = A * beta[None,:]    (列缩放: 第j列乘beta[j])
+      v_inner    = A_beta @ V       (V 不乘 beta)
+      k_cumdecay = A_beta @ G @ K   = A_beta @ (K * g_exp[:,None])  (K 不乘 beta, 只乘 g_exp)
+```
+
+关键：`A @ diag(beta)` 是**列缩放**（第 j 列乘 beta[j]），
+**不是** `diag(beta) @ A`（行缩放，第 i 行乘 beta[i]）。方阵不可交换。
+
+### 不变部分
+
+- **KKBetaCompute**：`attn = kk * beta * gamma`（beta 仍在 KKT 中，求逆内部）
+- **求逆**：`A = (I - kk*beta*gamma)^{-1}`（A 本身不变）
+- **AttnInverseMMCompute**：操作原始 A（求逆辅助 matmul，必须在列缩放之前）
+
+### 变更部分
+
+| 函数 | 原始 | R4 正确方案 |
+|:-----|:-----|:-----------|
+| InverseCompute | 求逆后直接写 A 到 attnWs | 求逆后写 A 到 attnWs，**AttnInverseMMCompute 完成后**再做列缩放写 A_beta |
+| KKBetaCompute | `attn = kk * beta` | 不变 |
+| VBetaCompute | `v_beta = V * beta` → vBetaWsGm_ | **删除**（AIC 直接读原始 V） |
+| GBKCompute | `gBKWs = -K * beta * g_exp` | `gBKWs = -K * g_exp`（去掉 beta） |
+| AIC matmul4 | `A @ gBKWs` = `A @ (-K*beta*g_exp)` | `A_beta @ gBKWs` = `A_beta @ (-K*g_exp)` |
+| AIC matmul5 | `A @ vBetaWs` = `A @ (V*beta)` | `A_beta @ V`（V 从 strided GM 读，R2） |
+
+### 列缩放时机与同步
+
+AttnInverseMMCompute（AIC 求逆辅助 matmul）读写 attnWs 中的**原始 A**，列缩放必须在其之后：
+
+```
+AIV: InverseCompute → 写 A 到 attnWs → SetFlag(0x7)
+AIC: WaitFlag(0x7) → AttnInverseMMCompute(读/写 attnWs 的 A) → SetFlag(0xB)  // 新增
+AIV: WaitFlag(0xB) → 读 attnWs(A) → 列缩放 A*beta[None,:] → 写 A_beta 回 attnWs → SetFlag(0x5/0x6)
+AIC: WaitFlag(0x5/0x6) → matmul4/5(读 A_beta)
+```
+
+新增同步 flag `0xB`（AIC→AIV，AttnInverseMMCompute 完成后通知 AIV 可做列缩放）。
+
+### 列缩放需要全量 beta
+
+原始 `BetaCopyInWithStride` 每个 sub-block 只读 `halfChunkSize_` 个 beta（自己的行）。
+列缩放 `A[i,j] *= beta[j]` 需要**全部 C 个 beta 值**（所有列）。
+两个 sub-block 需读同一份全量 beta（C=64，128 字节，开销可忽略）。
+
+### 收益
+
+- 删除 `vBetaWsGm_` WS：`BF16 × coreNum × P × C × Dv`（典型 ~2.6MB）
+- 删除 VBetaCompute 计算（V 读入 + beta broadcast + mul + cast + 写出）
+- GBKCompute 省 `halfChunkSize_` 次 mul（去掉 beta 乘法）
+- 若结合 R2：AIC 直接从 strided GM 读 V
+
+### 代价
+
+- 新增同步 flag 0xB（AIC→AIV，AttnInverseMMCompute 完成后）
+- AIV 额外 GM 读写（读 A → 列缩放 → 写 A_beta 回 attnWs）
+- 需读全量 beta（C 值，开销极小）
 
 ---
 

@@ -21,22 +21,30 @@
 ### 已完成
 - R1 分析：建议保留批处理+去除 Stage 间 SyncAll（仅分析结论，无代码变更）
 - R2 实现：Stage1 移除 QKPreProcess，AIC matmul 直接读 strided GM（`SetOrgShape(M,N,Ka,Kb,N)`），删除 `queryConGm_`/`keyConGm_` WS，`!gOptional` 路径 kg_ 写入移至 `GBKCompute`，删除 sync0 (`0x9`)
-- **R3-R7 回退**：经与参考实现 (`chunk_gated_delta_rule_golden.py`) 比对，R3/R4/R5/R7 存在数学公式错误，R6 存在 strided 读取 bug，全部回退到原始算法
+- **R3/R5/R6/R7 回退**：经与参考实现 (`chunk_gated_delta_rule_golden.py`) 比对，R3/R5/R7 存在数学公式错误，R6 存在 strided 读取 bug，全部回退到原始算法
+- **R4 待实现**：原方案用行缩放错误，修正为列缩放 `A_beta = A @ diag(beta)`（第 j 列乘 beta[j]），数学等价
 - 文档：`CGDR_arch35_重构前数据流伪代码.md`（638 行）— GM/WS/UB 布局、AIC/AIV 伪代码、同步图、存储总表
 - 文档：`CGDR_arch35_重构后数据流与改动点.md` — R2 改动详解、数学错误分析、WS 布局对比、伪代码、同步图、公式对比、数据流图
 - 编译通过：ascend950 opkernel + ophost + opapi
 
-### R3-R7 回退原因详解
+### R3/R5/R6/R7 回退原因 + R4 修正方案
 
 基于参考实现 `chunk_gated_delta_rule_golden.py:102-124` 的正确公式：
 
-| 编号 | 错误 | 正确公式 | R3-R7 错误公式 |
+| 编号 | 状态 | 正确公式 | 原 R3-R7 错误 |
 |:-----|:-----|:---------|:---------------|
-| R4 | 求逆不分配行缩放 | `A = (I - diag(β)·kk·γ)⁻¹` | `A' = (I-kk·γ)⁻¹`, `A_β = diag(β)·A'` |
-| R3 | A@V_beta 项多了 g_exp | `v_inner = A@V_beta` (无g_exp) | `v_inner = (A@V_beta + ...)·g_exp` |
-| R5 | 逐元素γ ≠ 矩阵乘对角g_exp | `A@diag(-K·β·g_exp)` | `(β·A·(-γ))@K` |
-| R7 | 逐行向量 ≠ 标量 | `v_new^T @ (K·exp(g[-1]-g_cum))` | `(v_new·exp(g[-1]))^T @ K` |
-| R6 | g(T,Nv)非连续读取bug | `DataCopyInFp32WithStride(len,1,src,nv)` | `DataCopyPad(src, {1, len*4, 0,0,0})` |
+| R3 | 回退 | `v_inner=A@V_beta`(无g_exp), `k_cumdecay=A@(K·β·g_exp)`(有g_exp) | A@V_beta 项多了 g_exp 缩放 |
+| R4 | **待实现** | `A_beta=A@diag(β)`(列缩放), `v_inner=A_beta@V`, `k_cumdecay=A_beta@(K·g_exp)` | 原方案: 从KKT删beta + 行缩放(两个错误) |
+| R5 | 回退 | `A@diag(-K·β·g_exp)`(矩阵乘对角阵) | 逐元素乘γ ≠ 矩阵乘对角g_exp (可并入R4) |
+| R6 | 回退 | `DataCopyInFp32WithStride(len,1,src,nv)` | g(T,Nv)非连续, DataCopyPad读跨head垃圾 |
+| R7 | 回退 | `v_new^T@(K·exp(g[-1]-g_cum))`(逐行向量) | 标量exp(g[-1]) ≠ 逐行exp(g[-1]-g_cum[j]) |
+
+**R4 正确方案要点：**
+- 利用结合律 `A@diag(β)@V = (A@diag(β))@V`，beta 从 V/K 左边移到 A 右边
+- `A_beta = A @ diag(beta)`：**列缩放**（第 j 列乘 beta[j]），非行缩放
+- KKT/求逆不变（beta 仍在求逆内部），AttnInverseMMCompute 后做列缩放
+- 删除 VBetaCompute + vBetaWsGm_ WS，GBKCompute 去掉 beta，AIC 直接读 V
+- 新增同步 flag 0xB（AIC AttnInverseMMCompute 完成后通知 AIV 列缩放）
 
 ### 进行中
 - 无
@@ -45,13 +53,15 @@
 - RDV 用例验证未通过：`torch_npu` 2.7.1 未注册 `npu_chunk_gated_delta_rule` 接口；改用 `torch.ops.cann_ops_transformer` 调用方式后出现 AI Core Error（`timeout or trap error`，errno 507015），根因是 torch_extension ACLNN_CMD 调用路径与正式 op-plugin 路径存在差异
 
 ## 关键决策
-- **R3-R7 全部回退**：数学公式错误无法通过代码修复，只能回退算法
-- **R2 保留并修复**：纯数据流优化（strided GM 直读），不改变数学公式
+- **R3/R5/R6/R7 全部回退**：数学公式错误或 strided 读取 bug，无法修复
+- **R4 修正后待实现**：原方案行缩放错误，改为列缩放 `A@diag(beta)` 数学等价
+- **R2 已实现并修复**：纯数据流优化（strided GM 直读），不改变数学公式
 - R2 SetOrgShape 修复：strided GM 用 5 参数 `SetOrgShape(m,n,ka,kb,n)` (orgKc=n 匹配 3 参数行为)，连续矩阵仍用 3 参数 `SetOrgShape(m,n,k)`
 - R2 `!gOptional` 路径：QKPreProcess 删除后，`kg = K` 写入逻辑移至 GBKCompute 的 else 分支
 - R2 sync0 删除：AIC 直接读 strided GM，不再需要等待 AIV 的 QKPreProcess 同步
 
 ## 后续步骤
+- 实现 R4 正确方案（beta 列缩放）：删除 VBetaCompute/vBetaWsGm_，新增列缩放 pass + sync flag 0xB
 - 在正式环境（有 op-plugin 的 torch_npu）验证 RDV 用例精度
 - 验证 gOptional 和 !gOptional 路径
 - 验证 FP32 state path 和非连续 state
@@ -67,10 +77,10 @@
 - `AICProcess`：`ka>0` 用 5 参数 SetOrgShape，`ka==0` 用 3 参数 SetOrgShape
 
 ## 相关文件
-- `attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_stage1.h` — R2 核心改动
+- `attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_stage1.h` — R2 已实现, R4 待实现
 - `attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule.h` — 主入口（回退到原始）
 - `attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_stage2.h` — 回退到原始
 - `attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_stage3.h` — 回退到原始
 - `attention/chunk_gated_delta_rule/op_host/chunk_gated_delta_rule_tiling.cpp` — `STAGE_ONE_THREE` 3→1
 - `attention/chunk_gated_delta_rule/docs/CGDR_arch35_重构前数据流伪代码.md` — 重构前文档
-- `attention/chunk_gated_delta_rule/docs/CGDR_arch35_重构后数据流与改动点.md` — 重构后文档（仅 R2）
+- `attention/chunk_gated_delta_rule/docs/CGDR_arch35_重构后数据流与改动点.md` — 重构后文档（R2 已实现 + R4 待实现）
