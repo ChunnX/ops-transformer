@@ -39,7 +39,7 @@ extern "C" __global__ __aicore__ void moe_fused_topk(GM_ADDR x, GM_ADDR addNum,
         return;
     }
     TPipe pipe;
-    GET_TILING_DATA(tilingData, tiling);
+    GET_TILING_DATA_WITH_STRUCT(MoeFusedTopkArch35TilingData, tilingData, tiling);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
 #if (ORIG_DTYPE_X == DT_FLOAT)
