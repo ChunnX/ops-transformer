@@ -33,6 +33,37 @@ constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
 constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U; // 同token最大规约块数
 
+// ===== C 侧 buffer 元素个数 (element count, 用于 tensor 偏移及地址递增) =====
+constexpr uint32_t L1Q_ELEM_PER_BUF        = 16384; // Q_T 元素, 每个 L1Q buffer
+constexpr uint32_t L1_P_ELEM_PER_BUF       = 8192;  // Q_T 元素, 每个 L1P buffer
+constexpr uint32_t L1_RIGHT_ELEM_PER_BUF   = 65536; // Q_T 元素, 每个 L1Right buffer
+constexpr uint32_t L0A_ELEM_PER_BUF        = 8192;  // Q_T 元素, 每个 L0A buffer
+constexpr uint32_t L0B_ELEM_PER_BUF        = 16384; // Q_T 元素, 每个 L0B buffer
+constexpr uint32_t L0C_ELEM_PER_BUF        = 32768; // T   元素, 每个 L0C buffer
+
+// ===== C 侧核内 flag id (SetFlag/WaitFlag 使用, 非 MutexID) =====
+#define CUBE_L0C_FIXM(s)    (0 + (s)) // 0, 1: L0C FIX->M
+#define CUBE_L0C_MFIX(s)    (0 + (s)) // 0, 1: L0C M->FIX
+#define CUBE_L1Q_MTE1M(s)   (0 + (s)) // 0~2: L1 Q, MTE1->MTE2
+#define CUBE_L1Q_MTE2M(s)   (0 + (s)) // 0~2: L1 Q, MTE2->MTE1
+#define CUBE_L1K_MTE1M(s)   (3 + (s)) // 3~5: L1 KV shared, MTE1->MTE2
+#define CUBE_L1K_MTE2M(s)   (3 + (s)) // 3~5: L1 KV shared, MTE2->MTE1
+
+// ===== 跨核 flag id (正向反向共用, +16 为 dual-dest AIV1 半区) =====
+#define CROSSCORE_L1P(s)     (0 + (s))    // 0, 1: l1P forward sync
+#define CROSSCORE_L1P_D(s)   (0 + 16 + (s))
+#define CROSSCORE_L1RIGHT(s) (2 + (s))    // 2~4: l1Right forward sync
+#define CROSSCORE_BMM2       (5)          // 5:    bmm2
+#define CROSSCORE_BMM2_D     (5 + 16)
+#define CROSSCORE_BMM1(s)    (6 + (s))    // 6, 7: bmm1
+#define CROSSCORE_BMM1_D(s)  (6 + 16 + (s))
+
+#if __has_include("../../../sparse_flash_mla/op_kernel/arch35/common/static_buffer.h")
+#include "../../../sparse_flash_mla/op_kernel/arch35/common/static_buffer.h"
+#else
+#include "../../sparse_flash_mla/arch35/common/static_buffer.h"
+#endif
+
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)
 {

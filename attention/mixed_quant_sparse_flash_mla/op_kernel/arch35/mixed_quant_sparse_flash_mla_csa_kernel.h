@@ -115,14 +115,16 @@ private:
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
 
-    BufferManager<BufferType::UB> ubBufferManager;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+    StaticBuffer<T> bmm1Buffers[2];
+    StaticBuffer<T> bmm2Buffers;
+    uint32_t bmm1GetFlag = 0;
+    uint32_t vUbBase = 0;
 
-    // mm2左矩阵P
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    BuffersPolicy3buffSFA<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
+    // mm2左矩阵P + 右矩阵
+    StaticBuffer<Q_T> l1PBuffers[2];
+    uint32_t l1PGetFlag = 0;
+    StaticBuffer<Q_T> l1RightBufs[3];
+    uint32_t l1CubeBase = 0;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
@@ -236,7 +238,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     } else {
         vecBlock.InitS2SplitStaging(fdStagingBuffer.Get());
     }
-    cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
+    cubeBlock.InitCubeBlock(pipe, query, l1CubeBase);
     this->ComputeConstexpr();
     this->InitLocalBuffer();
 }
@@ -398,38 +400,33 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 {
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
-    uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
-    uint32_t mm1RightSize = constInfo.s2BaseSize * 512 * sizeof(Q_T);
-    l1BufferManager.Init(pipe, 416 * 1024);
-    // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-    l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Init(l1BufferManager, mm1RightSize);
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
 
-    ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
-    bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-    if ASCEND_IS_AIV {
-        bmm2Buffers.Get().SetCrossCore();
+    // ===== L1 静态排布 (l1P 必须放在最前, 保证和 vec 申请的地址相同) =====
+    uint32_t l1PAddr = 0;
+    l1PBuffers[0] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, L1_P_ELEM_PER_BUF), 0};
+    l1PAddr += L1_P_ELEM_PER_BUF * sizeof(Q_T);
+    l1PBuffers[1] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, L1_P_ELEM_PER_BUF), 1};
+    l1PAddr += L1_P_ELEM_PER_BUF * sizeof(Q_T);
+    for (uint32_t i = 0; i < 3; i++) {
+        l1RightBufs[i] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, L1_RIGHT_ELEM_PER_BUF), i};
+        l1PAddr += L1_RIGHT_ELEM_PER_BUF * sizeof(Q_T);
     }
-    bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
+    l1CubeBase = l1PAddr;
+
+    // ===== UB 静态排布 =====
+    uint32_t ubAddr = 0;
+    bmm2Buffers = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm2ResultSize / sizeof(T)), 0};
+    ubAddr += mm2ResultSize;
+    bmm1Buffers[0] = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm1ResultSize / sizeof(T)), 0};
+    ubAddr += mm1ResultSize;
+    bmm1Buffers[1] = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm1ResultSize / sizeof(T)), 1};
+    ubAddr += mm1ResultSize;
+    vUbBase = ubAddr;
+
     if ASCEND_IS_AIV {
-        bmm1Buffers.Get().SetCrossCore();
-        bmm1Buffers.Get().SetCrossCore();
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1Buffers[0].idx));
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1Buffers[1].idx));
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(CROSSCORE_BMM2);
     }
 
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
@@ -437,6 +434,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                                         static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
+    crossCoreSyncBufId = 8;
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
@@ -484,7 +482,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
-    vecBlock.InitLocalBuffer(pipe, constInfo);
+    vecBlock.InitLocalBuffer(pipe, constInfo, vUbBase);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -658,22 +656,26 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if ASCEND_IS_AIV {
                     if (notLastThreeLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 4];
-                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                        this->vecBlock.ProcessVec0(this->l1RightBufs[runInfo1.taskIdMod3],
                                                    v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
                     }
                     if (taskId > 1 && notLast) {
                         auto &runInfo2 = runInfo[(taskId + 2) % 4];
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
+                        uint32_t bmm1Slot = bmm1GetFlag;
+                        bmm1GetFlag ^= 1;
+                        uint32_t l1PSlot = l1PGetFlag;
+                        l1PGetFlag ^= 1;
+                        this->vecBlock.ProcessVec1(this->l1PBuffers[l1PSlot], this->bmm1Buffers[bmm1Slot], runInfo2,
                                                    this->constInfo);
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers, runInfo3, this->constInfo);
                     }
                 } else {
                     if (taskId > 0 && notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
-                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                        this->cubeBlock.IterateLoadQK(this->l1RightBufs[runInfo1.taskIdMod3],
                                                       v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
                         isFirstLoop = false;
                     } else {
@@ -688,15 +690,19 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                     if (taskId > 1 && notLast) {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 4];
                         RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
-                        this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
-                                                    this->l1RightBuffers.Get(runInfo2.taskIdMod3),
+                        uint32_t bmm1Slot = bmm1GetFlag;
+                        bmm1GetFlag ^= 1;
+                        this->cubeBlock.IterateBmm1(this->bmm1Buffers[bmm1Slot],
+                                                    this->l1RightBufs[runInfo2.taskIdMod3],
                                                     v0ResGmBuffers.Get(runInfo2.taskIdMod3), notLastTwoLoop,
                                                     runInfoNext, runInfo2, this->constInfo);
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
-                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                                                    this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
+                        uint32_t l1PSlot = l1PGetFlag;
+                        l1PGetFlag ^= 1;
+                        this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot],
+                                                    this->l1RightBufs[runInfo3.taskIdMod3], runInfo3, this->constInfo);
                     }
                 }
                 ++taskId;
