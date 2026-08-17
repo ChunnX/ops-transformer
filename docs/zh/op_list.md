@@ -1416,6 +1416,16 @@
     <td>AI Core</td>
     <td>aclnnMoeTokenUnpermuteWithRoutingMap的反向传播。</td>
   </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_tutel_combine_gates/README.md">moe_tutel_combine_gates</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>Tutel MoE combine的反向算子之一，求门控权重gates的梯度。按indices、locations给出的路由从y_grad取出一行，与x中对应token的一行沿隐藏维做点积；路由越界时输出0。</td>
+  </tr>
     <tr>
     <td>mhc</td>
     <td><a href="../../mhc/mhc_sinkhorn/README.md">mhc_sinkhorn</a></td>
