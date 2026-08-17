@@ -1,0 +1,269 @@
+[qrun] 2026-08-17 14:53:19 [SUCCESS] 任务已成功加入队列
+                                    任务队列                                    
+┏━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┓
+┃   ┃ 序号 ┃  工号   ┃ 任务名  ┃ 创建时… ┃  状态  ┃ 执行时… ┃ 预估 … ┃ 任务命… ┃
+┡━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━┩
+│ ▶ │  1   │ m00954… │ y00845… │  08-17  │ 执行中 │   0s    │  未知  │ export  │
+│   │      │         │         │ 14:53:… │        │         │        │ ASCEND… │
+│   │      │         │         │         │        │         │        │ && cd   │
+│   │      │         │         │         │        │         │        │ /home/… │
+│   │      │         │         │         │        │         │        │ &&      │
+│   │      │         │         │         │        │         │        │ python3 │
+│   │      │         │         │         │        │         │        │ script… │
+│   │      │         │         │         │        │         │        │ 4096    │
+│   │      │         │         │         │        │         │        │ 3584    │
+│   │      │         │         │         │        │         │        │ 4096 2  │
+│   │      │         │         │         │        │         │        │ 2>&1 && │
+│   │      │         │         │         │        │         │        │ rm -rf  │
+│   │      │         │         │         │        │         │        │ build/… │
+│   │      │         │         │         │        │         │        │ build/… │
+│   │      │         │         │         │        │         │        │ && cp   │
+│   │      │         │         │         │        │         │        │ -r      │
+│   │      │         │         │         │        │         │        │ input   │
+│   │      │         │         │         │        │         │        │ build/… │
+│   │      │         │         │         │        │         │        │ &&      │
+│   │      │         │         │         │        │         │        │ mkdir   │
+│   │      │         │         │         │        │         │        │ -p      │
+│   │      │         │         │         │        │         │        │ build/… │
+│   │      │         │         │         │        │         │        │ && cd   │
+│   │      │         │         │         │        │         │        │ build   │
+│   │      │         │         │         │        │         │        │ &&      │
+│   │      │         │         │         │        │         │        │ ./quan… │
+│   │      │         │         │         │        │         │        │ 4096    │
+│   │      │         │         │         │        │         │        │ 3584    │
+│   │      │         │         │         │        │         │        │ 4096 2  │
+│   │      │         │         │         │        │         │        │ precis… │
+│   │      │         │         │         │        │         │        │ 512     │
+│   │      │         │         │         │        │         │        │ 2>&1 && │
+│   │      │         │         │         │        │         │        │ cd ..   │
+│   │      │         │         │         │        │         │        │ && for  │
+│   │      │         │         │         │        │         │        │ r in 0  │
+│   │      │         │         │         │        │         │        │ 1; do   │
+│   │      │         │         │         │        │         │        │ cp      │
+│   │      │         │         │         │        │         │        │ build/… │
+│   │      │         │         │         │        │         │        │ output… │
+│   │      │         │         │         │        │         │        │ 2>/dev… │
+│   │      │         │         │         │        │         │        │ done && │
+│   │      │         │         │         │        │         │        │ python3 │
+│   │      │         │         │         │        │         │        │ script… │
+│   │      │         │         │         │        │         │        │ 4096    │
+│   │      │         │         │         │        │         │        │ 4096 2  │
+│   │      │         │         │         │        │         │        │ ./outp… │
+│   │      │         │         │         │        │         │        │ 2>&1    │
+└───┴──────┴─────────┴─────────┴─────────┴────────┴─────────┴────────┴─────────┘[qrun] 2026-08-17 14:54:11 [SUCCESS]  成功抢占执行锁 (排队耗时: 51 秒)
+
+[qrun] 2026-08-17 14:54:11 [INFO ] 开始执行任务命令: export 
+ASCEND_HOME_PATH=/home/l00947526/Ascend806/cann-9.2.0 && cd 
+/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMa
+tmulReduceScatter && python3 scripts/gen_data.py 4096 3584 4096 2 2>&1 && rm -rf
+build/input build/output && cp -r input build/input && mkdir -p 
+build/output/{0,1} && cd build && ./quant_matmul_reduce_scatter_st 4096 3584 
+4096 2 precision 512 2>&1 && cd .. && for r in 0 1; do cp 
+build/output/$r/npu_out.bin output/$r/npu_out.bin 2>/dev/null; done && python3 
+scripts/verify_result.py 4096 4096 2 ./output 2>&1
+[qrun] =================================================================
+Generated golden data for m=4096, k=3584, n=4096, rank_num=2
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] Master (PID=912311) will fork 2 processes (mode=precision, headMSize=512)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:389 Master (PID=912311) will fork 2 processes (mode=precision, headMSize=512)
+[INFO] Forked Rank 0 -> PID 912315
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:403 Forked Rank 0 -> PID 912315
+[INFO] Forked Rank 1 -> PID 912317
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:403 Forked Rank 1 -> PID 912317
+[INFO] rankNum=2, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:128 rankNum=2, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512
+[INFO] rankNum=2, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:128 rankNum=2, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 4096
+  k                  : 3584
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 3584
+  mTailTile          : 3
+  nTailTile          : 2
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 4096
+  k                  : 3584
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 3584
+  mTailTile          : 3
+  nTailTile          : 2
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] [Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:177 [Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution
+[INFO] chunkM=2048, headMSize=512, headTileCnt=4, tailMSize=0, tailTileCnt=0, tileCnt=4 (PUT multi-tile), rankSize=2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:190 chunkM=2048, headMSize=512, headTileCnt=4, tailMSize=0, tailTileCnt=0, tileCnt=4 (PUT multi-tile), rankSize=2
+[INFO] [Rank 0] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:192 [Rank 0] Step 1: aclInit
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 4096
+  k                  : 3584
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 3584
+  mTailTile          : 3
+  nTailTile          : 2
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 4096
+  k                  : 3584
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 3584
+  mTailTile          : 3
+  nTailTile          : 2
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] [Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:177 [Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution
+[INFO] chunkM=2048, headMSize=512, headTileCnt=4, tailMSize=0, tailTileCnt=0, tileCnt=4 (PUT multi-tile), rankSize=2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:190 chunkM=2048, headMSize=512, headTileCnt=4, tailMSize=0, tailTileCnt=0, tileCnt=4 (PUT multi-tile), rankSize=2
+[INFO] [Rank 1] Step 1: aclInit
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:192 [Rank 1] Step 1: aclInit
+[INFO] [Rank 1] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:198 [Rank 1] Step 2: device set, stream created
+[INFO] [Rank 1] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 1] Step 3: exchanging rootInfo
+[INFO] [Rank 0] Step 2: device set, stream created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:198 [Rank 0] Step 2: device set, stream created
+[INFO] [Rank 0] Step 3: exchanging rootInfo
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:202 [Rank 0] Step 3: exchanging rootInfo
+[INFO] [Rank 0] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:207 [Rank 0] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 4: rootInfo exchanged
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:207 [Rank 1] Step 4: rootInfo exchanged
+[INFO] [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:213 [Rank 1] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:213 [Rank 0] Step 5: HcclCommInitRootInfoConfig
+[INFO] [Rank 0] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:220 [Rank 0] Step 6: HCCL comm initialized
+[INFO] [Rank 0] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:226 [Rank 0] Step 7: CreateDeviceContext
+[INFO] [Rank 1] Step 6: HCCL comm initialized
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:220 [Rank 1] Step 6: HCCL comm initialized
+[INFO] [Rank 1] Step 7: CreateDeviceContext
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:226 [Rank 1] Step 7: CreateDeviceContext
+[INFO] [Rank 0] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:234 [Rank 0] Step 8: device context created
+[INFO] [Rank 1] Step 8: device context created
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:234 [Rank 1] Step 8: device context created
+[INFO] [Rank 1] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:238 [Rank 1] Step 9: exchanger barrier + close
+[INFO] [Rank 0] Step 9: exchanger barrier + close
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:238 [Rank 0] Step 9: exchanger barrier + close
+[INFO] [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:291 [Rank 0] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:291 [Rank 1] workspace size=33554432 bytes (m=4096, n=4096)
+[INFO] [Rank 1] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:297 [Rank 1] Step 10: data loaded to device
+[INFO] [Rank 1] Step 11: launching kernel (usedCoreNum=28, GET mode)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:300 [Rank 1] Step 11: launching kernel (usedCoreNum=28, GET mode)
+[INFO] [Rank 0] Step 10: data loaded to device
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:297 [Rank 0] Step 10: data loaded to device
+[INFO] [Rank 0] Step 11: launching kernel (usedCoreNum=28, GET mode)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:300 [Rank 0] Step 11: launching kernel (usedCoreNum=28, GET mode)
+[INFO] [Rank 1] Step 12: kernel launched, syncing...
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:305 [Rank 1] Step 12: kernel launched, syncing...
+[INFO] [Rank 0] Step 12: kernel launched, syncing...
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:305 [Rank 0] Step 12: kernel launched, syncing...
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:308 [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/quantMatmulReduceScatter/src/main.cpp:308 [Rank 0] Step 13: stream synced
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 2 ranks
+Matrix shape: M=4096, N=4096, chunkM=2048
+============================================================
+
+[Rank 0] shape=(2048, 4096), elements=8388608
+  abs_err: max=8.192000e+03, mean=4.882812e-02
+  rel_err: max=7.194245e-03
+  count(|abs_err| > 0.01): 50 / 8388608
+  cpu golden (top-left 4x4):
+tensor([[1245184., 1327104., 1310720., 1261568.],
+        [1245184., 1343488., 1343488., 1277952.],
+        [1294336., 1384448., 1376256., 1327104.],
+        [1261568., 1359872., 1335296., 1310720.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[1245184., 1327104., 1310720., 1261568.],
+        [1245184., 1343488., 1343488., 1277952.],
+        [1294336., 1384448., 1376256., 1327104.],
+        [1261568., 1359872., 1335296., 1310720.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] shape=(2048, 4096), elements=8388608
+  abs_err: max=8.192000e+03, mean=3.808594e-02
+  rel_err: max=6.666667e-03
+  count(|abs_err| > 0.01): 39 / 8388608
+  cpu golden (top-left 4x4):
+tensor([[1212416., 1294336., 1253376., 1253376.],
+        [1196032., 1261568., 1286144., 1261568.],
+        [1294336., 1376256., 1376256., 1343488.],
+        [1220608., 1310720., 1302528., 1277952.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[1212416., 1294336., 1253376., 1253376.],
+        [1196032., 1261568., 1286144., 1261568.],
+        [1294336., 1376256., 1376256., 1343488.],
+        [1220608., 1310720., 1302528., 1277952.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+  Rank 0: PASS
+  Rank 1: PASS
+
+[ALL PASS] All 2 ranks passed verification!
+
+
+[qrun] 2026-08-17 14:54:21 [SUCCESS] 任务执行成功，执行锁已释放，退出码: 
+0，执行时长: 11s

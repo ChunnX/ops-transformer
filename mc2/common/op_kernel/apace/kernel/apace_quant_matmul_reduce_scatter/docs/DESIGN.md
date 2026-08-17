@@ -20,10 +20,26 @@ quantMatmulReduceScatter 是 MC2（通算融合）算子族中的一员，在 As
 
 ### 2.1 功能定义
 
+**算子名称**：`quantMatmulReduceScatter`
+
 quantMatmulReduceScatter 实现如下计算流程：
 
 ```
-output = reduceSum(AlltoAll(Dequant(QuantA @ QuantB) + bias))
+输入:
+  A: [m, k], fp8_e4m3fn, 每卡完整持有（K 不切分）
+  ScaleA: [m, ceil(k/64)*2], fp8_e8m0, 每卡完整持有
+  B: [k, n], fp8_e4m3fn (TransB=true, 实际存储 FN 格式), 所有卡共享
+  ScaleB: [ceil(k/64)*2, n], fp8_e8m0, 所有卡共享
+  bias: [n], float, 可选偏置（当前版本暂未实现）
+
+数学公式:
+  // 每卡独立 matmul (MXFP8 去量化 -> fp32 内积 -> bf16 输出)
+  C_partial[rank] = A_rank × B      // C_partial shape: [m, n], dtype: bf16
+
+  // AlltoAll + reduceSum: 沿 m 维度分发 + 逐元素求和
+  // chunkM = m / rankSize, rank r 输出 C_out[r*chunkM : (r+1)*chunkM, :]
+  C_out[rank] = reduceSum(AlltoAll(C_partial, dim=m), op=SUM)
+  // C_out shape: [m/rankSize, n], dtype: bf16
 ```
 
 **核心语义**：本算子**不涉及 TP 切分**，每张卡持有完整的 K 维度：
