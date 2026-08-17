@@ -6,11 +6,11 @@
 | --------------------------------------------------------- | :------: |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品</term> |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    √     |
-| <term>Ascend 950PR/Ascend 950DT</term>                    |    √     |
+| <term>Ascend 950PR/Ascend 950DT</term>                    |    ×     |
 
 ## 功能说明
 
-- **算子功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8/fp8 反量化）的"matmul+maxpool"运算，得到逐 block 的重要性分数 `score`，用作 Index Branch 中后续 TopK 的输入。Prefill 与 Decode 由同一接口承载。
+- **算子功能**：计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score。对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的 $Q_{idx}$ 和 $K_{idx}$（可选 int8 反量化）的"matmul+maxpool"运算，得到逐 block 的重要性分数 `score`，用作 Index Branch 中后续 TopK 的输入。Prefill 与 Decode 由同一接口承载。
 
 - **计算公式**：
 
@@ -20,7 +20,7 @@
     score = Maxpool[ Q_{idx}@K_{idx}^{T} ]
     $$
 
-    - int8/fp8 量化场景：
+    - int8 量化场景：
 
     $$
     score = Maxpool[ scale \cdot Q_{idx}@K_{idx}^{T} ]
@@ -47,8 +47,8 @@
 
 | 参数名                   | 输入/输出/属性 | 描述                                                         | 数据类型                     | 数据格式 |
 | ------------------------ | -------------- | ------------------------------------------------------------ | ---------------------------- | -------- |
-| query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16, FP8       | ND       |
-| key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, FP8, INT8 | ND, NZ   |
+| query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16            | ND       |
+| key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, INT8      | ND, NZ   |
 | block_table              | 可选输入       | PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$ | INT32                        | ND       |
 | scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$ | FLOAT                        | ND, NZ   |
 | atten_mask               | 可选输入       | 控制因果可见的 mask。仅在 `sparse_mode=3` 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$ | INT8                         | ND       |
@@ -64,7 +64,7 @@
 
 - 当前 $block\_size$ 仅支持 128。
 - PageAttention 场景下，`block_table` 必须传入。
-- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16 / FP8），`scale` 必须为空；量化场景下，FP8 量化仅 <term>Ascend 950PR/Ascend 950DT</term> 支持，`scale` 必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，dtype 为 FLOAT。
+- 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scale` 必须为空；量化场景下仅支持 INT8，`scale` 必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 - `sparse_mode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
     - 为 3 时，代表 rightDownCausal 模式，`atten_mask` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
@@ -88,9 +88,9 @@ export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
 bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 ```
 
-> **实现备注（A2/A3 P0）**
+> **实现备注（A2/A3）**
 >
-> - 当前仅实现 PageAttention **BBND** key；TND / BNBD / FP8 / Ascend 950 暂未落地。
+> - 当前仅实现 PageAttention **BBND** key；TND / BNBD 暂未落地。不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 > - `sparse_mode=3` 的 `atten_mask[2048,2048]` 在 host 校验必选；device 侧按 rightDownCausal
 >   解析可见窗口（与 LightningIndexer 一致），不逐元素加载模板。
 > - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）
