@@ -34,6 +34,8 @@ from graph import CascadeGraphModel as PrefillCascadeGraphModel, MegaMoeGraphMod
 from graph_decode import CascadeGraphModel as DecodeCascadeGraphModel
 from gen_input_and_golden import GenInputAndGolden, iter_rank_npu_weight_chunks, mx_array_to_torch
 from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe
+from cann_ops_transformer.ops.comm_context import comm_context_op_builder
+from cann_ops_transformer.ops.mega_moe import _mega_moe_op_builder
 
 TIMER_HELPER_DIR = Path(__file__).resolve().parents[1] / "megamoe_timer"
 sys.path.insert(0, str(TIMER_HELPER_DIR))
@@ -2024,6 +2026,14 @@ def set_device(rank):
     torch_npu.npu.set_device(rank % rank_per_dev)
     print(f"current device set: {torch_npu.npu.current_device()}")
 
+
+def preload_mega_moe_extensions(rank):
+    print(f"[INFO] device_{rank} 开始加载MegaMoe扩展", flush=True)
+    _mega_moe_op_builder.load()
+    comm_context_op_builder.load()
+    print(f"[INFO] device_{rank} MegaMoe扩展加载完成", flush=True)
+
+
 def init_hccl_comm_two_ep(rank):
     print(f'[INFO] device_{rank} 创建HCCL通信链路')
     dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
@@ -2052,17 +2062,10 @@ def init_hccl_comm_two_ep(rank):
         if rank in tp_ranks:
             tp_group_dispatch = tmp_group
 
-    ep_group_rank = dist.get_rank(ep_group_dispatch)
-    ep2_group_rank = dist.get_rank(ep_group_mega)
-    tp_group_rank = dist.get_rank(tp_group_dispatch)
-    ep_hcomm_info_dispatch = ep_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(ep_group_rank)
-    ep2_hcomm_info_mega = ep_group_mega._get_backend(torch.device("npu")).get_hccl_comm_name(ep2_group_rank)
-    tp_hcomm_info_dispatch = tp_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(tp_group_rank)
-    print(
-        f"[INFO] device_{rank} HCCL子通信域初始化完成 "
-        f"(ep_rank={ep_group_rank}, ep2_rank={ep2_group_rank}, tp_rank={tp_group_rank})",
-        flush=True,
-    )
+    ep_hcomm_info_dispatch = ep_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    ep2_hcomm_info_mega = ep_group_mega._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    tp_hcomm_info_dispatch = tp_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    print(f"[INFO] device_{rank} HCCL子通信域初始化完成", flush=True)
 
     return ep_hcomm_info_dispatch, tp_hcomm_info_dispatch, ep2_hcomm_info_mega, ep_group_dispatch, tp_group_dispatch, ep_group_mega
 
@@ -2074,6 +2077,7 @@ def synchronize_before_mega_moe():
 def run_cascade_npu(queue, rank, input_data):
     refresh_profiling_paths()
     set_device(rank)
+    preload_mega_moe_extensions(rank)
     (
         ep_hcomm_info_dispatch,
         tp_hcomm_info_dispatch,
@@ -2083,7 +2087,9 @@ def run_cascade_npu(queue, rank, input_data):
         ep_group_mega,
     ) = init_hccl_comm_two_ep(rank)
 
+    print(f"[INFO] rank {rank} 开始创建MegaMoe对称通信缓冲区", flush=True)
     distribute_buffer = get_symm_buffer_for_mega_moe(**get_symm_buffer_kwargs(ep_group_mega))
+    print(f"[INFO] rank {rank} MegaMoe对称通信缓冲区创建完成", flush=True)
     ep_id = rank // tp_world_size
     cascade_kwargs = None
     mega_moe_kwargs = None
