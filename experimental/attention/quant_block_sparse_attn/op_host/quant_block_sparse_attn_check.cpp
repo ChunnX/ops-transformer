@@ -515,12 +515,14 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             return ge::GRAPH_FAILED;
         }
     }
-    if (tilingInfo_.maxBlockNumPerBatch < tilingInfo_.sparseCount) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                kOpName, "block_table.shape[1]", std::to_string(tilingInfo_.maxBlockNumPerBatch),
-                "The second dimension of block_table must be greater than or equal to max_Kb of sparse_indices (" +
-                    std::to_string(tilingInfo_.sparseCount) + ") when quant_mode is 1.");
-            return ge::GRAPH_FAILED;
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8) {
+        if (tilingInfo_.maxBlockNumPerBatch < tilingInfo_.sparseCount) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, "block_table.shape[1]", std::to_string(tilingInfo_.maxBlockNumPerBatch),
+                    "The second dimension of block_table must be greater than or equal to max_Kb of sparse_indices (" +
+                        std::to_string(tilingInfo_.sparseCount) + ") when quant_mode is 1.");
+                return ge::GRAPH_FAILED;
+        }
     }
     if (tilingInfo_.bSize == 0U || tilingInfo_.n1Size == 0U || tilingInfo_.n2Size == 0U || tilingInfo_.gSize == 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
