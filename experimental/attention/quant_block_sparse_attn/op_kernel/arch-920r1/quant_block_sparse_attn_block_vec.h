@@ -384,8 +384,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
   if (runInfo.hasRound1) {
     LocalTensor<float> alpha1 = round1ExpBuf.template Get<float>();
     LocalTensor<float> combinedAlpha = softmaxExpBuf[runInfo.taskIdMod3].template Get<float>();
-    FaVectorApi::RescaleRound0(p0, alpha1, round0RealSize);
-    Mul(combinedAlpha, combinedAlpha, alpha1, s1BaseSize);
+    FaVectorApi::RescaleRound0(p0, alpha1, combinedAlpha, round0RealSize);
 
     // p0 has already been dequeued, so the queue cannot synchronize the
     // subsequent vector rescale with the MTE3 copy to L1.
