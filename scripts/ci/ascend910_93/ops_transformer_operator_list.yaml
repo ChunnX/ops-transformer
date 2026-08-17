@@ -62,7 +62,6 @@ operator_group_7:
   - grouped_matmul_finalize_routing
   - mla_prolog_v2
   - mla_prolog_v3
-  - mla_prolog_v4
   - mla_prolog
 operator_group_8:
   - moe_token_permute

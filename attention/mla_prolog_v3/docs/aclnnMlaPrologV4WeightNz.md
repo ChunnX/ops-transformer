@@ -26,7 +26,8 @@
 ## 功能说明
 
 - **功能更新**：（相对于aclnnMlaPrologV3weightNz的差异）
-    - 新增可选参数doRope：控制是否对queryRopeOut与krCache执行旋转位置编码；默认true；doRope=false时跳过RoPE并写直通结果。
+    - 新增可选参数doRope：控制是否对queryRopeOut与krCache执行旋转位置编码；默认true；doRope=true时ropeSin/ropeCos必须传入非空有效Tensor，doRope=false时跳过RoPE并写直通结果，此时ropeSin/ropeCos必须同时为空（nullptr或空Tensor）。
+    - N:Head-Num（多头数）范围调整为1-128
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
     - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后，在doRope=true时经过旋转位置编码得到$q^R$，doRope=false时对$c^Q \cdot W^{QR}$直通写出。
     - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
@@ -265,7 +266,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <td>ropeSin</td>
         <td>输入</td>
         <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-        <td>必选，支持B=0,S=0,T=0的空Tensor（表示该维长度为0）</td>
+        <td>doRope=true时必选，支持B=0,S=0,T=0的空Tensor（表示该维长度为0）；doRope=false时必须同时为空（nullptr）</td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
@@ -280,7 +281,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <td>ropeCos</td>
         <td>输入</td>
         <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-        <td>必选，支持B=0,S=0,T=0的空Tensor（表示该维长度为0）</td>
+        <td>doRope=true时必选，支持B=0,S=0,T=0的空Tensor（表示该维长度为0）；doRope=false时必须同时为空（nullptr）</td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
@@ -320,6 +321,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <ul style="margin:0; padding-left:20px;">
             <li>支持B=0,Skv=0的空Tensor；</li>
             <li>Nkv与N关联，N是超参，故Nkv不支持等于0</li>
+            <li>doRope=false时：跳过RoPE，将<i>x·W<sup>KR</sup></i>直通写入Cache，shape不受影响</li>
         </ul>
         </td>
         <td>BFLOAT16、INT8</td>
@@ -643,8 +645,8 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <td>输入</td>
         <td>表示是否对queryRopeOut与krCache执行旋转位置编码（RoPE）。</td>
         <td><ul>
-          <li>默认true：执行RoPE</li>
-          <li>false：跳过RoPE并写直通结果</li>
+          <li>默认true：执行RoPE，此时ropeSin/ropeCos必须为非空有效Tensor</li>
+          <li>false：跳过RoPE并写直通结果，此时ropeSin/ropeCos必须同时为空（nullptr）</li>
         </ul></td>
         <td>BOOL</td>
         <td>-</td>
@@ -670,7 +672,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <td>queryRopeOut</td>
         <td>输出</td>
         <td>公式中Query位置编码的输出tensor（对应<i>q<sup><i>R</i></sup></i>）。</td>
-        <td>-</td>
+        <td>doRope=false时：跳过RoPE，直接输出<i>c<sup>Q</sup>·W<sup>QR</sup></i>直通结果，shape不受影响</td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
@@ -938,7 +940,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
         <td>
           <ul>
             <li>取值范围：不限制</li>
-            <li>注：若采用BS合轴，此时tokenX、ropeSin、ropeCos均为2维，cacheIndex为1维，queryOut、queryRopeOut为3维</li>
+            <li>注：若采用BS合轴，此时tokenX为2维，cacheIndex为1维，queryOut、queryRopeOut为3维；doRope=true时ropeSin、ropeCos为2维，doRope=false时ropeSin、ropeCos必须同时为空</li>
           </ul>
         </td>
       </tr>
@@ -960,7 +962,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
   <summary><a id="shapeConstraint"></a>shape约束</summary>
 
   - 若tokenX的维度采用BS合轴，即(T, He)
-    - ropeSin和ropeCos的shape为(T, Dr)
+    - doRope=true时，ropeSin和ropeCos的shape为(T, Dr)；doRope=false时，ropeSin和ropeCos必须同时为空
     - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
     - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(⌈<i>S<sub>i</sub></i>/BlockSize⌉))，S_i为每个Batch中的S的长度
     - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
@@ -969,7 +971,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
     - queryRopeOut的shape为(T, N, Dr)
     - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
   - 若tokenX的维度不采用BS合轴，即(B, S, He)
-      - ropeSin和ropeCos的shape为(B, S, Dr)
+      - doRope=true时，ropeSin和ropeCos的shape为(B, S, Dr)；doRope=false时，ropeSin和ropeCos必须同时为空
       - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
       - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B, ⌈S/BlockSize⌉)
       - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
@@ -994,6 +996,7 @@ aclnnStatus aclnnMlaPrologV4WeightNz(
   <summary><a id="specialConstraint"></a>特殊约束</summary>
 
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
+  - doRope=false时，ropeSin和ropeCos必须同时为空（nullptr）。
   - pertoken-pergroup量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
   - pertoken-pergroup量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。

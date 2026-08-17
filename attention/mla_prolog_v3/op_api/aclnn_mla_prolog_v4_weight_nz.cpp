@@ -10,6 +10,7 @@
 #include <cstring>
 #include <string>
 #include <map>
+#include <memory>
 #include <set>
 #include "graph/types.h"
 #include "aclnn_mla_prolog_v4_weight_nz.h"
@@ -31,7 +32,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMlaPrologV4GetWorkspaceSize(
+extern aclnnStatus aclnnInnerMlaPrologV3V1GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
     const aclTensor *ropeSin, const aclTensor *ropeCos, aclTensor *kvCacheRef, aclTensor *krCacheRef,
@@ -46,8 +47,8 @@ extern aclnnStatus aclnnInnerMlaPrologV4GetWorkspaceSize(
     const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut,
     const aclTensor *dequantScaleQNormOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerMlaPrologV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                         const aclrtStream stream);
+extern aclnnStatus aclnnInnerMlaPrologV3V1(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                           const aclrtStream stream);
 
 #ifdef __cplusplus
 }
@@ -81,11 +82,11 @@ public:
     bool CheckTensorConditionalNotNull(bool conditional) const
     {
         if (inner_ && conditional) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV4", name_.c_str(), "null",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", name_.c_str(), "null",
                                                   "this parameter is required under current configuration");
             return false;
         } else if (!inner_ && !conditional) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV4", name_.c_str(), "not null",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", name_.c_str(), "not null",
                                                   "this parameter should be empty under current configuration");
             return false;
         }
@@ -129,7 +130,7 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE_FOR_INVALID_VALUE("MlaPrologV4", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMlaPrologV4", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
         return false;
     }
     return true;
@@ -178,7 +179,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV4", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
                                               "When weightQuantMode==" + std::to_string(weightQuantMode) +
                                                   ", must be within " + supportedStr);
         return false;
@@ -190,7 +191,7 @@ bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
 {
     std::set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
     if (supportedQueryQuantMode.find(queryQuantMode) == supportedQueryQuantMode.end()) {
-        OP_LOGE_FOR_INVALID_VALUE("MlaPrologV4", "queryQuantMode", std::to_string(queryQuantMode), "0 or 1");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMlaPrologV4", "queryQuantMode", std::to_string(queryQuantMode), "0 or 1");
         return false;
     }
     return true;
@@ -237,6 +238,34 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     };
 
+    // do_rope 开关关闭时 ropeSin/ropeCos 必须同时为空（null 或 shapeSize==0 的空 tensor）；
+    // 关闭且为空时，利用 TensorHolder 将 null 转为空 tensor 传入 inner，规避 inner 空 tensor 校验。
+    std::unique_ptr<TensorHolder> ropeSinHolder;
+    std::unique_ptr<TensorHolder> ropeCosHolder;
+    auto IsRopeInputEmpty = [](const aclTensor *rope) {
+        return rope == nullptr || rope->GetViewShape().GetShapeSize() == 0;
+    };
+    if (doRope) {
+        if (ropeSin == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
+            return ge::GRAPH_FAILED;
+        }
+        if (ropeCos == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (!IsRopeInputEmpty(ropeSin)) {
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
+            return ge::GRAPH_FAILED;
+        }
+        if (!IsRopeInputEmpty(ropeCos)) {
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
+            return ge::GRAPH_FAILED;
+        }
+        ropeSinHolder = std::make_unique<TensorHolder>(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));
+        ropeCosHolder = std::make_unique<TensorHolder>(ropeCos, aclDataType::ACL_BF16, std::string("ropeCos"));
+    }
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     aclDataType queryNormDataType =
@@ -252,15 +281,15 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
     auto dequantScaleQNormHolder =
         TensorHolder(dequantScaleQNormOutOptional, dequantScaleQNormDataType, std::string("dequantScaleQNormOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV4", "dequantScaleQNopeOut");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "dequantScaleQNopeOut");
         return ge::GRAPH_FAILED;
     }
     if (queryNormOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV4", "queryNormOut");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "queryNormOut");
         return ge::GRAPH_FAILED;
     }
     if (dequantScaleQNormOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV4", "dequantScaleQNormOut");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "dequantScaleQNormOut");
         return ge::GRAPH_FAILED;
     }
     // weightQuantMode == 2,4,5:全量化场景(int8,fp8,hif8)
@@ -280,7 +309,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
 
-    return aclnnInnerMlaPrologV4GetWorkspaceSize(
+    return aclnnInnerMlaPrologV3V1GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,
         dequantScaleWUqQrOptional, dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional,
@@ -293,7 +322,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
 aclnnStatus aclnnMlaPrologV4WeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      const aclrtStream stream)
 {
-    return aclnnInnerMlaPrologV4(workspace, workspaceSize, executor, stream);
+    return aclnnInnerMlaPrologV3V1(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

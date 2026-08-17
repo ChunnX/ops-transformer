@@ -124,7 +124,7 @@ NpuArch MlaPrologTilingCheck::GetCurNpuArch() const
 // =================================全量参数校验=================================
 bool MlaPrologTilingCheck::CheckAttrsRange() const
 {
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (GetCurNpuArch() == NpuArch::DAV_3510) {
             const std::unordered_set<uint32_t> supportedWeightQuantMode{0U, 1U, 2U, 3U, 4U, 5U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
@@ -181,7 +181,7 @@ bool MlaPrologTilingCheck::CheckAttrsNotNull() const
 
     OP_CHECK_IF(context_.cacheMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_.opName, "cacheMode"), return false);
 
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         OP_CHECK_IF(context_.queryNormFlag == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_.opName, "queryNormFlag"),
                     return false);
 
@@ -231,8 +231,8 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 OP_LOGE_FOR_INVALID_VALUE(context_.opName, "He", std::to_string(baseShapeInfo_.heSize),
                                           ConvertContainerToStringV3(supportedHeSize)),
                 return ge::GRAPH_FAILED);
-    // MlaPrologV4：N ∈ [1, 128]；MlaProlog / MlaPrologV2 /MlaPrologV3：N 取固定枚举值
-    if (std::strncmp(context_.opType, V4_OP_NAME, OP_NAME_LEN) == 0) {
+    // MlaPrologV3：N ∈ [1, 128]；MlaProlog / MlaPrologV2 ：N 取固定枚举值
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         OP_CHECK_IF((baseShapeInfo_.nSize < 1U || baseShapeInfo_.nSize > 128U),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "N", std::to_string(baseShapeInfo_.nSize),
                                               "N size should be in [1, 128]"),
@@ -309,7 +309,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
 {
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedHcqSize{1536U, 2048U};
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hcq", std::to_string(baseShapeInfo_.hcqSize),
@@ -325,7 +325,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckDSize() const
 {
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedDSize{128U, 192U};
         OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "D", std::to_string(baseShapeInfo_.dSize),
@@ -341,7 +341,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDSize() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
 {
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         uint32_t supportedDtileSize = baseShapeInfo_.hckvSize;
         if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
             supportedDtileSize +=
@@ -430,12 +430,20 @@ void MlaPrologTilingCheck::FillRequiredParamShapeWithDims()
 
 void MlaPrologTilingCheck::FillTokenAndQueryShapes()
 {
+    auto fillRopeShape = [this](const std::string &ropeName, const BaseParaInfo &ropeParam,
+                                const std::vector<uint32_t> &validShape) {
+        if (IsRopeDisabled() && IsEmptyTensor(ropeParam)) {
+            expectedParamInfo_.emplace(ropeName, std::vector<uint32_t>{0});
+        } else {
+            expectedParamInfo_.emplace(ropeName, validShape);
+        }
+    };
     if (scenarioInfo_.batchSeqFusedFlag_) {
         expectedParamInfo_.emplace(TOKEN_X_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.heSize});
-        expectedParamInfo_.emplace(ROPE_SIN_NAME,
-                                   std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.drSize});
-        expectedParamInfo_.emplace(ROPE_COS_NAME,
-                                   std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.drSize});
+        fillRopeShape(ROPE_SIN_NAME, context_.ropeSin,
+                      std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.drSize});
+        fillRopeShape(ROPE_COS_NAME, context_.ropeCos,
+                      std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.drSize});
         if ((scenarioInfo_.cacheMode_ != CACHE_MODE::BSND) && (scenarioInfo_.cacheMode_ != CACHE_MODE::TND)) {
             expectedParamInfo_.emplace(CACHE_INDEX_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize});
             expectedParamInfo_[CACHE_INDEX_NAME].dtype = ge::DT_INT64;
@@ -447,10 +455,10 @@ void MlaPrologTilingCheck::FillTokenAndQueryShapes()
     } else {
         expectedParamInfo_.emplace(
             TOKEN_X_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.heSize});
-        expectedParamInfo_.emplace(ROPE_SIN_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size,
-                                                                        baseShapeInfo_.drSize});
-        expectedParamInfo_.emplace(ROPE_COS_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size,
-                                                                        baseShapeInfo_.drSize});
+        fillRopeShape(ROPE_SIN_NAME, context_.ropeSin,
+                      std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.drSize});
+        fillRopeShape(ROPE_COS_NAME, context_.ropeCos,
+                      std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.drSize});
         if ((scenarioInfo_.cacheMode_ != CACHE_MODE::BSND) && (scenarioInfo_.cacheMode_ != CACHE_MODE::TND)) {
             expectedParamInfo_.emplace(CACHE_INDEX_NAME,
                                        std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size});
@@ -506,7 +514,7 @@ void MlaPrologTilingCheck::FillOptionalOutputParamShapeWithDims()
         FillOptionalOutputParamShapeWithDimsV2();
     }
 
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         FillOptionalOutputParamShapeWithDimsV3();
     }
 }
@@ -682,7 +690,7 @@ void MlaPrologTilingCheck::FillFullQuantParamInfo()
     expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[WEIGHT_DKV_KR_NAME].dtype = ge::DT_INT8;
 
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && IsMlaPrologV3Family(context_.opType)) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[TOKEN_X_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -708,7 +716,7 @@ void MlaPrologTilingCheck::FillFullKVQuantParamInfo()
     expectedParamInfo_[QUERY_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && IsMlaPrologV3Family(context_.opType)) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[QUERY_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -719,7 +727,7 @@ void MlaPrologTilingCheck::FillFullKVQuantParamInfo()
             expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_HIFLOAT8;
         }
     }
-    if (IsMlaPrologV3Family(context_.opType)) {
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         expectedParamInfo_.emplace(QUANT_SCALE_CKV_NAME, std::vector<uint32_t>{1});
     } else {
         expectedParamInfo_.emplace(QUANT_SCALE_CKV_NAME, std::vector<uint32_t>{1, baseShapeInfo_.hckvSize});
@@ -735,7 +743,7 @@ void MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo()
     expectedParamInfo_.emplace(K_NOPE_CLIP_ALPHA_NAME, std::vector<uint32_t>{1});
     expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && IsMlaPrologV3Family(context_.opType)) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -864,7 +872,7 @@ void MlaPrologTilingCheck::GenActualParamInfo()
     actualParamInfo_.emplace(DEQUANT_SCALE_Q_NOPE_NAME, context_.dequantScaleQNope);
     actualParamInfo_.emplace(QUERY_NORM_NAME, context_.queryNorm);
     actualParamInfo_.emplace(DEQUANT_SCALE_Q_NORM_NAME, context_.dequantScaleQNorm);
-    if (IsMlaPrologV3Family(context_.opType) &&
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
         *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
         actualParamInfo_.erase(KR_CACHE_NAME);
         actualParamInfo_.erase(KR_CACHE_OUT_NAME);
@@ -874,7 +882,7 @@ void MlaPrologTilingCheck::GenActualParamInfo()
 ge::graphStatus MlaPrologTilingCheck::CheckCkvkrRepoMode()
 {
     ge::graphStatus isCorrect{ge::GRAPH_SUCCESS};
-    if (!IsMlaPrologV3Family(context_.opType)) {
+    if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         return isCorrect;
     }
     if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
@@ -897,7 +905,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCkvkrRepoMode()
 
 ge::graphStatus MlaPrologTilingCheck::CheckCacheIndexDim()
 {
-    if (!IsMlaPrologV3Family(context_.opType)) {
+    if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         return ge::GRAPH_SUCCESS;
     }
     if (!scenarioInfo_.batchSeqFusedFlag_) {
@@ -976,7 +984,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
 
 ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
 {
-    if (!IsMlaPrologV3Family(context_.opType)) {
+    if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -1136,17 +1144,35 @@ bool MlaPrologTilingCheck::CheckRmsnormGammaCkv() const
 
 bool MlaPrologTilingCheck::CheckRopeSin() const
 {
+    // do_rope=false 且 ropeSin 为空 tensor（由 op_api 空 tensor 转换产生）时跳过常规单参数校验
+    if (IsRopeDisabled() && IsEmptyTensor(context_.ropeSin)) {
+        return true;
+    }
     return IsSingleParamValid(context_.ropeSin, ROPE_SIN_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
 }
 
 bool MlaPrologTilingCheck::CheckRopeCos() const
 {
+    // do_rope=false 且 ropeCos 为空 tensor（由 op_api 空 tensor 转换产生）时跳过常规单参数校验
+    if (IsRopeDisabled() && IsEmptyTensor(context_.ropeCos)) {
+        return true;
+    }
     return IsSingleParamValid(context_.ropeCos, ROPE_COS_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
+}
+
+bool MlaPrologTilingCheck::IsRopeDisabled() const
+{
+    return context_.doRope != nullptr && !(*(context_.doRope));
+}
+
+bool MlaPrologTilingCheck::IsEmptyTensor(const BaseParaInfo &param) const
+{
+    return param.shape != nullptr && param.shape->GetStorageShape().GetShapeSize() == 0;
 }
 
 bool MlaPrologTilingCheck::CheckCacheIndex() const
 {
-    return IsMlaPrologV3Family(context_.opType) ||
+    return std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 ||
            IsSingleParamValid(context_.cacheIndex, CACHE_INDEX_NAME, {ge::DT_INT64}, {ge::FORMAT_ND, ge::FORMAT_NCHW},
                               {1, 2});
 }
@@ -1154,7 +1180,7 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (!IsMlaPrologV3Family(context_.opType)) {
+        if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
             return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                       {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
         } else {
@@ -1163,7 +1189,7 @@ bool MlaPrologTilingCheck::CheckKvCache() const
                                       {ge::FORMAT_ND, ge::FORMAT_NCHW}, {3, 4});
         }
     } else {
-        if (!IsMlaPrologV3Family(context_.opType)) {
+        if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
             return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                       {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
         } else {
@@ -1179,7 +1205,7 @@ bool MlaPrologTilingCheck::CheckKrCache() const
         return IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                   {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
     } else {
-        return (IsMlaPrologV3Family(context_.opType) &&
+        return (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
                 *(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) ||
                IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                   {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
@@ -1240,7 +1266,7 @@ bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
 {
-    if (!IsMlaPrologV3Family(context_.opType)) {
+    if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BSND, CACHE_MODE_LEN) != 0 &&
             std::strncmp(context_.cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) != 0) {
             OP_LOGE_FOR_INVALID_VALUE(context_.opName, "cacheMode", std::string(context_.cacheMode),

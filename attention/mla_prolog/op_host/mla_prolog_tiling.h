@@ -120,25 +120,13 @@ constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 constexpr char V1_OP_NAME[]{"MlaProlog"};
 constexpr char V2_OP_NAME[]{"MlaPrologV2"};
 constexpr char V3_OP_NAME[]{"MlaPrologV3"};
-constexpr char V4_OP_NAME[]{"MlaPrologV4"};
 
 constexpr uint32_t CACHE_MODE_LEN =
     std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
               sizeof(CACHE_MODE_PA_BLK_BSND), sizeof(CACHE_MODE_PA_BLK_NZ)});
 
 constexpr uint32_t OP_NAME_LEN =
-    std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME), sizeof(V4_OP_NAME)});
-
-inline bool IsMlaPrologV3Family(const char *opType)
-{
-    return opType != nullptr && (std::strncmp(opType, V3_OP_NAME, OP_NAME_LEN) == 0 ||
-                                 std::strncmp(opType, V4_OP_NAME, OP_NAME_LEN) == 0);
-}
-
-inline bool IsMlaPrologV4(const char *opType)
-{
-    return opType != nullptr && std::strncmp(opType, V4_OP_NAME, OP_NAME_LEN) == 0;
-}
+    std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME)});
 
 struct MlaPrologBaseShapeInfo {
     uint32_t bSize = 0;        // B
@@ -466,7 +454,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
-    bool enableRope_ = true;             // rope开关写入 tiling key ENABLE_ROPE；仅 V4 可由 do_rope attr 关闭
+    bool enableRope_ = true;             // rope开关写入 tiling key ENABLE_ROPE；可由 do_rope attr 关闭（默认 true）
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
