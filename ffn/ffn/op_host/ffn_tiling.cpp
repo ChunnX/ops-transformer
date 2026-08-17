@@ -241,7 +241,7 @@ protected:
                                     matmul_tiling::DataType matmulDtype);
     ge::graphStatus FFNSetMM2Tiling(const gert::TilingContext *context, const matmul_tiling::PlatformInfo &platInfo,
                                     matmul_tiling::DataType matmulDtype);
-    ge::graphStatus FFNSetUbDivideBlk();
+    ge::graphStatus FFNSetUbDivideBlk(const gert::TilingContext *context);
     ge::graphStatus FFNCalUbSize(uint32_t baseN, uint32_t divideBlkNum, uint32_t ioBlkNum, uint32_t &baseM);
     inline ge::graphStatus N1EqualZeroWithBias2(uint64_t ubSize);
     ge::graphStatus TilingCalcAndSetting(const gert::TilingContext *context,
@@ -814,9 +814,14 @@ ge::graphStatus FFNTiling::FFNParamsCheck(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FFNTiling::FFNSetUbDivideBlk()
+ge::graphStatus FFNTiling::FFNSetUbDivideBlk(const gert::TilingContext *context)
 {
     ubBlockAlign = UB_PER_BLOCK_ALIGN;
+    OP_LOGD(context->GetNodeName(),
+            "FFNSetUbDivideBlk: xDataType=%s, weight1Dtype=%s, outputDtype=%s, innerPrecise=%d.",
+            TypeUtils::DataTypeToSerialString(xDataType).c_str(),
+            TypeUtils::DataTypeToSerialString(weight1Dtype).c_str(),
+            TypeUtils::DataTypeToSerialString(outputDtype).c_str(), innerPrecise);
     if (xDataType == ge::DT_FLOAT16 && (weight1Dtype == ge::DT_INT8 || weight1Dtype == ge::DT_INT4)) {
         ubDivideBlkNum = UB_ANTIQUANT_BLOCK_NUM_FP16;
         ubIoBlkNum = UB_ANTIQUANT_IO_USED_BLOCK_FP16;
@@ -848,9 +853,22 @@ ge::graphStatus FFNTiling::FFNSetUbDivideBlk()
             ubIoBlkNum = UB_QUANT_IO_BLOCK_NUM_FP16_OUT;
             return ge::GRAPH_SUCCESS;
         } else {
+            OP_LOGE(context->GetNodeName(),
+                    "FFNSetUbDivideBlk failed: unsupported data type combination. xDataType=%s, weight1Dtype=%s, "
+                    "outputDtype=%s. When xDataType is INT8, outputDtype only supports BF16/FP16.",
+                    TypeUtils::DataTypeToSerialString(xDataType).c_str(),
+                    TypeUtils::DataTypeToSerialString(weight1Dtype).c_str(),
+                    TypeUtils::DataTypeToSerialString(outputDtype).c_str());
             return ge::GRAPH_FAILED;
         }
     }
+    OP_LOGE(context->GetNodeName(),
+            "FFNSetUbDivideBlk failed: unsupported data type combination. xDataType=%s, weight1Dtype=%s, "
+            "outputDtype=%s, innerPrecise=%d. xDataType only supports FP16/BF16/INT8 and this combination is not "
+            "covered by any supported branch.",
+            TypeUtils::DataTypeToSerialString(xDataType).c_str(),
+            TypeUtils::DataTypeToSerialString(weight1Dtype).c_str(),
+            TypeUtils::DataTypeToSerialString(outputDtype).c_str(), innerPrecise);
     return ge::GRAPH_FAILED;
 }
 
@@ -1004,7 +1022,7 @@ ge::graphStatus FFNTiling::CalMM1TilingBaseMNKBasicBlock(const gert::TilingConte
     uint32_t coreNum = tilingData.ffnBaseParams.get_coreNum();
     uint32_t baseN = std::min<uint32_t>(SixteenAlign(n1), BEST_BASEN);
 
-    OP_CHECK_IF(FFNSetUbDivideBlk() != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(FFNSetUbDivideBlk(context) != ge::GRAPH_SUCCESS,
                OP_LOGW(context, "set ub device block failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CalMM1BaseM(context, baseN, platInfo.l0CSize, mm1VaildUbBytes, baseM1_) != ge::GRAPH_SUCCESS,
                OP_LOGW(context, "calculate mm1 baseM failed."), return ge::GRAPH_FAILED);
@@ -1076,7 +1094,7 @@ ge::graphStatus FFNTiling::CalMM1TilingBaseMNK(const gert::TilingContext *contex
     }
     // calculate vector baseM by ub size
     uint32_t baseM = mm1VaildUbBytes / (baseN * xDataTypeSize);
-    if (FFNSetUbDivideBlk() == ge::GRAPH_SUCCESS) {
+    if (FFNSetUbDivideBlk(context) == ge::GRAPH_SUCCESS) {
         OP_CHECK_IF(FFNCalUbSize(baseN, ubDivideBlkNum, ubIoBlkNum, baseM) != ge::GRAPH_SUCCESS,
                    OP_LOGW(context, "calculate ub failed."), return ge::GRAPH_FAILED);
     }
@@ -1649,7 +1667,7 @@ ge::graphStatus FFNTiling::FFNSingleCoreTiling(const gert::TilingContext *contex
 
     uint32_t maxBaseM = mm1VaildUbBytes / (baseN * xDataTypeSize);
     uint32_t baseM = MAX_BASE_BLOCK / baseN;
-    if (FFNSetUbDivideBlk() == ge::GRAPH_SUCCESS) {
+    if (FFNSetUbDivideBlk(context) == ge::GRAPH_SUCCESS) {
         OP_CHECK_IF(FFNCalUbSize(baseN, ubDivideBlkNum, ubIoBlkNum, baseM) != ge::GRAPH_SUCCESS,
                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "antiquant calculate ub failed."), return ge::GRAPH_FAILED);
     }
