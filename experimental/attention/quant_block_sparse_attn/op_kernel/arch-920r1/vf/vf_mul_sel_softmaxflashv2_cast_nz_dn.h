@@ -32,7 +32,8 @@ constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_ZERO = {
     RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
 __simd_vf__ inline void RescaleRound0VF(
-    __ubuf__ fp8_e4m3fn_t *pTensor, __ubuf__ float *alphaTensor, const uint32_t realK)
+    __ubuf__ fp8_e4m3fn_t *pTensor, __ubuf__ float *alphaTensor, __ubuf__ float *combinedAlphaTensor,
+    const uint32_t realK)
 {
     constexpr uint32_t BLOCK_ELEMS = 32U;
     constexpr uint32_t FORM_STRIDE_BLOCKS = 65U;
@@ -42,7 +43,9 @@ __simd_vf__ inline void RescaleRound0VF(
     RegTensor<fp8_e4m3fn_t> pFp8Reg;
     RegTensor<float> pFp32Reg;
     RegTensor<float> alphaReg;
+    RegTensor<float> combinedAlphaReg;
     MaskReg fp32Mask = CreateMask<float, MaskPattern::VL32>();
+    MaskReg fp32AllMask = CreateMask<float, MaskPattern::ALL>();
 
     for (uint32_t group = 0U; group < repeat; ++group) {
         uint32_t validColumns = realK - group * 64U;
@@ -63,14 +66,21 @@ __simd_vf__ inline void RescaleRound0VF(
             }
         }
     }
+
+    LoadAlign(alphaReg, alphaTensor);
+    LoadAlign(combinedAlphaReg, combinedAlphaTensor);
+    Mul(combinedAlphaReg, combinedAlphaReg, alphaReg, fp32AllMask);
+    StoreAlign<float>(combinedAlphaTensor, combinedAlphaReg, fp32AllMask);
 }
 
 __aicore__ inline void RescaleRound0(
-    LocalTensor<fp8_e4m3fn_t> &pTensor, LocalTensor<float> &alphaTensor, const uint32_t realK)
+    LocalTensor<fp8_e4m3fn_t> &pTensor, LocalTensor<float> &alphaTensor,
+    LocalTensor<float> &combinedAlphaTensor, const uint32_t realK)
 {
     __ubuf__ fp8_e4m3fn_t *pUb = (__ubuf__ fp8_e4m3fn_t *)pTensor.GetPhyAddr();
     __ubuf__ float *alphaUb = (__ubuf__ float *)alphaTensor.GetPhyAddr();
-    RescaleRound0VF(pUb, alphaUb, realK);
+    __ubuf__ float *combinedAlphaUb = (__ubuf__ float *)combinedAlphaTensor.GetPhyAddr();
+    RescaleRound0VF(pUb, alphaUb, combinedAlphaUb, realK);
 }
 
 // Safe pre-pad value for AttenTail variants. Must be a large negative finite float
