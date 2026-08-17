@@ -18,9 +18,10 @@ BENCH_MODE=0
 DEV_COUNT=2
 DEV_IDS=""
 PEER=""
+VERIFY="OFF"
 
-SHORT=v:,b:,c:,r:,n:,s:,k:,l:,m:,o:,d:,i:,p:
-LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,num-sqe:,sqe-bytes:,buf-bytes:,db-interval:,loop-count:,sqe-mode:,bench-mode:,dev-count:,dev-ids:,peer:
+SHORT=v:,b:,c:,r:,n:,s:,k:,l:,m:,o:,d:,i:,p:,g:
+LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,num-sqe:,sqe-bytes:,buf-bytes:,db-interval:,loop-count:,sqe-mode:,bench-mode:,dev-count:,dev-ids:,peer:,verify:
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
@@ -39,6 +40,7 @@ while :; do
     -d | --dev-count)       DEV_COUNT="$2"; shift 2 ;;
     -i | --dev-ids)         DEV_IDS="$2"; shift 2 ;;
     -p | --peer)            PEER="$2"; shift 2 ;;
+    -g | --verify)          VERIFY="$2"; shift 2 ;;
     --) shift; break ;;
     *) echo "[ERROR] Unexpected option: $1"; break ;;
     esac
@@ -72,9 +74,9 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== URMA P2P Bench =========="
     echo "dev_count=$DEV_COUNT dev_ids=$DEV_IDS num_sqe=$NUM_SQE sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES db_interval=$DB_INTERVAL"
-    echo "loop_count=$LOOP_COUNT sqe_mode=$SQE_MODE bench_mode=$BENCH_MODE peer=$PEER"
+    echo "loop_count=$LOOP_COUNT sqe_mode=$SQE_MODE bench_mode=$BENCH_MODE peer=$PEER verify=$VERIFY"
     echo "====================================="
-    RUN_ARGS="--dev_count ${DEV_COUNT} --num_sqe ${NUM_SQE} --sqe_bytes ${SQE_BYTES} --buf_bytes ${BUF_BYTES} --db_interval ${DB_INTERVAL} --loop_count ${LOOP_COUNT} --sqe_mode ${SQE_MODE} --bench_mode ${BENCH_MODE}"
+    RUN_ARGS="--dev_count ${DEV_COUNT} --num_sqe ${NUM_SQE} --sqe_bytes ${SQE_BYTES} --buf_bytes ${BUF_BYTES} --db_interval ${DB_INTERVAL} --loop_count ${LOOP_COUNT} --sqe_mode ${SQE_MODE} --bench_mode ${BENCH_MODE} --verify ${VERIFY}"
     if [ -n "$DEV_IDS" ]; then RUN_ARGS="$RUN_ARGS --dev_ids=$DEV_IDS"; fi
     if [ -n "$PEER" ]; then RUN_ARGS="$RUN_ARGS --peer=$PEER"; fi
     ./out/bin/test_urma_p2p_bench $RUN_ARGS

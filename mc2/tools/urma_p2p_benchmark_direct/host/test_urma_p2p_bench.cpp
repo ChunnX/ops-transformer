@@ -66,9 +66,15 @@ struct BenchArgs {
     std::vector<uint32_t> devIds;
     uint32_t peerOverride = 0;
     bool hasPeer = false;
+    bool verify = false;
 };
 
 static BenchArgs g_args;
+
+constexpr uint64_t P2P_STATE_SIZE_HOST = 350UL * 1024UL;
+static uint8_t* g_verifyPattern = nullptr;
+static size_t g_verifyBytes = 0;
+static uint32_t g_verifyChunks = 0;
 
 struct BenchCtx {
     uint32_t rank{0};
@@ -426,12 +432,19 @@ struct ThreadContext {
 };
 
 static std::atomic<uint32_t> g_barrierCount{0};
+static std::atomic<uint32_t> g_barrierGen{0};
 
 static void barrier(uint32_t total)
 {
-    g_barrierCount.fetch_add(1, std::memory_order_acq_rel);
-    while (g_barrierCount.load(std::memory_order_acquire) < total) {
-        std::this_thread::yield();
+    uint32_t gen = g_barrierGen.load(std::memory_order_acquire);
+    uint32_t count = g_barrierCount.fetch_add(1, std::memory_order_acq_rel) + 1;
+    if (count == total) {
+        g_barrierCount.store(0, std::memory_order_release);
+        g_barrierGen.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+        while (g_barrierGen.load(std::memory_order_acquire) == gen) {
+            std::this_thread::yield();
+        }
     }
 }
 
@@ -502,6 +515,33 @@ int Sample(void *arg)
     tilingHost.loopCount      = args->loopCount;
     tilingHost.benchMode      = args->benchMode;
 
+    // rank 0 sends, rank 1 waits (P2P one-way benchmark)
+    bool isSender = (rank == 0);
+
+    // Verify mode: sender fills workspace data region with position-encoded pattern
+    // Pattern: each uint32 = chunk_index * 0x10000 + word_offset_in_chunk
+    // Trailing bytes (if sqeBytes not 4-byte aligned): chunk_index * 0x5A + byte_offset
+    if (args->verify && isSender) {
+        uint32_t numSlotsU32 = (uint32_t)((args->sqeBytes > 0) ? (args->bufBytes / args->sqeBytes) : 1);
+        g_verifyChunks = (args->loopCount < numSlotsU32) ? args->loopCount : numSlotsU32;
+        g_verifyBytes = (size_t)g_verifyChunks * args->sqeBytes;
+        g_verifyPattern = (uint8_t*)malloc(g_verifyBytes);
+        for (uint32_t c = 0; c < g_verifyChunks; c++) {
+            uint8_t* chunk = g_verifyPattern + (size_t)c * args->sqeBytes;
+            size_t numU32 = args->sqeBytes / sizeof(uint32_t);
+            for (size_t k = 0; k < numU32; k++) {
+                reinterpret_cast<uint32_t*>(chunk)[k] = c * 0x10000U + (uint32_t)k;
+            }
+            for (size_t k = numU32 * sizeof(uint32_t); k < args->sqeBytes; k++) {
+                chunk[k] = (uint8_t)(c * 0x5A + k);
+            }
+        }
+        void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + P2P_STATE_SIZE_HOST);
+        aclrtMemcpy(dataRegion, g_verifyBytes, g_verifyPattern, g_verifyBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        fprintf(stderr, "[INFO] rank %u: verify pattern filled (%zu bytes, %u chunks)\n",
+                rank, g_verifyBytes, g_verifyChunks);
+    }
+
     barrier(devCount);
     fprintf(stderr, "[INFO] rank %u: barrier passed, launching kernel (loop=%u)\n", rank, args->loopCount);
 
@@ -510,9 +550,6 @@ int Sample(void *arg)
         fprintf(stderr, "[INFO] rank %u: building HcclCombinOpParam for mc2_native...\n", rank);
         build_hccl_context(ctx, rank, devCount, args->bufBytes);
     }
-
-    // rank 0 sends, rank 1 waits (P2P one-way benchmark)
-    bool isSender = (rank == 0);
 
     if (isSender) {
         aclrtSynchronizeStream(stream);
@@ -579,7 +616,41 @@ int Sample(void *arg)
                lastAssembleNs / 1000.0, lastIssueNs / 1000.0, lastWaitNs / 1000.0,
                lastTotalNs / 1000.0, lastBwGBs);
     } else {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        if (!args->verify) {
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        }
+    }
+
+    // Verify mode: wait for sender to finish kernel, then receiver checks data
+    if (args->verify) {
+        barrier(devCount);
+        if (!isSender) {
+            uint8_t* recvBuf = (uint8_t*)malloc(g_verifyBytes);
+            void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + P2P_STATE_SIZE_HOST);
+            aclrtMemcpy(recvBuf, g_verifyBytes, dataRegion, g_verifyBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+
+            bool pass = true;
+            size_t mismatchOff = 0;
+            for (size_t j = 0; j < g_verifyBytes; j++) {
+                if (recvBuf[j] != g_verifyPattern[j]) {
+                    pass = false;
+                    mismatchOff = j;
+                    break;
+                }
+            }
+
+            if (pass) {
+                printf("[rank %u (dev %u)] VERIFY: PASS (%zu bytes, %u chunks)\n",
+                       rank, physicalDev, g_verifyBytes, g_verifyChunks);
+            } else {
+                uint32_t chunkIdx = (uint32_t)(mismatchOff / args->sqeBytes);
+                size_t offsetInChunk = mismatchOff % args->sqeBytes;
+                printf("[rank %u (dev %u)] VERIFY: FAIL at byte %zu (chunk %u, offset %zu): expected 0x%02x, got 0x%02x\n",
+                       rank, physicalDev, mismatchOff, chunkIdx, offsetInChunk,
+                       g_verifyPattern[mismatchOff], recvBuf[mismatchOff]);
+            }
+            free(recvBuf);
+        }
     }
 
     aclrtFree(timingGm);
@@ -614,6 +685,7 @@ int main(int argc, char *argv[])
         else if ((val = find_val("--bench_mode")).size()) g_args.benchMode = (uint32_t)std::stoul(val);
         else if ((val = find_val("--dev_count")).size()) g_args.devCount = (uint32_t)std::stoul(val);
         else if ((val = find_val("--peer")).size()) { g_args.peerOverride = (uint32_t)std::stoul(val); g_args.hasPeer = true; }
+        else if ((val = find_val("--verify")).size()) g_args.verify = (val == "ON" || val == "1" || val == "true");
         else if ((val = find_val("--dev_ids")).size()) {
             g_args.devIds.clear();
             std::stringstream ss(val);
@@ -630,6 +702,11 @@ int main(int argc, char *argv[])
     }
     g_args.devCount = (uint32_t)g_args.devIds.size();
 
+    if (g_args.verify && g_args.sqeMode != 3) {
+        fprintf(stderr, "[ERROR] --verify only supported with --sqe_mode=3 (mc2_native)\n");
+        return 1;
+    }
+
     fprintf(stderr, "[INFO] ===== URMA P2P Bench =====\n");
     fprintf(stderr, "[INFO] dev_ids=");
     for (auto d : g_args.devIds) fprintf(stderr, "%u ", d);
@@ -642,6 +719,7 @@ int main(int argc, char *argv[])
             g_args.sqeMode == 3 ? "mc2_native(moe_distribute_base)" : "Write(samples)",
             g_args.benchMode, g_args.benchMode == 0 ? "batch_write" : "write_drain_loop");
     if (g_args.hasPeer) fprintf(stderr, " peer=rank %u", g_args.peerOverride);
+    if (g_args.verify) fprintf(stderr, " verify=ON");
     fprintf(stderr, "\n");
 
     aclInit(nullptr);
