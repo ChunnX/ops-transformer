@@ -59,7 +59,7 @@ static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *cont
 {
     constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
     OP_CHECK_IF(context == nullptr,
-                OP_LOGE(OP_NAME, "Parameter [context] does not support nullptr."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "context", "does not support nullptr"),
                 return ge::GRAPH_FAILED);
 
     const struct {
@@ -75,7 +75,7 @@ static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *cont
          context->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0), "weightScale[0]"}};
     for (const auto &input : inputs) {
         OP_CHECK_IF(input.desc == nullptr || input.shape == nullptr,
-                    OP_LOGE(OP_NAME, "Parameter [%s] does not support nullptr.", input.name),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, input.name, "does not support nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -129,7 +129,8 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseC
 {
     // get info
     OP_CHECK_IF(context == nullptr,
-                OP_LOGE("GroupedMatmulSwigluQuantV2", "Parameter [context] does not support nullptr."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "context",
+                                                         "does not support nullptr"),
                 return GRAPH_FAILED);
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
