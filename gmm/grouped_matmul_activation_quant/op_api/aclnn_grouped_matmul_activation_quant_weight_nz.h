@@ -63,11 +63,11 @@ extern "C" {
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclTensor *x,
-    const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
-    const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
-    int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode,
-    const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+                                                                                const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
+                                                                                const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
+                                                                                int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode,
+                                                                                const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
+                                                                                uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatmulActivationQuantWeightNz的第二段接口，用于执行计算。
@@ -80,7 +80,7 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(void *workspace,
-    uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+                                                                uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
