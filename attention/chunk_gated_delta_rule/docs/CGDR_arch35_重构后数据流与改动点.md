@@ -1,48 +1,67 @@
 # CGDR arch35 重构后数据流与改动点
 
 > 本文档描述重构后 arch35 平台 CGDR 算子的完整计算流程，与重构前逐项对比。
-> 重构仅保留 **R2**（strided GM 直读），数学公式与重构前完全一致。
+> 当前保留 **R2**（strided GM 直读），计划实现 **R4**（beta 列缩放）和 **R7**（kg 系数移到 v_new）。
 
 ---
 
 ## 0 重构范围说明
 
-初始重构方案曾包含 R2-R7 六项改动，经与参考实现（`chunk_gated_delta_rule_golden.py`）
-逐一比对后，R3/R5/R7 存在数学公式错误已回退；R4 经修正后方案可行（待实现）；
-R6 存在 strided 读取 bug 已回退。
-当前保留 **R2**（纯数据流优化），计划实现 **R4 正确方案**（beta 列缩放）。
+初始重构方案曾包含 R2-R7 六项改动。经与参考实现（`chunk_gated_delta_rule_golden.py`）
+逐一比对后：R3/R5/R6 因数学错误或实现 bug 回退；R4/R7 经修正后方案可行（待实现）；
+R2 已实现（纯数据流优化）。
 
 | 编号 | 需求 | 状态 | 原因 |
 |:-----|:-----|:-----|:-----|
 | R2 | 省略 QKPreProcess，matmul 直接读 strided GM | **已实现** | 纯数据流优化，数学不变 |
-| R3 | K 衰减系数移至 Stage2 | **回退** | 对 A@V_beta 项错误施加 g_cum_exp 缩放 |
+| R3 | K 衰减系数 g_exp 移至 Stage2 | **回退** | g_exp 在 matmul 内维（求和下标），不可移到结果行 |
 | R4 | beta 从 V/K 左乘移到 A 右乘（列缩放） | **待实现** | 原方案用行缩放错误，改为列缩放后数学等价 |
-| R5 | kBetaInv 用 A_beta*(-gamma)@K | **回退** | 逐元素乘 γ ≠ 矩阵乘对角 g_exp；可并入 R4 列缩放 |
+| R5 | kBetaInv 用 A_beta*(-gamma)@K | **回退** | 逐元素乘 γ ≠ 矩阵乘对角 g_exp；意图可并入 R4 |
 | R6 | Stage2/3 从原始 g 重算 cumsumg | **回退** | g 布局 (T,Nv) 非连续，DataCopyPad 读到跨 head 垃圾数据 |
-| R7 | 删除 kg_，Stage2 直接用 K | **回退** | `g_exp[-1]/g_exp[j] ≠ g_exp[-1]`，数学不等价 |
+| R7 | 删除 kg_，Stage2 直接用 K | **待实现** | 原方案标量缩放错误，改为逐行向量缩放后数学等价 |
 
-### 数学错误与正确方案详解
+### 数学详解
 
-以下用参考实现 `chunk_gated_delta_rule_golden.py:102-124` 的正确公式对照说明：
+以下用参考实现 `chunk_gated_delta_rule_golden.py:102-149` 的正确公式对照说明。
 
 **正确公式（参考实现）：**
 ```python
+# Stage1
 k_beta = key * beta.unsqueeze(-1)          # K 乘 beta
 v_beta = value * beta.unsqueeze(-1)        # V 乘 beta
 attn = -((k_beta @ key.T) * decay_mask)    # KKT 含 beta，乘 gamma
-# 逐行前代求逆 (伍德伯里恒等式)
 attn = attn + I                            # A = (I - k_beta@K^T*gamma)^{-1}
-value = attn @ v_beta                      # v_inner = A @ (V*beta)，beta 在 V 中
+value = attn @ v_beta                      # v_inner = A @ (V*beta)
 k_cumdecay = attn @ (k_beta * g.exp())     # k_cumdecay = A @ (K*beta*g_exp)
+
+# Stage2 (per chunk)
+v_prime = k_cumdecay @ state               # 含 g_exp
+v_new = v_inner - v_prime
+state_new = state * g[:,-1].exp()
+           + (k * (g[:,-1] - g).exp()[...,None]).T @ v_new   # kg = K * d[:,None]
 ```
 
-矩阵形式（`D = diag(beta)`）：
+矩阵形式（`D = diag(beta)`, `G = diag(g_exp)`, `d = exp(g[-1]-g_cum)`）：
 ```
 KKT 含 beta:  attn = -D @ (K@K^T) * gamma
 求逆:         A = (I - D·kk·γ)^{-1}           (beta 在求逆内部, 不可移出)
 v_inner:      A @ D @ V                        (beta 乘 V 左边 = A 右边)
-k_cumdecay:   A @ D @ diag(g_exp) @ K          (beta 乘 K 左边 = A 右边)
+k_cumdecay:   A @ D @ G @ K                    (beta+g_exp 乘 K 左边 = A 右边)
+state_new:    state·exp(g[-1]) + v_new^T @ diag(d) @ K   (d 乘 K 左边 = v_new^T 右边)
 ```
+
+---
+
+**R3 为什么不能移到 Stage2：**
+
+g_exp 在 `k_cumdecay = A @ D @ G @ K` 中位于 A 右边（A 的列 = K 的行 = matmul 的**内维/求和下标**）：
+```
+k_cumdecay[i,d] = Σ_m A[i,m] · g_exp[m] · (-β[m]·K[m,d])
+                         ↑ g_exp[m] 在求和内部, 每项 m 不同
+```
+A 是下三角求逆矩阵（非对角），把不同 m 混在一起求和。求和完成后 g_exp[m] 的逐项权重信息不可逆地丢失，无法事后作为结果行缩放补回。等价地：`A @ diag(g) @ X ≠ diag(g) @ A @ X`（A 非对角不可交换）。
+
+---
 
 **R4 正确方案：** 利用结合律 `A @ D @ V = (A @ D) @ V`，将 beta 从 V/K 左边移到 A 右边。
 - `A_beta = A @ diag(beta)`（**列缩放**：第 j 列乘 beta[j]）
@@ -52,7 +71,7 @@ k_cumdecay:   A @ D @ diag(g_exp) @ K          (beta 乘 K 左边 = A 右边)
 **R4 原方案错误：**
 1. 从 KKT 中删除 beta → `A' = (I-kk·γ)⁻¹` ≠ `A = (I-kk·β·γ)⁻¹`（求逆不分配行缩放）
 2. 用行缩放 `diag(β)·A`（第 i 行乘 beta[i]）而非列缩放 `A·diag(β)`（第 j 列乘 beta[j]）
-3. `diag(β)·A ≠ A·diag(β)`（方阵不可交换，反例见下）
+3. `diag(β)·A ≠ A·diag(β)`（方阵不可交换）
 
 反例（`C=2`, `beta=[2,3]`）：
 ```
@@ -64,19 +83,28 @@ diag(β) @ A = [2 0] @ [a b] = [2a 2b]   (行缩放: 第1行×2, 第2行×3)
                                       ≠
 ```
 
-**R3 错误：** 将 g_cum_exp 从 k_cumdecay 移到 vInner 整体行缩放。
-- 正确：`v_inner = A@V_beta`（无 g_exp），`k_cumdecay = A@(K·β·g_exp)`（有 g_exp）
-- R3：`v_inner = (A@V_beta + A@(-K·β)@state) · g_exp`（A@V_beta 项多了 g_exp）
+---
 
-**R5 错误：** 用 `A_beta·(-γ)` 逐元素乘替代 `A@diag(-K·β·g_exp)` 矩阵乘。
+**R7 正确方案：** 利用结合律 `v^T @ diag(d) @ K = (v^T @ diag(d)) @ K = (v·d[:,None])^T @ K`，
+将 d 从 K 左边移到 v_new^T 右边（= v_new 的行缩放）。
+- `state_new += (v_new * d[:,None])^T @ K`（K 不再乘 d，直接用 strided GM）
+- `d[j] = exp(g[-1] - g_cum[j])`（逐行向量，每行 j 不同）
+
+**R7 原方案错误：** 用标量 `exp(g[-1])` 缩放 v_new，正确应为逐行向量 `exp(g[-1]-g_cum[j])`。
+- `d[j] = exp(g[-1]-g_cum[j])` 逐行不同（j 是 v_new 的行 = 求和下标）
+- `exp(g[-1])` 是标量，所有行相同
+- `d` 在 `v_new^T @ diag(d) @ K` 中位于 v_new^T 右边（v_new 的行 = 求和下标），可移到 v_new
+
+**R7 与 R3 的关键区别：**
+- R3 的 g_exp 在 `A @ diag(g) @ K` 中位于 A 右边（A 的列），A 非对角混合后不可移
+- R7 的 d 在 `v^T @ diag(d) @ K` 中位于 v^T 右边（v 的行），v^T @ diag(d) = (v·d)^T 可直接移
+
+---
+
+**R5 为什么回退：** 用 `A_beta·(-γ)` 逐元素乘替代 `A@diag(-K·β·g_exp)` 矩阵乘。
 - 正确：`k_cumdecay = A @ (-K·β·g_exp)` = `-A @ diag(β·g_exp) @ K`（矩阵乘对角阵）
 - R5：`k_cumdecay = (β·A'·(-γ)) @ K`（逐元素乘 γ 后矩阵乘 I）
 - R5 的意图（把 beta 从 K 移到 A）可由 R4 列缩放正确实现
-
-**R7 错误：** 假设 `v_new·exp(g[-1])` 等价于 `v_new·(g_exp[-1]/g_exp)`。
-- 正确：`state_new += v_new^T @ (K · exp(g[-1]-g_cum)[...,None])`（每行不同缩放）
-- R7：`state_new += (v_new·exp(g[-1]))^T @ K`（标量缩放，每行相同）
-- `exp(g[-1]-g_cum[j])` 是逐行向量，`exp(g[-1])` 是标量，二者不等价
 
 **R6 bug：** g 在 GM 中布局为 `(T, Nv)`，head `nvId` 的时间序列不连续。
 - 正确（Stage1 `GCopyInWithStride`）：`DataCopyInFp32WithStride(validLen, 1, src, nv_)`，srcStride=(nv-1)×4 字节
@@ -191,6 +219,100 @@ AIC: WaitFlag(0x5/0x6) → matmul4/5(读 A_beta)
 - 新增同步 flag 0xB（AIC→AIV，AttnInverseMMCompute 完成后）
 - AIV 额外 GM 读写（读 A → 列缩放 → 写 A_beta 回 attnWs）
 - 需读全量 beta（C 值，开销极小）
+
+---
+
+## 1.6 R7 正确方案详解（待实现）
+
+### 动机
+
+原始代码 Stage1 计算 `kg = K * d[:,None]`（`d = exp(g[-1]-g_cum)`）并写入 GM，
+Stage2 `CalStateNew` 用 `v_new^T @ kg`。
+R7 将 d 从 K 左边移到 v_new^T 右边（= v_new 行缩放），使 Stage2 直接用原始 K（strided GM），
+省掉 `kg_` GM workspace 和 Stage1 KgCompute 计算。
+
+### 数学推导
+
+利用矩阵乘法结合律（`d = exp(g[-1]-g_cum)`, 逐行向量）：
+```
+原始: state_new += v_new^T @ diag(d) @ K        = v_new^T @ (K * d[:,None])
+
+R7:   state_new += (v_new^T @ diag(d)) @ K      = (v_new * d[:,None])^T @ K
+```
+
+`v_new^T @ diag(d)` = `(diag(d) @ v_new)^T` = `(v_new * d[:,None])^T`（v_new 的**行缩放**，第 j 行乘 d[j]）。
+
+关键：d 在 `v_new^T @ diag(d) @ K` 中位于 v_new^T 右边（= v_new 的行 = matmul 的**求和下标**），
+可以直接移到 v_new。这与 R3 的 g_exp 不同——g_exp 在 `A @ diag(g) @ K` 中位于 A 右边（A 的列），
+A 非对角混合后不可移。
+
+### 为什么 R7 可行而 R3 不可行
+
+| | R3 的 g_exp | R7 的 d |
+|:---|:---|:---|
+| 矩阵位置 | `A @ diag(g) @ K`，g 在 A 右边 | `v^T @ diag(d) @ K`，d 在 v^T 右边 |
+| 缩放对象 | A 的列（求和下标），A 混合后丢失 | v^T 的列 = v 的行（求和下标），可直接移 |
+| 能否移 | **不能**（A 非对角，混合后不可逆） | **能**（`v^T·diag(d) = (v·d)^T`） |
+
+### 变更部分
+
+| 函数 | 原始 | R7 正确方案 |
+|:-----|:-----|:-----------|
+| Stage1 KgCompute | `kg = K * d[:,None]` → kg_ GM | **删除**（不输出 kg_） |
+| Stage1 GBKCompute | 同时算 kg 和 gBKWs | 只算 gBKWs（去掉 kg 部分） |
+| Stage2 AIV | 无 | 计算 `d = exp(g[-1]-g_cum)`，`v_new_scaled = v_new * d[:,None]` |
+| Stage2 AIC CalStateNew | `state += v_new^T @ kg` (accum=1) | `state += v_new_scaled^T @ K` (accum=1, K 从 strided GM 读) |
+
+### Stage2 AIV 行缩放实现
+
+d 的计算（从 GM gCum_ 读 g_cum，取 `g_cum[-1] - g_cum[j]`，exp）：
+```
+d[j] = exp(g_cum[-1] - g_cum[j])    // j ∈ [0, curChunkSize)
+```
+
+v_new 行缩放：
+```
+v_new_scaled[i,j] = v_new[i,j] * d[j]   // 第 j 行乘 d[j]
+```
+
+注意：这里 v_new 的行维度是 chunkSize（C），列维度是 Dv。
+d 对 v_new 的**行**缩放（每行 j 乘 d[j]），对应 `v_new^T` 的**列**缩放。
+
+### Stage2 同步关系变更
+
+原始 Stage2 AIC `CalStateNew` 用 accum=1 融合 `state += v_new^T @ kg`。
+R7 需 AIV 先完成 v_new 行缩放，AIC 才能做 `state += v_new_scaled^T @ K`：
+
+```
+AIV: WaitFlag(0x2) ← AIC CalVPrime+CalAttnInter
+AIV: 计算 d, v_new_scaled = v_new * d[:,None]
+AIV: SetFlag(0x5) → AIC                          // v_new_scaled 就绪
+AIC: WaitFlag(0x5)
+AIC: CalStateNew(state += v_new_scaled^T @ K, accum=1)  // K 从 strided GM 读
+AIC: SetFlag(0x4) → AIV
+```
+
+BF16 path 需额外同步（AIV 行缩放完成后 AIC 才能读 vInner）：
+```
+AIC: SetFlag(0x6) → AIV  // CalVPrime 完成, vInner 就绪
+AIV: WaitFlag(0x6)
+AIV: v_new_scaled = vInner * d[:,None]
+AIV: SetFlag(0x7) → AIC  // 行缩放完成
+AIC: WaitFlag(0x7)
+AIC: CalStateNew(state += v_new_scaled^T @ K)
+```
+
+### 收益
+
+- 删除 `kg_` GM workspace：`BF16 × Nv × Sp × Dk`（典型 Sp=512, Nv=64, Dk=128 → **8MB**）
+- 删除 Stage1 KgCompute 计算（broadcast + sub + exp + mul + cast + copyout）
+- Stage2 CalStateNew 直接用 strided K（结合 R2 的 SetOrgShape Ka=Nk*Dk）
+
+### 代价
+
+- Stage2 AIV 新增行缩放（C 次 exp + C 次 sub + C×Dv 次 mul）
+- Stage2 新增同步 flag（BF16 path: 0x6/0x7；FP32 path: 复用 0x5）
+- AIC CalStateNew 改为 strided K matmul（SetOrgShape Ka=Nk*Dk）
 
 ---
 
