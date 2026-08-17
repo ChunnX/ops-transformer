@@ -17,6 +17,7 @@
 #define MLA_PROLOG_TILING_H
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <map>
@@ -93,6 +94,7 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 8;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 9;
 constexpr uint32_t QC_QR_SCALE_ATTR_INDEX = 10;
 constexpr uint32_t KC_SCALE_ATTR_INDEX = 11;
+constexpr uint32_t DO_ROPE_ATTR_INDEX = 12;
 
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_0 = 0;
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_1 = 1;
@@ -118,13 +120,25 @@ constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 constexpr char V1_OP_NAME[]{"MlaProlog"};
 constexpr char V2_OP_NAME[]{"MlaPrologV2"};
 constexpr char V3_OP_NAME[]{"MlaPrologV3"};
-
+constexpr char V4_OP_NAME[]{"MlaPrologV4"};
 
 constexpr uint32_t CACHE_MODE_LEN =
     std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
               sizeof(CACHE_MODE_PA_BLK_BSND), sizeof(CACHE_MODE_PA_BLK_NZ)});
 
-constexpr uint32_t OP_NAME_LEN = std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME)});
+constexpr uint32_t OP_NAME_LEN =
+    std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME), sizeof(V4_OP_NAME)});
+
+inline bool IsMlaPrologV3Family(const char *opType)
+{
+    return opType != nullptr && (std::strncmp(opType, V3_OP_NAME, OP_NAME_LEN) == 0 ||
+                                 std::strncmp(opType, V4_OP_NAME, OP_NAME_LEN) == 0);
+}
+
+inline bool IsMlaPrologV4(const char *opType)
+{
+    return opType != nullptr && std::strncmp(opType, V4_OP_NAME, OP_NAME_LEN) == 0;
+}
 
 struct MlaPrologBaseShapeInfo {
     uint32_t bSize = 0;        // B
@@ -246,9 +260,7 @@ inline const std::unordered_map<int, std::unordered_map<int, QUANT_MODE>> QUANT_
 
 // 各 weightQuantMode 下合法 kvQuantMode 集合说明（用于错误日志 reason 文本，与原实现逐字一致）
 inline const std::unordered_map<int, const char *> VALID_KV_REASON_TABLE = {
-    {0, "When weightQuantMode==0, must be {0}"},       {1, "When weightQuantMode==1, must be {0, 2, 3}"},
-    {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"},
-    {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
+    {0, "When weightQuantMode==0, must be {0}"}, {1, "When weightQuantMode==1, must be {0, 2, 3}"}, {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"}, {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
 
 // QUANT_MODE → (weightQuantMode, kvQuantMode) 反向映射表
 // 用于从 quantMode_ 反推 wq/kvq，V1/V2（按 dtype 推断 quantMode_）与 V3（正向查表得 quantMode_）通用
@@ -374,6 +386,9 @@ struct MlaPrologContext {
     const float *qcQrScale;
     const float *kcScale;
 
+    bool doRopeValue = true;
+    const bool *doRope = nullptr;
+
     size_t *workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
@@ -448,6 +463,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
+    bool enableRope_ = true;             // rope开关写入 tiling key ENABLE_ROPE；仅 V4 可由 do_rope attr 关闭
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

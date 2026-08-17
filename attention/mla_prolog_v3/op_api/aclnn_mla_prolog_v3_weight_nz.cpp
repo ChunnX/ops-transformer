@@ -31,8 +31,6 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
-
 extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
@@ -50,6 +48,12 @@ extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          const aclrtStream stream);
+
+#ifdef __cplusplus
+}
+#endif
+
+namespace {
 
 class TensorHolder {
 public:
@@ -136,8 +140,12 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     std::map<int64_t, std::set<int64_t>> supportedKvQuantMode;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         supportedKvQuantMode = {
-            {0LL, {0LL}},           {1LL, {0LL, 2LL, 3LL}}, {2LL, {0LL, 1LL, 3LL}},
-            {3LL, {0LL, 1LL, 3LL}}, {4LL, {0LL, 1LL, 3LL}}, {5LL, {0LL, 1LL, 3LL}},
+            {0LL, {0LL}},
+            {1LL, {0LL, 2LL, 3LL}},
+            {2LL, {0LL, 1LL, 3LL}},
+            {3LL, {0LL, 1LL, 3LL}},
+            {4LL, {0LL, 1LL, 3LL}},
+            {5LL, {0LL, 1LL, 3LL}},
         };
     } else {
         supportedKvQuantMode = {
@@ -152,7 +160,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     }
     if (it->second.find(kvCacheQuantMode) == it->second.end()) {
         std::string supportedStr;
-        const auto& modes = it->second;
+        const auto &modes = it->second;
         size_t total = modes.size();
         size_t idx = 0;
         for (auto mode : modes) {
@@ -187,6 +195,12 @@ bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
     }
     return true;
 }
+
+} // namespace
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
@@ -280,8 +294,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(void *workspace, uint64_t workspaceSize, ac
 {
     return aclnnInnerMlaPrologV3(workspace, workspaceSize, executor, stream);
 }
-
-} // namespace
 
 #ifdef __cplusplus
 }
