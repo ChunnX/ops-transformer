@@ -3,30 +3,18 @@
 
 # ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
+# quantMatmulReduceScatter golden 数据生成
+#
+# 计算流程：
+#   1. 每卡独立计算 C_i = dequant(A_i) × dequant(B)  → [m, n] bfloat16
+#   2. AlltoAll 按 M 轴切分 C_i：chunk j (m/rankSize 行) 分发到 rank j
+#   3. reduceSum: output_r = Σ_{j=0}^{R-1} C_j[chunk r]  → [m/rankSize, n]
+#
+# 与 all_to_all_quant_matmul 的区别：
+#   - K 不切分（每卡完整 K），M 按 rankSize 切分
+#   - 每卡 A 不同，B 相同
+#   - 输出 per rank: [m/rankSize, n]
 # ----------------------------------------------------------------------------------------------------------
-
-"""
-ReduceScatter via AllToAll PUT + AtomicAdd 的 golden 数据生成。
-
-ReduceScatter 语义（DESIGN.md §1.1）：
-  输入:
-    rank i 持有:
-      A_i  - shape [M, K_local],  dtype = fp8_e4m3fn_t   (K_local = K / rankSize)
-      ScaleA_i - shape [M, CeilDiv(K_local,64)*2], dtype = fp8_e8m0_t  (MXFP8 scale)
-      B_full - shape [K, N],      dtype = fp8_e4m3fn_t   (全量复制, K = rankSize × K_local)
-      ScaleB_full - shape [CeilDiv(K,64)*2, N], dtype = fp8_e8m0_t    (全量复制)
-  输出:
-    rank r 获得:
-      C_r - shape [M/rankSize, N], dtype = bfloat16_t     (ReduceScatter 输出)
-
-  C_r = Σ_{i=0}^{rankSize-1} dequant(A_i[r*M/R : (r+1)*M/R, :]) × dequant(B_i[:, :])
-"""
 
 import math
 import os
@@ -35,148 +23,115 @@ import sys
 import numpy as np
 import torch
 from en_dtypes import float8_e8m0
-from ml_dtypes import float8_e4m3fn, float8_e5m2
+from ml_dtypes import float8_e4m3fn
 
 
-# dtype 字符串 -> numpy dtype 映射
-_DTYPE_MAP = {
-    "e4m3": float8_e4m3fn,
-    "e5m2": float8_e5m2,
-}
-
-
-def parse_dtype(dtype_str):
-    """解析 dtype 字符串 'e4m3e4m3' -> ('e4m3', 'e4m3')"""
-    if len(dtype_str) != 8:
-        raise ValueError(f"Invalid dtype string: {dtype_str}, expected format like 'e4m3e4m3'")
-    a_dtype_str = dtype_str[:4]
-    b_dtype_str = dtype_str[4:]
-    if a_dtype_str not in _DTYPE_MAP or b_dtype_str not in _DTYPE_MAP:
-        raise ValueError(f"Invalid dtype string: {dtype_str}, supported: e4m3, e5m2")
-    return a_dtype_str, b_dtype_str
-
-
-def write_artifacts(base_dir, rank_id, a_segment_fp8, b_fp8, a_segment_scale, b_scale, out):
+def write_artifacts(base_dir, rank_id, a_fp8, b_fp8, a_scale, b_scale, out):
     input_dir = os.path.join(base_dir, "input", str(rank_id))
     output_dir = os.path.join(base_dir, "output", str(rank_id))
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
-    a_segment_fp8.view(np.uint8).tofile(os.path.join(input_dir, "input_a.bin"))
+    a_fp8.view(np.uint8).tofile(os.path.join(input_dir, "input_a.bin"))
     b_fp8.view(np.uint8).tofile(os.path.join(input_dir, "input_b.bin"))
-    a_segment_scale.tofile(os.path.join(input_dir, "input_scaleA.bin"))
+    a_scale.tofile(os.path.join(input_dir, "input_scaleA.bin"))
     b_scale.tofile(os.path.join(input_dir, "input_scaleB.bin"))
     out.view(torch.uint16).numpy().tofile(os.path.join(output_dir, "cpu_output.bin"))
 
 
-def gen_golden_data_reduce_scatter_matmul(m, k, n, rank_num, dtype_str="e4m3e4m3"):
+def gen_golden_data_quant_matmul_reduce_scatter(m, k, n, rank_num):
     """
-    ReduceScatter golden 计算:
-      C_r[M/R × N] = Σ_{i=0}^{R-1} dequant(A_i[r*M/R:(r+1)*M/R, :]) × dequant(B_i[:, :])
+    生成 quantMatmulReduceScatter 的 golden 数据。
 
-    数据布局:
-      - A_i: [M × Ka] per rank（K-split, Ka = K/rank_num）
-      - B_full: [K × N] 全量复制（K = rank_num × Ka）
-      - C_r: [M/rank_num × N] per rank（M-split 输出）
-
-    dtype_str: 'e4m3e4m3' | 'e5m2e5m2' | 'e4m3e5m2' | 'e5m2e4m3'
+    参数:
+      m: 矩阵 A 的行数（必须被 rank_num 整除）
+      k: 矩阵 A 的列数（完整 K，不切分）
+      n: 矩阵 B 的列数
+      rank_num: rank 数量
     """
-    M = m
-    K = k
-    N = n
-    Ka = K // rank_num
-    m_local = M // rank_num  # ReduceScatter per-rank 输出行数
+    if m % rank_num != 0:
+        raise ValueError(f"m={m} must be divisible by rank_num={rank_num}")
 
-    a_dtype_str, b_dtype_str = parse_dtype(dtype_str)
-    a_np_dtype = _DTYPE_MAP[a_dtype_str]
-    b_np_dtype = _DTYPE_MAP[b_dtype_str]
-
-    if K % rank_num != 0:
-        raise ValueError(f"K={K} must be divisible by rank_num={rank_num}")
-    if M % rank_num != 0:
-        raise ValueError(f"M={M} must be divisible by rank_num={rank_num}")
-    if Ka % 64 != 0:
-        raise ValueError(f"Ka={Ka} must be divisible by 64 (MXFP8 scale alignment)")
+    chunk_m = m // rank_num  # 每个 rank 的 M 分片大小
 
     np.random.seed(42)
 
-    # B: [N, K] C-order (= [K, N] 列主序，TransB=true 时 kernel 用 DNExtLayoutPtn 按列主序读)
-    b_ori = np.random.uniform(1, 8, (N, K)).astype(b_np_dtype)
-    b_ori_transpose = np.swapaxes(b_ori, -1, -2)  # 逻辑 B = [K, N]
+    # B 矩阵：所有 rank 共享相同的 B [n, k] (TransB=true, 列主序)
+    b_ori = np.random.uniform(1, 8, (n, k)).astype(float8_e4m3fn)
 
-    # ScaleB: [N, CeilDiv(K,64), 2] -> [N, K/32] C-order (= [K/32, N] 列主序)
-    b_scale_ori = np.random.uniform(1, 8, size=(N, math.ceil(K / 64), 2)).astype(float8_e8m0)
-    b_scale_reshape = b_scale_ori.reshape(N, -1)
-    b_scale_broadcast = np.repeat(b_scale_reshape, 32, axis=-1)[..., :K]
-    b_scale_broadcast_transpose = np.swapaxes(b_scale_broadcast, -1, -2)
-    b_dequant = b_ori_transpose.astype(np.float32) * b_scale_broadcast_transpose.astype(np.float32)
-    # b_dequant shape: [K, N]
+    # B Scale: [n, ceil(k/64), 2] → [n, K/32] flatten
+    b_scale_ori = np.random.uniform(1, 8, size=(n, math.ceil(k / 64), 2)).astype(float8_e8m0)
+    b_scale_all = b_scale_ori.reshape(n, k // 32).flatten()
 
-    # TransB=true 时 kernel 用 ScaleBDNLayoutPtn (column-major) 访问 scaleB
-    b_scale_all = b_scale_ori.reshape(N, K // 32).flatten()
+    # 反量化 B: [n, k] → transpose → [k, n]
+    b_scale_reshape = b_scale_ori.reshape(n, -1)
+    b_scale_broadcast = np.repeat(b_scale_reshape, 32, axis=-1)[..., :k]
+    b_scale_broadcast_transpose = np.swapaxes(b_scale_broadcast, -1, -2)  # [k, n]
+    b_dequant = b_ori.astype(np.float32).T * b_scale_broadcast_transpose  # [k, n]
 
-    # 每 rank 的 A_i 和 ScaleA_i
-    a_local_list = []
+    # 每卡独立的 A 矩阵
+    a_list = []
     a_scale_list = []
-    a_dequant_list = []
+    c_list = []
 
     for rank_id in range(rank_num):
-        # A_i: [M × Ka]
-        a_local = np.random.uniform(1, 8, (M, Ka)).astype(a_np_dtype)
-        # ScaleA_i: [M, CeilDiv(Ka,64), 2]
-        a_scale = np.random.uniform(1, 8, size=(M, math.ceil(Ka / 64), 2)).astype(float8_e8m0)
+        # A [m, k] fp8_e4m3fn
+        a_local = np.random.uniform(1, 8, (m, k)).astype(float8_e4m3fn)
+        # ScaleA [m, ceil(k/64), 2] fp8_e8m0
+        a_scale = np.random.uniform(1, 8, size=(m, math.ceil(k / 64), 2)).astype(float8_e8m0)
 
-        a_local_list.append(a_local)
+        a_list.append(a_local)
         a_scale_list.append(a_scale)
 
-        # 反量化 A_i
-        a_scale_reshape = a_scale.reshape(M, -1)
-        a_scale_broadcast = np.repeat(a_scale_reshape, 32, axis=-1)[..., :Ka]
-        a_dequant = a_local.astype(np.float32) * a_scale_broadcast.astype(np.float32)
-        a_dequant_list.append(a_dequant)
-        # a_dequant shape: [M, Ka]
+        # 反量化 A
+        a_scale_reshape = a_scale.reshape(m, -1)
+        a_scale_broadcast = np.repeat(a_scale_reshape, 32, axis=-1)[..., :k]
+        a_dequant = a_local.astype(np.float32) * a_scale_broadcast  # [m, k]
 
-    # ReduceScatter golden: C_r[M/R × N] = Σ_i A_i[r*M/R:(r+1)*M/R, :] × B_i[Ka × N]
-    # B_i 是 B 的第 i 个 Ka 段: B_i = b_dequant[i*Ka:(i+1)*Ka, :]
-    out_all_ranks = []
+        # C_i = A_i × B  → [m, n]
+        a_cpu = torch.from_numpy(a_dequant)
+        b_cpu = torch.from_numpy(b_dequant)
+        c_i = torch.matmul(a_cpu, b_cpu).to(torch.bfloat16)  # [m, n]
+        c_list.append(c_i)
+
+    # AlltoAll + reduceSum
+    # AlltoAll: 每卡将 C_i 按 M 轴切分，chunk j 发送到 rank j
+    # reduceSum: rank r 收到所有卡的 chunk r，逐元素求和
+    # output_r = Σ_{j=0}^{R-1} C_j[rows r*chunk_m : (r+1)*chunk_m, :]
+    # 注意: 累加在 float32 中进行, 最后再转 bfloat16, 减少 bf16 累加误差
     for dst_rank in range(rank_num):
-        # dst_rank 获得的 M 段: [r*M/R : (r+1)*M/R]
-        m_start = dst_rank * m_local
-        m_end = m_start + m_local
-
-        # C_r = Σ_i dequant(A_i[m_start:m_end, :]) × dequant(B_i[:, :])
-        c_sum = np.zeros((m_local, N), dtype=np.float32)
+        output = torch.zeros((chunk_m, n), dtype=torch.float32)
         for src_rank in range(rank_num):
-            # A_i 的 M 段
-            a_seg = a_dequant_list[src_rank][m_start:m_end, :]  # [m_local, Ka]
-            # B_i = b_dequant 的第 i 个 Ka 段
-            b_seg = b_dequant[src_rank * Ka:(src_rank + 1) * Ka, :]  # [Ka, N]
-            c_sum += np.matmul(a_seg, b_seg)
+            row_start = dst_rank * chunk_m
+            row_end = row_start + chunk_m
+            chunk = c_list[src_rank][row_start:row_end, :].float()
+            output += chunk
 
-        out = torch.from_numpy(c_sum).to(torch.bfloat16)
-        out_all_ranks.append(out)
+        output = output.to(torch.bfloat16)
 
-    current_dir = os.getcwd()
-    for rank_id in range(rank_num):
-        write_artifacts(current_dir, rank_id, a_local_list[rank_id], b_ori,
-                       a_scale_list[rank_id], b_scale_all, out_all_ranks[rank_id])
+        # 写入文件
+        current_dir = os.getcwd()
+        write_artifacts(current_dir, dst_rank,
+                        a_list[dst_rank], b_ori,
+                        a_scale_list[dst_rank], b_scale_all,
+                        output)
+
+    print(f"Generated golden data for m={m}, k={k}, n={n}, rank_num={rank_num}")
+    print(f"  chunk_m={chunk_m}, output per rank: [{chunk_m}, {n}]")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 5 or len(sys.argv) > 6:
-        print("Usage: python3 gen_data.py m k n rank_num [dtype]")
-        print("  m: matrix M dimension (total, must be divisible by rank_num)")
-        print("  k: matrix K dimension (total, must be divisible by rank_num)")
+    if len(sys.argv) != 5:
+        print("Usage: python3 gen_data.py m k n rank_num")
+        print("  m: matrix M dimension (must be divisible by rank_num)")
+        print("  k: matrix K dimension (full K, NOT split across ranks)")
         print("  n: matrix N dimension")
         print("  rank_num: number of ranks")
-        print("  dtype: optional, FP8 dtype combination (default: e4m3e4m3)")
-        print("    supported: e4m3e4m3, e5m2e5m2, e4m3e5m2, e5m2e4m3")
         sys.exit(1)
 
     m = int(sys.argv[1])
     k = int(sys.argv[2])
     n = int(sys.argv[3])
     rank_num = int(sys.argv[4])
-    dtype_str = sys.argv[5] if len(sys.argv) > 5 else "e4m3e4m3"
 
-    gen_golden_data_reduce_scatter_matmul(m, k, n, rank_num, dtype_str)
+    gen_golden_data_quant_matmul_reduce_scatter(m, k, n, rank_num)

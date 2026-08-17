@@ -4,28 +4,20 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
  * \file main.cpp
- * \brief ApaceQuantMatmulReduceScatter ST host 入口
+ * \brief quantMatmulReduceScatter ST 主程序
  *
- * ReduceScatter via AllToAll PUT + workspace 槽位独占（无回压）:
- *   - 每 rank 持有 A_i[M × Ka], ScaleA_i, B_full[K × N], ScaleB_full
- *   - 输出 C_r[M/rankSize × N] = Σ_i A_i[r*M/R:(r+1)*M/R] × B_i
+ * 流程: fork 多 rank → 每进程绑定 NPU → HCCL 建链 → Tiling → Kernel 执行 → 精度比对
  *
- * tiling 推导（DESIGN.md §2.8）：
- *   mLocal = M / rankSize           // ReduceScatter per-rank M
- *   ka     = K / rankSize           // per-rank K
- *   GetTilingData(mLocal, N, ka, ...)  // m=M/rankSize, k=per-rank K
- *   commTilingData 基于 mLocal 切分（而非 M）
- *   localMatmul = 0                 // REMOTE-only
- *
- * 关键设计（DESIGN.md §1.1）：
- *   C7 workspace = maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)
- *   C8 host 校验 maxTilesPerCore ≤ 15（flagId=5 计数器上界，tiling 后 / aclrtMalloc 前执行）
+ * 与 all_to_all_quant_matmul 的关键区别：
+ *   - K 不切分（每卡持有完整 K），m 按 rankSize 切分
+ *   - 通信数据为 C (bfloat16)，非 A (fp8)
+ *   - 输出 per rank: [m/rankSize, n]
  */
 
 #include <cmath>
@@ -41,7 +33,6 @@
 #include <sys/wait.h>
 
 #include "kernel_basic_intf.h"
-#include "heavy_kernels.h"
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_comm.h"
@@ -51,9 +42,8 @@
 #include <cstdlib>
 #include "utils.h"
 #include "apace/utils/comm_channel_builder.h"
-#include "../../utils/root_info_exchanger.h"
+#include "root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
-#include "apace/kernel/apace_quant_matmul_reduce_scatter/apace_quant_matmul_reduce_scatter_tiling_data.h"
 #include "kernel_launcher.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 
@@ -75,21 +65,19 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
 
 void printUsage(const std::string& programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize] [dtype]" << std::endl;
+    std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
     std::cerr << "Args: " << std::endl;
-    std::cerr << "  m: row of matrix A (total M, must be divisible by rankNum)" << std::endl;
-    std::cerr << "  k: col of matrix A (total K, must be divisible by rankNum)" << std::endl;
+    std::cerr << "  m: row of matrix A (must be divisible by rankNum)" << std::endl;
+    std::cerr << "  k: col of matrix A (full K, NOT split across ranks)" << std::endl;
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
-    std::cerr << "  headMSize: optional, long block M size (default 512, info-only, actual derived by formula)" << std::endl;
-    std::cerr << "  dtype: optional, FP8 dtype combination (default: e4m3e4m3)" << std::endl;
-    std::cerr << "    supported: e4m3e4m3, e5m2e5m2, e4m3e5m2, e5m2e4m3" << std::endl;
-    std::cerr << "Example: " << programName << " 2048 4096 2048 4" << std::endl;
-    std::cerr << "         " << programName << " 2048 8192 4096 4 perf 512 e5m2e5m2" << std::endl;
+    std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
+    std::cerr << "Example: " << programName << " 2048 3584 4096 4" << std::endl;
 }
 
-void parseArguments(int argc, char* argv[], int& m, int& k, int& n, int& rankNum, std::string& mode, int& headMSize, std::string& dtype)
+void parseArguments(int argc, char* argv[], int& m, int& k, int& n, int& rankNum,
+                    std::string& mode, int& headMSize)
 {
     if (argc >= 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
         printUsage(argv[0]);
@@ -117,71 +105,51 @@ void parseArguments(int argc, char* argv[], int& m, int& k, int& n, int& rankNum
         throw std::invalid_argument("ERROR: headMSize must be positive");
     }
 
-    dtype = (argc >= 8) ? std::string(argv[7]) : std::string("e4m3e4m3");
-    if (dtype != "e4m3e4m3" && dtype != "e5m2e5m2" && dtype != "e4m3e5m2" && dtype != "e5m2e4m3") {
-        throw std::invalid_argument("ERROR: dtype must be one of: e4m3e4m3, e5m2e5m2, e4m3e5m2, e5m2e4m3");
-    }
-
     if (m <= 0 || k <= 0 || n <= 0 || rankNum <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum must be positive");
     }
 
-    // ReduceScatter 输入校验（DESIGN.md §2.8）
+    // m 必须被 rankNum 整除（M 轴按 rankSize 切分用于 AlltoAll）
     if (m % rankNum != 0) {
-        throw std::invalid_argument("ERROR: M must be divisible by rankNum (ReduceScatter M-split)");
-    }
-    if (k % rankNum != 0) {
-        throw std::invalid_argument("ERROR: K must be divisible by rankNum (K-split)");
+        throw std::invalid_argument("ERROR: m must be divisible by rankNum");
     }
 
-    uint32_t ka = k / rankNum;
-    // ka % 64 == 0：确保 ka/32 等价于 CeilDiv(ka,64)*2，避免 scale 通信数据量截断
-    if (ka % 64 != 0) {
-        throw std::invalid_argument("ERROR: ka(=K/rankNum) must be divisible by 64 (MXFP8 scale alignment)");
-    }
-    if (CeilDiv(ka, 64) % 2 != 0) {
-        throw std::invalid_argument("ERROR: CeilDiv(ka, 64) must be an even number (redundant check)");
+    // Scale 对齐约束：CeilDiv(k, 64) 必须为偶数
+    if (CeilDiv(k, 64) % 2 != 0) {
+        throw std::invalid_argument("ERROR: CeilDiv(k, 64) must be an even number");
     }
 }
 
-int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const std::string& mode, int headMSizeArg, const std::string& dtype) {
+int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
+                                 const std::string& mode, int headMSizeArg) {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d, dtype=%s",
-             rankNum, rankId, ipport, mode.c_str(), headMSizeArg, dtype.c_str());
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d",
+             rankNum, rankId, ipport, mode.c_str(), headMSizeArg);
 
-    // ReduceScatter tiling 推导（DESIGN.md §2.8）
-    uint32_t ka = k / rankNum;          // per-rank K
-    uint32_t mLocal = m / rankNum;      // ReduceScatter per-rank M（输出行数）
+    // 与 all_to_all_quant_matmul 不同：K 不切分，每卡持有完整 K
+    // m 按 rankSize 切分用于 AlltoAll 通信
+    uint32_t chunkM = static_cast<uint32_t>(m) / static_cast<uint32_t>(rankNum);
 
     ApaceQuantMatmulReduceScatterTilingData tilingData;
 
-    // GetTilingData k 参数必须为 per-rank K（ka = K/rankSize），非全量 K
-    // PUT 模式硬性不变量（operator-anatomy.md §3.7：PUT 用 ka，AG 用 totalLogicalM）
-    // 根据 dtype 选择对应的 tiling 引擎模板实例化
-    if (dtype == "e4m3e4m3") {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-        tilingEngine.GetTilingData(mLocal, n, ka, false, true, tilingData.tileQbmmTilingData);
-    } else if (dtype == "e5m2e5m2") {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E5M2> tilingEngine;
-        tilingEngine.GetTilingData(mLocal, n, ka, false, true, tilingData.tileQbmmTilingData);
-    } else if (dtype == "e4m3e5m2") {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E5M2> tilingEngine;
-        tilingEngine.GetTilingData(mLocal, n, ka, false, true, tilingData.tileQbmmTilingData);
-    } else if (dtype == "e5m2e4m3") {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-        tilingEngine.GetTilingData(mLocal, n, ka, false, true, tilingData.tileQbmmTilingData);
-    } else {
-        ERROR_LOG("Unsupported dtype: %s", dtype.c_str());
-        return -1;
-    }
+    // MatMul tiling: 使用完整 m, n, k（无 TP 切分）
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    tilingEngine.GetTilingData(m, n, k, false, true, tilingData.mmTilingData);
 
-    // headMSize 由公式推导（CeilDiv(usedCoreNum, nTile) * baseM），cases.csv head_m_size 列仅信息性参考
-    auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
-    uint32_t headMSize =
-        CeilDiv(tilingData.tileQbmmTilingData.usedCoreNum, nTile) * tilingData.tileQbmmTilingData.baseM;
-    // commTilingData 基于 mLocal（M/rankSize）切分，而非 M
-    uint32_t headTileCnt = mLocal / headMSize;
-    uint32_t tailMSize = mLocal % headMSize;
+    // 通信 tiling: PUT 模式多 tile (headMSize 由参数传入，默认 512)
+    // 切分轴 = M, 非切分轴 = N
+    // chunkM = m / rankSize, 按 headMSize 切分为 headTileCnt 个头块 + 可选 1 个尾块
+    // PUT 模式: AIC 写 workspace, AIV 从 workspace 推送到其他 rank win 区
+    // win 区布局 = C_i 连续 [m,n] = rank-major chunks (与 workspace 一致)
+    uint32_t headMSize = static_cast<uint32_t>(headMSizeArg);
+    // headMSize 不超过 chunkM（单 tile 场景）
+    if (headMSize > chunkM || headMSize == 0) { headMSize = chunkM; }
+    // headMSize 按 16 对齐（Blaze baseM 最小对齐要求）
+    headMSize = (headMSize / 16) * 16;
+    if (headMSize == 0) { headMSize = 16; }
+
+    uint32_t headTileCnt = chunkM / headMSize;
+    uint32_t tailMSize = chunkM % headMSize;
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
     uint32_t tileCnt = headTileCnt + tailTileCnt;
 
@@ -189,94 +157,72 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     tilingData.commTilingData.splitAxisTileSize = static_cast<uint64_t>(headMSize);
     tilingData.commTilingData.splitAxisTailSize = static_cast<uint64_t>(tailMSize);
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
-    tilingData.commTilingData.nonSplitAxisSize = ka;
-    // localMatmul=0（默认不启用，REMOTE-only 流水线）
-    tilingData.localMatmul = 0;
+    tilingData.commTilingData.nonSplitAxisSize = static_cast<uint64_t>(n);
 
-    tilingData.scaleCommTilingData = tilingData.commTilingData;
-    tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;  // MXFP8 scale 压缩比
+    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile 流水路径 (Round 4 优化)
+    // 让 SWAT 为小 M 子问题生成独立 tiling，可能产生更小的 baseM → 更多 tiles → 更好的核间负载均衡
+    // blockDim 仍使用 mmTilingData.usedCoreNum（kernel launch 时固定）
+    if (tileCnt > 1) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> subTilingEngine;
+        subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
 
-    // 字段填充（DESIGN.md §1.1 + §2.1）
-    // maxTilesPerCore 的四个输入（m、n、baseM、baseN、usedCoreNum）全部取自 SWAT tiling 最终输出
-    // tileQbmmTilingData（取值来源约束），不使用 raw M/rankNum 或 baseM 候选默认值
-    uint32_t coreNum = tilingData.tileQbmmTilingData.usedCoreNum;
-    uint32_t baseM = tilingData.tileQbmmTilingData.baseM;
-    uint32_t baseN = tilingData.tileQbmmTilingData.baseN;
-    uint32_t mFinal = tilingData.tileQbmmTilingData.m;
-    uint32_t nFinal = tilingData.tileQbmmTilingData.n;
-    uint32_t blockDimM = static_cast<uint32_t>(CeilDiv(mFinal, baseM));
-    uint32_t blockDimN = static_cast<uint32_t>(CeilDiv(nFinal, baseN));
-    uint32_t blockNums = blockDimM * blockDimN;
-    // 严格上界（无 +1，DESIGN §2.2 Blaze 源码 4 项证据）：maxTilesPerCore = CeilDiv(blockNums, coreNum)
-    uint32_t maxTilesPerCore = static_cast<uint32_t>(CeilDiv(blockNums, coreNum));
-
-    // maxTilesPerCore ≤ 15 校验（flagId=5 计数器 0-15 上界保护）。
-    // 执行顺序约束：SWAT tiling 完成之后、workspace aclrtMalloc 之前（此处远早于 aclInit/aclrtMalloc）。
-    if (maxTilesPerCore > 15) {
-        ERROR_LOG("maxTilesPerCore constraint: maxTilesPerCore=%u > 15 "
-                  "(blockDimM=%u x blockDimN=%u = blockNums=%u, coreNum=%u, baseM=%u, baseN=%u). "
-                  "flagId=5 counter (0-15) would overflow. Shape exceeds supported range (workspace slot-exclusive mode); reduce shape.",
-                  maxTilesPerCore, blockDimM, blockDimN, blockNums, coreNum, baseM, baseN);
-        return -1;
+        // Round 4 后处理: 若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除,
+        // 手动将 baseM 减半为 128, 产生更多 tiles 提升核间负载均衡
+        // SWAT 不调整 baseM 是因为 blockNum(32) >= aicNum(28), 但实际每核仅 1.14 tiles
+        // baseM=128 后: mBlockCnt=512/128=4, totalBlockCnt=4*16=64, 2.29 tiles/core
+        // L1 安全性: baseM 减半 → A buffer 减半, L1 用量减少, stepK/scaleKL1/nBufferNum 不变仍有效
+        // 对齐安全性: baseM=128 是 CUBE_BLOCK(16) 的整数倍, 满足 Blaze 对齐要求
+        if (tilingData.subMmTilingData.baseM == 256U && headMSize % 128U == 0U) {
+            INFO_LOG("[Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution");
+            tilingData.subMmTilingData.baseM = 128U;
+            // M 尾块重置: headMSize(512) 是 128 的整数倍 → 无 M 尾块
+            tilingData.subMmTilingData.mTailTile = 1U;
+            tilingData.subMmTilingData.mBaseTailSplitCnt = 1U;
+            tilingData.subMmTilingData.mTailMain = 0U;
+        }
+    } else {
+        // T=1 退化路径: 不需要子问题 tiling, 清零即可
+        tilingData.subMmTilingData = {};
     }
 
-    // workspace 公式（每 tile 独占槽位，无轮转）
-    uint64_t workspaceSize = static_cast<uint64_t>(maxTilesPerCore) * coreNum * baseM * baseN * sizeof(uint16_t);
+    INFO_LOG("chunkM=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, tailTileCnt=%u, tileCnt=%u (PUT multi-tile), rankSize=%d",
+             chunkM, headMSize, headTileCnt, tailMSize, tailTileCnt, tileCnt, rankNum);
 
-    tilingData.maxTilesPerCore = maxTilesPerCore;
-    tilingData.coreNum = coreNum;
-    tilingData.ubCalSize = baseM * baseN;
-    // totalMmTiles DEPRECATED（DESIGN.md §2.16 Issue 2）：host 填 0，kernel 不消费；
-    // AIV reduceSum 循环由 bsAiv.GetTileIdx() 隐式终止，与 AIC 构造一致
-    tilingData.totalMmTiles = 0;
-    tilingData.workspaceSize = workspaceSize;
-
-    // flagId 冲突规避（通道 1 可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个）
-    if (tileCnt > 10) {
-        ERROR_LOG("flagId constraint: headTileCnt+tailTileCnt=%u > 10 (avoid flagId 3/5/[11-14])", tileCnt);
-        return -1;
-    }
-
-    INFO_LOG("ReduceScatter: M=%d, mLocal=%u, K=%d, ka=%u, N=%d, tileCnt=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, localMatmul=%u, maxTilesPerCore=%u, coreNum=%u, totalMmTiles=%u, workspaceSize=%lu",
-             m, mLocal, k, ka, n, tileCnt, headMSize, headTileCnt, tailMSize, tilingData.localMatmul,
-             tilingData.maxTilesPerCore, tilingData.coreNum, tilingData.totalMmTiles, tilingData.workspaceSize);
-    // DEBUG: 输出 mm tiling 细节（调试 workspace 布局用）
-    INFO_LOG("mmTiling: baseM=%u, baseN=%u, baseK=%u, stepK=%u, mTailTile=%u, nTailTile=%u, mBaseTailSplitCnt=%u, nBaseTailSplitCnt=%u, mTailMain=%u, nTailMain=%u, usedCoreNum=%u, dbL0c=%u",
-             tilingData.tileQbmmTilingData.baseM, tilingData.tileQbmmTilingData.baseN,
-             tilingData.tileQbmmTilingData.baseK, tilingData.tileQbmmTilingData.stepK,
-             tilingData.tileQbmmTilingData.mTailTile, tilingData.tileQbmmTilingData.nTailTile,
-             tilingData.tileQbmmTilingData.mBaseTailSplitCnt, tilingData.tileQbmmTilingData.nBaseTailSplitCnt,
-             tilingData.tileQbmmTilingData.mTailMain, tilingData.tileQbmmTilingData.nTailMain,
-             tilingData.tileQbmmTilingData.usedCoreNum, tilingData.tileQbmmTilingData.dbL0c);
-
+    INFO_LOG("[Rank %d] Step 1: aclInit", rankId);
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
     ACL_CHECK(aclrtSetDevice(deviceId));
     aclrtStream stream = nullptr;
     ACL_CHECK(aclrtCreateStream(&stream));
+    INFO_LOG("[Rank %d] Step 2: device set, stream created", rankId);
 
     RootInfoExchanger exchanger(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ipport);
     HcclRootInfo rootInfo;
+    INFO_LOG("[Rank %d] Step 3: exchanging rootInfo", rankId);
     if (!exchanger.Exchange(rootInfo)) {
         ERROR_LOG("rank %d exchange rootInfo failed", rankId);
         return -1;
     }
+    INFO_LOG("[Rank %d] Step 4: rootInfo exchanged", rankId);
 
     HcclCommConfig config;
     HcclCommConfigInit(&config);
     config.hcclWorldRankID = static_cast<uint32_t>(rankId);
     HcclComm comm = nullptr;
+    INFO_LOG("[Rank %d] Step 5: HcclCommInitRootInfoConfig", rankId);
     HCCL_CHECK(HcclCommInitRootInfoConfig(static_cast<uint32_t>(rankNum), &rootInfo,
                                           static_cast<uint32_t>(rankId), &config, &comm));
     if (comm == nullptr) {
         ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed", rankId);
         return -1;
     }
+    INFO_LOG("[Rank %d] Step 6: HCCL comm initialized", rankId);
 
     CommChannelBuilder builder(comm);
     CommContext hostCtx = {};
-    const char *ctxTag = "apace_quant_matmul_reduce_scatter";
+    const char *ctxTag = "quant_matmul_reduce_scatter";
 
+    INFO_LOG("[Rank %d] Step 7: CreateDeviceContext", rankId);
     CommContext *devContext = reinterpret_cast<CommContext *>(
         builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag,
                                     &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
@@ -284,22 +230,20 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
         ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
         return -1;
     }
+    INFO_LOG("[Rank %d] Step 8: device context created", rankId);
 
     exchanger.Barrier();
     exchanger.Close();
+    INFO_LOG("[Rank %d] Step 9: exchanger barrier + close", rankId);
 
-    // ReduceScatter 数据布局（DESIGN.md §1.5）：
-    //   A: [M × Ka] per rank（K-split，Ka = K/rankNum）
-    //   ScaleA: [M × CeilDiv(Ka,64)*2] per rank
-    //   B: [K × N] 全量复制（K = rankNum × Ka）
-    //   ScaleB: [CeilDiv(K,64)*2 × N] 全量复制
-    //   C: [M/rankNum × N] per rank（M-split 输出）
-    std::vector<uint8_t> hostA(m * ka, 0);
-    std::vector<uint8_t> hostB(k * n, 0);
-    std::vector<uint8_t> hostScaleA(m * CeilDiv(ka, 64) * 2, 0);
-    std::vector<uint8_t> hostScaleB(CeilDiv(k, 64) * 2 * n, 0);
-    // 输出 C: mLocal × N（ReduceScatter per-rank 输出）
-    std::vector<uint16_t> hostOutput(mLocal * n, 0);
+    // 输入数据：A [m, k] fp8, ScaleA [m, ceil(k/64)*2] fp8_e8m0
+    // B [n, k] fp8 (TransB=true, 列主序), ScaleB [n, ceil(k/64)*2] fp8_e8m0
+    std::vector<uint8_t> hostA(m * k, 0);
+    std::vector<uint8_t> hostB(n * k, 0);  // TransB=true: B 存储为 [n, k] C-order
+    std::vector<uint8_t> hostScaleA(m * CeilDiv(k, 64) * 2, 0);
+    std::vector<uint8_t> hostScaleB(n * CeilDiv(k, 64) * 2, 0);
+    // 输出：[chunkM, n] bfloat16 per rank
+    std::vector<uint16_t> hostOutput(chunkM * n, 0);
 
     auto sizeA = static_cast<size_t>(1) * hostA.size() * sizeof(uint8_t);
     auto sizeB = static_cast<size_t>(1) * hostB.size() * sizeof(uint8_t);
@@ -330,49 +274,41 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     GM_ADDR deviceScaleA = nullptr;
     GM_ADDR deviceScaleB = nullptr;
     GM_ADDR deviceOutput = nullptr;
-    GM_ADDR deviceWorkspace = nullptr;  // workspace GM
+    GM_ADDR deviceWorkspace = nullptr;
 
     ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
-    // 分配 workspace GM（maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)）
-    ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, tilingData.workspaceSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    // cGm: 最终输出 [chunkM, n] bfloat16
+    size_t sizeC = static_cast<size_t>(chunkM) * n * sizeof(uint16_t);
+    ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeC, ACL_MEM_MALLOC_HUGE_ONLY));
+    // workspace: AllToAll GET 接收缓冲区, 大小 = rankSize * chunkBytes = m * n * sizeof(bfloat16)
+    // GET 模式下 localAddr = workspace, 接收从其他 rank 拉取的 chunk
+    size_t sizeWorkspace = static_cast<size_t>(m) * n * sizeof(uint16_t);
+    ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, sizeWorkspace, ACL_MEM_MALLOC_HUGE_ONLY));
+    INFO_LOG("[Rank %d] workspace size=%zu bytes (m=%d, n=%d)", rankId, sizeWorkspace, m, n);
 
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
-    // 不需要 yGm 清零（reduceSum 使用普通 DataCopyPad 覆盖，非 AtomicAdd）
+    INFO_LOG("[Rank %d] Step 10: data loaded to device", rankId);
 
     if (mode == "precision") {
-        // 根据 dtype 选择对应的 kernel 入口（8 参数含 workspace）
-        if (dtype == "e4m3e4m3") {
-            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
-                tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                    deviceWorkspace, tilingData);
-        } else if (dtype == "e5m2e5m2") {
-            ApaceQuantMatmulReduceScatterKernelE5M2E5M2_Udma<<<
-                tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                    deviceWorkspace, tilingData);
-        } else if (dtype == "e4m3e5m2") {
-            ApaceQuantMatmulReduceScatterKernelE4M3E5M2_Udma<<<
-                tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                    deviceWorkspace, tilingData);
-        } else if (dtype == "e5m2e4m3") {
-            ApaceQuantMatmulReduceScatterKernelE5M2E4M3_Udma<<<
-                tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                    deviceWorkspace, tilingData);
-        }
+        INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, GET mode)", rankId, tilingData.mmTilingData.usedCoreNum);
+        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+            tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
+                devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
+                deviceWorkspace, deviceOutput, tilingData);
+        INFO_LOG("[Rank %d] Step 12: kernel launched, syncing...", rankId);
 
         ACL_CHECK(aclrtSynchronizeStream(stream));
+        INFO_LOG("[Rank %d] Step 13: stream synced", rankId);
 
-        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+        // 只拷回 chunkM * n 的输出（reduceSum 后的 per-rank 结果）
+        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput,
+                              ACL_MEMCPY_DEVICE_TO_HOST));
 
         WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
     } else {
@@ -386,7 +322,6 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
         std::vector<uint16_t> boostHost(BOOST_ELEM_COUNT, 0x3F00);
         ACL_CHECK(aclrtMemcpy(boostIn, boostSize, boostHost.data(), boostSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
-        // L2 cache flush（MC2 性能采集红线③）
         constexpr int64_t CACHE_FLUSH_ELEM_COUNT = 128LL * 1024 * 1024;
         size_t cacheFlushSize = static_cast<size_t>(CACHE_FLUSH_ELEM_COUNT) * sizeof(uint16_t);
         GM_ADDR cacheFlush = nullptr;
@@ -396,38 +331,13 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
             cacheFlush, cacheFlushSize, cacheFlushHost.data(), cacheFlushSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
         constexpr int PERF_LOOP_COUNT = 10;
-        int64_t cacheFlushBlockLen = CACHE_FLUSH_ELEM_COUNT / HEAVY_BLOCK_NUM;
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
-            // 1. 刷 L2 cache（MC2 性能采集红线③）：256 MB bf16 扫描，挤出 B 矩阵驻留
-            heavy_add_kernel<<<HEAVY_BLOCK_NUM, nullptr, stream>>>(
-                cacheFlush, CACHE_FLUSH_ELEM_COUNT, cacheFlushBlockLen);
-            ACL_CHECK(aclrtSynchronizeStream(stream));
-            // 2. 跑主 kernel（msprof task-based 采集每个 kernel 独立记录）
             auto t0 = std::chrono::steady_clock::now();
-            // 根据 dtype 选择对应的 kernel 入口（8 参数含 workspace）
-            if (dtype == "e4m3e4m3") {
-                ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
-                    tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                        deviceWorkspace, tilingData);
-            } else if (dtype == "e5m2e5m2") {
-                ApaceQuantMatmulReduceScatterKernelE5M2E5M2_Udma<<<
-                    tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                        deviceWorkspace, tilingData);
-            } else if (dtype == "e4m3e5m2") {
-                ApaceQuantMatmulReduceScatterKernelE4M3E5M2_Udma<<<
-                    tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                        deviceWorkspace, tilingData);
-            } else if (dtype == "e5m2e4m3") {
-                ApaceQuantMatmulReduceScatterKernelE5M2E4M3_Udma<<<
-                    tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
-                        deviceWorkspace, tilingData);
-            }
-            ACL_CHECK(aclrtSynchronizeStream(stream));
+            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+                tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
+                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
+                    deviceWorkspace, deviceOutput, tilingData);
             auto t1 = std::chrono::steady_clock::now();
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
@@ -439,20 +349,8 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
             maxv = std::max(maxv, durations[i]);
         }
         double avg = sum / (PERF_LOOP_COUNT - 1);
-        INFO_LOG("[Rank %d] mLocal=%u headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
-                 rankId, mLocal, headMSize, tileCnt, avg, minv, maxv);
-        ACL_CHECK(aclrtSynchronizeStream(stream));
-
-        // DEBUG: dump workspace（precision 模式），用于核对 mm 输出布局
-        if (getenv("DUMP_WORKSPACE") != nullptr) {
-            std::vector<uint16_t> hostWs(tilingData.workspaceSize / sizeof(uint16_t), 0);
-            ACL_CHECK(aclrtMemcpy(hostWs.data(), tilingData.workspaceSize, deviceWorkspace,
-                                  tilingData.workspaceSize, ACL_MEMCPY_DEVICE_TO_HOST));
-            WriteFile(outputDir + "/workspace.bin", hostWs.data(), tilingData.workspaceSize);
-        }
-
-        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
-        WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+        INFO_LOG("[Rank %d] GET mode single tile | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
+                 rankId, avg, minv, maxv);
 
         aclrtFree(boostIn);
         aclrtFree(boostOut);
@@ -478,16 +376,16 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
 int main(int argc, char* argv[]) {
     int m, k, n, rankNum, headMSize;
     std::string mode;
-    std::string dtype;
     try {
-        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize, dtype);
+        parseArguments(argc, argv, m, k, n, rankNum, mode, headMSize);
     } catch (const std::invalid_argument& e) {
         std::cerr << e.what() << std::endl;
         printUsage(argv[0]);
         return -1;
     }
 
-    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d, dtype=%s)", getpid(), rankNum, mode.c_str(), headMSize, dtype.c_str());
+    INFO_LOG("Master (PID=%d) will fork %d processes (mode=%s, headMSize=%d)",
+             getpid(), rankNum, mode.c_str(), headMSize);
 
     std::vector<pid_t> pids(rankNum);
     for (int rankId = 0; rankId < rankNum; ++rankId) {
@@ -497,7 +395,7 @@ int main(int argc, char* argv[]) {
             ERROR_LOG("Fork failed for rank %d", rankId);
             exit(-1);
         } else if (pid == 0) {
-            int ret = runReduceScatterMatmul(rankNum, rankId, m, k, n, mode, headMSize, dtype);
+            int ret = runQuantMatmulReduceScatter(rankNum, rankId, m, k, n, mode, headMSize);
             exit(ret);
         } else {
             pids[rankId] = pid;
