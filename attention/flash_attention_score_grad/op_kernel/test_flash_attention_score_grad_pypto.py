@@ -18,7 +18,8 @@ KERNEL_TIMEOUT_EXIT = 124  # 与 timeout(1) 的约定一致
 
 # Add op_kernel directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from flash_attention_score_grad_pypto import (
+from flash_attention_score_grad_pypto import (  # noqa: E501
+    decide_swizzle,
     flash_attention_score_grad,
     FagTiling,
     TILE_M, TILE_N, TILE_D,
@@ -97,15 +98,12 @@ def run_kernel_with_timeout(launch, timeout_s=KERNEL_TIMEOUT_S):
           flush=True)
 
 
-def run_test():
+def run_case(B, N, S1, S2, D, num_cores):
     device_id = int(os.environ.get("TILE_FWK_DEVICE_ID", 0))
     device = f"npu:{device_id}"
     torch.npu.set_device(device)
 
-    # Test parameters — keep S1, S2, D as multiples of 128 for simplicity
-    B, N, S1, S2, D = 1, 1, 256, 256, 128
     scale = 1.0 / math.sqrt(D)
-    num_cores = 1
 
     torch.manual_seed(42)
     q = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
@@ -115,24 +113,30 @@ def run_test():
 
     # Compute golden reference
     (dq_gold, dk_gold, dv_gold, y_gold, smax_gold, ssum_gold,
-     sfmg_ref) = golden_flash_attention_grad(
+     _sfmg_ref) = golden_flash_attention_grad(
         q.cpu(), k.cpu(), v.cpu(), dy.cpu(), scale)
 
     y_in = y_gold.to(device).contiguous()
     smax_gold = smax_gold.to(device).contiguous()
     ssum_gold = ssum_gold.to(device).contiguous()
 
-    # Allocate workspaces (FP32, initialized to zero for atomic add)
-    dq_ws = torch.zeros(B, S1, N, D, device=device, dtype=torch.float32)
-    dk_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
-    dv_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
-    # kernel 内排布为 [S1, B*N]（store 的 order 必须升序，不能转置写）
-    dbg_sfmg = torch.zeros(S1, B * N, device=device, dtype=torch.float32)
-
+    # workspace 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
+    # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
+    dq_ws = torch.full((B, S1, N, D), float("nan"), device=device,
+                       dtype=torch.float32)
+    dk_ws = torch.full((B, S2, N, D), float("nan"), device=device,
+                       dtype=torch.float32)
+    dv_ws = torch.full((B, S2, N, D), float("nan"), device=device,
+                       dtype=torch.float32)
+    # fp16 最终输出：由 kernel 的 post 阶段写(scale + cast)
+    dq_out_t = torch.zeros(B, S1, N, D, device=device, dtype=torch.float16)
+    dk_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
+    dv_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
     tiling = FagTiling(
         b=B, n=N, s1=S1, s2=S2, d=D,
         scale_value=scale,
         core_num=num_cores,
+        enable_swizzle=decide_swizzle(B, N, S1, S2, D, num_cores),
     )
 
     # Launch kernel
@@ -145,16 +149,17 @@ def run_test():
         lambda: flash_attention_score_grad[None, num_cores](
             q, k, v, dy, y_in,
             smax_gold, ssum_gold,
-            dq_ws, dk_ws, dv_ws, dbg_sfmg,
+            dq_ws, dk_ws, dv_ws,
+            dq_out_t, dk_out_t, dv_out_t,
             tiling,
         ),
         timeout_s=KERNEL_TIMEOUT_S,
     )
 
-    # Cast workspace results to FP16
-    dq_out = dq_ws.half()
-    dk_out = dk_ws.half()
-    dv_out = dv_ws.half()
+    # scale + cast 已由 kernel 的 post 阶段完成，直接取 fp16 输出
+    dq_out = dq_out_t
+    dk_out = dk_out_t
+    dv_out = dv_out_t
 
     # Compare with golden
     def check(name, out, gold, rtol, atol):
@@ -171,102 +176,6 @@ def run_test():
             print(f"    {e}")
             return False
 
-    # sfmg 对比：golden sfmg = rowsum(dy*y)，形状 [B,N,S1] -> [B*N,S1]
-    sfmg_gold = sfmg_ref.reshape(B * N, S1).t().contiguous()
-    sfmg_got = dbg_sfmg.cpu()
-    sd = (sfmg_gold - sfmg_got).abs()
-    print(f"\n[debug] sfmg max_diff={sd.max().item():.6e} "
-          f"mean={sd.mean().item():.6e}")
-    print(f"[debug] sfmg gold[:4,0]={sfmg_gold[:4,0].tolist()}")
-    print(f"[debug] sfmg got [:4,0]={sfmg_got[:4,0].tolist()}")
-
-    # ---- dQ 误差结构诊断 ----------------------------------------------
-    # dQ 是唯一失败项，且 dK/dV 已证明 dS 正确。用几个候选公式与分块视图
-    # 定位错误形态：整体错 / 分 s2 块错 / 分 vector 子核错 / 转置或缩放错。
-    def diag_dq():
-        qc, kc, vc, dyc = (t.cpu().float() for t in (q, k, v, dy))
-        # [B,N,S,D]
-        qb = qc.transpose(1, 2)
-        kb = kc.transpose(1, 2)
-        vb = vc.transpose(1, 2)
-        dyb = dyc.transpose(1, 2)
-        s = torch.matmul(qb, kb.transpose(-1, -2)) * scale
-        sm = s.max(dim=-1, keepdim=True).values
-        se = torch.exp(s - sm)
-        p = se / se.sum(dim=-1, keepdim=True)
-        yb = torch.matmul(p, vb)
-        dp = torch.matmul(dyb, vb.transpose(-1, -2))
-        sfmg = (dyb * yb).sum(dim=-1, keepdim=True)
-        ds = p * (dp - sfmg)                       # [B,N,S1,S2]
-        got = dq_ws.cpu().float().transpose(1, 2)  # -> [B,N,S1,D]
-
-        def d(name, ref):
-            e = (got - ref).abs()
-            print(f"  [diag] {name:32s} max={e.max().item():.4e} "
-                  f"mean={e.mean().item():.4e}")
-
-        d("ds@k*scale (golden)", torch.matmul(ds, kb) * scale)
-        d("ds@k (no scale)", torch.matmul(ds, kb))
-        d("ds@k*scale^2", torch.matmul(ds, kb) * scale * scale)
-        d("p@k*scale (P instead of dS)", torch.matmul(p, kb) * scale)
-        d("(dp-sfmg)@k*scale (no *P)",
-          torch.matmul(dp - sfmg, kb) * scale)
-        d("ds@v*scale (V instead of K)", torch.matmul(ds, vb) * scale)
-        d("ds^T@k*scale (left transposed)",
-          torch.matmul(ds.transpose(-1, -2), kb) * scale)
-
-        # 幅度与相关性：相关系数接近 1 说明只是缩放/系数问题，
-        # 接近 0 说明读到的根本不是 dS@K 的结果。
-        # L0C 被后续 matmul 冲掉的假设：dq_ws 里可能是 dK/dV 的数据。
-        # 三者形状都是 [B,N,S,D]，可直接比。
-        dk_ref = torch.matmul(ds.transpose(-1, -2), qb) * scale
-        dv_ref = torch.matmul(p.transpose(-1, -2), dyb)
-        for nm, cand in (("dK values", dk_ref), ("dV values", dv_ref)):
-            e = (got - cand).abs()
-            a = got.reshape(-1)
-            b2 = cand.reshape(-1)
-            c = ((a * b2).sum() / (a.norm() * b2.norm())).item()
-            print(f"  [diag] got vs {nm:22s} max={e.max().item():.4e} "
-                  f"corr={c:.6f} |cand|={b2.norm().item():.4e}")
-
-        ref = torch.matmul(ds, kb) * scale
-        gf = got.reshape(-1)
-        rf = ref.reshape(-1)
-        num = (gf * rf).sum()
-        corr = (num / (gf.norm() * rf.norm())).item()
-        print(f"  [diag] |got|={gf.norm().item():.4e}  "
-              f"|ref|={rf.norm().item():.4e}  "
-              f"corr={corr:.6f}  best_fit_k={(num / rf.pow(2).sum()).item():.6f}")
-        # 逐 128 行(cube 块) / 逐 64 行(vector 子核) 的相关性
-        g4 = got.reshape(-1, D)
-        r4 = ref.reshape(-1, D)
-        for i in range(0, min(S1, 256), 64):
-            a = g4[i:i + 64].reshape(-1)
-            b2 = r4[i:i + 64].reshape(-1)
-            c = ((a * b2).sum() / (a.norm() * b2.norm())).item()
-            print(f"  [diag] corr rows[{i}:{i+64}] = {c:.6f}")
-
-        # 只累加了某一个 s2 块？逐块检查
-        nt = S2 // TILE_N
-        full = torch.matmul(ds, kb) * scale
-        for i in range(nt):
-            sl = slice(i * TILE_N, (i + 1) * TILE_N)
-            part = torch.matmul(ds[..., sl], kb[:, :, sl, :]) * scale
-            e = (got - part).abs()
-            print(f"  [diag] only s2 tile {i:<20d} max={e.max().item():.4e} "
-                  f"mean={e.mean().item():.4e}")
-
-        # 误差在 S1 方向的分布：按 128 行(cube 块)和 64 行(vector 子核)看
-        err = (got - full).abs()
-        rows = err.amax(dim=-1).reshape(-1)        # [B*N*S1]
-        for i in range(0, min(S1, 256), 64):
-            print(f"  [diag] err rows[{i}:{i+64}] max="
-                  f"{rows[i:i+64].max().item():.4e}")
-        cols = err.amax(dim=-2).reshape(-1)[:D]
-        print(f"  [diag] err cols[0:64] max={cols[:64].max().item():.4e} "
-              f"cols[64:128] max={cols[64:].max().item():.4e}")
-
-    diag_dq()
 
     print("\nResults:")
     # FP16 gradients typically need rtol=1e-2, atol=1e-2
@@ -276,12 +185,50 @@ def run_test():
     ok_dk = check("dK", dk_out, dk_gold, rtol, atol)
     ok_dv = check("dV", dv_out, dv_gold, rtol, atol)
 
-    if ok_dq and ok_dk and ok_dv:
-        print("\n=== All tests PASSED ===")
-        return 0
-    else:
-        print("\n=== Some tests FAILED ===")
+    return ok_dq and ok_dk and ok_dv
+
+
+# 形状用例：覆盖对齐、S1 尾块、S2 尾块、双尾块以及多核
+CASES = [
+    # (B, N, S1, S2, D, cores)
+    (1, 1, 256, 256, 128, 1),   # 全对齐基线
+    (1, 1, 200, 256, 128, 1),   # S1 尾块 (200 = 128 + 72)
+    (1, 1, 256, 200, 128, 1),   # S2 尾块
+    (1, 1, 200, 168, 128, 1),   # 双尾块
+    (2, 2, 256, 256, 128, 1),   # 多 batch / 多 head
+    # --- S1 尾块二分定位 ---
+    (1, 1, 384, 256, 128, 1),   # 5: S1 三整块，无尾块
+    (1, 1, 192, 256, 128, 1),   # 6: S1 尾块=64(正好半核对齐)
+    (1, 1, 160, 256, 128, 1),   # 7: S1 尾块=32
+    (1, 1, 224, 256, 128, 1),   # 8: 尾块=96, halfS1=48
+    (1, 1, 136, 256, 128, 1),   # 9: 尾块=8,  halfS1=4
+    (1, 1, 168, 256, 128, 1),   # 10: 尾块=40, halfS1=20
+    # --- 大 seqlength + 多核 ---
+    (1, 1, 8192, 8192, 128, 36),   # 11: 36 个 cube 核
+    (1, 1, 8192, 8192, 128, 32),   # 12: 32 个 cube 核
+]
+
+
+def run_test():
+    failed = []
+    # CASE_FILTER=i[,j...] 只跑指定下标的用例（设备级错误会终止进程，
+    # 逐个跑才能定位是哪个形状出问题）
+    flt = os.environ.get("CASE_FILTER", "")
+    cases = ([CASES[int(i)] for i in flt.split(",")] if flt else CASES)
+    for (B, N, S1, S2, D, cores) in cases:
+        tag = f"B{B} N{N} S1={S1} S2={S2} D{D} cores={cores}"
+        print(f"\n{'='*62}\n[case] {tag}\n{'='*62}")
+        if not run_case(B, N, S1, S2, D, cores):
+            failed.append(tag)
+
+    print(f"\n{'='*62}")
+    if failed:
+        print(f"=== {len(failed)}/{len(cases)} case(s) FAILED ===")
+        for t in failed:
+            print(f"    FAIL: {t}")
         return 1
+    print(f"=== All {len(cases)} cases PASSED ===")
+    return 0
 
 
 if __name__ == "__main__":
