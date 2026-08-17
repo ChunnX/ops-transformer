@@ -639,10 +639,12 @@ public:
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
 
-    __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
+    __aicore__ inline void Bmm2ResForFDCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+        // FD 路径写 workspace 前对全掩行置零，防止 NaN/inf 污染 FD 归约
+        RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         uint64_t gmOffset =

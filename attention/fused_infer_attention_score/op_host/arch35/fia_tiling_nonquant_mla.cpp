@@ -79,9 +79,6 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
     if (fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK && fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) {
         return false;
     }
-    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) {
-        return false;
-    }
     // MLA D512 维度约束
     if (fiaInfo_->qkHeadDim != DSIZE_512 || fiaInfo_->ropeHeadDim != MLA_ROPE_D_DIM_64 ||
         fiaInfo_->vHeadDim != DSIZE_512) {
@@ -285,8 +282,14 @@ void FiaTilingNonQuantMlaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
     baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
-    baseInfo.preToken = fiaInfo_->preToken;
-    baseInfo.nextToken = fiaInfo_->nextToken;
+    // sparse0 语义为无 token 窗口全范围计算，分核窗口置 INT_MAX 避免 CalcS2Range 截断 S2
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK) {
+        baseInfo.preToken = SPARSE_MODE_INT_MAX_MLA;
+        baseInfo.nextToken = SPARSE_MODE_INT_MAX_MLA;
+    } else {
+        baseInfo.preToken = fiaInfo_->preToken;
+        baseInfo.nextToken = fiaInfo_->nextToken;
+    }
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
                      (fiaInfo_->qLayout == FiaLayout::TND);
     baseInfo.sparseMode = fiaInfo_->sparseMode;
@@ -572,14 +575,13 @@ void FiaTilingNonQuantMlaArch35::SetAttenMaskTilingData()
     if (fiaInfo_->attenMaskFlag) {
         uint64_t maskBatch = 1;
         uint64_t maskDimNum = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDimNum();
-        uint64_t maskS1Size = 2048;
-        uint64_t maskS2Size = 2048;
-        if (maskDimNum != 2 || fiaInfo_->s1Size == 1) {
+        // mask 尺寸直接取自实际 shape（支持任意 [B或1, >=QS, >=KV] 3D/4D），2D mask 由 checker 拦截
+        if (maskDimNum != MASK_DIM_SS || fiaInfo_->s1Size == 1) {
             maskBatch = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
         }
+        uint64_t maskS2Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
+        uint64_t maskS1Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskBatch = maskBatch;
-        maskS2Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
-        maskS1Size = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = maskS1Size;
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = maskS2Size;
     } else {
@@ -629,9 +631,21 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
 
-    tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;
+    // sparse0 语义为无 token 窗口全范围计算，kernel CalcCurS2StartEndWithSparse 据此覆盖全 KV
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK) {
+        tilingData_.baseTiling.fiaAttenMaskParams.preTokens = SPARSE_MODE_INT_MAX_MLA;
+        tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = SPARSE_MODE_INT_MAX_MLA;
+    } else {
+        tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
+        tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
+    }
+    // sparse0+自定义 mask 下可能存在全掩行，强制开启行无效处理，使 FA 阶段 RowInvalidUpdateVF 与
+    // FD 阶段 DealInvalidMaskRows 兜底生效（不依赖用户 innerPrecise 标志）
+    bool isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) {
+        isRowInvalidOpen = true;
+    }
+    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = isRowInvalidOpen;
     tilingData_.baseTiling.fiaAttenMaskParams.isExistRowInvalid = fiaInfo_->isExistRowInvalid;
 
     tilingData_.baseTiling.fiaPseParams.pseS1Size = fiaInfo_->pseShiftS1;
