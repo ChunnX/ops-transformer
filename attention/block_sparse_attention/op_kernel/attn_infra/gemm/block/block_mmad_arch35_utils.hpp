@@ -129,34 +129,34 @@ static constexpr uint32_t GM_MAX_BUFFER_LEN = 0x7FFFFFFFu;
 namespace MXFP8 {
     static constexpr uint32_t KB_BYTE = 1024;
 
-    // L1：数据槽字节相对 MXFP4 翻倍，scale 槽不变；P 环深度 = PV_RE_DELAY_N = 8
-    static constexpr uint32_t L1_P_BUF_CNT = 8;
-    static constexpr uint32_t L1_P_BUF_SIZE = 32 * KB_BYTE;
+    // L1：kvs128 修订 — P 环 = Dpv = 12；单槽 16KB = 128×128×1B
+    static constexpr uint32_t L1_P_BUF_CNT = 12;
+    static constexpr uint32_t L1_P_BUF_SIZE = 16 * KB_BYTE;
     static constexpr uint32_t L1_P_BUF_OFFSET = 0;
 
-    static constexpr uint32_t L1_P_SCALE_BUF_CNT = 8;
-    static constexpr uint32_t L1_P_SCALE_BUF_SIZE = 1280;
-    static constexpr uint32_t L1_P_SCALE_BUF_OFFSET = 256 * KB_BYTE;
+    static constexpr uint32_t L1_P_SCALE_BUF_CNT = 12;
+    static constexpr uint32_t L1_P_SCALE_BUF_SIZE = 768; // 128×2×(128/64+1)
+    static constexpr uint32_t L1_P_SCALE_BUF_OFFSET = 192 * KB_BYTE;
 
     static constexpr uint32_t L1_Q_BUF_CNT = 2;
     static constexpr uint32_t L1_Q_BUF_SIZE = 16 * KB_BYTE;
-    static constexpr uint32_t L1_Q_BUF_OFFSET = 266 * KB_BYTE;
+    static constexpr uint32_t L1_Q_BUF_OFFSET = 201 * KB_BYTE;
 
     static constexpr uint32_t L1_Q_DESCALE_BUF_CNT = 2;
     static constexpr uint32_t L1_Q_DESCALE_BUF_SIZE = 512;
-    static constexpr uint32_t L1_Q_DESCALE_BUF_OFFSET = 298 * KB_BYTE;
+    static constexpr uint32_t L1_Q_DESCALE_BUF_OFFSET = 233 * KB_BYTE;
 
     static constexpr uint32_t L1_KV_BUF_CNT = 4;
-    static constexpr uint32_t L1_KV_BUF_SIZE = 32 * KB_BYTE;
-    static constexpr uint32_t L1_KV_BUF_OFFSET = 300 * KB_BYTE;
+    static constexpr uint32_t L1_KV_BUF_SIZE = 32 * KB_BYTE; // ≥18KB seed 镜像
+    static constexpr uint32_t L1_KV_BUF_OFFSET = 234 * KB_BYTE;
 
     static constexpr uint32_t L1_KV_DESCALE_BUF_CNT = 4;
     static constexpr uint32_t L1_KV_DESCALE_BUF_SIZE = 2 * KB_BYTE;
-    static constexpr uint32_t L1_KV_DESCALE_BUF_OFFSET = 428 * KB_BYTE;
+    static constexpr uint32_t L1_KV_DESCALE_BUF_OFFSET = 362 * KB_BYTE;
 
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_CNT = 4;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_SIZE = 512;
-    static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 436 * KB_BYTE;
+    static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 370 * KB_BYTE;
 
     static constexpr uint32_t KV_EVENT0 = 4;
     static constexpr uint32_t KV_EVENT1 = 5;
@@ -166,17 +166,17 @@ namespace MXFP8 {
     static constexpr bool KV_SHARE_DEBUG = false;
     static constexpr uint32_t KV_TRACE_TILES = 40;
 
-    // L0：QK/PV 均沿 k 切 2 段；槽尺寸与 MXFP4 偏移布局一致，几何按 fp8 重算
+    // L0：默认不切 k；K 双缓 8KB，Q 单缓 16KB，V/P 双缓
     static constexpr uint32_t L0A_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_BYTE;   // 128×64×1B
+    static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_BYTE;   // 64×128×1B K
     static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0A_PV_BUF_CNT = 2;
-    static constexpr uint32_t L0A_PV_BUF_SIZE = 18 * KB_BYTE;  // 144×128×1B
+    static constexpr uint32_t L0A_PV_BUF_SIZE = 18 * KB_BYTE;  // 144×128×1B Vᵀ
     static constexpr uint32_t L0A_PV_BUF_OFFSET = 16 * KB_BYTE;
 
-    static constexpr uint32_t L0B_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0B_QK_BUF_SIZE = 8 * KB_BYTE;   // 128×64×1B
+    static constexpr uint32_t L0B_QK_BUF_CNT = 1;
+    static constexpr uint32_t L0B_QK_BUF_SIZE = 16 * KB_BYTE;  // 128×128×1B Q（单缓冲）
     static constexpr uint32_t L0B_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0B_PV_BUF_CNT = 2;
@@ -184,12 +184,12 @@ namespace MXFP8 {
     static constexpr uint32_t L0B_PV_BUF_OFFSET = 16 * KB_BYTE;
 
     static constexpr uint32_t L0C_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0C_QK_BUF_SIZE = 64 * KB_BYTE;
+    static constexpr uint32_t L0C_QK_BUF_SIZE = 32 * KB_BYTE;  // 64×128×4B
     static constexpr uint32_t L0C_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0C_PV_BUF_CNT = 1;
     static constexpr uint32_t L0C_PV_BUF_SIZE = 72 * KB_BYTE;
-    static constexpr uint32_t L0C_PV_BUF_OFFSET = 128 * KB_BYTE;
+    static constexpr uint32_t L0C_PV_BUF_OFFSET = 64 * KB_BYTE;
 
     static constexpr uint32_t BLOCK_SIZE = 32;
 
@@ -205,15 +205,13 @@ namespace MXFP8 {
     static constexpr uint32_t ROW_SUM_NUM = 128;
 
     static constexpr uint32_t NZ_C0_ELEMS = 16;
-    static constexpr uint32_t FP8_C0_ELEMS = 32;   // fp8 每 C0 块元素数
-    static constexpr uint32_t MX_GROUP_ELEMS = 32; // MX scale 组大小
+    static constexpr uint32_t FP8_C0_ELEMS = 32;
+    static constexpr uint32_t MX_GROUP_ELEMS = 32;
 
     static constexpr uint32_t PV_MMAD_M_DIM = ROW_SUM_NUM + ROW_SUM_PAD_NUM; // 144
-    static constexpr uint32_t S2_BASE_TILE_SIZE = 256;
-    static constexpr uint32_t QK_K_SPLIT = 64;     // QK 沿 D 切段
-    static constexpr uint32_t PV_K_SPLIT = 128;    // PV 沿 S2 切段
+    static constexpr uint32_t S2_BASE_TILE_SIZE = 128;
+    static constexpr uint32_t QK_HALF_KVS = 64; // 单次 QK 半面 kvs
 
-    // seed：e4m3 1.0 = 0x38，e8m0 1.0 = 0x7F → 有效值 1.0
     static constexpr uint16_t SEED_V_DATA_FILL = 0x3838;
     static constexpr uint16_t SEED_V_SCALE_FILL = 0x7F7F;
     static constexpr uint16_t ZERO_FILL_PATTERN = 0x0000;
@@ -227,6 +225,8 @@ namespace MXFP8 {
                   "MXFP8 L0A exceeds 64KB");
     static_assert(L0B_PV_BUF_OFFSET + L0B_PV_BUF_CNT * L0B_PV_BUF_SIZE <= 64 * KB_BYTE,
                   "MXFP8 L0B exceeds 64KB");
+    static_assert(L0C_PV_BUF_OFFSET + L0C_PV_BUF_CNT * L0C_PV_BUF_SIZE <= 256 * KB_BYTE,
+                  "MXFP8 L0C exceeds 256KB");
 }  // namespace MXFP8
 
 }  // namespace NpuArch::Gemm::Block

@@ -82,7 +82,7 @@ public:
     static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 1;
     static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 0;
 
-    static constexpr uint32_t PV_RE_DELAY_N = 8;
+    static constexpr uint32_t PV_RE_DELAY_N = 12;
     static constexpr uint32_t DELAY_PSCALE_N = 3;
 
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;

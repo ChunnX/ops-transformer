@@ -296,18 +296,19 @@ public:
             nSubRowStart, nCur, kCur, kvsActBaseTileAlign16, scaleK, kStart);
     }
 
-    // C = K · Qᵀ；沿 D 累加时仅首段 initC=true
+    // C = K · Qᵀ；默认整段 D，initC 由调用方传入
     __aicore__ inline void MatmulQK(uint32_t n,
                                     uint32_t qsActBaseTileAlign16,
                                     uint32_t kCur,
-                                    uint32_t qkL0abBufId,
+                                    uint32_t qkL0aBufId,
+                                    uint32_t qkL0bBufId,
                                     uint32_t qkL0cBufId,
                                     bool initC)
     {
         auto l0ALayout = tla::MakeLayout<ElementB, LayoutTagL0A>(n, kCur);
-        auto l0ATensorTla = tla::MakeTensor(l0ATensor[qkL0abBufId], l0ALayout, Arch::PositionL0A{});
+        auto l0ATensorTla = tla::MakeTensor(l0ATensor[qkL0aBufId], l0ALayout, Arch::PositionL0A{});
         auto l0BLayout = tla::MakeLayout<ElementA, LayoutTagL0B>(kCur, qsActBaseTileAlign16);
-        auto l0BTensorTla = tla::MakeTensor(l0BTensor[qkL0abBufId], l0BLayout, Arch::PositionL0B{});
+        auto l0BTensorTla = tla::MakeTensor(l0BTensor[qkL0bBufId], l0BLayout, Arch::PositionL0B{});
         auto l0CLayout = tla::MakeLayoutL0C(n, qsActBaseTileAlign16);
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[qkL0cBufId], l0CLayout, Arch::PositionL0C{});
         tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, n, qsActBaseTileAlign16, kCur, initC);
@@ -391,33 +392,26 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
 
-        // n 方向按 L0_TILE_N 子切分；每个 nSub 内再沿 D 切 2 段（各 QK_K_SPLIT）累加到同一 L0C
+        // n 方向按 L0_TILE_N(=64) 子切分：两轮拼成 128 行基块；D 方向一次打满（不切 k）
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
         for (uint32_t nSub = 0; nSub < nLoopNum; ++nSub) {
             uint32_t l0CEventId = QK_L0C_EVENT0 + qkL0cBufId;
             uint32_t nSubRowStart = nSub * L0_TILE_N;
             uint32_t nCur = MinU32(L0_TILE_N, kvsActBaseTile - nSubRowStart);
+            uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
+            constexpr uint32_t L0B_Q_SLOT = 0;
 
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
-
-            uint32_t kLoopNum = CeilDivision(embed, MXFP8::QK_K_SPLIT);
-            for (uint32_t kSub = 0; kSub < kLoopNum; ++kSub) {
-                uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
-                uint32_t kStart = kSub * MXFP8::QK_K_SPLIT;
-                uint32_t kCur = MinU32(MXFP8::QK_K_SPLIT, embed - kStart);
-                bool initC = (kSub == 0);
-
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-                LoadQToL0B(qsActBaseTileAlign16, kCur, qsActBaseTileAlign16, qsActBaseTileAlign16,
-                           scaleK, qBufId, qkL0abBufId, kStart);
-                LoadKToL0A(nSubRowStart, nCur, kCur, kvsActBaseTileAlign16, scaleK, kBufId,
-                           qkL0abBufId, kStart);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-                MatmulQK(nCur, qsActBaseTileAlign16, kCur, qkL0abBufId, qkL0cBufId, initC);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-                qkL0abBufId = (qkL0abBufId + 1) % MXFP8::L0A_QK_BUF_CNT;
-            }
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            LoadQToL0B(qsActBaseTileAlign16, embed, qsActBaseTileAlign16, qsActBaseTileAlign16,
+                       scaleK, qBufId, L0B_Q_SLOT, 0);
+            LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId,
+                       qkL0abBufId, 0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            MatmulQK(nCur, qsActBaseTileAlign16, embed, qkL0abBufId, L0B_Q_SLOT, qkL0cBufId, true);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            qkL0abBufId = (qkL0abBufId + 1) % MXFP8::L0A_QK_BUF_CNT;
 
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
@@ -441,7 +435,7 @@ protected:
     AscendC::LocalTensor<ElementB> l1ATensor[MXFP8::L1_KV_BUF_CNT];
     AscendC::LocalTensor<ElementA> l1BTensor[MXFP8::L1_Q_BUF_CNT];
     AscendC::LocalTensor<ElementB> l0ATensor[MXFP8::L0A_QK_BUF_CNT];
-    AscendC::LocalTensor<ElementA> l0BTensor[MXFP8::L0A_QK_BUF_CNT];
+    AscendC::LocalTensor<ElementA> l0BTensor[MXFP8::L0B_QK_BUF_CNT];
     AscendC::LocalTensor<float> l0CTensor[MXFP8::L0C_QK_BUF_CNT];
     AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP8::L1_KV_BUF_CNT];
     AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP8::L1_Q_BUF_CNT];

@@ -137,14 +137,14 @@ public:
         // if (tileInfo.isFirstKvsTile) {
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                // qs=128, kvs=256 softmax
+                // qs=128, kvs=128 整基块 softmax
                 Mxfp8VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                     indexUBTensor, scaleValue_, NEG_LOG2_CX_);
             } else {
-                // qs=64, kvs=256 softmax
+                // qs=64, kvs=128 整基块 softmax
                 Mxfp8VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
@@ -209,8 +209,10 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
 
-        // DataCopy UB -> L1 搬运
-        auto ubPLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPUB>(MXFP8::KVS_BASE_SIZE / 4, MXFP8::QS_BASE_SIZE * 4);
+        // DataCopy UB -> L1：NZ 物理视图按整基块 16KB 固定（M=64×N=512，half-N 拷 16KB）
+        // kvs128 时不能再用 KVS/4(=32)，否则只搬 8KB。
+        constexpr uint32_t UB_P_NZ_M = MXFP8::UB_P_BUF_SIZE / (MXFP8::QS_BASE_SIZE * 2);
+        auto ubPLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPUB>(UB_P_NZ_M, MXFP8::QS_BASE_SIZE * 4);
         auto ubPTensorTla = tla::MakeTensor(pUBTensor[0], ubPLayoutTla, Arch::PositionUB{});
 
         CopyPUBToPL1(l1PTensorTla, ubPTensorTla, tileInfo, taskInfo, spBuffIdx);
@@ -225,7 +227,7 @@ public:
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
         if (tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
-            // qs=128, kvs=256 整块搬运
+            // qs=128, kvs=128 整基块搬运
             AscendC::DataCopyParams repeatParams;
             if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
                 repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行

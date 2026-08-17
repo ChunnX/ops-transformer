@@ -438,31 +438,19 @@
  
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
 
-        // 沿 S2(k) 切 2 段累加到同一 L0C；首段沿用组首 initC，后续段恒 false
+        // 基块 S2=128：一次 PV mmad（不切 S2）
         uint32_t s2Full = delay8TileInfo.kvsActBaseTileAlign64;
-        uint32_t kLoopNum = CeilDiv(s2Full, MXFP8::PV_K_SPLIT);
-        for (uint32_t kSub = 0; kSub < kLoopNum; ++kSub) {
-            if (kSub > 0) {
-                l0ABufId = pvL0abBufId;
-                l0BBufId = pvL0abBufId;
-                l0ABEventId = PV_L0AB_EVENT0 + pvL0abBufId;
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-            }
-            uint32_t s2Start = kSub * MXFP8::PV_K_SPLIT;
-            uint32_t s2Act = min(MXFP8::PV_K_SPLIT, s2Full - s2Start);
-            bool initC = delay8TileInfo.isTileGoupFirstTile && (kSub == 0);
+        bool initC = delay8TileInfo.isTileGoupFirstTile;
+        LoadPToL0(pSlot, l0BBufId, s2Full, embedReal, delay8TaskInfo.qsActBaseTileAlign64, 0);
+        LoadVToL0(l1ABufId, l0ABufId, embedReal, s2Full, 0, s2Full);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
 
-            LoadPToL0(pSlot, l0BBufId, s2Act, embedReal, delay8TaskInfo.qsActBaseTileAlign64, s2Start);
-            LoadVToL0(l1ABufId, l0ABufId, embedReal, s2Act, s2Start, s2Full);
-            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+        MatmulPV(l0ABufId, l0BBufId, mMmad,
+                 delay8TaskInfo.qsActBaseTileAlign64, s2Full, initC);
 
-            MatmulPV(l0ABufId, l0BBufId, mMmad,
-                     delay8TaskInfo.qsActBaseTileAlign64, s2Act, initC);
-
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-            pvL0abBufId = (pvL0abBufId + 1) % MXFP8::L0A_PV_BUF_CNT;
-        }
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+        pvL0abBufId = (pvL0abBufId + 1) % MXFP8::L0A_PV_BUF_CNT;
  
          if (delay8TileInfo.isUpdatePScale) {
              AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);

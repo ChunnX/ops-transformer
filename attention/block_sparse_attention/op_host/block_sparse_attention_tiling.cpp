@@ -117,10 +117,13 @@ enum QuantMode : int64_t {
     FP8_QUANT = 1,
     MXFP4_OCP_QUANT = 2,
     MXFP4_CX_QUANT = 3,
+    MXFP8_OCP_QUANT = 4,
 };
 
 // 判断是否为 mxfp4 量化(OCP 或 CX)
 static bool IsMxfp4Quant(int64_t qm) { return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT; }
+static bool IsMxfp8Quant(int64_t qm) { return qm == MXFP8_OCP_QUANT; }
+static bool IsMxFullQuant(int64_t qm) { return IsMxfp4Quant(qm) || IsMxfp8Quant(qm); }
 
 static std::string DataTypeToString(ge::DataType dataType)
 {
@@ -1136,7 +1139,10 @@ void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
     const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (quantMode_ == MXFP8_OCP_QUANT) {
+        // MXFP8 kvs128：softmax 基块 128×128
+        kvBaseTile_ = TILE_SIZE_128;
+    } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
         kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
     } else {
@@ -1393,7 +1399,13 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     } else if (dataType_ == ge::DT_BF16) {
         tilingKey += 22220ULL; // 22 for BF16 -> 9000000030000002 + 22220 = 9000000030022222
     } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        if (attentionOutDataType_ == ge::DT_FLOAT16) {
+        if (quantMode_ == MXFP8_OCP_QUANT) {
+            if (attentionOutDataType_ == ge::DT_FLOAT16) {
+                tilingKey += 51;
+            } else {
+                tilingKey += 50;
+            }
+        } else if (attentionOutDataType_ == ge::DT_FLOAT16) {
             tilingKey += 10;
         } else if (attentionOutDataType_ == ge::DT_BF16) {
             tilingKey += 20;

@@ -2,7 +2,8 @@
 
 日期：2026-08-17  
 基线：`mxfp8_0814` 上已有 MXFP8 脚手架；本文件**取代** `2026-08-14-bsa-mxfp8-design.md` 的几何与内存决策。  
-状态：设计修订稿（相对 0814：缩小 kvs 基块，换整块 P / 少切 k）
+状态：**几何迁移已落地**（分支 `mxfp8_0817`；相对 0814：缩小 kvs 基块，换整块 P / 少切 k）  
+画布：`docs/superpowers/canvases/BSA-mxfp8-design-report.canvas.tsx`
 
 ## 1. 目标
 
@@ -178,10 +179,12 @@ C0：`FP8_C0_ELEMS = 32`。
 
 ## 12. 实施分期
 
-1. **常量 + tiling**：`kvBaseTile=128`、G=8、Dpv=12、三张内存表。  
-2. **Cube**：QK 64×128×2、PV 单次 k=128、L0 推荐布局；pScale 可先钉 `0x7F`。  
-3. **Vec + 流水**：整块 softmax/P、group-max、delay 12/3、跨核。  
-4. **收尾**：尾块、精度、性能与是否启用 Q 切 D。
+| 期 | 内容 | 状态 |
+| --- | --- | --- |
+| 1 | 常量 + tiling：`kvBaseTile=128`、G=8、Dpv=12、三张内存表 | **已完成** |
+| 2 | Cube：QK 64×128×2、PV 单次 k=128、L0 推荐布局 | **已完成** |
+| 3 | Vec + 流水：整块 softmax/P、group-max、delay 12/3 | **已完成**（VF NZ 密度待板上确认） |
+| 4 | 收尾：尾块、精度、性能与是否启用 Q 切 D | **待做** |
 
 ## 13. 与 0814 / MXFP4 对照摘要
 
@@ -193,3 +196,37 @@ C0：`FP8_C0_ELEMS = 32`。
 | 基块 mmad | 3 | 6 | **3** |
 | UB P | 整块 | 半块 | **整块** |
 | L1 P 字节 | 320KB | 256KB | **192KB** |
+
+## 14. 修改点说明（0817 落地）
+
+相对 `mxfp8_0814` 脚手架（256 / G=4 / Dpv=8 / 双切 k / 半块 P），本轮在 `mxfp8_0817` 上的代码改动如下。
+
+### 14.1 常量与内存表
+
+| 文件 | 改动 |
+| --- | --- |
+| `op_kernel/arch35/kernel_utils.hpp` | `MXFP8Kernel::TILE_GROUP_N`：4 → **8** |
+| `op_kernel/.../gemm/block/block_mmad_arch35_utils.hpp` | `KVS`/`S2`=128；`QK_HALF_KVS`=64；去掉 `QK_K_SPLIT`/`PV_K_SPLIT`；L0B_Q 单缓 16KB；L0C QK 32KB×2，PV 偏移 **64KB**；L1 P 环 **12×16KB**，P-scale **12×768B** |
+| `op_kernel/.../epilogue/block/block_epilogue_arch35_utils.hpp` | `KVS_BASE=128`；S **2×32KB**；oTmp@64KB；P 整基块 2×16KB；pScale/localGroupMax **12**；UB 偏移按新表重排 + `static_assert` |
+
+### 14.2 Cube / Kernel / 接口
+
+| 文件 | 改动 |
+| --- | --- |
+| `.../gemm/block/block_mmad_qk_arch35_mxfp8.hpp` | n 向按 `L0_TILE_N(=64)` 两轮拼基块；D 一次打满；Q→L0B 槽 0 |
+| `.../gemm/block/block_mmad_pv_arch35_mxfp8.hpp` | 去掉 S2 k-split 循环；单次 `LoadP/V` + `MatmulPV`；P 槽 `% 12` |
+| `.../arch35/block_sparse_attention_kernel_arch35_mxfp8_full_quant.h` | `PV_RE_DELAY_N`：8 → **12**（`PRELOAD=13`） |
+| `.../block_sparse_attention_kernel_interface.cpp` | `L0TileShapeQK`：`<128,128,128>` → **`<128,64,128>`** |
+
+### 14.3 Softmax / Host
+
+| 文件 | 改动 |
+| --- | --- |
+| `.../block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp8.hpp` | 注释改为 kvs=128；UB→L1 NZ 布局按 **整基块 16KB**（`UB_P_NZ_M=64`，不再用 `KVS/4`） |
+| `op_host/block_sparse_attention_tiling.cpp` | `CalcBaseTileTilingParams950`：MXFP8 强制 `kvBaseTile_=128`；`CheckBlockShapeQuantConstraint`：MXFP8 的 `blockShapeY` 改为 **128 倍数** |
+
+### 14.4 未改 / 待板上确认
+
+- Softmax VF 本体（`mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs128_kvs256.h` 等）仍复用脚手架；模板 `KvsBase` 已随 `KVS_BASE_SIZE=128` 实例化，**e4m3 NZ 打包密度**需 golden 验证。  
+- Kernel 内 `delay8*` 命名、`pscaleNum_ % 8` 同步打包逻辑未改语义（仍可用）。  
+- 期 4：尾块 / 精度 / 性能、可选 Q 切 D 退路。

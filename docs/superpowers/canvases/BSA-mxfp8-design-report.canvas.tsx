@@ -177,11 +177,59 @@ const RISKS: { title: string; body: string; tone: "danger" | "warning" | "info" 
       tone: "warning",
     },
     {
-      title: "与已实现 256/G=4 脚手架不兼容",
-      body: "需改常量、tiling kvBaseTile、QK/PV/softmax；不能热切换旧几何。",
-      tone: "info",
+      title: "Softmax VF NZ 密度",
+      body: "qs128 VF 仍复用脚手架；KvsBase 已随 128 实例化，e4m3 打包密度需 golden（kvs 64/128/尾块）确认。",
+      tone: "warning",
     },
   ];
+
+const CHANGELOG: string[][] = [
+  [
+    "kernel_utils.hpp",
+    "TILE_GROUP_N",
+    "4 → 8",
+  ],
+  [
+    "block_mmad_arch35_utils.hpp",
+    "L1/L0/S2",
+    "P 环 12×16K；QK_HALF=64；去 k-split；L0B_Q 单缓；L0C QK 32K×2 / PV@64K",
+  ],
+  [
+    "block_epilogue_arch35_utils.hpp",
+    "UB",
+    "KVS=128；S 2×32K；整块 P；pScale/localGroupMax×12；偏移重排",
+  ],
+  [
+    "block_mmad_qk_arch35_mxfp8.hpp",
+    "QK",
+    "n 向 2×64 拼基块；D 一次打满；Q→L0B[0]",
+  ],
+  [
+    "block_mmad_pv_arch35_mxfp8.hpp",
+    "PV",
+    "去 S2 k-split；单次 mmad；P 槽 %12",
+  ],
+  [
+    "kernel_arch35_mxfp8_full_quant.h",
+    "流水",
+    "PV_RE_DELAY_N 8→12（PRELOAD=13）",
+  ],
+  [
+    "kernel_interface.cpp",
+    "L0TileShapeQK",
+    "<128,128,128> → <128,64,128>",
+  ],
+  [
+    "softmax_*_mxfp8.hpp",
+    "UB→L1",
+    "整基块 16KB NZ 视图（UB_P_NZ_M=64）",
+  ],
+  [
+    "block_sparse_attention_tiling.cpp",
+    "Host",
+    "kvBaseTile=128；blockShapeY 按 128 倍数校验",
+  ],
+];
 
 const G = 8;
 const DPV = 12;
@@ -385,13 +433,15 @@ export default function BsaMxfp8Kvs128DesignReport() {
         <H1>BSA MXFP8 设计报告（kvs128 修订）</H1>
         <Row gap={8} wrap>
           <Pill tone="info">2026-08-17</Pill>
+          <Pill tone="success">几何已落地 · mxfp8_0817</Pill>
           <Pill tone="warning">取代 0814 几何</Pill>
           <Pill>OCP · e4m3 / e8m0</Pill>
           <Pill>低精 softmax (S=fp16)</Pill>
         </Row>
         <Text>
           相对 0814：QK 半面改为 64×128，基块 128×128，组 ×8（覆盖仍
-          1024），Dpv=12。换来整块 P、默认不切 k、更松的 UB/L0C。
+          1024），Dpv=12。换来整块 P、默认不切 k、更松的 UB/L0C。分支
+          mxfp8_0817 上常量 / Cube / Host 几何迁移已完成。
         </Text>
       </Stack>
 
@@ -477,10 +527,11 @@ export default function BsaMxfp8Kvs128DesignReport() {
       </Stack>
 
       <H2>实施分期</H2>
+      <H2>实施分期</H2>
       <Grid columns={2} gap={12}>
         <Card>
-          <CardHeader trailing={<Pill tone="info">1</Pill>}>
-            常量 + tiling
+          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
+            1 · 常量 + tiling
           </CardHeader>
           <CardBody>
             <Text size="small">
@@ -489,25 +540,29 @@ export default function BsaMxfp8Kvs128DesignReport() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader trailing={<Pill tone="info">2</Pill>}>Cube</CardHeader>
-          <CardBody>
-            <Text size="small">
-              QK 64×128×2、PV k=128、推荐 L0；pScale 可先钉 0x7F。
-            </Text>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader trailing={<Pill tone="info">3</Pill>}>
-            Vec + 流水
+          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
+            2 · Cube
           </CardHeader>
           <CardBody>
             <Text size="small">
-              整块 softmax/P、group-max、delay 12/3、跨核。
+              QK 64×128×2、PV k=128、推荐 L0；去默认双切 k。
             </Text>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader trailing={<Pill tone="info">4</Pill>}>收尾</CardHeader>
+          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
+            3 · Vec + 流水
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              整块 P / delay 12；VF NZ 密度待板上 golden。
+            </Text>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader trailing={<Pill tone="warning">待做</Pill>}>
+            4 · 收尾
+          </CardHeader>
           <CardBody>
             <Text size="small">
               尾块、精度、性能；按需启用 Q 切 D。
@@ -517,14 +572,28 @@ export default function BsaMxfp8Kvs128DesignReport() {
       </Grid>
 
       <Divider />
+
+      <H2>修改点说明（相对 0814 脚手架）</H2>
+      <Callout tone="info" title="落地范围">
+        9 个源文件；几何与流水常量已切到本修订。Softmax VF
+        本体未重写，仅随 KVS_BASE=128 实例化并修正 UB→L1 16KB 布局。
+      </Callout>
+      <Table
+        headers={["文件", "模块", "改动摘要"]}
+        rows={CHANGELOG}
+        rowTone={CHANGELOG.map((_, i) =>
+          i % 2 === 0 ? "neutral" : undefined,
+        )}
+      />
+
+      <Divider />
       <Stack gap={4}>
         <H3>规格文件</H3>
         <Code>
           docs/superpowers/specs/2026-08-17-bsa-mxfp8-design.md
         </Code>
         <Note>
-          0814 规格视为被本修订取代；实现侧需从现有 256/G=4
-          脚手架迁移几何。
+          §14 为与代码同步的修改点说明；0814 规格视为被本修订取代。
         </Note>
       </Stack>
     </Stack>
