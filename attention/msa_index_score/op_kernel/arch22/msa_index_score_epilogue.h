@@ -64,12 +64,15 @@ public:
     // 会把 MTE3 压到 ~9GB/s；改为在 UB 内按行累积、整行（≥1KB）一次写回。
     static constexpr uint32_t UB_OFF_STAGE = ((UB_OFF_RED16 + UB_SIZE_RED16 + 511U) / 512U) * 512U;
     static constexpr uint32_t UB_SIZE_STAGE = MSA_STAGE_ROWS * MSA_STAGE_BLOCKS * sizeof(float);
-    // 非量化：S16（fp16 载入缓冲）复用量化路径的 fp32 S 区（非量化不再需要 fp32 S）。
+    // 非量化：S16（fp16 载入缓冲）复用量化路径的 fp32 S 区（64KB = 两级 32KB 乒乓）。
+    // v0.7 PipeUtilization：aiv_mte2_wait_ratio≈0.84、aiv_mte2_ratio≈0.33、aiv_vec_ratio≈0.57，
+    // 说明 GM→UB 与归约串行；两级缓冲让下一 pass 的 MTE2 叠在当前 pass 的 V 上。
     static constexpr uint32_t UB_OFF_S16 = UB_OFF_S;
     static constexpr uint32_t UB_SIZE_S16 = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(half);
+    static constexpr uint32_t S16_STAGES = 2;
     static constexpr uint32_t UB_TOTAL = UB_OFF_STAGE + UB_SIZE_STAGE;
     static_assert(UB_TOTAL <= ArchTag::UB_SIZE, "MsaSegRowMaxEpilogue UB out of bounds");
-    static_assert(UB_OFF_S16 + UB_SIZE_S16 <= UB_OFF_T64, "S16 buffer overlaps T64");
+    static_assert(UB_OFF_S16 + S16_STAGES * UB_SIZE_S16 <= UB_OFF_T64, "S16 ping-pong overlaps T64");
 
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
     // fp16：一个 32B datablock 16 个元素，一个 repeat 128 个元素（掩码 128 位）。
@@ -100,7 +103,10 @@ public:
         gBlockTable_ = gBlockTable;
 
         ubS_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_S);
-        ubS16_ = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16);
+        ubS16Ping_[0] = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16);
+        ubS16Ping_[1] =
+            resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16 + UB_SIZE_S16);
+        ubS16_ = ubS16Ping_[0];
         ubT64_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T64);
         ubT8_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T8);
         ubRowMax_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_ROWMAX);
@@ -121,12 +127,21 @@ public:
         stageBlkEnd_ = 0;
         rowInReqBase_ = task.mStart + mOff_;
         tokenBase0_ = task.cuQStart;
+        if constexpr (!IS_QUANT) {
+            // 本任务两级 S16 的 V_MTE2 余额；EndTask 对称 Wait，避免跨任务/跨启动泄漏。
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        }
     }
 
     /// 任务结束：把暂存窗口里剩余的 score 写回 GM。
     __aicore__ inline void EndTask()
     {
         FlushStage();
+        if constexpr (!IS_QUANT) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        }
     }
 
     /// 处理一个 S tile（MSA_BLOCKS_PER_STILE 个 sparse block）中属于本 subcore 的行。
@@ -155,17 +170,86 @@ public:
         }
 #endif
 
-        for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
-            const uint32_t rows = MsaMinU32(MSA_ROWS_PER_PASS, mSub - p0);
-            ProcessPass(gS, task, blkBase, mOff + p0, rows, dumpDebug && (p0 == 0));
+        if constexpr (IS_QUANT) {
+            for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
+                const uint32_t rows = MsaMinU32(MSA_ROWS_PER_PASS, mSub - p0);
+                ProcessPass(gS, task, blkBase, mOff + p0, rows, dumpDebug && (p0 == 0));
+            }
+        } else if (blkBase >= task.visibleEndBlk) {
+            for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
+                const uint32_t rows = MsaMinU32(MSA_ROWS_PER_PASS, mSub - p0);
+                ProcessPass(gS, task, blkBase, mOff + p0, rows, false);
+            }
+        } else {
+            // 非量化可见 tile：pass i 的 MTE2 与 pass i-1 的 mask/reduce/stage 重叠。
+            uint32_t stage = 0;
+            bool hasPrev = false;
+            uint32_t prevRowOff = 0;
+            uint32_t prevRows = 0;
+            uint32_t prevStage = 0;
+            for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
+                const uint32_t rows = MsaMinU32(MSA_ROWS_PER_PASS, mSub - p0);
+                const uint32_t rowOff = mOff + p0;
+                IssueS16(gS, rowOff, rows, stage);
+                if (hasPrev) {
+                    WaitS16(prevStage);
+                    ProcessPass(gS, task, blkBase, prevRowOff, prevRows,
+                                dumpDebug && (prevRowOff == mOff), true);
+                    ReleaseS16(prevStage);
+                }
+                hasPrev = true;
+                prevRowOff = rowOff;
+                prevRows = rows;
+                prevStage = stage;
+                stage ^= 1U;
+            }
+            if (hasPrev) {
+                WaitS16(prevStage);
+                ProcessPass(gS, task, blkBase, prevRowOff, prevRows, false, true);
+                ReleaseS16(prevStage);
+            }
         }
         stageBlkEnd_ = blkBase + MSA_BLOCKS_PER_STILE;
     }
 
 private:
+    /// 非量化乒乓：把本 pass 的 S 搬进 ubS16Ping_[stage]，不阻塞 Vector。
+    __aicore__ inline void IssueS16(const AscendC::GlobalTensor<ElementS> &gS, uint32_t rowOff,
+                                    uint32_t rows, uint32_t stage)
+    {
+        if constexpr (IS_QUANT) {
+            return;
+        } else {
+            const int32_t evt = static_cast<int32_t>(stage);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evt);
+            auto dst = ubS16Ping_[stage];
+            if (rows < MSA_ROWS_PER_PASS) {
+                AscendC::Duplicate(dst, static_cast<half>(MSA_FILL_VALUE),
+                                   MSA_ROWS_PER_PASS * STILE_WIDTH);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            AscendC::DataCopy(dst, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH],
+                              rows * STILE_WIDTH);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evt);
+        }
+    }
+
+    __aicore__ inline void WaitS16(uint32_t stage)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(static_cast<int32_t>(stage));
+        ubS16_ = ubS16Ping_[stage];
+    }
+
+    __aicore__ inline void ReleaseS16(uint32_t stage)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<int32_t>(stage));
+    }
+
     /// 处理一个 pass（最多 MSA_ROWS_PER_PASS 行 × MSA_BLOCKS_PER_STILE 个 block）。
+    /// sLoaded：非量化乒乓路径已把 S 搬进 ubS16_，跳过本函数内的 GM→UB。
     __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
-                                       uint32_t blkBase, uint32_t rowOff, uint32_t rows, bool dumpDebug)
+                                       uint32_t blkBase, uint32_t rowOff, uint32_t rows, bool dumpDebug,
+                                       bool sLoaded = false)
     {
         const bool allInvalid = (blkBase >= task.visibleEndBlk);
 
@@ -177,7 +261,14 @@ private:
         }
 #endif
 
+#if MSA_INDEX_SCORE_DEBUG
+        uint32_t sDumpN = MSA_DEBUG_DUMP_ELEMS;
+        if (task.kvLen > 0 && task.kvLen <= 8) {
+            sDumpN = static_cast<uint32_t>(task.kvLen) + 3U;
+        }
+#endif
         if (!allInvalid) {
+            if (!sLoaded) {
             // 短 pass 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
             // 满 16 行时 DataCopy 覆盖整块 ubS_，可跳过 Duplicate。
             if (rows < MSA_ROWS_PER_PASS) {
@@ -192,12 +283,6 @@ private:
             // 逐 pass 的 MTE3 顺带排空 V），MTE2 覆盖该缓冲前必须显式等 V。
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-#if MSA_INDEX_SCORE_DEBUG
-            uint32_t sDumpN = MSA_DEBUG_DUMP_ELEMS;
-            if (task.kvLen > 0 && task.kvLen <= 8) {
-                sDumpN = static_cast<uint32_t>(task.kvLen) + 3U;
-            }
-#endif
             if constexpr (IS_QUANT) {
                 AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
             } else {
@@ -205,6 +290,7 @@ private:
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            }
 
 #if MSA_INDEX_SCORE_DEBUG
             if (dumpDebug) {
@@ -638,6 +724,7 @@ private:
     AscendC::GlobalTensor<int32_t> gBlockTable_;
     AscendC::LocalTensor<float> ubS_;
     AscendC::LocalTensor<half> ubS16_;
+    AscendC::LocalTensor<half> ubS16Ping_[S16_STAGES];
     AscendC::LocalTensor<float> ubT64_;
     AscendC::LocalTensor<float> ubT8_;
     AscendC::LocalTensor<float> ubRowMax_;
