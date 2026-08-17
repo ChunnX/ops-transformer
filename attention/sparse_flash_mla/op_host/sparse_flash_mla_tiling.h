@@ -171,7 +171,7 @@ TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
 TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
 TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
-TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0)      // A5
+TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0) // A5
 TILING_DATA_FIELD_DEF(uint32_t, hasOriSparseIndices)
 TILING_DATA_FIELD_DEF(uint32_t, oriSparseIndexWidth)
 END_TILING_DATA_DEF
@@ -279,7 +279,7 @@ public:
     int64_t sparseBlockSize = 0;
     int64_t oriSparseBlockCount = 0;
     int64_t cmpSparseBlockCount = 0;
-    int64_t sparseBlockCount = 0;    // A2/A3
+    int64_t sparseBlockCount = 0; // A2/A3
     bool hasOriSparseIndices = false;
     uint32_t oriSparseIndexWidth = 0;
 

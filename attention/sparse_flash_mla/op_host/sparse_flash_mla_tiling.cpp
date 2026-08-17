@@ -639,7 +639,7 @@ void SMLAInfoParser::SetSMLAShape()
         hasOriSparseIndices_ = true;
         oriSparseIndexWidth_ = GetAxisNum(oriSparseIndicesShape_, SMLAAxis::K, oriSparseIndicesLayout_);
     }
-    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE ||	 
+    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE ||
         perfMode_ == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
@@ -1378,10 +1378,10 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
     if (opParamInfo_.oriSparseIndices.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (!IsA5Arch(npuArch_)){
+    if (!IsA5Arch(npuArch_)) {
         OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::SWA_TEMPLATE_MODE,
-            OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U,
                     OP_LOGE(opName_, "ori_sparse_indices SWA (DSpark) requires oriMaskMode 0."),
                     return ge::GRAPH_FAILED);
@@ -1842,7 +1842,7 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
                     OP_LOGE(opName_, "cmpMaskMode should be 3 on %s, but got %u",
-                        A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.cmpMaskMode),
+                            A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.cmpMaskMode),
                     return ge::GRAPH_FAILED);
         if (hasOriSparseIndices_) {
             OP_CHECK_IF(*opParamInfo_.oriMaskMode != 0U,
@@ -1852,20 +1852,20 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(oriWinLeft_ < 0 || oriWinRight_ < 0,
                         OP_LOGE(opName_, "ori_win_left/right should be non-negative for ori sparse SWA on %s.",
-                            A2_A3_PLATFORM_LOG.c_str()),
+                                A2_A3_PLATFORM_LOG.c_str()),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(*opParamInfo_.oriMaskMode != 4U,
                         OP_LOGE(opName_, "oriMaskMode should be 4 on %s when ori_sparse_indices is empty, but got %u",
-                            A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.oriMaskMode),
+                                A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.oriMaskMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(oriWinLeft_ != 127,
                         OP_LOGE(opName_, "oriWinLeft_ should be 127 on %s when ori_sparse_indices is empty, but got %ld",
-                            A2_A3_PLATFORM_LOG.c_str(), oriWinLeft_),
+                                A2_A3_PLATFORM_LOG.c_str(), oriWinLeft_),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(oriWinRight_ != 0,
                         OP_LOGE(opName_, "oriWinRight_ should be 0 on %s when ori_sparse_indices is empty, but got %ld",
-                            A2_A3_PLATFORM_LOG.c_str(), oriWinRight_),
+                                A2_A3_PLATFORM_LOG.c_str(), oriWinRight_),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -2054,7 +2054,8 @@ void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK);
     if (tilingInfo->npuArch == NpuArch::DAV_2201) {
         mBaseSize_ = tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ?
-            tilingInfo->gSize : (256 / tilingInfo->gSize) * tilingInfo->gSize;
+                         tilingInfo->gSize :
+                         (256 / tilingInfo->gSize) * tilingInfo->gSize;
         // DSpark ori_sparse_indices are per query token; keep one S1 row per M block.
         if (tilingInfo->hasOriSparseIndices &&
             tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE) {
@@ -2184,7 +2185,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             constexpr uint32_t D_SIZE = 512;
             constexpr uint32_t VEC_RES_ELEM_SIZE = 2;
             uint32_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
-            if (tilingInfo->gSize > 64) {
+            if (isSplitG) {
                 gmSize *= (aicNum >> 1U);
             } else {
                 gmSize *= aicNum;
