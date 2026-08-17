@@ -18,11 +18,13 @@
 
 using namespace MoeTutelDispatchNs;
 
-namespace {
-constexpr uint64_t TILING_KEY_FULL_ROW = 0UL;
-constexpr uint64_t TILING_KEY_SPLIT_H = 1UL;
-constexpr uint64_t TILING_KEY_EMPTY = 2UL;
-} // namespace
+// 必须是宏或字面量：TILING_KEY_IS 的实参要在预编译期被解析成数值常量，
+// 写成 constexpr 变量会报 "can not be processed as numeric variables in the
+// precompilation phase"，退化成单个不按 key 特化的 kernel。
+// 取值须与 op_host/moe_tutel_dispatch_tiling.h 的 MOE_TUTEL_DISPATCH_TILING_KEY_* 一致。
+#define TILING_KEY_FULL_ROW 0
+#define TILING_KEY_SPLIT_H 1
+#define TILING_KEY_EMPTY 2
 
 /*
  * x / gates / y 按同宽无符号整型搬运：本算子是纯 bit 拷贝，不做任何算术，
