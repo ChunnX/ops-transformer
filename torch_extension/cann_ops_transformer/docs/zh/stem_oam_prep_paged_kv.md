@@ -65,9 +65,9 @@ cann_ops_transformer.stem_oam_prep_paged_kv(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| k_cache | Tensor | 必选 | Paged K cache。不支持空Tensor。kv_layout="BBND"时shape为[total_blocks, kv_block_size, H_kv, 128]，kv_layout="BNBD"时shape为[total_blocks, H_kv, kv_block_size, 128]。支持前三维非连续（stride>shape），最后一维必须连续。 | float8_e4m3fn | 4 |
+| k_cache | Tensor | 必选 | Paged K cache。不支持空Tensor。kv_layout="BBND"时shape为[total_blocks, kv_block_size, H_kv, 128]，kv_layout="BNBD"时shape为[total_blocks, H_kv, kv_block_size, 128]。支持前三维非连续（stride>shape），最后一维必须连续，H_kv最大值为8。 | float8_e4m3fn | 4 |
 | v_cache | Tensor | 必选 | Paged V cache。不支持空Tensor。shape与k_cache一致。 | 与k_cache保持一致 | 4 |
-| kv_indices | Tensor | 必选 | 每batch KV Block index数组。不支持空Tensor。shape[1]=max_kv_blocks，max_kv_blocks最大值2048。 | int32 | 2 |
+| kv_indices | Tensor | 必选 | 每batch KV Block index数组。不支持空Tensor。shape[1]=max_kv_blocks，batch最大值为16，max_kv_blocks最大值2048。 | int32 | 2 |
 | kv_seq_lens | list[int] | 必选 | 每batch KV序列长度。不支持空列表。kv序列长度最大值262144。该值用于派生kv_indices第二维max_kv_blocks及输出shape中max_Kb。 | int32 | 1 |
 | k_scale_cache | Tensor | 可选 | Per-token per-head K scale。k_cache数据类型为FP8时必填，其他类型可省略。随kv_layout变化：kv_layout="BBND": [total_blocks, kv_block_size, H_kv, 1]，kv_layout="BNBD": [total_blocks, H_kv, kv_block_size, 1]。支持前三维非连续（stride>shape），最后一维必须连续。 | float32 | 4 |
 | v_scale | Tensor | 可选 | Per-head V scale。k_cache数据类型为FP8时必填，其他类型可省略。 | float32 | 1（[H_kv]） |
