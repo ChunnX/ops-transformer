@@ -1,8 +1,14 @@
 # BSA MXFP8 全量化设计说明
 
+> **已取代（2026-08-17）**  
+> 几何与内存决策已修订为 **kvs 基块 128 / G=8 / Dpv=12**。请改读：  
+> [`2026-08-17-bsa-mxfp8-design.md`](./2026-08-17-bsa-mxfp8-design.md)  
+> 画布：`docs/superpowers/canvases/BSA-mxfp8-design-report.canvas.tsx`（及 Cursor canvases 同名文件）。  
+> 下文保留为 0814 历史稿（256×128 基块、G=4、双切 k、半块 P）。
+
 日期：2026-08-14
 基线分支：`mxfp8_0814`（BSA MXFP4 全量化已完成的版本）
-状态：设计已评审通过，待出实现计划
+状态：~~设计已评审通过~~ → **历史稿，已被 2026-08-17 修订取代**
 
 ## 1. 目标
 
