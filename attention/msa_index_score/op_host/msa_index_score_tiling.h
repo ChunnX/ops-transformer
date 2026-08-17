@@ -49,7 +49,7 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlocksPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, scoreBlockStride)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
-TILING_DATA_FIELD_DEF(uint32_t, isQuant) // 1: key 为 int8
+TILING_DATA_FIELD_DEF(uint32_t, isQuant)    // 1: key 为 int8
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode) // 0 / 3
 TILING_DATA_FIELD_DEF(uint32_t, initBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, localBlocks)
