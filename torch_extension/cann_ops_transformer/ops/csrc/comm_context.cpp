@@ -394,7 +394,7 @@ public:
         uint32_t channelNum = channelDesc.size();
         auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL channel init failed, ret: ", hcclRet);
-        ASCEND_LOGI("HCCL channel init success");
+        ASCEND_LOGI("HCCL channel init success, protocol is %u", protocol);
 
         uint32_t netLayerNum = 0;
         uint32_t layerId = 0;
