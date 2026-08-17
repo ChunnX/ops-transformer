@@ -26,6 +26,8 @@
 累加从 0 起，K = 0 或全部路由无效时输出为 0。
 """
 
+import zlib
+
 import numpy as np
 import torch
 
@@ -44,10 +46,103 @@ _TOL = {
 }
 
 
+# ── 路由输入定制 ─────────────────────────────────────────────────────────────
+# indices / locations 不能用框架的通用随机数：
+#   · indices 的合法域是 [-1, E)，随机 int32 会给出 >= E 的专家号，而判据
+#     `expertId >= 0 && location < C` 照抄 Tutel/canndev，**不判 expertId < E**，
+#     越界值会直接被当成合法下标去读 y_grad（越界读，golden 侧同样是未定义）；
+#   · locations 的合法域是 [0, +inf)，>= C 表示该 token 被丢弃（Tutel 的 drop 语义），
+#     但 **负数不合法**——判据同样不判 location >= 0，负 location 会读到 y_grad 之前。
+# 因此路由表由本函数按用例名里的场景后缀生成，其余两个浮点输入沿用 CSV 的随机范围。
+_ROUTE_SCENARIOS = ("all", "mix", "none", "neg", "ooc", "edge", "dup", "sparse")
+_ROUTE_SUFFIX = "_r"
+
+
+def _scenario_of(testcase_name):
+    """用例名以 `_r<scenario>` 结尾时取该场景，否则默认 mix。"""
+    tail = str(testcase_name or "").rsplit(_ROUTE_SUFFIX, 1)
+    if len(tail) == 2 and tail[1] in _ROUTE_SCENARIOS:
+        return tail[1]
+    return "mix"
+
+
+def _make_route(
+    scenario, expert_num, capacity, top_k, samples, idx_dtype, loc_dtype, seed_key
+):
+    """按场景生成 [K, S] 的 indices / locations。种子取用例名 CRC32，跨轮可复现。"""
+    rng = np.random.default_rng(zlib.crc32(str(seed_key).encode("utf-8")))
+    shape = (top_k, samples)
+    if top_k == 0 or samples == 0:
+        return (np.zeros(shape, dtype=idx_dtype), np.zeros(shape, dtype=loc_dtype))
+
+    hi_e = max(expert_num, 1)
+    hi_c = max(capacity, 1)
+    # 基准：全合法。
+    idx = rng.integers(0, hi_e, size=shape)
+    loc = rng.integers(0, hi_c, size=shape)
+    if expert_num == 0:
+        # E == 0 时任何非负专家号都越界，只能整表判无效。
+        idx = np.full(shape, -1)
+
+    if scenario == "all":
+        pass
+    elif scenario == "neg":
+        idx = np.full(shape, -1)
+    elif scenario == "ooc":
+        loc = rng.integers(capacity, capacity + 8, size=shape)
+    elif scenario == "none":
+        half = rng.random(shape) < 0.5
+        idx = np.where(half, -1, idx)
+        loc = np.where(half, loc, rng.integers(capacity, capacity + 8, size=shape))
+    elif scenario == "edge":
+        # 只取判据的边界值：expert 取 {-1, 0, E-1}，location 取 {0, C-1, C}。
+        idx = rng.choice(np.array([-1, 0, hi_e - 1]), size=shape)
+        loc = rng.choice(np.array([0, hi_c - 1, capacity]), size=shape)
+    elif scenario == "dup":
+        # 一个 token 的 K 项全部指向同一个 (expert, location)：重复 gather + 纯累加。
+        idx = np.repeat(rng.integers(0, hi_e, size=(1, samples)), top_k, axis=0)
+        loc = np.repeat(rng.integers(0, hi_c, size=(1, samples)), top_k, axis=0)
+    elif scenario == "sparse":
+        keep = rng.random(shape) < 0.1
+        idx = np.where(keep, idx, -1)
+    else:  # mix
+        drop_i = rng.random(shape) < 0.25
+        drop_l = rng.random(shape) < 0.25
+        idx = np.where(drop_i, -1, idx)
+        loc = np.where(drop_l, rng.integers(capacity, capacity + 8, size=shape), loc)
+
+    if expert_num == 0:
+        idx = np.full(shape, -1)
+    return (idx.astype(idx_dtype, copy=False), loc.astype(loc_dtype, copy=False))
+
+
 def _to_tensor(value):
+    """numpy/torch 统一成 torch 张量。
+
+    非 Promote 通路（如 --compare stat_rel_err）里 bf16 输入是 ml_dtypes.bfloat16 的
+    numpy 数组，torch.from_numpy 不认；经 fp32 中转再落回 torch.bfloat16 是无损的
+    （bf16 -> fp32 -> bf16 逐位可逆）。
+    """
     if isinstance(value, torch.Tensor):
         return value
-    return torch.from_numpy(np.ascontiguousarray(value))
+    arr = np.ascontiguousarray(value)
+    if arr.dtype.name == "bfloat16":
+        return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
+    return torch.from_numpy(arr)
+
+
+def _to_numpy(tensor, dtype_name=None):
+    """torch 张量转 numpy；torch.bfloat16 没有 numpy 对应体，按位搬到 ml_dtypes.bfloat16。"""
+    if isinstance(tensor, torch.Tensor):
+        if tensor.dtype == torch.bfloat16:
+            arr = tensor.view(torch.int16).numpy().view(np.dtype("bfloat16"))
+        else:
+            arr = tensor.numpy()
+    else:
+        arr = np.asarray(tensor)
+    if dtype_name is not None and arr.dtype.name != dtype_name:
+        arr = arr.astype(dtype_name)
+    return arr
 
 
 def _float_workspace(tensor):
@@ -83,7 +178,14 @@ def _compute(y_grad, gates, indices, locations, **kwargs):
     work_dtype = y_grad.dtype
 
     out = torch.zeros((samples, hidden), dtype=work_dtype)
-    if gates.shape[0] == 0 or samples == 0 or hidden == 0:
+    # E*C == 0 时 y_grad 一行都没有：E==0 无合法专家、C==0 使 location < C 恒假，
+    # 两种情形下全部路由必然无效，输出恒为 0（此时 index_select 也不能调用）。
+    if (
+        gates.shape[0] == 0
+        or samples == 0
+        or hidden == 0
+        or y_grad.shape[0] * capacity == 0
+    ):
         return [out]
 
     flat = y_grad.reshape(-1, hidden)
@@ -124,7 +226,13 @@ class _Compose:
         capacity = work.shape[1]
         hidden = work.shape[2]
         samples = gates_t.shape[1]
-        if gates_t.shape[0] == 0 or samples == 0 or hidden == 0:
+        # E*C == 0：无合法专家 / location < C 恒假，全部路由无效，输出恒为 0。
+        if (
+            gates_t.shape[0] == 0
+            or samples == 0
+            or hidden == 0
+            or work.shape[0] * capacity == 0
+        ):
             return [torch.zeros((samples, hidden), dtype=out_dtype)]
 
         valid = torch.logical_and(indices_t >= 0, locations_t < capacity)
@@ -142,6 +250,21 @@ class MoeTutelCombineXKernelSpec:
     入参名取自 op_host/moe_tutel_combine_x_def.cpp（无属性，全部按位置传）。
     """
 
+    def customize_inputs(y_grad, gates, indices, locations, **kwargs):
+        """按用例名的 `_r<scenario>` 后缀重写路由表，浮点输入保持框架随机值。"""
+        scenario = _scenario_of(kwargs.get("testcase_name"))
+        new_idx, new_loc = _make_route(
+            scenario,
+            int(y_grad.shape[0]),
+            int(y_grad.shape[1]),
+            int(gates.shape[0]),
+            int(gates.shape[1]),
+            indices.dtype,
+            locations.dtype,
+            kwargs.get("testcase_name"),
+        )
+        return (y_grad, gates, new_idx, new_loc)
+
     def golden(*inputs, **kwargs):
         outs = _compute(*inputs, **kwargs)
         out_dtypes = kwargs.get("output_dtypes") or []
@@ -150,8 +273,7 @@ class MoeTutelCombineXKernelSpec:
         ]
         result = []
         for i, o in enumerate(outs):
-            arr = o.numpy() if isinstance(o, torch.Tensor) else np.asarray(o)
-            result.append(arr.astype(out_dtypes[i]) if i < len(out_dtypes) else arr)
+            result.append(_to_numpy(o, out_dtypes[i] if i < len(out_dtypes) else None))
         return result
 
     third_party = {"torch": _Compose}
