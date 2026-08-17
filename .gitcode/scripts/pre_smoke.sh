@@ -17,12 +17,6 @@ WORKSPACE=/home/taskspace
 
 arm_package="cann-ops-transformer-custom_linux-aarch64.run"
 rm -f ${arm_package}
-wget -nv -O ${arm_package} https://ascend-ci.obs.cn-north-4.myhuaweicloud.com/${obs_path}/${arm_package} || true
-if [ ! -f "${arm_package}" ] || [ ! -s "${arm_package}" ];then
-    echo "No custom package found, This PR no need excute smoke."
-    rm -f ${arm_package}
-    exit 0
-fi
 
 log() {
   local dt
