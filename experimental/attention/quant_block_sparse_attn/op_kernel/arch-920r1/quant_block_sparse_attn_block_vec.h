@@ -84,12 +84,9 @@ public:
                                                   ConstInfo &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
 
-    __aicore__ inline void ProcessVec1_0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec1_1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                       RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
@@ -231,22 +228,16 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1_0(
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    uint32_t roundIdx)
 {
-  ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo, 0U);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1_1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
-{
-  if (runInfo.hasRound1) {
-    ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo, 1U);
-  }
-  FinalizeVec1(outputBuf, runInfo, constInfo);
+    ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo, roundIdx);
+    bool isLastRound = (roundIdx == 1U || !runInfo.hasRound1);
+    if (isLastRound) {
+        FinalizeVec1(outputBuf, runInfo, constInfo);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -800,12 +791,9 @@ public:
         ConstInfo & constInfo) {}
 
     __aicore__ inline void InitLocalBuffer(TPipe * pipe, ConstInfo & constInfo) {}
-    __aicore__ inline void ProcessVec1_0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> & outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> & bmm1ResBuf,
-                                         RunInfo & runInfo, ConstInfo & constInfo) {}
-    __aicore__ inline void ProcessVec1_1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> & outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> & bmm1ResBuf,
-                                         RunInfo & runInfo, ConstInfo & constInfo) {}
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> & outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> & bmm1ResBuf,
+                                       RunInfo & runInfo, ConstInfo & constInfo, uint32_t roundIdx) {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;

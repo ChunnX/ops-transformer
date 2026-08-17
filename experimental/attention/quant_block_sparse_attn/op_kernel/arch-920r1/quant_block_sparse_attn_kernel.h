@@ -577,12 +577,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                             if ASCEND_IS_AIV {
                                 RunInfo &last1RunInfo = runInfo[static_cast<uint64_t>(taskId + 3) & 3U];
                                 auto &pBuffer = l1PBuffers.Get();
-                                auto &round0Bmm1 = bmm1Buffers.Get();
-                                vecBlock.ProcessVec1_0(pBuffer, round0Bmm1, last1RunInfo, constInfo);
-                                if (last1RunInfo.hasRound1) {
-                                    vecBlock.ProcessVec1_1(pBuffer, bmm1Buffers.Get(), last1RunInfo, constInfo);
-                                } else {
-                                    vecBlock.ProcessVec1_1(pBuffer, round0Bmm1, last1RunInfo, constInfo);
+                                uint32_t vec1RoundNum = last1RunInfo.hasRound1 ? 2U : 1U;
+                                for (uint32_t roundIdx = 0U; roundIdx < vec1RoundNum; ++roundIdx) {
+                                    vecBlock.ProcessVec1(pBuffer, bmm1Buffers.Get(), last1RunInfo, constInfo, roundIdx);
                                 }
                             }
                         }
