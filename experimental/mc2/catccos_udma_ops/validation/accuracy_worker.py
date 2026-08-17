@@ -157,7 +157,7 @@ def _run_case(case, rank, world_size, device, output_root):
     weight = _make_tensor(
         (expert_num // world_size, k, n), case["input_distribution"], device, generator
     )
-    local_table, global_table = udma.build_rank_route_tensors(
+    local_table, global_table, received_rows = udma.build_rank_route(
         m, rank, world_size, expert_num, device
     )
     global_table_2d = global_table.view(world_size, expert_num // world_size)
@@ -200,7 +200,7 @@ def _run_case(case, rank, world_size, device, output_root):
         expected_all_to_allv = _all_to_allv_golden(
             x, route_matrix, rank, world_size, expert_num
         )
-        valid_rows = int(global_table.sum().item())
+        valid_rows = received_rows
         if valid_rows != expected.shape[0]:
             raise RuntimeError("golden rows do not match the global route table")
         export_enabled = case["output_all_to_allv"]
@@ -208,6 +208,7 @@ def _run_case(case, rank, world_size, device, output_root):
             ordinary, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
                 x, weight, local_table, global_table,
                 ep_size=world_size, expert_num=expert_num,
+                received_rows=received_rows,
                 output_all_to_allv=True,
             )
             torch_npu.npu.synchronize()
@@ -227,6 +228,7 @@ def _run_case(case, rank, world_size, device, output_root):
             ordinary = udma.all_to_allv_grouped_mat_mul(
                 x, weight, local_table, global_table,
                 ep_size=world_size, expert_num=expert_num,
+                received_rows=received_rows,
             )
             torch_npu.npu.synchronize()
         candidates.append((
@@ -244,6 +246,7 @@ def _run_case(case, rank, world_size, device, output_root):
                 out_actual, _ = udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
                     ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                    received_rows=received_rows,
                     output_all_to_allv=True,
                     all_to_allv_out=reusable_all_to_allv_out,
                 )
@@ -251,6 +254,7 @@ def _run_case(case, rank, world_size, device, output_root):
                 out_actual = udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
                     ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                    received_rows=received_rows,
                 )
             torch_npu.npu.synchronize()
             candidates.append((
@@ -272,7 +276,7 @@ def _run_case(case, rank, world_size, device, output_root):
             analyze_arguments["global_table"] = global_table_2d.cpu().tolist()
         else:
             analyze_arguments["segments_override"] = segments_override
-        report = analyze_accuracy(actual[:valid_rows], expected, **analyze_arguments)
+        report = analyze_accuracy(actual, expected, **analyze_arguments)
         report.update(
             case_id=case["id"], rank=rank, path=name,
             valid_rows=valid_rows, padding=padding,
@@ -292,10 +296,10 @@ def _run_case(case, rank, world_size, device, output_root):
         write_accuracy_artifacts(case_root / name, report, dump_payload=dump)
         reports.append(report)
 
-    ordinary_valid = candidates[0][1][:valid_rows]
+    ordinary_valid = candidates[0][1]
     repeat_consistency = []
     for name, actual, _ in candidates[1:]:
-        different = int(torch.count_nonzero(actual[:valid_rows] != ordinary_valid).item())
+        different = int(torch.count_nonzero(actual != ordinary_valid).item())
         repeat_consistency.append({"path": name, "different_elements_vs_ordinary": different})
     summary = {
         "case_id": case["id"],

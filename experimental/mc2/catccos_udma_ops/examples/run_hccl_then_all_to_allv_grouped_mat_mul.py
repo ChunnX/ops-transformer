@@ -122,12 +122,11 @@ def main() -> int:
             dtype=torch.bfloat16,
             device=device,
         ).contiguous()
-        local_tokens, global_tokens = udma.build_rank_route_tensors(
+        local_tokens, global_tokens, received_rows = udma.build_rank_route(
             args.m, rank, world_size, args.expert_num, device
         )
-        valid_rows = int(global_tokens.sum().item())
-        out = torch.zeros(
-            (world_size * args.m, args.n),
+        out = torch.empty(
+            (received_rows, args.n),
             dtype=torch.bfloat16,
             device=device,
         )
@@ -141,18 +140,19 @@ def main() -> int:
                 global_tokens,
                 ep_size=world_size,
                 expert_num=args.expert_num,
+                received_rows=received_rows,
                 out=out,
             )
         torch_npu.npu.synchronize()
 
-        sample = result[: min(valid_rows, 8), : min(args.n, 8)]
+        sample = result[: min(received_rows, 8), : min(args.n, 8)]
         print(
             "rank={} udma_operator_passed=True bootstrap={} output_shape={} "
             "valid_rows={} reused_out={} sample_sum={:.6f}".format(
                 rank,
                 config.init_method,
                 tuple(result.shape),
-                valid_rows,
+                received_rows,
                 result.data_ptr() == out.data_ptr(),
                 float(sample.float().sum().item()),
             ),

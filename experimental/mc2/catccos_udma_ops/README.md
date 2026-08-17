@@ -74,13 +74,14 @@ device = f"npu:{local_rank}"
 x = torch.randn(m, k, dtype=torch.bfloat16, device=device)
 weight = torch.randn(expert_num // world_size, k, n,
                      dtype=torch.bfloat16, device=device)
-local_tokens, global_tokens = udma.build_rank_route_tensors(
+local_tokens, global_tokens, received_rows = udma.build_rank_route(
     m, rank, world_size, expert_num, device
 )
 
 output = udma.all_to_allv_grouped_mat_mul(
     x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num,
+    received_rows=received_rows,
 )
 torch_npu.npu.synchronize()
 udma.destroy_udma_group()
@@ -88,10 +89,15 @@ udma.destroy_udma_group()
 
 `x` must be packed by global expert in the order described by
 `local_tokens_per_expert`. `weight` is `[local_expert_num, k, n]`. The returned
-capacity is `[world_size * m, n]`; valid rows are packed first and their count is
+tensor has exact shape `[received_rows, n]`, where `received_rows` equals
 `global_tokens_per_local_expert.sum()`.
-Both route tensors must be contiguous `torch.int64` NPU tensors. Their values
-must be non-negative and fit in the kernel's existing `uint32` shape range.
+Route inputs may be host integer sequences or contiguous `torch.int64` tensors.
+The facade converts host routes to the same NPU as `x`; NPU routes must already
+reside there. Values must be non-negative and fit in the kernel's `uint32` shape
+range. Pass a host-known `received_rows` with NPU routes to avoid a device-to-host
+synchronization during output allocation. Host sequences are convenient for
+one-off calls; repeated launches should reuse device route tensors and pass the
+same host-known row count to avoid per-call metadata allocation and H2D copies.
 
 A directly runnable multi-process example is available at
 `examples/run_all_to_allv_grouped_mat_mul.py`. It constructs balanced test
@@ -120,18 +126,19 @@ NPU-to-SHMEM input staging copy. For repeated launches, reuse the output to
 avoid output allocation in the timed region:
 
 ```python
-out = torch.zeros(world_size * m, n, dtype=torch.bfloat16, device=device)
+out = torch.empty(received_rows, n, dtype=torch.bfloat16, device=device)
 output = udma.all_to_allv_grouped_mat_mul(
     x, weight, local_tokens, global_tokens,
-    ep_size=world_size, expert_num=expert_num, out=out,
+    ep_size=world_size, expert_num=expert_num,
+    received_rows=received_rows, out=out,
 )
 ```
 
-`local_tokens` and `global_tokens` are both contiguous one-dimensional
+The device-side `local_tokens` and `global_tokens` are contiguous one-dimensional
 `torch.int64` tensors with shape `[expert_num]`. The global table is flattened
 in `[source_rank][local_expert]` order, matching the kernel's linear read ABI.
-The public Python operators apply a zero-copy `view(-1)` before dispatch, so an
-existing contiguous two-dimensional global table is normalized automatically.
+The public facade also accepts CPU tensors and host integer sequences, and
+normalizes tensor inputs with `reshape(-1).contiguous()` before dispatch.
 
 To additionally obtain the AllToAllV activation consumed by grouped matmul,
 enable the optional export path:
@@ -140,6 +147,7 @@ enable the optional export path:
 output, all_to_allv_output = udma.all_to_allv_grouped_mat_mul(
     x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num,
+    received_rows=received_rows,
     output_all_to_allv=True,
 )
 ```
@@ -244,8 +252,9 @@ for BF16 exactly: mixed
 tolerance `rtol=atol=2^-6` must match at least 99% of meaningful output
 elements. Every element must also satisfy the BF16 hard limit
 `abs_error <= max(1.0, 32 * ULP_at_abs_golden)`; the ULP is evaluated at that
-element's Golden magnitude. Padded capacity is reported separately and is not
-counted as valid output. Every path/rank writes `report.json`, a Top-K error CSV
+element's Golden magnitude. Operator outputs are exact-size tensors, so every
+returned row participates in the comparison. Every path/rank writes
+`report.json`, a Top-K error CSV
 including the per-element ULP/hard limit, a downsampled error-ratio heatmap,
 expert and source-rank breakdowns, and a bounded `failure_dump.pt` on failure.
 The batch root contains machine-readable `summary.json` and `summary.csv`.
@@ -324,10 +333,13 @@ retain the default profile.
 retained as profile metadata rather than presented as effective kernel inputs.
 
 `grouped_mat_mul_all_to_allv` independently selects these profiles for the
-same `world_size=8`, `expert_num=256` topology. Here M is the grouped-matmul
-input row count (`x.shape[0]`); all other shapes retain the default profile.
+same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
+give every Rank a different `x.shape[0]`, profile selection uses only K and N;
+all peers therefore keep the same M0 and communication schedule. The M column
+below records the balanced workload used for tuning and is not a runtime
+selection predicate. Other K/N shapes and topologies retain the default profile.
 
-| M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
+| Tuning M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 131072 | 1024 | 2048 | 128 | 256 | 256 | 14 | 64 | 64 | 4 | 4 |
 | 131072 | 512 | 2048 | 256 | 128 | 256 | 12 | 16 | 16 | 1 | 20 |

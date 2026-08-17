@@ -70,15 +70,13 @@ def main() -> int:
 
         # This helper creates balanced test routing. In a model, replace these
         # two tensors with the actual router's contiguous int64 count tables.
-        local_tokens, global_tokens = udma.build_rank_route_tensors(
+        local_tokens, global_tokens, received_rows = udma.build_rank_route(
             args.m, rank, world_size, args.expert_num, device
         )
-        valid_rows = int(global_tokens.sum().item())
 
-        # The operator's capacity output is [world_size * m, n]. Reuse an
-        # ordinary NPU tensor to keep allocation outside repeated launches.
-        out = torch.zeros(
-            (world_size * args.m, args.n),
+        # Reuse an exact-size ordinary NPU output outside repeated launches.
+        out = torch.empty(
+            (received_rows, args.n),
             dtype=torch.bfloat16,
             device=device,
         )
@@ -91,11 +89,12 @@ def main() -> int:
                 global_tokens,
                 ep_size=world_size,
                 expert_num=args.expert_num,
+                received_rows=received_rows,
                 out=out,
             )
         torch_npu.npu.synchronize()
 
-        sample = result[: min(valid_rows, 8), : min(args.n, 8)]
+        sample = result[: min(received_rows, 8), : min(args.n, 8)]
         sample_sum = float(sample.float().sum().item())
         print(
             "rank={} device={} bootstrap={} output_shape={} valid_rows={} "
@@ -104,7 +103,7 @@ def main() -> int:
                 device,
                 config.init_method,
                 tuple(result.shape),
-                valid_rows,
+                received_rows,
                 result.data_ptr() == out.data_ptr(),
                 sample_sum,
             ),

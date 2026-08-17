@@ -80,7 +80,7 @@ def main():
             (case["expert_num"] // world_size, shape["k"], shape["n"]),
             case["input_distribution"], device, generator,
         )
-        local_table, global_table = udma.build_rank_route_tensors(
+        local_table, global_table, received_rows = udma.build_rank_route(
             shape["m"], rank, world_size, case["expert_num"], device
         )
         if case["operator"] == "grouped_mat_mul_all_to_allv":
@@ -96,12 +96,11 @@ def main():
                 )
         else:
             out = torch.empty(
-                (world_size * shape["m"], shape["n"]),
+                (received_rows, shape["n"]),
                 dtype=torch.bfloat16, device=device,
             )
             output_all_to_allv = case["output_all_to_allv"]
             if output_all_to_allv:
-                received_rows = int(global_table.sum().item())
                 all_to_allv_out = torch.empty(
                     (received_rows, shape["k"]),
                     dtype=torch.bfloat16, device=device,
@@ -111,6 +110,7 @@ def main():
                 udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
                     ep_size=world_size, expert_num=case["expert_num"], out=out,
+                    received_rows=received_rows,
                     output_all_to_allv=output_all_to_allv,
                     all_to_allv_out=all_to_allv_out,
                 )

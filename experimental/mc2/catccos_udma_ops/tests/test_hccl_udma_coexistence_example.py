@@ -28,7 +28,9 @@ def test_example_validates_hccl_and_reuses_regular_udma_output():
     assert "dist.all_gather(gathered, value)" in source
     assert "torch.equal(peer_value, expected)" in source
     assert "hccl_all_gather_passed=True" in source
-    assert "out = torch.zeros(" in source
+    assert "out = torch.empty(" in source
+    assert "(received_rows, args.n)" in source
+    assert "received_rows=received_rows" in source
     assert "out=out" in source
     assert "udma_operator_passed=True" in source
 

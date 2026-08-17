@@ -6,6 +6,7 @@ from ._build_versions import CATCCOS_COMMIT, SHMEM_COMMIT, SHMEM_VERSION
 from .ops import all_to_allv_grouped_mat_mul, grouped_mat_mul_all_to_allv
 from .routing import (
     build_global_route_matrix,
+    build_rank_route,
     build_rank_route_tables,
     build_rank_route_tensors,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "SHMEM_VERSION",
     "all_to_allv_grouped_mat_mul",
     "build_global_route_matrix",
+    "build_rank_route",
     "build_rank_route_tables",
     "build_rank_route_tensors",
     "destroy_udma_group",
@@ -35,4 +37,4 @@ __all__ = [
     "udma_group",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"

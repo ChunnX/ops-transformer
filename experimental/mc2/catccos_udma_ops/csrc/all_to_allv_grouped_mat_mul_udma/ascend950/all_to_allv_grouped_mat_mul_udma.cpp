@@ -71,9 +71,10 @@ constexpr TilingProfile kM131072K2048N512ExportTiling{
 
 const TilingProfile &SelectTiling(
     uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,
-    bool outputAllToAllV)
+    uint32_t outputRows, bool outputAllToAllV)
 {
-    const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
+    const bool isEightRank256ExpertCase =
+        worldSize == 8 && expertNum == 256 && outputRows == m;
     if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024) {
         return outputAllToAllV
             ? kM131072K2048N1024ExportTiling
@@ -144,6 +145,7 @@ void InitializeAndLaunch(
     uint32_t worldSize,
     uint32_t epSize,
     uint32_t expertNum,
+    uint32_t outputRows,
     uint8_t *x,
     uint8_t *weight,
     uint8_t *output,
@@ -166,6 +168,7 @@ void InitializeAndLaunch(
         tiling.commInterval,
         epSize,
         expertNum,
+        outputRows,
         x,
         weight,
         output,
@@ -197,6 +200,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows64,
     const c10::optional<at::Tensor> &outputOptional,
     const c10::optional<at::Tensor> &allToAllVOutputOptional)
 {
@@ -234,13 +238,18 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                 "local_tokens_per_expert must contain expert_num elements");
     TORCH_CHECK(globalTokensPerLocalExpert.numel() == worldSize * localExpertNum,
                 "global_tokens_per_local_expert must contain world_size * local_expert_num elements");
+    TORCH_CHECK(receivedRows64 >= 0 && receivedRows64 <= worldSize * m64,
+                "received_rows must be in [0, world_size * m]");
+    TORCH_CHECK(receivedRows64 <= std::numeric_limits<uint32_t>::max(),
+                "received_rows exceeds the kernel's uint32 range");
 
     const uint32_t m = static_cast<uint32_t>(m64);
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
+    const uint32_t receivedRows = static_cast<uint32_t>(receivedRows64);
     const TilingProfile &tiling = SelectTiling(
         m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
-        allToAllVOutputOptional.has_value());
+        receivedRows, allToAllVOutputOptional.has_value());
     const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
     const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
     TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <
@@ -249,11 +258,11 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
 
     at::Tensor output = outputOptional.has_value()
         ? outputOptional.value()
-        : at::zeros({worldSize * m64, n64}, x.options());
+        : at::empty({receivedRows64, n64}, x.options());
     CheckNpuTensor(output, "out", at::kBFloat16);
     TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
-    TORCH_CHECK(output.dim() == 2 && output.size(0) == worldSize * m64 && output.size(1) == n64,
-                "out must have shape [world_size * m, n]");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows64 && output.size(1) == n64,
+                "out must have shape [received_rows, n]");
     TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
                 "out must not alias x or weight");
 
@@ -264,12 +273,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         TORCH_CHECK(allToAllVOutput.device() == x.device(),
                     "all_to_allv_out and x must be on the same NPU");
         TORCH_CHECK(allToAllVOutput.dim() == 2 &&
-                        allToAllVOutput.size(0) <= worldSize * m64 &&
+                        allToAllVOutput.size(0) == receivedRows64 &&
                         allToAllVOutput.size(1) == k64,
                     "all_to_allv_out must have shape [received_rows, k]");
         TORCH_CHECK(allToAllVOutput.data_ptr() != x.data_ptr() &&
                         allToAllVOutput.data_ptr() != weight.data_ptr() &&
-                        allToAllVOutput.data_ptr() != output.data_ptr(),
+                        (allToAllVOutput.numel() == 0 || output.numel() == 0 ||
+                         allToAllVOutput.data_ptr() != output.data_ptr()),
                     "all_to_allv_out must not alias x, weight, or out");
     }
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
@@ -288,6 +298,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             static_cast<uint32_t>(worldSize),
             static_cast<uint32_t>(epSize),
             static_cast<uint32_t>(expertNum),
+            receivedRows,
             // UDMA PUT reads its local source directly from ordinary NPU GM.
             reinterpret_cast<uint8_t *>(x.data_ptr()),
             reinterpret_cast<uint8_t *>(weight.data_ptr()),
@@ -318,11 +329,12 @@ at::Tensor AllToAllVGroupedMatMulUdmaNpu(
     const at::Tensor &localTokensPerExpert,
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
-    int64_t expertNum)
+    int64_t expertNum,
+    int64_t receivedRows)
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, c10::nullopt, c10::nullopt);
+        epSize, expertNum, receivedRows, c10::nullopt, c10::nullopt);
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
@@ -332,11 +344,12 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &output)
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output, c10::nullopt);
+        epSize, expertNum, receivedRows, output, c10::nullopt);
 }
 
 std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
@@ -346,11 +359,12 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &allToAllVOutput)
 {
     at::Tensor output = AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, c10::nullopt, allToAllVOutput);
+        epSize, expertNum, receivedRows, c10::nullopt, allToAllVOutput);
     return {output, allToAllVOutput};
 }
 
@@ -361,12 +375,13 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportNpu(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &output,
     const at::Tensor &allToAllVOutput)
 {
     AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output, allToAllVOutput);
+        epSize, expertNum, receivedRows, output, allToAllVOutput);
     return {output, allToAllVOutput};
 }
 
@@ -376,11 +391,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaMeta(
     const at::Tensor &,
     const at::Tensor &,
     int64_t epSize,
-    int64_t expertNum)
+    int64_t expertNum,
+    int64_t receivedRows)
 {
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
-    return at::empty({epSize * x.size(0), weight.size(2)}, x.options());
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    return at::empty({receivedRows, weight.size(2)}, x.options());
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaOutMeta(
@@ -390,11 +407,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutMeta(
     const at::Tensor &,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &output)
 {
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
-    TORCH_CHECK(output.dim() == 2 && output.size(0) == epSize * x.size(0) &&
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows &&
                 output.size(1) == weight.size(2), "invalid out shape");
     return output;
 }
@@ -406,11 +425,14 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportMeta(
     const at::Tensor &,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &allToAllVOutput)
 {
-    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(1) == x.size(1),
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(0) == receivedRows &&
+                allToAllVOutput.size(1) == x.size(1),
                 "invalid all_to_allv_out shape");
-    return {at::empty({epSize * x.size(0), weight.size(2)}, x.options()), allToAllVOutput};
+    return {at::empty({receivedRows, weight.size(2)}, x.options()), allToAllVOutput};
 }
 
 std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
@@ -420,14 +442,17 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
     const at::Tensor &,
     int64_t epSize,
     int64_t expertNum,
+    int64_t receivedRows,
     const at::Tensor &output,
     const at::Tensor &allToAllVOutput)
 {
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
-    TORCH_CHECK(output.dim() == 2 && output.size(0) == epSize * x.size(0) &&
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows &&
                 output.size(1) == weight.size(2), "invalid out shape");
-    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(1) == x.size(1),
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(0) == receivedRows &&
+                allToAllVOutput.size(1) == x.size(1),
                 "invalid all_to_allv_out shape");
     return {output, allToAllVOutput};
 }
@@ -439,15 +464,15 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
     m.def("_configure_udma(Tensor device_anchor, int rank, int world_size, str init_method, int heap_size) -> ()");
     m.def("_finalize_udma(Tensor device_anchor) -> ()");
     m.def("all_to_allv_grouped_mat_mul_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num) -> Tensor");
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows) -> Tensor");
     m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
           "Tensor(a!) out) -> Tensor(a!)");
     m.def("all_to_allv_grouped_mat_mul_udma_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
           "Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
     m.def("all_to_allv_grouped_mat_mul_udma_out_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
           "Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
 }
 

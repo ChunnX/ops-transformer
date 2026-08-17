@@ -47,21 +47,24 @@ struct TilingProfile {
 
 constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
-constexpr TilingProfile kM131072K1024N2048Tiling{
+constexpr TilingProfile kK1024N2048Tiling{
     KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4};
-constexpr TilingProfile kM131072K512N2048Tiling{
+constexpr TilingProfile kK512N2048Tiling{
     KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20};
 
 const TilingProfile &SelectTiling(
-    uint32_t m, uint32_t k, uint32_t n,
-    uint32_t worldSize, uint32_t expertNum)
+    uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)
 {
+    // The local GMM input rows equal sum(global_tokens) and may differ across
+    // ranks under imbalanced routing. UDMA peers must nevertheless use the same
+    // M0 and communication schedule, so selection may only depend on topology
+    // and K/N, which are rank-invariant for one collective launch.
     const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
-    if (isEightRank256ExpertCase && m == 131072 && k == 1024 && n == 2048) {
-        return kM131072K1024N2048Tiling;
+    if (isEightRank256ExpertCase && k == 1024 && n == 2048) {
+        return kK1024N2048Tiling;
     }
-    if (isEightRank256ExpertCase && m == 131072 && k == 512 && n == 2048) {
-        return kM131072K512N2048Tiling;
+    if (isEightRank256ExpertCase && k == 512 && n == 2048) {
+        return kK512N2048Tiling;
     }
     return kDefaultTiling;
 }
@@ -214,7 +217,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
     const TilingProfile &tiling = SelectTiling(
-        m, k, n, static_cast<uint32_t>(worldSize),
+        k, n, static_cast<uint32_t>(worldSize),
         static_cast<uint32_t>(expertNum));
     TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
                 "AI-core count * comm_interval must be divisible by world_size");

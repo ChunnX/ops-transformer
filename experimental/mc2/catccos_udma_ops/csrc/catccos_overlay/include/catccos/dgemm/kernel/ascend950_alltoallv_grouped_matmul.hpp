@@ -193,6 +193,7 @@ public:
         uint32_t commInterval;
         uint32_t epSize;
         uint32_t expertNum;
+        uint32_t outputRows;
         GM_ADDR ptrA;
         GM_ADDR ptrB;
         GM_ADDR ptrC;
@@ -207,7 +208,7 @@ public:
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr) {
         LayoutTagA tagA{args.gemmShape.m(), args.gemmShape.k()};
         LayoutTagB tagB{args.gemmShape.k(), args.gemmShape.n()};
-        LayoutTagC tagC{args.gemmShape.m() * args.rankSize, args.gemmShape.n()};
+        LayoutTagC tagC{args.outputRows, args.gemmShape.n()};
 
         auto layoutA = tla::MakeLayoutFromTag(tagA);
         auto layoutB = tla::MakeLayoutFromTag(tagB);

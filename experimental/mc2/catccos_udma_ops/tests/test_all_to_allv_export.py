@@ -10,16 +10,35 @@ import types
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
-def _route(rows=3):
-    route = SimpleNamespace(sum=lambda: SimpleNamespace(item=lambda: rows))
-    route.view = lambda *_shape: route
-    return route
-
-
 def _load_ops(monkeypatch, calls, world_size=2):
+    class FakeTensor:
+        def __init__(self, values=None, *, shape=None, dtype="int64", device=None):
+            self.values = list(values) if values is not None else None
+            self.shape = tuple(shape) if shape is not None else (len(self.values),)
+            self.dtype = dtype
+            self.device = device
+
+        def reshape(self, *_shape):
+            return self
+
+        def contiguous(self):
+            return self
+
+        def numel(self):
+            result = 1
+            for dimension in self.shape:
+                result *= dimension
+            return result
+
+        def sum(self):
+            return SimpleNamespace(item=lambda: sum(self.values))
+
     fake_torch = types.ModuleType("torch")
-    fake_torch.Tensor = object
-    fake_torch.empty = lambda shape, **kwargs: SimpleNamespace(shape=shape, **kwargs)
+    fake_torch.Tensor = FakeTensor
+    fake_torch.int64 = "int64"
+    fake_torch.is_tensor = lambda value: isinstance(value, FakeTensor)
+    fake_torch.tensor = lambda values, **kwargs: FakeTensor(values, **kwargs)
+    fake_torch.empty = lambda shape, **kwargs: FakeTensor(shape=shape, **kwargs)
 
     class FakeOps:
         def __getattr__(self, name):
@@ -40,18 +59,21 @@ def _load_ops(monkeypatch, calls, world_size=2):
         (PROJECT_ROOT / "ops_transformer_catccos_udma" / "ops.py").read_text(encoding="utf-8"),
         namespace,
     )
-    return namespace["all_to_allv_grouped_mat_mul"]
+    return namespace["all_to_allv_grouped_mat_mul"], FakeTensor
 
 
 def test_optional_flag_selects_export_schema(monkeypatch):
     calls = []
-    operator = _load_ops(monkeypatch, calls)
-    route = _route()
-    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device="npu")
+    operator, tensor_type = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    local = tensor_type([1, 1, 1, 1], device=device)
+    route = tensor_type([1, 1, 1, 0], device=device)
+    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device=device)
     export = SimpleNamespace(shape=(3, 8))
     result = operator(
-        x, "weight", "local", route,
+        x, "weight", local, route,
         ep_size=2, expert_num=4,
+        received_rows=3,
         output_all_to_allv=True, all_to_allv_out=export,
     )
     assert calls[-1][0] == "all_to_allv_grouped_mat_mul_udma_export"
@@ -60,11 +82,44 @@ def test_optional_flag_selects_export_schema(monkeypatch):
 
 def test_default_path_keeps_original_schema(monkeypatch):
     calls = []
-    operator = _load_ops(monkeypatch, calls)
-    route = _route()
-    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device="npu")
-    assert operator(x, "weight", "local", route, ep_size=2, expert_num=4) == "output"
+    operator, _ = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device=device)
+    assert operator(
+        x, "weight", [1, 1, 1, 1], [1, 1, 1, 0],
+        ep_size=2, expert_num=4,
+    ) == "output"
     assert calls[-1][0] == "all_to_allv_grouped_mat_mul_udma"
+    assert calls[-1][1][-1] == 3
+
+
+def test_explicit_received_rows_avoids_device_sum(monkeypatch):
+    calls = []
+    operator, tensor_type = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    local = tensor_type([1, 1, 1, 1], device=device)
+    route = tensor_type([1, 1, 1, 0], device=device)
+    route.sum = lambda: (_ for _ in ()).throw(AssertionError("unexpected device sum"))
+    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device=device)
+    operator(
+        x, "weight", local, route,
+        ep_size=2, expert_num=4, received_rows=3,
+    )
+    assert calls[-1][1][-1] == 3
+
+
+def test_host_routes_allocate_exact_export_rows(monkeypatch):
+    calls = []
+    operator, _ = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device=device)
+    output, exported = operator(
+        x, "weight", [1, 1, 1, 1], [1, 1, 1, 0],
+        ep_size=2, expert_num=4, output_all_to_allv=True,
+    )
+    assert output == "output"
+    assert exported.shape == (3, 8)
+    assert calls[-1][1][-2] == 3
 
 
 def test_python_facade_exposes_optional_all_to_allv_output():
@@ -72,6 +127,7 @@ def test_python_facade_exposes_optional_all_to_allv_output():
         encoding="utf-8"
     )
     assert "output_all_to_allv: bool = False" in source
+    assert "received_rows: Optional[int] = None" in source
     assert "all_to_allv_out: Optional[torch.Tensor] = None" in source
     assert "all_to_allv_grouped_mat_mul_udma_export(" in source
     assert "all_to_allv_grouped_mat_mul_udma_out_export(" in source

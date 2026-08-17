@@ -50,10 +50,10 @@ def test_route_helper_constructs_int64_tensors():
     assert "dtype=torch.int32" not in source
 
 
-def test_public_ops_flatten_global_route_table_before_dispatch():
+def test_public_ops_normalize_route_tables_before_dispatch():
     source = (
         PROJECT_ROOT / "ops_transformer_catccos_udma" / "ops.py"
     ).read_text(encoding="utf-8")
-    assert source.count(
-        "global_tokens_per_local_expert = global_tokens_per_local_expert.view(-1)"
-    ) == 2
+    assert "route = route.reshape(-1).contiguous()" in source
+    assert "global_tokens_per_local_expert = global_tokens_per_local_expert.view(-1)" in source
+    assert "torch.tensor(host_values, dtype=torch.int64, device=x.device)" in source

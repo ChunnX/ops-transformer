@@ -73,10 +73,24 @@ def build_rank_route_tables(
 
 def build_rank_route_tensors(m: int, rank: int, ep_size: int, expert_num: int, device):
     """Build flat contiguous int64 NPU route tensors accepted by the operator."""
+    local, global_for_local, _ = build_rank_route(
+        m, rank, ep_size, expert_num, device
+    )
+    return local, global_for_local
+
+
+def build_rank_route(m: int, rank: int, ep_size: int, expert_num: int, device):
+    """Build NPU route tensors and the host-known destination row count.
+
+    Returning ``received_rows`` alongside the device tensors lets callers size
+    data-dependent outputs without synchronizing a device-side reduction back
+    to the host.
+    """
     import torch
 
     local, global_for_local = build_rank_route_tables(m, rank, ep_size, expert_num)
     return (
         torch.tensor(local, dtype=torch.int64, device=device),
         torch.tensor(global_for_local, dtype=torch.int64, device=device),
+        sum(global_for_local),
     )

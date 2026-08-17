@@ -57,3 +57,20 @@ def test_rank_route_tensors_use_int64(monkeypatch):
     assert isinstance(global_for_local, FakeTensor)
     assert len(calls[0][0]) == 4
     assert len(calls[1][0]) == 4
+
+
+def test_rank_route_returns_host_known_received_rows(monkeypatch):
+    calls = []
+
+    class FakeTorch:
+        int64 = "int64"
+
+        @staticmethod
+        def tensor(values, *, dtype, device):
+            calls.append((values, dtype, device))
+            return object()
+
+    monkeypatch.setitem(__import__("sys").modules, "torch", FakeTorch)
+    _, _, received_rows = routing.build_rank_route(31, 2, 4, 16, "npu:2")
+    assert received_rows == 31
+    assert len(calls) == 2

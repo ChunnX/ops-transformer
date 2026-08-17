@@ -1,21 +1,110 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 """Stable Python facade for CatCCOS UDMA operators."""
 
-from typing import Optional, Tuple, Union
+from numbers import Integral
+from typing import Optional, Sequence, Tuple, Union
 
 import torch
 
 from .runtime import get_udma_config
 
 
+RouteInput = Union[torch.Tensor, Sequence[int]]
+
+
+def _host_route_values(route: RouteInput, name: str):
+    if torch.is_tensor(route):
+        if route.device.type != "cpu":
+            return None
+        if route.dtype != torch.int64:
+            raise TypeError("{} CPU tensor must have dtype torch.int64".format(name))
+        values = route.reshape(-1).tolist()
+    else:
+        if isinstance(route, (str, bytes)):
+            raise TypeError("{} must be a Tensor or a sequence of integers".format(name))
+        try:
+            values = list(route)
+        except TypeError as error:
+            raise TypeError(
+                "{} must be a Tensor or a sequence of integers".format(name)
+            ) from error
+
+    normalized = []
+    for index, value in enumerate(values):
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise TypeError("{}[{}] must be an integer".format(name, index))
+        value = int(value)
+        if value < 0:
+            raise ValueError("{}[{}] must be non-negative".format(name, index))
+        normalized.append(value)
+    return normalized
+
+
+def _normalize_route(
+    route: RouteInput,
+    name: str,
+    x: torch.Tensor,
+    expected_elements: int,
+):
+    host_values = _host_route_values(route, name)
+    if host_values is not None:
+        if len(host_values) != expected_elements:
+            raise ValueError(
+                "{} must contain {} elements".format(name, expected_elements)
+            )
+        return (
+            torch.tensor(host_values, dtype=torch.int64, device=x.device),
+            host_values,
+        )
+
+    if route.dtype != torch.int64:
+        raise TypeError("{} NPU tensor must have dtype torch.int64".format(name))
+    if route.device != x.device:
+        raise ValueError("{} and x must be on the same NPU".format(name))
+    route = route.reshape(-1).contiguous()
+    if route.numel() != expected_elements:
+        raise ValueError(
+            "{} must contain {} elements".format(name, expected_elements)
+        )
+    return route, None
+
+
+def _normalize_received_rows(
+    received_rows: Optional[int],
+    global_route: torch.Tensor,
+    global_host_values,
+    max_rows: int,
+) -> int:
+    host_sum = sum(global_host_values) if global_host_values is not None else None
+    if received_rows is None:
+        received_rows = (
+            host_sum
+            if host_sum is not None
+            else int(global_route.sum().item())
+        )
+    elif isinstance(received_rows, bool) or not isinstance(received_rows, Integral):
+        raise TypeError("received_rows must be an integer")
+    else:
+        received_rows = int(received_rows)
+
+    if received_rows < 0 or received_rows > max_rows:
+        raise ValueError(
+            "received_rows must be in [0, ep_size * x.shape[0]]"
+        )
+    if host_sum is not None and received_rows != host_sum:
+        raise ValueError("received_rows does not match sum(global_tokens_per_local_expert)")
+    return received_rows
+
+
 def all_to_allv_grouped_mat_mul(
     x: torch.Tensor,
     weight: torch.Tensor,
-    local_tokens_per_expert: torch.Tensor,
-    global_tokens_per_local_expert: torch.Tensor,
+    local_tokens_per_expert: RouteInput,
+    global_tokens_per_local_expert: RouteInput,
     *,
     ep_size: int,
     expert_num: int,
+    received_rows: Optional[int] = None,
     out: Optional[torch.Tensor] = None,
     output_all_to_allv: bool = False,
     all_to_allv_out: Optional[torch.Tensor] = None,
@@ -23,13 +112,16 @@ def all_to_allv_grouped_mat_mul(
     """Dispatch tokens with UDMA and apply the destination rank's grouped matmuls.
 
     ``x`` is ordered by global expert according to ``local_tokens_per_expert``.
-    Both route tensors returned by :func:`build_rank_route_tensors` are flat and
-    have shape ``[expert_num]``. The global table is laid out by source rank and
+    Route inputs may be flat int64 tensors or host integer sequences with
+    ``expert_num`` elements. The global table is laid out by source rank and
     then local expert.
     It is a regular contiguous BF16 NPU tensor; UDMA reads it directly as the
     local source of remote PUT operations, without symmetric-input staging.
-    The output has padded capacity ``[world_size * m, n]``; valid rows are packed
-    at the beginning and their count is the sum of the global route table.
+    The output has exact shape ``[received_rows, n]``, where ``received_rows``
+    equals the sum of the global route table. Pass the host-known value to avoid
+    a device-to-host synchronization when the global route is an NPU tensor.
+    Host routes are a convenience path that performs a small host-to-device copy
+    on every call; reuse device route tensors for performance-critical loops.
 
     When ``output_all_to_allv=True``, the call returns ``(output,
     all_to_allv_output)``. The second tensor is the exact BF16 activation consumed
@@ -40,7 +132,28 @@ def all_to_allv_grouped_mat_mul(
     config = get_udma_config()
     if ep_size != config.world_size:
         raise ValueError("TP=1 requires ep_size == UDMA world_size")
-    global_tokens_per_local_expert = global_tokens_per_local_expert.view(-1)
+    if expert_num <= 0 or expert_num % ep_size:
+        raise ValueError("expert_num must be positive and divisible by ep_size")
+    local_tokens_per_expert, local_host_values = _normalize_route(
+        local_tokens_per_expert,
+        "local_tokens_per_expert",
+        x,
+        expert_num,
+    )
+    global_tokens_per_local_expert, global_host_values = _normalize_route(
+        global_tokens_per_local_expert,
+        "global_tokens_per_local_expert",
+        x,
+        expert_num,
+    )
+    if local_host_values is not None and sum(local_host_values) != x.shape[0]:
+        raise ValueError("sum(local_tokens_per_expert) must equal x.shape[0]")
+    received_rows = _normalize_received_rows(
+        received_rows,
+        global_tokens_per_local_expert,
+        global_host_values,
+        ep_size * x.shape[0],
+    )
     arguments = (
         x,
         weight,
@@ -48,6 +161,7 @@ def all_to_allv_grouped_mat_mul(
         global_tokens_per_local_expert,
         ep_size,
         expert_num,
+        received_rows,
     )
     if all_to_allv_out is not None and not output_all_to_allv:
         raise ValueError("all_to_allv_out requires output_all_to_allv=True")
@@ -60,7 +174,6 @@ def all_to_allv_grouped_mat_mul(
             *arguments, out
         )
 
-    received_rows = int(global_tokens_per_local_expert.sum().item())
     if all_to_allv_out is None:
         all_to_allv_out = torch.empty(
             (received_rows, x.shape[1]), dtype=x.dtype, device=x.device

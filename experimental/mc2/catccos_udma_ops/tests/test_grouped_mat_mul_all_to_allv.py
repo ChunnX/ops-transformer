@@ -146,7 +146,7 @@ def test_target_order_workspace_check_tracks_full_n_staging():
     assert "commTileShape{localCopyRows, localCopyColumns}" in host
 
 
-def test_ep8_256_expert_business_shapes_use_tuned_profiles():
+def test_ep8_256_expert_business_shapes_use_rank_invariant_tuned_profiles():
     host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
         encoding="utf-8"
     )
@@ -160,13 +160,22 @@ def test_ep8_256_expert_business_shapes_use_tuned_profiles():
     )
     assert "worldSize == 8 && expertNum == 256" in host
     assert (
-        "isEightRank256ExpertCase && m == 131072 && k == 1024 && n == 2048"
+        "isEightRank256ExpertCase && k == 1024 && n == 2048"
         in host
     )
     assert (
-        "isEightRank256ExpertCase && m == 131072 && k == 512 && n == 2048"
+        "isEightRank256ExpertCase && k == 512 && n == 2048"
         in host
     )
+    select_tiling = host[
+        host.index("const TilingProfile &SelectTiling("):
+        host.index("uint32_t TargetOrderLocalCopyColumns")
+    ]
+    assert "uint32_t m" not in select_tiling
+    assert "m == 131072" not in select_tiling
+    assert "may differ across" in select_tiling
+    assert "rank-invariant" in select_tiling
+    assert "SelectTiling(\n        k, n," in host
     assert "return kDefaultTiling;" in host
 
 
