@@ -75,6 +75,45 @@ TEST_F(MoeTutelCombineGatesProto, shape_infer_empty_samples)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// 动态 rank：indices 为 -2（UNKNOWN_RANK）时输出也必须是 UNKNOWN_RANK，
+// 不能把 -2 当成真实维度推下去。def.cpp 声明了 DynamicRankSupportFlag(true)，此路必须真验。
+TEST_F(MoeTutelCombineGatesProto, shape_infer_unknown_rank)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTutelCombineGates",
+        {
+            {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-2}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// E == 0 的空 Tensor：输出 [0, S]。
+TEST_F(MoeTutelCombineGatesProto, shape_infer_empty_experts)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTutelCombineGates",
+        {
+            {{{8, 64}, {8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{0, 4, 64}, {0, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{0, 8}, {0, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{0, 8}, {0, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{0, 8}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
 // H == 0 的空内积：shape 推导不受影响。
 TEST_F(MoeTutelCombineGatesProto, shape_infer_zero_hidden)
 {
