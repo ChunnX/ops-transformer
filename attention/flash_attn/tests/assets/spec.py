@@ -42,13 +42,8 @@ class FlashAttnSpec:
     Attributes are loaded lazily on first access to defer import errors.
     """
 
-    @staticmethod
-    def golden(*args, **kwargs):
-        return _load_impl_module("golden").cpu_flash_attn(*args, **kwargs)
-
-    @staticmethod
-    def customize_inputs(*args, **kwargs):
-        return _load_impl_module("inputs").customize_inputs(*args, **kwargs)
+    golden = _load_impl_module("golden").cpu_flash_attn
+    customize_inputs = _load_impl_module("inputs").customize_inputs
 
     pre_npu = _load_impl_module("pre_npu").run
 
@@ -57,9 +52,7 @@ class FlashAttnSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    @staticmethod
-    def compare(*outputs, **kwargs):
-        return _load_impl_module("compare").compare(*outputs, **kwargs)
+    compare = _load_impl_module("compare").compare
 
 
 __spec__ = {

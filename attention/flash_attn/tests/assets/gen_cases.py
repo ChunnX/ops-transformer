@@ -71,8 +71,20 @@ if _PYTESTS not in sys.path:
 
 API_NAME = "torch.ops.cann_ops_transformer.flash_attn"
 
-# metadata 槽位固定 shape (与 FA_META_SIZE 一致), 由 pre-NPU 阶段填充
-METADATA_SHAPE = (1024,)
+# metadata 槽位 shape 由算子侧公式推导, 与
+# torch_extension/cann_ops_transformer/ops/flash_attn.py 的
+# _calculate_metadata_size 保持一致: ((36+72)*B*num_heads_kv+1)*16 对齐 4096。
+def _metadata_shape(p):
+    layout_q = p.get("layout_q", "BNSD")
+    if layout_q == "TND":
+        cu_q = p.get("cu_seqlens_q")
+        batch_size = len(cu_q) - 1 if cu_q else 1
+    else:
+        batch_size = int(p.get("B", 1))
+    num_heads_kv = int(p.get("N2", p.get("N1", 1)))
+    size = (36 + 72) * batch_size * num_heads_kv
+    size = (size + 1) * 16
+    return (int(((size + 4095) // 4096) * 4096),)
 
 HEADER = [
     "testcase_name",
@@ -446,7 +458,7 @@ def _build_row(case_name, p):
         skv_shape,
         None,
         attn_mask_shape,
-        METADATA_SHAPE,
+        _metadata_shape(p),
     ]
     dtype_str = DTYPE_MAP.get(p.get("Dtype", "fp16"), "float16")
 
