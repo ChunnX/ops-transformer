@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file attention_to_ffn.cpp
- * \brief
+ * \file attention_to_ffn_a3.cpp
+ * \brief A3 (arch22) kernel entry for AttentionToFFN.
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -20,7 +20,7 @@
 #endif
 #include "../attention_to_ffn.h"
 #include "../attention_to_ffn_tiling.h"
-#include "../attention_to_ffn_tiling_key.h"
+#include "attention_to_ffn_a3_tiling_key.h"
 
 using namespace AscendC;
 using namespace AttentionToFFNImpl;

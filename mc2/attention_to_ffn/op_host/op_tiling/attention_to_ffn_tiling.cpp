@@ -718,8 +718,9 @@ static bool CheckInputAndSetTilingData(gert::TilingContext *context, AttentionTo
 
     return true;
 }
-
-static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, const bool activeMaskFlag)
+ 
+static uint64_t CalTilingKey(const gert::TilingContext *context, const uint32_t syncFlag,
+                            const uint32_t quantMode, const bool activeMaskFlag)
 {
     // TilingKey
     bool isSync = false;
@@ -736,7 +737,9 @@ static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, 
         isActiveMask = true;
     }
 
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(isQuant, isSync, isActiveMask, TILINGKEY_TPL_A3);
+    const bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
+    const uint32_t archTag = isA5 ? TILINGKEY_TPL_A5 : TILINGKEY_TPL_A3;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(isQuant, isSync, isActiveMask, archTag);
     return tilingKey;
 }
 
@@ -838,7 +841,7 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
     // Set TilingKey
     uint32_t syncFlag = tilingData->attentionToFFNInfo.syncFlag;
     bool activeMaskFlag = tilingData->attentionToFFNInfo.isActiveMask;
-    uint64_t tilingKey = CalTilingKey(syncFlag, quantMode, activeMaskFlag); // 同步/异步、量化/非量化、mask/非mask
+    uint64_t tilingKey = CalTilingKey(context, syncFlag, quantMode, activeMaskFlag); // 同步/异步、量化/非量化、mask/非mask
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "cur case tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -869,4 +872,4 @@ ge::graphStatus TilingParseForAttentionToFFN(gert::TilingParseContext *context)
 IMPL_OP_OPTILING(AttentionToFFN)
     .Tiling(AttentionToFFNTilingFunc)
     .TilingParse<AttentionToFFNCompileInfo>(TilingParseForAttentionToFFN);
-} // namespace MC2Tiling
+}  // end of namespace optiling
