@@ -58,6 +58,7 @@ const int64_t GMMFR_SPLIT_SIZE = 64;
 const int64_t GMMFR_QUANT_SCALE_PARAM_COUNT = 2;
 const int ND_N_VALUE_ALIGN = 8;
 const int ND_K0_VALUE_INT8 = 64;
+const int64_t OUT_DTYPE_BF16 = 2;
 }
 
 using namespace gert;
@@ -98,6 +99,12 @@ bool CheckType(const T &value, const std::initializer_list<T> list)
         }
     }
     return false;
+}
+
+static bool IsMxBf16Output(const gert::InferDataTypeContext *context, const int64_t *outputDtype)
+{
+    return (outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16) ||
+           context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_BF16;
 }
 
 struct CheckXandWParams {
@@ -196,13 +203,13 @@ static ge::graphStatus ValidateSharedInputAndLogit(const InferShapeContext *cont
         OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input first dim must be greater than 0."),
             return ge::GRAPH_FAILED);
     }
-    
+
     if (context->GetOptionalInputShape(logitOptionIndex) != nullptr) {
         OP_CHECK_IF(context->GetOptionalInputShape(logitOptionIndex)->GetDimNum() != oneDimNum ||
             context->GetOptionalInputShape(logitOptionIndex)->GetDim(0) != xAndWParams.m,
             OPS_REPORT_CUBE_INNER_ERR(op_name, "logit's shape is wrong."), return ge::GRAPH_FAILED);
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -241,10 +248,10 @@ static ge::graphStatus SetupOutputForMX(InferShapeContext *context, const char* 
     auto shape_out = context->GetOutputShape(0);
     OP_CHECK_IF(attrs == nullptr || shape_out == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(op_name, "attrs or output shape is null."), return ge::GRAPH_FAILED);
-    
+
     shape_out->SetDimNum(twoDimNum);
     const int64_t *output_bs = attrs->GetAttrPointer<int64_t>(outputBSAttrIndex);
-    
+
     if (output_bs != nullptr) {
         shape_out->SetDim(0, *output_bs);
     }
@@ -288,12 +295,12 @@ static ge::graphStatus InferShapeGroupedMatmulFinalizeRouting(InferShapeContext 
     OP_CHECK_IF(shape_x1 == nullptr || shape_x2 == nullptr || shape_out == nullptr || attrs == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(op_name, "shape or attrs is null"), return ge::GRAPH_FAILED);
     OP_LOGD(context->GetNodeName(), "x1_shape: %s, x2_shape: %s", Shape2String(*shape_x1).c_str(), Shape2String(*shape_x2).c_str());
-    
+
     const bool *transposeWeightPtr = attrs->GetBool(weightTransIndex);
     bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
-    
+
     CheckXandWParams xAndWParams{shape_x1, shape_x2, 0, 0, 0, 0, transposeWeight};
-    
+
     // MX量化模式涉及图模式交付不走校验逻辑
     auto shape_scale = context->GetOptionalInputShape(scaleOptionIndex);
     OP_CHECK_IF(shape_scale == nullptr, OPS_REPORT_CUBE_INNER_ERR(op_name, "scale is not given."), return ge::GRAPH_FAILED);
@@ -365,14 +372,17 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
                      return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT64),
                      OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of rowIndex is wrong."),
-                     return ge::GRAPH_FAILED);                     
+                     return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_FLOAT),
                      OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The W4A8 InputDataType of logit is wrong."),
-                     return ge::GRAPH_FAILED);  
+                     return ge::GRAPH_FAILED);
     }
 
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST)) {
+        auto attrs = context->GetAttrs();
+        const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
+        ge::DataType expectedLogitDtype = IsMxBf16Output(context, outputDtype) ? ge::DT_BF16 : ge::DT_FLOAT;
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
@@ -389,9 +399,9 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
                                       "The MXFP4/MXFP8 InputDataType of rowIndex is wrong.Supported type:INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            (context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_FLOAT),
+            (context->GetOptionalInputDataType(logitOptionIndex) != expectedLogitDtype),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of logit is wrong.Supported type:FLOAT"),
+                                      "The MXFP4/MXFP8 InputDataType of logit is wrong."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
@@ -415,14 +425,15 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
     return ge::GRAPH_FAILED;
 }
 
-static bool IsSupportMX(const gert::InferDataTypeContext *context)
+static bool IsSupportMX(const gert::InferDataTypeContext *context, const int64_t *outputDtype)
 {
+    ge::DataType expectedLogitDtype = IsMxBf16Output(context, outputDtype) ? ge::DT_BF16 : ge::DT_FLOAT;
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         context->GetOptionalInputDataType(scaleOptionIndex) == ge::DT_FLOAT8_E8M0 &&
         context->GetOptionalInputDataType(groupListOptionIndex) == ge::DT_INT64 &&
         context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 &&
-        context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT &&
+        context->GetOptionalInputDataType(logitOptionIndex) == expectedLogitDtype &&
         context->GetOptionalInputDataType(pertokenScaleOptionIndex) == ge::DT_FLOAT8_E8M0) {
         return true;
     }
@@ -433,7 +444,9 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
         return ge::GRAPH_FAILED);
-    bool supportDataTypeMX = IsSupportMX(context);
+    auto attrs = context->GetAttrs();
+    const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
+    bool supportDataTypeMX = IsSupportMX(context, outputDtype);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||
                                 context->GetInputDataType(xIndex) == ge::DT_FLOAT8_E4M3FN ||
@@ -447,7 +460,7 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                                (context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 ||
                                 context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT32);
 
-    bool supportDataTypeW4A8 = context->GetInputDataType(xIndex) == ge::DT_INT8 && 
+    bool supportDataTypeW4A8 = context->GetInputDataType(xIndex) == ge::DT_INT8 &&
                                context->GetInputDataType(wIndex) == ge::DT_INT4 &&
                                context->GetOptionalInputDataType(scaleOptionIndex) == ge::DT_INT64 &&
                                context->GetOptionalInputDataType(biasOptionIndex) == ge::DT_FLOAT &&
@@ -468,14 +481,18 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
     if (context->GetOptionalInputDataType(offsetOptionIndex) != ge::DT_UNDEFINED) {
         supportDataTypeW4A8 = supportDataTypeW4A8 && context->GetOptionalInputDataType(offsetOptionIndex) == ge::DT_FLOAT;
     }
-    
+
     if (!(supportDataTypeW4A8 || supportDataTypeW8A8 || supportDataTypeMX )) {
         OP_CHECK_IF(ValidateFailedDataType(context) != ge::GRAPH_SUCCESS,
                     OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "InputDataType is wrong, please check scale, bias, groupList, rowIndex or logit dtype."),
                     return ge::GRAPH_FAILED);
     }
-    
-    context->SetOutputDataType(0, ge::DT_FLOAT);
+
+    if (supportDataTypeMX && IsMxBf16Output(context, outputDtype)) {
+        context->SetOutputDataType(0, ge::DT_BF16);
+    } else {
+        context->SetOutputDataType(0, ge::DT_FLOAT);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -131,6 +131,7 @@ public:
     BaseOffset baseOffset_{0, 0, 0, 0, 0, 0, 0};
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
+    uint32_t curBaseM_ = 0;
     BlockMmadOp mmadOp_;
 
     BlockPrologue prologueOp_;
@@ -151,7 +152,11 @@ public:
         }
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
                              uint8_t hasBias_)
-            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_),
               hasBias(hasBias_)
         {
         }
@@ -201,6 +206,27 @@ public:
                 WaitForVector();
             }
         }
+    }
+
+    __aicore__ inline void BaseMBalance(BlockSchedulerOp &scheduler, int64_t m, int64_t hostBaseM)
+    {
+        const int64_t safeBaseM =
+            hostBaseM > 0 ? hostBaseM : static_cast<int64_t>(BLOCK_CUBE);
+
+        curBaseM_ = static_cast<uint32_t>(safeBaseM);
+        scheduler.UpdateBaseM(curBaseM_);
+
+        if (m <= 0) {
+            return;
+        }
+
+        const int64_t mCnt = CeilDiv(m, safeBaseM);
+        const int64_t balancedBaseM = CeilDiv(m, mCnt);
+
+        curBaseM_ = static_cast<uint32_t>(
+            CeilAlign(balancedBaseM, static_cast<int64_t>(BLOCK_CUBE)));
+
+        scheduler.UpdateBaseM(curBaseM_);
     }
 
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, uint8_t groupListType)
@@ -269,7 +295,7 @@ public:
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
         Get<MNK_M>(problemShape_) = splitValue;
         // split_m, when m=0, skip
-        if (Get<MNK_M>(problemShape_) == 0) {
+        if (Get<MNK_M>(problemShape_) <= 0) {
             return false;
         }
         return true;
@@ -279,6 +305,7 @@ public:
     {
         Get<MNK_N>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<MNK_K>(problemShape_) = params.gmmParams.matmulTiling->Ka;
+        curBaseM_ = params.gmmParams.baseM > 0 ? params.gmmParams.baseM : static_cast<uint32_t>(BLOCK_CUBE);
         groupListGm_.SetGlobalBuffer((__gm__ int64_t *)params.mmadParams.groupListGmAddr);
     }
 
@@ -287,10 +314,11 @@ public:
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
+        BaseMBalance(bs, m, params.gmmParams.baseM);
         bs.UpdateNextProblem(problemShape_);
         epilogueOp_.UpdateNextProblem(problemShape_);
         UpdateGlobalBuffer(params);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        CoordClass coord(m, n, k, curBaseM_, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
