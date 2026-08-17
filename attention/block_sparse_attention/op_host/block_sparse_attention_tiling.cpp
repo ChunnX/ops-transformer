@@ -1324,7 +1324,6 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_selectNumIdxSize(selectNumIdxSize_);
     tilingData_->set_selectIdxSize(selectIdxSize_);
     // V3 新增:填充量化参数
-    tilingData_->set_quantMode(quantMode_);
     tilingData_->set_log2Cx(log2Cx_);
     tilingData_->set_log2CxCeil(log2CxCeil_);
     // fill 950 mask2idx tile info
