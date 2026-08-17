@@ -26,8 +26,7 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
-    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 const std::unordered_map<ge::DataType, matmul_tiling::DataType> GE_TO_MM_DTYPE{
     {ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16},
@@ -219,7 +218,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Dav() const
 
 QUANT_MODE MlaPrologTiling::GetQuantizationMode() const
 {
-    if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(context_->opType)) {
         if (GetCurNpuArch() == NpuArch::DAV_3510) {
             return GetQuantizationModeV3Dav();
         } else {
@@ -351,7 +350,7 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
     epsilonCq_ = *(context_->rmsNormEspilonCq);
     reciprocalCkv_ = 1.0f / baseShapeInfo_.hckvSize;
     epsilonCkv_ = *(context_->rmsNormEspilonCkv);
-    if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(context_->opType)) {
         queryNormFlag_ = *(context_->queryNormFlag);
         weightQuantMode_ = static_cast<WEIGHT_QUANT_MODE>(*(context_->weightQuantMode));
         kvQuantMode_ = static_cast<KV_QUANT_MODE>(*(context_->kvQuantMode));
@@ -361,6 +360,11 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
         tileSize_ = static_cast<uint32_t>(*(context_->tileSize));
         qcQrScale_ = *(context_->qcQrScale);
         kcScale_ = *(context_->kcScale);
+    }
+    // rope 开关仅对 MlaPrologV4 生效（由 do_rope attr 控制，默认 true），非 V4 强制开启
+    enableRope_ = true;
+    if (IsMlaPrologV4(context_->opType) && context_->doRope != nullptr) {
+        enableRope_ = *(context_->doRope);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -538,7 +542,7 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     baseParams_->epsilonCq = epsilonCq_;
     baseParams_->reciprocalCkv = reciprocalCkv_;
     baseParams_->epsilonCkv = epsilonCkv_;
-    if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(context_->opType)) {
         baseParams_->queryNormFlag = queryNormFlag_ ? 1U : 0U;
         baseParams_->kvQuantMode = static_cast<uint32_t>(kvQuantMode_);
         baseParams_->ckvkrRepoMode = static_cast<uint32_t>(ckvkrRepoMode_);
@@ -668,23 +672,23 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = GET_TPL_TILING_KEY(0, 0, 0, false, false,
-                                                 static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            0, 0, 0, false, false, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, true, cvMode);
     } else {
         uint8_t cacheMode =
             scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), enableRope_, cvMode);
         OP_LOGI(
             context_->opName,
             "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
-            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, ENABLE_ROPE:%u, CV_MODE:%u",
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), static_cast<uint8_t>(enableRope_), cvMode);
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
     return ge::GRAPH_SUCCESS;
@@ -731,7 +735,7 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
     std::vector<StatusFunction> optionalTilingFuncs{
         std::bind(&MlaPrologTiling::FillMatmul1Tiling, this), std::bind(&MlaPrologTiling::FillMatmul2Tiling, this),
         std::bind(&MlaPrologTiling::FillMatmul3Tiling, this), std::bind(&MlaPrologTiling::FillMatmul4Tiling, this),
-        std::bind(&MlaPrologTiling::FillTiling, this),        std::bind(&MlaPrologTiling::CalcWorkSpace, this),
+        std::bind(&MlaPrologTiling::FillTiling, this), std::bind(&MlaPrologTiling::CalcWorkSpace, this),
         std::bind(&MlaPrologTiling::GenTilingKey, this)};
     for (const auto &func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
@@ -775,7 +779,7 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     mlaPrologContext.rmsNormEspilonCq = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CQ_ATTR_INDEX);
     mlaPrologContext.rmsNormEspilonCkv = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CKV_ATTR_INDEX);
     mlaPrologContext.cacheMode = attrs->GetStr(CACHE_MODE_ATTR_INDEX);
-    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(mlaPrologContext.opType)) {
         mlaPrologContext.queryNormFlag = attrs->GetAttrPointer<bool>(QUERY_NORM_FLAG_ATTR_INDEX);
         mlaPrologContext.weightQuantMode = attrs->GetAttrPointer<int64_t>(WEIGHT_QUANT_MODE_ATTR_INDEX);
         mlaPrologContext.kvQuantMode = attrs->GetAttrPointer<int64_t>(KV_CACHE_QUANT_MODE_ATTR_INDEX);
@@ -785,6 +789,17 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
+        // RoPE 开关：仅 V4 读取 do_rope attr（默认 true）；V3 强制开启
+        if (IsMlaPrologV4(mlaPrologContext.opType)) {
+            mlaPrologContext.doRope = attrs->GetAttrPointer<bool>(DO_ROPE_ATTR_INDEX);
+            if (mlaPrologContext.doRope == nullptr) {
+                mlaPrologContext.doRopeValue = true;
+                mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
+            }
+        } else {
+            mlaPrologContext.doRopeValue = true;
+            mlaPrologContext.doRope = nullptr;
+        }
     } else {
         mlaPrologContext.queryNormFlag = nullptr;
         mlaPrologContext.weightQuantMode = nullptr;
@@ -795,6 +810,9 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = nullptr;
         mlaPrologContext.qcQrScale = nullptr;
         mlaPrologContext.kcScale = nullptr;
+        // 非 V4：RoPE 始终开启（rope 为必选输入）
+        mlaPrologContext.doRopeValue = true;
+        mlaPrologContext.doRope = nullptr;
     }
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
@@ -825,7 +843,7 @@ void MlaPrologTiling::ConvertRequiredParams(gert::TilingContext &context, MlaPro
     mlaPrologContext.ropeCos.desc = context.GetRequiredInputDesc(ROPE_COS_INPUT_INDEX);
     mlaPrologContext.ropeCos.shape = context.GetRequiredInputShape(ROPE_COS_INPUT_INDEX);
 
-    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(mlaPrologContext.opType)) {
         mlaPrologContext.kvCache.desc = context.GetRequiredInputDesc(KV_CACHE_INPUT_INDEX_V3);
         mlaPrologContext.kvCache.shape = context.GetRequiredInputShape(KV_CACHE_INPUT_INDEX_V3);
         mlaPrologContext.krCache.desc = context.GetRequiredInputDesc(KR_CACHE_INPUT_INDEX_V3);
@@ -851,7 +869,7 @@ void MlaPrologTiling::ConvertRequiredParams(gert::TilingContext &context, MlaPro
 
 void MlaPrologTiling::ConvertOptionalParams(gert::TilingContext &context, MlaPrologContext &mlaPrologContext)
 {
-    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(mlaPrologContext.opType)) {
         mlaPrologContext.cacheIndex.desc = context.GetRequiredInputDesc(CACHE_INDEX_INPUT_INDEX_V3);
         mlaPrologContext.cacheIndex.shape = context.GetRequiredInputShape(CACHE_INDEX_INPUT_INDEX_V3);
     }
@@ -883,7 +901,7 @@ void MlaPrologTiling::ConvertOptionalParams(gert::TilingContext &context, MlaPro
         mlaPrologContext.dequantScaleQNope.shape = context.GetOutputShape(DEQUANT_SCALE_Q_NOPE_OUTPUT_INDEX);
     }
 
-    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if (IsMlaPrologV3Family(mlaPrologContext.opType)) {
         mlaPrologContext.queryNorm.desc = context.GetOutputDesc(QUERY_NORM_OUTPUT_INDEX);
         mlaPrologContext.queryNorm.shape = context.GetOutputShape(QUERY_NORM_OUTPUT_INDEX);
         mlaPrologContext.dequantScaleQNorm.desc = context.GetOutputDesc(DEQUANT_SCALE_Q_NORM_OUTPUT_INDEX);

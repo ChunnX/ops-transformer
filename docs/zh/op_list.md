@@ -378,6 +378,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/mla_prolog_v4/README.md">mla_prolog_v4</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理MlaPrologV4WeightNz算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/nsa_compress/README.md">nsa_compress</a></td>
     <td>✓</td>
     <td>✓</td>

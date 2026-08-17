@@ -328,12 +328,18 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
+        - attention/mla_prolog_v4/examples
+        - attention/mla_prolog_v4/docs
+        - attention/mla_prolog_v4/tests
+        - attention/mla_prolog_v4/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
         - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
         - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
         - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
         - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+        - attention/mla_prolog_v4/op_host/op_api/aclnn_mla_prolog_v4.cpp
+        - attention/mla_prolog_v4/op_host/fallback_mla_prolog_v4.cpp
       exclude:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
@@ -364,12 +370,18 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
+        - attention/mla_prolog_v4/examples
+        - attention/mla_prolog_v4/docs
+        - attention/mla_prolog_v4/tests
+        - attention/mla_prolog_v4/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
         - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
         - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
         - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
         - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+        - attention/mla_prolog_v4/op_host/op_api/aclnn_mla_prolog_v4.cpp
+        - attention/mla_prolog_v4/op_host/fallback_mla_prolog_v4.cpp
       test:
         examples: False
         ut: True
@@ -397,17 +409,62 @@ attention:
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
         - attention/mla_prolog_v3/op_kernel
+        - attention/mla_prolog_v4/examples
+        - attention/mla_prolog_v4/docs
+        - attention/mla_prolog_v4/tests
+        - attention/mla_prolog_v4/op_kernel
         - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
         - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
         - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
         - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
         - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+        - attention/mla_prolog_v4/op_host/op_api/aclnn_mla_prolog_v4.cpp
+        - attention/mla_prolog_v4/op_host/fallback_mla_prolog_v4.cpp
       test:
         examples: False
         ut: True
       options:
         - mla_prolog_v3
+
+  mla_prolog_v4:
+      module: True
+      src:
+        - attention/mla_prolog_v4
+      exclude:
+        - attention/mla_prolog_v4/docs
+        - attention/mla_prolog_v4/README.md
+      ut_cov_exclude:
+        - attention/mla_prolog/examples
+        - attention/mla_prolog/docs
+        - attention/mla_prolog/tests
+        - attention/mla_prolog/op_kernel
+        - attention/mla_prolog_v2/examples
+        - attention/mla_prolog_v2/docs
+        - attention/mla_prolog_v2/tests
+        - attention/mla_prolog_v2/op_kernel
+        - attention/mla_prolog_v3/examples
+        - attention/mla_prolog_v3/docs
+        - attention/mla_prolog_v3/tests
+        - attention/mla_prolog_v3/op_kernel
+        - attention/mla_prolog_v4/op_graph
+        - attention/mla_prolog_v4/examples
+        - attention/mla_prolog_v4/docs
+        - attention/mla_prolog_v4/tests
+        - attention/mla_prolog_v4/op_kernel
+        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+        - attention/mla_prolog_v4/op_host/op_api/aclnn_mla_prolog_v4.cpp
+        - attention/mla_prolog_v4/op_host/fallback_mla_prolog_v4.cpp
+      test:
+        examples: False
+        ut: True
+      options:
+        - mla_prolog_v4
 
   lightning_indexer:
     module: True

@@ -28,6 +28,7 @@ operator_group_1:
 operator_group_2:
   - mla_prolog_v2
   - mla_prolog_v3
+  - mla_prolog_v4
   - mla_prolog
   - flash_attention_score_grad
 operator_group_3:
