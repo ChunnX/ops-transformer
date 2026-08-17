@@ -22,6 +22,25 @@ if(NOT DEFINED ASCEND_CANN_PACKAGE_PATH)
     endif()
 endif()
 
+# ---- 第二阶段新增：ops-tensor 路径（用户已拉取到 ~/code/ops-tensor）----
+# 注意：tensor_api 是 ops-tensor 的 submodule，首次构建前需在 ops-tensor 目录执行：
+#   git submodule update --init --recursive
+set(OPS_TENSOR_ROOT "$ENV{HOME}/code/ops-tensor")
+if(NOT EXISTS "${OPS_TENSOR_ROOT}/include/blaze")
+    message(FATAL_ERROR "ops-tensor not found at ${OPS_TENSOR_ROOT}/include/blaze, "
+        "please clone ops-tensor (git clone https://gitcode.com/cann/ops-tensor.git) "
+        "and run: cd ${OPS_TENSOR_ROOT} && git submodule update --init --recursive")
+endif()
+
+# ---- 第二阶段新增：架构相关目录（platform/tiling_api/register 库与 platform_ascendc.h 头文件）----
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set(ASCEND_ARCH_DIR "x86_64-linux")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm")
+    set(ASCEND_ARCH_DIR "aarch64-linux")
+else()
+    set(ASCEND_ARCH_DIR "x86_64-linux")
+endif()
+
 add_executable(ccu_all_gather_matmul
     ccu_all_gather_matmul_kernel.asc
 )
@@ -35,6 +54,18 @@ target_include_directories(ccu_all_gather_matmul PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/hcomm
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/hcomm/ccu
+    # ---- 第二阶段新增：Blaze + tensor_api include 路径（ops-tensor 已拉取到 ~/code/ops-tensor）----
+    ${OPS_TENSOR_ROOT}/include
+    ${OPS_TENSOR_ROOT}/include/tensor_api/include
+    ${OPS_TENSOR_ROOT}/include/tensor_api
+    # ---- 第二阶段新增：platform_ascendc.h 头文件路径（GetCoreNumAic / PlatformAscendCManager）----
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include/tiling
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include/utils/tiling
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include/utils
+    # ---- 第二阶段新增：Blaze 依赖的 kernel_basic_intf.h 等 asc 内部头文件路径 ----
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include/basic_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include/interface
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/asc/include
 )
 
 target_compile_features(ccu_all_gather_matmul PRIVATE cxx_std_14)
@@ -61,6 +92,8 @@ target_link_options(ccu_all_gather_matmul PRIVATE
 )
 target_link_directories(ccu_all_gather_matmul PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/lib64
+    # ---- 第二阶段新增：platform / tiling_api / register 库所在目录 ----
+    ${ASCEND_CANN_PACKAGE_PATH}/${ASCEND_ARCH_DIR}/lib64
 )
 target_link_libraries(ccu_all_gather_matmul PRIVATE
     hcomm
@@ -70,4 +103,8 @@ target_link_libraries(ccu_all_gather_matmul PRIVATE
     acl_rt
     ascendc_runtime
     pthread
+    # ---- 第二阶段新增：Blaze 链接库 ----
+    platform
+    tiling_api
+    register
 )

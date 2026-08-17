@@ -217,19 +217,19 @@ apace/examples/ccu_all_gather_matmul/         ← 独立工程目录（对齐 02
 
 > 第二阶段仍用 AIV 同步桥（已验证路径），AIC 仅做 `CrossCoreWaitFlag` + matmul，不触碰 AIC 未验证的 GM 轮询 API。AIC 直轮询延至第三阶段引入（见 §4）。
 
-### 3.4 matmul kernel 类型链（FP16→BF16）
+### 3.4 matmul kernel 类型链（FP16→BF16，已确认）
+
 ```cpp
-using TypeA = half;        // FP16
-using TypeB = half;        // FP16
-using TypeC = bfloat16_t;  // BF16
-using BiasType = float;
-using DispatchPolicy = Blaze::Gemm::Matmul<0>;  // 非 MX，无 scale
+// 纯 matmul 组件（ops-tensor examples/mat_mul/mat_mul_basic 确认）
+using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<>;  // 非 MX/Quant
 using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-    DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC, BiasType, LayoutBias>;
-using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerMatmul<...>;  // 纯 Matmul scheduler（非 QBMM，待查 blaze/gemm/ 确认组件名）
-using KernelImpl = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, void, BlockScheduler>;
+    DispatchPolicy, half, LayoutA, half, LayoutB, bfloat16_t, LayoutC, float, LayoutC>;
+using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
+using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerMatmulBasic<ProblemShape>;
+using KernelImpl = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
 ```
-> **第二阶段开发前必须查 Blaze `gemm/` 库**确认纯 matmul（非 QBMM）的 scheduler/kernel 组件名。QBMM 路线用 `BlockSchedulerQuantBatchMatmulV3` + `kernel_qbmm_mx.h`，纯 matmul 应有对应 `BlockSchedulerMatmul` + `kernel_matmul.h`（或类似名）。**禁止混入 QBMM/Quant 组件**。此为第二阶段问题，不阻塞第一阶段。
+
+> **P6 闭环**：纯 matmul 组件名已从 ops-tensor `examples/mat_mul/mat_mul_basic/mat_mul_basic.cpp` 确认。关键头文件：`block_mmad_matmul_basic.h` + `block_scheduler_matmul_basic.h` + `kernel_matmul_basic.h`（非 QBMM 的 `kernel_qbmm_mx.h`）。`GemmUniversal` 类名相同但特化头文件不同。详细设计见 [`CCU_ALLGATHER_PHASE2_DESIGN.md`](CCU_ALLGATHER_PHASE2_DESIGN.md)。
 
 ### 3.5 第二阶段交付
 - 通信 + matmul 串联（无并行），端到端精度通过（BF16 rtol/atol=1e-3）
@@ -409,7 +409,7 @@ fi
 | P3 | CCU→计算核同步方式 | **第一/二阶段用 AIV 同步桥**（已验证，CrossCoreSetFlag 唤醒 AIC）；**第三阶段引入 AIC 直轮询**（用户确认 AIC 支持，性能收益在并行流水下最大） | 已确认 |
 | P4 | `asccomm_ccu_dataplane` 库在目标 CANN 是否预装 | 需环境就绪后确认 | 待环境 |
 | P5 | CCU kernel 内 `std::vector`/`std::map` 在 `__ccu_host__` 是否可用 | 02_allgather_add 已用，可行 | 已验证（参考） |
-| P6 | 纯 matmul（非 QBMM）的 Blaze scheduler/kernel 组件名 | 需在 blaze/gemm/ 库中确认实际可用组件 | 待开发时查 |
+| P6 | 纯 matmul（非 QBMM）的 Blaze scheduler/kernel 组件名 | **已确认**：`MatmulMultiBlockBasic` + `BlockSchedulerMatmulBasic` + `kernel_matmul_basic.h`（来自 ops-tensor examples/mat_mul/mat_mul_basic） | ✅ 已确认 |
 | P7 | AIV→AIC 的 `CrossCoreSetFlag`/`CrossCoreWaitFlag` 跨核同步（第二阶段用） | apace UDMA 路线已用（all_gather_mx_matmul_udma_impl.h L248），可行 | 已验证（参考） |
 | P8 | AIC 直轮询（第三阶段）：AIC 能否用 `WriteGmByPassDCache`/`ReadGmByPassDCache`/`Nop` + 能否写 CCU Variable 地址空间 | 用户确认 AIC 支持；上板验证 | 待第三阶段验证 |
 
