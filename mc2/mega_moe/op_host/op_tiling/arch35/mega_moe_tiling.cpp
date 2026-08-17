@@ -1926,9 +1926,12 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    context->SetBlockDim(blockDim);
     context->SetScheduleMode(1); // batch model, all cores start at the same time
-    OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
+    OP_LOGI(nodeName,
+            "Platform Info: GetCoreNumAiv=%u, GetCoreNumAic=%u, CalcTschBlockDim=%u, ubSize=%lu\n",
+            aivNum, aicNum, blockDim, ubSize);
 
     // Attr check & set
     OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
