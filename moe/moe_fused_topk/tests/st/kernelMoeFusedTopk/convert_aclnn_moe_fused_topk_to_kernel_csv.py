@@ -75,7 +75,9 @@ def _render() -> str:
     with SOURCE.open("r", encoding="utf-8", newline="") as source_file:
         source_rows = list(csv.DictReader(source_file))
     if len(source_rows) < CASE_COUNT:
-        raise RuntimeError(f"expected at least {CASE_COUNT} source rows, got {len(source_rows)}")
+        raise RuntimeError(
+            f"expected at least {CASE_COUNT} source rows, got {len(source_rows)}"
+        )
 
     output = io.StringIO(newline="")
     writer = csv.DictWriter(output, fieldnames=HEADERS, lineterminator="\n")
@@ -97,7 +99,9 @@ def _render() -> str:
         output_shapes = tuple(shapes[4:])
         output_dtypes = tuple(dtypes[4:])
         if output_dtypes != ("float32", "int32"):
-            raise RuntimeError(f"{source_name}: unexpected output dtypes {output_dtypes}")
+            raise RuntimeError(
+                f"{source_name}: unexpected output dtypes {output_dtypes}"
+            )
 
         source_id = source_name.rsplit("_", maxsplit=1)[-1]
         writer.writerow(
@@ -138,11 +142,16 @@ def _render() -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="verify the checked-in CSV is current")
+    parser.add_argument(
+        "--check", action="store_true", help="verify the checked-in CSV is current"
+    )
     args = parser.parse_args()
     rendered = _render()
     if args.check:
-        if not DESTINATION.is_file() or DESTINATION.read_text(encoding="utf-8") != rendered:
+        if (
+            not DESTINATION.is_file()
+            or DESTINATION.read_text(encoding="utf-8") != rendered
+        ):
             raise SystemExit(f"{DESTINATION} is stale; run {Path(__file__).name}")
         print(f"PASS: {DESTINATION.name} has {CASE_COUNT} direct-Kernel cases")
         return

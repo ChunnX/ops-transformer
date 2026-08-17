@@ -20,34 +20,34 @@
 #include "moe_fused_topk_tiling.h"
 
 namespace {
-    constexpr uint32_t BYTE_BLOCK = 32;
-    constexpr int32_t X_INPUT_INDEX = 0;
-    constexpr int32_t ADD_NUM_INPUT_INDEX = 1;
-    constexpr int32_t MAPPING_NUM_INPUT_INDEX = 2;
-    constexpr int32_t MAPPING_TABLE_INPUT_INDEX = 3;
+constexpr uint32_t BYTE_BLOCK = 32;
+constexpr int32_t X_INPUT_INDEX = 0;
+constexpr int32_t ADD_NUM_INPUT_INDEX = 1;
+constexpr int32_t MAPPING_NUM_INPUT_INDEX = 2;
+constexpr int32_t MAPPING_TABLE_INPUT_INDEX = 3;
 
-    constexpr uint32_t DIM_INDEX0 = 0;
-    constexpr uint32_t DIM_INDEX1 = 1;
+constexpr uint32_t DIM_INDEX0 = 0;
+constexpr uint32_t DIM_INDEX1 = 1;
 
-    constexpr uint32_t ATTR_GROUP_NUM_INDEX = 0;
-    constexpr uint32_t ATTR_GROUP_TOPK_INDEX = 1;
-    constexpr uint32_t ATTR_TOP_N_INDEX = 2;
-    constexpr uint32_t ATTR_TOP_K_INDEX = 3;
-    constexpr uint32_t ATTR_ACTIVATE_TYPE_INDEX = 4;
-    constexpr uint32_t ATTR_IS_NORM_INDEX = 5;
-    constexpr uint32_t ATTR_SCALE_INDEX = 6;
-    constexpr uint32_t ATTR_ENABLE_EXPERT_MAPPING_INDEX = 7;
+constexpr uint32_t ATTR_GROUP_NUM_INDEX = 0;
+constexpr uint32_t ATTR_GROUP_TOPK_INDEX = 1;
+constexpr uint32_t ATTR_TOP_N_INDEX = 2;
+constexpr uint32_t ATTR_TOP_K_INDEX = 3;
+constexpr uint32_t ATTR_ACTIVATE_TYPE_INDEX = 4;
+constexpr uint32_t ATTR_IS_NORM_INDEX = 5;
+constexpr uint32_t ATTR_SCALE_INDEX = 6;
+constexpr uint32_t ATTR_ENABLE_EXPERT_MAPPING_INDEX = 7;
 
-    constexpr uint32_t RESERVED_UB = 16 * 1024;
-    constexpr uint32_t SORT_UNIT = 32;
-    constexpr uint32_t SYS_WORKSPACESIZE = 16 * 1024 * 1024;
+constexpr uint32_t RESERVED_UB = 16 * 1024;
+constexpr uint32_t SORT_UNIT = 32;
+constexpr uint32_t SYS_WORKSPACESIZE = 16 * 1024 * 1024;
 
-    constexpr bool TOPK_IS_REUSE_SOURCE = false;
-    constexpr bool TOPK_IS_INIT_INDEX = false;
-    constexpr bool TOPK_IS_LARGEST = true;
-    constexpr uint32_t FP32_DTYPE_SIZE = 4U; // float
-    constexpr uint32_t INT32_DTYPE_SIZE = 4U; // int32
-    constexpr uint32_t FP32_BLOCK_ALIGN_NUM = 8U;
+constexpr bool TOPK_IS_REUSE_SOURCE = false;
+constexpr bool TOPK_IS_INIT_INDEX = false;
+constexpr bool TOPK_IS_LARGEST = true;
+constexpr uint32_t FP32_DTYPE_SIZE = 4U;  // float
+constexpr uint32_t INT32_DTYPE_SIZE = 4U; // int32
+constexpr uint32_t FP32_BLOCK_ALIGN_NUM = 8U;
 } // namespace
 
 namespace optiling {
@@ -56,7 +56,9 @@ using Ops::Transformer::OpTiling::TilingBaseClass;
 
 class MoeFusedTopkTilingBase : public TilingBaseClass {
 public:
-    explicit MoeFusedTopkTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
+    explicit MoeFusedTopkTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
     ~MoeFusedTopkTilingBase() override = default;
 
 protected:
@@ -142,7 +144,7 @@ ge::graphStatus MoeFusedTopkTilingBase::GetShapeAttrsInfo()
 
 ge::graphStatus MoeFusedTopkTilingBase::GetPlatformInfo()
 {
-    auto compileInfo = static_cast<const MoeFusedTopkCompileInfo*>(context_->GetCompileInfo());
+    auto compileInfo = static_cast<const MoeFusedTopkCompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo);
     coreNum_ = compileInfo->coreNum;
     ubSize_ = (compileInfo->ubSize - RESERVED_UB) / BYTE_BLOCK * BYTE_BLOCK;
@@ -204,31 +206,31 @@ ge::graphStatus MoeFusedTopkTilingBase::SplitUb()
     // addNumInQueue_
     needUbSize += CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // yOutQueue_
-    needUbSize +=  CeilAlign(topK_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
+    needUbSize += CeilAlign(topK_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // indicesOutQueue_
-    needUbSize +=  CeilAlign(topK_, SORT_UNIT) * INT32_DTYPE_SIZE;
+    needUbSize += CeilAlign(topK_, SORT_UNIT) * INT32_DTYPE_SIZE;
     // sigmoidBuf_
-    needUbSize +=  CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
+    needUbSize += CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // sigmoidAddQueue_
-    needUbSize +=  CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
+    needUbSize += CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // sortedQueue_
-    needUbSize +=  CeilAlign(groupEles_, SORT_UNIT) * groupNum_ * sizeof(int64_t);
+    needUbSize += CeilAlign(groupEles_, SORT_UNIT) * groupNum_ * sizeof(int64_t);
     // topkValueQueue_
-    needUbSize +=  CeilAlign(secondDimSize_, SORT_UNIT) * FP32_DTYPE_SIZE;
+    needUbSize += CeilAlign(secondDimSize_, SORT_UNIT) * FP32_DTYPE_SIZE;
     // assistQueue_
-    needUbSize +=  CeilAlign(secondDimSize_, SORT_UNIT) * INT32_DTYPE_SIZE;
+    needUbSize += CeilAlign(secondDimSize_, SORT_UNIT) * INT32_DTYPE_SIZE;
     // mappingNumQueue_
-    needUbSize +=  CeilAlign(expertNum_ * INT32_DTYPE_SIZE, BYTE_BLOCK);
+    needUbSize += CeilAlign(expertNum_ * INT32_DTYPE_SIZE, BYTE_BLOCK);
     // tempBuf_
-    needUbSize +=  topkMinValue_;
+    needUbSize += topkMinValue_;
 
     OP_CHECK_IF(needUbSize > ubSize_,
-            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
                                             "This case need minimum UB size is %u, which is out of total UB size: %u.",
                                             needUbSize, ubSize_),
-            return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "This case need minimum UB size is %u.", needUbSize);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -236,7 +238,7 @@ ge::graphStatus MoeFusedTopkTilingBase::GetWorkspaceSize()
 {
     workspacePerCore_ = secondDimSize_ * FP32_DTYPE_SIZE;
     size_t usedWorkspaceSize = SYS_WORKSPACESIZE + usedCoreNum_ * workspacePerCore_;
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = usedWorkspaceSize;
     return ge::GRAPH_SUCCESS;
@@ -307,17 +309,17 @@ ge::graphStatus MoeFusedTopkTilingBase::GetTopKTiling()
     int32_t topkInner = (groupEles_ + SORT_UNIT - 1) / SORT_UNIT * SORT_UNIT;
 
     OP_CHECK_IF(!AscendC::TopKTilingFunc(ascendcPlatform, topkInner, groupNum_, topN_, FP32_DTYPE_SIZE, TOPK_IS_INIT_INDEX,
-                        AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, tilingData_.topkTilingData),
-                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                                    "TopKTilingFunc Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, topkInner, groupNum_, TOPK_IS_REUSE_SOURCE, 
-                        TOPK_IS_INIT_INDEX, AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, FP32_DTYPE_SIZE,
-                        topkMaxValue_, topkMinValue_),
-                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                                    "GetTopKMaxMinTmpSize Failed"),
-                    return ge::GRAPH_FAILED);
-    
+                                         AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, tilingData_.topkTilingData),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                            "TopKTilingFunc Failed"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, topkInner, groupNum_, TOPK_IS_REUSE_SOURCE,
+                                               TOPK_IS_INIT_INDEX, AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, FP32_DTYPE_SIZE,
+                                               topkMaxValue_, topkMinValue_),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                            "GetTopKMaxMinTmpSize Failed"),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -341,7 +343,7 @@ void MoeFusedTopkTilingBase::GetTmpBuffSize()
     ge::Shape srcBroadCastShape(srcBroadCastVec);
     ge::Shape dstBroadCastShape(dstBroadCastVec);
     AscendC::GetBroadCastMaxMinTmpSize(ascendcPlatform, srcBroadCastShape, dstBroadCastShape,
-                                        FP32_DTYPE_SIZE, false, maxValue, minValue);
+                                       FP32_DTYPE_SIZE, false, maxValue, minValue);
     topkMinValue_ = std::max(topkMinValue_, minValue);
     topkMaxValue_ = std::max(topkMaxValue_, maxValue);
 

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
+/*!
  * \file moe_fused_topk.h
  * \brief
  */
@@ -58,9 +58,9 @@ public:
     __aicore__ inline void CopyToWorkspace();
     __aicore__ inline void CopyOut(const int32_t loop);
     __aicore__ inline void CopyInMappingNum();
- 
+
     __aicore__ inline void ProcessSortAlign();
- 
+
     template <typename T1, typename T2>
     __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     {
@@ -160,8 +160,7 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::InitTili
     if (blockIdx < tailBatch) {
         loopBatch_ = batchPerCore + 1;
         batchOffset_ = blockIdx * loopBatch_;
-    }
-    else {
+    } else {
         loopBatch_ = batchPerCore;
         batchOffset_ = blockIdx * batchPerCore + tailBatch;
     }
@@ -270,7 +269,7 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::CopyFrom
     LocalTensor<float> xLocal = xInBuf_.Get<float>();
     DataCopyExtParams xWorkspaceGroupCopyParams{(uint16_t)1, (uint32_t)(groupEles_ * sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> xWorkspaceGroupPadParams{true, 0, (uint8_t)(groupElesAlignBlockCountFp32_ - groupEles_),
-                                                          floatNegativeInf_};
+                                                         floatNegativeInf_};
     event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
     SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
@@ -336,7 +335,7 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::Process(
         GroupReduceSumInternelImpl();
         GroupTopkImpl();
         GatherSigmoidImpl();
- 
+
         if (isNorm_ == 1) {
             NormImpl();
         }

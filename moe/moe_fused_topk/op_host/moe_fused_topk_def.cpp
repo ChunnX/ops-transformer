@@ -18,7 +18,8 @@
 namespace ops {
 class MoeFusedTopk : public OpDef {
 public:
-    explicit MoeFusedTopk(const char *name) : OpDef(name)
+    explicit MoeFusedTopk(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -77,4 +78,4 @@ public:
 };
 
 OP_ADD(MoeFusedTopk);
-}  // namespace ops
+} // namespace ops
