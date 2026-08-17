@@ -554,9 +554,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                             SetRunInfo(curRunInfo, runParam, taskId, logicalLoop, logicalLoopLimit, multiCoreInnerIdx,
                                        sparseBase);
                             if ASCEND_IS_AIC {
-                                cubeBlock.IterateBmm1_0(bmm1Buffers.Get(), curRunInfo, constInfo);
-                                if (curRunInfo.hasRound1) {
-                                    cubeBlock.IterateBmm1_1(bmm1Buffers.Get(), curRunInfo, constInfo);
+                                uint32_t roundNum = curRunInfo.hasRound1 ? 2U : 1U;
+                                for (uint32_t roundIdx = 0U; roundIdx < roundNum; ++roundIdx) {
+                                    cubeBlock.IterateBmm1(bmm1Buffers.Get(), curRunInfo, constInfo, roundIdx);
                                 }
                             }
                             if ASCEND_IS_AIV {
