@@ -69,4 +69,5 @@ target_link_libraries(ccu_all_gather_matmul PRIVATE
     ascendcl
     acl_rt
     ascendc_runtime
+    pthread
 )

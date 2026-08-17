@@ -3,7 +3,7 @@
 > **场景**：基于 CCU 通信的 AllGather + Matmul 通算融合算子，`<<<>>>` 直调，两卡开发。
 > **核心参考**：`/home/wuhua/code/asc-comm/examples/ccu/ccu_direct/02_allgather_add/`（CCU 双 kernel 架构，通信层+Host编排+同步机制整体复用，matmul 替换其中的 add）。
 > **matmul 计算**：Blaze 库纯 matmul（FP16→BF16），baseM=baseN=baseK=256。
-> **状态**：方案阶段（持久化），待用户确认后进入第一阶段代码开发。
+> **状态**：第一阶段编译通过 + 运行验证 PASS（commit `f7c94cf15`，2025-08-17）。2 卡 AllGather 通信正确，recvBuf 前 65536==1.0 后 65536==2.0，两卡一致。
 
 ---
 
@@ -72,11 +72,16 @@
 | `streamAiv` | `comm_sync_kernel` | AIV 向量核 | 写参数桥 → 唤醒CCU → 轮询通信完成 → `CrossCoreSetFlag` 唤醒AIC |
 | `streamAic` | `matmul_kernel` | AIC 立方核 | `CrossCoreWaitFlag` 等待 → Blaze matmul |
 
-> 第一阶段（无 matmul）：AIV 同步桥完成后直接做验证拷贝（DataCopy recvBuf→computeBuf），无 AIC。第二阶段起引入 AIC matmul，AIV 同步桥额外做 `CrossCoreSetFlag` 唤醒 AIC。
+> 第一阶段（无 matmul）：AIV 同步桥（comm_sync）轮询到通信完成后直接结束，不做数据搬运。Host 从 recvBuf 读回数据落地 bin 文件校验。第二阶段起引入 AIC matmul，AIV 同步桥额外做 `CrossCoreSetFlag` 唤醒 AIC。
 
-### 0.4 不具备编译验证能力
+### 0.4 编译验证状态
 
-当前环境无 CANN toolkit（`ASCEND_HOME_PATH` 未设置）。方案需**充分前置考虑 cmake 引用、头文件路径、库链接**，代码开发阶段以静态正确性为目标，上板验证待后续环境就绪。
+第一阶段已编译通过（2025-08-17，commit `f7c94cf15`）。开发过程中的关键编译踩坑：
+
+- **half 软浮点符号缺失**：Host 侧用 `half` 类型导致 `__truncsfhf2`/`__extendhfsf2` 链接错误。`--rtlib=compiler-rt` 链接失败（环境无此库）。最终方案：Host 侧全程 `uint16_t` 承载 FP16 数据（对齐 apace ST），不打印数值，结果落 bin 文件用 Python 校验。
+- **UB 容量超限**：原始 verify_copy 设计的 UB 搬运（256KB）超 248KB 上限。改为 comm_sync（不做数据搬运），从根源消除。
+
+> 详见 `CCU_ALLGATHER_PHASE1_DESIGN.md` §0 实现演进记录。
 
 ---
 
@@ -103,7 +108,7 @@ recvBuf[rank0 M×K | rank1 M×K | ... ]  (rankSize×M 行 × K 列，拼接)
    computeBuf / cGM
 ```
 
-> 第一阶段（无 matmul）：AIV 同步桥轮询到通信完成后，直接做验证拷贝（DataCopy recvBuf→UB→computeBuf），不唤醒 AIC。
+> 第一阶段（无 matmul）：AIV 同步桥轮询到通信完成后直接结束（comm_sync，不做数据搬运）。Host 从 recvBuf 读回数据落地 bin 文件校验，不唤醒 AIC。
 
 ### 1.2 三核同步机制（AIV 同步桥，复用 02_allgather_add）
 
@@ -120,7 +125,7 @@ launch comm_sync_kernel           launch ccu_allgather_kernel   launch matmul_ke
     Read again    │                (CCU 结束)                │                          │
   ckeAddr1==1 ────┘─────────────── 写 eventVa[1]=1           │                          │
   CrossCoreSetFlag ─────────────────────────────────────────────────────────────────→ (唤醒)
-  [第一阶段: DataCopy 验证拷贝]                                 Blaze matmul(A,B→C)
+  [第一阶段: 无数据搬运，AIV 直接结束]                          Blaze matmul(A,B→C)
   (AIV 结束)                                                    (AIC 结束)
 ```
 
@@ -128,7 +133,7 @@ launch comm_sync_kernel           launch ccu_allgather_kernel   launch matmul_ke
 1. AIV 写 taskArgs → GM（参数桥：通信参数送 CCU）+ `DataSyncBarrier`
 2. AIV 写 ckeAddr0=1 → 唤醒 CCU（CCU 侧 `EventWait(events[0])` 解阻）
 3. CCU 执行 AllGather → `EventRecord(events[1])`（写 eventVa[1]=1）
-4. AIV 轮询 ckeAddr1==1 → 通信完成 → `CrossCoreSetFlag` 唤醒 AIC（第一阶段无此步，直接做验证拷贝）
+4. AIV 轮询 ckeAddr1==1 → 通信完成 → `CrossCoreSetFlag` 唤醒 AIC（第一阶段无此步，AIV 直接结束，Host 读回 recvBuf 校验）
 
 > 第一阶段仅需 AIV + CCU 双核双流，AIC matmul 第二阶段引入。同步 API 全部为 AIV 已验证（`WriteGmByPassDCache`/`ReadGmByPassDCache`/`Nop`/`DataSyncBarrier`/`CrossCoreSetFlag`），不触碰 AIC 未验证 API。
 
