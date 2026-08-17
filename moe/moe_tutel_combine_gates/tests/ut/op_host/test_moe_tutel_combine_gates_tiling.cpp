@@ -101,6 +101,24 @@ TEST_F(MoeTutelCombineGatesTilingTest, empty_samples)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
 }
 
+// 空 Tensor：E == 0（专家数为 0，输出元素数为 0）
+TEST_F(MoeTutelCombineGatesTilingTest, empty_experts)
+{
+    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
+    auto para = MakePara({8, 64}, {0, 4, 64}, {0, 8}, {0, 8}, {0, 8}, ge::DT_FLOAT, &compileInfo);
+    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+}
+
+// 空 Tensor：C == 0（capacity 为 0，任何 location 都越界 → 全部路由非法）
+TEST_F(MoeTutelCombineGatesTilingTest, empty_capacity)
+{
+    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
+    auto para = MakePara({8, 64}, {2, 0, 64}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
+    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+}
+
 // 空内积：H == 0
 TEST_F(MoeTutelCombineGatesTilingTest, zero_hidden)
 {

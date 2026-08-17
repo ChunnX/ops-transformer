@@ -15,6 +15,7 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
+#include "op_common/op_host/util/shape_util.h"
 
 using namespace ge;
 
@@ -34,6 +35,14 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
     OP_CHECK_NULL_WITH_CONTEXT(context, indicesShape);
     gert::Shape *gatesGradShape = context->GetOutputShape(OUTPUT_GATES_GRAD_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gatesGradShape);
+
+    // def.cpp 声明了 DynamicRankSupportFlag(true)：indices 为 -2（UNKNOWN_RANK）时不能按普通 shape 拷贝，
+    // 否则会把 -2 这个标记值当成真实维度传下去，推出非法输出形状。
+    if (Ops::Base::IsUnknownRank(*indicesShape)) {
+        Ops::Base::SetUnknownRank(*gatesGradShape);
+        OP_LOGD(context->GetNodeName(), "indices is unknown rank, set gates_grad to unknown rank");
+        return GRAPH_SUCCESS;
+    }
 
     *gatesGradShape = *indicesShape;
 

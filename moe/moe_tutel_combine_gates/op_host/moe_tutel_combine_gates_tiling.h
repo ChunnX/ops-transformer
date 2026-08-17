@@ -54,8 +54,18 @@ private:
     ge::graphStatus GetPlatformInfo();
     ge::graphStatus GetShapeAndCheck();
     ge::graphStatus CheckDtype();
+    ge::graphStatus CheckRank(const gert::Shape &xShape, const gert::Shape &yShape, const gert::Shape &indicesShape,
+                              const gert::Shape &locationsShape, const gert::Shape &outShape) const;
+    ge::graphStatus CheckRouteShape(const gert::Shape &indicesShape, const gert::Shape &locationsShape,
+                                    const gert::Shape &outShape) const;
     ge::graphStatus SplitCore();
     ge::graphStatus SplitUb();
+    int64_t RowBytesOf(int64_t len) const;
+    int64_t TileBytesOf(int64_t sBlock, int64_t kBlock) const;
+    // NOT_CUT_H 路径：尝试 H 全载，放不下依次缩 s 分块、k 窗口；返回是否放得下。
+    bool TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock) const;
+    // CUT_H 路径：tile 收到最小，把 UB 让给 H 分块与部分和缓冲。
+    ge::graphStatus SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
     ge::graphStatus PostTiling();
 
 private:

@@ -31,8 +31,7 @@ struct MoeTutelCombineGatesTilingData {
     uint64_t hidden;       // H
     uint64_t experts;      // E
     uint64_t capacity;     // C
-    uint64_t sCoreNum;     // s 方向核数
-    uint64_t kCoreNum;     // k 方向核数
+    uint64_t sCoreNum;     // s 方向核数（k 方向核数 = blockDim / sCoreNum，kernel 无需单独下发）
     uint64_t sPerCoreBase; // S / sCoreNum
     uint64_t sCoreRemain;  // S % sCoreNum，前 sCoreRemain 个 s 分片各多 1
     uint64_t kPerCoreBase; // E / kCoreNum
