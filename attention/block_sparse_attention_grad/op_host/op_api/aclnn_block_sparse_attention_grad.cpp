@@ -96,6 +96,13 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShapeOptional)
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    constexpr int64_t BLOCK_ALIGNMENT = 16;
+    if (data[0] % BLOCK_ALIGNMENT != 0 || data[1] % BLOCK_ALIGNMENT != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be multiples of 16, got [%ld, %ld].",
+                data[0], data[1]);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     return ACLNN_SUCCESS;
 }
 static aclnnStatus ValidateParams(const BSAGParams& params)

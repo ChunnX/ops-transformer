@@ -88,9 +88,9 @@ protected:
             return false;
         }
 
-        if (blockShapeX_ % 64 != 0 || blockShapeY_ % 64 != 0) {
+        if (blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
             OP_LOGE(context_->GetNodeName(),
-                    "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 64.");
+                    "BlockSparseAttentionGrad only supports blockShapeX and blockShapeY that are multiples of 16.");
             return false;
         }
 
@@ -249,11 +249,9 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        uint32_t baseM = blockShapeX_ <= 32 ? blockShapeX_ * 2 : (blockShapeX_ <= 128 ? blockShapeX_ : 128);
         uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
-        uint32_t singleM = AlignTo(2048, baseM);
-        uint32_t block_num_x = q_seq_len_ / blockShapeX_;
-        uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
+        uint32_t singleM = (blockShapeX_ < 128 || blockShapeY_ < 128) ? blockShapeX_ : AlignTo(2048, baseM);
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);

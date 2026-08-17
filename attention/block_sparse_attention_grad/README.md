@@ -20,6 +20,8 @@
 
   稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
 
+  blockShapeX and blockShapeY must be positive multiples of 16; BlockSparseMask keeps the logical block granularity.
+
   已知正向计算公式为：
 
   $$
