@@ -39,6 +39,11 @@ bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
+`build_wheel.sh` removes only this subproject's previous `build`, `dist`,
+`egg-info`, staged extension, and staged runtime libraries before rebuilding.
+It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
+match the package version in `ops_transformer_catccos_udma/_version.py`.
+
 `prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
 another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
 ABI setting as the active PyTorch installation. Both the extension's device

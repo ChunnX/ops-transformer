@@ -19,7 +19,23 @@ endif()
 
 find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
-project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.3.1)
+file(READ
+    "${CMAKE_CURRENT_SOURCE_DIR}/ops_transformer_catccos_udma/_version.py"
+    OPS_TRANSFORMER_CATCCOS_UDMA_VERSION_SOURCE
+)
+string(REGEX MATCH
+    "__version__[ \t]*=[ \t]*\"([0-9]+\\.[0-9]+\\.[0-9]+)\""
+    OPS_TRANSFORMER_CATCCOS_UDMA_VERSION_MATCH
+    "${OPS_TRANSFORMER_CATCCOS_UDMA_VERSION_SOURCE}"
+)
+if(NOT OPS_TRANSFORMER_CATCCOS_UDMA_VERSION_MATCH)
+    message(FATAL_ERROR "Unable to read the package version from _version.py")
+endif()
+set(OPS_TRANSFORMER_CATCCOS_UDMA_VERSION "${CMAKE_MATCH_1}")
+project(OpsTransformerCatccosUdma
+    LANGUAGES ASC AICPU CXX
+    VERSION "${OPS_TRANSFORMER_CATCCOS_UDMA_VERSION}"
+)
 
 # CMake 3.27+ asks supported linkers to emit a dependency file with
 # --dependency-file. Bisheng's device linker does not implement that option and
