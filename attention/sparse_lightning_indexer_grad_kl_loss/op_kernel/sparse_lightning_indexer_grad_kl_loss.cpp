@@ -25,7 +25,7 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
         op.Init(query, key, queryIndex, keyIndex, weight, sparseIndices, softmaxMax, softmaxMum, queryRope, keyRope,   \
-                actualSeqLengthsQuery, actualSeqLengthsKey, sinks, dQueryIndex, dKeyIndex, dWeight, loss, user, tiling_data,  \
+                actualSeqLengthsQuery, actualSeqLengthsKey, dQueryIndex, dKeyIndex, dWeight, loss, user, tiling_data,  \
                 &tPipe);                                                                                               \
         op.Process();                                                                                                  \
     } while (0)
