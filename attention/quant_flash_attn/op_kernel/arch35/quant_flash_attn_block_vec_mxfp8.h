@@ -28,6 +28,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 #else
 #include "../../common/op_kernel/arch35/attenmask_gs1.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
@@ -37,6 +38,7 @@
 #include "../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../common/op_kernel/vector_common.h"
+#include "../../common/op_kernel/arch35/util_regbase.h"
 #endif
 
 using namespace AscendC;
@@ -60,7 +62,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false>
+          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false, bool isDAligned = true>
 class QuantFlashAttnBlockVecMxfp8 {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -80,7 +82,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t s2SplitSize = (dTemplateAlign64 == 256) ? 128U : 256U;
+    static constexpr uint32_t s2SplitSize = (dTemplateAlign64 == static_cast<uint32_t>(DTemplateType::Aligned256)) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
@@ -327,7 +329,7 @@ public:
 
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
-        int64_t stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = subLoop % DB;
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
@@ -875,7 +877,7 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
-        FaUbTensor<OUTPUT_T, false> ubTensor{
+        FaUbTensor<OUTPUT_T, !isDAligned> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.realN2Idx,
@@ -886,7 +888,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, !isDAligned> &ubTensor, GmCoord &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;

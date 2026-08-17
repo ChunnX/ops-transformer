@@ -119,7 +119,7 @@ def customize_inputs(
     sparse_block_size_q=128,
     sparse_block_size_kv=128,
     layout_q="TND",
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_out="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
@@ -350,7 +350,6 @@ def _mxfp8_assemble_case(
         "layout_sparse_indices": layout_sparse_indices,
         "layout_out": layout_out,
         "kv_cache_layout": "BnNBsD",
-        "is_contiguous": True,
         "p_scale_value": (None if p_scale_value is None else float(p_scale_value)),
         "softmax_scale": float(softmax_scale),
         "return_softmax_lse": bool(return_softmax_lse),
@@ -382,7 +381,7 @@ def _mxfp8_customize_inputs(
     sparse_q_block_size=128,
     sparse_kv_block_size=128,
     layout_q="TND",
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
     mask_mode=3,
@@ -435,7 +434,11 @@ def _mxfp8_customize_inputs(
     )
     # Golden owns MXFP8 validation and all input construction, including the
     # random block table. TTK only supplies CSV attributes and allocated shapes.
-    data = module.generate_mxfp8_inputs(case, max_block_per_batch=max_block_per_batch)
+    data = module.generate_mxfp8_inputs(
+        case,
+        max_block_per_batch=max_block_per_batch,
+        atten_mask_shape=(tuple(atten_mask.shape) if atten_mask is not None else None),
+    )
 
     q_scale = module.fp32_to_e8m0fnu_safe(
         module.pack_q_scale_tnd_for_npu(data["q_descale"], data["q_lengths"]),
@@ -461,12 +464,11 @@ def _mxfp8_customize_inputs(
         )
     _inplace_copy(sparse_indices, data["sparse_indices"])
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
-    _inplace_copy(
-        atten_mask,
-        torch.tril(
-            torch.ones(tuple(atten_mask.shape), dtype=torch.uint8)
-        ).T.contiguous(),
-    )
+    # mask_mode=0 does not consume atten_mask.  TTK may intentionally allocate
+    # an arbitrary-rank/shape uint8 tensor to cover the ignored-input contract,
+    # so only materialize the fixed causal mask for mask_mode=3.
+    if int(mask_mode) == 3 and atten_mask is not None and _numel(atten_mask) > 0:
+        _inplace_copy(atten_mask, data["atten_mask"])
 
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})
     cache[testcase_name or "__default__"] = {"case": case, "data": data}
