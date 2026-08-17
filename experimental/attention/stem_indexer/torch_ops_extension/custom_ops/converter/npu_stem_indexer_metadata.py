@@ -14,6 +14,8 @@ from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_conv
 from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
+from . import check_exact_type
+
 
 @register_fx_node_ge_converter(torch.ops.custom.npu_stem_indexer_metadata.default)
 def convert_npu_stem_indexer_metadata(
@@ -28,6 +30,17 @@ def convert_npu_stem_indexer_metadata(
     window_size: int = 4,
     meta_outputs: List[TensorSpec] = None,
 ):
+    attr_types = (
+        ("q_heads", q_heads, int),
+        ("kv_heads", kv_heads, int),
+        ("causal", causal, bool),
+        ("stem_block_size", stem_block_size, int),
+        ("dim_qkflat", dim_qkflat, int),
+        ("window_size", window_size, int),
+    )
+    for name, value, expected_type in attr_types:
+        check_exact_type(name, value, expected_type)
+
     return torchair.ge.custom_op(
         "StemIndexerMetadata",
         inputs={

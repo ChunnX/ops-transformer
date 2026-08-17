@@ -17,6 +17,8 @@ from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_conv
 from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
+from . import check_exact_type
+
 
 # 为自定义算子注册converter，用于torch.compile 场景成图
 # 注意： meta_outputs形参名为固定写法，若写错会影响ge节点的输出dtype与shape推导
@@ -43,6 +45,22 @@ def convert_npu_stem_indexer(
     topk_score_precision: int = 1,
     meta_outputs: List[TensorSpec] = None,
 ):
+    attr_types = (
+        ("causal", causal, bool),
+        ("stem_block_size", stem_block_size, int),
+        ("stem_stride", stem_stride, int),
+        ("alpha", alpha, float),
+        ("initial_blocks", initial_blocks, int),
+        ("window_size", window_size, int),
+        ("k_block_num_rate_medium", k_block_num_rate_medium, float),
+        ("k_block_num_bias_medium", k_block_num_bias_medium, int),
+        ("k_block_num_rate_large", k_block_num_rate_large, float),
+        ("k_block_num_bias_large", k_block_num_bias_large, int),
+        ("topk_score_precision", topk_score_precision, int),
+    )
+    for name, value, expected_type in attr_types:
+        check_exact_type(name, value, expected_type)
+
     return torchair.ge.custom_op(
         "StemIndexer",
         inputs={

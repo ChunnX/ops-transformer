@@ -11,6 +11,7 @@
 #include <iostream>
 #include <torch/library.h>
 #include "ops_common.h"
+#include "strict_attr_utils.h"
 
 namespace custom {
 using namespace at_npu::native;
@@ -55,10 +56,24 @@ std::tuple<at::Tensor, at::Tensor>
 npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
                      const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
                      const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
-                     bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
-                     int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-                     double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
+                     const at::Scalar &causal, const at::Scalar &stem_block_size, const at::Scalar &stem_stride,
+                     const at::Scalar &alpha, const at::Scalar &initial_blocks, const at::Scalar &window_size,
+                     const at::Scalar &k_block_num_rate_medium, const at::Scalar &k_block_num_bias_medium,
+                     const at::Scalar &k_block_num_rate_large, const at::Scalar &k_block_num_bias_large,
+                     const at::Scalar &topk_score_precision)
 {
+    const bool causalValue = ParseBoolAttr(causal, "causal");
+    const int64_t stemBlockSizeValue = ParseIntAttr(stem_block_size, "stem_block_size");
+    const int64_t stemStrideValue = ParseIntAttr(stem_stride, "stem_stride");
+    const double alphaValue = ParseFloatAttr(alpha, "alpha");
+    const int64_t initialBlocksValue = ParseIntAttr(initial_blocks, "initial_blocks");
+    const int64_t windowSizeValue = ParseIntAttr(window_size, "window_size");
+    const double kBlockNumRateMediumValue = ParseFloatAttr(k_block_num_rate_medium, "k_block_num_rate_medium");
+    const int64_t kBlockNumBiasMediumValue = ParseIntAttr(k_block_num_bias_medium, "k_block_num_bias_medium");
+    const double kBlockNumRateLargeValue = ParseFloatAttr(k_block_num_rate_large, "k_block_num_rate_large");
+    const int64_t kBlockNumBiasLargeValue = ParseIntAttr(k_block_num_bias_large, "k_block_num_bias_large");
+    const int64_t topkScorePrecisionValue = ParseIntAttr(topk_score_precision, "topk_score_precision");
+
     TORCH_CHECK(qflat.numel() > 0, "Tensor qflat is empty.");
     TORCH_CHECK(qflat.dim() == DIM_FOUR, "qflat must be a 4D tensor with shape (B, N1, Qb, stem_stride * D), but got ",
                 qflat.dim(), "D.");
@@ -76,10 +91,10 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
                 "The Kb dimensions of kflat and vbias must be equal.");
     TORCH_CHECK(qflat.size(qflat.dim() - 1) == kflat.size(kflat.dim() - 1),
                 "The last dimensions of qflat and kflat must be equal.");
-    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
-                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
+    TORCH_CHECK(topkScorePrecisionValue == TOPK_SCORE_PRECISION_UINT32 ||
+                    topkScorePrecisionValue == TOPK_SCORE_PRECISION_UINT16,
                 "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ",
-                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topk_score_precision, ".");
+                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topkScorePrecisionValue, ".");
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs = construct_stem_output_tensors(qflat, kflat);
@@ -88,9 +103,9 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
     EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata,
-                    causal, stem_block_size, stem_stride, alpha, initial_blocks, window_size,
-                    k_block_num_rate_medium, k_block_num_bias_medium, k_block_num_rate_large, k_block_num_bias_large,
-                    topk_score_precision, sparse_indices, sparse_seq_len);
+                    causalValue, stemBlockSizeValue, stemStrideValue, alphaValue, initialBlocksValue, windowSizeValue,
+                    kBlockNumRateMediumValue, kBlockNumBiasMediumValue, kBlockNumRateLargeValue,
+                    kBlockNumBiasLargeValue, topkScorePrecisionValue, sparse_indices, sparse_seq_len);
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices, sparse_seq_len);
 }
@@ -100,14 +115,28 @@ std::tuple<at::Tensor, at::Tensor>
 npu_stem_indexer_meta(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
                       const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
                       const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
-                      bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
-                      int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-                      double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
+                      const at::Scalar &causal, const at::Scalar &stem_block_size, const at::Scalar &stem_stride,
+                      const at::Scalar &alpha, const at::Scalar &initial_blocks, const at::Scalar &window_size,
+                      const at::Scalar &k_block_num_rate_medium, const at::Scalar &k_block_num_bias_medium,
+                      const at::Scalar &k_block_num_rate_large, const at::Scalar &k_block_num_bias_large,
+                      const at::Scalar &topk_score_precision)
 {
-    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
-                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
+    ParseBoolAttr(causal, "causal");
+    ParseIntAttr(stem_block_size, "stem_block_size");
+    ParseIntAttr(stem_stride, "stem_stride");
+    ParseFloatAttr(alpha, "alpha");
+    ParseIntAttr(initial_blocks, "initial_blocks");
+    ParseIntAttr(window_size, "window_size");
+    ParseFloatAttr(k_block_num_rate_medium, "k_block_num_rate_medium");
+    ParseIntAttr(k_block_num_bias_medium, "k_block_num_bias_medium");
+    ParseFloatAttr(k_block_num_rate_large, "k_block_num_rate_large");
+    ParseIntAttr(k_block_num_bias_large, "k_block_num_bias_large");
+    const int64_t topkScorePrecisionValue = ParseIntAttr(topk_score_precision, "topk_score_precision");
+
+    TORCH_CHECK(topkScorePrecisionValue == TOPK_SCORE_PRECISION_UINT32 ||
+                    topkScorePrecisionValue == TOPK_SCORE_PRECISION_UINT16,
                 "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ",
-                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topk_score_precision, ".");
+                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topkScorePrecisionValue, ".");
     return construct_stem_output_tensors(qflat, kflat);
 }
 } // namespace custom

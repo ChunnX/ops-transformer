@@ -20,13 +20,13 @@ TORCH_LIBRARY(custom, m)
     m.def("npu_stem_indexer(Tensor qflat, Tensor kflat, Tensor vbias, Tensor q_seq_lens, "
           "Tensor kv_seq_lens, *, "
           "Tensor? num_prompt_tokens=None, Tensor? metadata=None, "
-          "bool causal=True, int stem_block_size=128, int stem_stride=16, float alpha=1.0, "
-          "int initial_blocks=4, int window_size=4, float k_block_num_rate_medium=0.2, "
-          "int k_block_num_bias_medium=30, float k_block_num_rate_large=0.1, "
-          "int k_block_num_bias_large=30, int topk_score_precision=1) -> (Tensor, Tensor)");
-    m.def("npu_stem_indexer_metadata(Tensor q_seq_lens, Tensor kv_seq_lens, int q_heads, "
-          "int kv_heads, *, bool causal=True, int stem_block_size=128, int dim_qkflat=128, "
-          "int window_size=4) -> Tensor");
+          "Scalar causal=True, Scalar stem_block_size=128, Scalar stem_stride=16, Scalar alpha=1.0, "
+          "Scalar initial_blocks=4, Scalar window_size=4, Scalar k_block_num_rate_medium=0.2, "
+          "Scalar k_block_num_bias_medium=30, Scalar k_block_num_rate_large=0.1, "
+          "Scalar k_block_num_bias_large=30, Scalar topk_score_precision=1) -> (Tensor, Tensor)");
+    m.def("npu_stem_indexer_metadata(Tensor q_seq_lens, Tensor kv_seq_lens, Scalar q_heads, "
+          "Scalar kv_heads, *, Scalar causal=True, Scalar stem_block_size=128, Scalar dim_qkflat=128, "
+          "Scalar window_size=4) -> Tensor");
 }
 
 // 通过pybind将c++接口和python接口绑定，这里绑定的是接口不是算子
