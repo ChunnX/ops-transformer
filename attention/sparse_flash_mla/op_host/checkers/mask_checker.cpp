@@ -63,12 +63,6 @@ ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
                         (std::to_string(context.oriMaskMode) + ", " + std::to_string(context.cmpMaskMode)).c_str(),
                         "Sparse ori_kv mode requires ori_mask_mode=cmp_mask_mode=0"),
                     return ge::GRAPH_FAILED);
-    } else if (context.variant == OperatorVariant::SPARSE) {
-        OP_CHECK_IF(context.cmpMaskMode != 3,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_mask_mode",
-                                                          std::to_string(context.cmpMaskMode).c_str(),
-                                                          "Compressed HCA/CSA mode requires cmp_mask_mode=3"),
-                    return ge::GRAPH_FAILED);
     }
 
     if (context.oriSparseIndices.present && !context.cmpKv.present) {
