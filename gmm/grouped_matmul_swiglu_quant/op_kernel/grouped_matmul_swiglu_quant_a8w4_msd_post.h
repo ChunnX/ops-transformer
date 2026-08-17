@@ -15,7 +15,7 @@
 
 #ifndef ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_POST_H
 #define ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_POST_H
-#include "grouped_matmul_swiglu_quant_utils.h"
+#include "grouped_matmul_swiglu_quant_utils_kernel.h"
 #include "kernel_operator.h"
 #ifdef GMM_SWIGLU_QUANT_A8W4_MSD
 namespace GROUPED_MATMUL_SWIGLU_QUANT {
@@ -286,7 +286,7 @@ __aicore__ inline void GMMA8W4PostProcess::UpdateAuxiliaryMatrix(uint32_t loopId
 {
     // 更新weightAuxiliaryMatrix
     if (unlikely(vecConfig.nextUpadteInterVal == 0)) {
-        int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx;
+        int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx - 1;
         while (loop--) {
             int64_t curTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
             vecConfig.curGroupIdx++;

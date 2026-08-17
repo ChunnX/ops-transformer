@@ -28,6 +28,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 #else
 #include "../../common/op_kernel/arch35/attenmask_gs1.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
@@ -37,6 +38,7 @@
 #include "../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../common/op_kernel/vector_common.h"
+#include "../../common/op_kernel/arch35/util_regbase.h"
 #endif
 
 using namespace AscendC;
@@ -60,7 +62,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false>
+          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false, bool isDAligned = true>
 class QuantFlashAttnBlockVecMxfp8 {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -80,7 +82,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t s2SplitSize = 256U;
+    static constexpr uint32_t s2SplitSize = (dTemplateAlign64 == static_cast<uint32_t>(DTemplateType::Aligned256)) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
@@ -327,7 +329,7 @@ public:
 
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
-        int64_t stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = subLoop % DB;
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
@@ -388,8 +390,9 @@ public:
         constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
+        constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < copyTimes; i++) {
                 // PScale s2方向block块大小为32，共8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
@@ -408,7 +411,7 @@ public:
             if (constInfo_.subBlockIdx == 1) {
                 dstOffset += s2BaseSizeCur * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            uint32_t srcOffset = i * (((s2BaseSizeCur >> 2) + 1) << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
@@ -660,8 +663,9 @@ public:
         uint16_t copyCount = actVecMSizeAlign16 / 16;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
+        constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < copyTimes; i++) {
                 // PScale s2方向block块大小为32，共256/32=8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                          {copyCount, 1, 0, pScaleDstStride});
@@ -669,7 +673,7 @@ public:
                          {copyCount, 1, 0, pScaleDstStride});
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < copyTimes; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                          {copyCount, 1, 0, pScaleDstStride});
             }
@@ -873,7 +877,7 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
-        FaUbTensor<OUTPUT_T, false> ubTensor{
+        FaUbTensor<OUTPUT_T, !isDAligned> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.realN2Idx,
@@ -884,7 +888,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, !isDAligned> &ubTensor, GmCoord &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -1007,6 +1011,7 @@ public:
     {
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
+        uint32_t attenMaskSize = mBaseSize / CV_RATIO * (s2BaseSize >> 1U);
         SoftmaxInitBuffer();
         tPipe_->InitBuffer(stage2OutBuf_, 64 * dTemplateAlign64 * sizeof(T));
         tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
@@ -1014,7 +1019,7 @@ public:
         tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, 512);
         tPipe_->InitBuffer(commonTBuf_, 512);
         if constexpr (HAS_MASK) {
-            tPipe_->InitBuffer(attenMaskInQue_[0], 1, 16384); // 256 * 64
+            tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
         }
 
         if (constInfo_.isSoftmaxLseEnable) {
