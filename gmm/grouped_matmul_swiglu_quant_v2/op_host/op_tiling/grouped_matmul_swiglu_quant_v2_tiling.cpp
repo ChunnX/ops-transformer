@@ -53,17 +53,43 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
 
 constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
-    GMMSQ_TENSOR_API_TILING_TEMPLATE);
+                             GMMSQ_TENSOR_API_TILING_TEMPLATE);
+
+static ge::graphStatus CheckRequiredTilingInputs(const gert::TilingContext *context)
+{
+    constexpr char OP_NAME[] = "GroupedMatmulSwigluQuantV2";
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE(OP_NAME, "Parameter [context] does not support nullptr."),
+                return ge::GRAPH_FAILED);
+
+    const struct {
+        const gert::CompileTimeTensorDesc *desc;
+        const gert::StorageShape *shape;
+        const char *name;
+    } inputs[] = {
+        {context->GetInputDesc(X_INDEX), context->GetInputShape(X_INDEX), "x"},
+        {context->GetInputDesc(X_SCALE_INDEX), context->GetInputShape(X_SCALE_INDEX), "xScale"},
+        {context->GetInputDesc(GROUPLIST_INDEX), context->GetInputShape(GROUPLIST_INDEX), "groupList"},
+        {context->GetDynamicInputDesc(WEIGHT_INDEX, 0), context->GetDynamicInputShape(WEIGHT_INDEX, 0), "weight[0]"},
+        {context->GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0),
+         context->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0), "weightScale[0]"}};
+    for (const auto &input : inputs) {
+        OP_CHECK_IF(input.desc == nullptr || input.shape == nullptr,
+                    OP_LOGE(OP_NAME, "Parameter [%s] does not support nullptr.", input.name),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
-            return ge::GRAPH_FAILED);
+    if (CheckRequiredTilingInputs(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
-            return ge::GRAPH_FAILED);
+                OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
+                return ge::GRAPH_FAILED);
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
@@ -102,6 +128,9 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
 ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseContext *context)
 {
     // get info
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE("GroupedMatmulSwigluQuantV2", "Parameter [context] does not support nullptr."),
+                return GRAPH_FAILED);
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto compileInfoPtr = context->GetCompiledInfo<GMMSwigluV2CompileInfo>();
