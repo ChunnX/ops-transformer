@@ -197,7 +197,7 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
 
-            // caculate current o
+            // calculate current o
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(oInEventList[bufferId]);
             uint32_t loops = (headSize + FLOAT_ELENUM_PER_VECCALC - 1) / FLOAT_ELENUM_PER_VECCALC;
             if (i > 0) {
