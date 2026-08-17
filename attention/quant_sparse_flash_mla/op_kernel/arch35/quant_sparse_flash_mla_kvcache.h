@@ -129,8 +129,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
             int64_t skipThreshold = 0;
-            if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
-                skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
+            if (runParam.nextTokensPerBatchOri < 0) {
+                skipThreshold = -runParam.nextTokensPerBatchOri;
             }
             if (skipThreshold > 0) {
                 int64_t gs1LoopStartIdx =
@@ -260,8 +260,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
             int64_t skipThreshold = 0;
-            if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
-                skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
+            if (runParam.nextTokensPerBatchOri < 0) {
+                skipThreshold = -runParam.nextTokensPerBatchOri;
             }
             if (skipThreshold > 0) {
                 if (runParam.s1oIdx <
