@@ -96,23 +96,17 @@ public:
         if constexpr (gOptional) {
             gGm_ = initParams.g;
         }
-        // ckOffset_
-        uint64_t workSpaceOffset = 0;
-        uint64_t curWS = coreIdx_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-        gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
-        workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(bfloat16_t);
-
         // ccOffset_
-        curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        uint64_t workSpaceOffset = 0;
+        uint64_t curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
         kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
 
         attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
 
-        // cvOffset_
-        curWS = coreIdx_ * paraNum_ * cvOffset_ * sizeof(bfloat16_t);
-        vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+        // R5: attnWsNegGm_ stores A_beta_gexp for matmul4 (k_cumdecay)
+        attnWsNegGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
     }
 
     __aicore__ inline void InitLocalBuffers()
@@ -315,22 +309,25 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0x7); // 同步2
             AttnInverseMMCompute(i * ccOffset_);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xB); // R4: 通知 AIV 可做列缩放
         }
 
-        // attn @ k_cumdecay
+        // R4+R5: k_cumdecay = -A_beta_gexp @ K (读 attnWsNegGm_, K 从 strided GM)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0x6); // 同步3
-            AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
+            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
+            AICProcess(mmBf16_, attnWsNegGm_[i * ccOffset_], keyGm_[qk_base],
                        outKCumdecayGm_[chunkRowBase_[i] * dk_],
-                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
+                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
         }
 
-        // attn @ v_beta    stage1 out
+        // R4: vInner = A_beta @ V (读 attnWs_, V 从 strided GM)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0x5); // 同步4
-            AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
+            uint64_t vOffset = chunkStartRowBatch_[i] * vRowStride_ + nIdBatch_[i] * dv_;
+            AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], valueGm_[vOffset],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
-                       {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
+                       {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_, 0, vRowStride_});
         }
     }
 
@@ -362,30 +359,26 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // 同步2
         }
 
+        // R4: 列缩放 β → A_beta → 写 attnWs (供 matmul5 v_inner)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            // kg = key * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
-            // k_cumdecay = -1.0 * k * beta * g_cum_exp
-            outKgGm_ = outKgBaseGm_[chunkRowBase_[i] * dk_];
-            // R2: read K from strided GM instead of keyConGm_
-            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
-            GBKCompute(gBKWsGm_[i * ckOffset_], outKgGm_, betaUbFloat_[i * halfChunkSize_],
-                       gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_],
-                       keyGm_[qk_base + subOffset_ * qkStride_], qkStride_);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3
+            AscendC::CrossCoreWaitFlag(0xB); // ← AIC: AttnInverseMMCompute 完成
+            ColumnScaleBeta(attnWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4: A_beta 就绪
         }
 
+        // R5: 列缩放 g_exp → A_beta_gexp → 写 attnWsNegGm_ (供 matmul4 k_cumdecay)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            // v_beta = value * beta.unsqueeze(-1)  # (C, Dv)
-            uint64_t betaUbOffset = i * halfChunkSize_;
-            uint64_t vOffset = chunkStartRowBatch_[i] * vRowStride_ + nIdBatch_[i] * dv_;
-            uint64_t valueUbOffset = i * chunkSize_ * maxLen_;
-            VBetaCompute(valueGm_[vOffset], vBetaWsGm_[i * cvOffset_], betaUbFloat_[betaUbOffset],
-                         valueUbFloat_[valueUbOffset], subValidLenBatch_[i]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4
+            if constexpr (gOptional) {
+                ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
+            } else {
+                // !gOptional: g_exp = 1, A_beta_gexp = A_beta, copy attnWs → attnWsNegGm_
+                ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
+            }
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3: A_beta_gexp 就绪
         }
 
+        // q_prime = query * scale_ * g_cum_exp[:, None]  # (C, Dk)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            // q_prime = query * scale_ * g_cum_exp[:, None]  # (C, Dk)
             // R2: read Q from strided GM instead of queryConGm_
             uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_], gCumSumUbFloat_[i * chunkSize_],
@@ -505,95 +498,49 @@ private:
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
 
-    __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
-                                      LocalTensor<float> betaUbFloat, LocalTensor<float> gCumSumUbFloat,
-                                      LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> keyStridedGm,
-                                      uint64_t srcRowStride)
+    // R4: A_beta = A @ diag(beta) — column scaling (第 j 列乘 beta[j])
+    //   Read A (BF16 H×C) from attnWs GM → Cast FP32 → col-scale beta → Cast BF16 → write back attnWs
+    __aicore__ inline void ColumnScaleBeta(const GlobalTensor<bfloat16_t> aWsGm, LocalTensor<float> betaUbFloat)
     {
-        if constexpr (gOptional) {
-            // tmp = -1.0 * beta * exp(g_cum)
-            Mul(gBUbFloat_, betaUbFloat, gCumExpUbFloat[subOffset_], halfChunkSize_);
-            PipeBarrier<PIPE_V>();
-            Muls(gBUbFloat_, gBUbFloat_, static_cast<float>(-1), halfChunkSize_);
-        } else {
-            Muls(gBUbFloat_, betaUbFloat, static_cast<float>(-1), halfChunkSize_);
-        }
+        uint64_t curVecLen = chunkSize_ * halfChunkSize_;
+        DataCopyInBf16(curVecLen, aWsGm[subOffset_ * chunkSize_]);
+        auto bf16Local = inQueue_.DeQue<bfloat16_t>();
+        Cast(inverseRes_, bf16Local, RoundMode::CAST_NONE, curVecLen);
         PipeBarrier<PIPE_V>();
-        // k_cumdecay = k * tmp =  -1.0 * k * beta * g_cum_exp
+        inQueue_.FreeTensor(bf16Local);
+        // Column scale: A_beta[i,j] = A[i,j] * beta[j]
         uint32_t betaShape[2] = {halfChunkSize_, 1};
-        uint32_t kShape[2] = {halfChunkSize_, dkAligned_};
-        Broadcast<float, BROADCAST_AXIS, 1>(gBKUbFloat_, gBUbFloat_, kShape, betaShape);
+        uint32_t aShape[2] = {halfChunkSize_, chunkSize_};
+        Broadcast<float, BROADCAST_AXIS, 1>(attnUbFloat_, betaUbFloat, aShape, betaShape);
         PipeBarrier<PIPE_V>();
-        // R2: data copy in kUbFloatCon_ from strided GM
-        DataCopyInBf16WithStride(halfChunkSize_, dk_, keyStridedGm, srcRowStride);
-        auto bf16Key = inQueue_.DeQue<bfloat16_t>();
-        Cast(kUbFloatCon_, bf16Key, RoundMode::CAST_NONE, halfChunkSize_ * dkAligned_);
+        Mul(inverseRes_, inverseRes_, attnUbFloat_, curVecLen);
         PipeBarrier<PIPE_V>();
-        inQueue_.FreeTensor(bf16Key);
-        // compute
-        Mul(gBKUbFloat_, gBKUbFloat_, kUbFloatCon_, halfChunkSize_ * dkAligned_);
-        PipeBarrier<PIPE_V>();
-        gBKLocal_ = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(gBKLocal_, gBKUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
-        outQueue_.EnQue<bfloat16_t>(gBKLocal_);
-        uint64_t gBKBeginOffset = subOffset_ * dk_;
-        DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, gBKWsGm[gBKBeginOffset]);
-        PipeBarrier<PIPE_V>();
-        if constexpr (gOptional) {
-            // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
-            uint32_t gEndShape[2] = {1, 1};
-            uint32_t gBroadShape[2] = {halfChunkSize_, 1};
-            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1], gBroadShape,
-                                                gEndShape);
-            PipeBarrier<PIPE_V>();
-            Sub(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
-            PipeBarrier<PIPE_V>();
-            Exp<float, 0, true>(gEndBroadUbFloat_, gEndBroadUbFloat_, halfChunkSize_);
-            PipeBarrier<PIPE_V>();
-            Broadcast<float, BROADCAST_AXIS, 1>(kgUbFloat_, gEndBroadUbFloat_, kShape, gBroadShape);
-            PipeBarrier<PIPE_V>();
-            Mul(kgUbFloat_, kgUbFloat_, kUbFloatCon_, halfChunkSize_ * dkAligned_);
-            PipeBarrier<PIPE_V>();
-            uint64_t kgBeginOffset = subOffset_ * dk_;
-            kgLocal_ = outQueue_.AllocTensor<bfloat16_t>();
-            Cast(kgLocal_, kgUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
-            outQueue_.EnQue<bfloat16_t>(kgLocal_);
-            DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, outKgGm[kgBeginOffset]); // stage1 out
-        } else {
-            // R2: !gOptional — kg = K (g_exp=1, so kg = K*1 = K), write K from kUbFloatCon_
-            uint64_t kgBeginOffset = subOffset_ * dk_;
-            kgLocal_ = outQueue_.AllocTensor<bfloat16_t>();
-            Cast(kgLocal_, kUbFloatCon_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
-            outQueue_.EnQue<bfloat16_t>(kgLocal_);
-            DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, outKgGm[kgBeginOffset]);
-        }
+        auto tmp = outQueue_.AllocTensor<bfloat16_t>();
+        Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
+        outQueue_.EnQue(tmp);
+        DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, aWsGm[subOffset_ * chunkSize_]);
     }
 
-    __aicore__ inline void VBetaCompute(const GlobalTensor<bfloat16_t> valueGm,
-                                        const GlobalTensor<bfloat16_t> vBetaWsGm, LocalTensor<float> betaUbFloat,
-                                        LocalTensor<float> valueUbFloat, uint32_t subValidRows)
+    // R5: A_beta_gexp = A_beta @ diag(g_exp) — column scaling (第 j 列乘 g_exp[j])
+    //   A_beta still in inverseRes_ (UB), col-scale g_exp, negate, → Cast BF16 → write attnWsNegGm_
+    __aicore__ inline void ColumnScaleGExp(const GlobalTensor<bfloat16_t> negWsGm, LocalTensor<float> gCumExpUbFloat)
     {
-        uint64_t vBeginOffset = subOffset_ * vRowStride_;
-        DataCopyInBf16WithStride(subValidRows, dv_, valueGm[vBeginOffset], vRowStride_);
-        valueLocal_ = inQueue_.DeQue<bfloat16_t>();
-        Cast(valueUbFloat, valueLocal_, AscendC::RoundMode::CAST_NONE, subValidRows * dvAligned_);
-        PipeBarrier<PIPE_V>();
-        inQueue_.FreeTensor(valueLocal_);
-        if (subValidRows < halfChunkSize_) {
-            Duplicate(valueUbFloat[subValidRows * dvAligned_], static_cast<float>(0.0f),
-                      (halfChunkSize_ - subValidRows) * dvAligned_);
+        uint64_t curVecLen = chunkSize_ * halfChunkSize_;
+        if constexpr (gOptional) {
+            uint32_t gExpShape[2] = {halfChunkSize_, 1};
+            uint32_t aShape[2] = {halfChunkSize_, chunkSize_};
+            Broadcast<float, BROADCAST_AXIS, 1>(attnUbFloat_, gCumExpUbFloat[subOffset_], aShape, gExpShape);
+            PipeBarrier<PIPE_V>();
+            Mul(inverseRes_, inverseRes_, attnUbFloat_, curVecLen);
             PipeBarrier<PIPE_V>();
         }
-        uint32_t betaShape[2] = {halfChunkSize_, 1};
-        uint32_t vShape[2] = {halfChunkSize_, dvAligned_};
-        Broadcast<float, BROADCAST_AXIS, 1>(vBetaUbFloat_, betaUbFloat, vShape, betaShape);
+        // Negate: k_cumdecay = -A_beta_gexp @ K (kernel uses negative + accum=1)
+        Muls(inverseRes_, inverseRes_, static_cast<float>(-1.0), curVecLen);
         PipeBarrier<PIPE_V>();
-        Mul(vBetaUbFloat_, valueUbFloat, vBetaUbFloat_, halfChunkSize_ * dvAligned_);
-        PipeBarrier<PIPE_V>();
-        vBetaLocal_ = outQueue_.AllocTensor<bfloat16_t>();
-        Cast(vBetaLocal_, vBetaUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dvAligned_);
-        outQueue_.EnQue<bfloat16_t>(vBetaLocal_);
-        DataCopyOutBf16(halfChunkSize_, dv_, dvAligned_, vBetaWsGm[subOffset_ * dv_]);
+        auto tmp = outQueue_.AllocTensor<bfloat16_t>();
+        Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
+        outQueue_.EnQue(tmp);
+        DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, negWsGm[subOffset_ * chunkSize_]);
     }
 
     // R2: q_prime = query * scale * g_cum_exp[:, None], read Q from strided GM
@@ -808,10 +755,9 @@ private:
     GlobalTensor<bfloat16_t> outKgBaseGm_;
     GlobalTensor<bfloat16_t> outKgGm_;
     GlobalTensor<bfloat16_t> outQkGm_;
-    GlobalTensor<bfloat16_t> vBetaWsGm_;
     GlobalTensor<bfloat16_t> kkWsGm_;
     GlobalTensor<bfloat16_t> attnWsGm_;
-    GlobalTensor<bfloat16_t> gBKWsGm_;
+    GlobalTensor<bfloat16_t> attnWsNegGm_; // R5: A_beta_gexp (negated) for matmul4
     GlobalTensor<float> stageOneMask_;
 
     // UB queues

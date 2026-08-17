@@ -231,7 +231,9 @@ private:
         }
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
-        initStageTwoParams.kg = kg_;
+        initStageTwoParams.kg = kg_; // R7: unused, kept for compat
+        initStageTwoParams.keyGm = key_; // R7: original K for strided CalStateNew
+        initStageTwoParams.cgStartPos = cg.startPos; // R7: chunk group start in T
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
         initStageTwoParams.ws = stageWsAddr_;
         initStageTwoParams.mm1Bf16 = &stage2MmBf16_;
