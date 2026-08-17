@@ -580,7 +580,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             for col in optional_columns:
                 if col not in row_dict:
                     row_dict[col] = None
-                else:
+                elif col != "Testcase_Name":
                     row_dict[col] = parse_list_param(row_dict[col])
             for col in int_columns:
                 if row_dict.get(col) is not None:
