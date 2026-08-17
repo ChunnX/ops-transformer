@@ -178,6 +178,28 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     INFO_LOG("chunkM=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, tailTileCnt=%u, tileCnt=%u (PUT multi-tile), rankSize=%d",
              chunkM, headMSize, headTileCnt, tailMSize, tailTileCnt, tileCnt, rankNum);
 
+    INFO_LOG("[Tiling] mmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u usedCoreNum=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
+             tilingData.mmTilingData.m, tilingData.mmTilingData.n, tilingData.mmTilingData.k,
+             tilingData.mmTilingData.baseM, tilingData.mmTilingData.baseN, tilingData.mmTilingData.baseK,
+             tilingData.mmTilingData.stepK, tilingData.mmTilingData.usedCoreNum,
+             tilingData.mmTilingData.dbL0c, tilingData.mmTilingData.nBufferNum,
+             tilingData.mmTilingData.scaleKL1,
+             tilingData.mmTilingData.mTailTile, tilingData.mmTilingData.nTailTile,
+             tilingData.mmTilingData.mBaseTailSplitCnt, tilingData.mmTilingData.nBaseTailSplitCnt,
+             tilingData.mmTilingData.mTailMain, tilingData.mmTilingData.nTailMain);
+
+    if (tileCnt > 1) {
+        INFO_LOG("[Tiling] subMmTilingData: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u nBufferNum=%u scaleKL1=%u mTailTile=%u nTailTile=%u mBaseTailSplitCnt=%u nBaseTailSplitCnt=%u mTailMain=%u nTailMain=%u",
+                 tilingData.subMmTilingData.m, tilingData.subMmTilingData.n, tilingData.subMmTilingData.k,
+                 tilingData.subMmTilingData.baseM, tilingData.subMmTilingData.baseN, tilingData.subMmTilingData.baseK,
+                 tilingData.subMmTilingData.stepK,
+                 tilingData.subMmTilingData.dbL0c, tilingData.subMmTilingData.nBufferNum,
+                 tilingData.subMmTilingData.scaleKL1,
+                 tilingData.subMmTilingData.mTailTile, tilingData.subMmTilingData.nTailTile,
+                 tilingData.subMmTilingData.mBaseTailSplitCnt, tilingData.subMmTilingData.nBaseTailSplitCnt,
+                 tilingData.subMmTilingData.mTailMain, tilingData.subMmTilingData.nTailMain);
+    }
+
     INFO_LOG("[Rank %d] Step 1: aclInit", rankId);
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -273,8 +295,8 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     // cGm: 最终输出 [chunkM, n] bfloat16
     size_t sizeC = static_cast<size_t>(chunkM) * n * sizeof(uint16_t);
     ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeC, ACL_MEM_MALLOC_HUGE_ONLY));
-    // workspace: AllToAll GET 接收缓冲区, 大小 = rankSize * chunkBytes = m * n * sizeof(bfloat16)
-    // GET 模式下 localAddr = workspace, 接收从其他 rank 拉取的 chunk
+    // workspace: AIC 写入 C_i 的缓冲区, 大小 = m * n * sizeof(bfloat16)
+    // PUT 模式下 localAddr = workspace, AIV 从此处推送到其他 rank win 区
     size_t sizeWorkspace = static_cast<size_t>(m) * n * sizeof(uint16_t);
     ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, sizeWorkspace, ACL_MEM_MALLOC_HUGE_ONLY));
     INFO_LOG("[Rank %d] workspace size=%zu bytes (m=%d, n=%d)", rankId, sizeWorkspace, m, n);
@@ -286,7 +308,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     INFO_LOG("[Rank %d] Step 10: data loaded to device", rankId);
 
     if (mode == "precision") {
-        INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, GET mode)", rankId, tilingData.mmTilingData.usedCoreNum);
+        INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, PUT mode)", rankId, tilingData.mmTilingData.usedCoreNum);
         ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
             tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                 devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
@@ -328,6 +350,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
                 tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                     deviceWorkspace, deviceOutput, tilingData);
+            aclrtSynchronizeStream(stream);
             auto t1 = std::chrono::steady_clock::now();
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
@@ -339,7 +362,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
             maxv = std::max(maxv, durations[i]);
         }
         double avg = sum / (PERF_LOOP_COUNT - 1);
-        INFO_LOG("[Rank %d] GET mode single tile | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
+        INFO_LOG("[Rank %d] PUT mode | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
                  rankId, avg, minv, maxv);
 
         aclrtFree(boostIn);

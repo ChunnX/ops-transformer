@@ -10,16 +10,16 @@
 
 /*!
  * \file quant_matmul_reduce_scatter_tiling_data.h
- * \brief quantMatmulReduceScatter tiling data — 计算在前 + AlltoAll + reduceSum
+ * \brief quantMatmulReduceScatter tiling data — 计算在前 + AllToAll PUT + reduceSum
  *
  * 与 all_to_all_quant_matmul 的关键区别：
  *   - 通信数据类型为 CType (bfloat16)，不是 AType (fp8)
  *   - 无 ScaleA 通信（计算在前，通信的是输出 C）
  *   - 无 localMatmul 字段（无 LOCAL/REMOTE 双阶段）
  *
- * Round 4 优化：
- *   - 新增 subMmTilingData：子问题 tiling (m=headMSize)，用于 T>1 per-tile 流水路径
- *   - mmTilingData 仍用于 T=1 退化路径和 tail tile
+ * Tiling 结构:
+ *   - mmTilingData: 全量 matmul tiling (m=完整M), 用于 T=1 退化路径和 tail tile
+ *   - subMmTilingData: 子问题 tiling (m=headMSize), 用于 T>1 per-tile head tile 路径 (baseM 减半优化)
  *   - blockDim 固定使用 mmTilingData.usedCoreNum（不随子问题 tiling 变化）
  */
 
@@ -29,12 +29,13 @@
 #include <cstdint>
 #endif
 
-#include "../../tiling/quant_matmul_tiling_data.h"
-#include "../../tiling/comm_tiling_data.h"
-#include "../../block/aiv_comm/collective_comm_context.h"
-// CommContext 定义来自 all_to_all_matmul_tiling_data.h（通过 impl.h 间接 include）
+#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "apace/tiling/comm_tiling_data.h"
+#include "apace/block/aiv_comm/collective_comm_context.h"
+// CommContext 定义来自 all_to_all_matmul_tiling_data.h（复用，不重定义）
+#include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
-struct ApaceQuantMatmulReduceScatterTilingData {
+struct QuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
     QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径 + tail tile)
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, T>1 per-tile head tile 路径)

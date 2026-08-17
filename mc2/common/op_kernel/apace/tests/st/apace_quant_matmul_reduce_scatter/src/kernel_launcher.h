@@ -10,9 +10,9 @@
 
 /*!
  * \file kernel_launcher.h
- * \brief quantMatmulReduceScatter kernel launcher 入口 (GET 模式)
+ * \brief quantMatmulReduceScatter kernel launcher 入口 (PUT 模式)
  *
- * 参数增加 workspaceGM: GET 模式下作为 AllToAll 接收缓冲区
+ * workspaceGM: AIC 写入 C_i 的缓冲区, AIV PUT 推送到其他 rank win 区
  */
 
 #pragma once

@@ -65,7 +65,7 @@ using namespace Apace::AivComm;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 /**
- * @brief quantMatmulReduceScatter 核心实现类 (GET 模式)
+ * @brief quantMatmulReduceScatter 核心实现类 (PUT 模式)
  *
  * 计算在前(AIC) + GET 通信(AIV) + reduceSum(AIV)
  */
@@ -119,7 +119,6 @@ private:
     __gm__ CommUbmemContext* syncBuffer_{nullptr};
     __gm__ CommUdmaContext* udmaCtx_{nullptr};
     // PUT 模式: AIC 写 C_i 到 workspaceGM, AIV PUT 推送到其他 rank win 区
-    // (GET 模式在 4+ rank 有数据可见性问题, 回退到 PUT)
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, CType, TeamBarrier> allToAllC_;
     TeamBarrier teamBarrier_;
 
@@ -129,7 +128,7 @@ private:
         GM_ADDR scaleAGm{nullptr};
         GM_ADDR bGm{nullptr};
         GM_ADDR scaleBGm{nullptr};
-        GM_ADDR workspaceGm{nullptr};   // workspace GM (AllToAll GET 接收缓冲区)
+        GM_ADDR workspaceGm{nullptr};   // workspace GM (AIC 写入 C_i, AIV PUT 源数据)
         GM_ADDR cGm{nullptr};           // 最终输出 GM
 
         uint32_t rankId{0};
@@ -152,8 +151,8 @@ private:
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const ApaceQuantMatmulReduceScatterTilingData *tilingData);
     __aicore__ inline void RunMatmul();                    // AIC: per-tile matmul → workspaceGM
-    __aicore__ inline void RunAllToAllAndReduceSum();      // AIV: per-tile WaitFlag + AllToAll PUT + reduceSum
-    __aicore__ inline void RunReduceSumTile(uint32_t t);   // AIV: 单 tile reduceSum → output
+    __aicore__ inline void RunAllToAllAndReduceSum();      // AIV: per-tile WaitFlag + AllToAll PUT + 多核 reduceSum
+    __aicore__ inline void RunReduceSumTile(uint32_t t);   // AIV: 单 tile reduceSum (多核按行分片) → output
 };
 
 // =================================================================================
@@ -189,8 +188,8 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    // AllToAll: totalJobs=1, block 0 处理所有 target ranks (R9 已验证)
-    // reduceSum: 多核并行 (按 blockIdx 分配行段)
+    // AllToAll: totalJobs=1, block 0 处理所有 target ranks
+    // reduceSum: 多核并行 (前 rankSize 个 block 按 blockIdx 分配行段)
     teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1,
                       static_cast<uint32_t>(GetBlockIdx()));
 
@@ -385,8 +384,8 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // 多核并行: 前 rankSize 个 block 并行 reduceSum (AllToAll 仍 block 0 单核)
-    // block >= rankSize 的 AIV 空闲 (与 allgather 一致)
+    // AllToAll: block 0 单核通信 (totalJobs=1)
+    // reduceSum: 前 rankSize 个 block 并行 (按行分片, block >= rankSize 空闲)
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
     uint32_t rankSize = baseParams_.rankSize;
     uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());

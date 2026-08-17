@@ -12,15 +12,14 @@
  * \file reduce_sum.h
  * \brief 独立的 reduceSum 实现 — float32 累加保证精度
  *
- * 修复历史:
- * - MF-1: 使用 TOTAL_UB_SIZE 替代硬编码 192KB (DAV_3510 实际 248KB)
- * - MF-2: BF16→float32 Cast 累加，最终 Cast 回 BF16 输出 (参考 vec_comp.h DequantReduceSum)
- *   关键: float Add/Cast/Duplicate 的 repeatTime 为 uint8_t (max 255), 每次处理 256/sizeof(float)=64 元素
+ * 实现要点:
+ * - 使用框架提供的 TOTAL_UB_SIZE 常量 (DAV_3510 实际 248KB)
+ * - BF16→float32 Cast 累加，最终 Cast 回 BF16 输出 (参考 vec_comp.h DequantReduceSum)
+ * - float Add/Cast/Duplicate 的 repeatTime 为 uint8_t (max 255), 每次处理 256/sizeof(float)=64 元素
  *   单次调用上限 255*64=16320 元素, 超过需分批调用
- * - RN-2: 修正参数名与实际语义一致
- * - RN-2-OPT: 添加 RunTile 方法支持多 tile 分块处理（Round 2 性能优化）
+ * - RunTile 方法支持多核按行分片处理 (多核并行 reduceSum)
  *
- * reduceSum 流程 (float32 累加, 参考 vec_comp.h DequantReduceSum):
+ * reduceSum 流程 (float32 累加):
  *   1. Duplicate 初始化 accumF32 为 0
  *   2. 逐 rank (含 self) 读数据 (BF16) → Cast 到 float32 → Add 到 accumF32
  *   3. Cast accumF32 (float32) → BF16 → 写入 output GM
@@ -116,7 +115,7 @@ private:
         uint64_t chunkBytes = static_cast<uint64_t>(totalChunkM) * nSize * elemBytes;
         uint32_t chunkM = tileM;  // 处理逻辑用 tileM 作为 chunkM
 
-        // MF-1: 使用框架提供的 TOTAL_UB_SIZE 常量，不硬编码
+        // 使用框架提供的 TOTAL_UB_SIZE 常量
         constexpr uint32_t COMM_RESERVED = 1024;
         uint32_t availUb = TOTAL_UB_SIZE - COMM_RESERVED;
 
@@ -134,7 +133,7 @@ private:
         if (subM == 0) { subM = alignRows; }
         if (subM > chunkM) { subM = chunkM; }
 
-        // MF-2 关键: float Vector API repeatTime 为 uint8_t (max 255)
+        // float Vector API repeatTime 为 uint8_t (max 255)
         // 每次处理 256/FLOAT_BYTES = 64 个 float 元素, 单次上限 255*64 = 16320
         // 超过会导致 repeatTime 溢出, 部分元素不被处理 → 数据错误
         constexpr uint32_t FLOAT_ELEMS_PER_REPEAT = 256 / FLOAT_BYTES;  // 64
