@@ -24,10 +24,15 @@
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #endif
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#if __has_include("../moe_distribute_dispatch_v2/quantize_functions.h")
-#include "../moe_distribute_dispatch_v2/quantize_functions.h"
+#if __has_include("../moe_distribute_dispatch_v2/common.h")
+#include "../moe_distribute_dispatch_v2/common.h"
 #else
-#include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/common.h"
+#endif
+#if __has_include("../common/quantize_functions.h")
+#include "../common/quantize_functions.h"
+#else
+#include "../../common/op_kernel/quantize_functions.h"
 #endif
 #endif
 
