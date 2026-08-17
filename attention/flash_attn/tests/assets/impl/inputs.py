@@ -114,13 +114,11 @@ def customize_inputs(
     q,
     k,
     v,
-    *,
     block_table=None,
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
-    batch_size=None,
     sinks=None,
     attn_mask=None,
     metadata=None,
@@ -134,6 +132,8 @@ def customize_inputs(
     layout_kv="BSND",
     layout_out="BSND",
     return_softmax_lse=False,
+    *,
+    batch_size=None,
     context: "TtkContext" = None,
     **kwargs,
 ):
@@ -141,6 +141,13 @@ def customize_inputs(
 
     All data is generated on CPU then copied to the target tensor's device.
     Only fills tensors that are provided; missing parameters are left as-is.
+
+    Positional order matches the registered op schema (no keyword-only
+    separator): q, k, v, block_table, cu_seqlens_q, cu_seqlens_kv,
+    seqused_q, seqused_kv, sinks, attn_mask, metadata, softmax_scale,
+    mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q,
+    layout_kv, layout_out, return_softmax_lse. batch_size is not part of the
+    op schema and arrives via kwargs/extra.
     """
     block_size = kwargs.get("block_size")
 

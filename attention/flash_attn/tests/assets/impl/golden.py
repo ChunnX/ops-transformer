@@ -679,13 +679,11 @@ def cpu_flash_attn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    *,
     block_table: Optional[torch.Tensor] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = None,
     sinks: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
@@ -699,10 +697,17 @@ def cpu_flash_attn(
     layout_kv: str = "BSND",
     layout_out: str = "BSND",
     return_softmax_lse: bool = False,
+    *,
+    batch_size: Optional[int] = None,
     context=None,
     **_unused,
 ):
-    """Compute CPU golden reference using FlashAttnGolden."""
+    """Compute CPU golden reference using FlashAttnGolden.
+
+    Positional order matches the registered op schema (no keyword-only
+    separator), same as impl/inputs.py customize_inputs. batch_size is not
+    part of the op schema and arrives via kwargs/extra.
+    """
     del context
     if sinks is not None:
         message = "FlashAttn golden does not support sinks yet"
