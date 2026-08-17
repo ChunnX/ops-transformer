@@ -30,7 +30,7 @@ public:
     using QK_T = float32_t;
     using SCORE_T = typename SIT::scoreType;
 
-    // Benchmark-only compile-time switch. true requires the 64x512, four-S2-tile, uint16 score contract.
+    // Benchmark-only compile-time switch. true requires the 96x256, eight-S2-tile, uint16 score contract.
     static constexpr bool ENABLE_SCORE_GM_TOPK = true;
 
     __aicore__ inline SIVector(){};
@@ -71,8 +71,8 @@ protected:
     static constexpr int32_t K_MEDIUM_SEQ_MAX = 160;
 
     static constexpr uint32_t AIV_CORE_NUM = 64U;
-    static constexpr uint32_t M_BASIC_BLOCK = 64U;
-    static constexpr uint32_t S2_BASIC_BLOCK = 512U;
+    static constexpr uint32_t M_BASIC_BLOCK = 96U;
+    static constexpr uint32_t S2_BASIC_BLOCK = 256U;
     static constexpr uint32_t RES_MM1_SLOT_BYTES = M_BASIC_BLOCK * S2_BASIC_BLOCK * sizeof(QK_T);
     static constexpr uint32_t RES_MM1_DOUBLE_BUFFER_BYTES = 2U * RES_MM1_SLOT_BYTES;
     static constexpr uint32_t VBIAS_BYTES = 2U * S2_BASIC_BLOCK * sizeof(float);
@@ -89,9 +89,10 @@ protected:
     static constexpr uint32_t PACKED_OUTPUT_SLOT1_OFFSET_BYTES =
         PACKED_OUTPUT_SLOT0_OFFSET_BYTES + PACKED_OUTPUT_SLOT_BYTES;
 
-    // Four 512-column score tiles are stored in GM and consumed as two 1024-column TopK trunks.
+    // Eight 256-column score tiles are stored in GM and consumed as two 1024-column TopK trunks.
     static constexpr uint32_t SCORE_GM_TRUNK_LEN = 1024U;
-    static constexpr uint32_t SCORE_GM_TILE_NUM = 4U;
+    static constexpr uint32_t SCORE_GM_TILE_NUM = 8U;
+    static constexpr uint32_t SCORE_GM_TILES_PER_TRUNK = SCORE_GM_TRUNK_LEN / S2_BASIC_BLOCK;
     static constexpr uint32_t SCORE_GM_ROW_STRIDE = SCORE_GM_TILE_NUM * S2_BASIC_BLOCK;
     static constexpr uint32_t SCORE_GM_CORE_ELEMS = M_BASIC_BLOCK * SCORE_GM_ROW_STRIDE;
     static constexpr uint32_t SCORE_GM_MERGE_ROW_STRIDE = TOPK_ALIGN_SIZE + SCORE_GM_TRUNK_LEN;
@@ -105,7 +106,7 @@ protected:
     static constexpr uint32_t SCORE_GM_TOPK_WORKSPACE_BYTES =
         StemIndexerTopk<uint16_t, SCORE_GM_TRUNK_LEN>::TOPK_WORKSPACE_BYTES;
 
-    // Fast-path views in historyValueBuf_ (32 KiB): merge0 | merge1 | history | packed0 | packed1.
+    // Fast-path views in historyValueBuf_: merge0 | merge1 | history | packed0 | packed1.
     static constexpr uint32_t SCORE_GM_MERGE0_OFFSET_BYTES = 0U;
     static constexpr uint32_t SCORE_GM_MERGE1_OFFSET_BYTES = SCORE_GM_MERGE_SLOT_BYTES;
     static constexpr uint32_t SCORE_GM_HISTORY_OFFSET_BYTES = 2U * SCORE_GM_MERGE_SLOT_BYTES;
@@ -116,15 +117,15 @@ protected:
     static constexpr uint32_t SCORE_GM_HISTORY_BUF_USED_BYTES =
         SCORE_GM_LENGTH1_OFFSET_BYTES + SCORE_GM_LENGTH_SLOT_BYTES;
 
-    // Fast-path views in globalIndexBuf_ (64 KiB): TopK workspace | compact global indices.
+    // Fast-path views in globalIndexBuf_: TopK workspace | compact global indices.
     static constexpr uint32_t SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES = SCORE_GM_TOPK_WORKSPACE_BYTES;
     static constexpr uint32_t SCORE_GM_GLOBAL_BUF_USED_BYTES =
         SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES + SCORE_GM_GLOBAL_INDEX_BYTES;
 
     static_assert(SCORE_GM_HISTORY_BUF_USED_BYTES <= HISTORY_SCORE_BYTES,
-                  "score-GM fast path exceeds the 32 KiB history UB");
+                  "score-GM fast path exceeds the history UB");
     static_assert(SCORE_GM_GLOBAL_BUF_USED_BYTES <= GLOBAL_INDEX_BYTES,
-                  "score-GM fast path exceeds the 64 KiB global-index UB");
+                  "score-GM fast path exceeds the global-index UB");
 
 private:
     __aicore__ inline void CleanOutput();
@@ -143,7 +144,8 @@ private:
                                             const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
                                             int64_t curAivGS1Idx, uint32_t packedSlotIdx);
     __aicore__ inline void StoreScoreToWorkspace(const SICommon::RunInfo &info);
-    __aicore__ inline void IssueLoadScorePair(uint32_t rowBase, uint32_t pairIdx, uint32_t mergeSlotIdx);
+    __aicore__ inline void IssueLoadScoreTrunk(uint32_t rowBase, uint32_t trunkIdx, uint32_t mergeSlotIdx,
+                                               uint32_t availableTileNum);
     __aicore__ inline void CopyOutScoreGmBatchRows(const SICommon::RunInfo &info, uint32_t rowBase,
                                                    const SICommon::TopkNum4 &topkNum4,
                                                    LocalTensor<uint32_t> &packedRowsLocal,
@@ -157,7 +159,7 @@ private:
     TBuf<TPosition::VECCALC> vBiasBuf_;
     LocalTensor<float> vBiasLocal_;
 
-    // Persistent TopK history. Current scores, 4-row merge, TopK scratch and packed output reuse resMm1Buf_.
+    // Persistent TopK history. Legacy current-score merge and packed output reuse resMm1Buf_.
     TBuf<TPosition::VECCALC> historyValueBuf_;
     LocalTensor<SCORE_T> historyValueLocal_;
 
@@ -186,19 +188,19 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput)
 {
     needCleanOutput_ = needCleanOutput;
-    // 2 * 64 * 512 * 4B = 256 KiB. Each 128 KiB slot is reused after in-place score conversion.
+    // 2 * 96 * 256 * 4B = 192 KiB. Each 96 KiB slot is reused after in-place score conversion.
     pipe->InitBuffer(resMm1Buf_, RES_MM1_DOUBLE_BUFFER_BYTES);
     resMm1Local_ = resMm1Buf_.Get<QK_T>(); // qk
 
-    // 当前配置为2 * 512 * 4B = 4 KiB。
+    // 2 * 256 * 4B = 2 KiB.
     pipe->InitBuffer(vBiasBuf_, VBIAS_BYTES);
     vBiasLocal_ = vBiasBuf_.Get<float>(); // vBias
 
-    // 64 rows * 256 uint16 = 32 KiB persistent history.
+    // 96 rows * 256 uint16 = 48 KiB persistent history.
     pipe->InitBuffer(historyValueBuf_, HISTORY_SCORE_BYTES);
     historyValueLocal_ = historyValueBuf_.Get<SCORE_T>();
 
-    // 64 rows * 256 uint32 = 64 KiB persistent global indices.
+    // 96 rows * 256 uint32 = 96 KiB persistent global indices.
     pipe->InitBuffer(globalIndexBuf_, GLOBAL_INDEX_BYTES);
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
@@ -241,7 +243,7 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInfo &constInfo, uint32_t logicalCoreIdx)
 {
     this->constInfo_ = constInfo;
-    s2BaseSize_ = constInfo.s2BaseSize; // 512
+    s2BaseSize_ = constInfo.s2BaseSize; // 256
     mBaseSize_ = constInfo.mBaseSize;
     alpha_ = constInfo.alpha;
     kBlockNumRateMedium_ = constInfo.kBlockNumRateMedium;
@@ -251,7 +253,7 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     initialBlocks_ = constInfo.initialBlocks;
     windowSize_ = constInfo.windowSize;
     blockId_ = static_cast<int32_t>(logicalCoreIdx);
-    // Compact 4-row merge layout: [history 256][current 512].
+    // Compact 4-row merge layout: [history 256][current 256].
     mrgRowStride_ = MAX_TOPK_COUNT + SICommon::TOPK_TRUNK_LEN;
 }
 
@@ -343,7 +345,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);
 
     auto qkBase = resMm1Local_[pingpong * (RES_MM1_SLOT_BYTES / sizeof(QK_T))];
-    // uint16 score is compacted in place into the low 64 KiB of the current 128 KiB MM1 slot.
+    // uint16 score is compacted in place into the low 48 KiB of the current 96 KiB MM1 slot.
     auto outBase = qkBase.template ReinterpretCast<SCORE_T>();
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
@@ -381,7 +383,8 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1ScoreGm(const SICommon::RunInfo
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::IssueLoadScorePair(uint32_t rowBase, uint32_t pairIdx, uint32_t mergeSlotIdx)
+__aicore__ inline void SIVector<SIT>::IssueLoadScoreTrunk(uint32_t rowBase, uint32_t trunkIdx,
+                                                          uint32_t mergeSlotIdx, uint32_t availableTileNum)
 {
     LocalTensor<uint16_t> fastBuf = historyValueBuf_.Get<uint16_t>();
     uint32_t mergeOffset = mergeSlotIdx == 0U ? SCORE_GM_MERGE0_OFFSET_BYTES : SCORE_GM_MERGE1_OFFSET_BYTES;
@@ -390,12 +393,16 @@ __aicore__ inline void SIVector<SIT>::IssueLoadScorePair(uint32_t rowBase, uint3
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + mergeSlotIdx);
     for (uint32_t lane = 0U; lane < TOPK_ROW_BATCH; lane++) {
         uint32_t row = rowBase + lane;
-        uint64_t tile0Offset = static_cast<uint64_t>(pairIdx * 2U) * M_BASIC_BLOCK * S2_BASIC_BLOCK +
-                               static_cast<uint64_t>(row) * S2_BASIC_BLOCK;
-        uint64_t tile1Offset = tile0Offset + static_cast<uint64_t>(M_BASIC_BLOCK) * S2_BASIC_BLOCK;
         uint32_t dstOffset = lane * SCORE_GM_MERGE_ROW_STRIDE + TOPK_ALIGN_SIZE;
-        DataCopy(mergeLocal[dstOffset], scoreWorkspaceGm[tile0Offset], S2_BASIC_BLOCK);
-        DataCopy(mergeLocal[dstOffset + S2_BASIC_BLOCK], scoreWorkspaceGm[tile1Offset], S2_BASIC_BLOCK);
+        for (uint32_t tileInTrunk = 0U; tileInTrunk < SCORE_GM_TILES_PER_TRUNK; tileInTrunk++) {
+            uint32_t tileIdx = trunkIdx * SCORE_GM_TILES_PER_TRUNK + tileInTrunk;
+            if (tileIdx < availableTileNum) {
+                uint64_t tileOffset = static_cast<uint64_t>(tileIdx) * M_BASIC_BLOCK * S2_BASIC_BLOCK +
+                                      static_cast<uint64_t>(row) * S2_BASIC_BLOCK;
+                DataCopy(mergeLocal[dstOffset + tileInTrunk * S2_BASIC_BLOCK], scoreWorkspaceGm[tileOffset],
+                         S2_BASIC_BLOCK);
+            }
+        }
     }
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + mergeSlotIdx);
 }
@@ -556,7 +563,7 @@ SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2Inn
         (packedSlotIdx & 1U) == 0U ? PACKED_OUTPUT_SLOT0_OFFSET_BYTES : PACKED_OUTPUT_SLOT1_OFFSET_BYTES;
     LocalTensor<uint32_t> packedRowsLocal = slotLocal[packedOffsetBytes / sizeof(QK_T)].ReinterpretCast<uint32_t>();
 
-    // Build four compact [history 256][current 512] rows in the current MM1 slot.
+    // Build four compact [history 256][current 256] rows in the current MM1 slot.
     for (uint32_t lane = 0U; lane < TOPK_ROW_BATCH; lane++) {
         uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
         if (!isFirstS2InnerLoop) {
@@ -662,8 +669,10 @@ __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo
     int64_t kbOffset = static_cast<int64_t>(info.actS2Size) - static_cast<int64_t>(info.actS1Size);
     int32_t numPromptK = static_cast<int32_t>(info.promptLen);
     int64_t curGS1Idx = static_cast<int64_t>(info.gS1Idx) * mBaseSize_;
+    uint32_t availableTileNum = info.s2LoopEnd + 1U;
+    availableTileNum = availableTileNum < SCORE_GM_TILE_NUM ? availableTileNum : SCORE_GM_TILE_NUM;
 
-    for (uint32_t rowBase = 0U; rowBase < M_BASIC_BLOCK; rowBase += TOPK_ROW_BATCH) {
+    for (uint32_t rowBase = 0U; rowBase < info.actMBaseSize; rowBase += TOPK_ROW_BATCH) {
         SICommon::TopkNum4 topkNum4 = {0U, 0U, 0U, 0U};
         SICommon::S2ValidLen4 pair0ValidLen = {0U, 0U, 0U, 0U};
         SICommon::S2ValidLen4 pair1ValidLen = {0U, 0U, 0U, 0U};
@@ -685,9 +694,9 @@ __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo
             SICommon::SetLane(pair1ValidLen, lane, pair1Len);
         }
 
-        // Double-buffer the GM->UB loads: pair 1 is in flight while pair 0 runs TopK.
-        IssueLoadScorePair(rowBase, 0U, 0U);
-        IssueLoadScorePair(rowBase, 1U, 1U);
+        // Double-buffer the GM->UB loads: trunk 1 is in flight while trunk 0 runs TopK.
+        IssueLoadScoreTrunk(rowBase, 0U, 0U, availableTileNum);
+        IssueLoadScoreTrunk(rowBase, 1U, 1U, availableTileNum);
 
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + 0U);
         if (initialBlocks_ > 0U) {

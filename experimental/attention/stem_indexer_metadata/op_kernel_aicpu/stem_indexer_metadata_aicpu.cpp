@@ -191,8 +191,8 @@ bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::Sec
 {
     param.l2Byte = 96U * 1024U * 1024U;
     if (aicCoreNum_ == 64 && aivCoreNum_ == 64) {
-        param.mBaseSize = 64;
-        param.s2BaseSize = 512;
+        param.mBaseSize = 96;
+        param.s2BaseSize = 256;
     } else {
         param.mBaseSize = 96;
         param.s2BaseSize = 256;
