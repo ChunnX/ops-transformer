@@ -48,7 +48,7 @@ extern "C" {
  *                                  shape=(B,)，padded batch模式下有效。与cuSeqlensQOptional互斥。
  * @param sequsedKvOptional   [IN]  可选。各batch中kv的实际序列长度，数据类型INT32。
  *                                  shape=(B,)，与sequsedQOptional配合使用。
- * @param sinksOptional       [IN]  可选。可学习的sink注意力权重，数据类型FLOAT32。
+ * @param sinksOptional       [IN]  可选。可学习的sink注意力权重，数据类型与q一致。
  * @param attnMaskOptional    [IN]  可选。attnmask的参数，数据类型INT8。
  * @param metadataOptional    [IN]  可选。预计算的tiling切分方案，数据类型INT32，由上游算子传入。
  *                                  当该输入不为nullptr时，tiling侧跳过切分方案计算，直接使用该元数据。
