@@ -73,6 +73,7 @@ static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES =
     HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+static constexpr uint32_t WRITE_NBI_PERF_LOOP_COUNT = 100;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -387,7 +388,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
     }
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
+    if (preparedWriteCount_ + WRITE_NBI_PERF_LOOP_COUNT > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites();
     }
     if (preparedWriteCount_ == 0) {
@@ -397,9 +398,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         ascendc_assert(
             activeBatchHandle_.channelHandle == commHandle, "MakeBatchHandle failed, channel=%lu", commHandle);
     }
-    int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    uint64_t startCycle = static_cast<uint64_t>(GetSystemCycle());
+    int32_t ret = HCOMM_SUCCESS;
+    for (uint32_t i = 0; i < WRITE_NBI_PERF_LOOP_COUNT; ++i) {
+        ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    }
+    uint64_t endCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint64_t totalCycle = endCycle - startCycle;
+    printf("[WriteNbiPerf] total cycles: %lu, average cycles: %lu\n",
+           totalCycle, totalCycle / WRITE_NBI_PERF_LOOP_COUNT);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
-    ++preparedWriteCount_;
+    preparedWriteCount_ += WRITE_NBI_PERF_LOOP_COUNT;
 }
 
 template <TemplateMoeEpCombineTypeClass>
