@@ -550,8 +550,8 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) {
-        // Per logical Vector core: 96 rows * (8 * 256 columns) * uint16 score = 384 KiB.
-        workspaceSize += static_cast<size_t>(aivNum) * STEM_M_BASE_SIZE_920R1 * 8U * STEM_S2_BASE_SIZE_920R1 *
+        // Per logical Vector core: 64 rows * (4 * 512 columns) * uint16 score = 256 KiB.
+        workspaceSize += static_cast<size_t>(aivNum) * STEM_M_BASE_SIZE_920R1 * 4U * STEM_S2_BASE_SIZE_920R1 *
                          sizeof(uint16_t);
     }
     size_t *workspaces = context_->GetWorkspaceSizes(1);

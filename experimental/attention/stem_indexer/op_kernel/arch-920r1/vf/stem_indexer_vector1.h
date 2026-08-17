@@ -19,6 +19,9 @@
 
 namespace vector1 {
 
+constexpr uint16_t S2_CHUNK_ELEMS = 256U;
+constexpr uint16_t S2_CHUNK_NUM = 2U;
+
 template <typename T>
 struct FloatSortTraits;
 
@@ -142,7 +145,7 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
                                                     const int gS1BasePerVecSize_, const int s2BaseSize,
                                                     const int mrgValueLen)
 {
-    MicroAPI::RegTensor<float> regvBias[4];
+    MicroAPI::RegTensor<float> regvBias[8];
     MicroAPI::RegTensor<float> regQK[4];
     MicroAPI::RegTensor<float> regQKMul[4];
     MicroAPI::RegTensor<float> regQKBias[4];
@@ -153,12 +156,17 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
     FloatSortConstCtx<float> fp32Ctx;
     InitFloatSortConstCtx(fp32Ctx, maskAllB32);
 
-    // 96x256 path: one 256-column chunk per row.
+    // 512列拆成两个256列子块；vBias只加载一次，数据计算寄存器在两个子块间复用。
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
-    // Finish one row before moving to the next so in-place compression never covers unread fp32 input.
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[4], vBiasBuf + S2_CHUNK_ELEMS);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[5], vBiasBuf + S2_CHUNK_ELEMS + 64);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[6], vBiasBuf + S2_CHUNK_ELEMS + 128);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[7], vBiasBuf + S2_CHUNK_ELEMS + 192);
+
+    // 必须按行完成两个256列子块，再处理下一行，避免原地压缩覆盖尚未读取的fp32输入。
     for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
         MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i);
         MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
@@ -186,6 +194,29 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
                                                                        maskAllB32);
         MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3],
                                                                        maskAllB32);
+
+        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS);
+        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 64);
+        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 128);
+        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 192);
+        MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[2], regQK[2], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[3], regQK[3], rSquare, maskAllB32);
+        MicroAPI::Add(regQKBias[0], regQKMul[0], regvBias[4], maskAllB32);
+        MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[5], maskAllB32);
+        MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[6], maskAllB32);
+        MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[7], maskAllB32);
+        FloatX2ToSortableKey<float>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], fp32Ctx, maskAllB32);
+        FloatX2ToSortableKey<float>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], fp32Ctx, maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS, regOut[0], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS + 64, regOut[1], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS + 128, regOut[2], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS + 192, regOut[3], maskAllB32);
     }
 }
 
@@ -196,7 +227,7 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
                                                     const int gS1BasePerVecSize_, const int s2BaseSize,
                                                     const int mrgValueLen)
 {
-    MicroAPI::RegTensor<float> regvBias[4];
+    MicroAPI::RegTensor<float> regvBias[8];
     MicroAPI::RegTensor<float> regQK[4];
     MicroAPI::RegTensor<float> regQKMul[4];
     MicroAPI::RegTensor<float> regQKBias[4];
@@ -217,6 +248,11 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[2], vBiasBuf + 128);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[3], vBiasBuf + 192);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[4], vBiasBuf + S2_CHUNK_ELEMS);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[5], vBiasBuf + S2_CHUNK_ELEMS + 64);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[6], vBiasBuf + S2_CHUNK_ELEMS + 128);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[7], vBiasBuf + S2_CHUNK_ELEMS + 192);
+
     for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
         MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i);
         MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);
@@ -243,6 +279,31 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
                                                                        maskAllB16);
         MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1],
                                                                        maskAllB16);
+
+        MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS);
+        MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 64);
+        MicroAPI::LoadAlign<float>(regQK[2], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 128);
+        MicroAPI::LoadAlign<float>(regQK[3], qkBuf + s2BaseSize * i + S2_CHUNK_ELEMS + 192);
+        MicroAPI::Muls(regQKMul[0], regQK[0], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[1], regQK[1], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[2], regQK[2], rSquare, maskAllB32);
+        MicroAPI::Muls(regQKMul[3], regQK[3], rSquare, maskAllB32);
+        MicroAPI::Add(regQKBias[0], regQKMul[0], regvBias[4], maskAllB32);
+        MicroAPI::Add(regQKBias[1], regQKMul[1], regvBias[5], maskAllB32);
+        MicroAPI::Add(regQKBias[2], regQKMul[2], regvBias[6], maskAllB32);
+        MicroAPI::Add(regQKBias[3], regQKMul[3], regvBias[7], maskAllB32);
+        MicroAPI::DeInterleave(regQKBias[0], regQKBias[1], regQKBias[0], regQKBias[1]);
+        MicroAPI::DeInterleave(regQKBias[2], regQKBias[3], regQKBias[2], regQKBias[3]);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[0], regQKBias[1], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regQKBiasBF16[1], regQKBias[3], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[0], regQKBias[0], maskAllB32);
+        MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[1], regQKBias[2], maskAllB32);
+        FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regQKBiasBF16[0], regQKBiasBF16[1], bf16Ctx,
+                                        maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS, regOut[0], maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + mrgValueLen * i + S2_CHUNK_ELEMS + 128, regOut[1], maskAllB16);
     }
 }
 
