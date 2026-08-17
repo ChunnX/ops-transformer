@@ -419,8 +419,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE +
-                    static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
-                    static_cast<uint64_t>(aivNum) * UB_ALIGN;
+                    static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank;
 
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
     PrintTilingDataInfo(nodeName, info);
