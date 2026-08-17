@@ -271,6 +271,7 @@
 
 - 该接口支持训练、推理场景下使用。
 - 该接口支持aclgraph模式。
+- 该接口支持batch一致性。
 - 该接口当前支持三种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 - 通用规格约束如下：
   - KV\_N仅支持1，D仅支持512。其中，`ori_kv`和`cmp_kv`的D_kv由nope(448)和rope(64)拼接而成。
@@ -281,7 +282,7 @@
   - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
 - 产品型号约束如下：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：Q\_N支持1、2、4、8、16、32、64、128，KV\_N只支持1；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。`ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
-  - <term>Ascend 950PR/Ascend 950DT</term>：Q\_N支持2、4、8、16、32、64、128，不支持1，KV\_N只支持1。`ori_mask_mode`支持0、3、4，`cmp_mask_mode`支持0、3；当`ori_mask_mode`为4时，`ori_win_left`和`ori_win_right`支持-1或非负数，-1表示对应方向不受限。
+  - <term>Ascend 950PR/Ascend 950DT</term>：Q\_N支持1-128，KV\_N只支持1。`ori_mask_mode`支持0、3、4，`cmp_mask_mode`支持0、3；当`ori_mask_mode`为4时，`ori_win_left`和`ori_win_right`支持-1或非负数，-1表示对应方向不受限。
 
 - 当`layout_q`为TND时，功能使用限制如下：
   - `q`的shape需要为[Q\_T, Q\_N, D]。
