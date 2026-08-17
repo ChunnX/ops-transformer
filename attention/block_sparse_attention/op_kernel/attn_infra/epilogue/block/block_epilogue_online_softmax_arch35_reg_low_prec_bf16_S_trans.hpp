@@ -73,12 +73,8 @@ public:
         }
         if constexpr (rescaleOnCube_) {
             // rescaleOnCube on cube：dm 向量仍驻留 UB（先算 dm 再生成 diag）；
-            // diag 块中转 [qS/2, qS/2] fp32 3 份轮转（与 L1 diag 3 份、dmUb 3 份同节奏，索引 l1PBufId）
-            for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-                diagUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                    uBufTileHelper.diagStartOffset +
-                    uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
-            }
+            // diag 块仅使用 1 份 UB 中转，L1 diag 仍按 l1PBufId 使用 3 份轮转
+            diagUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.diagStartOffset);
         }
         for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
             dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
@@ -232,10 +228,8 @@ public:
             UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
             if constexpr (rescaleOnCube_) {
                 Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
-                // 等上一轮同 stage 的 MTE3 读完成再覆写中转缓冲（P 对称组：与末尾
-                // SetFlag<MTE3_V>(EVENT_ID5 + l1PBufId) 成对，kernel InitSyncFlags 已预置初始 token）
-                // P 模式：生成前 wait（与 P 的 WaitFlag<MTE3_V>(ubSBufId+2) 在 tile 开始一致）
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5 + l1PBufId);
+                // 等上一轮 MTE3 读完唯一的 diag UB 后再覆写；kernel InitSyncFlags 已预置初始 token
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
                 // 生成 diag 块 [qS/2, qS/2] fp32（zN 布局，CUBE RE 按 16×16 对角块读取）：
                 // 参考 P 的 mAligned16TileNum 分派保证双发射（÷vScale 已并入 dmUb 或寄存器，见 SetDiagonalDeltaMax）
                 uint32_t diagDmRound = RoundUp(n, C0_NUM_PER_FRACTAL);
@@ -245,7 +239,7 @@ public:
                 if (diagDmTileNum == 2) {
                     diagDmFirstTile = diagDmAlignedTile;
                 }
-                __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor[l1PBufId].GetPhyAddr();
+                __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
                 if (diagDmTileNum == 0) {
                     SetDiagonalDeltaMax<MAlignedTileNum::Zero>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
                                                                vScale, vScalePrev);
@@ -256,12 +250,12 @@ public:
                     SetDiagonalDeltaMax<MAlignedTileNum::Two>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
                                                               vScale, vScalePrev);
                 }
-                // VF 写完成 → MTE3 可读（P 对称组，tile 内自足无需预置；V_MTE3 通道 2/3/4 为 diag 专用）
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2 + l1PBufId);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2 + l1PBufId);
+                // VF 写完唯一的 diag UB 后，使用固定 EVENT_ID2 允许 MTE3 读取
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                 // TLA 封装（与 P 的 P→L1 搬移同风格：表达布局意图，DataCopy 用裸地址 + DataCopyParams）
                 auto ubDiagDmLayoutTla = tla::MakeLayout<float, LayoutOutput>(diagDmRound, diagDmRound);
-                auto ubDiagDmTensorTla = tla::MakeTensor(diagUbTensor[l1PBufId], ubDiagDmLayoutTla, Arch::PositionUB{});
+                auto ubDiagDmTensorTla = tla::MakeTensor(diagUbTensor, ubDiagDmLayoutTla, Arch::PositionUB{});
                 auto ubDiagDmTensorTlaTile = GetTile(ubDiagDmTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(n, n));
                 auto l1DiagDmLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(64, 64);
                 auto l1DiagDmTensorTla = tla::MakeTensor(l1DiagTensor, l1DiagDmLayoutTla, Arch::PositionL1{});
@@ -278,9 +272,9 @@ public:
                 dataCopyParams.blockLen = diagDmRound;
                 dataCopyParams.srcStride = 1;
                 dataCopyParams.dstStride = 0;
-                DataCopy(l1DiagTensor[subBlockIdx_ * 64 * 64], diagUbTensor[l1PBufId], dataCopyParams);
+                DataCopy(l1DiagTensor[subBlockIdx_ * 64 * 64], diagUbTensor, dataCopyParams);
                 // MTE3 读完成 → 下一轮覆写前 wait（P 对称组）
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5 + l1PBufId);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
                 // diag 写完成（L1 就绪）：与 P 的 smToMm2 ready 方向对称，CUBE RE 读 diag 前 wait 同一 flag
                 SetCrossCoreSync<4, PIPE_MTE3>(diagFlag);
             }
@@ -300,8 +294,8 @@ private:
     AscendC::LocalTensor<float> gmUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];
-    // rescaleOnCube on cube：diag 块中转 [qS/2, qS/2] fp32 3 份轮转（生成后 MTE3 搬 L1，索引 l1PBufId）
-    AscendC::LocalTensor<float> diagUbTensor[UB_DM_BUF_MAX_STAGES];
+    // rescaleOnCube on cube：diag 块中转 [qS/2, qS/2] fp32 仅 1 份，生成后由 MTE3 搬入三缓冲 L1
+    AscendC::LocalTensor<float> diagUbTensor;
     AscendC::LocalTensor<bfloat16_t> lmUbTensor;
     AscendC::LocalTensor<bfloat16_t> llUbTensor;
     AscendC::LocalTensor<float> lmUbFloatTensor;

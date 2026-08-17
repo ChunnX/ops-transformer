@@ -325,7 +325,7 @@ public:
             }
             if constexpr (RESCALE_ON_CUBE) {
                 // V 以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
-                vShapeRow = strideKV;
+                vShapeRow = vShapeCol;
                 vShapeCol = kvBaseTile_;
             } else {
                 vShapeRow = kvBaseTile_;
@@ -633,21 +633,29 @@ public:
             l1DiagAddrStart_ = l1GoAddrStart_ + qBaseTile_ * embed_ * sizeof(float);
         }
         if constexpr (transposedMm1) {
-            mm1L0ATotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
-            mm1L0BTotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+            mm1L0ATotalStages_ = CeilDiv(kvBaseTile_, BlockMmadQK::L0_TILE_M) *
+                CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
+            mm1L0BTotalStages_ = CeilDiv(qBaseTile_, BlockMmadQK::L0_TILE_N) *
+                CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
         } else {
-            mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
-            mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+            mm1L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadQK::L0_TILE_M) *
+                CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
+            mm1L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadQK::L0_TILE_N) *
+                CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
         }
         if constexpr (RESCALE_ON_CUBE) {
             // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽 = qS/2 运行期、每批按 L0_TILE_M 切分、
             // diag 双子核块一次搬满 1 个 stage；与 PV 内部 counter 结构（mL0×kL0 + frGrp×mL0 / nL0×kL0 + 1）严格对应）
-            mm2L0ATotalStages_ = (embed_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K) +
-                CeilDiv(qBaseTile_, qBaseTile_ / 2) * (embed_ / BlockMmadPV::L0_TILE_M);
-            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (qBaseTile_ / BlockMmadPV::L0_TILE_N) + 1;
+            mm2L0ATotalStages_ = CeilDiv(embed_, BlockMmadPV::L0_TILE_M) *
+                CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) +
+                CeilDiv(qBaseTile_, qBaseTile_ / 2) * CeilDiv(embed_, BlockMmadPV::L0_TILE_M);
+            mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
+                CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_N) + 1;
         } else {
-            mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
-            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
+            mm2L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_M) *
+                CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K);
+            mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
+                CeilDiv(embed_, BlockMmadPV::L0_TILE_N);
         }
     }
 
@@ -673,11 +681,11 @@ public:
         uint32_t llStartOffset;
         if constexpr (RESCALE_ON_CUBE) {
             // rescaleOnCube on cube：OTmp(lo) 不再驻留 UB（偏移传 0）；
-            // diag 块中转 [qS/2, qS/2] fp32 3 份轮转（与 L1 diag 3 份、dm 3 份同节奏，索引 l1PBufId）
+            // diag 块中转 [qS/2, qS/2] fp32 仅 1 份；L1 diag 仍为 3 份轮转
             loStartOffset = 0;
             diagStartOffset = pStartOffset + pTotalSize;
             goStartOffset = diagStartOffset +
-                qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float) * (PRE_LAUNCH + 1);
+                qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float);
         } else {
             // 旧路径：lo 2 份轮转、dm 3 份轮转（偏移与 HEAD 一致）
             loStartOffset = pStartOffset + pTotalSize;
@@ -814,11 +822,8 @@ public:
         // rescale
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         if constexpr (RESCALE_ON_CUBE) {
-            // diag 中转缓冲 3 份轮转的 MTE3 搬运围栏（softmax 每 tile 按 l1PBufId 索引 wait/set 一次，
-            // 与 Release VEC 的 EVENT_ID5~7 收尾成对；P 的 P→L1 围栏同模式）
+            // diag 单中转缓冲的 MTE3 搬运围栏，与 Release VEC 的 EVENT_ID5 收尾成对
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -882,10 +887,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         if constexpr (RESCALE_ON_CUBE) {
-            // diag 中转缓冲 3 份围栏收尾（与 Init VEC 的 EVENT_ID5~7 预置成对）
+            // diag 单中转缓冲围栏收尾（与 Init VEC 的 EVENT_ID5 预置成对）
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
         }
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
