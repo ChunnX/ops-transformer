@@ -170,7 +170,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetPlatformInfo()
             std::to_string(vlFp32_).c_str(), "Get VL32 failed."),
         return ge::GRAPH_FAILED);
 
-    coreNum_ = static_cast<uint32_t>(compileInfoPtr->aivNum);
+    coreNum_ = 56;
     OP_CHECK_IF(
         coreNum_ == 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "core_num",
