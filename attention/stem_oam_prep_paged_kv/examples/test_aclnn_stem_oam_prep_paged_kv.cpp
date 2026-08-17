@@ -85,7 +85,7 @@ int main()
     int64_t stemStride = 16;
     int64_t maxKb = 2;
     int64_t kflatDim = stemStride * dimQk;
-    const char *kvLayout = "BNBD";
+    char *kvLayout = "BNBD";
 
     std::vector<int64_t> kCacheShape = {totalBlocks, numKvHeads, 64, dimQk};
     std::vector<int64_t> kvIndicesShape = {batch, maxKvBlocks};
