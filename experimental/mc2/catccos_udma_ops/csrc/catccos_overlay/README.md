@@ -18,5 +18,9 @@ subcore 1 submits the current local MTE and remote UDMA communication.
 The GroupedMatMul-AllToAllV overlay additionally carries separate input and
 output row extents so unbalanced routes can consume `sum(global_tokens)` rows
 and return `sum(local_tokens)` rows without requiring those totals to match.
+It also carries the target-order AIC/AIV schedulers from CatCCOS commit
+`f03b24518e25d9965977b3d70813238f799da2bb`. Complete N-width row ranges are
+staged in destination order, reducing each source-rank/round transfer to one
+contiguous UDMA request; the final scheduler coordinate-type fixes are included.
 The overlaid problem-shape ABI reads both route-count tables from contiguous
 signed 64-bit storage, matching the public PyTorch `torch.int64` interface.

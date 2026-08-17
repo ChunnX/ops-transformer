@@ -16,25 +16,85 @@
 #include "catccos/dgemm/device/kernel_adapter.hpp"
 #include "platform/platform_ascendc.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
 
-using Config = GroupedMatMulAllToAllVUdmaDefaultConfig;
-using DeviceOp = Config::Device;
-using Kernel = Config::Kernel;
+enum class KernelVariant {
+    kM0_128,
+    kM0_256,
+};
 
-constexpr uint32_t kM0 = 128;
-constexpr uint32_t kN0 = 256;
-constexpr uint32_t kCommTileM = 64;
-constexpr uint32_t kCommInterval = 10;
-constexpr uint32_t kCommBlockM = 64;
-constexpr uint32_t kCommDataSplit = 16;
-constexpr uint32_t kCommNpuSplit = 1;
+template <class T>
+struct TypeTag {
+    using type = T;
+};
+
+struct TilingProfile {
+    KernelVariant kernelVariant;
+    uint32_t m0;
+    uint32_t n0;
+    uint32_t k0;
+    uint32_t commInterval;
+    uint32_t commTileM;
+    uint32_t commBlockM;
+    uint32_t commNpuSplit;
+    uint32_t commDataSplit;
+};
+
+constexpr TilingProfile kDefaultTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
+constexpr TilingProfile kM131072K1024N2048Tiling{
+    KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4};
+constexpr TilingProfile kM131072K512N2048Tiling{
+    KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20};
+
+const TilingProfile &SelectTiling(
+    uint32_t m, uint32_t k, uint32_t n,
+    uint32_t worldSize, uint32_t expertNum)
+{
+    const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
+    if (isEightRank256ExpertCase && m == 131072 && k == 1024 && n == 2048) {
+        return kM131072K1024N2048Tiling;
+    }
+    if (isEightRank256ExpertCase && m == 131072 && k == 512 && n == 2048) {
+        return kM131072K512N2048Tiling;
+    }
+    return kDefaultTiling;
+}
+
+constexpr uint32_t kUbStages = 2;
 constexpr uint32_t kWorkspaceStages = 2;
 constexpr uint32_t kMaxLocalExperts = 32;
+constexpr uint64_t kAscend950UbBytes = 256UL * 1024;
+constexpr uint64_t kUdmaWqeScratchBytes = 256;
+constexpr uint32_t kBf16UbAlignElements = 16;
+
+uint32_t TargetOrderLocalCopyColumns(uint32_t columns)
+{
+    const uint64_t alignedColumns =
+        (static_cast<uint64_t>(columns) + kBf16UbAlignElements - 1) /
+        kBf16UbAlignElements * kBf16UbAlignElements;
+    return alignedColumns <= std::numeric_limits<uint32_t>::max()
+        ? static_cast<uint32_t>(alignedColumns)
+        : 0;
+}
+
+uint32_t TargetOrderLocalCopyRows(uint32_t requestedRows, uint32_t columns)
+{
+    const uint32_t alignedColumns = TargetOrderLocalCopyColumns(columns);
+    if (requestedRows == 0 || alignedColumns == 0) {
+        return 0;
+    }
+    const uint64_t bytesPerRow =
+        static_cast<uint64_t>(kUbStages) * alignedColumns * sizeof(uint16_t);
+    const uint32_t capacityRows = static_cast<uint32_t>(
+        (kAscend950UbBytes - kUdmaWqeScratchBytes) / bytesPerRow);
+    return std::min(requestedRows, capacityRows);
+}
 
 void CheckNpuTensor(const at::Tensor &tensor, const char *name, at::ScalarType dtype)
 {
@@ -81,8 +141,9 @@ at::Tensor EmptySymmetric(
     return AllocateSymmetricTensor(deviceAnchor, sizes, dtype);
 }
 
+template <class Kernel, class Params>
 void LaunchGroupedMatMulAllToAllVUdma(
-    const DeviceOp::Params &params, uint32_t blockDim,
+    const Params &params, uint32_t blockDim,
     aclrtStream stream, uint64_t fftsAddress)
 {
     if (fftsAddress == 0) {
@@ -147,14 +208,40 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint32_t blockDim =
         platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
     TORCH_CHECK(blockDim > 0, "failed to query Ascend AI-core count");
-    TORCH_CHECK((static_cast<uint64_t>(blockDim) * kCommInterval) % worldSize == 0,
+    TORCH_CHECK(static_cast<int64_t>(blockDim) >= worldSize,
+                "target-order UDMA staging requires at least one AI core per rank");
+    const uint32_t m = static_cast<uint32_t>(inputRows64);
+    const uint32_t k = static_cast<uint32_t>(k64);
+    const uint32_t n = static_cast<uint32_t>(n64);
+    const TilingProfile &tiling = SelectTiling(
+        m, k, n, static_cast<uint32_t>(worldSize),
+        static_cast<uint32_t>(expertNum));
+    TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
                 "AI-core count * comm_interval must be divisible by world_size");
+
+    // Target-order staging packs all N tiles of each selected M group into a
+    // contiguous [rows, N] buffer, allowing one UDMA request per source rank
+    // and communication round.
+    const uint64_t blockPerComm =
+        static_cast<uint64_t>(blockDim) * tiling.commInterval;
+    const uint64_t tilePerCommInRank = blockPerComm / static_cast<uint64_t>(worldSize);
+    const uint64_t nLoops =
+        (static_cast<uint64_t>(n64) + tiling.n0 - 1) / tiling.n0;
+    TORCH_CHECK(tilePerCommInRank >= nLoops,
+                "target-order UDMA staging requires AI-core count * comm_interval / "
+                "world_size >= ceil(n / N0)");
+    const uint64_t groupsPerCommInRank =
+        std::max<uint64_t>(1, tilePerCommInRank / nLoops);
+    const uint64_t stageRows = groupsPerCommInRank * tiling.m0;
     const uint64_t requiredWorkspaceBytes =
-        static_cast<uint64_t>(kWorkspaceStages) * blockDim * kCommInterval *
-        kM0 * kN0 * sizeof(uint16_t);
-    TORCH_CHECK(requiredWorkspaceBytes <= Config::kSymmetricDataBytes,
+        static_cast<uint64_t>(kWorkspaceStages) * stageRows *
+        static_cast<uint64_t>(worldSize) * static_cast<uint64_t>(n64) *
+        sizeof(uint16_t);
+    TORCH_CHECK(requiredWorkspaceBytes <=
+                    GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes,
                 "kernel tiling requires ", requiredWorkspaceBytes,
-                " symmetric workspace bytes, exceeding ", Config::kSymmetricDataBytes);
+                " symmetric workspace bytes, exceeding ",
+                GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes);
 
     // This fused direction consumes sum(global_tokens) rows and returns
     // sum(local_tokens) rows. Use the caller-provided capacity on the reusable
@@ -183,41 +270,63 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
 
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
-    Catlass::GemmCoord shape{
-        static_cast<uint32_t>(inputRows64), static_cast<uint32_t>(n64), static_cast<uint32_t>(k64)};
-    Catlass::MatrixCoord commCoreSplit{kCommDataSplit, kCommNpuSplit};
-    Catlass::MatrixCoord commBlockShape{kCommBlockM, kN0};
-    Catlass::MatrixCoord commTileShape{kCommTileM / 2, kN0};
-    DeviceOp::Arguments arguments{
-        shape,
-        static_cast<uint32_t>(outputRows64),
-        static_cast<uint32_t>(runtime.Rank()),
-        static_cast<uint32_t>(worldSize),
-        kCommInterval,
-        static_cast<uint32_t>(epSize),
-        static_cast<uint32_t>(expertNum),
-        reinterpret_cast<uint8_t *>(x.data_ptr()),
-        reinterpret_cast<uint8_t *>(weight.data_ptr()),
-        reinterpret_cast<uint8_t *>(output.data_ptr()),
-        reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
-        reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
-        runtime.Workspace(),
-        commCoreSplit,
-        commBlockShape,
-        commTileShape,
-    };
-
-    DeviceOp deviceOp;
-    const Catlass::Status initializeStatus = deviceOp.Initialize(arguments);
-    TORCH_CHECK(initializeStatus == Catlass::Status::kSuccess,
-                "failed to initialize the CatCCOS device operator");
-    const DeviceOp::Params params = deviceOp.params();
+    Catlass::GemmCoord shape{m, n, k};
+    Catlass::MatrixCoord commCoreSplit{
+        tiling.commDataSplit, tiling.commNpuSplit};
+    const uint32_t localCopyColumns =
+        TargetOrderLocalCopyColumns(static_cast<uint32_t>(n64));
+    const uint32_t localCopyRows =
+        TargetOrderLocalCopyRows(tiling.commTileM / 2, static_cast<uint32_t>(n64));
+    TORCH_CHECK(localCopyRows > 0 && localCopyColumns > 0,
+                "N is too large for target-order local MTE copy staging");
+    Catlass::MatrixCoord commBlockShape{
+        tiling.commBlockM, static_cast<uint32_t>(n64)};
+    Catlass::MatrixCoord commTileShape{localCopyRows, localCopyColumns};
     const uint64_t fftsAddress = runtime.FftsAddress();
-    auto launch = [=]() -> int {
-        LaunchGroupedMatMulAllToAllVUdma(params, blockDim, stream, fftsAddress);
-        return 0;
+    auto launchWithConfig = [&](auto configTag) {
+        using SelectedConfig = typename decltype(configTag)::type;
+        using SelectedDeviceOp = typename SelectedConfig::Device;
+        using SelectedKernel = typename SelectedConfig::Kernel;
+        TORCH_CHECK(tiling.m0 == SelectedConfig::kM0 &&
+                        tiling.n0 == SelectedConfig::kN0 &&
+                        tiling.k0 == SelectedConfig::kK0,
+                    "tiling profile does not match the selected kernel instance");
+        typename SelectedDeviceOp::Arguments arguments{
+            shape,
+            static_cast<uint32_t>(runtime.Rank()),
+            static_cast<uint32_t>(worldSize),
+            tiling.commInterval,
+            static_cast<uint32_t>(epSize),
+            static_cast<uint32_t>(expertNum),
+            reinterpret_cast<uint8_t *>(x.data_ptr()),
+            reinterpret_cast<uint8_t *>(weight.data_ptr()),
+            reinterpret_cast<uint8_t *>(output.data_ptr()),
+            reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
+            reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
+            runtime.Workspace(),
+            commCoreSplit,
+            commBlockShape,
+            commTileShape,
+            static_cast<uint32_t>(outputRows64),
+        };
+
+        SelectedDeviceOp deviceOp;
+        const Catlass::Status initializeStatus = deviceOp.Initialize(arguments);
+        TORCH_CHECK(initializeStatus == Catlass::Status::kSuccess,
+                    "failed to initialize the CatCCOS device operator");
+        const typename SelectedDeviceOp::Params params = deviceOp.params();
+        auto launch = [=]() -> int {
+            LaunchGroupedMatMulAllToAllVUdma<SelectedKernel>(
+                params, blockDim, stream, fftsAddress);
+            return 0;
+        };
+        at_npu::native::OpCommand::RunOpApi("GroupedMatMulAllToAllVUdma", launch);
     };
-    at_npu::native::OpCommand::RunOpApi("GroupedMatMulAllToAllVUdma", launch);
+    if (tiling.kernelVariant == KernelVariant::kM0_256) {
+        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
+    } else {
+        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});
+    }
     return output;
 }
 

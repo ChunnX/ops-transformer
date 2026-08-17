@@ -169,7 +169,8 @@ result = udma.grouped_mat_mul_all_to_allv(
 )
 
 # Reuse an ordinary NPU output so allocation stays outside repeated launches.
-reusable = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
+output_rows = int(local_tokens.sum().item())
+reusable = torch.empty((output_rows, n), dtype=torch.bfloat16, device=x.device)
 udma.grouped_mat_mul_all_to_allv(
     x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num, out=reusable,
@@ -177,11 +178,15 @@ udma.grouped_mat_mul_all_to_allv(
 consume(result, reusable)
 ```
 
-For this direction, `x` is grouped by the local experts according to the sums
-of `global_tokens_per_local_expert`; the output shape is `[m, n]`. Every Rank
-must allocate and release registered tensors in the same order. The runtime
-rejects finalization while such tensors are alive instead of leaving dangling
-PyTorch storage.
+For this direction, `x` has `sum(global_tokens_per_local_expert)` rows grouped
+by local expert, while the output independently has
+`sum(local_tokens_per_expert)` rows. This supports imbalanced routing without
+requiring the input and output row totals to match. The kernel stages complete
+N-width row ranges in destination order, so each active source rank uses one
+contiguous UDMA GET per communication round instead of one request per output
+row. Every Rank must allocate and release registered tensors in the same order.
+The runtime rejects finalization while such tensors are alive instead of
+leaving dangling PyTorch storage.
 
 ## Accuracy and performance validation
 
@@ -317,3 +322,17 @@ retain the default profile.
 `commNpuSplit` and `commDataSplit` are legacy example-host fields. The migrated CatCCOS UDMA
 `DeviceOp::Arguments` and its device schedulers do not consume them, so they are
 retained as profile metadata rather than presented as effective kernel inputs.
+
+`grouped_mat_mul_all_to_allv` independently selects these profiles for the
+same `world_size=8`, `expert_num=256` topology. Here M is the grouped-matmul
+input row count (`x.shape[0]`); all other shapes retain the default profile.
+
+| M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 131072 | 1024 | 2048 | 128 | 256 | 256 | 14 | 64 | 64 | 4 | 4 |
+| 131072 | 512 | 2048 | 256 | 128 | 256 | 12 | 16 | 16 | 1 | 20 |
+
+The grouped-matmul host forwards both split values through `commCoreSplit` for
+ABI parity with the tuning record. The target-order scheduler currently does
+not use them to partition transfers; M0, `commInterval`, `commTileM`, and
+`commBlockM` are effective in the selected kernel path.

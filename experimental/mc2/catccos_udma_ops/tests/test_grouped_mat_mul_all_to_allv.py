@@ -38,7 +38,9 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
         ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
     ).read_text(encoding="utf-8")
     assert "MoeConstraints<1, 8, 32>" in source
-    assert "CommEpilogue::Block::BlockCommSchedulerReduceScatterAllToAllV" in source
+    assert "BlockMmadSchedulerGmmAllToAllVTargetOrder" in source
+    assert "BlockCommSchedulerGmmAllToAllVTargetOrder" in source
+    assert "kWorkspaceStages, kSymmetricDataBytes, true" in source
     assert "CopyDirect::Get" in source
     assert "CopyTransport::Mte" in source
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
@@ -88,9 +90,9 @@ def test_unbalanced_route_uses_distinct_input_and_output_row_counts():
     assert "outputRows64 = localTokensPerExpert.sum().item<int64_t>();" in host
     assert "outputRows64 = output.size(0);" in host
     assert "static_cast<uint32_t>(outputRows64)" in host
-    assert "uint32_t outputRows;" in kernel
+    assert "uint32_t outputRows{0};" in kernel
     assert "LayoutTagA layoutTagA{args.gemmShape.m(), args.gemmShape.k()}" in kernel
-    assert "LayoutTagC layoutTagC{args.outputRows, args.gemmShape.n()}" in kernel
+    assert "args.outputRows == 0 ? args.gemmShape.m() : args.outputRows" in kernel
     assert "output.size(0) == x.size(0)" not in host
 
 
@@ -102,3 +104,87 @@ def test_reusable_out_path_does_not_add_route_sum_synchronization():
                       host.index("} else {", host.index("if (outputOptional.has_value())"))]
     assert "outputRows64 = output.size(0);" in out_branch
     assert ".sum().item" not in out_branch
+
+
+def test_target_order_scheduler_uses_final_upstream_coordinate_fixes():
+    overlay = PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" / "catccos"
+    comm_scheduler = (
+        overlay
+        / "comm"
+        / "block"
+        / "comm_block_scheduler_gmm_alltoallv_target_order.hpp"
+    ).read_text(encoding="utf-8")
+    mm_scheduler = (
+        overlay
+        / "dgemm"
+        / "block"
+        / "block_scheduler_gmm_alltoallv_target_order.hpp"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        overlay / "dgemm" / "kernel" / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert "MatrixCoord{uint32_t{1}, uint32_t{1}}" in comm_scheduler
+    assert "blockOffset.m() / scheduler->blockShape.m()" in mm_scheduler
+    assert "blockOffset.n()" in mm_scheduler
+    assert "MatrixCoord blockOffsetB = blockOffset.GetCoordKN();" in kernel
+    assert "RunTargetOrderAic(params)" in kernel
+    assert "RunTargetOrderAiv(params)" in kernel
+
+
+def test_target_order_workspace_check_tracks_full_n_staging():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "groupsPerCommInRank" in host
+    assert "stageRows" in host
+    assert "static_cast<uint64_t>(worldSize) * static_cast<uint64_t>(n64)" in host
+    assert "tilePerCommInRank >= nLoops" in host
+    assert "TargetOrderLocalCopyRows" in host
+    assert "TargetOrderLocalCopyColumns" in host
+    assert "tiling.commBlockM, static_cast<uint32_t>(n64)" in host
+    assert "commTileShape{localCopyRows, localCopyColumns}" in host
+
+
+def test_ep8_256_expert_business_shapes_use_tuned_profiles():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4"
+        in host
+    )
+    assert (
+        "KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20"
+        in host
+    )
+    assert "worldSize == 8 && expertNum == 256" in host
+    assert (
+        "isEightRank256ExpertCase && m == 131072 && k == 1024 && n == 2048"
+        in host
+    )
+    assert (
+        "isEightRank256ExpertCase && m == 131072 && k == 512 && n == 2048"
+        in host
+    )
+    assert "return kDefaultTiling;" in host
+
+
+def test_tuned_profile_drives_kernel_and_all_runtime_tiling_fields():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    device = (
+        ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
+    ).read_text(encoding="utf-8")
+
+    assert "using GroupedMatMulAllToAllVUdmaM0_256Config" in device
+    assert "256, 128, 256>;" in device
+    assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>" in host
+    assert "tiling.commInterval" in host
+    assert "tiling.commTileM / 2" in host
+    assert "tiling.commBlockM" in host
+    assert "tiling.commDataSplit, tiling.commNpuSplit" in host
+    assert "tiling.n0" in host
+    assert "tiling.m0" in host
+    assert "tiling.k0 == SelectedConfig::kK0" in host
