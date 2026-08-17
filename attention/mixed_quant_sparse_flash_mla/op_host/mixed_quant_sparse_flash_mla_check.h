@@ -372,8 +372,7 @@ class MQSMLAInfoParser {
 public:
     explicit MQSMLAInfoParser(gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~MQSMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
