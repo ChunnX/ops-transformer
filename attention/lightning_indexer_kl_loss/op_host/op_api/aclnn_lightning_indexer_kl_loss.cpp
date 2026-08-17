@@ -88,15 +88,15 @@ static aclnnStatus CheckParams(const LightningIndexerKLLossParams &params)
     const auto &targetShape = params.targetScore->GetViewShape();
     const auto &indexShape = params.indexProbs->GetViewShape();
     if (targetShape.GetDimNum() != indexShape.GetDimNum()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "targetScore dimNum %u != indexProbs dimNum %u.",
-                targetShape.GetDimNum(), indexShape.GetDimNum());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "targetScore dimNum %u != indexProbs dimNum %u.", targetShape.GetDimNum(),
+                indexShape.GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
     for (uint64_t i = 0; i < targetShape.GetDimNum(); ++i) {
         if (targetShape.GetDim(i) != indexShape.GetDim(i)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "targetScore shape dim[%llu] %ld != indexProbs dim[%llu] %ld.",
-                    static_cast<unsigned long long>(i), targetShape.GetDim(i),
-                    static_cast<unsigned long long>(i), indexShape.GetDim(i));
+                    static_cast<unsigned long long>(i), targetShape.GetDim(i), static_cast<unsigned long long>(i),
+                    indexShape.GetDim(i));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -109,8 +109,7 @@ static aclnnStatus CheckParams(const LightningIndexerKLLossParams &params)
 }
 
 static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLLossParams &params,
-                                                       aclOpExecutor *executor,
-                                                       const aclTensor *loss)
+                                                       aclOpExecutor *executor, const aclTensor *loss)
 {
     auto targetScoreContiguous = l0op::Contiguous(params.targetScore, executor);
     CHECK_RET(targetScoreContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -119,9 +118,8 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
     CHECK_RET(indexProbsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     string weightTypeStr = op::ToString(params.weightType).GetString();
     // call l0 interface
-    auto result = l0op::LightningIndexerKLLoss(
-        targetScoreContiguous, indexProbsContiguous,
-        params.eps, weightTypeStr.c_str(), executor);
+    auto result = l0op::LightningIndexerKLLoss(targetScoreContiguous, indexProbsContiguous, params.eps,
+                                               weightTypeStr.c_str(), executor);
 
     // convert output tensor to contiguous tensor
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -131,14 +129,11 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
-    const aclTensor *targetScore, const aclTensor *indexProbs,
-    double eps, const char *weightType,
-    const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(const aclTensor *targetScore, const aclTensor *indexProbs,
+                                                        double eps, const char *weightType, const aclTensor *loss,
+                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss,
-                   DFX_IN(targetScore, indexProbs, eps, weightType),
-                   DFX_OUT(loss));
+    L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss, DFX_IN(targetScore, indexProbs, eps, weightType), DFX_OUT(loss));
     LightningIndexerKLLossParams params{targetScore, indexProbs, eps, weightType, loss};
     // check params
     aclnnStatus ret = CheckParams(params);

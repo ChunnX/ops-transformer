@@ -13,11 +13,8 @@
 
 namespace op_api {
 
-at::Tensor lightning_indexer_kl_loss(
-    const at::Tensor &targetScore,
-    const at::Tensor &indexProbs,
-    float eps,
-    const std::string &weightType)
+at::Tensor lightning_indexer_kl_loss(const at::Tensor &targetScore, const at::Tensor &indexProbs, float eps,
+                                     const std::string &weightType)
 {
     TORCH_CHECK((eps > 0), "eps should be greater than 0, current is: ", eps);
     TORCH_CHECK((weightType == "logits" || weightType == "probs"),
@@ -45,8 +42,8 @@ at::Tensor lightning_indexer_kl_loss(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("lightning_indexer_kl_loss", &lightning_indexer_kl_loss, "lightning_indexer_kl_loss",
-          py::arg("target_score"), py::arg("index_probs"), py::arg("eps"), py::arg("weight_type"));
+    m.def("lightning_indexer_kl_loss", &lightning_indexer_kl_loss, "lightning_indexer_kl_loss", py::arg("target_score"),
+          py::arg("index_probs"), py::arg("eps"), py::arg("weight_type"));
 }
 
 } // namespace op_api

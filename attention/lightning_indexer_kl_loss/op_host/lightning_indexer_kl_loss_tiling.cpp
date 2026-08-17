@@ -51,10 +51,7 @@ static int64_t ComputeTileLength(int64_t K, int64_t ubSize)
 }
 
 // 先定义一个向上取整函数
-int Ceil(int a, int b)
-{
-    return (a + b - 1) / b;
-}
+int Ceil(int a, int b) { return (a + b - 1) / b; }
 
 ge::graphStatus GetWorkspaceSize(gert::TilingContext *context, bool deterministic, bool isHalf, int64_t coreNum)
 {
@@ -77,8 +74,7 @@ static ge::graphStatus CheckInputDim(gert::TilingContext *context)
     uint64_t dimNum = targetScoreShape->GetOriginShape().GetDimNum();
     if (dimNum != 2 && dimNum != 3) {
         std::string dimNumStr = std::to_string(dimNum);
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "target_score",
-                                     dimNumStr.c_str(), "2D or 3D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "target_score", dimNumStr.c_str(), "2D or 3D");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_NULL_WITH_CONTEXT(context, indexProbsShape);
@@ -92,18 +88,17 @@ static ge::graphStatus CheckInputDim(gert::TilingContext *context)
         indexShapeStr += ", " + std::to_string(indexProbsOrigin.GetDim(i));
     }
     if (targetShapeStr != indexShapeStr) {
-        std::string reasonMsg = "The shape of target_score " + targetShapeStr +
-                                " does not match the shape of index_probs " + indexShapeStr;
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score and index_probs",
-                                              ("target_score: " + targetShapeStr + ", index_probs: " + indexShapeStr).c_str(),
-                                              reasonMsg.c_str());
+        std::string reasonMsg =
+            "The shape of target_score " + targetShapeStr + " does not match the shape of index_probs " + indexShapeStr;
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context->GetNodeName(), "target_score and index_probs",
+            ("target_score: " + targetShapeStr + ", index_probs: " + indexShapeStr).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t K = targetScoreOrigin.GetDim(dimNum - 1);
     if (K > 8192) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score",
-                                              targetShapeStr.c_str(),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score", targetShapeStr.c_str(),
                                               "The last dim of input target_score should be less than 8192");
         return ge::GRAPH_FAILED;
     }
@@ -114,15 +109,13 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext *con
 {
     uint64_t ubSize;
     int64_t coreNum;
-    OP_CHECK_IF(
-        GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetPlatformInfo error"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
 
     const auto targetScoreShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, targetScoreShape);
-    OP_CHECK_IF(
-        CheckInputDim(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context, "LightningIndexerKLLoss CheckInputDim FAILED."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckInputDim(context) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "LightningIndexerKLLoss CheckInputDim FAILED."), return ge::GRAPH_FAILED);
 
     auto inputShape = targetScoreShape->GetOriginShape();
     int64_t dimNum = static_cast<int64_t>(inputShape.GetDimNum());
@@ -173,9 +166,8 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext *con
                           (dataType == ge::DT_FLOAT)   ? 1 :
                                                          0;
     ASCENDC_TPL_SEL_PARAM(context, deterministic, dataTypeVal, weightType);
-    OP_CHECK_IF(
-        GetWorkspaceSize(context, deterministic, dataTypeVal != 1, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetWorkspaceSize(context, deterministic, dataTypeVal != 1, coreNum) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "GetWorkspaceSize error"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -184,5 +176,7 @@ static ge::graphStatus TilingParseForLightningIndexerKLLoss([[maybe_unused]] ger
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(LightningIndexerKLLoss).Tiling(LightningIndexerKLLossTilingFunc).TilingParse<LightningIndexerKLLossCompileInfo>(TilingParseForLightningIndexerKLLoss);
+IMPL_OP_OPTILING(LightningIndexerKLLoss)
+    .Tiling(LightningIndexerKLLossTilingFunc)
+    .TilingParse<LightningIndexerKLLossCompileInfo>(TilingParseForLightningIndexerKLLoss);
 } // namespace optiling

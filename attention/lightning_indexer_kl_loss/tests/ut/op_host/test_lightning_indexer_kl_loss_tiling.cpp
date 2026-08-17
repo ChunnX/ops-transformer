@@ -34,56 +34,33 @@ static const uint64_t kTilingKeyDetFp16 = GET_TPL_TILING_KEY(LightningIndexerKLL
 static const uint64_t kTilingKeyDetFp32 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 1, 1);
 static const uint64_t kTilingKeyDetBf16 = GET_TPL_TILING_KEY(LightningIndexerKLLoss, 1, 2);
 
-optiling::LightningIndexerKLLossCompileInfo MakeCompileInfo()
-{
-    return {};
-}
+optiling::LightningIndexerKLLossCompileInfo MakeCompileInfo() { return {}; }
 
 std::vector<OpAttr> MakeAttrs(float eps = 1e-9f, bool deterministic = false)
 {
-    return {
-        {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-        {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(deterministic)}};
+    return {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
+            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(deterministic)}};
 }
 
 gert::TilingContextPara MakePara(optiling::LightningIndexerKLLossCompileInfo &compileInfo,
-                                 ge::DataType dataType = ge::DT_FLOAT,
-                                 std::initializer_list<int64_t> shape = {8, 22},
-                                 float eps = 1e-9f,
-                                 bool deterministic = false)
+                                 ge::DataType dataType = ge::DT_FLOAT, std::initializer_list<int64_t> shape = {8, 22},
+                                 float eps = 1e-9f, bool deterministic = false)
 {
     return gert::TilingContextPara(
-        kOpName,
-        {{{shape, shape}, dataType, ge::FORMAT_ND},
-         {{shape, shape}, dataType, ge::FORMAT_ND}},
-        {{{{1}, {1}}, dataType, ge::FORMAT_ND}},
-        MakeAttrs(eps, deterministic),
-        std::vector<uint32_t>{1, 1},
-        std::vector<uint32_t>{1},
-        &compileInfo,
-        "Ascend910B",
-        kCoreNum,
-        kUbSize,
-        kTilingDataSize);
+        kOpName, {{{shape, shape}, dataType, ge::FORMAT_ND}, {{shape, shape}, dataType, ge::FORMAT_ND}},
+        {{{{1}, {1}}, dataType, ge::FORMAT_ND}}, MakeAttrs(eps, deterministic), std::vector<uint32_t>{1, 1},
+        std::vector<uint32_t>{1}, &compileInfo, "Ascend910B", kCoreNum, kUbSize, kTilingDataSize);
 }
 } // namespace
 
 class LightningIndexerKLLossTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "LightningIndexerKLLossTiling SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "LightningIndexerKLLossTiling SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "LightningIndexerKLLossTiling TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "LightningIndexerKLLossTiling TearDown" << std::endl; }
 
-    void VerifyTilingData(const LightningIndexerKLLossTilingData &tiling,
-                          int64_t expectedTotalLength,
-                          int64_t expectedK,
-                          int64_t expectedKAligned)
+    void VerifyTilingData(const LightningIndexerKLLossTilingData &tiling, int64_t expectedTotalLength,
+                          int64_t expectedK, int64_t expectedKAligned)
     {
         EXPECT_EQ(tiling.totalLength, expectedTotalLength);
         EXPECT_EQ(tiling.K, expectedK);
@@ -158,18 +135,9 @@ TEST_F(LightningIndexerKLLossTiling, tiling_shape_mismatch_failed)
     auto compileInfo = MakeCompileInfo();
 
     auto para = gert::TilingContextPara(
-        kOpName,
-        {{{shapeA, shapeA}, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{shapeB, shapeB}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        MakeAttrs(),
-        std::vector<uint32_t>{1, 1},
-        std::vector<uint32_t>{1},
-        &compileInfo,
-        "Ascend910B",
-        kCoreNum,
-        kUbSize,
-        kTilingDataSize);
+        kOpName, {{{shapeA, shapeA}, ge::DT_FLOAT, ge::FORMAT_ND}, {{shapeB, shapeB}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND}}, MakeAttrs(), std::vector<uint32_t>{1, 1}, std::vector<uint32_t>{1},
+        &compileInfo, "Ascend910B", kCoreNum, kUbSize, kTilingDataSize);
 
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }

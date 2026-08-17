@@ -22,26 +22,21 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(LightningIndexerKLLoss);
 
-const aclTensor *LightningIndexerKLLoss(
-    const aclTensor *targetScore, const aclTensor *indexProbs,
-    double eps, const char *weightType, aclOpExecutor *executor)
+const aclTensor *LightningIndexerKLLoss(const aclTensor *targetScore, const aclTensor *indexProbs, double eps,
+                                        const char *weightType, aclOpExecutor *executor)
 {
     L0_DFX(LightningIndexerKLLoss, targetScore, indexProbs, eps, weightType);
     DataType outputDtype = targetScore->GetDataType();
     auto loss = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(LightningIndexerKLLoss,
-                           OP_INPUT(targetScore, indexProbs),
-                           OP_OUTPUT(loss),
+    auto ret = INFER_SHAPE(LightningIndexerKLLoss, OP_INPUT(targetScore, indexProbs), OP_OUTPUT(loss),
                            OP_ATTR(eps, weightType));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss InferShape failed.");
         return nullptr;
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(LightningIndexerKLLoss,
-                                      OP_INPUT(targetScore, indexProbs),
-                                      OP_OUTPUT(loss),
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(LightningIndexerKLLoss, OP_INPUT(targetScore, indexProbs), OP_OUTPUT(loss),
                                       OP_ATTR(eps, weightType));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss launch kernel failed.");

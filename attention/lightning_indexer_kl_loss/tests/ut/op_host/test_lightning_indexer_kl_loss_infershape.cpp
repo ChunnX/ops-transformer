@@ -27,89 +27,67 @@ constexpr const char *kOpName = "LightningIndexerKLLoss";
 
 std::vector<OpAttr> MakeAttrs(float eps = 1e-9f, bool deterministic = false)
 {
-    return {
-        {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
-        {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(deterministic)}};
+    return {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)},
+            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(deterministic)}};
 }
 
 gert::InfershapeContextPara Make2dPara(ge::DataType dataType = ge::DT_FLOAT,
                                        std::initializer_list<int64_t> shape = {8, 22})
 {
     return gert::InfershapeContextPara(
-        kOpName,
-        {{{shape, shape}, dataType, ge::FORMAT_ND},
-         {{shape, shape}, dataType, ge::FORMAT_ND}},
-        {{{{1}, {1}}, dataType, ge::FORMAT_ND}},
-        MakeAttrs());
+        kOpName, {{{shape, shape}, dataType, ge::FORMAT_ND}, {{shape, shape}, dataType, ge::FORMAT_ND}},
+        {{{{1}, {1}}, dataType, ge::FORMAT_ND}}, MakeAttrs());
 }
 
 gert::InfershapeContextPara Make3dPara(ge::DataType dataType = ge::DT_FLOAT,
                                        std::initializer_list<int64_t> shape = {4, 10, 333})
 {
     return gert::InfershapeContextPara(
-        kOpName,
-        {{{shape, shape}, dataType, ge::FORMAT_ND},
-         {{shape, shape}, dataType, ge::FORMAT_ND}},
-        {{{{1}, {1}}, dataType, ge::FORMAT_ND}},
-        MakeAttrs());
+        kOpName, {{{shape, shape}, dataType, ge::FORMAT_ND}, {{shape, shape}, dataType, ge::FORMAT_ND}},
+        {{{{1}, {1}}, dataType, ge::FORMAT_ND}}, MakeAttrs());
 }
 
-gert::InfershapeContextPara Make1dPara(ge::DataType dataType = ge::DT_FLOAT,
-                                       std::initializer_list<int64_t> shape = {8})
+gert::InfershapeContextPara Make1dPara(ge::DataType dataType = ge::DT_FLOAT, std::initializer_list<int64_t> shape = {8})
 {
     return gert::InfershapeContextPara(
-        kOpName,
-        {{{shape, shape}, dataType, ge::FORMAT_ND},
-         {{shape, shape}, dataType, ge::FORMAT_ND}},
-        {{{{1}, {1}}, dataType, ge::FORMAT_ND}},
-        MakeAttrs());
+        kOpName, {{{shape, shape}, dataType, ge::FORMAT_ND}, {{shape, shape}, dataType, ge::FORMAT_ND}},
+        {{{{1}, {1}}, dataType, ge::FORMAT_ND}}, MakeAttrs());
 }
 
 gert::InfershapeContextPara MakeShapeMismatchPara(ge::DataType dataType = ge::DT_FLOAT)
 {
-    return gert::InfershapeContextPara(
-        kOpName,
-        {{{{4, 10, 333}, {4, 10, 333}}, dataType, ge::FORMAT_ND},
-         {{{4, 10, 111}, {4, 10, 111}}, dataType, ge::FORMAT_ND}},
-        {{{{1}, {1}}, dataType, ge::FORMAT_ND}},
-        MakeAttrs());
+    return gert::InfershapeContextPara(kOpName,
+                                       {{{{4, 10, 333}, {4, 10, 333}}, dataType, ge::FORMAT_ND},
+                                        {{{4, 10, 111}, {4, 10, 111}}, dataType, ge::FORMAT_ND}},
+                                       {{{{1}, {1}}, dataType, ge::FORMAT_ND}}, MakeAttrs());
 }
 } // namespace
 
 class LightningIndexerKLLossProto : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "LightningIndexerKLLossProto SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "LightningIndexerKLLossProto SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "LightningIndexerKLLossProto TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "LightningIndexerKLLossProto TearDown" << std::endl; }
 };
 
 TEST_F(LightningIndexerKLLossProto, infershape_2d_fp32_success)
 {
     auto para = Make2dPara();
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 TEST_F(LightningIndexerKLLossProto, infershape_3d_fp16_success)
 {
     auto para = Make3dPara(ge::DT_FLOAT16);
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 TEST_F(LightningIndexerKLLossProto, infershape_3d_bf16_success)
 {
     auto para = Make3dPara(ge::DT_BF16);
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
