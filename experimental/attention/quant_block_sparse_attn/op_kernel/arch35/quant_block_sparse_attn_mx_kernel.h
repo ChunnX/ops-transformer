@@ -54,9 +54,11 @@ public:
                   "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
-    // 延迟两个 task 执行 C2/V2。
-    static constexpr uint32_t PRELOAD_N = 2U;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1U;
+    // C2 延迟两个 task，V2 再延迟一个 task。单 BMM2 UB 作为跨 iteration 的流水寄存器：
+    // AIC 执行 C1(i) / C2(i-2)，AIV 执行 V2(i-3) / V1(i)。
+    static constexpr uint32_t C2_DELAY = 2U;
+    static constexpr uint32_t V2_DELAY = 3U;
+    static constexpr uint32_t PIPELINE_TASK_CACHE_SIZE = V2_DELAY + 1U;
 
     __aicore__ inline QuantBlockSparseAttnMxKernel() = default;
 
@@ -334,9 +336,9 @@ private:
                                    runInfo.realN2Idx * constInfo.queryScaleDSize * constInfo.scaleLastDim;
     }
 
-    __aicore__ inline bool HasValidTask(MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE]) const
+    __aicore__ inline bool HasValidTask(MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE]) const
     {
-        for (uint32_t i = 0U; i < PRELOAD_TASK_CACHE_SIZE; ++i) {
+        for (uint32_t i = 0U; i < PIPELINE_TASK_CACHE_SIZE; ++i) {
             if (taskRunInfo[i].isValid) {
                 return true;
             }
@@ -344,18 +346,36 @@ private:
         return false;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE])
     {
-        // 当前 task 做 C1/V1，PRELOAD_N 之前的 task 做 C2/V2。
-        MxRunInfo &runInfoCur = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        MxRunInfo &runInfoPre = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
-        if (likely(runInfoCur.isValid)) {
-            if ASCEND_IS_AIC {
+        MxRunInfo &runInfoCur = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
+        if ASCEND_IS_AIC {
+            // AIC 先生产当前 C1；随后消费两轮前的 P，生产 C2 留给下一轮 V2。
+            if (likely(runInfoCur.isValid)) {
                 const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
                     cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
                 }
-            } else {
+            }
+            if (likely(loop >= C2_DELAY)) {
+                MxRunInfo &runInfoC2 =
+                    taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                if (likely(runInfoC2.isValid)) {
+                    cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoC2, constInfo);
+                    runInfoC2.isValid = false;
+                }
+            }
+        } else {
+            // AIV 先消费上一轮已经就绪的 C2，以有效 V2 工作覆盖当前 C1 的生产时间。
+            if (likely(loop >= V2_DELAY)) {
+                MxRunInfo &runInfoV2 =
+                    taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                if (likely(runInfoV2.isValid)) {
+                    vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoV2, constInfo);
+                    runInfoV2.isValid = false;
+                }
+            }
+            if (likely(runInfoCur.isValid)) {
                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &pBuf = l1PBuffers.GetVec();
                 // ProcessMainLoop已过滤全无效section；有效task固定先跑subLoop0。
                 vecBlock.template ProcessVec1<0U>(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo);
@@ -364,20 +384,12 @@ private:
                 }
             }
         }
-        if (likely(loop >= PRELOAD_N && runInfoPre.isValid)) {
-            if ASCEND_IS_AIC {
-                cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoPre, constInfo);
-            } else {
-                vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoPre, constInfo);
-            }
-            runInfoPre.isValid = false;
-        }
     }
 
     __aicore__ inline void ProcessMainLoop()
     {
-        // 三槽环形缓存组织 C1/V1 与延迟 C2/V2。
-        MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        // 四槽任务状态同时覆盖 current、C2(i-2) 和 V2(i-3)。
+        MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
         // S2_BASE=512, kvSparseBlockSize=64/128(host 侧已拦截), 结果必为 8 或 4。
@@ -423,7 +435,7 @@ private:
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
-                        MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+                        MxRunInfo &runInfo = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
                         const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                         const uint32_t sparseBlockCount =
                             remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
