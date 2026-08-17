@@ -247,6 +247,9 @@ private:
     GM_ADDR actualQseqlen_;       // TND 布局下每个 batch 的实际 q 长度数组
     GM_ADDR actualKvseqlen_;      // TND 布局下每个 batch 的实际 kv 长度数组
     GM_ADDR blockSparseMask_;     // block 级稀疏 mask，1=计算 / 0=跳过
+    GM_ADDR perBlockSizeMask_;    // maskType=1 时的 per-block actualSize mask，INT32 4D [B,N,maxBlockNum,2]
+    bool has_per_block_size_mask_ = false; // 是否启用 PerBlockSizeMask（接口已通，实际计算暂未实现）
+    int32_t max_block_num_ = 0;   // mask 最后一维的 block 数量
 
     // ---- 形状参数 ----
     int32_t batch_num_;           // batch 数量
@@ -290,10 +293,11 @@ private:
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-                                GM_ADDR blockSparseMask)
+                                GM_ADDR blockSparseMask, GM_ADDR perBlockSizeMask)
     /*
      * 初始化调度器：从 tilingData 拷贝形状/块大小参数，记录 GM 地址，
      * 计算 mask block 数量，填充 const_info_，并确定本核的 cube_core_idx_。
+     * perBlockSizeMask: maskType=1 时的 per-block actualSize mask GM 地址（接口已通，实际计算暂未实现）。
      */
     {
         // ---- 从 tiling 数据拷贝形状参数 ----
@@ -309,6 +313,9 @@ public:
         this->actualQseqlen_ = actualQseqlen;
         this->actualKvseqlen_ = actualKvseqlen;
         this->blockSparseMask_ = blockSparseMask;
+        this->perBlockSizeMask_ = perBlockSizeMask;
+        this->has_per_block_size_mask_ = (tilingData->hasPerBlockSizeMask != 0);
+        this->max_block_num_ = tilingData->maxBlockNum;
         // ---- 从 tiling 数据拷贝块大小参数 ----
         this->block_x_ = tilingData->BlockX;
         this->block_y_ = tilingData->BlockY;
