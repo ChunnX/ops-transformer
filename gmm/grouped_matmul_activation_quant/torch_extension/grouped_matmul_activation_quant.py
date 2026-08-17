@@ -131,7 +131,9 @@ def _resolve_y_dtype(y_dtype, x, x_dtype):
             return x_ge_dtype
         if x_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2):
             return x_ge_dtype
-        raise TypeError("y_dtype is None only supports inferring from FP8 or FP4 x dtype.")
+        raise TypeError(
+            "y_dtype is None only supports inferring from FP8 or FP4 x dtype."
+        )
     return _normalize_attr_dtype(y_dtype)
 
 
@@ -207,7 +209,11 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
 
             y_ge_dtype = _resolve_y_dtype(y_dtype, x, x_dtype)
             y_dtype_value = _to_torch_dtype(y_ge_dtype)
-            y_n = math.ceil(n / 2) if y_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2) else n
+            y_n = (
+                math.ceil(n / 2)
+                if y_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2)
+                else n
+            )
             y = torch.empty((m, y_n), dtype=y_dtype_value, device="meta")
             y_scale = torch.empty(
                 (m, math.ceil(n / 64), 2), dtype=FLOAT8_E8M0_DTYPE, device="meta"

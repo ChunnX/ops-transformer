@@ -318,7 +318,8 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context_->GetNodeName(), "weight storageShape", ShapeToDebugString(wStorageShape),
                     FormatString("when the quantization mode is mx, NZ weight storage tail dims must be 16 and %ld",
-                                 expectedNzLastDim).c_str()),
+                                 expectedNzLastDim)
+                        .c_str()),
                 return false);
     auto kSize = static_cast<int64_t>(inputParams_.kSize);
     auto nSize = static_cast<int64_t>(inputParams_.nSize);

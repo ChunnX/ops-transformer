@@ -62,7 +62,8 @@ REGISTER_TILING_DATA_CLASS(GroupedMatmulActivationQuant_1, GMMActivationQuantTil
 
 class GroupedMatmulActivationQuantTiling950 : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedMatmulActivationQuantTiling950(gert::TilingContext *context) : GroupedQmmBasicApiTiling(context)
+    explicit GroupedMatmulActivationQuantTiling950(gert::TilingContext *context)
+        : GroupedQmmBasicApiTiling(context)
     {
         Reset();
     }
