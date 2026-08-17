@@ -34,7 +34,7 @@ public:
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
     __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx);
-    __aicore__ inline void InitBuffers(TPipe *pipe, bool needCleanOutput);
+    __aicore__ inline void InitBuffers(TPipe *pipe, bool needCleanOutput, bool initMm1CrossCoreSlots);
     __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> sparseIndicesGm,
                                               GlobalTensor<int32_t> sparseSeqLenGm);
@@ -64,6 +64,7 @@ protected:
     static constexpr int32_t K_MEDIUM_SEQ_MAX = 160;
 
 private:
+    __aicore__ inline void InitMm1CrossCoreSlots();
     __aicore__ inline void CleanOutput();
     __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize, int32_t value);
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int64_t kbOffset, int32_t numPromptK);
@@ -116,7 +117,7 @@ private:
 };
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput)
+__aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput, bool initMm1CrossCoreSlots)
 {
     needCleanOutput_ = needCleanOutput;
     // 三缓冲，每槽32KB；TopK histogram已拆为独立UB。
@@ -146,12 +147,19 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOut
     pipe->InitBuffer(indiceLenBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) * INDICE_LEN_ROW_STRIDE * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
 
-    // 三个流水槽初始均归Cube使用。
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1U);
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 2U);
+    if (initMm1CrossCoreSlots) {
+        InitMm1CrossCoreSlots();
+    }
     if (needCleanOutput_) {
         CleanOutput();
+    }
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::InitMm1CrossCoreSlots()
+{
+    for (uint32_t slot = 0U; slot < SICommon::MM1_RES_BUFFER_NUM; ++slot) {
+        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + slot);
     }
 }
 

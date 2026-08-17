@@ -45,14 +45,14 @@ public:
     __aicore__ inline void ComputeMm1(const SICommon::RunInfo &runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
-    static constexpr uint64_t KEY_BUF_NUM = 4;
-    static constexpr uint64_t QUERY_BUF_NUM = 4;
+    static constexpr uint64_t KEY_BUF_NUM = 2;
+    static constexpr uint64_t QUERY_BUF_NUM = 2;
     static constexpr uint64_t L0A_BUF_NUM = 2;
     static constexpr uint64_t L0B_BUF_NUM = 2;
     static constexpr uint64_t L0C_BUF_NUM = 4;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID0;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID4; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID2; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -64,7 +64,7 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK = 256;
 
     static constexpr uint64_t M_BASIC_BLOCK_L1 = 64;
-    static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
+    static constexpr uint64_t D_BASIC_BLOCK_L1 = 1024;
     static constexpr uint64_t S2_BASIC_BLOCK_L1 = 64;
 
     static constexpr uint64_t M_BASIC_BLOCK_L0 = 64;
@@ -377,13 +377,9 @@ __aicore__ inline void SIMatmul<SIT>::AllocEventID()
     SetMMLayoutTransform(true);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 3);
 
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 2);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 3);
 
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
@@ -400,13 +396,9 @@ __aicore__ inline void SIMatmul<SIT>::FreeEventID()
     SetMMLayoutTransform(false);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 3);
 
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 2);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 3);
 
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);

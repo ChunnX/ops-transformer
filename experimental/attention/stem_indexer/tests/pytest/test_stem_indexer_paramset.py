@@ -590,7 +590,7 @@ ENABLED_PARAMS = [
         "special_setting": "",
     },
     # SI_WB_018 m_base_exact_g4
-    # 覆盖: g=4；max_Qb=24；M=max_Qb*g=96正好baseM
+    # 覆盖: g=4；max_Qb=16；M=max_Qb*g=64正好baseM
     # 设计: 覆盖 M 方向正好一个基本块，无 M 尾块。
     {
         "case_id": "SI_WB_018",
@@ -599,7 +599,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 32,
         "kv_heads": 8,
-        "q_seq_lens": [3072],
+        "q_seq_lens": [2048],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -615,8 +615,8 @@ ENABLED_PARAMS = [
         "special_setting": "",
     },
     # SI_WB_019 m_base_tail_g4
-    # 覆盖: g=4；max_Qb=25；M=100；M尾块
-    # 设计: M 比 baseM=96 多 4 行，覆盖 query/GQA 合批后的 M 尾块。
+    # 覆盖: g=4；max_Qb=17；M=68；M尾块4行
+    # 设计: M 比 baseM=64 多 4 行，覆盖 query/GQA 合批后的 M 尾块。
     {
         "case_id": "SI_WB_019",
         "testcase_name": "m_base_tail_g4",
@@ -624,7 +624,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 32,
         "kv_heads": 8,
-        "q_seq_lens": [3200],
+        "q_seq_lens": [2176],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -640,7 +640,7 @@ ENABLED_PARAMS = [
         "special_setting": "",
     },
     # SI_WB_020 m_base_exact_g32
-    # 覆盖: g=32；max_Qb=3；M=96正好baseM
+    # 覆盖: g=32；max_Qb=2；M=64正好baseM
     # 设计: 最大 GQA 组下 M 正好一个基本块，验证 GQA 合批和 baseM 对齐。
     {
         "case_id": "SI_WB_020",
@@ -649,7 +649,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 64,
         "kv_heads": 2,
-        "q_seq_lens": [384],
+        "q_seq_lens": [256],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -665,8 +665,8 @@ ENABLED_PARAMS = [
         "special_setting": "",
     },
     # SI_WB_021 m_base_tail_g32
-    # 覆盖: g=32；max_Qb=4；M=128；M尾块32行
-    # 设计: 大 GQA 组下 M 跨过 baseM，覆盖第二个 M 基本块尾段。
+    # 覆盖: g=32；max_Qb=3；M=96；M尾块32行
+    # 设计: 大 GQA 组下 M 跨过 baseM=64，覆盖第二个 M 基本块尾段。
     {
         "case_id": "SI_WB_021",
         "testcase_name": "m_base_tail_g32",
@@ -674,7 +674,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 64,
         "kv_heads": 2,
-        "q_seq_lens": [512],
+        "q_seq_lens": [384],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -5217,7 +5217,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 32,
         "kv_heads": 8,
-        "q_seq_lens": [3072],
+        "q_seq_lens": [2048],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -5242,7 +5242,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 32,
         "kv_heads": 8,
-        "q_seq_lens": [3200],
+        "q_seq_lens": [2176],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -5267,7 +5267,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 64,
         "kv_heads": 2,
-        "q_seq_lens": [384],
+        "q_seq_lens": [256],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,
@@ -5292,7 +5292,7 @@ ENABLED_PARAMS = [
         "batch_size": 1,
         "q_heads": 64,
         "kv_heads": 2,
-        "q_seq_lens": [512],
+        "q_seq_lens": [384],
         "kv_seq_lens": [4096],
         "num_prompt_tokens": [4096],
         "causal": True,

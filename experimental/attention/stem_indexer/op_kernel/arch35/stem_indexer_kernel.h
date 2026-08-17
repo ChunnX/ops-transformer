@@ -100,6 +100,7 @@ protected:
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
+    __aicore__ inline void DrainMm1CrossCoreSlots();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     __aicore__ inline bool NeedCleanOutput();
     // ================================Split Core================================
@@ -157,9 +158,21 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
-        vectorService.InitBuffers(pipe, needCleanOutput);
+        vectorService.InitBuffers(pipe, needCleanOutput, !isUsedCoreEqZero);
     } else {
         matmulService.InitBuffers(pipe);
+    }
+}
+
+template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::DrainMm1CrossCoreSlots()
+{
+    if ASCEND_IS_AIC {
+        for (uint32_t slot = 0U; slot < SICommon::MM1_RES_BUFFER_NUM; ++slot) {
+            CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + slot);
+            CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+                SICommon::CROSS_VC_EVENT + slot + SICommon::AIV0_AIV1_OFFSET);
+        }
     }
 }
 
@@ -504,10 +517,8 @@ __aicore__ inline void SIPreload<SIT>::Process()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2);
     }
+    DrainMm1CrossCoreSlots();
 }
 
 template <typename SIT>
