@@ -549,8 +549,10 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 {
     static_assert(s1BaseSize == 64U && s2BaseSize == 512U, "V121 vector path requires a 64x512 template");
     SoftmaxInitBuffer();
-    tPipe->InitBuffer(lseTmpBuff[0], 1024);
-    tPipe->InitBuffer(lseTmpBuff[1], 1024);
+    // ComputeLseOutputVF stores each logical row in one 32-byte block (8 floats).
+    constexpr uint32_t lseTmpBufferSize = s1BaseSize * 8U * sizeof(float);
+    tPipe->InitBuffer(lseTmpBuff[0], lseTmpBufferSize);
+    tPipe->InitBuffer(lseTmpBuff[1], lseTmpBufferSize);
     tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
     tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
     tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
