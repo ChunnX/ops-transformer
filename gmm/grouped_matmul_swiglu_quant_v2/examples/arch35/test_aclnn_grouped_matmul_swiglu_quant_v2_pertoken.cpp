@@ -216,8 +216,8 @@ int aclnnGroupedMatmulSwigluQuantV2Test(int32_t deviceId, aclrtStream &stream)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 创建yScale aclTensor
-    ret = CreateAclTensor<float>(outputScaleHostData, outputScaleShape, &outputScaleDeviceAddr,
-                                 aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &outputScale);
+    ret = CreateAclTensor<float>(outputScaleHostData, outputScaleShape, &outputScaleDeviceAddr, aclDataType::ACL_FLOAT,
+                                 aclFormat::ACL_FORMAT_ND, &outputScale);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> outputScaleTensorPtr(outputScale, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> outputScaleDeviceAddrPtr(outputScaleDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
