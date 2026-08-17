@@ -698,8 +698,6 @@ aclnnStatus aclnnMoeDistributeDispatch(
     };
 
     const uint32_t MACHINE_NUM = 1;
-    // const char *rank_table_file = std::getenv("RANK_TABLE_FILE");
-    // const char *first_rank_id = std::getenv("FIRST_RANK_ID");
     const char *env_dev_num = std::getenv("ENV_DEV_NUM");
 
     uint32_t EP_WORLD_SIZE = 0;
