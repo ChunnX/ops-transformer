@@ -89,6 +89,7 @@ public:
     void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
+        reduceInputFloat_ = false;
     }
 
 private:
@@ -167,6 +168,7 @@ protected:
     int64_t vLength_;
     int64_t dSplitCoef_;
     uint32_t dCosFlag_{0};
+    bool reduceInputFloat_{false};
     bool isTndLayout_ = false;
 };
 

@@ -38,6 +38,7 @@ constexpr int64_t HALF_MODE_COEF = 2;
 constexpr int64_t D_LIMIT = 1024;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t INPUT_OUTPUT_NUM = 2;       // grad_query + grad_key 双路
+constexpr int64_t PARTIAL_TYPE_SIZE = sizeof(float);
 
 const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16};
 static const std::vector<std::string> inputNames = {
@@ -745,11 +746,21 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
         OP_LOGE(context_->GetNodeName(), "ReduceOp get input param failed"),
         return ge::GRAPH_FAILED);
     ge::graphStatus status;
-    if (ge::GetSizeByDataType(opInput.inputDtype) == sizeof(float)) {
-        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float>::OpDag>(
+    if (reduceInputFloat_) {
+        opInput.inputDtype = ge::DT_FLOAT;
+        opInput.shape[DIM_2] = std::max(nQ_, nK_);
+    }
+    if (reduceInputFloat_ && dtype_ == ge::DT_FLOAT) {
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float, float>::OpDag>(
+            context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
+    } else if (reduceInputFloat_) {
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, Ops::Base::half, float>::OpDag>(
+            context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
+    } else if (ge::GetSizeByDataType(opInput.inputDtype) == sizeof(float)) {
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float, float>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     } else {
-        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<Ops::Base::half, float>::OpDag>(
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<Ops::Base::half, Ops::Base::half, float>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     }
     OP_CHECK_IF(
@@ -771,7 +782,11 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
         reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
-    auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * ge::GetSizeByDataType(dtype_) * INPUT_OUTPUT_NUM;
+    auto partialTypeSize = (dCosFlag_ == 1 &&
+                            dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB))
+                               ? PARTIAL_TYPE_SIZE
+                               : ge::GetSizeByDataType(dtype_);
+    auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
     if (dCosFlag_ == 1) {
         context_->SetScheduleMode(1); // batch mode, all cores start simultaneously
         if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {

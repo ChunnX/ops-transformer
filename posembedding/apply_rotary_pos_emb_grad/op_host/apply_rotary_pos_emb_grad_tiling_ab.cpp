@@ -25,8 +25,9 @@ constexpr int64_t AB_DOUBLE_BUFFER = 2;
 constexpr int64_t AB_CONST_TWO = 2;
 // UB 主 tensor 数 × double buffer:
 //   DcosFlag=0: gradQ + gradK + dxQ + dxK = 4 路 × Db(2) = 8 (cos/sin 折算到 (ubFactorN+1) 的 +1)
-//   DcosFlag=1: + query + key + gradCos + gradSin = 8 路 × Db(2) = 16
+//   DcosFlag=1: + query + key + gradCos(float) + gradSin(float)
 constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 16;
+constexpr int64_t AB_UB_DIVISOR_WITH_DCOS_FLOAT_PARTIAL = 20;
 constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 8;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
@@ -81,7 +82,11 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
     bool dHalfAligned = (dAlign_ == d_);
     int64_t maxCopyN = dHalfAligned ? MAX_COPY_BLOCK_COUNT : MAX_COPY_BLOCK_COUNT / dSplitCoef_;
 
-    int64_t divisor = (dCosFlag_ == 1) ? AB_UB_DIVISOR_WITH_DCOS : AB_UB_DIVISOR_WITHOUT_DCOS;
+    int64_t divisor = AB_UB_DIVISOR_WITHOUT_DCOS;
+    if (dCosFlag_ == 1) {
+        divisor = (typeSize == static_cast<int64_t>(sizeof(float))) ? AB_UB_DIVISOR_WITH_DCOS
+                                                                    : AB_UB_DIVISOR_WITH_DCOS_FLOAT_PARTIAL;
+    }
     // UB 能容纳多少行 dAlign: 可用空间 = ubSize / divisor, 先 floor 对齐到 blockSize 再除以单行字节
     int64_t baseBlockInUb = Ops::Base::FloorAlign(ubSize_ / divisor, blockSize_) / bufferSize;
     OP_CHECK_IF(baseBlockInUb < 1,
@@ -154,6 +159,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::DoOpTiling()
         OP_LOGE(context_->GetNodeName(), "AB SplitUb failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(InitTilingData() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "AB InitTilingData failed"), return ge::GRAPH_FAILED);
+    reduceInputFloat_ = true;
     OP_CHECK_IF(TilingReduce() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "AB TilingReduce failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

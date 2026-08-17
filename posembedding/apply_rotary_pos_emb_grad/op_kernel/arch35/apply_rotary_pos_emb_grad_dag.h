@@ -25,18 +25,18 @@
 namespace ApplyRotaryPosEmbGrad {
 using namespace Ops::Base;
 
-template <typename T, typename PromteT>
+template <typename InT, typename OutT, typename PromoteT>
 struct ApplyRotaryPosEmbGradDag {
     // 输入: workspace 中的部分积 (query*gradQ + key*gradK 的逐元素累加结果)
-    using OpCopyIn = Bind<Vec::CopyIn<T>, Placeholder::In0<T>>;
+    using OpCopyIn = Bind<Vec::CopyIn<InT>, Placeholder::In0<InT>>;
     // 提升到 fp32 做 reduce，保证精度
-    using Cast0 = Bind<Vec::Cast<PromteT, T, 0>, OpCopyIn>;
+    using Cast0 = Bind<Vec::Cast<PromoteT, InT, 0>, OpCopyIn>;
     // 跨广播轴求和
-    using Reduce0 = Bind<Vec::ReduceSumOp<PromteT>, Cast0>;
+    using Reduce0 = Bind<Vec::ReduceSumOp<PromoteT>, Cast0>;
     // 转回原始数据类型
-    using Cast1 = Bind<Vec::Cast<T, PromteT, 1>, Reduce0>;
+    using Cast1 = Bind<Vec::Cast<OutT, PromoteT, 1>, Reduce0>;
     // 写出 grad_cos / grad_sin
-    using OpCopyOut = Bind<Vec::CopyOut<T>, Placeholder::Out0<T>, Cast1>;
+    using OpCopyOut = Bind<Vec::CopyOut<OutT>, Placeholder::Out0<OutT>, Cast1>;
     using Outputs = Elems<OpCopyOut>;
     using MemCfg = MemOptCfg<MemLevel::LEVEL_2>;
     using OpDag = DAGSch<Outputs, void, MemCfg>;

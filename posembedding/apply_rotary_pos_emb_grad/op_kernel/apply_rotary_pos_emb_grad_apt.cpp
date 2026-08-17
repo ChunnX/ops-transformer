@@ -33,6 +33,7 @@ using namespace Ops::Base::ReduceOpTmpl;
 using namespace AscendC;
 
 constexpr int64_t INPUT_OUTPUT_NUM = 2; // grad_cos_partial + grad_sin_partial
+constexpr int64_t PARTIAL_TYPE_SIZE = sizeof(float);
 
 template <REDUCE_TPL_PARAM, uint32_t DxTilingKey, uint32_t DcosFlag>
 __global__ __aicore__ void apply_rotary_pos_emb_grad(
@@ -84,7 +85,7 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
         ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED, (DcosFlag != 0)> op(&pipe, &tilingData.ropeGradABParams);
         if constexpr (DcosFlag) {
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * PARTIAL_TYPE_SIZE;
             op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
                 gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
         } else {
@@ -141,26 +142,43 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
         SyncAll();
 
-        using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
-            ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
-        ReduceOp reduceOp0(&tilingData.reduceTiling);
-        ReduceOp reduceOp1(&tilingData.reduceTiling);
-
         // 第一份 workspace 存 dcos_partial，第二份存 dsin_partial
         // gradCosOut = reduce(dcos_partial), gradSinOut = reduce(dsin_partial)
         // 注意: 本算子 DAG 为单输入 (In0=部分积, DAG 内无 Mul), Init 按占位符顺序绑定,
         // 只需 (pipe, In0, Out0, ws) 四参; 若照抄双输入 DAG 的五参写法多传 dy,
         // 会错位绑定导致 reduce 读原始梯度、暂存区覆盖 grad_cos/sin 输出 (越界写)
-        GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_GRAD_QUERY_EMBED);
+        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
+            using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
+                ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
+            ReduceOp reduceOp0(&tilingData.reduceTiling);
+            ReduceOp reduceOp1(&tilingData.reduceTiling);
+            GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * PARTIAL_TYPE_SIZE;
 
-        reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
-        reduceOp0.Process();
-        pipe.Reset();
-        PipeBarrier<PIPE_ALL>();
+            reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
+            reduceOp0.Process();
+            pipe.Reset();
+            PipeBarrier<PIPE_ALL>();
 
-        GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
-        reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
-        reduceOp1.Process();
-        pipe.Reset();
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * PARTIAL_TYPE_SIZE;
+            reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
+            reduceOp1.Process();
+            pipe.Reset();
+        } else {
+            using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
+                ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
+            ReduceOp reduceOp0(&tilingData.reduceTiling);
+            ReduceOp reduceOp1(&tilingData.reduceTiling);
+            GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_GRAD_QUERY_EMBED);
+
+            reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
+            reduceOp0.Process();
+            pipe.Reset();
+            PipeBarrier<PIPE_ALL>();
+
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
+            reduceOp1.Process();
+            pipe.Reset();
+        }
     }
 }
