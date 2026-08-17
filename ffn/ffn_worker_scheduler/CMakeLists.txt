@@ -9,9 +9,11 @@
 # -----------------------------------------------------------------------------------------------------------
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
- list(REMOVE_ITEM CURRENT_DIRS tests)
- foreach(SUB_DIR ${CURRENT_DIRS})
-     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
-         add_subdirectory(${SUB_DIR})
-     endif()
- endforeach()
+if(NOT ENABLE_TEST)
+    list(REMOVE_ITEM CURRENT_DIRS tests)
+endif()
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()
