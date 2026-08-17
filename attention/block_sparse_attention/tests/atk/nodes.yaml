@@ -1,0 +1,8 @@
+nodes:
+  - backend: npu
+    task: ['accuracy']
+    devices: [1]
+  - backend: cpu
+    name: gpu
+    task: ['accuracy']
+    devices: [1]
