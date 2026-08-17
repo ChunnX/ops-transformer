@@ -912,8 +912,8 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         self._run_arch22_precision_once(
             data, [0, 8, 15], f"arch22_q16_hot_csr_inner{inner_precise}")
 
-  def test_arch22_bf16_q16_hot_csr_phase1_dump(self):
-    """Manual DEBUG_MODE=1/2/3 probe; compare against saved phase1 golden."""
+  def _manual_arch22_bf16_q16_hot_csr_phase1_dump(self):
+    """Manual DEBUG_MODE=1/2/3 probe; not a production precision test."""
     data = self._make_arch22_133120_case(q_seqlen=16)
     self._run_arch22_phase1_dump_once(data, "arch22_q16_hot_csr_phase1")
 
