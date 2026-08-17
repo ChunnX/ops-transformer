@@ -120,10 +120,8 @@ public:
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
                                          AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
                                          __gm__ int32_t *actualSeqKvlenAddr);
-    __aicore__ inline void IterateBmm1_0(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm1_1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
+                                       RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
@@ -298,30 +296,20 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInf
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1_0(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                            RunInfo &runInfo, ConstInfo &constInfo) {
-  CalcS2Coord(runInfo, constInfo);
-  if constexpr (isFp8) {
-    if constexpr (useDn) {
-      IterateBmm1Dn(outputBuf, runInfo, constInfo, 0U);
-    } else {
-      IterateBmm1Nd(outputBuf, runInfo, constInfo, 0U);
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    uint32_t roundIdx)
+{
+    if (roundIdx == 0U) {
+        CalcS2Coord(runInfo, constInfo);
     }
-  }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1_1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                            RunInfo &runInfo, ConstInfo &constInfo) {
-  if constexpr (isFp8) {
-    if constexpr (useDn) {
-      IterateBmm1Dn(outputBuf, runInfo, constInfo, 1U);
-    } else {
-      IterateBmm1Nd(outputBuf, runInfo, constInfo, 1U);
+    if constexpr (isFp8) {
+        if constexpr (useDn) {
+            IterateBmm1Dn(outputBuf, runInfo, constInfo, roundIdx);
+        } else {
+            IterateBmm1Nd(outputBuf, runInfo, constInfo, roundIdx);
+        }
     }
-  }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -722,11 +710,8 @@ public:
                                          AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
                                          __gm__ int32_t *actualSeqKvlenAddr)
     {}
-    __aicore__ inline void IterateBmm1_0(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo)
-    {}
-    __aicore__ inline void IterateBmm1_1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                       RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx)
     {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
