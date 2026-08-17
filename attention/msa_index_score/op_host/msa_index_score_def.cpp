@@ -26,7 +26,8 @@
 namespace ops {
 class MsaIndexScore : public OpDef {
 public:
-    explicit MsaIndexScore(const char *name) : OpDef(name)
+    explicit MsaIndexScore(const char *name)
+        : OpDef(name)
     {
         // Q_idx, TND: [T1, N1, D]
         this->Input("query")

@@ -54,16 +54,16 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
                 OP_LOGE(context, "block_table must have 2 dims, but got %zu.", blockTableShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
 
-    const int64_t totalQ = queryShape->GetDim(0);      // 0: T
-    const int64_t numQHeads = queryShape->GetDim(1);   // 1: numQHeads
+    const int64_t totalQ = queryShape->GetDim(0);         // 0: T
+    const int64_t numQHeads = queryShape->GetDim(1);      // 1: numQHeads
     const int64_t maxBlocks = blockTableShape->GetDim(1); // 1: maxBlocksPerBatch
 
     // maxpool 已经把一个 block 内的 blockSize 个 token 归约成 1 个分数，
     // 因此输出末维是 block 数（16 对齐）而不是 kv token 数。
     scoreShape->SetDimNum(MSA_QUERY_DIM_NUM);
-    scoreShape->SetDim(0, numQHeads);                                       // 0: numQHeads
-    scoreShape->SetDim(1, totalQ);                                          // 1: totalQ
-    scoreShape->SetDim(2, RoundUpTo(maxBlocks, MSA_SCORE_STRIDE_ALIGN));    // 2: scoreBlockStride
+    scoreShape->SetDim(0, numQHeads);                                    // 0: numQHeads
+    scoreShape->SetDim(1, totalQ);                                       // 1: totalQ
+    scoreShape->SetDim(2, RoundUpTo(maxBlocks, MSA_SCORE_STRIDE_ALIGN)); // 2: scoreBlockStride
 
     OP_LOGI(context->GetNodeName(), "MsaIndexScore InferShape end.");
     return ge::GRAPH_SUCCESS;

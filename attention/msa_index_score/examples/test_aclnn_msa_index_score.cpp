@@ -43,11 +43,11 @@ struct TestCase {
     int64_t numQHeads;
     int64_t headDim;
     int64_t numPages;
-    std::vector<int32_t> qLen;    // 每个请求的 query 长度
-    std::vector<int32_t> kvLen;   // 每个请求可见的 kv 长度
+    std::vector<int32_t> qLen;     // 每个请求的 query 长度
+    std::vector<int32_t> kvLen;    // 每个请求可见的 kv 长度
     std::vector<int32_t> startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     bool useBf16;
-    bool useInt8Key; // true: key=int8，scale=[NP,N_kv,P] 反量化
+    bool useInt8Key;        // true: key=int8，scale=[NP,N_kv,P] 反量化
     int64_t sparseMode = 3; // 0 / 3
 };
 
@@ -408,8 +408,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     const std::vector<int64_t> keyShape = {tc.numPages, BLOCK_SIZE, NUM_KV_HEADS, tc.headDim};
     const std::vector<int64_t> scoreShape = {tc.numQHeads, totalQ, scoreStride};
 
-    aclTensor *queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16)
-                                   : buf.Create(queryHf, queryShape, ACL_FLOAT16);
+    aclTensor *queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
     aclTensor *keyT = nullptr;
     if (tc.useInt8Key) {
         keyT = buf.Create(keyI8, keyShape, ACL_INT8);
@@ -493,20 +492,19 @@ int main()
     // startLoc 为逻辑 block 索引；因果由 sparseMode=3（rightDownCausal）承担。
     const std::vector<TestCase> cases = {
         // name                       Hq   D    pages  qLen           kvLen         startLoc(block) bf16  int8
-        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {16},          false, false},
-        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {16},          false, true},
-        {"L0-prefill-aligned",         8, 128,   8,   {32},          {256},        {1},           false, false},
-        {"L1-prefill-unaligned",       8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        false, false},
-        {"L1-prefill-multi-mtile",     8, 128,  16,   {64, 48},      {700, 520},   {4, 3},        false, false},
-        {"L1-decode-lq1",              8, 128,  16,   {1,1,1,1,1,1}, {900, 512, 128, 129, 1, 4096},
-                                                                      {7, 3, 0, 1, 0, 31}, false, false},
-        {"L1-decode-speculative",      8, 128,  16,   {4, 2},        {1024, 260},  {7, 2},        false, false},
-        {"L1-long-seq-multi-stile",    8, 128,  40,   {8},           {4096},       {31},          false, false},
-        {"L1-bf16",                    8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        true,  false},
-        {"L1-head-dim-64",             8,  64,   8,   {32, 17},      {300, 130},   {2, 0},        false, false},
-        {"L1-heads-16",               16, 128,   8,   {13},          {300},        {2},           false, false},
-        {"L1-int8-dequant",            8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        false, true},
-        {"L2-tiny-kv",                 8, 128,   4,   {1, 1},        {1, 3},       {0, 0},        false, false},
+        {"L0-debug-trace", 2, 16, 2, {2}, {5}, {16}, false, false},
+        {"L0-int8-dequant-trace", 2, 16, 2, {2}, {5}, {16}, false, true},
+        {"L0-prefill-aligned", 8, 128, 8, {32}, {256}, {1}, false, false},
+        {"L1-prefill-unaligned", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false},
+        {"L1-prefill-multi-mtile", 8, 128, 16, {64, 48}, {700, 520}, {4, 3}, false, false},
+        {"L1-decode-lq1", 8, 128, 16, {1, 1, 1, 1, 1, 1}, {900, 512, 128, 129, 1, 4096}, {7, 3, 0, 1, 0, 31}, false, false},
+        {"L1-decode-speculative", 8, 128, 16, {4, 2}, {1024, 260}, {7, 2}, false, false},
+        {"L1-long-seq-multi-stile", 8, 128, 40, {8}, {4096}, {31}, false, false},
+        {"L1-bf16", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, true, false},
+        {"L1-head-dim-64", 8, 64, 8, {32, 17}, {300, 130}, {2, 0}, false, false},
+        {"L1-heads-16", 16, 128, 8, {13}, {300}, {2}, false, false},
+        {"L1-int8-dequant", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true},
+        {"L2-tiny-kv", 8, 128, 4, {1, 1}, {1, 3}, {0, 0}, false, false},
     };
 
     size_t passed = 0;

@@ -24,12 +24,12 @@
 
 using namespace MsaIndexScoreNs;
 
-#define MSA_INVOKE_KERNEL(ElementQ, IsQuant)                                                                  \
-    do {                                                                                                      \
-        MsaIndexScoreKernel<ElementQ, IsQuant> op;                                                            \
-        op.Init(query, key, blockTable, scale, actualSeqQlen, actualSeqKlen, startLoc, score,                  \
-                userWs, tilingData);                                                                          \
-        op.Process();                                                                                         \
+#define MSA_INVOKE_KERNEL(ElementQ, IsQuant) \
+    do { \
+        MsaIndexScoreKernel<ElementQ, IsQuant> op; \
+        op.Init(query, key, blockTable, scale, actualSeqQlen, actualSeqKlen, startLoc, score, \
+                userWs, tilingData); \
+        op.Process(); \
     } while (0)
 
 extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable,

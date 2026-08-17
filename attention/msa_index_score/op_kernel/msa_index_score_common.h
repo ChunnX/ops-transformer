@@ -54,7 +54,7 @@ constexpr uint32_t MSA_STILE_BYTES_FP16 = MSA_STILE_ELEM_NUM * sizeof(uint16_t);
 constexpr uint32_t MSA_STILE_BYTES_FP32 = MSA_STILE_ELEM_NUM * sizeof(float);
 
 // int8 路径：每个 AIC 私有一块 K cast 暂存，容纳一个 S-tile 内全部 page
-//（AIV 先 cast，AIC 再 Mmad，避免逐 page 细粒度同步）。
+// （AIV 先 cast，AIC 再 Mmad，避免逐 page 细粒度同步）。
 // 单页布局 [blockSize, headDim] 行主序，按 j*P*D 排列。
 constexpr uint32_t MSA_K_SCRATCH_ELEM_NUM =
     MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * MSA_K_TILE;
