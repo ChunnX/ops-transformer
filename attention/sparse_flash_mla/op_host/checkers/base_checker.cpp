@@ -215,16 +215,12 @@ bool BaseChecker::IsOriCmpSparse(const CheckContext &context) const
 
 bool BaseChecker::CanOmitSequsedOriKv(const CheckContext &context) const
 {
-    const bool oriSparseWithoutMask = IsOriSparse(context) && context.oriMaskMode == 0;
-    const bool oriCmpSparseWithoutMask =
-        IsOriCmpSparse(context) && context.oriMaskMode == 0 && context.cmpMaskMode == 0;
-    return (oriSparseWithoutMask || oriCmpSparseWithoutMask) && context.oriTopkLength.present;
+    return context.oriTopkLength.present;
 }
 
 bool BaseChecker::CanOmitSequsedCmpKv(const CheckContext &context) const
 {
-    return IsOriCmpSparse(context) && context.oriMaskMode == 0 && context.cmpMaskMode == 0 &&
-           context.cmpTopkLength.present;
+    return context.cmpTopkLength.present;
 }
 
 } // namespace sparse_mla_checker

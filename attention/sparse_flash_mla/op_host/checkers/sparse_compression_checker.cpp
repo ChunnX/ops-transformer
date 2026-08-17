@@ -93,6 +93,16 @@ ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext 
                     Op(context), "cmp_residual_kv",
                     "Cmp_residual_kv is required for the current compressed causal mode"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.oriSparseIndices.present && context.oriMaskMode == 0 && !context.oriTopkLength.present,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    Op(context), "ori_topk_length",
+                    "Ori_topk_length is required when ori_sparse_indices is present and ori_mask_mode is 0"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.cmpSparseIndices.present && context.cmpMaskMode == 0 && !context.cmpTopkLength.present,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    Op(context), "cmp_topk_length",
+                    "Cmp_topk_length is required when cmp_sparse_indices is present and cmp_mask_mode is 0"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
