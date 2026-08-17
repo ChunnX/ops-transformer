@@ -178,6 +178,8 @@ public:
                                         GlobalTensor<int32_t> &cuSeqlensCmpKvGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
                                         GlobalTensor<int32_t> &cmpResidualKvGm, GlobalTensor<int32_t> &actualSeqQlenGm,
                                         GlobalTensor<int32_t> &cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &constInfo);
+    __aicore__ inline void AllocEventID(ConstInfo &constInfo);
+    __aicore__ inline void FreeEventID(ConstInfo &constInfo);
 
 private:
     __aicore__ inline uint32_t GetStagingSlotNum(bool isInner = false) const
@@ -2313,6 +2315,47 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::AllocEventID(ConstInfo &constInfo)
+{
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        SetFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
+        SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+    }
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+    if (constInfo.isSoftmaxLseEnable) {
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[0]);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[1]);
+    SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
+    SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    SetFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEventID(ConstInfo &constInfo)
+{
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
+        WaitFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+    }
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    if (constInfo.isSoftmaxLseEnable) {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[0]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[1]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+
 }
 
 TEMPLATES_DEF_NO_DEFAULT
