@@ -626,6 +626,23 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
 
+- A3 弹性扩缩容接口：
+
+```python
+sym_buffer.query_mask_buffer() -> Optional[Tensor]
+sym_buffer.update_mask_buffer(rank, masked) -> None
+sym_buffer.update_group(group) -> None
+```
+
+`mask_buffer` 及以上三个 `SymmBuffer` 弹性成员函数当前仅支持 Atlas A3。
+`SymmBuffer` 默认不创建 `mask_buffer`，
+因此各代际默认均不会向算子传入该参数。第一次调用 `update_mask_buffer` 时才会在 NPU 上创建
+shape 为 `[ep_world_size]` 的全 False bool 掩码；置为 True 的 rank 会在后续计算和卡间通信中跳过。
+`query_mask_buffer` 在掩码尚未创建时返回 `None`，创建后直接返回当前 NPU 上的 `mask_buffer` Tensor；
+调用者对返回 Tensor 的原地修改会影响后续 `mega_moe` 调用所使用的掩码。
+`update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。
+`update_group` 使用新 group 完整重建通信链路，并将 `mask_buffer` 恢复为 `None`，旧通信链路的算子执行完成需要调用者保证。
+
 ## 参数说明
 
 ### get_symm_buffer_for_mega_moe
