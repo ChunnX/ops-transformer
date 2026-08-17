@@ -166,6 +166,9 @@ AIV (block 0):
 | 2026-08-15 | flagId=0 计数式 | T 次 SetFlag(0) ↔ T 次 WaitFlag(0), 峰值 T ≤ 15 |
 | 2026-08-15 | T=1 退化路径 | commTurn=1 时走原路径，保持向后兼容 |
 | 2026-08-15 | fragmentTensor 不做 | 限制条件，后续优化版再上 |
+| 2026-08-17 | 评审意见 1: 数学公式 | 参考 qbmm_reduce_scatter §1.1 风格更新 design(1).md |
+| 2026-08-17 | 评审意见 3: if/else 归一化 | 删除 if(commTurn<=1) 分支，统一为单一循环路径 |
+| 2026-08-17 | 评审意见 2: FragmentTensor 分析 | R5/R6/R8 三轮实验确认: 一次 matmul 调用(problemShape.m=m)比 per-tile 子调用慢 5~7%。根因: 大 M 下 L1 cache 压力增加(CUBE 920→1035us)。真正消除 R 循环需引入 BlockMmadFragC + FragmentTensor 组件(类似 allgather QmmMxKernelAgUdma)，保持 per-fragment L1 局部性。当前保留 R 循环 + if/else 归一化(R7)，性能与 R4 持平 |
 
 ---
 

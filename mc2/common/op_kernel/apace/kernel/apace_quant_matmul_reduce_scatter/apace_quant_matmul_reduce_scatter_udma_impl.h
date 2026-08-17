@@ -10,26 +10,27 @@
 
 /*!
  * \file quant_matmul_reduce_scatter_impl.h
- * \brief quantMatmulReduceScatter — PUT 模式实现 (计算→通信) + per-tile 通信流水
+ * \brief quantMatmulReduceScatter — PUT 模式实现 + FragmentTensor 消除 R 循环
  *
- * 架构（PUT 模式 = 计算→通信，per-tile 通信流水）：
- *   AIC: RunMatmul()  一次 matmul 调用覆盖完整 [m, n] (M_total = m = rankSize * chunkM)
- *                        完成后 CrossCoreSetFlag<0x2, PIPE_FIX>(0) 通知 AIV
- *   AIV: RunAllToAllAndReduceSum()  per-tile 循环:
- *                        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0) 等待 AIC 完成
- *                        AllToAll PUT: 逐 tile 推送 C_i 到所有目标 rank
- *                        reduceSum: 逐 tile 对 R 个源求和 → output
+ * 参考 allgather 的 FragmentTensor 设计思想:
+ *   - A 数据全在本卡 GM 连续 [m,k], 各 rank 段打包为 FragmentTensor
+ *   - BlockMmadFragC 在 tile 跨越 rank 边界时自动切换 fragment, 保持 per-fragment L1 隔离
+ *   - 一次 matmul 调用覆盖所有 rank 段, 无 R 循环
+ *   - per-tile 流水: AIC 逐 tile SetFlag, AIV 逐 tile WaitFlag + AllToAll + reduceSum
+ *
+ * 架构:
+ *   AIC: for t = 0..commTurn:
+ *          构建 FragmentTensor (rankSize 个 fragment, 每个 chunkM 行)
+ *          matmul(rankSize * curTileM) → workspace
+ *          SetFlag(0) → 通知 AIV
+ *   AIV: for t = 0..commTurn:
+ *          WaitFlag(0) → SyncAll → AllToAll PUT → reduceSum
  *
  * 关键设计:
- *   - 消除 R 循环: M_total = m, A 数据连续 [m,k], C 输出到 workspace 连续 [m,n]
- *     一次 matmul 调用覆盖全部 rank 段, PUT 自动按 rank 偏移读取
- *   - 统一路径: 无 if/else, AIC 一次算完后发 1 次 SetFlag
- *   - per-tile 通信: AIV 侧按 commTurn 分 tile 通信+reduceSum (流水在通信侧)
- *   - CrossCore flag flagId=0: 1 次 Set(0) 对应 1 次 Wait(0)
- *   - PUT 模式: AIC 写 workspace, AIV 从 workspace 推送到其他 rank win 区
- *   - reduceSum: self 从 workspace 读, received 从 win 读, per-tile 分块处理
- *   - 所有 AIC 核参与 matmul (BlockScheduler 分配), 仅 block 0 的 AIV 参与通信
- *   - AIC 不参与 SyncAll (SyncAll<true> isAIVOnly=true)
+ *   - 无 R 循环: FragmentTensor 打包 rankSize 个 fragment, 一次调用覆盖全部
+ *   - 无 if/else: 统一 for t 循环, T=1 自然退化
+ *   - L1 局部性: BlockMmadFragC per-fragment 独立加载 L1 (与 R 循环一致)
+ *   - flag 计数式: T 次 Set(0) 对应 T 次 Wait(0)
  */
 
 #pragma once
@@ -44,7 +45,6 @@
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
-#include "apace/kernel/all_to_all_quant_matmul/quant_matmul_mx_kernel.h"
 
 #include "apace/block/aiv_comm/collective_comm_api.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
@@ -52,6 +52,7 @@
 #include "apace/block/aiv_comm/barrier/barrier_ubmem.h"
 
 #include "apace_quant_matmul_reduce_scatter_tiling_data.h"
+#include "qmm_mx_kernel_rs_frag.h"
 #include "reduce_sum.h"
 
 namespace Apace {
@@ -105,25 +106,13 @@ public:
         AscendC::Std::conditional_t<TransB, AscendC::Te::ScaleBDNLayoutPtn, AscendC::Te::ScaleBNDLayoutPtn>,
         AscendC::Std::Int<SCALE_C0>>;
 
-    // 组件定义 — 与 all_to_all_quant_matmul 保持一致
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape,
-        NONE_FULL_LOAD_MODE, LayoutA, LayoutB, TypeA>;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<NONE_FULL_LOAD_MODE, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC, BiasType, LayoutBias>;
-    struct NoOpCommWaitPolicy { __aicore__ inline void WaitTile(uint32_t) {} };
-    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler, NoOpCommWaitPolicy>;
+    // 组件定义 — 使用 FragmentTensor 版 kernel (参考 allgather QmmMxKernelAgUdma)
+    using FragKernelImpl = ReduceScatterFragImpl::QmmMxKernelRsFrag<AType, BType, CType>;
+    using FragKernelParams = typename FragKernelImpl::Params;
+    using FragQBMMTiling = typename FragKernelImpl::QBMMTiling;
+    using FragFragmentParams = typename FragKernelImpl::FragmentParams;
 
-    // 参数类型
-    using Params = typename QuantMatmulKernelImpl::Params;
-    using BlockMmadParams = typename QuantMatmulKernelImpl::BlockMmadParams;
-    using L1Params = typename QuantMatmulKernelImpl::L1Params;
-    using LocalParams = typename QuantMatmulKernelImpl::LocalParams;
-    using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
-    using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
-    using MatmulMode = typename QuantMatmulKernelImpl::MatmulMode;
-
-    QuantMatmulKernelImpl quantMatmulKernelImpl_;
+    FragKernelImpl fragKernelImpl_;
 
 private:
     // ---------------- 通信相关组件 ----------------
@@ -259,52 +248,70 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 // =================================================================================
-// AIC 侧: per-tile matmul → workspaceGM (统一路径, 无 if/else, 无 R 循环)
+// AIC 侧: FragmentTensor matmul → workspaceGM (统一路径, 无 if/else, 无 R 循环)
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
-    // 一次 matmul 调用覆盖完整 [m, n] (M_total = m = rankSize * chunkM)
-    // A 数据连续 [m, k], C 输出到 workspace 连续 [m, n]
-    // PUT 自动按 targetRankId * chunkBytes 偏移从 workspace 读取各 rank 段
-    // 无 R 循环, 无 per-tile 切分 — 消除 FragmentTensor 需求
+    // FragmentTensor 方案: 一次 matmul 调用覆盖所有 rank 段
+    //   totalLogicalM = rankSize * chunkM = m (或 rankSize * curTileM for per-tile)
+    //   FragmentTensor 打包各 rank 段地址, BlockMmadFragC per-fragment L1 隔离
+    //   无 R 循环, 无 if/else — 统一 for t 循环, T=1 自然退化
     const auto& mmT = tilingData_->mmTilingData;
+    const auto& commTd = tilingData_->commTilingData;
+    uint32_t commTurn = static_cast<uint32_t>(commTd.splitAxisTileCnt + commTd.splitAxisTailCnt);
+    uint32_t R = baseParams_.rankSize;
 
-    ProblemShape problemShape{
-        static_cast<int64_t>(mmT.m),
-        static_cast<int64_t>(mmT.n),
-        static_cast<int64_t>(mmT.k), 1LL};
+    for (uint32_t t = 0; t < commTurn; ++t) {
+        bool isHeadTile = (t < commTd.splitAxisTileCnt);
+        uint32_t curTileM = isHeadTile
+                          ? static_cast<uint32_t>(commTd.splitAxisTileSize)
+                          : static_cast<uint32_t>(commTd.splitAxisTailSize);
 
-    BlockMmadParams mmadParams;
-    mmadParams.cGmAddr = baseParams_.workspaceGm;
-    mmadParams.bGmAddr = baseParams_.bGm;
-    mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
+        // 选择 tiling: head tile 用子问题 tiling (baseM=128, T>1时), tail tile 用全量 tiling
+        const auto& subMmT = tilingData_->subMmTilingData;
+        const auto& tileT = (isHeadTile && commTurn > 1) ? subMmT : mmT;
 
-    // rankId=0, rankSize=1: 单卡模式, A 从本地完整读取, 不等通信 flag
-    LocalParams localParams{
-        0U, 1U, static_cast<uint64_t>(mmT.m),
-        baseParams_.aGm, baseParams_.scaleAGm,
-        1U, 1UL, MatmulMode::LOCAL, static_cast<uint32_t>(baseParams_.headMSize)};
+        // Fragment 参数 — 单一 HEAD region (per-tile 调用, 无 MAIN/TAIL)
+        // headRows = R * curTileM (当前 tile 跨所有 rank 段的总 M)
+        // tileCnt = 0, tailCnt = 0 → 只有 HEAD region, 无 MAIN/TAIL
+        FragFragmentParams fragParams;
+        fragParams.tileCnt = 0;
+        fragParams.tileM = curTileM;
+        fragParams.tailCnt = 0;
+        fragParams.tailM = 0;
+        fragParams.paddedTailM = 0;
+        fragParams.commTurn = 1; // 单次调用, 无 comm 流水
+        fragParams.headRows = R * curTileM;
+        fragParams.rankId = baseParams_.rankId;
+        fragParams.rankSize = R;
+        fragParams.mPerRank = baseParams_.chunkM;
+        fragParams.k = baseParams_.axisK;
+        fragParams.n = baseParams_.axisN;
+        fragParams.scaleKLen = (baseParams_.axisK + 63U) / 64U * 2U;
 
-    L1Params l1Params{
-        static_cast<uint64_t>(mmT.stepK) * mmT.baseK,
-        mmT.scaleKL1, mmT.nBufferNum};
+        FragKernelParams params;
+        params.mmTile = &tileT;
+        params.qbmmParams = {tileT.baseM, tileT.baseN, tileT.baseK, tileT.dbL0c};
+        params.fragParams = fragParams;
+        // A/C 地址带 tile 偏移: aGm + tileMOffset * K, workspaceGm + tileMOffset * N * sizeof(CType)
+        uint64_t tileMOffset = isHeadTile
+            ? t * static_cast<uint32_t>(commTd.splitAxisTileSize)
+            : static_cast<uint32_t>(commTd.splitAxisTileCnt) * static_cast<uint32_t>(commTd.splitAxisTileSize);
+        params.aGM = baseParams_.aGm + tileMOffset * baseParams_.axisK;
+        params.aScaleGM = baseParams_.scaleAGm + tileMOffset * baseParams_.scaleARowBytes;
+        params.bGM = baseParams_.bGm;
+        params.bScaleGM = baseParams_.scaleBGm;
+        params.cGM = baseParams_.workspaceGm + tileMOffset * baseParams_.axisN * sizeof(CType);
+        params.dataBytesPerMRow = baseParams_.axisK * sizeof(AType);
+        params.scaleBytesPerMRow = baseParams_.scaleARowBytes;
+        params.cBytesPerM = baseParams_.axisN * sizeof(CType);
 
-    BlockSchedulerParams schedulerParams{
-        mmT.baseM, mmT.baseN, mmT.mTailTile, mmT.nTailTile,
-        mmT.mBaseTailSplitCnt, mmT.nBaseTailSplitCnt, mmT.mTailMain, mmT.nTailMain};
+        fragKernelImpl_(params);
 
-    QBMMTiling qbmmParams{
-        mmT.baseM, mmT.baseN, mmT.baseK, mmT.dbL0c, false};
-
-    Params params = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
-
-    // 无 SetAtomicAdd (无 L0C 原子累加, 每卡独立完整计算)
-    quantMatmulKernelImpl_(params);
-
-    // 通知 AIV: matmul 全部完成
-    CrossCoreSetFlag<0x2, PIPE_FIX>(0);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0);
+    }
 }
 
 // =================================================================================
@@ -354,40 +361,26 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // AIC 一次 matmul 算完 [m, n], 发 1 次 SetFlag
-    // AIV WaitFlag 1 次, 然后按 commTurn 分 tile 通信 + reduceSum
-    //
-    // 通信侧 per-tile 流水:
-    //   AIV: WaitFlag → [tile0 comm+rs0] → [tile1 comm+rs1] → ... → Finalize
+    // AIC per-tile 发 T 次 SetFlag, AIV per-tile WaitFlag T 次
+    // 每轮: WaitFlag → SyncAll → Commit → Wait → SyncAll → reduceSum
 
-    // 1. 等待 AIC matmul 完成
-    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
-    SyncAll<true>();
-
-    // 2. CrossDevice 确保所有 rank 的 AIV 就绪
-    if (GetBlockIdx() == 0) {
-        teamBarrier_.CrossDevice();
-    }
-    SyncAll<true>();
-
-    // 2. 逐 tile 通信 + reduceSum
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
 
     for (uint32_t t = 0; t < commTurn; ++t) {
-        // AllToAll PUT: 推送 tile t 到所有目标 rank
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+        SyncAll<true>();
+
         if (GetBlockIdx() == 0) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         }
         SyncAll<true>();
 
-        // reduceSum: 对 tile t 的 R 个源求和 → output
         if (GetBlockIdx() == 0) {
             RunReduceSumTile(t);
         }
     }
 
-    // 3. Finalize
     if (GetBlockIdx() == 0) {
         allToAllC_.template Finalize<BARRIER_NONE>();
     }

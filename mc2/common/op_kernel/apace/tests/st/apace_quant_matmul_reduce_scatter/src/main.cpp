@@ -160,29 +160,18 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = static_cast<uint64_t>(n);
 
-    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile 流水路径 (Round 4 优化)
-    // 让 SWAT 为小 M 子问题生成独立 tiling，可能产生更小的 baseM → 更多 tiles → 更好的核间负载均衡
-    // blockDim 仍使用 mmTilingData.usedCoreNum（kernel launch 时固定）
+    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile (baseM 减半优化)
     if (tileCnt > 1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> subTilingEngine;
         subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
-
-        // Round 4 后处理: 若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除,
-        // 手动将 baseM 减半为 128, 产生更多 tiles 提升核间负载均衡
-        // SWAT 不调整 baseM 是因为 blockNum(32) >= aicNum(28), 但实际每核仅 1.14 tiles
-        // baseM=128 后: mBlockCnt=512/128=4, totalBlockCnt=4*16=64, 2.29 tiles/core
-        // L1 安全性: baseM 减半 → A buffer 减半, L1 用量减少, stepK/scaleKL1/nBufferNum 不变仍有效
-        // 对齐安全性: baseM=128 是 CUBE_BLOCK(16) 的整数倍, 满足 Blaze 对齐要求
         if (tilingData.subMmTilingData.baseM == 256U && headMSize % 128U == 0U) {
-            INFO_LOG("[Round 4] Halving subMmTiling baseM: 256 -> 128 for better tile distribution");
+            INFO_LOG("[Opt] Halving subMmTiling baseM: 256 -> 128 for better tile distribution");
             tilingData.subMmTilingData.baseM = 128U;
-            // M 尾块重置: headMSize(512) 是 128 的整数倍 → 无 M 尾块
             tilingData.subMmTilingData.mTailTile = 1U;
             tilingData.subMmTilingData.mBaseTailSplitCnt = 1U;
             tilingData.subMmTilingData.mTailMain = 0U;
         }
     } else {
-        // T=1 退化路径: 不需要子问题 tiling, 清零即可
         tilingData.subMmTilingData = {};
     }
 
