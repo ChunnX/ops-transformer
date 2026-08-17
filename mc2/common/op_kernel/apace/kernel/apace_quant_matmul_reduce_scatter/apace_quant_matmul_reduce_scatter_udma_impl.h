@@ -189,14 +189,11 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    // teamBarrier_ totalJobs=1: 仅 block 0 参与 barrier (与 AllToAll totalJobs=1 一致)
-    // CrossDevice step = min(1, nranks) = 1, core 0 轮询所有其他 rank
+    // AllToAll: totalJobs=1, block 0 处理所有 target ranks (R9 已验证)
+    // reduceSum: 多核并行 (按 blockIdx 分配行段)
     teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1,
                       static_cast<uint32_t>(GetBlockIdx()));
 
-    // 初始化 AllToAll PUT 通信链
-    // localAddr = workspaceGM (PUT 模式: 源数据, AIC 写入的 C_i)
-    // totalJobs=1: 仅 block 0 处理所有 target ranks
     allToAllC_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData,
         baseParams_.workspaceGm, commBuf.Get(), 1,
         static_cast<uint32_t>(GetBlockIdx()));
@@ -322,14 +319,18 @@ template<typename AType, typename BType, typename CType, bool TransA, bool Trans
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunReduceSumTile(
     uint32_t t)
 {
-    // 对 tile t 执行 reduceSum:
-    //   - self data: workspaceGM[rankId * chunkBytes + tileMOffset * nBytes]
-    //   - received data: selfWinAddr[r * chunkBytes + tileMOffset * nBytes] (PUT 推送)
-    //   - output: cGm[tileMOffset * nBytes]
+    // 多核并行 reduceSum: 按 blockIdx 分配行段, 每个 block 处理不同的 M 行区间
+    // 所有 block 写不同 output 地址 (无竞争)
+    //
+    // tile t 的行范围: [tileMOffset, tileMOffset + tileM)
+    // 按 blockIdx 均分行段: 每个 block 处理 rowsPerBlock 行
+    // block b 处理: [tileMOffset + b*rowsPerBlock, tileMOffset + (b+1)*rowsPerBlock)
 
     ReduceSumImpl<CType> reduceSum;
     uint32_t nSize = static_cast<uint32_t>(baseParams_.axisN);
     uint32_t chunkM = baseParams_.chunkM;
+    uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
+    uint32_t rankSize = baseParams_.rankSize;
 
     uint32_t tileM;
     uint32_t tileMOffset;
@@ -342,6 +343,29 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         tileMOffset = baseParams_.headTileCnt * static_cast<uint32_t>(baseParams_.headMSize);
     }
 
+    // 按 blockIdx 分配行段 (前 rankSize 个 block 参与)
+    uint32_t totalBlocks = rankSize;
+    if (blockIdx >= totalBlocks || tileM == 0) {
+        return;
+    }
+
+    uint32_t rowsPerBlock = tileM / totalBlocks;
+    uint32_t remainder = tileM % totalBlocks;
+
+    uint32_t myRowStart;
+    uint32_t myRowCnt;
+    if (blockIdx < remainder) {
+        myRowStart = blockIdx * (rowsPerBlock + 1);
+        myRowCnt = rowsPerBlock + 1;
+    } else {
+        myRowStart = remainder * (rowsPerBlock + 1) + (blockIdx - remainder) * rowsPerBlock;
+        myRowCnt = rowsPerBlock;
+    }
+
+    if (myRowCnt == 0) {
+        return;
+    }
+
     reduceSum.RunTile(
         baseParams_.workspaceGm,
         baseParams_.selfWinAddr,
@@ -350,8 +374,8 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         baseParams_.rankSize,
         chunkM,
         nSize,
-        tileM,
-        tileMOffset);
+        myRowCnt,
+        tileMOffset + myRowStart);
 }
 
 // =================================================================================
@@ -361,11 +385,14 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // AIC per-tile 发 T 次 SetFlag, AIV per-tile WaitFlag T 次
-    // 每轮: WaitFlag → SyncAll → Commit → Wait → SyncAll → reduceSum
-
+    // 多核并行: 前 rankSize 个 block 并行 reduceSum (AllToAll 仍 block 0 单核)
+    // block >= rankSize 的 AIV 空闲 (与 allgather 一致)
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
+    uint32_t rankSize = baseParams_.rankSize;
+    uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
 
+    // AllToAll: block 0 通信 (totalJobs=1)
+    // reduceSum: 前 rankSize 个 block 并行 (按行分片)
     for (uint32_t t = 0; t < commTurn; ++t) {
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();
@@ -376,7 +403,8 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         }
         SyncAll<true>();
 
-        if (GetBlockIdx() == 0) {
+        // 多核并行 reduceSum: 前 rankSize 个 block 各处理一部分行
+        if (blockIdx < rankSize) {
             RunReduceSumTile(t);
         }
     }
