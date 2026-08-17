@@ -54,6 +54,10 @@ constexpr uint64_t NUM_THREE = 3UL;
 constexpr uint64_t NUM_FOUR = 4UL;
 constexpr uint64_t NUM_SIXTEEN = 16UL;
 constexpr uint64_t DIM_NUM = 2UL;
+constexpr uint64_t GROUP_LIST_TYPE_SPARSE = 2UL;
+constexpr uint64_t SPARSE_GROUP_LIST_ITEM_STRIDE = 2UL;
+constexpr uint64_t SPARSE_GROUP_LIST_GROUP_IDX_OFFSET = 0UL;
+constexpr uint64_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1UL;
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_,
           typename Enable_ = void>
@@ -118,6 +122,7 @@ public:
     TupleShape problemShape_{};
     BlockOffset baseOffset_{0, 0, 0, 0, 0};
     int64_t preOffset_{0};
+    uint32_t sparseGroupIdx_{0}; // actual group index read from groupList first column (groupListType=2)
     bool weightNzFlag_{false};
     bool tailSplit_{true};
     int64_t blockNum_{0};
@@ -142,9 +147,16 @@ public:
         __aicore__ GMMTiling(uint32_t groupNum_, int32_t groupType_, uint32_t groupListType_, uint64_t singleX_,
                              uint64_t singleWeight_, uint64_t singleY_, uint32_t hasBias_ = 0, uint64_t mTailCnt_ = 1,
                              uint64_t nTailCnt_ = 1, uint32_t weightNoL2Cache_ = 0)
-            : groupNum(groupNum_), groupType(groupType_), groupListType(groupListType_), singleX(singleX_),
-              singleWeight(singleWeight_), singleY(singleY_), hasBias(hasBias_), mTailCnt(mTailCnt_),
-              nTailCnt(nTailCnt_), weightNoL2Cache(weightNoL2Cache_)
+            : groupNum(groupNum_),
+              groupType(groupType_),
+              groupListType(groupListType_),
+              singleX(singleX_),
+              singleWeight(singleWeight_),
+              singleY(singleY_),
+              hasBias(hasBias_),
+              mTailCnt(mTailCnt_),
+              nTailCnt(nTailCnt_),
+              weightNoL2Cache(weightNoL2Cache_)
         {
             singleTensor = singleX == 1 && singleWeight == 1 && singleY == 1;
         }
@@ -174,8 +186,15 @@ public:
                 int64_t offset = static_cast<int64_t>(groupListGm_.GetValue(groupIdx));
                 splitValue = offset - preOffset_;
                 preOffset_ = offset;
-            } else {
+            } else if (groupListType == 1) {
                 splitValue = static_cast<int64_t>(groupListGm_.GetValue(groupIdx));
+            } else if (groupListType == 2) {
+                // groupListType == 2 (SPARSE): groupList shape [E, 2], each entry [groupIdx, groupSize]
+                // Non-zero groups are front-loaded; first column is actual group index, second is group size
+                sparseGroupIdx_ = static_cast<uint32_t>(
+                    groupListGm_.GetValue(groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE + SPARSE_GROUP_LIST_GROUP_IDX_OFFSET));
+                splitValue = static_cast<int64_t>(groupListGm_.GetValue(
+                    groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
             }
         }
         return splitValue;
@@ -242,10 +261,11 @@ public:
             aGlobal_.SetGlobalBuffer(GetTensorAddr<AType>(0, params.mmadParams.aGmAddr) + Get<NUM_ZERO>(baseOffset_));
         }
 
+        uint64_t weightTensorIdx = (params.gmmParams.groupListType == GROUP_LIST_TYPE_SPARSE) ? static_cast<uint64_t>(sparseGroupIdx_) : groupIdx;
         if (params.gmmParams.singleWeight == 0) {
-            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(groupIdx, params.mmadParams.bGmAddr));
+            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(weightTensorIdx, params.mmadParams.bGmAddr));
             if (params.gmmParams.hasBias != 0) {
-                biasGlobal_.SetGlobalBuffer(GetTensorAddr<BiasType>(groupIdx, params.mmadParams.biasGmAddr));
+                biasGlobal_.SetGlobalBuffer(GetTensorAddr<BiasType>(weightTensorIdx, params.mmadParams.biasGmAddr));
             }
         } else {
             bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, params.mmadParams.bGmAddr) + Get<NUM_ONE>(baseOffset_));
@@ -290,6 +310,24 @@ public:
         Get<NUM_FOUR>(baseOffset_) = Get<NUM_FOUR>(baseOffset_) + m * n;
     }
 
+    __aicore__ inline void UpdateSparseOffset()
+    {
+        int64_t n = Get<N_VALUE>(problemShape_);
+        int64_t k = Get<K_VALUE>(problemShape_);
+        int64_t groupIdx = static_cast<int64_t>(sparseGroupIdx_);
+        if (weightNzFlag_) {
+            int64_t c0 = BLOCK_BYTE_SIZE / sizeof(BType);
+            if (transB) {
+                Get<NUM_ONE>(baseOffset_) = groupIdx * CeilAlign(n, OUTER_SIZE) * CeilAlign(k, c0);
+            } else {
+                Get<NUM_ONE>(baseOffset_) = groupIdx * CeilAlign(n, c0) * CeilAlign(k, OUTER_SIZE);
+            }
+        } else {
+            Get<NUM_ONE>(baseOffset_) = groupIdx * n * k;
+        }
+        Get<NUM_THREE>(baseOffset_) = groupIdx * n;
+    }
+
     __aicore__ inline bool Init(Params const &params, uint64_t groupIdx)
     {
         weightNzFlag_ = BlockMmadBuilder::formatB == CubeFormat::NZ;
@@ -297,6 +335,9 @@ public:
         int64_t splitValue =
             GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType, params.gmmParams.groupType);
         SetMKN(params, splitValue, groupIdx);
+        if (params.gmmParams.groupListType == GROUP_LIST_TYPE_SPARSE) {
+            UpdateSparseOffset();
+        }
         // when group num equal 1 and split m less than shape m , revert aswt tail split
         if (params.gmmParams.groupType == SPLIT_M && params.gmmParams.groupNum == 1) {
             tailSplit_ = Get<M_VALUE>(problemShape_) == params.gmmParams.matmulTiling->M;
@@ -446,6 +487,10 @@ public:
         blockMmadOp.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
         for (uint64_t groupIdx = 0, count = 0; groupIdx < params.gmmParams.groupNum; groupIdx++) {
             if (!Init(params, groupIdx)) {
+                if (params.gmmParams.groupListType == GROUP_LIST_TYPE_SPARSE &&
+                    Get<M_VALUE>(problemShape_) <= 0) {
+                    break;
+                }
                 continue;
             }
             count = IterateOneGroup(params, blockMmadOp, curBlockIdx, count);
