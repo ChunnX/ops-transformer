@@ -23,6 +23,10 @@
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
+namespace {
+constexpr uint32_t STEM_M_BASE_SIZE = 64U;
+}
+
 uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
@@ -190,7 +194,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
 bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param)
 {
     param.l2Byte = 96U * 1024U * 1024U;
-    param.mBaseSize = 64;   // 64: Fix mBaseSize
+    param.mBaseSize = STEM_M_BASE_SIZE;
     param.s2BaseSize = 256; // 256: Fix s2BaseSize
     param.fdOn = false;
     return true;
