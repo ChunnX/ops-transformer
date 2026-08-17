@@ -655,11 +655,20 @@ public:
             kRow = blockStackNum * strideK;
             kCol = pagedBlockSize;
             layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
+        } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+            // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+            kRow = embed;
+            kCol = stackSeqTile;
+            layoutKTemp = LayoutK(kRow, kCol);
         }
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
             vRow = pagedBlockSize;
             vCol = blockStackNum * strideV;
             layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+        }else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+            vRow = stackSeqTile;
+            vCol = embedV;
+            layoutVTemp = LayoutV(vRow, vCol);
         }
         blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
         blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
