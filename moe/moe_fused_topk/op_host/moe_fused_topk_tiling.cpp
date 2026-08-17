@@ -56,7 +56,9 @@ using Ops::Transformer::OpTiling::TilingBaseClass;
 
 class MoeFusedTopkTilingBase : public TilingBaseClass {
 public:
-    explicit MoeFusedTopkTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
+    explicit MoeFusedTopkTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
     ~MoeFusedTopkTilingBase() override = default;
 
 protected:
@@ -142,7 +144,7 @@ ge::graphStatus MoeFusedTopkTilingBase::GetShapeAttrsInfo()
 
 ge::graphStatus MoeFusedTopkTilingBase::GetPlatformInfo()
 {
-    auto compileInfo = static_cast<const MoeFusedTopkCompileInfo*>(context_->GetCompileInfo());
+    auto compileInfo = static_cast<const MoeFusedTopkCompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo);
     coreNum_ = compileInfo->coreNum;
     ubSize_ = (compileInfo->ubSize - RESERVED_UB) / BYTE_BLOCK * BYTE_BLOCK;
@@ -223,12 +225,12 @@ ge::graphStatus MoeFusedTopkTilingBase::SplitUb()
     needUbSize += topkMinValue_;
 
     OP_CHECK_IF(needUbSize > ubSize_,
-            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
                                             "This case need minimum UB size is %u, which is out of total UB size: %u.",
                                             needUbSize, ubSize_),
-            return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "This case need minimum UB size is %u.", needUbSize);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -236,7 +238,7 @@ ge::graphStatus MoeFusedTopkTilingBase::GetWorkspaceSize()
 {
     workspacePerCore_ = secondDimSize_ * FP32_DTYPE_SIZE;
     size_t usedWorkspaceSize = SYS_WORKSPACESIZE + usedCoreNum_ * workspacePerCore_;
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = usedWorkspaceSize;
     return ge::GRAPH_SUCCESS;
@@ -307,17 +309,17 @@ ge::graphStatus MoeFusedTopkTilingBase::GetTopKTiling()
     int32_t topkInner = (groupEles_ + SORT_UNIT - 1) / SORT_UNIT * SORT_UNIT;
 
     OP_CHECK_IF(!AscendC::TopKTilingFunc(ascendcPlatform, topkInner, groupNum_, topN_, FP32_DTYPE_SIZE, TOPK_IS_INIT_INDEX,
-                        AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, tilingData_.topkTilingData),
-                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                                    "TopKTilingFunc Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, topkInner, groupNum_, TOPK_IS_REUSE_SOURCE, 
-                        TOPK_IS_INIT_INDEX, AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, FP32_DTYPE_SIZE,
-                        topkMaxValue_, topkMinValue_),
-                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                                    "GetTopKMaxMinTmpSize Failed"),
-                    return ge::GRAPH_FAILED);
-    
+                                         AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, tilingData_.topkTilingData),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                            "TopKTilingFunc Failed"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, topkInner, groupNum_, TOPK_IS_REUSE_SOURCE,
+                                               TOPK_IS_INIT_INDEX, AscendC::TopKMode::TOPK_NORMAL, TOPK_IS_LARGEST, FP32_DTYPE_SIZE,
+                                               topkMaxValue_, topkMinValue_),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                            "GetTopKMaxMinTmpSize Failed"),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 

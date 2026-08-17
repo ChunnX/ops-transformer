@@ -101,16 +101,17 @@ static inline bool CheckDtypeValid(const aclTensor *x, const aclTensor *addNum, 
     return true;
 }
 
-static inline bool CheckShape(const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable,
-    uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, 
-    bool isNorm, float scale, bool enableExpertMapping, const aclTensor* y, const aclTensor* indices) {
+static inline bool CheckShape(const aclTensor *x, const aclTensor *addNum, const aclTensor *mappingNum, const aclTensor *mappingTable,
+                              uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType,
+                              bool isNorm, float scale, bool enableExpertMapping, const aclTensor *y, const aclTensor *indices)
+{
     OP_CHECK(groupNum > 0 && groupTopk > 0 && topN > 0 && topK > 0,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "all of groupNum: %u, groupTopk: %u, topN: %u and topK: %u must be greater than 0.",
-                                            groupNum, groupTopk, topN, topK),
-        return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "all of groupNum: %u, groupTopk: %u, topN: %u and topK: %u must be greater than 0.",
+                     groupNum, groupTopk, topN, topK),
+             return false);
     OP_CHECK(activateType == ACTIVATION_SIGMOID,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activateType only supports ACTIVATION_SIGMOID(0), but got %u.", activateType),
-        return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activateType only supports ACTIVATION_SIGMOID(0), but got %u.", activateType),
+             return false);
     OP_CHECK(groupNum <= GROUP_NUM_MAX,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupNum must be less than %u, which is %u.",
                      GROUP_NUM_MAX, groupNum),
