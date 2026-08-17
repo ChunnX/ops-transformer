@@ -12,7 +12,7 @@
 | Core counts | 64 | 72 个槽，每槽 64 字节；槽首 `uint32_t` 是该核有效记录数 |
 | Records | 4672 | 72 核 × 32 条 × 16 字节；每条为 `{uint32 eventId, uint32 payload, uint64 cycle}` |
 
-`payload` 含义随事件变化：kernel begin/end 的高 16 位为 token 发送核数、低 16 位为 CumSum 核数；其他阶段记录该阶段处理的专家数、状态数或有效专家数。格式版本 3 新增发送侧累计指标，分别记录量化旁路模式、发送任务数、发送位置计算、BF16 输入搬运、FP8 量化和发送 buffer 等待的累计 cycle。
+`payload` 含义随事件变化：kernel begin/end 的高 16 位为 token 发送核数、低 16 位为 CumSum 核数；其他阶段记录该阶段处理的专家数、状态数或有效专家数。格式版本 3 新增发送侧累计指标，分别记录量化诊断模式、发送任务数、发送位置计算、BF16 输入搬运、FP8 量化和发送 buffer 等待的累计 cycle。
 
 可视化按以下关键阶段拆分：
 
@@ -79,3 +79,9 @@ normal,0,12,...
 `FULLMESH_BYPASS_QUANT=1` 重新编译；该模式保留 BF16 输入搬运、FP8 通信布局、三元组、flag、格式重排和远端发送，只将量化计算替换为 FP8 空数据填充。
 
 旁路模式的业务输出数值无效，只能用于性能诊断，不能进行精度校验或将输出交给后续算子。正常和旁路版本应使用相同输入、warmup 和循环次数，分别运行一次，并对比脚本打印的两行摘要。
+
+## Per-group计算对照
+
+诊断 `quant_mode=3` 时，定义 `FULLMESH_BYPASS_PERGROUP_COMPUTE=1`。该模式保留 BF16 输入搬运、可选的专家 smooth scale 搬运与 MTE2 等待、FP8 通信布局、打包和远端发送，只用同尺寸清零替换 per-group VEC 计算。脚本中的模式名为 `pergroup_load_only`。
+
+用相同输入分别运行正常版本和 `pergroup_load_only` 版本：两者 `transfer_cycles` 的差值表示 per-group VEC 计算暴露在发送关键路径上的代价；`pergroup_load_only` 的剩余时间仍包含发送位置计算、输入与 smooth scale 搬运、打包和通信。该模式的业务输出同样无效。正常运行前将 `FULLMESH_BYPASS_PERGROUP_COMPUTE` 恢复为 0。

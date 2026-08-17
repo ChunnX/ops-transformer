@@ -537,6 +537,17 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 #if FULLMESH_BYPASS_QUANT
     LocalTensor<int32_t> bypassQuantTensor = tempTensor_.template ReinterpretCast<int32_t>();
     Duplicate<int32_t>(bypassQuantTensor, 0, hOutSizeAlign_ / sizeof(int32_t));
+#elif FULLMESH_BYPASS_PERGROUP_COMPUTE
+    if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+        quantInst_.PreparePerGroupInputsForProfile(quantExpertIdx, scalesGMTensor_);
+        LocalTensor<int32_t> bypassQuantTensor = tempTensor_.template ReinterpretCast<int32_t>();
+        Duplicate<int32_t>(bypassQuantTensor, 0, hOutSizeAlign_ / sizeof(int32_t));
+    } else if constexpr (QuantMode > UNQUANT) {
+        quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
+    } else {
+        Cast(floatLocalTemp_, xInTensor, RoundMode::CAST_NONE, axisH_);
+        Cast(tempTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
+    }
 #else
     if constexpr (QuantMode > UNQUANT) {
         quantInst_.QuantProcess(tempTensor_, xInTensor, quantExpertIdx, scalesCount_, scalesGMTensor_);
@@ -756,7 +767,15 @@ __aicore__ inline void
 MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::RecordSendProfileMetrics()
 {
 #if MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING
-    profiler_.Mark(EVT_SEND_PROFILE_MODE, FULLMESH_BYPASS_QUANT != 0 ? 1U : 0U);
+    uint32_t profileMode = 0U;
+#if FULLMESH_BYPASS_QUANT
+    profileMode = 1U;
+#elif FULLMESH_BYPASS_PERGROUP_COMPUTE
+    if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+        profileMode = 2U;
+    }
+#endif
+    profiler_.Mark(EVT_SEND_PROFILE_MODE, profileMode);
     profiler_.Mark(EVT_SEND_TASK_COUNT, sendTaskCount_);
     profiler_.Mark(EVT_SEND_POSITION_CYCLES, static_cast<uint32_t>(sendPositionCycles_));
     profiler_.Mark(EVT_SEND_INPUT_CYCLES, static_cast<uint32_t>(sendInputCycles_));

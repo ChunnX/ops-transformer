@@ -333,7 +333,12 @@ def build_send_summary(rows: list[dict[str, int | str]],
     rank = int(slowest["rank"])
     core_id = int(slowest["core_id"])
     metrics = lane_metrics[(rank, core_id)]
-    mode = "bypass_quant" if metrics.get("mode", 0) != 0 else "normal"
+    mode_names = {
+        0: "normal",
+        1: "bypass_quant",
+        2: "pergroup_load_only",
+    }
+    mode = mode_names.get(metrics.get("mode", 0), f"unknown_{metrics.get('mode', 0)}")
     return [{
         "mode": mode,
         "rank": rank,

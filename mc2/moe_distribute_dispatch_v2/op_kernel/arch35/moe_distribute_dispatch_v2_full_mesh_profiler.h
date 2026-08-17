@@ -28,6 +28,11 @@
 #define FULLMESH_BYPASS_QUANT 0
 #endif
 
+// quant_mode=3调试开关：保留输入和smooth scale搬运及FP8通信，只跳过per-group计算。
+#ifndef FULLMESH_BYPASS_PERGROUP_COMPUTE
+#define FULLMESH_BYPASS_PERGROUP_COMPUTE 0
+#endif
+
 namespace MoeDistributeDispatchV2FullMeshProfiler {
 constexpr uint32_t PROFILER_MAX_CORE_NUM = 72U;
 constexpr uint32_t PROFILER_MAX_EVENT_NUM = 32U;
