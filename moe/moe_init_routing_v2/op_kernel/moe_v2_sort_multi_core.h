@@ -15,9 +15,9 @@
 #ifndef MOE_V2_VBS_ONE_CORE_H
 #define MOE_V2_VBS_ONE_CORE_H
 
-#include "moe_v2_sort_base_arch35.h"
-#include "moe_v2_mrgsort_arch35.h"
-#include "moe_v2_mrgsort_out_arch35.h"
+#include "moe_v2_sort_base.h"
+#include "moe_v2_mrgsort.h"
+#include "moe_v2_mrgsort_out.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
