@@ -106,6 +106,8 @@ struct BenchCtx {
     void *stateGmDev{nullptr};
     // mc2_native: HcclCombinOpParam 在 device 上的 GM 地址
     void *hcclContextDev{nullptr};
+    void *piciDev{nullptr};        // PICI 窗口 GM (build_hccl_context 分配)
+    void *winOutDev{nullptr};      // windowsOut GM (build_hccl_context 分配)
     std::vector<ChannelHandle> channels;
     std::vector<ChannelPtr> channelPtrsHost;
     uint32_t numLayers{1};
@@ -195,12 +197,19 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     ctx.rank = rank;
     ctx.worldSize = world;
 
+    // 失败时清理已分配的 GM 资源
+    auto cleanup_on_fail = [&]() {
+        if (ctx.stateGmDev) { aclrtFree(ctx.stateGmDev); ctx.stateGmDev = nullptr; }
+        if (ctx.channelPtrTableDev) { aclrtFree(ctx.channelPtrTableDev); ctx.channelPtrTableDev = nullptr; }
+        if (ctx.workspaceDev) { aclrtFree(ctx.workspaceDev); ctx.workspaceDev = nullptr; }
+    };
+
     // [1/6] 分配 workspace: URMA 通信的目标缓冲区
     // aclrtMalloc 申请 device 显存, 对端 URMA Write 的数据会写入这块内存
     const std::string tag = "urma_p2p_bench_" + std::to_string(rank);
     fprintf(stderr, "[INFO] rank %u: [1/6] aclrtMalloc workspace (%lu bytes)\n", rank, bufBytes);
     aclError ar = aclrtMalloc(&ctx.workspaceDev, bufBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc workspace failed: %d\n", rank, ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc workspace failed: %d\n", rank, ar); cleanup_on_fail(); return nullptr; }
     aclrtMemset(ctx.workspaceDev, bufBytes, 0, bufBytes);
     fprintf(stderr, "[INFO] rank %u: [1/6] workspace=%p\n", rank, ctx.workspaceDev);
 
@@ -214,7 +223,7 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     mem.addr = ctx.workspaceDev;
     mem.size = bufBytes;
     HcclResult r = HcclCommMemReg(comm, tag.c_str(), &mem, &ctx.workspaceMemHandle);
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclCommMemReg failed: %d\n", rank, r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclCommMemReg failed: %d\n", rank, r); cleanup_on_fail(); return nullptr; }
     fprintf(stderr, "[INFO] rank %u: [2/6] memHandle=%p\n", rank, ctx.workspaceMemHandle);
 
     // [3/6] 枚举 UBC_CTP/UBC_TP 链路, 为每个 peer 构建一个 HcclChannelDesc
@@ -223,7 +232,7 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     std::vector<HcclChannelDesc> descs;
     std::vector<size_t> descSlots;
     r = build_channel_descs(comm, rank, world, &ctx.workspaceMemHandle, descs, descSlots, ctx.numLayers);
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: build_channel_descs failed: %d\n", rank, r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: build_channel_descs failed: %d\n", rank, r); cleanup_on_fail(); return nullptr; }
     fprintf(stderr, "[INFO] rank %u: [3/6] descs=%zu layers=%u\n", rank, descs.size(), ctx.numLayers);
 
     // [4/6] HcclChannelAcquire: 跨 rank 握手, 获取 ChannelHandle
@@ -234,7 +243,7 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     r = HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_AIV,
                            descs.data(), static_cast<uint32_t>(descs.size()),
                            ctx.channels.data());
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclChannelAcquire failed: %d\n", rank, r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclChannelAcquire failed: %d\n", rank, r); cleanup_on_fail(); return nullptr; }
     fprintf(stderr, "[INFO] rank %u: [4/6] HcclChannelAcquire done\n", rank);
 
     // 构建 channelPtrTable: 按 [layer][channel][peer] 扁平布局的 ChannelEntity VA 数组
@@ -256,7 +265,7 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
         std::vector<ChannelPtr> ptrs(ctx.channels.size(), 0);
         HcommResult hr = getPtrByHandle(ctx.channels.data(),
                                         static_cast<uint32_t>(ctx.channels.size()), ptrs.data());
-        if (hr != HCOMM_SUCCESS_VALUE) { fprintf(stderr, "[ERROR] rank %u: HcommChannelGetPtrByHandle failed: %d\n", rank, hr); return nullptr; }
+        if (hr != HCOMM_SUCCESS_VALUE) { fprintf(stderr, "[ERROR] rank %u: HcommChannelGetPtrByHandle failed: %d\n", rank, hr); cleanup_on_fail(); return nullptr; }
         for (size_t i = 0; i < descs.size(); ++i) ctx.channelPtrsHost[descSlots[i]] = ptrs[i];
     } else {
         fprintf(stderr, "[INFO] rank %u: [5/6] using direct handle (new ABI)\n", rank);
@@ -274,12 +283,12 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     fprintf(stderr, "[INFO] rank %u: [6/6] alloc table+state GM\n", rank);
     size_t tableBytes = tableSlots * sizeof(ChannelPtr);
     ar = aclrtMalloc(&ctx.channelPtrTableDev, tableBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc table failed: %d\n", rank, ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc table failed: %d\n", rank, ar); cleanup_on_fail(); return nullptr; }
     aclrtMemcpy(ctx.channelPtrTableDev, tableBytes, ctx.channelPtrsHost.data(), tableBytes, ACL_MEMCPY_HOST_TO_DEVICE);
 
     size_t stateBytes = tableSlots * 2 * sizeof(uint32_t);
     ar = aclrtMalloc(&ctx.stateGmDev, stateBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc state failed: %d\n", rank, ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc state failed: %d\n", rank, ar); cleanup_on_fail(); return nullptr; }
     aclrtMemset(ctx.stateGmDev, stateBytes, 0, stateBytes);
 
     fprintf(stderr, "[INFO] rank %u: [6/6] tableDev=%p stateDev=%p\n",
@@ -324,6 +333,7 @@ static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, ui
     void *piciDev = nullptr;
     aclrtMalloc(&piciDev, piciBytes, ACL_MEM_MALLOC_HUGE_FIRST);
     aclrtMemset(piciDev, piciBytes, 0, piciBytes);
+    ctx->piciDev = piciDev;
 
     // windowsOut[myRank] 指向 PICI 区域: GetPICI 读 windowsOut[myRank] + WIN_PICI_OFFSET + PICI_WIN_SIZE * dstRankId
     // 所以 windowsOut[myRank] = piciDev - WIN_PICI_OFFSET (这样 +1MB 后指向 piciDev)
@@ -336,6 +346,7 @@ static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, ui
     void *winOutDev = nullptr;
     aclrtMalloc(&winOutDev, winOutBytes, ACL_MEM_MALLOC_HUGE_FIRST);
     aclrtMemset(winOutDev, winOutBytes, 0, winOutBytes);
+    ctx->winOutDev = winOutDev;
     param.windowsOut[rank] = (uint64_t)winOutDev;
 
     for (uint32_t peer = 0; peer < world; ++peer) {
@@ -344,6 +355,10 @@ static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, ui
         uint32_t slot = peer;
         if (slot >= ctx->channelPtrsHost.size() || ctx->channelPtrsHost[slot] == 0) {
             fprintf(stderr, "[ERROR] rank %u: no channel for peer %u\n", rank, peer);
+            aclrtFree(piciDev);
+            aclrtFree(winOutDev);
+            ctx->piciDev = nullptr;
+            ctx->winOutDev = nullptr;
             return nullptr;
         }
 
@@ -352,6 +367,8 @@ static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, ui
         aclError ar = aclrtMemcpy(buf.data(), READ_SIZE, (void*)channelEntityVA, READ_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
         if (ar != ACL_SUCCESS) {
             fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy ChannelEntity failed: %d\n", rank, ar);
+            aclrtFree(piciDev); aclrtFree(winOutDev);
+            ctx->piciDev = nullptr; ctx->winOutDev = nullptr;
             return nullptr;
         }
 
@@ -376,28 +393,28 @@ static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, ui
         // 读取 SqContext (128B)
         std::vector<uint8_t> sqBuf(SQ_CONTEXT_SIZE, 0);
         ar = aclrtMemcpy(sqBuf.data(), SQ_CONTEXT_SIZE, (void*)sqCtxVA, SQ_CONTEXT_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy SqContext failed: %d\n", rank, ar); return nullptr; }
+        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy SqContext failed: %d\n", rank, ar); aclrtFree(piciDev); aclrtFree(winOutDev); ctx->piciDev = nullptr; ctx->winOutDev = nullptr; return nullptr; }
         uint64_t *sqU64 = reinterpret_cast<uint64_t*>(sqBuf.data());
         uint32_t *sqU32 = reinterpret_cast<uint32_t*>(sqBuf.data());
 
         // 读取 CqContext (128B)
         std::vector<uint8_t> cqBuf(CQ_CONTEXT_SIZE, 0);
         ar = aclrtMemcpy(cqBuf.data(), CQ_CONTEXT_SIZE, (void*)cqCtxVA, CQ_CONTEXT_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy CqContext failed: %d\n", rank, ar); return nullptr; }
+        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy CqContext failed: %d\n", rank, ar); aclrtFree(piciDev); aclrtFree(winOutDev); ctx->piciDev = nullptr; ctx->winOutDev = nullptr; return nullptr; }
         uint64_t *cqU64 = reinterpret_cast<uint64_t*>(cqBuf.data());
         uint32_t *cqU32 = reinterpret_cast<uint32_t*>(cqBuf.data());
 
         // 读取 remote RegedBuffer (64B)
         std::vector<uint8_t> rmBuf(REGED_BUFFER_SIZE, 0);
         ar = aclrtMemcpy(rmBuf.data(), REGED_BUFFER_SIZE, (void*)rmBufVA, REGED_BUFFER_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy RegedBuffer(remote) failed: %d\n", rank, ar); return nullptr; }
+        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy RegedBuffer(remote) failed: %d\n", rank, ar); aclrtFree(piciDev); aclrtFree(winOutDev); ctx->piciDev = nullptr; ctx->winOutDev = nullptr; return nullptr; }
         uint64_t *rmU64 = reinterpret_cast<uint64_t*>(rmBuf.data());
         uint32_t *rmU32 = reinterpret_cast<uint32_t*>(rmBuf.data());
 
         // 读取 local RegedBuffer (64B)
         std::vector<uint8_t> lcBuf(REGED_BUFFER_SIZE, 0);
         ar = aclrtMemcpy(lcBuf.data(), REGED_BUFFER_SIZE, (void*)lcBufVA, REGED_BUFFER_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy RegedBuffer(local) failed: %d\n", rank, ar); return nullptr; }
+        if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMemcpy RegedBuffer(local) failed: %d\n", rank, ar); aclrtFree(piciDev); aclrtFree(winOutDev); ctx->piciDev = nullptr; ctx->winOutDev = nullptr; return nullptr; }
         uint32_t *lcU32 = reinterpret_cast<uint32_t*>(lcBuf.data());
 
         // 填充 HcclAiRMAWQ (SQ 信息)
@@ -504,12 +521,23 @@ int Sample(void *arg)
 
     fprintf(stderr, "[INFO] rank %u: setting up context...\n", rank);
     BenchCtx *ctx = setup_ctx(hcclComm, rank, devCount, args->bufBytes);
-    if (ctx == nullptr) return -1;
+    if (ctx == nullptr) {
+        HcclCommDestroy(hcclComm);
+        aclrtDestroyContext(context);
+        aclrtResetDevice(physicalDev);
+        return -1;
+    }
     fprintf(stderr, "[INFO] rank %u: context setup done\n", rank);
 
     uint32_t slot = peerRank;
     if (slot >= ctx->channelPtrsHost.size() || ctx->channelPtrsHost[slot] == 0) {
         fprintf(stderr, "[ERROR] rank %u (dev %u): no URMA channel to peer rank %u\n", rank, physicalDev, peerRank);
+        aclrtFree(ctx->channelPtrTableDev);
+        aclrtFree(ctx->stateGmDev);
+        aclrtFree(ctx->workspaceDev);
+        HcclCommDestroy(hcclComm);
+        aclrtDestroyContext(context);
+        aclrtResetDevice(physicalDev);
         return -1;
     }
     fprintf(stderr, "[INFO] rank %u: channel OK, slot=%u\n", rank, slot);
@@ -709,6 +737,12 @@ int Sample(void *arg)
     }
 
     aclrtFree(timingGm);
+    if (ctx->hcclContextDev) aclrtFree(ctx->hcclContextDev);
+    if (ctx->piciDev) aclrtFree(ctx->piciDev);
+    if (ctx->winOutDev) aclrtFree(ctx->winOutDev);
+    aclrtFree(ctx->channelPtrTableDev);
+    aclrtFree(ctx->stateGmDev);
+    aclrtFree(ctx->workspaceDev);
     HcclCommDestroy(hcclComm);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
