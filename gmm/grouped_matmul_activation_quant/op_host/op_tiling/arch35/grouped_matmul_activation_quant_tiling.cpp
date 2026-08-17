@@ -72,6 +72,7 @@ constexpr uint32_t FP4_E1M2_VALUE = 41;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
+constexpr uint32_t SCALE_ALG_DYNAMIC_DTYPE_RANGE = 2;
 constexpr uint8_t ACTIVATION_TYPE_GELU_TANH = 2;
 constexpr char ACTIVATION_TYPE_GELU_TANH_STR[] = "gelu_tanh";
 constexpr char QUANT_MODE_MX_STR[] = "mx";
@@ -173,10 +174,21 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "round_mode", roundMode,
                                                       "when the quantization mode is mx, round_mode must be rint"),
                 return false);
-    OP_CHECK_IF(*scaleAlgPtr != SCALE_ALG_OCP && *scaleAlgPtr != SCALE_ALG_CUBLAS,
+    OP_CHECK_IF(*scaleAlgPtr != SCALE_ALG_OCP && *scaleAlgPtr != SCALE_ALG_CUBLAS &&
+                    *scaleAlgPtr != SCALE_ALG_DYNAMIC_DTYPE_RANGE,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "scale_alg",
                                                       std::to_string(*scaleAlgPtr),
-                                                      "when the quantization mode is mx, scale_alg must be 0 or 1"),
+                                                      "when the quantization mode is mx, scale_alg must be 0, 1 or 2"),
+                return false);
+    OP_CHECK_IF(*scaleAlgPtr == SCALE_ALG_CUBLAS && !IsFp8(yDtype),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "scale_alg",
+                                                      std::to_string(*scaleAlgPtr),
+                                                      "scale_alg 1 only supports FLOAT8 output"),
+                return false);
+    OP_CHECK_IF(*scaleAlgPtr == SCALE_ALG_DYNAMIC_DTYPE_RANGE && yDtype != ge::DT_FLOAT4_E2M1,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "scale_alg",
+                                                      std::to_string(*scaleAlgPtr),
+                                                      "scale_alg 2 only supports FLOAT4_E2M1 output"),
                 return false);
     std::string activationType(activationTypePtr);
     OP_CHECK_IF(activationType != ACTIVATION_TYPE_GELU_TANH_STR,
