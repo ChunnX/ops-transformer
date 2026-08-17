@@ -27,11 +27,8 @@
 
 using namespace AscendC;
 
-constexpr static int64_t KVMAXLEN = 256 * 1024;
-constexpr static int64_t STEMBLOCKMINSIZE = 32;
 constexpr static float EPSILON = 1e-6;
 constexpr static uint32_t BLOCKSIZE = 32;
-constexpr static int64_t STEMBLOCK_INFO_NUM = 3;
 
 class StemOamPrepPagedKvSimd {
 public:
@@ -161,7 +158,6 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     }
     totalBh_ = batchSize_ * hKv_;
     vCacheOffset_ = stemBlockSize_ * dimQk_;
-    int64_t maxStemlockNum = Ops::Base::CeilDiv(maxKb_ * batchSize_ * hKv_, blockNum_);
     // inti UB
     pipe_->InitBuffer(kCacheQue_, 1, stemBlockSize_ * dimQk_ * sizeof(fp8_e4m3fn_t));
     pipe_->InitBuffer(vCacheQue_, 1, stemBlockSize_ * dimQk_ * sizeof(fp8_e4m3fn_t));
