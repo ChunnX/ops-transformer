@@ -190,7 +190,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
                           nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, kActivationType,
                           kDefaultGroupListType, nullptr, kQuantMode, kRoundMode, kDefaultScaleAlg,
                           kDefaultDstTypeMax, nullptr, nullptr, nullptr, nullptr),
-                      ACLNN_SUCCESS) << "case=" << caseName;
+                      ACLNN_SUCCESS)
+                << "case=" << caseName;
             return;
         }
         if (runMode == kRunModePhase2NullExecutor) {
@@ -213,7 +214,7 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
 
         vector<int64_t> tuningValues = ops::ut::ParseI64List(tuningConfig);
         aclIntArray *tuningConfigArr = tuningValues.empty() ? nullptr :
-            aclCreateIntArray(tuningValues.data(), tuningValues.size());
+                                                              aclCreateIntArray(tuningValues.data(), tuningValues.size());
 
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor = nullptr;
@@ -282,9 +283,6 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }
 
-        if (tuningConfigArr != nullptr) {
-            aclDestroyIntArray(tuningConfigArr);
-        }
         if (checkRet) {
             EXPECT_EQ(ret, ops::ut::ParseAclnnStatus(expectRet)) << "case=" << caseName;
         }
@@ -437,8 +435,7 @@ string BuildCaseName(const testing::TestParamInfo<GroupedMatmulActivationQuantWe
     return ops::ut::MakeSafeParamName(info.param.caseName);
 }
 
-class grouped_matmul_activation_quant_weight_nz_opapi_csv_test :
-    public testing::TestWithParam<GroupedMatmulActivationQuantWeightNzOpApiCase> {};
+class grouped_matmul_activation_quant_weight_nz_opapi_csv_test : public testing::TestWithParam<GroupedMatmulActivationQuantWeightNzOpApiCase> {};
 
 TEST_P(grouped_matmul_activation_quant_weight_nz_opapi_csv_test, run_case)
 {
