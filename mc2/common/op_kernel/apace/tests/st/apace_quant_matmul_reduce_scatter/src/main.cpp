@@ -44,6 +44,7 @@
 #include "apace/utils/comm_channel_builder.h"
 #include "root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "kernel_launcher.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 
@@ -297,7 +298,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
 
     if (mode == "precision") {
         INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, GET mode)", rankId, tilingData.mmTilingData.usedCoreNum);
-        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma_Udma<<<
+        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
             tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                 devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                 deviceWorkspace, deviceOutput, tilingData);
@@ -334,7 +335,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma_Udma<<<
+            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
                 tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                     deviceWorkspace, deviceOutput, tilingData);

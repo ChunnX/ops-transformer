@@ -10,26 +10,22 @@
 
 /*!
  * \file quant_matmul_reduce_scatter_impl.h
- * \brief quantMatmulReduceScatter — PUT 模式实现 (计算→通信) + per-tile 流水重叠
+ * \brief quantMatmulReduceScatter — PUT 模式实现 (计算→通信) + per-tile 通信流水
  *
- * 架构（PUT 模式 = 计算→通信，per-tile 流水）：
- *   AIC: RunMatmul()  per-tile 循环: 每轮一次 matmul 调用覆盖全部 rank 段
- *                        每轮完成后 CrossCoreSetFlag<0x2, PIPE_FIX>(0) 通知 AIV
+ * 架构（PUT 模式 = 计算→通信，per-tile 通信流水）：
+ *   AIC: RunMatmul()  一次 matmul 调用覆盖完整 [m, n] (M_total = m = rankSize * chunkM)
+ *                        完成后 CrossCoreSetFlag<0x2, PIPE_FIX>(0) 通知 AIV
  *   AIV: RunAllToAllAndReduceSum()  per-tile 循环:
- *                        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0) 等待 AIC tile t
- *                        AllToAll PUT: 推送 tile t 到所有目标 rank
- *                        reduceSum: 对 tile t 的 R 个源求和 → output
- *
- * 流水重叠:
- *   AIC: [tile0 mm] SetFlag [tile1 mm] SetFlag [tile2 mm] SetFlag ...
- *   AIV:             WaitFlag [comm0+rs0]  WaitFlag [comm1+rs1]  WaitFlag [comm2+rs2]
+ *                        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0) 等待 AIC 完成
+ *                        AllToAll PUT: 逐 tile 推送 C_i 到所有目标 rank
+ *                        reduceSum: 逐 tile 对 R 个源求和 → output
  *
  * 关键设计:
- *   - 统一路径: 无 if/else 分支, T=1 时循环执行 1 次自然退化
- *   - 消除 R 循环: M_total = rankSize * chunkM = m, 一次 matmul 调用覆盖全部 rank 段
- *     (A 数据连续 [m,k], C 输出到 workspace 连续 [m,n], PUT 自动按 rank 偏移读取)
- *   - CrossCore flag flagId=0 计数式: T 次 Set(0) 对应 T 次 Wait(0), 峰值 T ≤ 15
- *   - 零 tile 核: SetFlag 在循环内, 所有 AIC 核都执行 (flag 计数平衡)
+ *   - 消除 R 循环: M_total = m, A 数据连续 [m,k], C 输出到 workspace 连续 [m,n]
+ *     一次 matmul 调用覆盖全部 rank 段, PUT 自动按 rank 偏移读取
+ *   - 统一路径: 无 if/else, AIC 一次算完后发 1 次 SetFlag
+ *   - per-tile 通信: AIV 侧按 commTurn 分 tile 通信+reduceSum (流水在通信侧)
+ *   - CrossCore flag flagId=0: 1 次 Set(0) 对应 1 次 Wait(0)
  *   - PUT 模式: AIC 写 workspace, AIV 从 workspace 推送到其他 rank win 区
  *   - reduceSum: self 从 workspace 读, received 从 win 读, per-tile 分块处理
  *   - 所有 AIC 核参与 matmul (BlockScheduler 分配), 仅 block 0 的 AIV 参与通信
@@ -221,11 +217,8 @@ template<typename AType, typename BType, typename CType, bool TransA, bool Trans
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::Run()
 {
     if ASCEND_IS_AIC {
-        // AIC 侧: per-tile matmul + SetFlag
-        // 统一路径: 无 if/else, T=1 时循环执行 1 次自然退化
-        // 每轮一次 matmul 覆盖全部 rank 段 (M_total = m = rankSize * chunkM)
+        // AIC 侧: 一次 matmul 覆盖完整 [m, n] + SetFlag
         RunMatmul();
-        // AIC 不参与 SyncAll: SyncAll<true> isAIVOnly=true, AIC 调用为 no-op
     }
 
     if ASCEND_IS_AIV {
@@ -272,68 +265,46 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
-    // 统一路径: for t = 0..commTurn, 每轮内 for r = 0..rankSize
-    // M_total = rankSize * chunkM = m, 但 per-tile 流水需要按 tile 切分
-    // 每轮 T 完成后 SetFlag 通知 AIV
-    //
-    // T=1 时循环执行 1 次, 自然退化为单次全量 mm
-    // T>1 时每 tile 算完后 SetFlag, 实现 per-tile 流水重叠
-    //
-    // TODO(future): 用 FragmentTensor 消除 R 循环 (参考 allgather QmmMxKernelAgUdma)
-    // 当前保留 R 循环, 因计算在前场景 A 数据在本卡 GM 连续, 需按 rank 段分别计算
+    // 一次 matmul 调用覆盖完整 [m, n] (M_total = m = rankSize * chunkM)
+    // A 数据连续 [m, k], C 输出到 workspace 连续 [m, n]
+    // PUT 自动按 targetRankId * chunkBytes 偏移从 workspace 读取各 rank 段
+    // 无 R 循环, 无 per-tile 切分 — 消除 FragmentTensor 需求
     const auto& mmT = tilingData_->mmTilingData;
-    const auto& commTd = tilingData_->commTilingData;
-    uint32_t commTurn = static_cast<uint32_t>(commTd.splitAxisTileCnt + commTd.splitAxisTailCnt);
-    uint32_t R = baseParams_.rankSize;
-    uint64_t chunkM = baseParams_.chunkM;
 
-    for (uint32_t t = 0; t < commTurn; ++t) {
-        bool isHeadTile = (t < commTd.splitAxisTileCnt);
-        uint32_t curTileM = isHeadTile
-                          ? static_cast<uint32_t>(commTd.splitAxisTileSize)
-                          : static_cast<uint32_t>(commTd.splitAxisTailSize);
-        // 选择 tiling: head tile 用子问题 tiling (仅在 T>1 时有效), tail tile 用全量 tiling
-        // T=1 时 subMmTilingData 为空, 使用全量 mmTilingData
-        const auto& subMmT = tilingData_->subMmTilingData;
-        const auto& tileT = (isHeadTile && commTurn > 1) ? subMmT : mmT;
-        uint64_t tileM = commTd.splitAxisTileSize;
+    ProblemShape problemShape{
+        static_cast<int64_t>(mmT.m),
+        static_cast<int64_t>(mmT.n),
+        static_cast<int64_t>(mmT.k), 1LL};
 
-        for (uint32_t r = 0; r < R; ++r) {
-            uint64_t rowOffset = r * chunkM + t * tileM;
+    BlockMmadParams mmadParams;
+    mmadParams.cGmAddr = baseParams_.workspaceGm;
+    mmadParams.bGmAddr = baseParams_.bGm;
+    mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
 
-            ProblemShape problemShape{
-                static_cast<int64_t>(curTileM),
-                static_cast<int64_t>(baseParams_.axisN),
-                static_cast<int64_t>(baseParams_.axisK), 1LL};
+    // rankId=0, rankSize=1: 单卡模式, A 从本地完整读取, 不等通信 flag
+    LocalParams localParams{
+        0U, 1U, static_cast<uint64_t>(mmT.m),
+        baseParams_.aGm, baseParams_.scaleAGm,
+        1U, 1UL, MatmulMode::LOCAL, static_cast<uint32_t>(baseParams_.headMSize)};
 
-            BlockMmadParams mmadParams;
-            mmadParams.cGmAddr = baseParams_.workspaceGm
-                + rowOffset * baseParams_.axisN * sizeof(CType);
-            mmadParams.bGmAddr = baseParams_.bGm;
-            mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
+    L1Params l1Params{
+        static_cast<uint64_t>(mmT.stepK) * mmT.baseK,
+        mmT.scaleKL1, mmT.nBufferNum};
 
-            LocalParams localParams{
-                0U, 1U, static_cast<uint64_t>(curTileM),
-                baseParams_.aGm + rowOffset * baseParams_.axisK,
-                baseParams_.scaleAGm + rowOffset * baseParams_.scaleARowBytes,
-                1U, 1U, MatmulMode::LOCAL, curTileM};
+    BlockSchedulerParams schedulerParams{
+        mmT.baseM, mmT.baseN, mmT.mTailTile, mmT.nTailTile,
+        mmT.mBaseTailSplitCnt, mmT.nBaseTailSplitCnt, mmT.mTailMain, mmT.nTailMain};
 
-            L1Params l1Params{
-                static_cast<uint64_t>(tileT.stepK) * tileT.baseK,
-                tileT.scaleKL1, tileT.nBufferNum};
+    QBMMTiling qbmmParams{
+        mmT.baseM, mmT.baseN, mmT.baseK, mmT.dbL0c, false};
 
-            BlockSchedulerParams schedulerParams{
-                tileT.baseM, tileT.baseN,
-                1U, tileT.nTailTile, 1U, tileT.nBaseTailSplitCnt, 0U, tileT.nTailMain};
+    Params params = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
 
-            QBMMTiling qbmmParams{
-                tileT.baseM, tileT.baseN, tileT.baseK, tileT.dbL0c, false};
+    // 无 SetAtomicAdd (无 L0C 原子累加, 每卡独立完整计算)
+    quantMatmulKernelImpl_(params);
 
-            Params params = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
-            quantMatmulKernelImpl_(params);
-        }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0);
-    }
+    // 通知 AIV: matmul 全部完成
+    CrossCoreSetFlag<0x2, PIPE_FIX>(0);
 }
 
 // =================================================================================
@@ -383,37 +354,40 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // per-tile 流水路径:
-    //   AIC: [tile0 mm] SetFlag [tile1 mm] SetFlag [tile2 mm] SetFlag ...
-    //   AIV:             WaitFlag [comm0+rs0]  WaitFlag [comm1+rs1]  WaitFlag [comm2+rs2]
+    // AIC 一次 matmul 算完 [m, n], 发 1 次 SetFlag
+    // AIV WaitFlag 1 次, 然后按 commTurn 分 tile 通信 + reduceSum
     //
-    // per-tile WaitFlag(0): CrossCore flag 是计数式, T 次 Set 对应 T 次 Wait
-    // SyncAll 在 WaitFlag 后、Commit 前 (确保所有 AIV 核就绪)
-    // reduceSum 按 tile 分块处理 (与 AllToAll PUT 数据布局一致)
-    //
-    // T=1 退化: 循环执行 1 次, 等效于 WaitFlag → SyncAll → Commit → Wait → SyncAll → reduceSum
+    // 通信侧 per-tile 流水:
+    //   AIV: WaitFlag → [tile0 comm+rs0] → [tile1 comm+rs1] → ... → Finalize
 
+    // 1. 等待 AIC matmul 完成
+    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+    SyncAll<true>();
+
+    // 2. CrossDevice 确保所有 rank 的 AIV 就绪
+    if (GetBlockIdx() == 0) {
+        teamBarrier_.CrossDevice();
+    }
+    SyncAll<true>();
+
+    // 2. 逐 tile 通信 + reduceSum
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
 
     for (uint32_t t = 0; t < commTurn; ++t) {
-        // 1. 等待 AIC tile t 完成 (per-tile WaitFlag, 计数式 flag)
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
-        SyncAll<true>();
-
-        // 2. AllToAll PUT: 推送 tile t 到所有目标 rank
+        // AllToAll PUT: 推送 tile t 到所有目标 rank
         if (GetBlockIdx() == 0) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         }
         SyncAll<true>();
 
-        // 3. reduceSum: 对 tile t 的 R 个源求和 → output
+        // reduceSum: 对 tile t 的 R 个源求和 → output
         if (GetBlockIdx() == 0) {
             RunReduceSumTile(t);
         }
     }
 
-    // 4. Finalize
+    // 3. Finalize
     if (GetBlockIdx() == 0) {
         allToAllC_.template Finalize<BARRIER_NONE>();
     }
