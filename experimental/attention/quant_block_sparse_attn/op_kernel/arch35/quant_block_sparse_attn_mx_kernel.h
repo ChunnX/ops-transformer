@@ -255,6 +255,7 @@ private:
         // 构造一个 512-token logical S2 tile 的运行参数。
         // 仅清零必要的字段
         runInfo.actSingleLoopS2Size = 0U;
+        runInfo.attenMaskSubLoopBits = 0U;
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
         runInfo.isValid = true;
@@ -308,6 +309,18 @@ private:
                     AttentionMaskFullProcessingOrRequired(
                         static_cast<int64_t>(runInfo.s1Idx), static_cast<int64_t>(sparseTokenOffset), causalDelta,
                         sparseBlockRealSize, sparseBlkIdxForMask, runInfo.sparseBlockPartialMask[i]);
+                    if ASCEND_IS_AIV {
+                        if (unlikely(runInfo.sparseBlockPartialMask[i])) {
+                            const uint32_t blockTileStart = runInfo.sparseBlockTileOffset[i];
+                            const uint32_t blockTileEnd = blockTileStart + sparseBlockRealSize;
+                            if (blockTileStart < S2_SPLIT) {
+                                runInfo.attenMaskSubLoopBits |= 0x1U;
+                            }
+                            if (blockTileEnd > S2_SPLIT) {
+                                runInfo.attenMaskSubLoopBits |= 0x2U;
+                            }
+                        }
+                    }
                 }
             }
             runInfo.actSingleLoopS2Size += sparseBlockRealSize;
@@ -337,15 +350,17 @@ private:
         MxRunInfo &runInfoCur = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         MxRunInfo &runInfoPre = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
         if (likely(runInfoCur.isValid)) {
-            const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
             if ASCEND_IS_AIC {
+                const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
                     cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
                 }
             } else {
                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &pBuf = l1PBuffers.GetVec();
-                for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
-                    vecBlock.ProcessVec1(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
+                // ProcessMainLoop已过滤全无效section；有效task固定先跑subLoop0。
+                vecBlock.template ProcessVec1<0U>(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo);
+                if (likely(runInfoCur.actSingleLoopS2Size > S2_SPLIT)) {
+                    vecBlock.template ProcessVec1<1U>(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo);
                 }
             }
         }
