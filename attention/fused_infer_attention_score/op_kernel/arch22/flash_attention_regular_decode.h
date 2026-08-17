@@ -253,23 +253,31 @@ public:
             uint64_t qSOffset = 0;
             uint64_t qNStartOffset = static_cast<uint64_t>(qNStartIdx) * embed;
             uint64_t kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embed;
-            uint64_t vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embedV;
-            uint64_t oSOffset = 0;
-            uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
-            uint64_t lseTokenOffset = 0;
+                uint64_t vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embedV;
+                if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                    kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embed;
+                    vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embedV;
+                }
+                uint64_t oSOffset = 0;
+                uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
+                uint64_t lseTokenOffset = 0;
 
-            uint32_t noSkipKvS = kvSeqlen;
-            uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
+                uint32_t noSkipKvS = kvSeqlen;
+                uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
 
-            uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
-            uint32_t stackSeqTile;
-            uint32_t stackSeqTilePad = blockStackNum * pagedBlockSize;
-            uint32_t preKVNum = PRE_LAUNCH * blockStackNum;
-            int32_t stackSeqCount = 0;
+                uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
+                uint32_t stackSeqTile;
+                uint32_t stackSeqTilePad = blockStackNum * pagedBlockSize;
+                uint32_t preKVNum = PRE_LAUNCH * blockStackNum;
+                int32_t stackSeqCount = 0;
 #ifdef __DAV_C220_CUBE__
-            LayoutQ layoutQTemp(rowNum, embed);
-            LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
-            LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                LayoutQ layoutQTemp(rowNum, embed);
+                LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
+                LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                    layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                    layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+                }
 #endif
             for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                 if (kvSIdx < kvSLoopNumTotal) {
@@ -296,6 +304,10 @@ public:
                                              static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                         uint64_t gmOffsetK = kBOffset + kNStartOffset +
                                              static_cast<uint64_t>(kvNIncreIdx * embed);
+                        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                            gmOffsetK = kBOffset + kNStartOffset +
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                        }
                         uint64_t sWorkspaceIncreOffset =
                             static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                         uint64_t gmOffsetS =
@@ -510,6 +522,10 @@ public:
                 uint64_t qNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embed;
                 uint64_t kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embed;
                 uint64_t vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embedV;
+                if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                    kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embed;
+                    vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embedV;
+                }
                 uint64_t oSOffset = 0;
                 uint64_t oNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embedV;
                 uint64_t lseTokenOffset = 0;
@@ -527,6 +543,10 @@ public:
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
                 LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                    layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                    layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+                }
 #endif
                 for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                     if (kvSIdx < kvSLoopNumTotal) {
@@ -552,6 +572,10 @@ public:
                                                  static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetK = tailKBOffset + kNStartOffset +
                                                  static_cast<uint64_t>(kvNIncreIdx * embed);
+                            if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+                                gmOffsetK = tailKBOffset + kNStartOffset +
+                                            static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                            }
                             uint64_t sWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =

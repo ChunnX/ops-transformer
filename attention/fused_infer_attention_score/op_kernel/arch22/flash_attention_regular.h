@@ -534,6 +534,12 @@ public:
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
             gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
         }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
+        }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
+        }
         uint64_t gmOffsetLse = lseBOffset +
                                static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
         uint64_t gmOffsetSink = qNStartIdx;
@@ -660,6 +666,12 @@ public:
             vRow = pagedBlockSize;
             vCol = blockStackNum * strideV;
             layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+        }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            layoutKTemp = LayoutK(embed, stackSeqTile);
+        }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            layoutVTemp = LayoutV(stackSeqTile, embedV);
         }
         blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
         blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
