@@ -102,7 +102,6 @@ TILING_DATA_FIELD_DEF(uint64_t, updateSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 
 // V3 新增:量化参数
-TILING_DATA_FIELD_DEF(uint32_t, quantMode);
 TILING_DATA_FIELD_DEF(float, log2Cx);
 TILING_DATA_FIELD_DEF(float, log2CxCeil);
 
