@@ -82,12 +82,16 @@ public:
         gQuery_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(query));
         if constexpr (IS_QUANT_V) {
             gKeyInt8_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(key));
-            gKeyScratch_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(
-                reinterpret_cast<__gm__ float *>(workspace) + tiling_->kScratchOffsetElems));
         } else {
             gKeyFp_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(key));
         }
-        gBlockTable_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(blockTable));
+        if (IS_QUANT_V || tiling_->keyLayout == MSA_KEY_LAYOUT_TND) {
+            gKeyScratch_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(
+                reinterpret_cast<__gm__ float *>(workspace) + tiling_->kScratchOffsetElems));
+        }
+        if (tiling_->keyLayout != MSA_KEY_LAYOUT_TND) {
+            gBlockTable_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(blockTable));
+        }
         gScale_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scale));
         gActualSeqQlen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(actualSeqQlen));
         gActualSeqKlen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(actualSeqKlen));
@@ -97,7 +101,8 @@ public:
 
         scheduler_.Init(tiling_->batch, tiling_->numQHeads, tiling_->maxBlocksPerBatch,
                         tiling_->scoreBlockStride, tiling_->sparseMode, tiling_->initBlocks,
-                        tiling_->localBlocks, gActualSeqQlen_, gActualSeqKlen_, gStartLoc_);
+                        tiling_->localBlocks, tiling_->keyLayout, gActualSeqQlen_, gActualSeqKlen_,
+                        gStartLoc_);
     }
 
     __aicore__ inline void Process()
@@ -149,9 +154,11 @@ private:
             // 只对可见 S-tile 做 QKᵀ + 握手；因果不可见尾由 AIV 直接写 -inf，避免空转同步。
             bool needLoadQ = true;
             for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
-                if constexpr (IS_QUANT_V) {
+                const bool needKScratch = StileNeedsKScratch(task, st * MSA_BLOCKS_PER_STILE);
+                if (needKScratch) {
                     // MIX 1AIC:2AIV：AIV→AIC 的 0x2 flag 需两个 AIV 都 Set 后才放行。
                     Catlass::Arch::CrossCoreWaitFlag(flagKReady);
+                    AscendC::PipeBarrier<PIPE_ALL>();
                 }
                 const uint64_t sBase =
                     coreWsBase + static_cast<uint64_t>(tileSeq % MSA_WORKSPACE_STAGES) * MSA_STILE_ELEM_NUM;
@@ -165,10 +172,88 @@ private:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    /// AIV：把本 S-tile 可见 page 的 int8 K cast 到 per-core scratch（按 block 槽位排列）。
-    __aicore__ inline void CastKeySTileToScratch(Catlass::Arch::Resource<ArchTag> &resource,
-                                                 const MsaTask &task, uint32_t blkBase,
-                                                 uint64_t kScratchBase)
+    __aicore__ inline bool KeyBlockNeedsScratch(const MsaTask &task, uint32_t blk) const
+    {
+        if constexpr (IS_QUANT_V) {
+            return true;
+        }
+        if (tiling_->keyLayout != MSA_KEY_LAYOUT_TND) {
+            return false;
+        }
+        // TND fp16：完整 128-token 页与 BBND 一样直接从 packed GM mmad。
+        // 仅最后一条请求的尾页可能越过 T2，需要 AIV 填零后再走 scratch。
+        const uint32_t nValidTok = KeyBlockValidTokens(task, blk);
+        return (nValidTok > 0) && (nValidTok < MSA_BLOCK_SIZE) &&
+               (task.batchIdx + 1U == tiling_->batch);
+    }
+
+    __aicore__ inline bool StileNeedsKScratch(const MsaTask &task, uint32_t blkBase) const
+    {
+        for (uint32_t j = 0; j < MSA_BLOCKS_PER_STILE; ++j) {
+            const uint32_t blk = blkBase + j;
+            if (blk >= task.visibleEndBlk) {
+                break;
+            }
+            if (KeyBlockNeedsScratch(task, blk)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline uint32_t KeyBlockValidTokens(const MsaTask &task, uint32_t blk) const
+    {
+        if (tiling_->keyLayout != MSA_KEY_LAYOUT_TND) {
+            return MSA_BLOCK_SIZE;
+        }
+        const uint32_t seqTok = blk * tiling_->blockSize;
+        if (task.kvLen <= 0 || seqTok >= static_cast<uint32_t>(task.kvLen)) {
+            return 0;
+        }
+        const uint32_t seqRemain = static_cast<uint32_t>(task.kvLen) - seqTok;
+        return seqRemain < MSA_BLOCK_SIZE ? seqRemain : MSA_BLOCK_SIZE;
+    }
+
+    __aicore__ inline uint64_t KeyBlockGmOffset(const MsaTask &task, uint32_t blk) const
+    {
+        if (tiling_->keyLayout == MSA_KEY_LAYOUT_TND) {
+            const uint32_t tokenStart = task.cuKStart + blk * tiling_->blockSize;
+            const uint32_t tokStride = tiling_->numKvHeads * tiling_->headDim;
+            return static_cast<uint64_t>(tokenStart) * tokStride;
+        }
+        const int32_t page = gBlockTable_.GetValue(task.batchIdx * tiling_->maxBlocksPerBatch + blk);
+        return static_cast<uint64_t>(page) * tiling_->strideKvBlock;
+    }
+
+    template <typename T>
+    __aicore__ inline void CopyGmToUbPartial(const AscendC::LocalTensor<T> &ub,
+                                             const AscendC::GlobalTensor<T> &gm, uint32_t nElem)
+    {
+        if (nElem == 0) {
+            return;
+        }
+        const uint32_t bytes = nElem * static_cast<uint32_t>(sizeof(T));
+        if ((bytes % 32U) == 0U) {
+            AscendC::DataCopy(ub, gm, nElem);
+            return;
+        }
+        AscendC::DataCopyExtParams params;
+        params.blockCount = 1;
+        params.blockLen = bytes;
+        params.srcStride = 0;
+        params.dstStride = 0;
+        AscendC::DataCopyPadExtParams<T> pad;
+        pad.isPad = false;
+        pad.leftPadding = 0;
+        pad.rightPadding = 0;
+        pad.paddingValue = 0;
+        AscendC::DataCopyPad(ub, gm, params, pad);
+    }
+
+    /// AIV：把本 S-tile 可见 block 的 K 收进 per-core scratch（int8 cast 或 TND fp copy+尾填充）。
+    __aicore__ inline void GatherKeySTileToScratch(Catlass::Arch::Resource<ArchTag> &resource,
+                                                   const MsaTask &task, uint32_t blkBase,
+                                                   uint64_t kScratchBase)
     {
         AscendC::LocalTensor<int8_t> ubI8 =
             resource.ubBuf.template GetBufferByByte<int8_t>(UB_OFF_CAST_I8);
@@ -183,22 +268,65 @@ private:
             if (blk >= task.visibleEndBlk) {
                 break;
             }
-            const int32_t page =
-                gBlockTable_.GetValue(task.batchIdx * tiling_->maxBlocksPerBatch + blk);
-            const uint64_t kOffset = static_cast<uint64_t>(page) * tiling_->strideKvBlock;
+            if (!KeyBlockNeedsScratch(task, blk)) {
+                continue;
+            }
+            const uint64_t kOffset = KeyBlockGmOffset(task, blk);
             const uint64_t scratchOff = kScratchBase + static_cast<uint64_t>(j) * pageStride;
+            const uint32_t nValidTok = KeyBlockValidTokens(task, blk);
+            const uint32_t nValid = nValidTok * headDim;
 
-            AscendC::DataCopy(ubI8, gKeyInt8_[kOffset], nElem);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-
-            AscendC::Cast(ubHalf, ubI8, AscendC::RoundMode::CAST_NONE, nElem);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-            AscendC::DataCopy(gKeyScratch_[scratchOff], ubHalf, nElem);
+            if constexpr (IS_QUANT_V) {
+                // 与已通过的 PA int8 路径对齐：整页 DataCopy+Cast（nElem），EVENT_ID0。
+                // TND 仅在尾页会越过 T2 时改为部分拷贝；中间整页禁止走 CopyGmToUbPartial。
+                uint32_t copyN = nElem;
+                if (tiling_->keyLayout == MSA_KEY_LAYOUT_TND) {
+                    const uint32_t tokenStart = task.cuKStart + blk * tiling_->blockSize;
+                    const uint32_t packedEnd = tokenStart + MSA_BLOCK_SIZE;
+                    if (tiling_->totalK > 0 && packedEnd > tiling_->totalK) {
+                        copyN = nValid;
+                    }
+                }
+                if (copyN < nElem) {
+                    AscendC::Duplicate(ubHalf, static_cast<half>(0), nElem);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+                }
+                if (copyN > 0) {
+                    if (copyN == nElem) {
+                        AscendC::DataCopy(ubI8, gKeyInt8_[kOffset], nElem);
+                    } else {
+                        CopyGmToUbPartial(ubI8, gKeyInt8_[kOffset], copyN);
+                    }
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::Cast(ubHalf, ubI8, AscendC::RoundMode::CAST_NONE, copyN);
+                }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopy(gKeyScratch_[scratchOff], ubHalf, nElem);
+            } else {
+                AscendC::LocalTensor<ElementQ> ubK =
+                    resource.ubBuf.template GetBufferByByte<ElementQ>(UB_OFF_CAST_FP);
+                if (nValid < nElem) {
+                    AscendC::Duplicate(ubK, static_cast<ElementQ>(0), nElem);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+                }
+                if (nValid > 0) {
+                    CopyGmToUbPartial(ubK, gKeyFp_[kOffset], nValid);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
+                }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                AscendC::DataCopy(gKeyScratch_[scratchOff], ubK, nElem);
+            }
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::PipeBarrier<PIPE_ALL>();
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -210,9 +338,8 @@ private:
         const uint32_t mActual = task.mActual;
         const uint32_t headDim = tiling_->headDim;
         const LayoutQ layoutQ(mActual, headDim, tiling_->strideQn);
-        // scratch / 非量化 page 均为 [P, D] 行主序；ColumnMajor 视图的列 stride = headDim（Hkv=1）。
-        const uint32_t kColStride = IS_QUANT_V ? headDim : tiling_->strideKvToken;
-        const LayoutK layoutK(headDim, MSA_BLOCK_SIZE, kColStride);
+        const LayoutK layoutKScratch(headDim, MSA_BLOCK_SIZE, headDim);
+        const LayoutK layoutKGm(headDim, MSA_BLOCK_SIZE, tiling_->strideKvToken);
         const LayoutS layoutS(mActual, MSA_BLOCK_SIZE, STILE_WIDTH);
         const Catlass::GemmCoord shape{mActual, MSA_BLOCK_SIZE, headDim};
         const uint64_t qOffset = static_cast<uint64_t>(task.globalRowBase) * tiling_->strideQn;
@@ -233,16 +360,14 @@ private:
             if (blk >= task.visibleEndBlk) {
                 break;
             }
-            if constexpr (IS_QUANT_V) {
+            if (KeyBlockNeedsScratch(task, blk)) {
                 const uint64_t scratchOff = kScratchBase + static_cast<uint64_t>(j) * pageStride;
-                blockMmad(gQuery_[qOffset], layoutQ, gKeyScratch_[scratchOff], layoutK,
+                blockMmad(gQuery_[qOffset], layoutQ, gKeyScratch_[scratchOff], layoutKScratch,
                           gWorkspace_[sBase + static_cast<uint64_t>(j) * MSA_BLOCK_SIZE], layoutS,
                           shape, needLoadL1);
-            } else {
-                const int32_t page =
-                    gBlockTable_.GetValue(task.batchIdx * tiling_->maxBlocksPerBatch + blk);
-                const uint64_t kOffset = static_cast<uint64_t>(page) * tiling_->strideKvBlock;
-                blockMmad(gQuery_[qOffset], layoutQ, gKeyFp_[kOffset], layoutK,
+            } else if constexpr (!IS_QUANT_V) {
+                const uint64_t kOffset = KeyBlockGmOffset(task, blk);
+                blockMmad(gQuery_[qOffset], layoutQ, gKeyFp_[kOffset], layoutKGm,
                           gWorkspace_[sBase + static_cast<uint64_t>(j) * MSA_BLOCK_SIZE], layoutS,
                           shape, needLoadL1);
             }
@@ -264,7 +389,7 @@ private:
         MsaSegRowMaxEpilogue<IS_QUANT_V> epilogue;
         epilogue.Init(resource, tiling_->numQHeads, tiling_->strideOutHead, tiling_->strideOutToken,
                       tiling_->maxBlocksPerBatch, tiling_->strideScalePage, tiling_->strideScaleHead,
-                      IS_QUANT_V, gScore_, gScale_, gBlockTable_);
+                      IS_QUANT_V, tiling_->keyLayout, tiling_->totalK, gScore_, gScale_, gBlockTable_);
         Catlass::Arch::CrossCoreFlagWithReverse<REVERSE_DEPTH> flagSReady{MSA_FLAG_S_READY,
                                                                           MSA_FLAG_S_READY_REVERSE};
         Catlass::Arch::CrossCoreFlag flagKReady{MSA_FLAG_K_READY};
@@ -290,10 +415,10 @@ private:
 #endif
             epilogue.BeginTask(task, subIdx, subBlockNum);
             for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
-                if constexpr (IS_QUANT_V) {
+                if (StileNeedsKScratch(task, st * MSA_BLOCKS_PER_STILE)) {
                     // AIV0 写 scratch；AIV0/AIV1 barrier 后双方都 Set，满足 1:2 MIX 握手。
                     if (subIdx == 0) {
-                        CastKeySTileToScratch(resource, task, st * MSA_BLOCKS_PER_STILE, coreKScratch);
+                        GatherKeySTileToScratch(resource, task, st * MSA_BLOCKS_PER_STILE, coreKScratch);
                     }
                     Catlass::Arch::CrossCoreBarrier<0x1, PIPE_MTE3>();
                     Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagKReady);

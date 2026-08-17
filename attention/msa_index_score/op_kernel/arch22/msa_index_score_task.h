@@ -60,6 +60,7 @@ struct MsaTask {
     int32_t startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     int32_t kvLen;
     int32_t qLen;
+    uint32_t cuKStart; // TND：本请求在 packed key 中的 token 起点；PA：0
     uint32_t sparseMode;
     uint32_t initBlocks;
     uint32_t localBlocks;
@@ -75,7 +76,8 @@ public:
 
     __aicore__ inline void Init(uint32_t batch, uint32_t numQHeads, uint32_t maxBlocksPerBatch,
                                 uint32_t scoreBlockStride, uint32_t sparseMode, uint32_t initBlocks,
-                                uint32_t localBlocks, const AscendC::GlobalTensor<int32_t> &actualSeqQlen,
+                                uint32_t localBlocks, uint32_t keyLayout,
+                                const AscendC::GlobalTensor<int32_t> &actualSeqQlen,
                                 const AscendC::GlobalTensor<int32_t> &actualSeqKlen,
                                 const AscendC::GlobalTensor<int32_t> &startLoc)
     {
@@ -86,6 +88,7 @@ public:
         sparseMode_ = sparseMode;
         initBlocks_ = initBlocks;
         localBlocks_ = localBlocks;
+        keyLayout_ = keyLayout;
         gActualSeqQlen_ = actualSeqQlen;
         gActualSeqKlen_ = actualSeqKlen;
         gStartLoc_ = startLoc;
@@ -135,6 +138,7 @@ public:
         task.startLoc = startLoc_;
         task.kvLen = kvLen_;
         task.qLen = qLen_;
+        task.cuKStart = cuKStart_;
         task.sparseMode = sparseMode_;
         task.initBlocks = initBlocks_;
         task.localBlocks = localBlocks_;
@@ -182,6 +186,7 @@ private:
             kvLen_ = 0;
             qLen_ = 0;
             startLoc_ = 0;
+            cuKStart_ = 0;
             return;
         }
         cuQStart_ = static_cast<uint32_t>(gActualSeqQlen_.GetValue(b));
@@ -191,7 +196,16 @@ private:
         }
         curRows_ = static_cast<uint32_t>(qLen_) * numQHeads_;
         curTasks_ = MsaCeilDiv(curRows_, MSA_ROW_TILE_M);
-        kvLen_ = gActualSeqKlen_.GetValue(b);
+        if (keyLayout_ == MSA_KEY_LAYOUT_TND) {
+            cuKStart_ = static_cast<uint32_t>(gActualSeqKlen_.GetValue(b));
+            kvLen_ = static_cast<int32_t>(gActualSeqKlen_.GetValue(b + 1)) - static_cast<int32_t>(cuKStart_);
+            if (kvLen_ < 0) {
+                kvLen_ = 0;
+            }
+        } else {
+            cuKStart_ = 0;
+            kvLen_ = gActualSeqKlen_.GetValue(b);
+        }
         startLoc_ = gStartLoc_.GetValue(b);
     }
 
@@ -206,6 +220,7 @@ private:
     uint32_t sparseMode_ = MSA_SPARSE_MODE_RIGHT_DOWN;
     uint32_t initBlocks_ = MSA_DEFAULT_INIT_BLOCKS;
     uint32_t localBlocks_ = MSA_DEFAULT_LOCAL_BLOCKS;
+    uint32_t keyLayout_ = MSA_KEY_LAYOUT_BBND;
 
     uint32_t totalTasks_ = 0;
     uint32_t curBatch_ = 0;
@@ -216,6 +231,7 @@ private:
     int32_t kvLen_ = 0;
     int32_t qLen_ = 0;
     int32_t startLoc_ = 0;
+    uint32_t cuKStart_ = 0;
 };
 
 } // namespace MsaIndexScoreNs

@@ -46,15 +46,52 @@ cann_ops_transformer.msa_index_score(
 | 参数名 | 可选/必选 | 描述 | dtype | shape |
 |--------|-----------|------|-------|-------|
 | query | 必选 | $Q_{idx}$ TND | fp16/bf16 | `[T1,N1,D]` |
-| key | 必选 | $K_{idx}$ PA BBND | 同 query 或 int8 | `[NP,P,N2,D]` |
+| key | 必选 | $K_{idx}$ PA BBND/BNBD 或 TND | 同 query 或 int8 | `[NP,P,N2,D]` / `[NP,N2,P,D]` / `[T2,N2,D]` |
 | start_loc | 必选 | query 所在逻辑 block | int32 | `[B]` |
-| block_table | PA 必选 | 逻辑→物理 page | int32 | `[B,MB]` |
-| scale | 量化必选 | 反量化 | float32 | `[NP,N2,P]` |
+| block_table | PA 必选 | 逻辑→物理 page；TND 不传 | int32 | `[B,MB]` |
+| scale | 量化必选 | 反量化 | float32 | PA `[NP,N2,P]`；TND `[T2,N2]` |
 | atten_mask | mode=3 必选 | 压缩下三角模板 | int8 | `[2048,2048]` |
-| actual_seq_qlen | TND 必选 | query 前缀和 | int32 | `[B+1]` |
-| actual_seq_klen | PA 必选 | 各请求 S2 | int32 | `[B]` |
+| actual_seq_qlen | TND query 必选 | query 前缀和 | int32 | `[B+1]` |
+| actual_seq_klen | 必选 | PA 为各请求 S2；TND 为 key 前缀和 | int32 | `[B]` / `[B+1]` |
 | sparse_mode | 可选 | 0 / 3，默认 3 | int | - |
 
 ## 输出
 
 `[N1, T1, RoundUp(MB,16)]` float32
+
+## 调用示例
+
+- PageAttention BBND / BNBD：
+
+```python
+import torch
+import torch_npu
+import cann_ops_transformer
+
+T1, N1, N2, D, P = 32, 8, 1, 128, 128
+B, NP, MB = 1, 8, 2
+query = torch.randn(T1, N1, D, dtype=torch.float16).npu()
+key_bbnd = torch.randn(NP, P, N2, D, dtype=torch.float16).npu()
+# BNBD 与 BBND 仅 N/P 轴对调：key_bnbd = key_bbnd.permute(0, 2, 1, 3).contiguous()
+block_table = torch.arange(B * MB, dtype=torch.int32).view(B, MB).npu()
+actual_seq_qlen = torch.tensor([0, T1], dtype=torch.int32).npu()
+actual_seq_klen = torch.tensor([256], dtype=torch.int32).npu()
+start_loc = torch.tensor([1], dtype=torch.int32).npu()
+atten_mask = torch.zeros(2048, 2048, dtype=torch.int8).npu()
+score = cann_ops_transformer.msa_index_score(
+    query, key_bbnd, start_loc,
+    block_table=block_table, atten_mask=atten_mask,
+    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen)
+```
+
+- TND packed key（不传 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）：
+
+```python
+T2 = 256
+key_tnd = torch.randn(T2, N2, D, dtype=torch.float16).npu()
+actual_seq_klen_tnd = torch.tensor([0, T2], dtype=torch.int32).npu()
+score_tnd = cann_ops_transformer.msa_index_score(
+    query, key_tnd, start_loc,
+    atten_mask=atten_mask,
+    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen_tnd)
+```
