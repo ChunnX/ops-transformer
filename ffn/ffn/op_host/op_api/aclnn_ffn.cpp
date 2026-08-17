@@ -880,6 +880,14 @@ static aclnnStatus ConvertExpertTokensAndCheckParams(FFNParams &ffnParams, aclOp
     return ret;
 }
 
+// 校验并转换输入 tensor 为 contiguous 形式。
+// 宏在文件作用域定义（非函数体内），避免宏名作用域混乱；加 FFN_ 前缀防止与其它头文件宏冲突。
+#define FFN_CHECK_AND_CONVERT(param, param_name, conti_var) \
+    const aclTensor *conti_var = nullptr; \
+    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
+                                              uniqueExecutor.get()) == ACLNN_SUCCESS, \
+               ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
+
 static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activation, uint64_t *workspaceSize,
                                        aclOpExecutor **executor)
 {
@@ -907,32 +915,25 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     ret = InputsContiguousAndTransFormat(ffnParams.weight2, reformatedWeight2, "weight2", uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-// when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
-// view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
-// Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
-// smooth quant and etc. So we call l0op::contiguous to keep them identical.
-// Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
-
-// 定义校验宏
-#define CHECK_AND_CONVERT(param, param_name, conti_var) \
-    const aclTensor *conti_var = nullptr; \
-    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
-                                              uniqueExecutor.get()) == ACLNN_SUCCESS, \
-               ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
+    // when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
+    // view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
+    // Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
+    // smooth quant and etc. So we call l0op::contiguous to keep them identical.
+    // Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
 
     // 使用宏进行校验和转换
-    CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
-    CHECK_AND_CONVERT(bias1, bias1, contiBias1);
-    CHECK_AND_CONVERT(bias2, bias2, contiBias2);
-    CHECK_AND_CONVERT(scale, scale, contiQuantScale);
-    CHECK_AND_CONVERT(offset, offset, contiOffset);
-    CHECK_AND_CONVERT(deqScale1, deqScale1, contiDeqScale1);
-    CHECK_AND_CONVERT(deqScale2, deqScale2, contiDeqScale2);
-    CHECK_AND_CONVERT(antiquantScale1, antiquantScale1, contiAntiScale1);
-    CHECK_AND_CONVERT(antiquantScale2, antiquantScale2, contiAntiScale2);
-    CHECK_AND_CONVERT(antiquantOffset1, antiquantOffset1, contiAntiOffset1);
-    CHECK_AND_CONVERT(antiquantOffset2, antiquantOffset2, contiAntiOffset2);
-#undef CHECK_AND_CONVERT
+    FFN_CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
+    FFN_CHECK_AND_CONVERT(bias1, bias1, contiBias1);
+    FFN_CHECK_AND_CONVERT(bias2, bias2, contiBias2);
+    FFN_CHECK_AND_CONVERT(scale, scale, contiQuantScale);
+    FFN_CHECK_AND_CONVERT(offset, offset, contiOffset);
+    FFN_CHECK_AND_CONVERT(deqScale1, deqScale1, contiDeqScale1);
+    FFN_CHECK_AND_CONVERT(deqScale2, deqScale2, contiDeqScale2);
+    FFN_CHECK_AND_CONVERT(antiquantScale1, antiquantScale1, contiAntiScale1);
+    FFN_CHECK_AND_CONVERT(antiquantScale2, antiquantScale2, contiAntiScale2);
+    FFN_CHECK_AND_CONVERT(antiquantOffset1, antiquantOffset1, contiAntiOffset1);
+    FFN_CHECK_AND_CONVERT(antiquantOffset2, antiquantOffset2, contiAntiOffset2);
+#undef FFN_CHECK_AND_CONVERT
 
     // call l0 interface
     DataType yDtype = ffnParams.y->GetDataType();
