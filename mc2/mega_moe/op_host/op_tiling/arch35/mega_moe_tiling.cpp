@@ -31,6 +31,7 @@
 #include "../mega_moe_tiling_host.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../../op_kernel/arch35/common/mega_moe_constants.h"
 #include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
 
 using namespace Mc2Tiling;
@@ -64,6 +65,8 @@ const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
+constexpr float DEFAULT_SWIGLU_OAI_ALPHA = 1.702f;
+constexpr float DEFAULT_SWIGLU_OAI_BETA = 1.0f;
 
 constexpr uint32_t GMM_TILE_N = 256U;
 constexpr uint32_t GMM1_MIN_LOGICAL_TILES_PER_CORE = 4U;
@@ -349,30 +352,70 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationPtr == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"), return ge::GRAPH_FAILED);
-    const bool isSwiglu = std::strcmp(activationPtr, "swiglu") == 0;
-    const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
-    OP_TILING_CHECK(!isSwiglu && !isSituGlu,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
-                                              "A5 supports 'swiglu' and 'situglu'"),
-                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
                     return ge::GRAPH_FAILED);
     const size_t paramCount = activationParamsPtr->GetSize();
-    const float *activationParams = activationParamsPtr->GetData();
-    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+    OP_TILING_CHECK(paramCount != 0U && activationParams == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
                     return ge::GRAPH_FAILED);
-    if (isSwiglu) {
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationParams(const gert::TilingContext *context, MegaMoeConfig &config,
+                                              const char *nodeName)
+{
+    auto attrs = context->GetAttrs();
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
+    const size_t paramCount = activationParamsPtr->GetSize();
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+
+    const bool isSwiGlu = std::strcmp(activationPtr, "swiglu") == 0;
+    const bool isSwiGluStep = std::strcmp(activationPtr, "swiglustep") == 0;
+    const bool isSwiGluOai = std::strcmp(activationPtr, "swigluoai") == 0;
+    const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
+    OP_TILING_CHECK(!isSwiGlu && !isSwiGluStep && !isSwiGluOai && !isSituGlu,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "one of 'swiglu', 'swiglustep', 'swigluoai' or 'situglu'"),
+                    return ge::GRAPH_FAILED);
+    if (isSwiGlu || isSwiGluStep) {
         OP_TILING_CHECK(paramCount > 1U,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
                                                   std::to_string(paramCount).c_str(),
-                                                  "should be 0 or 1 for swiglu"),
+                                                  "0 or 1 for swiglu/swiglustep"),
                         return ge::GRAPH_FAILED);
         if (paramCount == 1U) {
             const float activationClamp = activationParams[0];
-            OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+            OP_TILING_CHECK(activationClamp < 0.0f || std::isnan(activationClamp),
                             OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
                                                       std::to_string(activationClamp).c_str(),
                                                       "should be >= 0 and not NAN"),
+                            return ge::GRAPH_FAILED);
+        }
+    } else if (isSwiGluOai) {
+        OP_TILING_CHECK(paramCount != 0U && paramCount != 3U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
+                                                  std::to_string(paramCount).c_str(),
+                                                  "0 or 3 for swigluoai [clamp, alpha, beta]"),
+                        return ge::GRAPH_FAILED);
+        if (paramCount == 3U) {
+            const float activationClamp = activationParams[0];
+            OP_TILING_CHECK(activationClamp < 0.0f || std::isnan(activationClamp),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
+                                                      std::to_string(activationClamp).c_str(),
+                                                      ">= 0 and not NAN"),
+                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!std::isfinite(activationParams[1]),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationAlpha",
+                                                      std::to_string(activationParams[1]).c_str(),
+                                                      "finite"),
+                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!std::isfinite(activationParams[2]),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationBeta",
+                                                      std::to_string(activationParams[2]).c_str(),
+                                                      "finite"),
                             return ge::GRAPH_FAILED);
         }
     } else {
@@ -395,6 +438,13 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                             return ge::GRAPH_FAILED);
         }
     }
+
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    OP_TILING_CHECK(topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA &&
+                    std::strcmp(activationPtr, "swiglu") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "'swiglu' for URMA topology"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -610,25 +660,31 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
                                                                         tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    const float *activationParams = activationParamsPtr->GetData();
+    const size_t paramCount = activationParamsPtr->GetSize();
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+    tilingData->clampLimit = paramCount == 0U ? DEFAULT_ACTIVATION_CLAMP : activationParams[0];
+    tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU);
+    tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT);
+    tilingData->activationAlpha = 1.0f;
+    tilingData->activationBeta = 1.0f;
+
     if (std::strcmp(activationPtr, "situglu") == 0) {
         tilingData->clampLimit = std::numeric_limits<float>::max();
-        tilingData->actMode = 1U; // ACT_MODE_SITU
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SITU);
         tilingData->activationBeta = activationParams[0];
         if (activationParamsPtr->GetSize() == 2U) {
-            tilingData->actSubMode = 1U; // ACT_SUB_MODE_LINEAR
+            tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::LINEAR);
             tilingData->activationAlpha = activationParams[1];
         } else {
-            tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+            tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT);
             tilingData->activationAlpha = 0.0f;
         }
-    } else {
-        tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
-                                                                        activationParams[0];
-        tilingData->actMode = 0U;    // ACT_MODE_SWIGLU
-        tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
-        tilingData->activationAlpha = 1.0f;
-        tilingData->activationBeta = 1.0f;
+    } else if (std::strcmp(activationPtr, "swiglustep") == 0) {
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_STEP);
+    } else if (std::strcmp(activationPtr, "swigluoai") == 0) {
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_OAI);
+        tilingData->activationAlpha = paramCount == 0U ? DEFAULT_SWIGLU_OAI_ALPHA : activationParams[1];
+        tilingData->activationBeta = paramCount == 0U ? DEFAULT_SWIGLU_OAI_BETA : activationParams[2];
     }
 
     tilingData->sharedExpertNum = static_cast<uint32_t>(
@@ -1054,7 +1110,10 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
     const char *nodeName = context->GetNodeName();
 
     OP_TILING_CHECK(CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "check attr pointers failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckActivationParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check activation params failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check attr params failed."), return ge::GRAPH_FAILED);
