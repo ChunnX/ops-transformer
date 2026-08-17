@@ -792,12 +792,18 @@ private:
                                    dealRowCount, headDimAlignFp32_, D_);
                         AscendC::PipeBarrier<PIPE_V>();
                     } else {
-                        AscendC::LocalTensor<T> tmpMul = broadCastTmpBuf_[scratchBase];
-                        RowMulsFp32(tmpMul, splitFp32, rowScale,
+                        // The scaled split is dead after this reduction, so
+                        // scale it in place.  A full [dealRowCount, D] tmpMul
+                        // can outgrow the LSE scratch area for supported
+                        // D=128/256 shapes;
+                        // placing it there aliases castAccumBuf_ on the BF16
+                        // path and corrupts the source while RowMuls is still
+                        // reading it.
+                        RowMulsFp32(splitFp32, splitFp32, rowScale,
                                    dealRowCount, headDimAlignFp32_, D_);
                         AscendC::PipeBarrier<PIPE_V>();
                         AscendC::Add<float>(
-                            dst, dst, tmpMul, FLOAT_VECTOR_SIZE, addRepeats,
+                            dst, dst, splitFp32, FLOAT_VECTOR_SIZE, addRepeats,
                             AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                         AscendC::PipeBarrier<PIPE_V>();
                     }
