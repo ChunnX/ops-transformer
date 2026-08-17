@@ -741,9 +741,9 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
 
             // vec 
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF1_FLAG);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_P_BUF0_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_P_BUF1_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTNOUT_BUF_FLAG);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF2_FLAG);
@@ -775,9 +775,9 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
 
             // vec
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_VEC1_RES_BUF1_FLAG);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTN_BUF_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_P_BUF0_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_P_BUF1_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_ATTNOUT_BUF_FLAG);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EpMXFP4::SYNC_GMAX_UB_TO_L1_BUF2_FLAG);

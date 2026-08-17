@@ -109,8 +109,8 @@ public:
         AscendC::LocalTensor<ElementGroupMax> localGroupMax1 = localGroupMaxUBTensor[firstLoopStart];
         AscendC::LocalTensor<ElementGroupMax> localGroupMax2 = localGroupMaxUBTensor[secondLoopStart];
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
@@ -139,17 +139,17 @@ public:
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF0_FLAG);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF1_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF0_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF1_FLAG);
 
         // copy pscale1 ub to l1
         bool isQsAlign128 = taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE;
         CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop, isQsAlign128);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
     }
 
      template <class TensorDst>

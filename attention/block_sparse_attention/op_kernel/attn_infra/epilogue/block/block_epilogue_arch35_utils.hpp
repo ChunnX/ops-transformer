@@ -87,14 +87,13 @@ namespace MXFP4 {
     static constexpr uint32_t UB_INDEX_BUF_OFFSET = 247 * KB_BYTE + 768;
 
     // vec同步eventID
-    static constexpr uint64_t SYNC_VEC1_RES_BUF0_FLAG = 0;
-    static constexpr uint64_t SYNC_VEC1_RES_BUF1_FLAG = 1;
+    static constexpr uint64_t SYNC_P_BUF0_FLAG = 0;
+    static constexpr uint64_t SYNC_P_BUF1_FLAG = 1;
     static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;
     static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF1_FLAG = 3;
     static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF2_FLAG = 4;
     static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF3_FLAG = 5;
-    static constexpr uint64_t SYNC_ATTN_BUF_FLAG = 6;
-    static constexpr uint64_t SYNC_INIT_OUTPUT = 7;
+    static constexpr uint64_t SYNC_ATTNOUT_BUF_FLAG = 6;
 }  // namespace MXFP4
 
 }  // namespace NpuArch::Epilogue::Block
