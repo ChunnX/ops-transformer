@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "moe_fused_topk.h"
+#include "moe_fused_topk_base.h"
 
 using namespace AscendC;
 

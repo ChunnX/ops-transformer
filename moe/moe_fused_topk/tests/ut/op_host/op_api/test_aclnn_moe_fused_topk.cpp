@@ -31,6 +31,49 @@ protected:
     static void TearDownTestCase() { std::cout << "moe_fused_topk_test TearDown" << std::endl; }
 };
 
+class l2_moe_fused_topk_ascend950_test : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "moe_fused_topk_ascend950_test Setup" << std::endl;
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    }
+    static void TearDownTestCase() { std::cout << "moe_fused_topk_ascend950_test TearDown" << std::endl; }
+};
+
+TEST_F(l2_moe_fused_topk_ascend950_test, Ascend950_moe_fused_topk_fp16_with_mapping)
+{
+    auto x = TensorDesc({41, 136}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto addNum = TensorDesc({136}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto mappingNum = TensorDesc({136}, ACL_INT32, ACL_FORMAT_ND).ValueRange(1L, 64L);
+    auto mappingTable = TensorDesc({136, 64}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0L, 1023L);
+    auto y = TensorDesc({41, 8}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto indices = TensorDesc({41, 8}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeFusedTopk,
+                        INPUT(x, addNum, mappingNum, mappingTable, 8, 4, 2, 8, 0, true, 1.0f, true),
+                        OUTPUT(y, indices));
+    uint64_t workspaceSize = 0;
+    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
+    // OP_API_UT uses executor stubs, so workspace accounting is not materialized
+    // here.  Successful graph construction is the host-API assertion; device
+    // workspace and execution are covered by the Ascend950 ACLNN smoke test.
+}
+
+TEST_F(l2_moe_fused_topk_ascend950_test, Ascend950_moe_fused_topk_rejects_unsupported_activation)
+{
+    auto x = TensorDesc({1, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto addNum = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto y = TensorDesc({1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto indices = TensorDesc({1, 1}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeFusedTopk,
+                        INPUT(x, addNum, nullptr, nullptr, 1, 1, 1, 1, 1, false, 1.0f, false),
+                        OUTPUT(y, indices));
+    uint64_t workspaceSize = 0;
+    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+}
+
 TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1) {
 
     int64_t num_token = 256;
