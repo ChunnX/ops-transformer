@@ -907,6 +907,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>MoE中根据mask进行scatter操作。</td>
   </tr>
   <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_tutel_combine_x/README.md">moe_tutel_combine_x</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE（Tutel）combine阶段的token侧聚合。按路由表indices、locations从专家输出缓冲y_grad中为每个token取出至多K行，乘以门控gates后沿top-k轴求和；indices小于0或locations大于等于容量的项贡献0。</td>
+  </tr>
+  <tr>
     <td>posembedding</td>
     <td><a href="../../posembedding/apply_rotary_pos_emb/README.md">apply_rotary_pos_emb</a></td>
     <td>✓</td>
