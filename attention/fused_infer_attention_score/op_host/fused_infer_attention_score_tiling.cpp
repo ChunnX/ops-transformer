@@ -1616,21 +1616,6 @@ static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape,
     return isFAIDSize && blockSizeSupported;
 }
 
-static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape,
-    const gert::Shape *tempVShape)
-{
-    // BNBD layout: (numBlocks, kvHeads, blockSize, D), where H = N * D
-    int64_t tempKD = tempKShape->GetDim(DIM_3);
-    int64_t tempVD = tempVShape->GetDim(DIM_3);
-    int64_t blockSize = tempKShape->GetDim(DIM_2);
-    constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-            (tempD == tempKD && tempD == tempVD);
-    bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
-            (blockSize <= MAX_BLOCK_SIZE);
-    return isFAIDSize && blockSizeSupported;
-}
-
 static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
                                 const gert::Shape *tempVShape)
 {
