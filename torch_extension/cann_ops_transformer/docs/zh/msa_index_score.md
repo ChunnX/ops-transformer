@@ -9,7 +9,7 @@
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="950" id3 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：文档标注支持；torch_extension / A2 实现暂未落地 FP8
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
 <!-- end id3 -->
 
 ## 功能说明

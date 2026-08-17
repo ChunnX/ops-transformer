@@ -128,6 +128,8 @@ def msa_index_score(
 ) -> torch.Tensor:
     """MSA Index Branch block score，封装 aclnnMsaIndexScore。
 
+    当前仅 Atlas A2/A3；不支持 Ascend 950 / FP8。
+
     Args:
         query: ``[T1, N1, D]`` float16 / bfloat16
         key: PA BBND ``[NP, P, N2, D]``；也接受 Triton 风格 ``[NP, P, D]``（自动扩 N2=1）

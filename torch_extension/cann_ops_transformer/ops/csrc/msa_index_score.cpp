@@ -11,6 +11,7 @@
 /*!
  * \file msa_index_score.cpp
  * \brief torch_extension 适配：aclnnMsaIndexScore C++ wrapper。
+ *        当前仅 Atlas A2/A3（query fp16/bf16，key 同 dtype 或 int8）；不支持 Ascend 950 / FP8。
  */
 
 #include <torch/extension.h>
