@@ -37,8 +37,9 @@ def main():
     dy = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
     y = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
     scale = 1.0 / math.sqrt(D)
-    smax = torch.zeros(B * N, S1, device=device, dtype=torch.float32)
-    ssum = torch.ones(B * N, S1, device=device, dtype=torch.float32)
+    # softmax_lse [B,N,S1]：lse = max + log(sum(exp(s-max)))。
+    # profiling 只关心耗时，取 0 即 max=0/sum=1 的等价情形。
+    lse = torch.zeros(B, N, S1, device=device, dtype=torch.float32)
     dq_ws = torch.zeros(B, S1, N, D, device=device, dtype=torch.float32)
     dk_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
     dv_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
@@ -53,7 +54,7 @@ def main():
 
     def once():
         flash_attention_score_grad[None, CORES](
-            q, k, v, dy, y, smax, ssum, dq_ws, dk_ws, dv_ws,
+            q, k, v, dy, y, lse, dq_ws, dk_ws, dv_ws,
             dq_o, dk_o, dv_o, tiling)
 
     # warmup + 编译

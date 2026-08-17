@@ -56,7 +56,10 @@ def build_inputs(B, N, S1, S2, D, device, dtype=torch.float16):
     # 前向输出回到 BSND
     y_bsnd = y.transpose(1, 2).contiguous().to(dtype)
     del s, sexp, p, y
-    return q, k, v, dy, y_bsnd, smax, ssum, scale
+    # ASC 仍是 max/sum 口径；pypto 改用 LSE，故这里两者都返回，
+    # lse = max + log(sum(exp(s-max)))，形状 [B,N,S1]
+    lse = (smax + torch.log(ssum)).squeeze(-1)           # [B,N,S1]
+    return q, k, v, dy, y_bsnd, smax, ssum, lse, scale
 
 
 def bench(fn, warmup=WARMUP, iters=ITERS):
@@ -97,7 +100,8 @@ def check_close(name, got, ref, atol=2e-2):
 def run(B, N, S1, S2, D, cores):
     device = f"npu:{int(os.environ.get('TILE_FWK_DEVICE_ID', 0))}"
     torch.npu.set_device(device)
-    q, k, v, dy, y, smax, ssum, scale = build_inputs(B, N, S1, S2, D, device)
+    q, k, v, dy, y, smax, ssum, lse, scale = build_inputs(
+        B, N, S1, S2, D, device)
 
     print(f"\n{'='*66}")
     print(f"[bench] B={B} N={N} S1={S1} S2={S2} D={D} layout=BSND fp16 "
@@ -142,8 +146,7 @@ def run(B, N, S1, S2, D, cores):
 
     # ---------------- pypto ----------------
     # pypto 的 max/sum 约定为 [B*N, S1] fp32
-    smax_p = smax.squeeze(-1).reshape(B * N, S1).contiguous().float()
-    ssum_p = ssum.squeeze(-1).reshape(B * N, S1).contiguous().float()
+    lse_p = lse.contiguous().float()                     # [B,N,S1]
     dq_ws = torch.zeros(B, S1, N, D, device=device, dtype=torch.float32)
     dk_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
     dv_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
@@ -159,7 +162,7 @@ def run(B, N, S1, S2, D, cores):
 
     def pypto_once():
         flash_attention_score_grad[None, cores](
-            q, k, v, dy, y, smax_p, ssum_p,
+            q, k, v, dy, y, lse_p,
             dq_ws, dk_ws, dv_ws,
             dq_o, dk_o, dv_o, tiling,
         )
