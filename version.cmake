@@ -30,3 +30,23 @@ set_cann_run_dependencies(asc-tools ">=8.5")
 set_cann_run_dependencies(bisheng-compiler ">=8.5")
 set_cann_run_dependencies(ops-nn ">=8.5")
 set_cann_run_dependencies(hccl ">=8.5")
+
+# -----------------------------------------------------------------------------------------------------------
+# 读取已安装 CANN 包版本（toolkit/version.info 的 Version= 行），供算子级 min_cann_version 过滤使用
+# -----------------------------------------------------------------------------------------------------------
+set(CANN_TOOLKIT_VERSION "" CACHE STRING "Installed CANN toolkit version")
+set(_cann_ver_file "${ASCEND_CANN_PACKAGE_PATH}/opp/version.info")
+if(EXISTS "${_cann_ver_file}")
+    file(STRINGS "${_cann_ver_file}" _cann_ver_lines)
+    foreach(_ver_line IN LISTS _cann_ver_lines)
+        if(_ver_line MATCHES "^Version=([0-9]+\\.[0-9]+\\.[0-9]+)")
+            set(CANN_TOOLKIT_VERSION "${CMAKE_MATCH_1}" CACHE STRING "Installed CANN toolkit version" FORCE)
+            break()
+        endif()
+    endforeach()
+endif()
+if(CANN_TOOLKIT_VERSION)
+    message(STATUS "Detected CANN toolkit version: ${CANN_TOOLKIT_VERSION}")
+else()
+    message(WARNING "CANN toolkit version not detected from ${_cann_ver_file}; ops with min_cann_version will be skipped.")
+endif()
