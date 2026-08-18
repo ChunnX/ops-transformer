@@ -492,6 +492,26 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
 
+    GM_ADDR localEpochAddr =
+        GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + GetRankFlagOffset(rankId_);
+    GlobalTensor<uint32_t> localEpoch;
+    localEpoch.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localEpochAddr));
+    DataCopyParams epochCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
+    DataCopyPadParams epochPadParams = {false, 0U, 0U, 0U};
+    if (aivId_ == 0) {
+        DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        uint32_t nextEpoch = statusTensor_(0) + 1U;
+        statusTensor_(0) = nextEpoch == 0U ? 1U : nextEpoch;
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyPad(localEpoch, statusTensor_, epochCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+    SyncAll<true>();
+    DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    expectedEpoch_ = statusTensor_(0);
+
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
     if (sendsTokens) {
         // 区间分片: splitRankTokens=true 时，同组 groupSize 个核各扫 1/groupSize 区间
@@ -565,35 +585,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
-        FlushPreparedWrites();
     }
 
-    // All token/weight writes to one destination use the same owner AIV and channel 0. Wait until
-    // every owner has submitted its payload before advancing the persistent rank-flag epoch.
+    // The owner appends the rank flag to its final payload batch on the same channel. ODR 6 makes
+    // the flag visible only after all preceding token/weight writes from this owner complete.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    SyncAll<true>();
-
-    GM_ADDR localEpochAddr =
-        GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + GetRankFlagOffset(rankId_);
-    GlobalTensor<uint32_t> localEpoch;
-    localEpoch.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localEpochAddr));
-    DataCopyParams epochCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
-    DataCopyPadParams epochPadParams = {false, 0U, 0U, 0U};
-    if (aivId_ == 0) {
+    if (aivId_ < activeAivNum) {
         DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint32_t nextEpoch = statusTensor_(0) + 1U;
-        statusTensor_(0) = nextEpoch == 0U ? 1U : nextEpoch;
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(localEpoch, statusTensor_, epochCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
-    SyncAll<true>();
-
-    DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    expectedEpoch_ = statusTensor_(0);
-    if (aivId_ < activeAivNum) {
         GlobalTensor<uint32_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
         DataCopyPad(flagWorkspace, statusTensor_, epochCopyParams);
@@ -735,7 +734,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 #endif
