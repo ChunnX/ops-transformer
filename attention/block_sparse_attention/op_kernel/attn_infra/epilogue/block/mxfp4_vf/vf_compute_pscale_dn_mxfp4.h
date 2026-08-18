@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_computeScale_dn_mxfp4_qs64.h
+ * \file vf_compute_pscale_dn_mxfp4.h
  * \brief
  */
 
-#ifndef COMPUTESCALE_DN_MXFP4_QS64_H_
-#define COMPUTESCALE_DN_MXFP4_QS64_H_
+#ifndef VF_COMPUTE_PSCALE_DN_MXFP4_H_
+#define VF_COMPUTE_PSCALE_DN_MXFP4_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
@@ -31,16 +31,14 @@ using namespace MicroAPI;
 
 // T: half
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void compute_pscale_qs64_vf(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
+__simd_vf__ inline void compute_pscale_vf(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
                                         __ubuf__ T *ulmax2, __ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
                                         __ubuf__ float *urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
                                         const T LOG2_CX_CEIL)
 {
-    MaskReg preg_all_32 = CreateMask<uint32_t, MaskPattern::ALL>();
-    MaskReg preg_VL32_32 = CreateMask<uint32_t, MaskPattern::VL32>();
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
-    MaskReg preg_VL64_16 = CreateMask<uint16_t, MaskPattern::VL64>();
-    MaskReg preg_VL128_8 = CreateMask<uint8_t, MaskPattern::VL128>();
+    MaskReg preg_all8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_all_32 = CreateMask<uint32_t, MaskPattern::ALL>();
 
     RegTensor<half> vreg_gmax, vreg_max1, vreg_max2, vreg_rs16, vreg_gmax_old;
     RegTensor<float> vreg_rs1, vreg_rs2;
@@ -51,24 +49,24 @@ __simd_vf__ inline void compute_pscale_qs64_vf(__ubuf__ uint8_t *mxscale1, __ubu
         LoadAlign(vreg_max1, umax1);
         LoadAlign(vreg_max2, umax2);
 
-        Max(vreg_gmax, vreg_max1, vreg_max2, preg_VL64_16);
-        StoreAlign(ugmax_old, vreg_gmax, preg_VL64_16);
+        Max(vreg_gmax, vreg_max1, vreg_max2, preg_all16);
+        StoreAlign(ugmax_old, vreg_gmax, preg_all16);
     } else {
         LoadAlign(vreg_max1, umax1);
         LoadAlign(vreg_max2, umax2);
         LoadAlign(vreg_gmax_old, ugmax_old);
 
-        Max(vreg_gmax, vreg_max1, vreg_max2, preg_VL64_16);
-        Max(vreg_gmax, vreg_gmax, vreg_gmax_old, preg_VL64_16);
-        StoreAlign(ugmax_old, vreg_gmax, preg_VL64_16);
+        Max(vreg_gmax, vreg_max1, vreg_max2, preg_all16);
+        Max(vreg_gmax, vreg_gmax, vreg_gmax_old, preg_all16);
+        StoreAlign(ugmax_old, vreg_gmax, preg_all16);
 
-        Sub(vreg_rs16, vreg_gmax_old, vreg_gmax, preg_VL64_16);
-        Adds(vreg_rs16, vreg_rs16, NUM_127, preg_VL64_16);
-        Maxs(vreg_rs16, vreg_rs16, ZERO_VALUE, preg_VL64_16);
-        Cast<int32_t, T, h2iZero>((RegTensor<int32_t> &)vreg_rs1, vreg_rs16, preg_VL64_16);
-        Cast<int32_t, T, h2iOne>((RegTensor<int32_t> &)vreg_rs2, vreg_rs16, preg_VL64_16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_VL32_32);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_VL32_32);
+        Sub(vreg_rs16, vreg_gmax_old, vreg_gmax, preg_all16);
+        Adds(vreg_rs16, vreg_rs16, NUM_127, preg_all16);
+        Maxs(vreg_rs16, vreg_rs16, ZERO_VALUE, preg_all16);
+        Cast<int32_t, T, h2iZero>((RegTensor<int32_t> &)vreg_rs1, vreg_rs16, preg_all16);
+        Cast<int32_t, T, h2iOne>((RegTensor<int32_t> &)vreg_rs2, vreg_rs16, preg_all16);
+        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_all_32);
+        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_all_32);
 
         Interleave((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs1,
                    (RegTensor<int32_t> &)vreg_rs2);
@@ -84,10 +82,10 @@ __simd_vf__ inline void compute_pscale_qs64_vf(__ubuf__ uint8_t *mxscale1, __ubu
     Duplicate(vreg_max1, MIN_VALUE);
     StoreAlign(umax1, vreg_max1, preg_all16);
     if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
-        Adds(vreg_gmax, vreg_gmax, NUM_NEG_125, preg_VL64_16);
+        Adds(vreg_gmax, vreg_gmax, NUM_NEG_125, preg_all16);
     } else {
-        Adds(vreg_gmax, vreg_gmax, NUM_NEG_127, preg_VL64_16);
-        Adds(vreg_gmax, vreg_gmax, LOG2_CX_CEIL, preg_VL64_16);
+        Adds(vreg_gmax, vreg_gmax, NUM_NEG_127, preg_all16);
+        Adds(vreg_gmax, vreg_gmax, LOG2_CX_CEIL, preg_all16);
     }
 
     for (uint16_t i = 0; i < firstLoop; i++) {
@@ -102,43 +100,43 @@ __simd_vf__ inline void compute_pscale_qs64_vf(__ubuf__ uint8_t *mxscale1, __ubu
         LoadAlign(vreg_scale7, ulmax1 + (i * ulmaxLoopRow + 6 * m));
         LoadAlign(vreg_scale8, ulmax1 + (i * ulmaxLoopRow + 7 * m));
 
-        Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_VL64_16);
+        Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_all16);
+        Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_all16);
+        Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_all16);
+        Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_all16);
+        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_all16);
+        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_all16);
+        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_all16);
+        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_all16);
 
         // SAT Mode, if < 0, then = 0
         RegTensor<uint8_t> vreg_mxscale1, vreg_mxscale2, vreg_mxscale3, vreg_mxscale4, vreg_mxscale5, vreg_mxscale6,
             vreg_mxscale7, vreg_mxscale8;
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale1, vreg_scale1, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_VL64_16);
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_VL64_16);
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_VL64_16);
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_VL64_16);
+        Cast<uint8_t, T, castTraitZero>(vreg_mxscale1, vreg_scale1, preg_all16);
+        Cast<uint8_t, T, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_all16);
+        Cast<uint8_t, T, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_all16);
+        Cast<uint8_t, T, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_all16);
+        Cast<uint8_t, T, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_all16);
+        Cast<uint8_t, T, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_all16);
+        Cast<uint8_t, T, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_all16);
+        Cast<uint8_t, T, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_all16);
 
-        Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_VL128_8);
-        Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_VL128_8);
-        Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_VL128_8);
-        Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_VL128_8);
+        Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_all8);
+        Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_all8);
+        Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_all8);
+        Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 0, vreg_mxscale1, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 1, vreg_mxscale3, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 2, vreg_mxscale5, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 3, vreg_mxscale7, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
     }
 
     for (uint16_t i = 0; i < secondLoop; i++) {
@@ -153,48 +151,48 @@ __simd_vf__ inline void compute_pscale_qs64_vf(__ubuf__ uint8_t *mxscale1, __ubu
         LoadAlign(vreg_scale7, ulmax2 + (i * ulmaxLoopRow + m * 6));
         LoadAlign(vreg_scale8, ulmax2 + (i * ulmaxLoopRow + m * 7));
 
-        Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_VL64_16);
+        Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_all16);
+        Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_all16);
+        Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_all16);
+        Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_all16);
+        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_all16);
+        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_all16);
+        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_all16);
+        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_all16);
 
         // SAT Mode, if < 0, then = 0
         RegTensor<uint8_t> vreg_mxscale1, vreg_mxscale2, vreg_mxscale3, vreg_mxscale4, vreg_mxscale5, vreg_mxscale6,
             vreg_mxscale7, vreg_mxscale8;
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale1, vreg_scale1, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_VL64_16);
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_VL64_16);
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_VL64_16);
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_VL64_16);
+        Cast<uint8_t, half, castTraitZero>(vreg_mxscale1, vreg_scale1, preg_all16);
+        Cast<uint8_t, half, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_all16);
+        Cast<uint8_t, half, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_all16);
+        Cast<uint8_t, half, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_all16);
+        Cast<uint8_t, half, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_all16);
+        Cast<uint8_t, half, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_all16);
+        Cast<uint8_t, half, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_all16);
+        Cast<uint8_t, half, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_all16);
 
-        Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_VL128_8);
-        Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_VL128_8);
-        Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_VL128_8);
-        Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_VL128_8);
+        Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_all8);
+        Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_all8);
+        Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_all8);
+        Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 0, vreg_mxscale1, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 1, vreg_mxscale3, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 2, vreg_mxscale5, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
 
         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 3, vreg_mxscale7, 5,
-                                                           preg_VL128_8);
+                                                           preg_all8);
     }
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void ComputePscaleQS64CallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
+__aicore__ inline void ComputePscaleCallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
                                      const LocalTensor<T> &ulmax1, const LocalTensor<T> &ulmax2,
                                      const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
                                      const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
@@ -209,8 +207,8 @@ __aicore__ inline void ComputePscaleQS64CallVF(const LocalTensor<uint8_t> &mxsca
     __ubuf__ T *ugmax_old_buf = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
     __ubuf__ float *urs_buf = (__ubuf__ float *)urs.GetPhyAddr();
 
-    compute_pscale_qs64_vf<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1_buf, mxscale2_buf, ulmax1_buf, ulmax2_buf, umax1_buf, umax2_buf, ugmax_old_buf,
+    compute_pscale_vf<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1_buf, mxscale2_buf, ulmax1_buf, ulmax2_buf, umax1_buf, umax2_buf, ugmax_old_buf,
                                            urs_buf, firstLoop, secondLoop, coreIndex, LOG2_CX_CEIL);
 }
 }
-#endif  // COMPUTESCALE_DN_MXFP4_QS64_H_
+#endif  // VF_COMPUTE_PSCALE_DN_MXFP4_H_
