@@ -20,8 +20,9 @@
 namespace MC2ExceptionDump {
 
 enum class OpType : int32_t {
-    OP_TYPE_MEGA_MOE = 0, // mega moe算子OpType值
-    OP_TYPE_END = 1,      // 结束标志
+    OP_TYPE_MEGA_MOE = 0,       // mega moe算子OpType值
+    OP_TYPE_ALLTO_ALL_MATMUL = 1, // allto_all_matmul算子OpType值
+    OP_TYPE_END = 2,            // 结束标志
 };
 
 static constexpr size_t MAX_DUMP_ENTRIES = 1024;

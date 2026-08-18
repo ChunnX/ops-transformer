@@ -15,6 +15,7 @@
 #include "allto_all_mx_quant_matmul_tiling_base.h"
 
 #include "../allto_all_matmul_tiling_base.h"
+#include "common/op_kernel/mc2_exception_dump.h"
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
@@ -728,6 +729,23 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const
 }
 
 /**
+ * @brief 打印workspace空间规划信息
+ *
+ * @param opName 算子名称
+ * @param planInfo workspace空间规划信息
+ */
+void AllToAllMxQuantMatmulTilingBase::PrintWorkspacePlanInfo(const std::string &opName,
+                                                             Mc2Tiling::WorkspacePlanInfo &planInfo)
+{
+    OP_LOGD(opName, "WorkspacePlanInfo.segCnt: %u", planInfo.segCnt);
+    for (uint8_t i = 0; i < planInfo.segCnt; i++) {
+        OP_LOGD(opName, "WorkspacePlanInfo.segInfos[%u]: addr=%lu, size=%lu, segType=%u, order=%u", i,
+                planInfo.segInfos[i].addr, planInfo.segInfos[i].size, planInfo.segInfos[i].segType,
+                planInfo.segInfos[i].order);
+    }
+}
+
+/**
  * @brief 打印传递给kernel的tilingData
  *
  * @param outTilingData tilingData参数
@@ -735,6 +753,7 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const
 void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData)
 {
     PrintAlltoAllMxQuantMatmulTilingInfo(opName_, outTilingData.alltoAllQuantMatmulTilingInfo);
+    PrintWorkspacePlanInfo(opName_, outTilingData.workspacePlanInfo);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTileTilingData);
     if (outTilingData.alltoAllQuantMatmulTilingInfo.tailCnt == 0) {
         return;
@@ -822,6 +841,73 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
 }
 
 /**
+ * @brief 设置workspace空间规划信息，根据各分段大小计算地址偏移并排序
+ *
+ */
+void AllToAllMxQuantMatmulTilingBase::SetWorkspacePlanInfo()
+{
+    auto &planInfo = localTilingData_.workspacePlanInfo;
+    errno_t ret = memset_s(&planInfo, sizeof(planInfo), 0, sizeof(planInfo));
+    OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "memset_s workspacePlanInfo failed, ret=%d.", ret), return);
+
+    uint8_t segIdx = 0;
+    uint64_t curOffset = 0;
+
+    // 分段0：库API预留空间
+    if (libApiWorkSpaceSize_ > 0) {
+        planInfo.segInfos[segIdx].addr = curOffset;
+        planInfo.segInfos[segIdx].size = libApiWorkSpaceSize_;
+        planInfo.segInfos[segIdx].segType = WS_SEG_TYPE_LIB_API;
+        planInfo.segInfos[segIdx].order = segIdx;
+        curOffset += libApiWorkSpaceSize_;
+        segIdx++;
+    }
+
+    // 分段1：通信输出空间
+    if (inferredInfo_.commLen > 0) {
+        planInfo.segInfos[segIdx].addr = curOffset;
+        planInfo.segInfos[segIdx].size = inferredInfo_.commLen;
+        planInfo.segInfos[segIdx].segType = WS_SEG_TYPE_COMM_OUT;
+        planInfo.segInfos[segIdx].order = segIdx;
+        curOffset += inferredInfo_.commLen;
+        segIdx++;
+    }
+
+    // 分段2：重排输出空间，alltoallout存在时permuteLen为0，跳过
+    if (inferredInfo_.permuteLen > 0) {
+        planInfo.segInfos[segIdx].addr = curOffset;
+        planInfo.segInfos[segIdx].size = inferredInfo_.permuteLen;
+        planInfo.segInfos[segIdx].segType = WS_SEG_TYPE_PERMUTE_OUT;
+        planInfo.segInfos[segIdx].order = segIdx;
+        curOffset += inferredInfo_.permuteLen;
+        segIdx++;
+    }
+
+    // 分段3：通信scale空间
+    if (inferredInfo_.commScaleLen > 0) {
+        planInfo.segInfos[segIdx].addr = curOffset;
+        planInfo.segInfos[segIdx].size = inferredInfo_.commScaleLen;
+        planInfo.segInfos[segIdx].segType = WS_SEG_TYPE_COMM_SCALE;
+        planInfo.segInfos[segIdx].order = segIdx;
+        curOffset += inferredInfo_.commScaleLen;
+        segIdx++;
+    }
+
+    // 分段4：重排scale空间
+    if (inferredInfo_.permuteScaleLen > 0) {
+        planInfo.segInfos[segIdx].addr = curOffset;
+        planInfo.segInfos[segIdx].size = inferredInfo_.permuteScaleLen;
+        planInfo.segInfos[segIdx].segType = WS_SEG_TYPE_PERMUTE_SCALE;
+        planInfo.segInfos[segIdx].order = segIdx;
+        curOffset += inferredInfo_.permuteScaleLen;
+        segIdx++;
+    }
+
+    planInfo.segCnt = segIdx;
+    OP_LOGD(opName_, "WorkspacePlanInfo segCnt=%u, totalOffset=%lu.", planInfo.segCnt, curOffset);
+}
+
+/**
  * @brief 计算总共需要的workspace大小
  *
  */
@@ -830,8 +916,15 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
+    SetWorkspacePlanInfo();
     uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
                              inferredInfo_.commScaleLen + inferredInfo_.permuteScaleLen;
+    // 预留 ExceptionDump 区域：Header + Tiling + BlockStage + DumpParams
+    constexpr uint64_t dumpRegionSize = MC2ExceptionDump::DUMP_HEADER_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
+                                        MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams);
+    workspaceSize += dumpRegionSize;
     workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
             inferredInfo_.permuteLen);

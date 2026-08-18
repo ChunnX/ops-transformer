@@ -20,6 +20,7 @@
 #include "../allto_all_matmul_pipeline.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul_tiling_data.h"
+#include "allto_all_matmul_exception_dump_policy.h"
 #include "allto_all_kc_quant_matmul_arch35.h"
 #include "allto_all_kc_quant_matmul_pipeline.h"
 #include "allto_all_mx_quant_matmul_arch35.h"
@@ -111,9 +112,22 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
+    // 计算 ExceptionDump 基地址：业务 workspace 之后的预留区域
+    constexpr uint64_t dumpRegionSize = MC2ExceptionDump::DUMP_HEADER_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
+                                        MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams);
+
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
+
+    // ExceptionDump 初始化（AIV 侧执行，aivId_==0 的核 dump tilingData）
+    uint64_t businessWorkspaceSize = tilingData.alltoAllMatmulTilingInfo.commLen +
+                                     tilingData.alltoAllMatmulTilingInfo.permuteLen +
+                                     tilingData.alltoAllMatmulTilingInfo.biasLen;
+    GM_ADDR dumpBaseAddr = workspaceGM + tilingData.alltoAllMatmulTilingInfo.aicCoreNum * 0 + businessWorkspaceSize;
+    MC2AlltoAllAdump::FpExceptionDumpEngine exceptionDump(dumpBaseAddr, tilingGM);
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
         using DtypeBias = DTYPE_X1;
@@ -126,6 +140,13 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #else
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
+
+    // ExceptionDump 初始化（AIV 侧执行，aivId_==0 的核 dump tilingData）
+    uint64_t businessWorkspaceSize = tilingData.alltoAllQuantMatmulTilingInfo.commLen +
+                                     tilingData.alltoAllQuantMatmulTilingInfo.permuteLen;
+    GM_ADDR dumpBaseAddr = workspaceGM + businessWorkspaceSize;
+    MC2AlltoAllAdump::QuantExceptionDumpEngine exceptionDump(dumpBaseAddr, tilingGM);
+
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
@@ -143,4 +164,5 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 #endif
 #endif
+    (void)dumpRegionSize;
 }

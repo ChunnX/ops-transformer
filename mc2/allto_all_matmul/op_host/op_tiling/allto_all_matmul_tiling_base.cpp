@@ -14,6 +14,7 @@
  */
 #include "allto_all_matmul_tiling_base.h"
 
+#include "common/op_kernel/mc2_exception_dump.h"
 #include "mc2_log.h"
 
 using namespace AscendC;
@@ -78,6 +79,12 @@ ge::graphStatus AllToAllMatmulTilingBase::GetWorkspaceSize()
     SetUserWorkSpace();
     uint64_t workspaceSize =
         libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen + inferredInfo_.biasLen;
+    // 预留 ExceptionDump 区域：Header + Tiling + BlockStage + DumpParams
+    constexpr uint64_t dumpRegionSize = MC2ExceptionDump::DUMP_HEADER_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
+                                        MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams);
+    workspaceSize += dumpRegionSize;
     workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%ld, biasLen=%d, commlen=%d", workspaces[0], inferredInfo_.biasLen,
             inferredInfo_.commLen);

@@ -14,6 +14,7 @@
  */
 #include "allto_all_kc_quant_matmul_tiling_base.h"
 
+#include "common/op_kernel/mc2_exception_dump.h"
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -589,6 +590,12 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::GetWorkspaceSize()
     SetUserWorkSpace();
     uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
                              +inferredInfo_.x1ScaleOptionalLen + inferredInfo_.quantOutLen;
+    // 预留 ExceptionDump 区域：Header + Tiling + BlockStage + DumpParams
+    constexpr uint64_t dumpRegionSize = MC2ExceptionDump::DUMP_HEADER_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
+                                        MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
+                                        MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams);
+    workspaceSize += dumpRegionSize;
     workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
             workspaces[0], inferredInfo_.commLen, inferredInfo_.permuteLen, inferredInfo_.x1ScaleOptionalLen,

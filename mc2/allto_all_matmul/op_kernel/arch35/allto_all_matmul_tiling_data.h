@@ -21,6 +21,8 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 
+using Mc2Tiling::WorkspacePlanInfo;
+
 struct AlltoAllMatmulTilingInfo {
     uint32_t rankDim;            // 卡数:kernel能通过hccl接口获取到就直接删除
     uint32_t tileM;              // 头块大小
@@ -44,6 +46,7 @@ struct AlltoAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
+    WorkspacePlanInfo workspacePlanInfo; // workspace空间规划信息，包含各分段地址、大小及排序
     Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
     Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
 };
@@ -53,6 +56,7 @@ struct AlltoAllQuantMatmulTilingData {
     Mc2InitTiling mc2InitTiling;                            // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;                                // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo; // 传递给kernel的tiling info
+    WorkspacePlanInfo workspacePlanInfo;                    // workspace空间规划信息，包含各分段地址、大小及排序
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
 };

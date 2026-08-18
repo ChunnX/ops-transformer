@@ -73,6 +73,7 @@ protected:
     ge::graphStatus CheckMxTensorFormat(const gert::TilingContext *context, const char *opName);
     ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                       TilingContextInfo &contextInfo);
+    void SetWorkspacePlanInfo();
 
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
@@ -86,6 +87,7 @@ private:
     void PrintMxQuantMMV3TilingData(const std::string &opName,
                                     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
     void PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
+    void PrintWorkspacePlanInfo(const std::string &opName, Mc2Tiling::WorkspacePlanInfo &planInfo);
 };
 
 class AlltoAllMxQuantMatmulHelper : public Mc2AdaptiveSlidingWindowTiling {

@@ -84,6 +84,30 @@ private:
     std::mutex mutex_;
 };
 
+// ExceptionDump 基地址注册表，供 kernel 侧通过 tilingData 传递 dump 基地址给 host 侧异常回调
+class MC2DumpBaseAddrManager {
+public:
+    static MC2DumpBaseAddrManager &GetInstance()
+    {
+        static MC2DumpBaseAddrManager instance;
+        return instance;
+    }
+    void SetDumpBaseAddr(uint64_t addr)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        dumpBaseAddr_ = addr;
+    }
+    uint64_t GetDumpBaseAddr()
+    {
+        return dumpBaseAddr_;
+    }
+
+private:
+    MC2DumpBaseAddrManager() = default;
+    uint64_t dumpBaseAddr_ = 0;
+    std::mutex mutex_;
+};
+
 // 函数指针类型定义
 typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
 typedef const char *(*acldumpGetPath_t)(acldumpType dumpType);
@@ -535,6 +559,68 @@ inline int ParseStructuredDump(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
 
     OP_LOGE(OP_NAME, "Structured dump completed: totalSize=%zu dumpCount=%lu winBufSize=%zu", totalSize, dumpCount,
             winBuf.size());
+    return 0;
+}
+
+// 从异常信息中提取 tilingData 原始字节到 host buffer，供算子侧按自身结构体解析打印
+// dumpBaseAddr: 若非 0，从该地址读取 ExceptionDump 区域；若为 0，从异常上下文的 argsAddr 读取
+inline int GetTilingDataFromException(aclrtExceptionInfo *args, std::vector<uint8_t> &tilingBuf,
+                                      uint64_t dumpBaseAddr = 0)
+{
+    uint64_t dumpAddr = dumpBaseAddr;
+
+    if (dumpAddr == 0) {
+        auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+        if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+            OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+            return -1;
+        }
+
+        void *devArgsPtr = nullptr;
+        uint32_t devArgsLen = 0;
+        auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
+            return -1;
+        }
+
+        ret = aclrtMemcpy(&dumpAddr, sizeof(uint64_t), devArgsPtr, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy address of args failed. ret=%d", ret);
+            return -1;
+        }
+    }
+
+    // 从 ExceptionDump 区域读取 Header，获取 tilingDataSize
+    MC2ExceptionDump::Header hdr;
+    auto ret = aclrtMemcpy(&hdr, sizeof(MC2ExceptionDump::Header), reinterpret_cast<void *>(dumpAddr),
+                           sizeof(MC2ExceptionDump::Header), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy Header failed. ret=%d", ret);
+        return -1;
+    }
+    if (hdr.headerMagic != MC2ExceptionDump::HEADER_MAGIC) {
+        OP_LOGE(OP_NAME, "headerMagic mismatch: 0x%x, ExceptionDump not enabled.", hdr.headerMagic);
+        return -1;
+    }
+
+    uint32_t tilingDataSize = hdr.tilingDataSize;
+    if (tilingDataSize == 0 || tilingDataSize > MC2ExceptionDump::MAX_DUMP_TILING_SIZE) {
+        OP_LOGE(OP_NAME, "Invalid tilingDataSize=%u, skip.", tilingDataSize);
+        return -1;
+    }
+
+    // tilingData 位于 Header 区域之后
+    uint64_t tilingOffset = dumpAddr + MC2ExceptionDump::DUMP_HEADER_REGION_SIZE;
+    tilingBuf.resize(tilingDataSize, 0);
+    ret = aclrtMemcpy(tilingBuf.data(), tilingDataSize, reinterpret_cast<void *>(tilingOffset), tilingDataSize,
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy tilingData failed. ret=%d", ret);
+        return -1;
+    }
+
+    OP_LOGD(OP_NAME, "GetTilingDataFromException success: dumpAddr=0x%lx tilingDataSize=%u", dumpAddr, tilingDataSize);
     return 0;
 }
 
