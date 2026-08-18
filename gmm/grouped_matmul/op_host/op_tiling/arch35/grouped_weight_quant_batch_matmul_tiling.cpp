@@ -847,13 +847,19 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
 
     cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
     uint64_t nBlockCount = GroupedMatmul::CeilDiv(nSize_, static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
+    uint64_t groupDistributedTaskNum = static_cast<uint64_t>(groupNum_) * nBlockCount;
+    uint64_t groupDistributedTailCoreNum = groupDistributedTaskNum % static_cast<uint64_t>(coreNum_);
+    bool groupDistributedLoadBalanced =
+        groupDistributedTailCoreNum == 0UL ||
+        groupDistributedTailCoreNum >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), 2UL);
     bool preferGroupDistributedNBlock =
         IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 1 &&
         nSize_ >= static_cast<uint64_t>(MX_A8W4_GROUP_DISTRIBUTED_N_MIN) &&
         nSize_ % static_cast<uint64_t>(BASIC_BLOCK_BASE_N) == 0UL &&
-        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_));
+        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_)) &&
+        groupDistributedLoadBalanced;
     if (preferGroupDistributedNBlock) {
-        // MxA8W4 prefers the standard 256x256 weight block when group direction can fill cores.
+        // Prefer 256x256 blocks only when the group-distributed tail wave keeps at least half of the Cubes active.
         CalcNoFullNumBlocksResplitTiling(c0Size);
     } else if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
