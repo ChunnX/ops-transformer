@@ -43,8 +43,12 @@ public:
     static constexpr uint32_t vec1ScmBlockFp8 = s1BaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = s1BaseSize + 1; // 无subblock再分块，vec1算完整的S1基本块，+1错开bank
-    // NZ排布，(s2BaseSize/16)个分形，每个分形vec1Srcstride行、每行一个32B block
-    static constexpr uint32_t stage1OutQueSize = (s2BaseSize / 16) * vec1Srcstride * 32;
+    // NZ排布，S2方向按32B一个block切分形。P的元素类型是INPUT_T，vf里int8经Pack后每行s2BaseSize字节，
+    // 其余按half每行s2BaseSize*2字节，故int8的分形数只有一半
+    static constexpr uint32_t vec1NzFractalNum =
+        (IsSameType<INPUT_T, int8_t>::value ? s2BaseSize : s2BaseSize * 2) / 32;
+    // 每个分形vec1Srcstride行、每行一个32B block
+    static constexpr uint32_t stage1OutQueSize = vec1NzFractalNum * vec1Srcstride * 32;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
@@ -308,10 +312,11 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten, isFd>(this->attenMaskInQue[runInfo.taskIdMod2],
-                                        this->attenMaskInQue[1 - runInfo.taskIdMod2], this->attenMaskGmInt, runInfo,
+        // [1]只在band/prefix分支里被Alloc，这两种模式已被tiling门禁排除，此处未分配内存，
+        // 放开band/prefix时必须先恢复[1]的InitBuffer
+        AttenMaskCopyIn<hasAtten, isFd>(this->attenMaskInQue[0], this->attenMaskInQue[1], this->attenMaskGmInt, runInfo,
                                         constInfo, *attenMaskInfoPtr);
-        attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+        attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
     LocalTensor<uint8_t> dropMaskUb;
     GetDerived()->GenerateDropoutMask(runInfo, constInfo, dropMaskUb);
@@ -375,7 +380,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     SetFlag<HardEvent::V_MTE3>(MM1_RES_INTRA_EVENT[runInfo.taskIdMod2]);
     WaitFlag<HardEvent::V_MTE3>(MM1_RES_INTRA_EVENT[runInfo.taskIdMod2]);
     if constexpr (hasAtten) {
-        this->attenMaskInQue[runInfo.taskIdMod2].template FreeTensor(attenMaskUb);
+        this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
     }
     if constexpr (hasPseOuter) {
         this->pseInQue.template FreeTensor(pseUb);
@@ -386,8 +391,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
     DataCopy(mm2AL1Tensor, stage1CastTensor,
-             {s2BaseSize / 16, (uint16_t)(runInfo.s1RealSize), (uint16_t)(vec1Srcstride - runInfo.s1RealSize),
-              (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
+             {(uint16_t)vec1NzFractalNum, (uint16_t)(runInfo.s1RealSize),
+              (uint16_t)(vec1Srcstride - runInfo.s1RealSize), (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
     SetFlag<HardEvent::MTE3_MTE1>(SYNC_V1_C2_FLAG[runInfo.taskIdMod3]);
     // ======================================================
@@ -606,11 +611,10 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe
     tPipe->InitBuffer(stage1OutQue[1], 1, stage1OutQueSize);
     tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
     if constexpr (hasAtten) {
-        // mask为uint8，无subblock再分块，vec1算完整的S1基本块，故按s1BaseSize行、行stride为s2BaseSize分配；
-        // band/prefix模式下[1-taskIdMod2]还会作为Pre缓冲，故两块都需分配
+        // mask为uint8，无subblock再分块，vec1算完整的S1基本块，故按s1BaseSize行、行stride为s2BaseSize分配。
+        // band/prefix模式还需要[1]作为Pre缓冲，这两种模式已被tiling门禁排除，重新放开时必须把[1]的分配加回来
         constexpr uint32_t attenMaskUbSize = s1BaseSize * s2BaseSize;
         tPipe->InitBuffer(attenMaskInQue[0], 1, attenMaskUbSize);
-        tPipe->InitBuffer(attenMaskInQue[1], 1, attenMaskUbSize);
     }
     GetDerived()->InitUniqueLocalBuffer(constInfo);
 
