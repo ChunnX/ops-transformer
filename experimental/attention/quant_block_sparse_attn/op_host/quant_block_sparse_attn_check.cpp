@@ -475,7 +475,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "query N1", std::to_string(tilingInfo_.n1Size),
                 "The value of query N1 must be within the range (0, " + std::to_string(QBSA_FP8_MAX_N1_SIZE) +
-                    "] when quant_mode is 1.");
+                    "] when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
         if (tilingInfo_.bSize > QBSA_FP8_MAX_BATCH_SIZE) {
@@ -483,13 +483,14 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
                                                     std::to_string(tilingInfo_.bSize),
                                                     "The batch size of sparse_indices must be within the range (0, " +
                                                         std::to_string(QBSA_FP8_MAX_BATCH_SIZE) +
-                                                        "] when quant_mode is 1.");
+                                                        "] when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
         if (sparseIndicesShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
             sparseIndicesShape.GetDim(1U) != static_cast<int64_t>(tilingInfo_.n1Size)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "sparse_indices", Ops::Base::ToString(sparseIndicesShape),
-                                                    "dim[0] must equal batch size and dim[1] must equal query N1 in quant_mode=1");
+                                                    "dim[0] must equal batch size and dim[1] must equal "
+                                                    "query N1 in quant_mode=1 or 2.");
             return ge::GRAPH_FAILED;
         }
         if (sparseSeqLenShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
@@ -498,7 +499,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 kOpName, "sparse_seq_len", Ops::Base::ToString(sparseSeqLenShape),
                 "The shape of sparse_seq_len must be [sparse_indices.B, query.N1, sparse_indices.max_Qb] when "
-                "quant_mode is 1.");
+                "quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
         
@@ -506,12 +507,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         const gert::Shape &metadataStorageShape = metadataShape->GetStorageShape();
         if (metadataStorageShape.GetDimNum() != DIM_NUM_1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
-                                                    "The metadata tensor must be one-dimensional when quant_mode is 1.");
+                                                    "The metadata tensor must be one-dimensional when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
         if (metadataStorageShape.GetDim(0U) <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
-                                                    "The metadata tensor cannot be empty when quant_mode is 1.");
+                                                    "The metadata tensor cannot be empty when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -538,11 +539,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             "Must be <= " + std::to_string(QBSA_MAX_BATCH_SIZE));
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.n2Size > QBSA_MAX_N2_SIZE) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "n2Size", std::to_string(tilingInfo_.n2Size),
-            "Must be <= " + std::to_string(QBSA_MAX_N2_SIZE));
-        return ge::GRAPH_FAILED;
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+        if (tilingInfo_.n2Size > QBSA_MAX_N2_SIZE) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "n2Size", std::to_string(tilingInfo_.n2Size),
+                "Must be <= " + std::to_string(QBSA_MAX_N2_SIZE));
+            return ge::GRAPH_FAILED;
+        }
     }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
