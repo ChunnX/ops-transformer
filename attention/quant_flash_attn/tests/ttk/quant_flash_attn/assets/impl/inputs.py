@@ -363,7 +363,7 @@ def generate_qfa_hif8_inputs(
     p_scale: torch.Tensor,
     block_table: torch.Tensor,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -409,6 +409,13 @@ def generate_qfa_hif8_inputs(
     input_layout = layout_q or input_layout
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+
+    B = (
+        max(1, len(cu_seqlens_q) - 1)
+        if cu_seqlens_q and len(cu_seqlens_q) >= 2
+        else 1
+    )
+
     if len(cu_seqlens_q) > 1:
         actual_seq_q = [
             cu_seqlens_q[i + 1] - cu_seqlens_q[i]
