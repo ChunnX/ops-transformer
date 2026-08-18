@@ -24,15 +24,21 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
         return cu_seqlens_q.size(0) - 1
 
     if batch_size is None:
-        raise ValueError(f"When seqused_q and cu_seqlens_q are not provdied, batch_size must be provided")
+        raise ValueError(
+            "When seqused_q and cu_seqlens_q are not provided, batch_size must be provided"
+        )
     elif batch_size < 0:
-        raise ValueError(f"batch_size must be greater than 0, but got {batch_size}")
+        raise ValueError(
+            f"When seqused_q and cu_seqlens_q are not provided, "
+            f"batch_size must be greater than 0, but got {batch_size}"
+        )
     return batch_size
 
 
 def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
     metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    metadata_size += 121  # FAG (Flash Attn Grad) metadata size
     return ((metadata_size + 4095) // 4096) * 4096
 
 
@@ -51,7 +57,8 @@ class FlashAttenOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None,"
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
-            "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "str? layout_q=None, str? layout_kv=None, str? layout_out=None, "
+            "bool is_grad_enabled=False) -> Tensor",
             "flash_attn(Tensor q, Tensor k, Tensor v,"
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
@@ -86,6 +93,7 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_q: Optional[str] = None,
             layout_kv: Optional[str] = None,
             layout_out: Optional[str] = None,
+            is_grad_enabled: bool = False,
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
@@ -171,7 +179,7 @@ def flash_attn_metadata(
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = None,
+    batch_size: Optional[int] = -1,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
     mask_mode: Optional[int] = 0,
@@ -180,11 +188,15 @@ def flash_attn_metadata(
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: bool = False,
 ):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
+    b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+
+    batch_size = -1 if batch_size is None else batch_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     mask_mode = 1 if mask_mode is None else mask_mode
@@ -195,7 +207,6 @@ def flash_attn_metadata(
     layout_out = "BSND" if layout_out is None else layout_out
 
     op_module = flash_attn_op_builder.load()
-    b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
@@ -216,6 +227,7 @@ def flash_attn_metadata(
         layout_q,
         layout_kv,
         layout_out,
+        is_grad_enabled,
         output,
     )
 
@@ -241,6 +253,7 @@ def flash_attn_metadata_fallback(
     layout_q: Optional[str] = None,
     layout_kv: Optional[str] = None,
     layout_out: Optional[str] = None,
+    is_grad_enabled: bool = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return _flash_attn_metadata(
@@ -260,6 +273,7 @@ def flash_attn_metadata_fallback(
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_out=layout_out,
+        is_grad_enabled=is_grad_enabled,
     )
 
 

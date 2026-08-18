@@ -19,11 +19,16 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
+#include "memory_copy_arch35.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "quant_flash_attn_common_def.h"
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm.h")
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "quant_flash_attn_common_def.h"
-#include "../../../common/op_kernel/memory_copy_arch35.h"
+#else
+#include "../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#endif
 
 namespace BaseApi {
 
@@ -151,7 +156,8 @@ private:
     TBuf<> fdLseUbBuf_;
 
 public:
-    __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo_(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo)
+        : constInfo_(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
@@ -545,11 +551,12 @@ public:
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+                    // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset =
-                        prefixBS1 * constInfo_.gSize * constInfo_.n2Size + taskInfo_.n2Idx * constInfo_.gSize;
-                    DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                               actualGSplitSize, constInfo_);
+                        taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
+                    DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
+                                                                             mOffset, actualGSplitSize, constInfo_);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);

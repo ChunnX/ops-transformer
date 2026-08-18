@@ -14,6 +14,7 @@
  */
 
 #include "fused_infer_attention_score_tiling_impl.h"
+#include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../fused_infer_attention_score_tiling_info_parser.h"
 
 #include "log/log.h"
@@ -543,22 +544,6 @@ int64_t FusedInferAttentionScoreTilingImpl::GetCalcBlockNumsOneHead(const FiaTil
         }
         return toCalcBlockNums;
     }
-}
-
-int64_t FusedInferAttentionScoreTilingImpl::GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd,
-                                                               int64_t innerBlockNums) const
-{
-    int64_t sInnerBlockNums = 0;
-    if (sInnerIndexEnd < 0) {
-        sInnerBlockNums = 0;
-    } else if (sInnerIndexEnd < innerBlockNums) {
-        sInnerBlockNums = (sInnerIndexStart < 0) ? (sInnerIndexEnd + 1) : (sInnerIndexEnd - sInnerIndexStart + 1);
-    } else {
-        sInnerBlockNums = (sInnerIndexStart < 0) ?
-                              innerBlockNums :
-                              (sInnerIndexStart < innerBlockNums ? innerBlockNums - sInnerIndexStart : 0);
-    }
-    return sInnerBlockNums;
 }
 
 void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t maxCoreNums,
@@ -1589,21 +1574,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceAntiQuant(const 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspacePTQuant(const FiaTilingInfo &fiaInfo,
-                                                                        int64_t &curWorkspaceSize)
-{
-    uint64_t maxSpmSize = 0; // 待处理 tilingData.promptAttentionTensorSizeRect.get_spmTmpSize();
-    int64_t mm1ResSize = sOuterFactor_ * CV_RATIO * sInnerFactor_;
-    int64_t mm2ResSize = sOuterFactor_ * CV_RATIO * fiaInfo.vHeadDim;
-    curWorkspaceSize = platformInfo_.defaultSysWorkspaceSize +
-                       platformInfo_.coreNum * 2 * (maxSpmSize + mm1ResSize * 2 + mm2ResSize * 2);
-    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        // 2 bmm, db, ensure alignment of each structure 64B, dcci cacheline needs
-        curWorkspaceSize += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingContext *context,
                                                                  const FiaTilingInfo &fiaInfo)
 {
@@ -2132,5 +2102,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
 
     return ge::GRAPH_SUCCESS;
 }
+
+// 老模板作为兜底模板注册，优先级最低(值最大)，确保特化模板优先匹配
+REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FusedInferAttentionScoreTilingImpl,
+                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 999);
 
 } // namespace optiling

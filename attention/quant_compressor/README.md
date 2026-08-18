@@ -292,6 +292,9 @@
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
+- 确定性计算与batch一致性：
+  - 默认确定性实现，相同输入多次调用结果一致。
+  - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
 
 ## 调用说明
 
