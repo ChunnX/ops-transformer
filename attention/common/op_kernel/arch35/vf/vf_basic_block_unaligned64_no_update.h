@@ -39,8 +39,6 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     RegTensor<float> vreg_max_brc;
     RegTensor<float> vreg_exp;
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_one;
-    RegTensor<float> vreg_negative_inf;
     RegTensor<float> vreg_pse;
     RegTensor<float> vreg_alibi;
     RegTensor<float> vreg_sel_drop;
@@ -76,15 +74,11 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     MaskReg preg_ori_src_n = UpdateMask<T>(pltOriginalN);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
     MaskReg preg_compare;
-    MaskReg preg_negative_inf;
     MaskReg preg1;
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
     MaskReg preg3;
     MaskReg preg4;
 
-    Duplicate(vreg_zero, 0.0f);
-    Duplicate(vreg_one, 1.0f);
-    Duplicate(vreg_negative_inf, -3e+99);
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
@@ -167,20 +161,19 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
                                                                      1);
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
+    if constexpr (hasDrop == 1) {
+        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all);
+    }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
         LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
-        // Safe softmax for an all -inf row; keep +inf rows unchanged so they still propagate NaN.
-        Compare<float, CMPMODE::EQ>(preg_negative_inf, vreg_max_brc, vreg_negative_inf, preg_ori_src_n);
         ExpSub(vreg_exp, vreg_input_x, vreg_max_brc, preg_ori_src_n);
-        Select(vreg_exp, vreg_zero, vreg_exp, preg_negative_inf);
 
         // x_sum = sum(x_exp, axis=-1, keepdims=True)
         Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp,
                                                                                           preg_ori_src_n);
-        Select(vreg_exp_sum, vreg_one, vreg_exp_sum, preg_negative_inf);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum,
                                                                      ureg_exp_sum, 1);
         if constexpr (isMlaFullQuant) {

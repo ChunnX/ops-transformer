@@ -666,7 +666,7 @@ FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInvalidLineCheck(LocalTensor<T
     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
         T maxValue = maxUb.GetValue(i);
         uint32_t checkValue = *reinterpret_cast<uint32_t *>(&maxValue);
-        if (checkValue == negativeIntScalar) {
+        if (checkValue == negativeIntScalar || checkValue == NEGATIVE_INF_VALUE_FP32) {
             isUpdateNeedCheck = true;
             break;
         }
