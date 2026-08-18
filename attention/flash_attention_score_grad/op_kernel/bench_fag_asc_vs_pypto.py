@@ -145,7 +145,7 @@ def run(B, N, S1, S2, D, cores):
         print(f"  AscendC: 调用失败 -> {type(e).__name__}: {str(e)[:300]}")
 
     # ---------------- pypto ----------------
-    # pypto 的 max/sum 约定为 [B*N, S1] fp32
+    # pypto 改用 LSE 口径：[B,N,S1] fp32
     lse_p = lse.contiguous().float()                     # [B,N,S1]
     dq_ws = torch.zeros(B, S1, N, D, device=device, dtype=torch.float32)
     dk_ws = torch.zeros(B, S2, N, D, device=device, dtype=torch.float32)
