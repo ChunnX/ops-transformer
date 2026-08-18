@@ -3,10 +3,10 @@
 ## 一、总体策略
 
 ```
-步骤1: 退化场景适配 ──→ 步骤2: pool_size/pool_tail_k扩展 ──→ 步骤3: 索引展开与追加 ──→ 步骤4: A5量化支持 ──→ 步骤5: torch_extension接口适配
-(quantMode=-1,          (参考LIV2 cmp_ratio/               (Expand + Append)           (quantMode=0/1)           (参考LIV2 OpBuilder模式
- pool_tail_k=0,          cmp_residual_k,                   输出维度:                    arch35 only              JIT编译 + PrivateUse1 dispatch)
- pool_size=1)            不做索引展开)                       topk+pool_size-1)
+步骤1: 退化场景适配 ──→ 2补: pool_key 0轴非连续修复(已实施) ──→ 步骤2: pool_size/pool_tail_k扩展 ──→ 步骤3: 索引展开与追加 ──→ 步骤4: A5量化支持 ──→ 步骤5: torch_extension接口适配
+(quantMode=-1,          (tiling读运行时stride +                    (参考LIV2 cmp_ratio/               (Expand + Append)           (quantMode=0/1)           (参考LIV2 OpBuilder模式
+ pool_tail_k=0,          arch22接线KeyNd2NzForPA)                    cmp_residual_k,                   输出维度:                    arch35 only              JIT编译 + PrivateUse1 dispatch)
+ pool_size=1)                                                       不做索引展开)                       topk+pool_size-1)
 ```
 
 **核心原则**：每步可独立编译验证，前步通过后才进入下一步。
@@ -64,6 +64,69 @@
 1. **arch35 ProcessTopK 重写**：从 LI 拷贝后适配了 float/returnValue/uint32，需编译验证控制流完整性
 2. **arch22 CleanInvalidOutput**：重写后 uint32 操作需验证 InitGlobalMemory 支持
 3. **splitMFlag 恢复**：`gSize==64 && sparseCount<=2048` 条件在退化场景下是否触发（gSize=N1, sparseCount=topk）
+
+---
+
+## 二·补、pool_key 0轴非连续寻址修复（已实施）
+
+### 2补.1 问题背景
+
+`pool_key` 在 PA（PageAttention）场景下需要支持 0 轴非连续——物理 block 之间可能存在 padding，`stride[0]` 大于 `blockSize * N2 * D` 的名义值。`op_def` 已对所有架构设置 `IgnoreContiguous()`，但 tiling 未读取运行时 stride，而是用 shape 维度乘积算了一个连续 stride 填入 `keyStride0`，导致 PA 场景 0 轴非连续输入地址计算错误。
+
+参考实现：QLI/LIV2 arch35 `lightning_indexer_v2_tiling.cpp:210-215, 572-600, 995-999`。
+
+### 2补.2 实施内容
+
+#### tiling 层（op_host）
+
+**`pool_key_indexer_tiling.h`**：
+- 添加 `#include <vector>`
+- `PoolKeyIndexerTiling` 类添加私有成员 `std::vector<uint32_t> keyStridesVec_`
+- 添加私有方法 `ge::graphStatus CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const`
+
+**`pool_key_indexer_tiling.cpp`**：
+1. `ParseAndCheckParams` 中 key shape 解析之后，添加 `GetDynamicInputStride(PKI_POOL_KEY_INDEX, 0)` 读取运行时 stride 到 `keyStridesVec_`
+2. `keyStride0` 填值修改：
+   - PA 路径：`keyStride0 = keyStridesVec_[0]`（有 stride 时）或 `0`（无 stride 时）——替代原来的 `blockSize * N2 * D`
+   - BSND 路径：`keyStride0 = 0`——kernel `KeyNd2Nz` 用 `tensorKeyOffset` 连续寻址，不用此字段
+   - TND 路径：`keyStride0 = 0`——同上
+3. 新增 `CheckKeyContiguous()` 方法：
+   - PA：`checkStartIdx = 1`（仅允许 0 轴非连续，从 axis 1 开始检查）
+   - BSND/TND：`checkStartIdx = 0`（所有轴必须连续）
+   - 按 shape 算 expectedStrides，逐轴比对 `keyStridesVec_[i] != expected[i]`
+4. `ParseAndCheckParams` 末尾调用 `CheckKeyContiguous()`
+
+#### kernel 层 — arch22（op_kernel/arch22）
+
+**`pool_key_indexer_kernel.h` `InitTilingData`**：
+- 补 `constInfo.keyStride0 = tilingData->keyStride0`（arch22 原来未读取此字段）
+
+**`pool_key_indexer_service_cube.h` `KeyNd2NzForPA`**：
+- 地址计算从硬编码 `kCacheBlockSize * kHeadNum * headDim` 改为 `keyStride0`
+  ```cpp
+  // 改前：blkTable.GetValue(...) * kCacheBlockSize * kHeadNum * headDim
+  // 改后：blkTable.GetValue(...) * keyStride0
+  ```
+
+#### 无需修改
+
+| 项 | 理由 |
+|---|---|
+| `op_def` 所有 `IgnoreContiguous()` | 已正确，所有架构保留运行时 stride |
+| `common.h` `ConstInfo::keyStride0` | 字段已存在（共用） |
+| arch35 `kernel.h:155` | 已读 `keyStride0` |
+| arch35 `service_cube.h:279` | 已用 `keyStride0` 寻址 |
+
+### 2补.3 验证方法
+
+1. **golden 构造**：参考 LIV2 golden `lightning_indexer_v2_golden.py:846-855` 的 blockFusion 方式——构造 0 轴 stride 带 padding 的 pool_key，view 回原始 shape
+2. **正确性**：非连续输入结果 == 连续输入结果（相同数据内容）
+3. **错误路径**：构造非 0 轴非连续输入 → `CheckKeyContiguous` 报错拦截
+4. **所有架构**：arch22 + arch35 均验证
+
+### 2补.4 关联事项（步骤4范畴）
+
+`k_descale` 同样设置了 `IgnoreContiguous()` 且 tiling 未接线 `keyDequantScaleStride0`，修复方式相同但需区分 `quant_mode`（shape 不同）。详见 §5.4。
 
 ---
 
@@ -425,19 +488,37 @@ Cube 核:
 
 **CalcWorkspaceSize**：
 - 新增反量化中间 buffer（FP16 Q 和 K 的 UB 空间）
-- `keyDequantScaleStride0` 已在 ConstInfo 中，需在 tiling 中计算
+
+**k_descale 0 轴非连续接线**（参考 QLI `quant_lightning_indexer_v2_tiling.cpp:228-236, 1270-1295, 1375-1380`）：
+
+`k_descale` 的 `IgnoreContiguous()` 设置合理（与 QLI 一致），因为 k_descale 与 pool_key 在 token 维度一一对应，PA 场景必须跟随 pool_key 的 0 轴非连续。当前 tiling 未读取 k_descale 运行时 stride，需修复：
+
+| 改动 | 位置 | 参考QLI |
+|------|------|---------|
+| 添加 `keyDequantScaleStridesVec_` 成员 | `tiling.h` `PoolKeyIndexerTiling` | `:180, :264` |
+| 读取运行时 stride | `tiling.cpp` `ParseAndCheckParams` | `:228-236` |
+| 校验 k_descale 非连续（PA 仅 0 轴） | `CheckKeyContiguous()` 内 | `:1270-1295` |
+| 填值 `keyDequantScaleStride0` | `CalcTilingParams` | `:1375-1380` |
+
+填值逻辑需区分 quant_mode（shape 不同）：
+- `quant_mode=0` (per-token-head): k_descale shape = (B, S2, N2, 1)
+- `quant_mode=1` (mxFP8): k_descale shape = (B, S2, N2, D/group, group)
+- PA 路径用 `keyDequantScaleStridesVec_[0]`；mxFP8 fallback 用 `blockSize * (headDim / MX_SCALE_GROUP_SIZE)`；其余置 0
+
+**kernel 侧 k_descale 寻址**：arch35/arch22 反量化路径需用 `keyDequantScaleStride0` 按 block_table 寻址 k_descale（当前 kernel 无反量化逻辑，随步骤4一起实现）。
 
 ### 5.5 验证方法
 - quantMode=0/1，FP8_E4M3FN 输入
 - 对比：FP8 反量化后与直接 FP16 输入的结果（精度误差在允许范围内）
 - q_descale/k_descale 的各种 shape（BSND/TND/PA_BBND）
+- k_descale 0 轴非连续场景（构造 blockFusion tensor，参考 QLI golden）
 - 退化验证：quantMode=-1 时不受影响
 
 ### 5.6 风险点
 1. **反量化性能**：FP8→FP16 转换增加计算量和 UB 占用，需评估对流水的影响
 2. **mxFP8 指数处理**：FLOAT8_E8M0 是纯指数格式，需确认 Cast/Mul 指令支持
 3. **双缓冲影响**：反量化打乱 Q/K 的双缓冲流水，需重新设计流水
-4. **descale 读取**：k_descale 在 PA 场景的 stride 计算（keyDequantScaleStride0）
+4. **k_descale 非连续寻址**：PA 场景 k_descale 需按 `keyDequantScaleStride0` 寻址，且需区分 quant_mode 的不同 shape
 
 ---
 
@@ -731,8 +812,15 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
   ├── 功能验证 (BSND/TND, maskMode 0/3, returnValue true/false)
   └── 里程碑M1: 退化场景与LI对齐
 
-步骤2 (pool_size/pool_tail_k)
+2补 (pool_key 0轴非连续修复)
   ├── 依赖M1
+  ├── tiling 读取运行时 stride + CheckKeyContiguous
+  ├── arch22 InitTilingData 补读 + KeyNd2NzForPA 改用 keyStride0
+  ├── 所有架构均支持 PA 0轴非连续寻址
+  └── 里程碑M1.5: PA 非连续输入正确
+
+步骤2 (pool_size/pool_tail_k)
+  ├── 依赖M1.5
   ├── 因果掩码修正 (参考LIV2 cmp_ratio)
   ├── pool_tail_k 传入kernel
   ├── 里程碑M2: pool级TopK正确 (输出pool索引)
@@ -769,6 +857,8 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 | preTokens/nextTokens 删除 | PKI 不支持，arch22 删除引用 |
 | poolKey 与 key 一致 | 两者输入都是压缩/聚合后的，S2 是压缩空间长度，kernel 无需内部聚合 |
 | 步骤2 不展开索引 | 先验证 pool 级 TopK 正确性，再展开 |
+| 2补: 所有架构均支持 pool_key 0轴非连续（不区分 arch35/arch22） | arch22 用户也可能使用 PA 非连续 kv_cache；且 LIV2 仅在 950 设置但 PKI 已对所有 config 设置 IgnoreContiguous，需全架构接线 |
+| 2补: BSND/TND keyStride0 置 0 | kernel `KeyNd2Nz` 用 `tensorKeyOffset` 连续寻址，不读 keyStride0；只有 PA 的 `KeyNd2NzForPA` 需要 |
 | 步骤4 仅 arch35 | A2/A3 不支持 FP8 |
 | 步骤5 适配 cann_ops_transformer 而非改造 torch_ops_extension | OpBuilder JIT 模式支持 torch.compile，与 LIV2 体系一致；旧式封装违反命名规范（npu_ 前缀），功能被 cann_ops_transformer 完全覆盖后整体删除 |
 | 步骤5 graph_convert 移植真实 GE converter | 旧 torch_ops_extension 的 `torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub） |

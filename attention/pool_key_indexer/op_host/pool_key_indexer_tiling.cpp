@@ -199,6 +199,14 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     OP_CHECK_IF(keyShape->GetShapeSize() == 0,
                 OP_LOGE(context_, "pool_key must not be empty tensor"),
                 return ge::GRAPH_FAILED);
+
+    // Capture the actual runtime strides of pool_key (for 0-axis non-contiguous support)
+    auto keyStrides = context_->GetDynamicInputStride(PKI_POOL_KEY_INDEX, 0);
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
+            keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+    }
     const gert::Shape *weightsShape = context_->GetInputShape(PKI_WEIGHTS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightsShape);
     OP_CHECK_IF(weightsShape->GetShapeSize() == 0,
@@ -356,12 +364,12 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(3)) != info.headDim,
                     OP_LOGE(context_, "PA key D(%ld) must be %u(128)", keyShape->GetDim(3), info.headDim),
                     return ge::GRAPH_FAILED);
-        // keyStride0 = blockSize * N2 * D (elements per physical block, used for PA address calc)
-        uint64_t keyStride = static_cast<uint64_t>(info.blockSize) * info.n2Size * info.headDim;
-        OP_CHECK_IF(keyStride > UINT32_MAX,
-                    OP_LOGE(context_, "keyStride0(%lu) exceeds uint32 range", keyStride),
-                    return ge::GRAPH_FAILED);
-        info.keyStride0 = static_cast<uint32_t>(keyStride);
+        // keyStride0: use actual runtime stride[0] for 0-axis non-contiguous PA support
+        if (!keyStridesVec_.empty()) {
+            info.keyStride0 = keyStridesVec_[0];
+        } else {
+            info.keyStride0 = 0;
+        }
         // S2 computed at runtime from actual_seq_k
         info.s2Size = 0;
     } else if (info.layoutK == PkiDataLayout::BSND) {
@@ -377,12 +385,8 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(3)) != info.headDim,
                     OP_LOGE(context_, "BSND key D(%ld) must be %u(128)", keyShape->GetDim(3), info.headDim),
                     return ge::GRAPH_FAILED);
-        // keyStride0 = S2 * N2 * D (B-stride for BSND address calc)
-        uint64_t keyStride = static_cast<uint64_t>(info.s2Size) * info.n2Size * info.headDim;
-        OP_CHECK_IF(keyStride > UINT32_MAX,
-                    OP_LOGE(context_, "keyStride0(%lu) exceeds uint32 range", keyStride),
-                    return ge::GRAPH_FAILED);
-        info.keyStride0 = static_cast<uint32_t>(keyStride);
+        // BSND: kernel KeyNd2Nz uses tensorKeyOffset for contiguous addressing, keyStride0 not used
+        info.keyStride0 = 0;
     } else {
         OP_CHECK_IF(keyShape->GetDimNum() != 3,
                     OP_LOGE(context_, "TND key must be 3D"),
@@ -394,8 +398,8 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "TND key D(%ld) must be %u(128)", keyShape->GetDim(2), info.headDim),
                     return ge::GRAPH_FAILED);
         info.s2Size = 0; // determined from actual_seq_k
-        // keyStride0 = N2 * D (S2-stride for TND address calc)
-        info.keyStride0 = info.n2Size * info.headDim;
+        // TND: kernel KeyNd2Nz uses tensorKeyOffset for contiguous addressing, keyStride0 not used
+        info.keyStride0 = 0;
     }
 
     // block_table for PA
@@ -763,6 +767,44 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         }
     }
 
+    // Validate pool_key contiguity: PA allows 0-axis non-contiguous, BSND/TND require fully contiguous
+    if (CheckKeyContiguous(info) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus PoolKeyIndexerTiling::CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const
+{
+    bool keyNonContiguous = false;
+    // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
+    // Non-PA: check starts from axis 0 (all axes must be contiguous)
+    size_t checkStartIdx = (info.layoutK == PkiDataLayout::PA_BBND) ? 1 : 0;
+    if (!keyStridesVec_.empty()) {
+        const gert::Shape *keyShape = context_->GetInputShape(PKI_POOL_KEY_INDEX);
+        if (keyShape != nullptr) {
+            auto &shape = keyShape->GetStorageShape();
+            std::vector<uint32_t> expectedStrides;
+            if (info.layoutK == PkiDataLayout::BSND || info.layoutK == PkiDataLayout::PA_BBND) {
+                expectedStrides = {static_cast<uint32_t>(shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3)),
+                                   static_cast<uint32_t>(shape.GetDim(2) * shape.GetDim(3)),
+                                   static_cast<uint32_t>(shape.GetDim(3)), 1U};
+            } else { // TND
+                expectedStrides = {static_cast<uint32_t>(shape.GetDim(1) * shape.GetDim(2)),
+                                   static_cast<uint32_t>(shape.GetDim(2)), 1U};
+            }
+            for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+                if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
+                    keyNonContiguous = true;
+                    break;
+                }
+            }
+        }
+    }
+    OP_CHECK_IF(keyNonContiguous,
+                OP_LOGE(context_, "pool_key only supports non-contiguous on the 0-axis."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

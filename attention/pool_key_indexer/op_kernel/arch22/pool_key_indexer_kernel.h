@@ -177,6 +177,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.trunkLen = tilingData->trunkLen;
     constInfo.mBaseSizeMax = tilingData->mBaseSizeMax;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
+    constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.wsOffScore = tilingData->wsOffScore;
     constInfo.wsOffLdScore = tilingData->wsOffLdScore;
     constInfo.wsOffLdIdx = tilingData->wsOffLdIdx;

@@ -249,7 +249,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
         uint64_t keyGmOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) *
-                                   constInfo_.kCacheBlockSize * constInfo_.kHeadNum * constInfo_.headDim +
+                                   constInfo_.keyStride0 +
                                s2BlkOffset * constInfo_.headDim;
         // 搬运按照S2_BASIC_BLOCK_L0*D_BASIC_BLOCK_L0的方式在l1上排布, 方便后续mte1
         // 根据s2的offset判断当前属于前一个L0分型还是后一个L0分型，暂时只支持两个分型

@@ -16,6 +16,7 @@
 #ifndef POOL_KEY_INDEXER_TILING_H
 #define POOL_KEY_INDEXER_TILING_H
 
+#include <vector>
 #include "err/ops_err.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_info.h"
@@ -164,10 +165,12 @@ public:
 private:
     gert::TilingContext *context_ = nullptr;
     PoolKeyIndexerTilingData tilingData_;
+    std::vector<uint32_t> keyStridesVec_;
 
     ge::graphStatus ParseAndCheckParams(PoolKeyIndexerTilingInfo &info);
     ge::graphStatus CalcTilingParams(PoolKeyIndexerTilingInfo &info);
     ge::graphStatus CalcWorkspaceSize(PoolKeyIndexerTilingInfo &info, uint64_t &workspaceSize);
+    ge::graphStatus CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const;
     uint32_t GetTrunkLen(uint32_t sparseCount);
     void SetTilingData(PoolKeyIndexerTilingInfo &info);
 };
