@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_compute_pscale_dn_mxfp4.h
+ * \file vf_compute_pscale_dm_mxfp4.h
  * \brief
  */
 
-#ifndef VF_COMPUTE_PSCALE_DN_MXFP4_H_
-#define VF_COMPUTE_PSCALE_DN_MXFP4_H_
+#ifndef VF_COMPUTE_PSCALE_DM_MXFP4_H_
+#define VF_COMPUTE_PSCALE_DM_MXFP4_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
@@ -192,7 +192,7 @@ __simd_vf__ inline void compute_pscale_vf(__ubuf__ uint8_t *mxscale1, __ubuf__ u
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void ComputePscaleCallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
+__aicore__ inline void ComputePscaleAndDmCallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
                                      const LocalTensor<T> &ulmax1, const LocalTensor<T> &ulmax2,
                                      const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
                                      const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
@@ -211,4 +211,4 @@ __aicore__ inline void ComputePscaleCallVF(const LocalTensor<uint8_t> &mxscale1,
                                            urs_buf, firstLoop, secondLoop, coreIndex, LOG2_CX_CEIL);
 }
 }
-#endif  // VF_COMPUTE_PSCALE_DN_MXFP4_H_
+#endif  // VF_COMPUTE_PSCALE_DM_MXFP4_H_
