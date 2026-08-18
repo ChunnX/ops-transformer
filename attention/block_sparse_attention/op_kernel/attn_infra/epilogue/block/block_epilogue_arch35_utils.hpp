@@ -77,7 +77,7 @@ namespace MXFP4 {
     static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_SIZE = 256;
     static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_OFFSET = 245 * KB_BYTE + 768;
 
-    // updateScale: single 0.25K, BUFCNT=4, resident
+    // updateScale(缩放因子dm): single 0.25K, BUFCNT=4, resident
     static constexpr uint32_t UB_UPDATE_SCALE_CNT = 4;
     static constexpr uint32_t UB_UPDATE_SCALE_BUF_SIZE = 256;
     static constexpr uint32_t UB_UPDATE_SCALE_BUF_OFFSET = 246 * KB_BYTE + 768;

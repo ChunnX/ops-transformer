@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_mxfp4_attenout_dn.h
+ * \file vf_attn_out_transpose_mxfp4.h
  * \brief
  */
 
-#ifndef ATTENOUT_DN_MXFP4_H_
-#define ATTENOUT_DN_MXFP4_H_
+#ifndef VF_ATTN_OUT_TRANSPOSE_MXFP4_H_
+#define VF_ATTN_OUT_TRANSPOSE_MXFP4_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -28,7 +28,7 @@ using namespace MicroAPI;
 #define DROPOUT false
 
 template <uint16_t QsBase = 128, typename Otype = bfloat16_t>
-__simd_vf__ void process_out_vf(__ubuf__ float *atten_out_md, __ubuf__ float *atten_out_dm, __ubuf__ float *rsum)
+__simd_vf__ void transpose_attn_out_vf(__ubuf__ float *atten_out_md, __ubuf__ float *atten_out_dm, __ubuf__ float *rsum)
 {
     MaskReg preg_all32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -143,15 +143,15 @@ __simd_vf__ void process_out_vf(__ubuf__ float *atten_out_md, __ubuf__ float *at
 }
 
 template <uint16_t QsBase = 128, typename Otype = bfloat16_t>
-__aicore__ inline void ProcessOutCallVF(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
+__aicore__ inline void TransposeAttnOutCallVF(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
                                      const LocalTensor<float> &rSum)
 {
     __ubuf__ float *atten_out_md = (__ubuf__ float*) dstTensor.GetPhyAddr();
     __ubuf__ float *atten_out_dm = (__ubuf__ float*) srcTensor.GetPhyAddr();
     __ubuf__ float *rsum = (__ubuf__ float*) rSum.GetPhyAddr();
 
-    process_out_vf<QsBase, Otype>(atten_out_md, atten_out_dm, rsum);
+    transpose_attn_out_vf<QsBase, Otype>(atten_out_md, atten_out_dm, rsum);
 }
 
 }  // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif  // ATTENOUT_DN_MXFP4_H_
+#endif  // VF_ATTN_OUT_TRANSPOSE_MXFP4_H_
