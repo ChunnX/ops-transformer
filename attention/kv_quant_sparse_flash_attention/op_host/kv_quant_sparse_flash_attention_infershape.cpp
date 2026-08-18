@@ -21,12 +21,16 @@ using namespace ge;
 
 namespace ops {
 constexpr size_t QUERY_INPUT_INDEX = 0;
+constexpr size_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t LAYOUT_QUERY_ATTR_INDEX = 4;
+constexpr uint32_t LAYOUT_KV_ATTR_INDEX = 5;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
+constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 13;
 constexpr uint32_t DIM_INDEX_0 = 0;
 constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
+constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
 
@@ -36,6 +40,8 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
+    const gert::Shape *keyShape = context->GetInputShape(KEY_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
     auto attrs = context->GetAttrs();
@@ -43,7 +49,12 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
     const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(LAYOUT_QUERY_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
+    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(LAYOUT_KV_ATTR_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
+    std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     const int64_t ropeHeadDim = *attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    const bool *lseFlag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_ATTR_INDEX);
+    bool returnSoftmaxLse = (lseFlag != nullptr) ? *lseFlag : false;
 
     *attentionOutShape = *queryShape;
     if (inputLayoutQueryPtrStr == "BSND") {
@@ -62,6 +73,55 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
             attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2) - ropeHeadDim); // 2:dim2
         }
     }
+
+    gert::Shape *softmaxMaxShape = context->GetOutputShape(1);
+    gert::Shape *softmaxSumShape = context->GetOutputShape(2);
+    if (softmaxMaxShape == nullptr || softmaxSumShape == nullptr) {
+        return GRAPH_SUCCESS;
+    }
+
+    if (returnSoftmaxLse) {
+        if (queryShape->GetDimNum() == DIM_NUM_3) {
+            if (inputLayoutKeyPtrStr == "PA_BSND") {
+                softmaxMaxShape->SetDimNum(DIM_NUM_3);
+                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
+                softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
+
+                softmaxSumShape->SetDimNum(DIM_NUM_3);
+                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
+                softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
+            } else {
+                softmaxMaxShape->SetDimNum(DIM_NUM_3);
+                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+                softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+
+                softmaxSumShape->SetDimNum(DIM_NUM_3);
+                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+                softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+            }
+        } else {
+            softmaxMaxShape->SetDimNum(DIM_NUM_4);
+            softmaxMaxShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
+            softmaxMaxShape->SetDim(DIM_INDEX_1, keyShape->GetDim(DIM_INDEX_2));
+            softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
+            softmaxMaxShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / keyShape->GetDim(DIM_INDEX_2));
+
+            softmaxSumShape->SetDimNum(DIM_NUM_4);
+            softmaxSumShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
+            softmaxSumShape->SetDim(DIM_INDEX_1, keyShape->GetDim(DIM_INDEX_2));
+            softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
+            softmaxSumShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / keyShape->GetDim(DIM_INDEX_2));
+        }
+    } else {
+        softmaxMaxShape->SetDimNum(DIM_NUM_1);
+        softmaxMaxShape->SetDim(DIM_INDEX_0, 0);
+        softmaxSumShape->SetDimNum(DIM_NUM_1);
+        softmaxSumShape->SetDim(DIM_INDEX_0, 0);
+    }
     return GRAPH_SUCCESS;
 }
 
@@ -71,6 +131,8 @@ ge::graphStatus InferDataTypeKvQuantSparseFlashAttention(gert::InferDataTypeCont
                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
+    context->SetOutputDataType(1, ge::DT_FLOAT);
+    context->SetOutputDataType(2, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
