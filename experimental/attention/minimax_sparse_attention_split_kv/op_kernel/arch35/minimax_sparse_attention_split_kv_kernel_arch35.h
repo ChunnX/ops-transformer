@@ -208,7 +208,9 @@ public:
         AscendC::GlobalTensor<int32_t> gK2qSlotIndices;
         gK2qSlotIndices.SetGlobalBuffer((__gm__ int32_t *)params.k2qSlotIndices);
         AscendC::GlobalTensor<int32_t> gBlockTable;
-        gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
+        if (isPageAttention_ == 1U) {
+            gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
+        }
         gActualQseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualQseqlen);
         gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
@@ -270,6 +272,7 @@ private:
         scaleValue_ = tilingData->scaleValue;
         accumOutSize_ = tilingData->accumOutSize;
         lseStatSize_ = tilingData->lseStatSize;
+        isPageAttention_ = tilingData->isPageAttention;
         slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
         slotStatElems_ = static_cast<uint64_t>(groupSize_);
     }
@@ -359,15 +362,17 @@ private:
     // re-fetches.
     __aicore__ inline
     void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
-                          uint32_t &cumQStart, uint32_t &qSeqlenBatch)
+                          uint32_t &cumQStart, uint32_t &qSeqlenBatch, uint32_t &cumKvStart)
     {
         kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
         numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
         cumQStart = 0;
+        cumKvStart = 0;
         for (uint32_t b = 0; b <= batchIdx; ++b) {
             uint32_t qB = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
             if (b < batchIdx) {
                 cumQStart += qB;
+                cumKvStart += static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
             } else {
                 qSeqlenBatch = qB;
             }
@@ -721,16 +726,16 @@ private:
             uint32_t numBlocksB = 0;
             uint32_t cumQStart = 0;
             uint32_t qSeqlenBatch = 0;
+            uint32_t cumKvStart = 0;
             // Fetch per-batch scalars for the resolved batchIdx (Q/KV same batch ->
             // qBatch==batchIdx). cvl loop reuses these -> 0 GM GetValue per (bi,g).
-            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch);
+            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch,
+                              cumKvStart);
             uint32_t localBlockIdx = kvBlockIdx;
 
-            int64_t btOffset =
-                static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
-            int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
-
             uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
+            (void)cumKvStart;
+            (void)gBlockTable;
 
             uint64_t rowPtrBase = static_cast<uint64_t>(kvHeadIdx) * headStride;
             uint32_t csrStart = static_cast<uint32_t>(
@@ -755,9 +760,23 @@ private:
             uint32_t kvStartPos = localBlockIdx * blockSize_;
 
 #ifdef __DAV_CUBE__
-            uint64_t kvBlockBase =
-                static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_
-                + static_cast<uint64_t>(kvHeadIdx) * embed_;
+            // PA: [numPhysicalBlocks, blockSize, kvHeads, D], indexed by block_table.
+            // TND non-kvcache: [T_kv, kvHeads, D], tokens tightly packed by actual_seq_lengths_kv.
+            // Intra-block stride is kvHeads*D in both layouts.
+            uint64_t kvBlockBase;
+            if (isPageAttention_ == 1U) {
+                int64_t btOffset =
+                    static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
+                int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
+                kvBlockBase =
+                    static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_
+                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+            } else {
+                kvBlockBase =
+                    (static_cast<uint64_t>(cumKvStart) +
+                     static_cast<uint64_t>(localBlockIdx) * blockSize_) * kvHeads_ * embed_
+                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+            }
 
             auto gmKLayout = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, blockSize_);
             auto gmKTensor = tla::MakeTensor(gK[kvBlockBase], gmKLayout, Arch::PositionGM{});
@@ -950,6 +969,7 @@ private:
     uint64_t lseStatSize_;
     uint64_t slotOElems_;
     uint64_t slotStatElems_;
+    uint32_t isPageAttention_;
 
     AscendC::GlobalTensor<int32_t> gActualQseqlen_;
     AscendC::GlobalTensor<int32_t> gActualKvseqlen_;

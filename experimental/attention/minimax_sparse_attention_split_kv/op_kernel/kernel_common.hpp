@@ -29,6 +29,7 @@ struct MinimaxSparseAttentionSplitKvTilingData {
     uint64_t lseStatSize;
     uint64_t workSpaceSize;
     uint64_t tilingKey;
+    uint32_t isPageAttention;
 };
 
 }  // namespace MinimaxSaSplitKv

@@ -125,44 +125,100 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::TilingContext *context)
 {
-    // printf("[MinimaxSparseAttentionSplitKvTiling] Enter ParseInputTensors\n");
-    // Query: [total_q_tokens, num_q_heads, D]
     auto qShape = context->GetInputShape(QUERY_INDEX);
     if (qShape == nullptr) {
-        printf("[MinimaxSparseAttentionSplitKvTiling] qShape is null!\n");
+        OP_LOGE(context->GetNodeName(), "query shape is null.");
+        return ge::GRAPH_FAILED;
+    }
+    if (qShape->GetStorageShape().GetDimNum() != 3U) {
+        OP_LOGE(context->GetNodeName(),
+                "query must be TND [T, N, D], got dimNum=%zu.",
+                qShape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
     totalQTokens_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_T));
     numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
 
-    // KV: [num_physical_blocks, blockSize, kvHeads, D]
     auto kShape = context->GetInputShape(KEY_INDEX);
-    if (kShape == nullptr) {
-        printf("[MinimaxSparseAttentionSplitKvTiling] kShape is null!\n");
+    auto vShape = context->GetInputShape(VALUE_INDEX);
+    if (kShape == nullptr || vShape == nullptr) {
+        OP_LOGE(context->GetNodeName(), "key/value shape is null.");
         return ge::GRAPH_FAILED;
     }
-    if (kvHeads_ == 0) {
-        kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
-    }
-    groupSize_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    // printf("[MinimaxSparseAttentionSplitKvTiling] kvHeads=%u groupSize=%u\n", kvHeads_, groupSize_);
-
-    // block_table: [batch_size, max_num_blocks]
-    auto btShape = context->GetInputShape(BLOCK_TABLE_INDEX);
-    if (btShape == nullptr) {
-        printf("[MinimaxSparseAttentionSplitKvTiling] btShape is null!\n");
+    const size_t kDimNum = kShape->GetStorageShape().GetDimNum();
+    const size_t vDimNum = vShape->GetStorageShape().GetDimNum();
+    if (kDimNum != vDimNum) {
+        OP_LOGE(context->GetNodeName(),
+                "key dimNum (%zu) must equal value dimNum (%zu).", kDimNum, vDimNum);
         return ge::GRAPH_FAILED;
     }
-    batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
-    maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
-    // printf("[MinimaxSparseAttentionSplitKvTiling] batch=%u maxBlocksPerBatch=%u\n", batch_, maxBlocksPerBatch_);
 
-    // Data type
+    // block_table present => paged KV cache; absent => TND non-kvcache.
+    const gert::StorageShape *btShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
+    isPageAttention_ = (btShape != nullptr) ? 1U : 0U;
+
+    if (isPageAttention_ == 1U) {
+        if (kDimNum != 4U) {
+            OP_LOGE(context->GetNodeName(),
+                    "paged KV cache requires key/value rank 4 "
+                    "[numPhysicalBlocks, blockSize, kvHeads, D], got %zu.",
+                    kDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        if (kvHeads_ == 0U) {
+            kvHeads_ = static_cast<uint32_t>(
+                kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
+        }
+        if (btShape->GetStorageShape().GetDimNum() != 2U) {
+            OP_LOGE(context->GetNodeName(),
+                    "block_table must be [batch, maxBlocksPerBatch], got dimNum=%zu.",
+                    btShape->GetStorageShape().GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
+        maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
+    } else {
+        // Non-kvcache: key/value share query's TND layout [T_kv, kvHeads, D].
+        if (kDimNum != 3U) {
+            OP_LOGE(context->GetNodeName(),
+                    "non-kvcache input requires key/value TND [T, kvHeads, D] "
+                    "(rank 3), got rank %zu. Pass block_table for paged KV cache.",
+                    kDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        if (kvHeads_ == 0U) {
+            kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(TND_DIM_N));
+        }
+        uint32_t keyHeads = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(TND_DIM_N));
+        uint32_t keyD = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(TND_DIM_D));
+        uint32_t valueHeads = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(TND_DIM_N));
+        uint32_t valueD = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(TND_DIM_D));
+        if (keyHeads != kvHeads_ || keyD != embeddingSize_) {
+            OP_LOGE(context->GetNodeName(),
+                    "TND key shape [T, %u, %u] must match kvHeads=%u embeddingSize=%u.",
+                    keyHeads, keyD, kvHeads_, embeddingSize_);
+            return ge::GRAPH_FAILED;
+        }
+        if (valueHeads != keyHeads || valueD != keyD) {
+            OP_LOGE(context->GetNodeName(),
+                    "TND value shape [T, %u, %u] must match key [T, %u, %u].",
+                    valueHeads, valueD, keyHeads, keyD);
+            return ge::GRAPH_FAILED;
+        }
+        auto seqKvShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_KV_INDEX);
+        if (seqKvShape == nullptr) {
+            OP_LOGE(context->GetNodeName(),
+                    "actual_seq_lengths_kv is required for non-kvcache TND input.");
+            return ge::GRAPH_FAILED;
+        }
+        batch_ = static_cast<uint32_t>(seqKvShape->GetStorageShape().GetShapeSize());
+        maxBlocksPerBatch_ = 0U;
+    }
+    groupSize_ = (kvHeads_ > 0U) ? (numHeads_ / kvHeads_) : 1U;
+
     auto qTensor = context->GetInputDesc(QUERY_INDEX);
     dataType_ = qTensor->GetDataType();
-
-    // printf("[MinimaxSparseAttentionSplitKvTiling] ParseInputTensors done\n");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -378,6 +434,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
         tilingKeyVal = MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING;
     }
     tilingData_->set_tilingKey(tilingKeyVal);
+    tilingData_->set_isPageAttention(isPageAttention_);
     context->SetTilingKey(tilingKeyVal);
     return ge::GRAPH_SUCCESS;
 }

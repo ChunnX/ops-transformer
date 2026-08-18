@@ -22,8 +22,10 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
+        // Optional: present => paged KV cache (4D key/value + block table).
+        // Absent  => non-kvcache TND key/value [T_kv, kvHeads, D], same layout family as query.
         this->Input("blockTable")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         // k2qRowPtr: per-head CSR row pointers [kvHeads, totalKvRows+1], int32. A plain runtime

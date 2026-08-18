@@ -49,8 +49,10 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    blockTable = l0op::Contiguous(blockTable, executor);
-    CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (blockTable != nullptr) {
+        blockTable = l0op::Contiguous(blockTable, executor);
+        CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    }
 
     k2qRowPtr = l0op::Contiguous(k2qRowPtr, executor);
     CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -94,7 +96,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
