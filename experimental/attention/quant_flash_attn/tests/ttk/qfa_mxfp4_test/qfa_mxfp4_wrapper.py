@@ -139,6 +139,10 @@ def npu_qfa_mxfp4(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
+<<<<<<< HEAD
+=======
+
+>>>>>>> 96487139d... 增加case间清理缓存
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
@@ -282,6 +286,7 @@ def npu_qfa_mxfp4(
         raise
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     gc.collect()
     torch.npu.empty_cache()
 
@@ -289,3 +294,9 @@ def npu_qfa_mxfp4(
 =======
     return atten_out, lse_out
 >>>>>>> 13706ea7e... ttk优化
+=======
+    gc.collect()
+    torch.npu.empty_cache()
+
+    return atten_out, lse_out
+>>>>>>> 96487139d... 增加case间清理缓存
