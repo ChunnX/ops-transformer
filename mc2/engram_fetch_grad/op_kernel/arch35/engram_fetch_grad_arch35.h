@@ -124,7 +124,7 @@ private:
 
     uint64_t uniqueScatterAddStartCycle_{0};
     uint64_t uniqueScatterAddEndCycle_{0};
-    uint64_t usaCompanionCycle_{0};
+    uint64_t usaInitAndOverlapSendCycle_{0};
     uint64_t usaSortCycle_{0};
     uint64_t usaDrainRecvCycle_{0};
     uint64_t processStartCycle_{0};
@@ -724,7 +724,7 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
                        gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
                        sortCompanionGM_);
 
-    usaCompanionCycle_ = t1 - t0;
+    usaInitAndOverlapSendCycle_ = t1 - t0;
     usaSortCycle_ = t2 - t1;
     usaDrainRecvCycle_ = t3 - t2;
 }
@@ -859,9 +859,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
             uint64_t sortUs = usaSortCycle_ / 1000U;
             uint64_t drainRecvUs = usaDrainRecvCycle_ / 1000U;
-            AscendC::printf("ENGRAM core=%uu total=%lluu pre=%lluu send=%lluu usa=%lluu | companion=%lluu sort=%lluu drainRecv=%lluu zeroCount=%lluu scatterAdd=%lluu cast=%lluu\n",
+            AscendC::printf("ENGRAM core=%uu total=%lluu pre=%lluu send=%lluu usa=%lluu | initAndOverlapSend=%lluu sort=%lluu drainRecv=%lluu zeroCount=%lluu scatterAdd=%lluu cast=%lluu\n",
                             aivId_, totalUs, preUs, sendUs, usaUs,
-                            usaCompanionCycle_ / 1000U, sortUs, drainRecvUs,
+                            usaInitAndOverlapSendCycle_ / 1000U, sortUs, drainRecvUs,
                             uniqueScatter_.usaZeroCountCycle_ / 1000U,
                             uniqueScatter_.usaScatterAddCycle_ / 1000U,
                             uniqueScatter_.usaCastCycle_ / 1000U);
