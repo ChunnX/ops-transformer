@@ -250,32 +250,6 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
     }
 
     if (dFactor_ == d_) {
-        while (rowFactor_ <= rowOfFormerBlock_) {
-            break;
-            mix0Size = rowFactor_ * hcMultAlign_ * sizeof(float);
-            mix1Size = rowFactor_ * hcMultAlign_ * sizeof(float);
-            mix2Size = rowFactor_ * hcMult_ * hcMultAlign_ * sizeof(float);
-            squareSumSize = kBlockNum * RoundUp(rowFactor_ * 16, 16) * sizeof(float) * DOUBLE_BUFFER;
-            rsqrtSize = RoundUp(rowFactor_, BLOCK_SIZE / sizeof(float)) * sizeof(float) * DOUBLE_BUFFER;
-            xSize = rowFactor_ * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
-            ySize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
-            postSize = rowFactor_ * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
-            combFragSize = rowFactor_ * hcMult_ * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
-            xCastSize = rowFactor_ * hcMult_ * RoundUp(d_, 8) * sizeof(float);
-            yCastSize = rowFactor_ * RoundUp(d_, 8) * sizeof(float);
-            rowBrcb0Size = RoundUp(rowFactor_, 8) * BLOCK_SIZE;
-            hcBrcb1Size = RoundUp(rowFactor_ * hcMultAlign_, 8) * BLOCK_SIZE;
-            reduceBufSize = rowFactor_ * hcMultAlign_ * sizeof(float);
-            maskPatternSize = BLOCK_SIZE;
-            totalSize = mix0Size + mix1Size + mix2Size + squareSumSize + rsqrtSize + xSize + ySize + postSize +
-                        combFragSize + base0Size + base1Size + base2Size + xCastSize + yCastSize + rowBrcb0Size +
-                        hcBrcb1Size + reduceBufSize + maskPatternSize;
-            if (totalSize > ubSize_) {
-                rowFactor_ = rowFactor_ - 1;
-                break;
-            }
-            rowFactor_ = rowFactor_ + 1;
-        }
         rowFactor_ = rowFactor_ > rowOfFormerBlock_ ? rowFactor_ - 1 : rowFactor_;
     }
     rowLoopOfFormerBlock_ = CeilDiv(rowOfFormerBlock_, rowFactor_);
