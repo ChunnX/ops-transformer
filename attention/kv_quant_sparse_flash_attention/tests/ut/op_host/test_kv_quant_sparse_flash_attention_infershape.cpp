@@ -38,7 +38,9 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_infershape_
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -51,9 +53,10 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_infershape_
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}});
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 64, 8, 512}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 64, 8, 512}, {2, 1, 64, 8}, {2, 1, 64, 8}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -72,7 +75,9 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_infershape_
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -85,9 +90,10 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_infershape_
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}});
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {{96, 16, 512}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{96, 16, 512}, {1, 96, 16}, {1, 96, 16}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -103,8 +109,10 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_inferdtype)
     ge::DataType indexType = ge::DT_INT32;
     ge::DataType scaleType = ge::DT_FLOAT;
     auto contextHolder = gert::InferDataTypeContextFaker()
-                             .NodeIoNum(9, 1)
+                             .NodeIoNum(9, 3)
                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
                              .InputDataTypes({&queryType, &kvType, &kvType, &indexType, &scaleType, &scaleType,
                                               &indexType, &indexType, &indexType})
                              .NodeAttrs({{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
@@ -119,11 +127,14 @@ TEST_F(KvQuantSparseFlashAttentionProto, KvQuantSparseFlashAttention_inferdtype)
                                          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                                          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-                                         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}})
+                                         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                                         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
                              .Build();
     auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
     ASSERT_NE(context, nullptr);
 
     EXPECT_EQ(dataTypeFunc(context), ge::GRAPH_SUCCESS);
     EXPECT_EQ(context->GetOutputDataType(0), ge::DT_BF16);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_FLOAT);
+    EXPECT_EQ(context->GetOutputDataType(2), ge::DT_FLOAT);
 }
