@@ -16,7 +16,8 @@
 namespace ops {
 class GenPositionIdsFromMask : public OpDef {
 public:
-    explicit GenPositionIdsFromMask(const char *name) : OpDef(name)
+    explicit GenPositionIdsFromMask(const char *name)
+        : OpDef(name)
     {
         // 三种输入 dtype 组合: int32 / int64 / bool
         this->Input("attention_mask")

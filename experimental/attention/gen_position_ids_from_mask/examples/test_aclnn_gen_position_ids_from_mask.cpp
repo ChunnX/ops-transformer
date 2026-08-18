@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include <iostream>
 #include <vector>
 #include <string>
@@ -16,12 +15,12 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_gen_position_ids_from_mask.h"
 
-#define CHECK(cond, msg)                                                                                               \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            std::cerr << "[FATAL] " << msg << std::endl;                                                               \
-            return false;                                                                                              \
-        }                                                                                                              \
+#define CHECK(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            std::cerr << "[FATAL] " << msg << std::endl; \
+            return false; \
+        } \
     } while (0)
 
 namespace {

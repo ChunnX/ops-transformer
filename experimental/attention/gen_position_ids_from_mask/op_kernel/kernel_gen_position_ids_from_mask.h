@@ -22,9 +22,7 @@ using namespace AscendC;
 template <typename TIn>
 class KernelGenPositionIdsFromMask {
 public:
-    __aicore__ inline KernelGenPositionIdsFromMask()
-    {
-    }
+    __aicore__ inline KernelGenPositionIdsFromMask() {}
 
     __aicore__ inline void Init(GM_ADDR attentionMask, GM_ADDR positionIds,
                                 const GenPositionIdsFromMaskTilingData *tiling)
@@ -63,7 +61,6 @@ public:
         pipe_.InitBuffer(gatherBuf_, TILE_SIZE * sizeof(int32_t));
         pipe_.InitBuffer(shiftValidBuf_, TILE_SIZE * sizeof(int32_t));
         pipe_.InitBuffer(boolHalfBuf_, TILE_SIZE * sizeof(half));
-
 
         pipe_.InitBuffer(indexBuf_, WORD_TILE_SIZE * sizeof(int32_t));
         pipe_.InitBuffer(wordTmpABuf_, WORD_TILE_SIZE * sizeof(int32_t));
@@ -193,7 +190,6 @@ private:
             Maxs(shiftOffset, shiftOffset, static_cast<int32_t>(0), validLen);
             PipeBarrier<PIPE_V>();
 
-
             Muls(shiftOffset, shiftOffset, static_cast<int32_t>(sizeof(int32_t)), validLen);
             PipeBarrier<PIPE_V>();
 
@@ -235,7 +231,6 @@ private:
         Adds(position32, inclusiveScan, static_cast<int32_t>(-1), validLen);
         PipeBarrier<PIPE_V>();
 
-
         // 直接复用 NormalizeMask 的 0/1 mask，避免尾块的 CompareScalar 对齐限制。
 
         // 非负 int32 范围的 fill 在 Cast 前处理，其余值走 int64 回退路径。
@@ -258,12 +253,10 @@ private:
             PipeBarrier<PIPE_V>();
         }
 
-
         LocalTensor<int64_t> outputLocal = outputQueue_.AllocTensor<int64_t>();
 
         Cast(outputLocal, position32, RoundMode::CAST_NONE, validLen);
         PipeBarrier<PIPE_V>();
-
 
         if (!useInt32FillFastPath) {
             SelectInt64Fill(outputLocal, mask32, fillValueLocal, validLen);
