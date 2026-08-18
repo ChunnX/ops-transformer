@@ -956,6 +956,10 @@ mask_mode参数解释
     </tbody>
 </table>
 
+> [!NOTE]
+>
+> 算子不校验 `seqused_kv` 中的最大值是否与 `max_seqlen_kv` 一致。若同时传入这两个参数，用户需自行保证 `max(seqused_kv) <= max_seqlen_kv`。
+
 #### Paged Attention参数组
 
 当block_table不为空时，开启Paged Attention
