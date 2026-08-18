@@ -64,7 +64,6 @@ public:
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
-    static constexpr uint32_t NEGATIVE_INF_VALUE_FP32_BITS = 0xFF800000U;
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isBf16Fp16 = IsSameType<INPUT_T, bfloat16_t>::value || IsSameType<INPUT_T, half>::value;
@@ -177,7 +176,6 @@ public:
     PseInfo *pseInfoPtr;
     AttenMaskInfo *attenMaskInfoPtr;
     T negativeFloatScalar;
-    T negativeInfFloatScalar;
     T positiveFloatScalar;
     // Bmm2阶段subblock在Gm上的偏移
     int64_t bmm2SubBlockOffset = 0;
@@ -649,14 +647,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        // Decouple safe-softmax semantics from innerPrecise/atten-mask tiling.
-        // This also covers data-originated -inf rows when attenMask is absent.
-        SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
-                            this->positiveFloatScalar);
-        if constexpr (IsSameType<T, float>::value) {
-            SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeInfFloatScalar,
-                                this->positiveFloatScalar);
-        }
         GetDerived()->SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
     return;
@@ -1314,13 +1304,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
         }
     }
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        // Repair both mask-generated -FLT_MAX rows and data-generated -inf rows.
-        SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
-                            this->positiveFloatScalar);
-        if constexpr (IsSameType<T, float>::value) {
-            SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeInfFloatScalar,
-                                this->positiveFloatScalar);
-        }
         GetDerived()->SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
 }
@@ -2045,34 +2028,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (splitD) {
         dSizeAligned64 = constInfo.dBasicBlock;
     }
-    // The BMM2 numerator may already be NaN for an all -inf score row because
-    // exp(-inf - -inf) is undefined. Repairing only the denominator is not
-    // sufficient; zero the final row based on the preserved softmax maximum.
-    if constexpr (IsSameType<T, float>::value && !POST_QUANT) {
-        int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-        LocalTensor<float> maxTensor =
-            softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
-        event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventIdVToS);
-        WaitFlag<HardEvent::V_S>(eventIdVToS);
-        bool hasNegativeInfRow = false;
-        for (uint32_t i = 0; i < runInfo.vec2S1RealSize; i++) {
-            float maxValue = maxTensor.GetValue(i);
-            uint32_t checkValue = *(uint32_t *)&maxValue;
-            if (checkValue == NEGATIVE_MIN_VALUE_FP32 || checkValue == NEGATIVE_INF_VALUE_FP32_BITS) {
-                hasNegativeInfRow = true;
-                break;
-            }
-        }
-        if (hasNegativeInfRow) {
-            uint16_t invalidLineDSize =
-                splitD ? static_cast<uint16_t>(dSizeAligned64) : static_cast<uint16_t>(constInfo.dSizeV);
-            RowInvalidUpdateVF<VEC2_RES_T>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, invalidLineDSize,
-                                           dSizeAligned64, NEGATIVE_MIN_VALUE_FP32);
-            RowInvalidUpdateVF<VEC2_RES_T>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, invalidLineDSize,
-                                           dSizeAligned64, NEGATIVE_INF_VALUE_FP32_BITS);
-        }
-    }
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
@@ -2391,10 +2346,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
     if constexpr (IsSameType<T, float>::value && !useNz) {
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         negativeScalar = *((float *)&tmp1);
-        uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
-        positiveScalar = *((float *)&tmp2);
-        uint32_t tmp3 = NEGATIVE_INF_VALUE_FP32_BITS;
-        this->negativeInfFloatScalar = *((float *)&tmp3);
+        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
+            if (this->tilingData->inputParamsRegbase.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
+                positiveScalar = *((float *)&tmp2);
+            }
+        }
     } else {
         uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
         negativeScalar = *((half *)&tmp1);
