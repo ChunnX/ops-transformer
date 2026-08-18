@@ -1163,10 +1163,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     workspaceGlobal.SetGlobalBuffer((__gm__ int32_t *)wAddr);
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(recStatusNumPerCore_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(sendCountsGlobal[startStatusIndex_], outCountLocal, dataCopyOutParams);
-    // 复制aivNum_份
-    for (uint32_t index = 0; index < aivNum_; index++) {
-        DataCopyPad(workspaceGlobal[index * rscvStatusNum_ + startStatusIndex_], outCountLocal, dataCopyOutParams);
-    }
+    // 各CumSum核将自己负责的前缀和分片写入同一份结果。
+    DataCopyPad(workspaceGlobal[startStatusIndex_], outCountLocal, dataCopyOutParams);
     uint8_t repeatTimes = Ceil(aivNum_, 8); // 一次处理256字节，8个datablock
     DataCopyParams sumIntriParams{static_cast<uint16_t>(aivNum_), 1, 0, static_cast<uint16_t>(aivUsedCumSum_ - 1)};
     LocalTensor<int32_t> syncOnCoreTensor = sumCoreBuf_.Get<int32_t>();
@@ -1268,7 +1266,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(recvCntWorkspaceGM_));
     DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(rscvStatusNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> copyPadExtParams{false, 0U, 0U, 0U};
-    DataCopyPad(sendCntTensor_, workspaceGlobal[aivId_ * rscvStatusNum_], scalesCopyInParams, copyPadExtParams);
+    DataCopyPad(sendCntTensor_, workspaceGlobal, scalesCopyInParams, copyPadExtParams);
     PipeBarrier<PIPE_ALL>();
 
     if (aivId_ == 0) {
