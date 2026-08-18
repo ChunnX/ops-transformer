@@ -1,20 +1,26 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root directory of the software repository for the full text of the License.
  */
 
 /*!
  * \file matmul_fusion_kernel.h
- * \brief 第二阶段融合 kernel 的 device 侧组件：MatmulTilingData + Blaze 类型链 + MatmulProcess + SyncBridgeProcess
+ * \brief 第三阶段融合 kernel 的 device 侧组件：MatmulTilingData + Blaze 类型链 + MatmulProcess + AicDirectPollProcess
  *
  * 被 ccu_all_gather_matmul_kernel.asc 中的 all_gather_matmul_kernel（MIX_AIC_1_1）调用。
- * - MatmulProcess：AIC 核执行 Blaze 纯 matmul（FP16 A/B → FP32 累加 → BF16 C）
- * - SyncBridgeProcess：AIV 核执行参数桥 + 唤醒 CCU + 轮询 + CrossCoreSetFlag 唤醒 AIC
+ * - MatmulProcess：AIC 核执行 Blaze 纯 matmul（FP16 A/B → FP32 累加 → BF16 C），不再等 AIV 唤醒
+ * - AicDirectPollProcess：AIC 直轮询（替代第二阶段 AIV SyncBridgeProcess）
+ *   · block 0 一次性预写 commTurn 组参数桥（startVa[d][0..9]）+ 写 wake（eventVa[0]=1，唯一 wake）
+ *   · 所有 AIC 核循环 commTurn 次：轮询 eventVa[d+1]==1（round d done）→ matmul tile d
+ *     ←── 与 CCU round d+1 通信并行
+ *   · CCU kernel 仅 round 0 EventWait(events[0])，之后串行自动进入下一 round（无需再唤醒）
+ *   · 每轮 done 用独立 Event 地址（eventVa[d+1]），AIC 不会读到残留值，无需重置
+ *   · 不使用 SyncAll（AIV 已 return，SyncAll<true> 会死锁）；各核独立轮询 CKE 的 GM 后背地址
  */
 
 #pragma once
@@ -36,10 +42,11 @@
 
 // ============================================================================
 // MatmulTilingData POD 结构（host/device 共用，参照 apace quant_matmul_tiling_data.h 风格）
+// 每 round 一组，M = rankSize * tileM（AllGather 后单 round 的总行数）
 // ============================================================================
 #pragma pack(push, 8)
 struct alignas(8) MatmulTilingData {
-    uint32_t m{0};          // = rankSize * M（AllGather 后总行数，matmul 的 A 行数）
+    uint32_t m{0};          // = rankSize * tileM（单 round AllGather 后总行数，matmul 的 A 行数）
     uint32_t n{0};          // = N
     uint32_t k{0};          // = K
     uint32_t baseM{0};      // = 256
@@ -74,14 +81,13 @@ struct MmTilingConfig {
 };
 
 // ============================================================================
-// AIC 分支：MatmulProcess（Blaze matmul + CrossCoreWaitFlag）
+// AIC 分支：MatmulProcess（Blaze matmul，去 CrossCoreWaitFlag——不再等 AIV 唤醒）
+// 第三阶段：AIC 直轮询模式，matmul 由 AicDirectPollProcess 在轮询通过后直接调用
+// 所有 AIC 核都会调用本函数（Blaze BlockSchedulerMatmulBasic 按 GetBlockIdx 切分多核任务）
 // 严格参照 mat_mul_basic.cpp L284-312 的类型链与 Params 组装方式
 // ============================================================================
 __aicore__ inline void MatmulProcess(__gm__ void *aGM, __gm__ void *bGM, __gm__ void *cGM, MatmulTilingData tilingData)
 {
-    // ---- 等待 AIV 唤醒：AIV 在 SyncBridgeProcess 末尾 CrossCoreSetFlag<0x2, PIPE_MTE3> ----
-    AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
-
     // ---- 组装 Blaze matmul 类型链（参照 mat_mul_basic.cpp L293-297）----
     using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, MmTypeA, MmLayoutA, MmTypeB, MmLayoutB,
@@ -120,61 +126,101 @@ __aicore__ inline void MatmulProcess(__gm__ void *aGM, __gm__ void *bGM, __gm__ 
 }
 
 // ============================================================================
-// AIV 分支：SyncBridgeProcess（复用第一阶段 comm_sync 参数桥+唤醒+轮询，末尾加 CrossCoreSetFlag）
-// 多 AIV 核并发时，仅 block 0 执行参数桥/唤醒/轮询，其余 AIV 核等待 SyncAll 后一起 SetFlag
+// 第三阶段新增：AIC 直轮询（替代第二阶段 AIV SyncBridgeProcess）
+//
+// commTurn 通用设计（新方案：1 组 Variable + 1 组 Event，CCU kernel 内循环）：
+//   1. block 0 预写 commTurn 组参数桥（startVa[d][0..9]）+ 写 wake（eventVa[0]=1，唯一 wake）
+//      CCU kernel 仅 round 0 EventWait(events[0])，round d 完成后自动串行进入 round d+1（无需再唤醒）
+//   2. 循环 commTurn 次：所有核轮询该 round done（eventVa[d+1]==1）→ matmul tile d
+//      round d 的 matmul 与 CCU round d+1 通信并行 overlap
+//   每轮 done 用独立 Event 地址（eventVa[d+1]），AIC 不会读到残留值，无需重置
+//
+// 参数桥写入逻辑复用第二阶段 SyncBridgeProcess（WriteGmByPassDCache 写 taskArgs[0..9] → GM）。
+// 每 round 的 inputOffset/outputOffset 从 device GM 数组读取（d_inputOffsets[d]/d_outputOffsets[d]）。
+//
+// matmul tile 偏移：A = recvBuf，每 tile 行数 = rankSize*tileM
+//   round d: A=recvBuf[d*rankSize*tileM*K*2 : ...], C=outputBuf[d*rankSize*tileM*N*2 : ...]
 // ============================================================================
-__aicore__ inline void SyncBridgeProcess(__gm__ void *src, __gm__ void *recvBuf, CcuMappedAddrs mappedAddrs,
-                                          uint64_t token, uint64_t currentRankSliceInputOffset,
-                                          uint64_t currentRankSliceOutputOffset, uint64_t sliceSize,
-                                          uint64_t goSize0, uint64_t goSize1, uint64_t goSize2, uint64_t goSize3)
+__aicore__ inline void AicDirectPollProcess(
+    __gm__ void *sendBuf, __gm__ void *recvBuf, __gm__ void *weightBuf, __gm__ void *outputBuf,
+    CcuMappedAddrs mappedAddrs,
+    uint64_t token, uint64_t sliceSize,
+    uint64_t goSize0, uint64_t goSize1, uint64_t goSize2, uint64_t goSize3,
+    MatmulTilingData tilingData, uint32_t rankSize, uint32_t tileM, uint32_t commTurn,
+    __gm__ const uint64_t *inputOffsets, __gm__ const uint64_t *outputOffsets)
 {
-    // 仅 block 0 执行参数桥/唤醒/轮询（参照 apace UDMA L251 if(GetBlockIdx() < rankSize_) 门控）
+    // 每 tile 的 A/C 字节偏移（FP16 A / BF16 C，均 2 bytes）
+    uint64_t tileABytes = static_cast<uint64_t>(rankSize) * static_cast<uint64_t>(tileM)
+                        * static_cast<uint64_t>(tilingData.k) * 2;
+    uint64_t tileCBytes = static_cast<uint64_t>(rankSize) * static_cast<uint64_t>(tileM)
+                        * static_cast<uint64_t>(tilingData.n) * 2;
+
+    // ============ block 0 预写 commTurn 组参数桥 + 写 wake（eventVa[0]=1，唯一 wake）============
+    // 一次性预写所有 round 的 taskArgs，让 CCU kernel 在 streamCcu 内串行循环时每轮读到对应 Variable 组。
+    // CCU kernel 仅 round 0 EventWait(events[0])，round d 完成后自动进入 round d+1（无需再唤醒）。
+    // round d 的 matmul 与 CCU round d+1 的通信真正 overlap。
     if (static_cast<uint32_t>(AscendC::GetBlockIdx()) == 0) {
-        // ============ 参数桥：写 taskArgs[0..9] → GM（逐字节复用第一阶段 comm_sync）============
-        __gm__ uint64_t *taskArgs0 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[0]);
-        __gm__ uint64_t *taskArgs1 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[1]);
-        __gm__ uint64_t *taskArgs2 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[2]);
-        __gm__ uint64_t *taskArgs3 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[3]);
-        __gm__ uint64_t *taskArgs4 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[4]);
-        __gm__ uint64_t *taskArgs5 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[5]);
-        __gm__ uint64_t *taskArgs6 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[6]);
-        __gm__ uint64_t *taskArgs7 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[7]);
-        __gm__ uint64_t *taskArgs8 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[8]);
-        __gm__ uint64_t *taskArgs9 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[9]);
+        for (uint32_t d = 0; d < commTurn; d++) {
+            uint64_t inputOffset = inputOffsets[d];
+            uint64_t outputOffset = outputOffsets[d];
 
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs0, reinterpret_cast<uint64_t>(src));
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs1, reinterpret_cast<uint64_t>(recvBuf));
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs2, token);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs3, currentRankSliceInputOffset);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs4, currentRankSliceOutputOffset);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs5, sliceSize);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs6, goSize0);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs7, goSize1);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs8, goSize2);
-        AscendC::WriteGmByPassDCache<uint64_t>(taskArgs9, goSize3);
+            __gm__ uint64_t *args0 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][0]);
+            __gm__ uint64_t *args1 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][1]);
+            __gm__ uint64_t *args2 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][2]);
+            __gm__ uint64_t *args3 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][3]);
+            __gm__ uint64_t *args4 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][4]);
+            __gm__ uint64_t *args5 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][5]);
+            __gm__ uint64_t *args6 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][6]);
+            __gm__ uint64_t *args7 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][7]);
+            __gm__ uint64_t *args8 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][8]);
+            __gm__ uint64_t *args9 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.startVa[d][9]);
+
+            AscendC::WriteGmByPassDCache<uint64_t>(args0, reinterpret_cast<uint64_t>(sendBuf));
+            AscendC::WriteGmByPassDCache<uint64_t>(args1, reinterpret_cast<uint64_t>(recvBuf));
+            AscendC::WriteGmByPassDCache<uint64_t>(args2, token);
+            AscendC::WriteGmByPassDCache<uint64_t>(args3, inputOffset);
+            AscendC::WriteGmByPassDCache<uint64_t>(args4, outputOffset);
+            AscendC::WriteGmByPassDCache<uint64_t>(args5, sliceSize);
+            AscendC::WriteGmByPassDCache<uint64_t>(args6, goSize0);
+            AscendC::WriteGmByPassDCache<uint64_t>(args7, goSize1);
+            AscendC::WriteGmByPassDCache<uint64_t>(args8, goSize2);
+            AscendC::WriteGmByPassDCache<uint64_t>(args9, goSize3);
+            AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
+        }
+
+        // 写 wake（eventVa[0]=1，唯一 wake）——唤醒 CCU round 0
+        // CCU kernel 内部串行循环，round d 完成后自动进入 round d+1，不需要再唤醒
+        __gm__ uint64_t *wakeAddr = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[0]);
+        AscendC::WriteGmByPassDCache<uint64_t>(wakeAddr, 1);
         AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
+    }
 
-        // ============ 唤醒 CCU：写 ckeAddr0 = 1（逐字节复用第一阶段 comm_sync）============
-        __gm__ uint64_t *ckeAddr0 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[0]);
-        __gm__ uint64_t *ckeAddr1 = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[1]);
-        AscendC::WriteGmByPassDCache<uint64_t>(ckeAddr0, 1);
-        AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
+    // ============ 循环 commTurn 次：轮询 done + matmul ============
+    for (uint32_t d = 0; d < commTurn; d++) {
 
-        // ============ 轮询等待 CCU 通信完成（逐字节复用第一阶段 comm_sync）============
+        // ============ step 2：所有核轮询该 round done（eventVa[d+1]==1）============
+        // 每轮 done 用独立 Event 地址，AIC 不会读到残留值，无需重置
+        __gm__ uint64_t *doneAddr = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[d + 1]);
         while (1) {
-            uint64_t waitCke = AscendC::ReadGmByPassDCache(ckeAddr1);
+            uint64_t waitCke = AscendC::ReadGmByPassDCache(doneAddr);
             AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
             AscendC::Nop<800>();
             if (waitCke == 1) {
                 break;
             }
         }
+
+        // ============ step 3：所有核 matmul tile d ============
+        // A=recvBuf[d*tileABytes : ...], B=weightBuf → C=outputBuf[d*tileCBytes : ...]
+        // ←── CCU round d+1 通信并行（若 d+1 < commTurn）
+        // MatmulProcess 参数为 __gm__ void*（阶段二修复：与 kernel 入参类型一致，内部转 GM_ADDR）
+        __gm__ uint8_t *recvBufBytes = reinterpret_cast<__gm__ uint8_t *>(recvBuf);
+        __gm__ uint8_t *outputBufBytes = reinterpret_cast<__gm__ uint8_t *>(outputBuf);
+        uint64_t aOffset = static_cast<uint64_t>(d) * tileABytes;
+        uint64_t cOffset = static_cast<uint64_t>(d) * tileCBytes;
+        MatmulProcess(recvBufBytes + aOffset,
+                      weightBuf,
+                      outputBufBytes + cOffset,
+                      tilingData);
     }
-
-    // 所有 AIV 核同步（参照 apace UDMA L256 SyncAll<true>）
-    AscendC::SyncAll<true>();
-
-    // ============ 第二阶段新增：唤醒 AIC 核执行 matmul ============
-    // 参照 apace UDMA all_gather_mx_matmul_udma_impl.h L248：CrossCoreSetFlag<0x2, PIPE_MTE3>
-    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 }
