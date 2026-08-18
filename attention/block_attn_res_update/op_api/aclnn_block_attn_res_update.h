@@ -34,6 +34,8 @@ extern "C" {
  * @param h [out] 必选连续输出，数据类型为 BFLOAT16，shape 与 delta 一致。
  * @param workspaceSize [out] 返回所需 workspace 大小。
  * @param executor [out] 返回执行器。
+ * @note T >= 0 且 0 <= D <= 8192。当 T == 0 或 D == 0 时，所有 Tensor 仍须满足完整的 rank 和
+ *       shape 关系；L0 保持 partialBlock 不变，返回 shape 与 delta 一致的空 h，不下发 kernel。
  * @return aclnnStatus 状态码。
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(

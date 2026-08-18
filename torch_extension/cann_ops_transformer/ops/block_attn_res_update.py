@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-from typing import Tuple
 
 import torch
 from torch.library import impl
@@ -28,29 +27,29 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "block_attn_res_update("
-            "Tensor partial_block, Tensor partial_delta, Tensor pseudo_query, "
+            "Tensor(a!) partial_block, Tensor delta, Tensor pseudo_query, "
             "Tensor numerator, Tensor logit_max, Tensor exp_sum, "
-            "float epsilon) -> (Tensor, Tensor)"
+            "float eps) -> Tensor"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def block_attn_res_update_meta(
             partial_block,
-            partial_delta,
+            delta,
             pseudo_query,
             numerator,
             logit_max,
             exp_sum,
-            epsilon,
+            eps,
         ):
             torch._check(
                 partial_block.dtype == torch.float32,
                 lambda: f"partial_block must be float32, but got {partial_block.dtype}.",
             )
             torch._check(
-                partial_delta.dtype == torch.bfloat16,
-                lambda: f"partial_delta must be bfloat16, but got {partial_delta.dtype}.",
+                delta.dtype == torch.bfloat16,
+                lambda: f"delta must be bfloat16, but got {delta.dtype}.",
             )
             for name, tensor in (
                 ("pseudo_query", pseudo_query),
@@ -67,7 +66,7 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
 
             for name, tensor in (
                 ("partial_block", partial_block),
-                ("partial_delta", partial_delta),
+                ("delta", delta),
                 ("pseudo_query", pseudo_query),
                 ("numerator", numerator),
                 ("logit_max", logit_max),
@@ -79,12 +78,17 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
                 )
 
             torch._check(
+                math.isfinite(eps) and eps > 0.0,
+                lambda: f"eps must be finite and greater than 0, but got {eps}.",
+            )
+
+            torch._check(
                 partial_block.dim() == 2,
                 lambda: f"partial_block must be 2D, but got {partial_block.dim()}D.",
             )
             torch._check(
-                partial_delta.dim() == 2,
-                lambda: f"partial_delta must be 2D, but got {partial_delta.dim()}D.",
+                delta.dim() == 2,
+                lambda: f"delta must be 2D, but got {delta.dim()}D.",
             )
             torch._check(
                 numerator.dim() == 2,
@@ -104,17 +108,17 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
             )
 
             torch._check(
-                partial_block.shape[0] == partial_delta.shape[0],
+                partial_block.shape[0] == delta.shape[0],
                 lambda: (
-                    "partial_delta token dimension must match partial_block, but got "
-                    f"{partial_delta.shape} and {partial_block.shape}."
+                    "delta token dimension must match partial_block, but got "
+                    f"{delta.shape} and {partial_block.shape}."
                 ),
             )
             torch._check(
-                partial_block.shape[1] == partial_delta.shape[1],
+                partial_block.shape[1] == delta.shape[1],
                 lambda: (
-                    "partial_delta hidden dimension must match partial_block, but got "
-                    f"{partial_delta.shape} and {partial_block.shape}."
+                    "delta hidden dimension must match partial_block, but got "
+                    f"{delta.shape} and {partial_block.shape}."
                 ),
             )
             torch._check(
@@ -155,16 +159,16 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
                 ),
             )
             torch._check(
-                partial_block.shape[0] > 0,
+                partial_block.shape[0] >= 0,
                 lambda: (
-                    "the token dimension T must be greater than 0, but got "
+                    "the token dimension T must be greater than or equal to 0, but got "
                     f"{partial_block.shape[0]}."
                 ),
             )
             torch._check(
-                partial_block.shape[1] >= 1,
+                partial_block.shape[1] >= 0,
                 lambda: (
-                    "the hidden dimension D must be at least 1, but got "
+                    "the hidden dimension D must be greater than or equal to 0, but got "
                     f"{partial_block.shape[1]}."
                 ),
             )
@@ -175,18 +179,8 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
                     f"{partial_block.shape[1]}."
                 ),
             )
-            torch._check(
-                math.isfinite(epsilon) and epsilon > 0.0,
-                lambda: f"epsilon must be finite and greater than 0, but got {epsilon}.",
-            )
-
-            h = torch.empty(
-                partial_delta.shape, dtype=partial_delta.dtype, device="meta"
-            )
-            partial_blocks = torch.empty(
-                partial_block.shape, dtype=torch.float32, device="meta"
-            )
-            return (h, partial_blocks)
+            h = torch.empty(delta.shape, dtype=delta.dtype, device="meta")
+            return h
 
 
 _block_attn_res_update_op_builder = BlockAttnResUpdateOpBuilder()
@@ -195,44 +189,47 @@ _block_attn_res_update_op_builder = BlockAttnResUpdateOpBuilder()
 @impl(AS_LIBRARY, _block_attn_res_update_op_builder.name, "PrivateUse1")
 def _block_attn_res_update(
     partial_block,
-    partial_delta,
+    delta,
     pseudo_query,
     numerator,
     logit_max,
     exp_sum,
-    epsilon,
+    eps,
 ):
     op_module = _block_attn_res_update_op_builder.load()
     return op_module.block_attn_res_update(
         partial_block,
-        partial_delta,
+        delta,
         pseudo_query,
         numerator,
         logit_max,
         exp_sum,
-        epsilon,
+        eps,
     )
 
 
 def block_attn_res_update(
     partial_block: torch.Tensor,
-    partial_delta: torch.Tensor,
+    delta: torch.Tensor,
     pseudo_query: torch.Tensor,
     numerator: torch.Tensor,
     logit_max: torch.Tensor,
     exp_sum: torch.Tensor,
-    epsilon: float,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    eps: float,
+) -> torch.Tensor:
     """BlockAttnRes Phase 2 更新，封装 aclnnBlockAttnResUpdate。
 
-    将当前 ``partial_delta`` 累加到 FP32 ``partial_block``，计算当前
+    将当前 ``delta`` 原地累加到 FP32 ``partial_block``，计算当前
     partial block 的 RMSNorm score，并与 Phase 1 的 online softmax
-    中间状态合并，输出当前层结果和更新后的 partial block。
+    中间状态合并并返回当前层结果。更新后的 partial block 原地写回
+    ``partial_block``，不作为独立返回值返回。
 
     Args:
         partial_block (Tensor): 已累计的 partial block，shape ``(T, D)``，
-            dtype 为 ``torch.float32``，且必须连续；``1 <= D <= 8192``。
-        partial_delta (Tensor): 当前层增量，shape ``(T, D)``，dtype 为
+            dtype 为 ``torch.float32``，且必须连续；``T >= 0``，
+            ``0 <= D <= 8192``。
+            调用完成后被原地更新。
+        delta (Tensor): 当前层增量，shape ``(T, D)``，dtype 为
             ``torch.bfloat16``，且必须连续。
         pseudo_query (Tensor): 预计算的伪 query，shape ``(D,)``，
             dtype 为 ``torch.float32``，且必须连续。
@@ -242,20 +239,22 @@ def block_attn_res_update(
             dtype 为 ``torch.float32``，且必须连续。
         exp_sum (Tensor): Phase 1 历史 softmax 分母累积值，shape ``(T,)``，
             dtype 为 ``torch.float32``，且必须连续。
-        epsilon (float): FP32 RMSNorm 数值稳定项，必须为有限正数。
+        eps (float): FP32 RMSNorm 数值稳定项，必须为有限正数。
+
+        当 ``T == 0`` 或 ``D == 0`` 时，所有输入仍必须满足上述 rank 和
+        shape 关系。ACLNN L0 直接返回 shape 与 ``delta`` 一致的空
+        Tensor，不进入 InferShape、tiling 和 kernel。
 
     Returns:
-        Tuple[Tensor, Tensor]: ``(h, partial_blocks)``。``h`` 的 shape 和
-        dtype 与 ``partial_delta`` 一致；``partial_blocks`` 的 shape 与
-        ``partial_block`` 一致，dtype 为 ``torch.float32``；两个输出均为
-        连续 Tensor。
+        Tensor: 当前层结果 ``h``，shape 和 dtype 与 ``delta`` 一致，
+        为连续 Tensor。输入 ``partial_block`` 在调用完成后已被原地更新。
     """
     return torch.ops.cann_ops_transformer.block_attn_res_update(
         partial_block,
-        partial_delta,
+        delta,
         pseudo_query,
         numerator,
         logit_max,
         exp_sum,
-        epsilon,
+        eps,
     )

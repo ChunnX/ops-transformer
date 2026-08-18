@@ -48,6 +48,12 @@ static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delt
              return false);
     return true;
 }
+
+static bool IsEmptyWorkload(const aclTensor *partialBlock)
+{
+    const auto &shape = partialBlock->GetViewShape();
+    return shape.GetDimNum() == 2 && (shape.GetDim(0) == 0 || shape.GetDim(1) == 0);
+}
 } // namespace
 
 const aclTensor *BlockAttnResUpdate(
@@ -58,8 +64,17 @@ const aclTensor *BlockAttnResUpdate(
 
     OP_CHECK(CheckNotNull(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, executor),
              OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate null pointer check failed."), return nullptr);
+
     OP_CHECK(IsAiCoreSupport(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate IsAiCoreSupport check failed."), return nullptr);
+
+    if (IsEmptyWorkload(partialBlock)) {
+        auto emptyH = executor->AllocTensor(delta->GetViewShape(), DataType::DT_BF16, Format::FORMAT_ND);
+        OP_CHECK(emptyH != nullptr,
+                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor for empty output failed."),
+                 return nullptr);
+        return emptyH;
+    }
 
     auto h = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     OP_CHECK(h != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor failed."), return nullptr);
