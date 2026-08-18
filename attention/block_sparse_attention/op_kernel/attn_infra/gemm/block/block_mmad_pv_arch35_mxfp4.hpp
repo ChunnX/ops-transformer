@@ -37,7 +37,7 @@
      class TileCopy_,
      class TileMmad_>
  struct BlockMmadTla<
-     MmadAtlasA5BsaPVMxfp4<transposedMm1_>,
+     MmadAtlasA5BsaPVMX<transposedMm1_>,
      L1TileShape_,
      L0TileShape_,
      ElementA_,
@@ -48,7 +48,7 @@
      TileMmad_>
  {
  public:
-     using DispatchPolicy = MmadAtlasA5BsaPVMxfp4<transposedMm1_>;
+     using DispatchPolicy = MmadAtlasA5BsaPVMX<transposedMm1_>;
      using ArchTag = typename DispatchPolicy::ArchTag;
      using TileCopy = TileCopy_;
      using ElementA = ElementA_;
@@ -68,7 +68,7 @@
      using LayoutTagL0B = typename TileCopy::LayoutTagL0B;
  
      static constexpr bool IS_MXFP4 = AscendC::IsSameType<ElementA, fp4x2_e2m1_t>::value;
-     static_assert(IS_MXFP4, "BlockMmadTla<MmadAtlasA5BsaPVMxfp4> requires ElementA = fp4x2_e2m1_t");
+     static_assert(IS_MXFP4, "BlockMmadTla<MmadAtlasA5BsaPVMX> requires ElementA = fp4x2_e2m1_t");
  
      static constexpr uint32_t L0_STAGES = DispatchPolicy::L0_STAGES;
      static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape_{});
