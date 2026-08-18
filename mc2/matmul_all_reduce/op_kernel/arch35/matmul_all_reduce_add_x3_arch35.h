@@ -131,14 +131,21 @@ __aicore__ inline void MatmulAllReduceAddX3Kernel(GM_ADDR mmOutput, GM_ADDR add,
     }
 }
 
+// bias 在 vec 侧累加的 kernel：从 GM 读取 matmul 输出，逐行加上 bias（可选再叠加 x3 残差）后回写 GM。
+// 支持两条路径，由 biasTileN 在 Init 时选定：
+//   - ProcessFullRow : biasTileN==0 或 >= alignedN 时走整行路径，bias 一次性搬入 UB 常驻。
+//   - ProcessChunked : 当 biasUbFactor(biasBufNum*alignedN*dtypeSize) 超过 UB 时，由 tiling 计算出
+//                      biasTileN(按 32B 对齐的 N 维分块大小)，将 N 维分块逐块搬入并累加，避免 UB 溢出。
 template <class T>
 class MatmulAllReduceAddBiasX3 {
 public:
     __aicore__ inline MatmulAllReduceAddBiasX3() {}
 
+    // 初始化：按核切分行区间，依据 biasTileN 选择整行/分块路径并分配 UB buffer；
+    // 整行路径下预先将 bias 一次性搬入 biasBuf 常驻。
     __aicore__ inline void Init(GM_ADDR mmOutput, GM_ADDR bias, GM_ADDR add, uint64_t totalElements,
                                 uint64_t nValue, uint64_t tileCnt, TPipe *tPipe, uint32_t coreNum, bool hasX3,
-                                uint32_t tileN)
+                                uint32_t biasTileN)
     {
         pipe_ = tPipe;
         nValue_ = nValue;
@@ -161,7 +168,7 @@ public:
             addGm_.SetGlobalBuffer((__gm__ T *)add + rowOffset_ * nValue_, blockRows_ * nValue_);
         }
 
-        if (tileN == 0U || tileN >= alignedN_) {
+        if (biasTileN == 0U || biasTileN >= alignedN_) {
             nChunked_ = false;
             effTileN_ = alignedN_;
             pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt_ * alignedN_ * sizeof(T));
@@ -177,8 +184,8 @@ public:
             PipeBarrier<PIPE_V>();
         } else {
             nChunked_ = true;
-            effTileN_ = tileN;
-            nChunks_ = Ceil(nValue_, static_cast<uint64_t>(tileN));
+            effTileN_ = biasTileN;
+            nChunks_ = Ceil(nValue_, static_cast<uint64_t>(biasTileN));
             pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt_ * effTileN_ * sizeof(T));
             pipe_->InitBuffer(biasBuf_, effTileN_ * sizeof(T));
             pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt_ * effTileN_ * sizeof(T));
@@ -188,6 +195,7 @@ public:
         }
     }
 
+    // 处理第 progress 个行块：按 nChunked_ 标志分发到整行路径或 N 维分块路径。
     __aicore__ inline void Process(uint64_t progress)
     {
         if (blockRows_ == 0) {
@@ -203,6 +211,7 @@ public:
     }
 
 private:
+    // 整行路径：整行搬入 mmOutput，逐行 Add bias，可选叠加 x3 后回写。bias 已在 Init 时常驻 biasBuf。
     __aicore__ inline void ProcessFullRow(uint64_t progress, uint64_t calcRows)
     {
         uint32_t blockLen = static_cast<uint32_t>(nValue_ * sizeof(T));
@@ -243,6 +252,8 @@ private:
         outQueueZ_.FreeTensor(zLocal);
     }
 
+    // N 维分块路径（UB 溢出降级）：将每行的 N 维按 effTileN 分块，逐块搬入 bias/mmOutput/add，
+    // 累加后按相同的 srcStride 回写 GM，避免 biasUbFactor 超过 UB 容量。
     __aicore__ inline void ProcessChunked(uint64_t progress, uint64_t calcRows)
     {
         for (uint64_t nc = 0; nc < nChunks_; nc++) {
@@ -317,7 +328,7 @@ public:
 template <class T>
 __aicore__ inline void MatmulAllReduceAddBiasX3Kernel(GM_ADDR mmOutput, GM_ADDR bias, GM_ADDR add,
                                                       uint64_t totalCnt, uint64_t nValue, uint64_t tileCnt,
-                                                      TPipe *tPipe, bool hasX3, uint32_t tileN)
+                                                      TPipe *tPipe, bool hasX3, uint32_t biasTileN)
 {
     uint32_t coreNum = GetBlockNum() * GetTaskRation();
     if (g_coreType == AIC || (GetBlockIdx() >= coreNum)) {
@@ -325,7 +336,7 @@ __aicore__ inline void MatmulAllReduceAddBiasX3Kernel(GM_ADDR mmOutput, GM_ADDR 
     }
     tPipe->Reset();
     MatmulAllReduceAddBiasX3<T> op;
-    op.Init(mmOutput, bias, add, totalCnt, nValue, tileCnt, tPipe, coreNum, hasX3, tileN);
+    op.Init(mmOutput, bias, add, totalCnt, nValue, tileCnt, tPipe, coreNum, hasX3, biasTileN);
     for (uint64_t i = 0; i < op.tileNum_; i++) {
         op.Process(i);
     }

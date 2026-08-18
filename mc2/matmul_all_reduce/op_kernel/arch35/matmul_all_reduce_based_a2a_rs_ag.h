@@ -177,12 +177,12 @@ protected:
             if (vecBiasFlag_ && addFlag_ && addrs_->cGM != addrs_->addGM) {
                 MatmulAllReduceAddBiasX3Kernel<YType>(addrs_->cGM, addrs_->biasGM, addrs_->addGM,
                                                       cOffset / sizeof(YType), paramInTiling_->rankN,
-                                                      biasUbRows_, tPipe_, true, tileN_);
+                                                      biasUbRows_, tPipe_, true, biasTileN_);
                 addrs_->addGM += cOffset;
             } else if (vecBiasFlag_) {
                 MatmulAllReduceAddBiasX3Kernel<YType>(addrs_->cGM, addrs_->biasGM, addrs_->addGM,
                                                       cOffset / sizeof(YType), paramInTiling_->rankN,
-                                                      biasUbRows_, tPipe_, false, tileN_);
+                                                      biasUbRows_, tPipe_, false, biasTileN_);
             } else {
                 MatmulAllReduceAddX3Kernel<YType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType),
                                                   paramInTiling_->addX3UbCnt, tPipe_);
@@ -298,7 +298,7 @@ protected:
     bool addFlag_;
     bool vecBiasFlag_;
     uint32_t biasUbRows_ = 0;
-    uint32_t tileN_ = 0;
+    uint32_t biasTileN_ = 0;
     bool needPad_;
 
     QuantGmAddrs *quantAddrs_;

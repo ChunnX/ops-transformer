@@ -39,7 +39,7 @@ public:
         mc2TilingData_ = (Mc2Tiling::MatmulAllReduce910TilingDataA5 *)tilingData;
         this->vecBiasFlag_ = (mc2TilingData_->extTiling.isVecBias != 0U);
         this->biasUbRows_ = mc2TilingData_->extTiling.biasUbRows;
-        this->tileN_ = mc2TilingData_->extTiling.tileN;
+        this->biasTileN_ = mc2TilingData_->extTiling.biasTileN;
         this->tileInfo_.mmTiling = &mc2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->mC2Mmv3TailTilingData.tCubeTiling;
     }

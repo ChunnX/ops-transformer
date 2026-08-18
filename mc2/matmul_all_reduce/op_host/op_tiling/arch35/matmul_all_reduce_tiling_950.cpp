@@ -262,40 +262,47 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
     }
     matmulAllReduce910TilingData_.extTiling.isVecBias = args_.isBias ? 1U : 0U;
     if (args_.isBias) {
-        constexpr uint32_t alignDataSize = 32U;
+        // bias 在 vec 侧累加路径的 UB 容量规划：
+        //   - biasBufNum 为该路径所需的 UB buffer 数目：bias+x3 路径需 7 份(mmOut/bias/out 各双缓冲 + add 双缓冲)，
+        //     bias-only 路径需 5 份(去掉 add 双缓冲)。
+        //   - biasUbFactor = biasBufNum * alignedN * dtypeSize，即"一行 bias 对应的 UB 占用字节数"。
+        //   - 正常情况(整行能放入 UB)：biasUbRows = ubSize / biasUbFactor，biasTileN 置 0，kernel 走整行路径。
+        //   - 降级情况(biasUbFactor > ubSize，大 N 场景)：按 N 维切出 biasTileN(32B 对齐)分块搬运，biasUbRows 基于分块后
+        //     的 biasUbFactor 重新计算，kernel 走 ProcessChunked 分块路径。
+        constexpr uint32_t alignDataSize = 32U; // UB 32 字节对齐基准，仅用于 N 维(元素数)对齐
         uint32_t dtypeSize = static_cast<uint32_t>(D_MTYPE_SIZE_MAP.at(args_.cType));
         uint32_t alignedN = mc2tiling::AlignUp(static_cast<uint32_t>(args_.orgNValue), alignDataSize / dtypeSize);
-        constexpr uint32_t BIAS_ADD_UB_BUF_FACTOR = 7U;
-        constexpr uint32_t BIAS_ONLY_UB_BUF_FACTOR = 5U;
+        constexpr uint32_t BIAS_ADD_UB_BUF_FACTOR = 7U;  // bias+x3 路径 UB buffer 数
+        constexpr uint32_t BIAS_ONLY_UB_BUF_FACTOR = 5U; // bias-only 路径 UB buffer 数
         uint32_t biasBufNum = (matmulAllReduce910TilingData_.param.isAdd != 0U) ? BIAS_ADD_UB_BUF_FACTOR : BIAS_ONLY_UB_BUF_FACTOR;
         uint32_t biasUbFactor = biasBufNum * alignedN * dtypeSize;
         uint32_t biasUbRows = 0U;
-        uint32_t tileN = 0U;
+        uint32_t biasTileN = 0U;
         if (biasUbFactor == 0U) {
             biasUbRows = 1U;
         } else if (biasUbFactor <= static_cast<uint32_t>(aicoreParams_.ubSize)) {
-            uint32_t ubSizeForBias = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
-            biasUbRows = mc2tiling::AlignDown(ubSizeForBias, alignDataSize);
+            // biasUbRows 为行数（非字节），无需对齐；UB buffer 的 32B 对齐已由 alignedN（N 维按 32B 对齐的元素数）保证。
+            biasUbRows = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
             if (biasUbRows == 0U) {
                 biasUbRows = 1U;
             }
         } else {
             uint32_t maxTileN = static_cast<uint32_t>(aicoreParams_.ubSize) / (biasBufNum * dtypeSize);
-            tileN = mc2tiling::AlignDown(maxTileN, alignDataSize / dtypeSize);
-            if (tileN == 0U) {
+            biasTileN = mc2tiling::AlignDown(maxTileN, alignDataSize / dtypeSize);
+            if (biasTileN == 0U) {
                 OP_LOGE(opName_, "biasUbFactor %u exceeds ubSize %lu, cannot fit bias path.",
                         biasUbFactor, aicoreParams_.ubSize);
                 return ge::GRAPH_FAILED;
             }
-            biasUbFactor = biasBufNum * tileN * dtypeSize;
-            uint32_t ubSizeForBias = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
-            biasUbRows = mc2tiling::AlignDown(ubSizeForBias, alignDataSize);
+            biasUbFactor = biasBufNum * biasTileN * dtypeSize;
+            // 同上，biasUbRows 为行数无需对齐。
+            biasUbRows = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
             if (biasUbRows == 0U) {
                 biasUbRows = 1U;
             }
         }
         matmulAllReduce910TilingData_.extTiling.biasUbRows = biasUbRows;
-        matmulAllReduce910TilingData_.extTiling.tileN = tileN;
+        matmulAllReduce910TilingData_.extTiling.biasTileN = biasTileN;
     }
     return ge::GRAPH_SUCCESS;
 }
