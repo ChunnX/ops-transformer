@@ -127,57 +127,49 @@ public:
         // axisLut 与 token 无关，每核只建一次
         BuildMropeGatherIndex();
 
-        // 三段式软件流水。标量核是单发射顺序的：CopyIn 的地址计算、DataCopy 发射、
-        // VF 参数打包全排在同一条指令流上，而 VF 一旦发出就自己跑（实测 2.59us/tile）。
-        // 若在发出 VF 后紧接着 CopyOut 当前 tile，DeQue 会把标量核钉在刚发出的那次 VF 上
-        // 干等——实测这段空窗有 2.58us/tile，标量流水一条指令都没有。
-        // 所以把 CopyOut 延后一拍：写出的是上一轮已经算完的 tile，它的 VF 早已完成，
-        // DeQue 不阻塞，标量核得以在 VF(i) 执行期间去发 CopyOut(i-1) 和 CopyIn(i+1)。
-        //   CopyIn(i+1) -> Compute(i) 发 VF -> CopyOut(i-1) -> 下一轮
-        // qkvInQue_/cosSinInQue_ 的 depth 是 2：稳态下 tile i 与 tile i+1 同时"已 EnQue
-        // 未 DeQue"。outQue_ 的 depth 也必须是 2：Compute(i) EnQue 时 tile i-1 还挂着没
-        // DeQue。两者的物理 buffer 数都由 InitUbBuffers 的 BUFFER_NUM_DB 决定，depth 改
-        // 大不额外占 UB。索引不参与这个乒乓：它走跨 tile 的滑窗，见 EnsureIndexWindow。
-        int64_t slot = 0;
-        int64_t tileStart = coreStart_;
-        int64_t tokenNum = TileTokenNum(tileStart);
-        EnsureIndexWindow(tileStart, tileStart + tokenNum);
-        CopyIn(tileStart, tokenNum, slot);
+        // 三段式软件流水，每轮同时经手三个 tile：
+        //
+        //   轮次       i=0    i=1    i=2    收尾
+        //   Compute    T0     T1     T2     --     先发 VF，发完就走，VF 自己跑
+        //   CopyIn     T1     T2     --     --     预取下一个，被 MTE2 队列反压时与 VF 并行
+        //   CopyOut    --     T0     T1     T2     写上一拍的，其 VF 早已完成，DeQue 不阻塞
+        //
+        // 三者的先后不可调换，各有 cannsim 指令级 trace 的实测依据：
+        //   Compute 提到最前 —— CopyIn 一个 tile 要发 num*4 条 DataCopy，远超 MTE2 硬件指令
+        //     队列深度，标量核会被反压住走走停停（单次停顿 0.19~0.51us，期间 MTE2 只放行
+        //     1 条）。VF 若排在它后面，向量单元就得干等标量核脱身，MTE2 与 VEC 的重叠只有 0.117。
+        //   CopyOut 延后一拍 —— 若紧接着写出当前 tile，DeQue 会把标量核钉在刚发出、还在跑的
+        //     那次 VF 上干等 2.58us/tile（aiv_mte3_wait_ratio 高达 0.47）。
+        //
+        // 三种资源的生命周期各不相同，不要混为一谈：
+        //   qkv/cosSin/out 的 UB buffer —— TQue 自动乒乓（depth 2 + BUFFER_NUM_DB 2），
+        //     代码里不出现 buffer 下标；depth 改大不额外占 UB。
+        //   undMask_ —— 手工乒乓，靠 Tile::maskSlot 选份，因为它是普通标量数组不走 TQue。
+        //   索引 idxBuf_ —— 跨 tile 滑窗，一个窗口横跨十几个 tile，见 EnsureIndexWindow。
+        Tile cur = FirstTile();
+        Tile pend;  // 已算完、待写出的那个 tile；pend.Valid() 为假表示还没有
 
-        // 已算完但还没写出的那个 tile（延后一拍的 CopyOut 对象）。-1 表示还没有
-        int64_t pendStart = -1;
-        int64_t pendTokenNum = 0;
+        EnsureIndexWindow(cur.start, cur.start + cur.num);
+        CopyIn(cur);
 
-        while (tileStart < coreEnd_) {
-            const int64_t nextStart = tileStart + tokenNum;
-            const int64_t nextTokenNum = (nextStart < coreEnd_) ? TileTokenNum(nextStart) : 0;
-            // Compute 必须排在 CopyIn 之前：CopyIn 一个 tile 要发 tokenNum*4 条 DataCopy，
-            // 远超 MTE2 的硬件指令队列深度，标量核会被队列满反压住走走停停（cannsim trace
-            // 实测单次停顿 0.19~0.51us，期间 MTE2 只放行 1 条指令）。若 VF 排在它后面，
-            // 向量单元就得干等标量核脱身，MTE2 与 VEC 的重叠始终上不去（实测仅 0.117）。
-            // 先把 VF 发出去，它自己跑 2.4us，标量核再去发搬运，反压期间两者并行。
-            // 缓冲安全：Compute DeQue 并释放的是本轮 buffer，CopyIn 取到的是上一轮释放的
-            // 另一块，VF 正在读的那块不会被覆写。
-            Compute(tokenNum, slot);
-            if (nextTokenNum > 0) {
-                // anchor 取"最早一个还要读索引的 tile"：CopyOut 读的是 pend tile 的 slot，
-                // 换窗时必须把它连同当前 tile 一起留在窗口里
-                const int64_t anchor = (pendStart >= 0) ? pendStart : tileStart;
-                EnsureIndexWindow(anchor, nextStart + nextTokenNum);
-                CopyIn(nextStart, nextTokenNum, slot ^ 1);
+        while (cur.Valid()) {
+            const Tile next = NextTile(cur);
+            Compute(cur);
+            if (next.Valid()) {
+                // anchor 取"最早一个还要读索引的 tile"：CopyOut 读的是 pend 的 slot_mapping，
+                // 换窗时必须把它连同 cur 一起留在窗口里
+                EnsureIndexWindow(pend.Valid() ? pend.start : cur.start, next.start + next.num);
+                CopyIn(next);
             }
-            if (pendStart >= 0) {
-                CopyOut(pendStart, pendTokenNum);
+            if (pend.Valid()) {
+                CopyOut(pend);
             }
-            pendStart = tileStart;
-            pendTokenNum = tokenNum;
-            tileStart = nextStart;
-            tokenNum = nextTokenNum;
-            slot ^= 1;
+            pend = cur;
+            cur = next;
         }
         // 收尾：最后一个 tile 的结果还挂在 outQue_ 上
-        if (pendStart >= 0) {
-            CopyOut(pendStart, pendTokenNum);
+        if (pend.Valid()) {
+            CopyOut(pend);
         }
 
         wInQue_.FreeTensor(wBf16Local_);
@@ -337,10 +329,42 @@ private:
     }
 
     // 本 tile 的 token 数：尾块不足 ubFactor 时按实际数量
+    // 一个 tile 的全部身份。num == 0 表示"不存在"（序幕与收尾的边界），
+    // 于是不再需要额外的哨兵下标来表达"还没有 pend tile"
+    struct Tile {
+        int64_t start = 0;
+        int64_t num = 0;
+        int64_t maskSlot = 0;  // undMask_ 的下标，见 Process 里对三种资源生命周期的说明
+        __aicore__ inline bool Valid() const
+        {
+            return num > 0;
+        }
+    };
+
     __aicore__ inline int64_t TileTokenNum(int64_t tileStart)
     {
         const int64_t rest = coreEnd_ - tileStart;
         return rest > ubFactor_ ? ubFactor_ : rest;
+    }
+
+    __aicore__ inline Tile FirstTile()
+    {
+        Tile t;
+        t.start = coreStart_;
+        t.num = TileTokenNum(coreStart_);
+        t.maskSlot = 0;
+        return t;
+    }
+
+    // 推进一拍：起点接在 cur 之后，越过 coreEnd_ 则 num 归零表示没有下一个；
+    // maskSlot 在这里翻转，调用方不必再关心乒乓
+    __aicore__ inline Tile NextTile(const Tile& cur)
+    {
+        Tile t;
+        t.start = cur.start + cur.num;
+        t.num = (t.start < coreEnd_) ? TileTokenNum(t.start) : 0;
+        t.maskSlot = cur.maskSlot ^ 1;
+        return t;
     }
 
     // 窗口内第 region 个区里、第 outT 个 token 的元素下标
@@ -409,8 +433,10 @@ private:
     // 逐 token 搬入：cat_indices 乱序导致各 token 的源行不连续，只能一 token 一笔。
     // 索引已由 EnsureIndexWindow 批量搬进 UB，下面所有 GetValue 都是 UB 上的短延迟标量读。
     // 本函数只发 MTE2 不等它落地，由 Process 提前一个 tile 调用，与上一 tile 的 VF 重叠
-    __aicore__ inline void CopyIn(int64_t tileStart, int64_t tokenNum, int64_t slot)
+    __aicore__ inline void CopyIn(const Tile& tile)
     {
+        const int64_t tileStart = tile.start;
+        const int64_t tokenNum = tile.num;
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.AllocTensor<T_QKV>();
         // 顺带产出本 tile 的 und/gen 位图给 VF 选 gamma 用：srcT 这里本来就要读，
         // 不必在别处再读一次 cat_indices。
@@ -440,15 +466,16 @@ private:
             }
         }
         cosSinInQue_.EnQue(cosSinLocal);
-        undMask_[slot] = mask;
+        undMask_[tile.maskSlot] = mask;
     }
 
     // 整个 tile 只发一次 VF：Q/K 在 UB 上本就是同一行 token 内相邻的 head，
     // 合在一个 VF 里 token 循环只走一趟、cos/sin 只 Gather 一次。
     // und/gen 的差异在 VF 内按 undMask 逐 token 算 gamma 基址解决，所以 cat_indices
     // 无论怎么交错，一个 tile 始终只发一次 VF。
-    __aicore__ inline void Compute(int64_t tokenNum, int64_t slot)
+    __aicore__ inline void Compute(const Tile& tile)
     {
+        const int64_t tokenNum = tile.num;
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.DeQue<T_QKV>();
         LocalTensor<float> cosSinLocal = cosSinInQue_.DeQue<float>();
         LocalTensor<T_QKV> outLocal = outQue_.AllocTensor<T_QKV>();
@@ -466,7 +493,7 @@ private:
         addr.qOut = (__ubuf__ bfloat16_t*)outLocal.GetPhyAddr();
         addr.kOut = (__ubuf__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr();
         addr.vOut = (__ubuf__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr();
-        QkRmsNormMropeTileVF(addr, vfShape_, static_cast<uint16_t>(tokenNum), undMask_[slot]);
+        QkRmsNormMropeTileVF(addr, vfShape_, static_cast<uint16_t>(tokenNum), undMask_[tile.maskSlot]);
 
         outQue_.EnQue(outLocal);
         qkvInQue_.FreeTensor(qkvLocal);
@@ -475,8 +502,10 @@ private:
 
     // outLocal 按 [ubFactor 个 q | ubFactor 个 k | ubFactor 个 v] 分段：
     // q 的输出下标 out_t 连续，可一笔写出；k/v 按 slot_mapping 散写，只能逐 token
-    __aicore__ inline void CopyOut(int64_t tileStart, int64_t tokenNum)
+    __aicore__ inline void CopyOut(const Tile& tile)
     {
+        const int64_t tileStart = tile.start;
+        const int64_t tokenNum = tile.num;
         LocalTensor<T_QKV> outLocal = outQue_.DeQue<T_QKV>();
 
         const int64_t qSegElems = numHeadQ_ * headDim_;
