@@ -272,11 +272,11 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline bool FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::IsInitAttentionOutGm()
 {
-    /* 存在空batch时需要全局预清零
-     * needInit: host侧检测到存在空batch/变长序列/padding时为true，
+    /* needInit: host侧检测到存在空batch/变长序列/padding时为true，
      * 仅作为IsInitAttentionOutGm的输入之一，不代表最终的初始化决策
      */
-    if (tilingData->baseParams.needInit) {
+    bool existAbnormalBatch = tilingData->baseParams.needInit;
+    if (existAbnormalBatch) {
         return true;
     }
     // TND、NTD场景且无attentionMask,不需要初始化
@@ -987,10 +987,10 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
                 CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, extraInfo);
                 createdTaskCount++;
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
-            } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
-                continue;
-            } else if (taskDealMode == TASK_DEAL_MODE::SKIP || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO) {
+            } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
+                       taskDealMode == TASK_DEAL_MODE::SKIP ||
+                       taskDealMode == TASK_DEAL_MODE::SKIP_ZERO) {
+                // 仅推进指针，不执行计算
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
                 continue;
             }
