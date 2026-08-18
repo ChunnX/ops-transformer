@@ -3224,11 +3224,11 @@ protected:
     {
         int64_t target_basic_block = 128;
         int64_t s1OuterSize = CeilDiv(s1Size, target_basic_block);
-        int64_t total_size = bSize * n2Size * gSize * s1OuterSize;
+        int64_t total_out_size = bSize * n2Size * gSize * s1OuterSize;
 
-        int64_t splitFactor = CeilDiv(total_size, static_cast<int64_t>(aivNum));
-        int64_t expectBasicBlock = bSize * n2Size * gSize * s1Size / aivNum /splitFactor;
-        int64_t s1BasicBlock = AlignUp(expectBasicBlock, FRACTAL_NUM);
+        int64_t splitFactor = CeilDiv(total_out_size, static_cast<int64_t>(aivNum));
+        int64_t total_input_size = bSize * n2Size * gSize * s1Size;
+        int64_t s1BasicBlock = AlignUp(total_input_size / aivNum /splitFactor, FRACTAL_NUM);
 
         return s1BasicBlock;
     }
