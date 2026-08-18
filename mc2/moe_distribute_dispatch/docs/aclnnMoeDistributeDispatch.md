@@ -1134,7 +1134,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
             return 0;
         }
         if (IS_TEST_A3A5) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
+            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> or <Atlas A5> will be executed!\n", env_var_name);
             EP_WORLD_SIZE = 8;
             DEV_NUM = EP_WORLD_SIZE;
             int ret = run_example_on_A3A5();
