@@ -125,7 +125,7 @@ __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q
     constexpr uint32_t colBaseSize = 32;
     constexpr uint32_t dealBaseNum = 128;
     uint32_t colDstStride = dealRowCount * colBaseSize;
-    uint32_t colSrcStride = (dealRowCount * colBaseSize + 31) / 32 * 32;
+    uint32_t colSrcStride = dealRowCount * colBaseSize;
     const uint16_t rowLoopCnt = static_cast<uint16_t>((dealRowCount + rowBaseSize - 1) / rowBaseSize);
     const uint16_t colLoopCnt = static_cast<uint16_t>(baseSize / colBaseSize);
 
