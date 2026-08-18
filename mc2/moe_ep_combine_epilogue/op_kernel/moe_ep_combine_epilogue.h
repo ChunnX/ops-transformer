@@ -187,7 +187,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::BuffInit()
 {
-    tpipe_->Reset();
     SplitToCore(numTokens_, aivNum_, tStart_, tEnd_, tPerCore_);
     if (tStart_ >= numTokens_) {
         return;
