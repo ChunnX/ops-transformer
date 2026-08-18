@@ -34,8 +34,7 @@ public:
     /** @brief constructor */
     __aicore__ inline GMMSwigluCompute(typename mmType::MT &mm_)
         : mm(mm_)
-    {
-    }
+    {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR perChannelScale, GM_ADDR perTokenScale,
                                 GM_ADDR groupList, GM_ADDR quantOutput, GM_ADDR quantScaleOutput, GM_ADDR workspace,
@@ -137,9 +136,8 @@ __aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::Process()
 
 template <typename mmType, bool sync, typename CHANNELDTYPE>
 template <typename DTYPE_CS>
-__aicore__ inline void
-GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::PreLoadTokenAndChannel(LocalTensor<float> &channelScaleLocal,
-                                                                     VecConfig &vecConfig)
+__aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::PreLoadTokenAndChannel(
+    LocalTensor<float> &channelScaleLocal, VecConfig &vecConfig)
 {
     DataCopyExtParams copyChannelParams{1, static_cast<uint32_t>(gmmSwiglu->tokenLen * sizeof(DTYPE_CS)), 0, 0, 0};
     DataCopyPadExtParams<DTYPE_CS> padParams{false, 0, 0, 0};
@@ -312,9 +310,10 @@ __aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::VecProcess(
 }
 
 template <typename mmType, bool sync, typename CHANNELDTYPE>
-__aicore__ inline void
-GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock,
-                                                                const uint32_t count, const uint32_t thresholdM_dimN)
+__aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::MNBlockIdxCompute(MNConfig &mnConfig,
+                                                                                       const uint32_t curBlock,
+                                                                                       const uint32_t count,
+                                                                                       const uint32_t thresholdM_dimN)
 {
     mnConfig.mIdx = (curBlock - count) / mnConfig.blockDimN;
     mnConfig.nIdx = (curBlock - count) % mnConfig.blockDimN;

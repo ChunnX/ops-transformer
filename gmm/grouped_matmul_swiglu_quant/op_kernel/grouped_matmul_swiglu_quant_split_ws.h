@@ -33,9 +33,9 @@ public:
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GMMSwigluSplitWorkSpaceCompute(typename mmType::MT &mm_) : mm(mm_)
-    {
-    }
+    __aicore__ inline GMMSwigluSplitWorkSpaceCompute(typename mmType::MT &mm_)
+        : mm(mm_)
+    {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR perChannelScale, GM_ADDR perTokenScale,
                                 GM_ADDR groupList, GM_ADDR quantOutput, GM_ADDR quantScaleOutput, GM_ADDR workspace,
@@ -313,9 +313,8 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
 }
 
 template <typename mmType, bool sync, typename CHANNELDTYPE>
-__aicore__ inline void
-GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::MMCompute(uint32_t groupIdx, MNConfig &mnConfig,
-                                                                      uint32_t coreIdx, GlobalTensor<int32_t> &mmOutGM)
+__aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::MMCompute(
+    uint32_t groupIdx, MNConfig &mnConfig, uint32_t coreIdx, GlobalTensor<int32_t> &mmOutGM)
 {
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;
     uint32_t curSingleN = mnConfig.nIdx < mnConfig.blockDimN - 1 ? mnConfig.singleN : mnConfig.n - tailN;
@@ -489,8 +488,8 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
 
 template <typename mmType, bool sync, typename CHANNELDTYPE>
 template <typename DTYPE_CS>
-__aicore__ inline void
-GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::UpdateChannelScale(uint32_t loopIdx, VecConfig &vecConfig)
+__aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::UpdateChannelScale(
+    uint32_t loopIdx, VecConfig &vecConfig)
 {
     // 更新perChannel
     if (unlikely(vecConfig.nextUpadteInterVal == 0)) {
@@ -610,8 +609,8 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
 }
 
 template <typename mmType, bool sync, typename CHANNELDTYPE>
-__aicore__ inline void
-GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::customDataCopyOut(VecConfig &vecConfig)
+__aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::customDataCopyOut(
+    VecConfig &vecConfig)
 {
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     DataCopyParams copyParams_0{1, (uint16_t)(vecConfig.innerLoopNum * sizeof(float)), 0, 0};
