@@ -180,7 +180,6 @@ private:
                                        L1_TILE_M_256, L1_TILE_N, false, GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
-    void *persistentBlockMmadContext_ = nullptr;
     MC2MegaMoeA5Dump::ExceptionDumpEngine exceptionDump_;
 };
 
