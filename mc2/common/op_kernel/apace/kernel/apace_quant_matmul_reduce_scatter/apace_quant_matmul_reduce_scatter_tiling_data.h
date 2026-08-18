@@ -36,7 +36,7 @@
 // CommContext 定义来自 all_to_all_matmul_tiling_data.h（复用，不重定义）
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
-struct QuantMatmulReduceScatterTilingData {
+struct ApaceQuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
     QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, T>1 per-tile head tile 路径)

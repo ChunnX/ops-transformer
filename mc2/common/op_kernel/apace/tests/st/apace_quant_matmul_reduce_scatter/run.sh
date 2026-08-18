@@ -68,8 +68,10 @@ run_single() {
             echo "[2/4] 编译..."
             mkdir -p "$BUILD_DIR"
             cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" || { echo "ERROR: cmake 失败"; return 1; }
-            cmake --build "$BUILD_DIR" --target quant_matmul_reduce_scatter_st --parallel 4 || {
+            cmake --build "$BUILD_DIR" --target apace_quant_matmul_reduce_scatter --parallel 4 || {
                 echo "ERROR: 编译失败。"; return 1; }
+            # 拷贝二进制到 BUILD_DIR 根目录 (run.sh 期望 quant_matmul_reduce_scatter_st 在 BUILD_DIR/)
+            cp "$BUILD_DIR/apace_quant_matmul_reduce_scatter/apace_quant_matmul_reduce_scatter" "$BUILD_DIR/quant_matmul_reduce_scatter_st"
         else
             [ -x "$BUILD_DIR/quant_matmul_reduce_scatter_st" ] || { echo "ERROR: --skip-build 但二进制不存在"; return 1; }
             echo "[2/4] 跳过编译 (--skip-build)"
