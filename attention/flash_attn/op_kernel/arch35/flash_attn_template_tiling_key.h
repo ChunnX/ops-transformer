@@ -62,8 +62,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    config=1: sOuter=32, sInner=256 → D=64,  DV=64
                       //    config=2: sOuter=64, sInner=128 → D=128, DV=128
                       //    config=3: sOuter=32, sInner=256 → D=128, DV=128
-                      //    config=4: sOuter=32, sInner=256 → D=256, DV=256
-                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),);
+                      //    config=4: sOuter=64, sInner=128 → D=256, DV=256
+                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4), );
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
                                                           InOutLayoutType_BNSD, InOutLayoutType_TND,

@@ -547,4 +547,34 @@ TestCases = {
         'scale': [0.0883883476483184],
         'return_softmax_lse': [1],
     },
+    'Prefill_D256_FP16_BNSD_1024_1024': {
+        'B': [1], 'N1': [5], 'N2': [5], 'S1': [1024], 'S2': [1024], 'D': [256],
+        'layout_q': ['BNSD'], 'layout_kv': ['BNSD'], 'layout_out': ['BNSD'],
+        'Dtype': ['fp16'], 'q_range': [(-10, 10)], 'k_range': [(-10, 10)], 'v_range': [(-10, 10)],
+        'scale': [0.0625], 'mask_mode': [0], 'return_softmax_lse': [0],
+    },
+    'Prefill_D256_BF16_BNSD_1024_1024': {
+        'B': [1], 'N1': [5], 'N2': [5], 'S1': [1024], 'S2': [1024], 'D': [256],
+        'layout_q': ['BNSD'], 'layout_kv': ['BNSD'], 'layout_out': ['BNSD'],
+        'Dtype': ['bf16'], 'q_range': [(-10, 10)], 'k_range': [(-10, 10)], 'v_range': [(-10, 10)],
+        'scale': [0.0625], 'mask_mode': [0], 'return_softmax_lse': [0],
+    },
+    'Decode_D256_FP16_BNSD_1_2048': {
+        'B': [1], 'N1': [5], 'N2': [1], 'S1': [1], 'S2': [2048], 'D': [256],
+        'layout_q': ['BNSD'], 'layout_kv': ['BNSD'], 'layout_out': ['BNSD'],
+        'Dtype': ['fp16'], 'q_range': [(-10, 10)], 'k_range': [(-10, 10)], 'v_range': [(-10, 10)],
+        'scale': [0.0625], 'mask_mode': [0], 'return_softmax_lse': [0],
+    },
+    'Decode_D256_BF16_BNSD_1_2048': {
+        'B': [1], 'N1': [5], 'N2': [1], 'S1': [1], 'S2': [2048], 'D': [256],
+        'layout_q': ['BNSD'], 'layout_kv': ['BNSD'], 'layout_out': ['BNSD'],
+        'Dtype': ['bf16'], 'q_range': [(-10, 10)], 'k_range': [(-10, 10)], 'v_range': [(-10, 10)],
+        'scale': [0.0625], 'mask_mode': [0], 'return_softmax_lse': [0],
+    },
+    'Prefill_D256_FP16_BNSD_4096_4096': {
+        'B': [1], 'N1': [5], 'N2': [5], 'S1': [4096], 'S2': [4096], 'D': [256],
+        'layout_q': ['BNSD'], 'layout_kv': ['BNSD'], 'layout_out': ['BNSD'],
+        'Dtype': ['fp16'], 'q_range': [(-10, 10)], 'k_range': [(-10, 10)], 'v_range': [(-10, 10)],
+        'scale': [0.0625], 'mask_mode': [0], 'return_softmax_lse': [0],
+    },
 }
