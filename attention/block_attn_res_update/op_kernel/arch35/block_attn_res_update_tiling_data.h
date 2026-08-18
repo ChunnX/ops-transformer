@@ -15,22 +15,21 @@
 
 #pragma pack(push, 8)
 struct alignas(8) BlockAttnResUpdateTilingData {
-    // All used cores except the last process tPerCore T indices.
-    uint32_t tPerCore;
-    // The last used core processes the remaining T indices.
-    uint32_t lastTPerCore;
-    uint32_t usedCoreNum;
     uint32_t dSize;
     // Aligned D strides in elements for the FP32 and BF16 [T, D] UB views.
     uint32_t dAlignFp32;
     uint32_t dAlignBf16;
+    // All used cores except the last process tPerCore T indices.
+    uint32_t tPerCore;
+    // The last used core processes the remaining T indices.
+    uint32_t lastTPerCore;
     // Maximum T size processed by one UB tile.
     uint32_t tileT;
     // Element stride between FP32 stats planes, aligned to a 32-byte boundary.
     uint32_t statsTStride;
-    // Number of FP32 VREG chunks required to cover D.
-    uint32_t dVregNum;
     float eps;
+    float invD;
+    uint16_t usedCoreNum;
 };
 #pragma pack(pop)
 

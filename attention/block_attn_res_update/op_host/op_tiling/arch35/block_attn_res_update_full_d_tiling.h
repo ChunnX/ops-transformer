@@ -27,7 +27,6 @@ struct BlockAttnResUpdateFullDTilingInfo {
     uint32_t dAlignBf16 = 0;
     uint32_t tileT = 0;
     uint32_t statsTStride = 0;
-    uint32_t dVregNum = 0;
     // Used only for Host-side UB diagnostics.
     uint64_t selectedUbBytes = 0;
 };
