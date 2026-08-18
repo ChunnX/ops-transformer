@@ -17,12 +17,6 @@ WORKSPACE=/home/taskspace
 
 arm_package="cann-ops-transformer-custom_linux-aarch64.run"
 rm -f ${arm_package}
-wget -nv -O ${arm_package} https://ascend-ci.obs.cn-north-4.myhuaweicloud.com/${obs_path}/${arm_package} || true
-if [ ! -f "${arm_package}" ] || [ ! -s "${arm_package}" ];then
-    echo "No custom package found, This PR no need excute smoke."
-    rm -f ${arm_package}
-    exit 0
-fi
 
 log() {
   local dt
@@ -34,7 +28,14 @@ log() {
 
 log "init test case, please wait ..."
 rm -rf /root/ascend/log
-
+non_skip_count=$(grep -vE '(\.md$|^tests/)' "${WORKSPACE}/pr_filelist.txt" | grep -cv '^$')
+if [ "${non_skip_count}" -eq 0 ]; then
+    LOG_HEAD "pr_filelist.txt only contains .md or tests/ files, skip build"
+    mkdir -p build_out
+    touch build_out/skip_build.run
+    touch single.tar.gz
+    exit 0
+fi
 # ==============================
 # 确定要测试的 ops 列表
 # ==============================
