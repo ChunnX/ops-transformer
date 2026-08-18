@@ -146,7 +146,9 @@
 
           最终输出的量化结果为$\left(S^b, [d^j]_{j=1}^{k}\right)$，其中$S^b$表示块缩放因子$S_{ue8m0}^b$，$[d^j]_{j=1}^{k}$表示块内量化后的数据。
 
-        - 场景3，当scaleAlg为2时，只涉及FLOAT4_E2M1输出。当前接口固定`dstTypeMax=0.0`，将激活结果$S_i$在N轴按$group\_size=32$分组，并依据块内最大绝对值的指数和高位尾数确定是否对共享指数进位：
+        - 场景3，当scaleAlg为2时，只涉及FLOAT4_E2M1输出，`dstTypeMax`支持0.0或[6.0, 12.0]。将激活结果$S_i$在N轴按$group\_size=32$分组：
+
+          当`dstTypeMax`为0.0、6.0或7.0时，依据块内最大绝对值的指数和高位尾数确定是否对共享指数进位。其中0.0和6.0使用一位高位尾数判定，7.0使用两位高位尾数判定：
 
           $$
           shared\_exp = \begin{cases}
@@ -160,6 +162,8 @@
           $$
           P_j = cast\_to\_FLOAT4\_E2M1(V_j / YScale, roundMode)
           $$
+
+          当`dstTypeMax`为[6.0, 12.0]内的其他值时，先计算$scale=max_j(|V_j|)/dstTypeMax$，再向上取整到E8M0可表示的2的幂作为$YScale$，并按上述公式得到$P_j$。
 
           量化后的$P_j$组成输出$Y$，每个32元素分组对应一个FLOAT8_E8M0类型的$YScale$。
 
@@ -351,7 +355,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>dstTypeMax（float）</td>
       <td>输入</td>
       <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
-      <td>当前MX场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。</td>
+      <td>scaleAlg为2时支持0.0或[6.0, 12.0]；0.0表示使用FLOAT4_E2M1的最大值6.0。其他scaleAlg仅支持0.0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
