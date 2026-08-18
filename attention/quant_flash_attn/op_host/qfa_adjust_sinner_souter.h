@@ -27,8 +27,6 @@ constexpr uint32_t LAYOUT_TND = 2;
 constexpr uint32_t SOUTER_64 = 64;
 constexpr uint32_t SINNER_256 = 256;
 constexpr uint32_t SINNER_512 = 512;
-constexpr uint32_t SINNER_256 = 256;
-constexpr uint32_t QUANT_MODE_HIF8_FP32 = 7;
 
 /**
  * @brief 根据算子参数决定 sOuter / sInner 切块大小，纯函数，不依赖任何类。
@@ -57,7 +55,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t ma
     if (vHeadDim == DSIZE_256) {
         sOuterFactor = SOUTER_64;
         sInnerFactor = SINNER_256;
-    } else if (quantMode == QUANT_MODE_HIF8_FP32) {
+    } else if (quantMode == 7) { // QFA_HIF8_FP32_PREFILL
         sOuterFactor = SOUTER_64;
         sInnerFactor = SINNER_256;
     } else {

@@ -33,8 +33,6 @@ static constexpr float FLOAT_INF = 3e+99;
 
 static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
-static constexpr uint32_t FA_BYTE_BLOCK = 32; // equivalent to BYTE_BLOCK in block_vec_flashdecode.h
-
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
