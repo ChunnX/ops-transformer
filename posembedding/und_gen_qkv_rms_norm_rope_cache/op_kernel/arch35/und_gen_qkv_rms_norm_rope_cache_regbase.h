@@ -114,6 +114,13 @@ public:
 
     __aicore__ inline void Process()
     {
+        // 没分到 token 的核直接退出。放在最前面，空核就不必白搬一次权重、白建一次
+        // gather 索引，也省掉为提前退出补的那次配对 FreeTensor。正常路径下 SetBlockDim
+        // 已按 usedCoreNum 下发走不到这里，与 CalcCoreRange 里的 blockIdx 判断同为兜底。
+        if (coreStart_ >= coreEnd_) {
+            return;
+        }
+
         // 权重每核只搬一次，常驻到整个 tile 循环结束。走 VECIN 队列而不是裸 TBuf，
         // 是为了拿到 EnQue/DeQue 提供的 MTE2->V 同步，保证搬运落地后计算才读
         PrepareWeights();
@@ -131,11 +138,6 @@ public:
         // 未 DeQue"。outQue_ 的 depth 也必须是 2：Compute(i) EnQue 时 tile i-1 还挂着没
         // DeQue。两者的物理 buffer 数都由 InitUbBuffers 的 BUFFER_NUM_DB 决定，depth 改
         // 大不额外占 UB。索引不参与这个乒乓：它走跨 tile 的滑窗，见 EnsureIndexWindow。
-        if (coreStart_ >= coreEnd_) {
-            wInQue_.FreeTensor(wBf16Local_);
-            return;
-        }
-
         int64_t slot = 0;
         int64_t tileStart = coreStart_;
         int64_t tokenNum = TileTokenNum(tileStart);
