@@ -16,7 +16,7 @@ if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
 endif()
 
 project(cann_ops-transformer)
-
+ 
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 

@@ -78,7 +78,7 @@ UT_TEST_CNT=0
 PR_UT_FLAG=FALSE
 CI_MODE=FALSE
 SPECIFIC_EXAMPLE_NAME=""  # 指定运行特定的 example 文件名
-
+ 
 if [ "${USER_ID}" != "0" ]; then
     DEFAULT_TOOLKIT_INSTALL_DIR="${HOME}/Ascend/ascend-toolkit/latest"
     DEFAULT_INSTALL_DIR="${HOME}/Ascend/latest"
