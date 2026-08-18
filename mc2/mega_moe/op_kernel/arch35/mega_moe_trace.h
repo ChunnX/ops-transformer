@@ -31,11 +31,11 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_A8W4_WAVE_TRACE != 0
 
 constexpr uint32_t A8W4_WAVE_TRACE_MAGIC = 0x41575452U; // "AWTR"
-constexpr uint32_t A8W4_WAVE_TRACE_VERSION = 1U;
+constexpr uint32_t A8W4_WAVE_TRACE_VERSION = 3U;
 constexpr uint32_t A8W4_WAVE_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t A8W4_WAVE_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A8W4_WAVE_TRACE_RECORD_HEADER_WORDS = 4U;
-constexpr uint32_t A8W4_WAVE_TRACE_EVENT_WORDS = 8U;
+constexpr uint32_t A8W4_WAVE_TRACE_EVENT_WORDS = 9U;
 constexpr uint32_t A8W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD = 256U;
 constexpr uint64_t A8W4_WAVE_TRACE_SCRATCH_BYTES = 50ULL * 1024ULL * 1024ULL;
 
@@ -46,6 +46,7 @@ enum class A8W4WaveTraceRole : uint32_t {
 };
 
 enum class A8W4WaveTraceEvent : uint32_t {
+    INVALID = 0U,
     DISPATCH = 1U,
     GMM1 = 2U,
     GMM1_PROLOGUE = 3U,
@@ -53,6 +54,10 @@ enum class A8W4WaveTraceEvent : uint32_t {
     GMM2 = 5U,
     GMM2_PROLOGUE = 6U,
     COMBINE = 7U,
+    WAIT_FOR_DISPATCH = 8U,
+    WAIT_FOR_GMM1 = 9U,
+    WAIT_FOR_ACTIVATION = 10U,
+    WAIT_FOR_GMM2 = 11U,
 };
 
 /*
@@ -75,8 +80,9 @@ struct A8W4WaveTrace {
     uint32_t moeExpertCount = 0U;
     uint32_t worldSize = 0U;
     uint32_t waveMGroupTarget = 0U;
+    CriticalPathTraceEventWriter eventWriter{};
     bool enabled = false;
-    bool truncated = false;
+    uint32_t truncated = 0U;
 
     static __aicore__ inline uint32_t Now()
     {
@@ -139,6 +145,12 @@ struct A8W4WaveTrace {
         __gm__ uint32_t *scratchBase = reinterpret_cast<__gm__ uint32_t *>(workspaceBase + workspaceBytes);
         scratchRecord = scratchBase + static_cast<uint64_t>(recordIndex) * recordWords;
         traceOutput = reinterpret_cast<__gm__ uint32_t *>(outputBase);
+        eventWriter.record = scratchRecord;
+        eventWriter.eventCount = &eventCount;
+        eventWriter.truncated = &truncated;
+        eventWriter.eventCapacity = eventCapacity;
+        eventWriter.recordHeaderWords = A8W4_WAVE_TRACE_RECORD_HEADER_WORDS;
+        eventWriter.eventWords = A8W4_WAVE_TRACE_EVENT_WORDS;
         processBegin = Now();
     }
 
@@ -151,24 +163,24 @@ struct A8W4WaveTrace {
                                   uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount,
                                   uint32_t beginCycle, uint32_t endCycle)
     {
-        if (!enabled) {
-            return;
-        }
-        if (eventCount >= eventCapacity) {
-            truncated = true;
-            return;
-        }
-        __gm__ uint32_t *dst = scratchRecord + A8W4_WAVE_TRACE_RECORD_HEADER_WORDS +
-                               static_cast<uint64_t>(eventCount) * A8W4_WAVE_TRACE_EVENT_WORDS;
-        AscendC::WriteGmByPassDCache(dst + 0U, static_cast<uint32_t>(event));
-        AscendC::WriteGmByPassDCache(dst + 1U, waveIndex);
-        AscendC::WriteGmByPassDCache(dst + 2U, expertIndex);
-        AscendC::WriteGmByPassDCache(dst + 3U, tokenStartIndexInExpert);
-        AscendC::WriteGmByPassDCache(dst + 4U, tokenCount);
-        AscendC::WriteGmByPassDCache(dst + 5U, mGroupCount);
-        AscendC::WriteGmByPassDCache(dst + 6U, beginCycle);
-        AscendC::WriteGmByPassDCache(dst + 7U, endCycle);
-        ++eventCount;
+        eventWriter.Record(static_cast<uint32_t>(event), waveIndex, expertIndex, tokenStartIndexInExpert, tokenCount,
+                           mGroupCount, static_cast<uint32_t>(A8W4WaveTraceEvent::INVALID), beginCycle, endCycle);
+    }
+
+    __aicore__ inline CriticalPathWaitTraceContext CreateWaitTraceContext(
+        A8W4WaveTraceEvent waitEvent, A8W4WaveTraceEvent parentEvent, uint32_t waveIndex, uint32_t expertIndex,
+        uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount)
+    {
+        CriticalPathWaitTraceContext context{};
+        context.writer = eventWriter;
+        context.waitEventType = static_cast<uint32_t>(waitEvent);
+        context.parentEventType = static_cast<uint32_t>(parentEvent);
+        context.iterationIndex = waveIndex;
+        context.logicalUnitIndex = expertIndex;
+        context.unitStart = tokenStartIndexInExpert;
+        context.unitCount = tokenCount;
+        context.workCount = mGroupCount;
+        return context;
     }
 
     __aicore__ inline void Finish()
@@ -183,7 +195,7 @@ struct A8W4WaveTrace {
         AscendC::WriteGmByPassDCache(scratchRecord + 0U, processBegin);
         AscendC::WriteGmByPassDCache(scratchRecord + 1U, processEnd);
         AscendC::WriteGmByPassDCache(scratchRecord + 2U, eventCount);
-        AscendC::WriteGmByPassDCache(scratchRecord + 3U, truncated ? 1U : 0U);
+        AscendC::WriteGmByPassDCache(scratchRecord + 3U, truncated);
 
         const uint32_t recordIndex = role * coreCount + coreIndex;
         const uint32_t recordWords = RecordWords();

@@ -116,10 +116,14 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py rank0.raw \
 
 - `trace.json`：header、各角色/core 及完整事件元数据；
 - `events.csv`：便于排序、聚合和计算每个 Wave 的耗时；
-- `timeline.svg`：AIC/AIV0/AIV1 的时间线，鼠标悬停可查看 Wave、专家和 token 范围。
+- `timeline.svg`：AIC/AIV0/AIV1 的阶段与等待区间，鼠标悬停可查看 Wave、专家和 token 范围。
 - `index.html`：自包含交互报告，可选择单个或全部 AI Block，并按 Wave 筛选。全部 lane 使用统一的
-  `SYS_CNT` cycle 原点；鼠标悬停或点击事件块可查看 begin/end cycle、耗时和对应的代码打点边界。当前平台按
-  `1000 cycles = 1 μs` 换算。
+  `SYS_CNT` cycle 原点；每个 role/core 只占一条泳道，显式轮询等待以窄色条覆盖在对应阶段区间底部。鼠标悬停
+  或点击事件块可查看 begin/end cycle、父阶段和对应的代码打点边界。当前平台按 `1000 cycles = 1 μs` 换算。
+
+交互报告还提供泳道概览，可按角色和是否存在等待筛选，并按 Process 总时长、事件覆盖时长、累计等待、等待占比、
+最后打点位置或尾部空洞排序。时间线标签和概览表会显示 Process begin/end、最后事件、最后结束 cycle、累计
+Stage/Wait 和截断状态；点击概览表中的一行可定位到对应 Block/角色。
 
 也可以一次显式传入多个文件：
 
@@ -133,13 +137,33 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py rank0.raw rank1.raw
 ## 3. 记录语义
 
 每个物理 AI Block 对应三条记录：`AIC core N`、`AIV0 core N`、`AIV1 core N`。时间戳来自
-`AscendC::GetSystemCycle()`，只比较同一物理 AI Block 内三个角色的相对关系。
+`AscendC::GetSystemCycle()`；同一份 rank trace 中的全部 AI Block 使用统一 cycle 坐标，跨 rank 不合并时间轴。
 
 每个事件保存：
 
 ```text
-stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, beginCycle, endCycle
+stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, parentStage, beginCycle, endCycle
 ```
+
+协议 v3 将每次显式轮询记录为独立事件：
+
+```text
+Wait Dispatch：GMM1 AIC 等待 Dispatch 输入
+Wait GMM1：Activation AIV1 等待 GMM1 tile
+Wait Activation：GMM2 AIC 等待 Activation 输出
+Wait GMM2：Combine AIV1 等待 GMM2 completion counter
+```
+
+wait 事件和父阶段使用相同的 wave、expert、token slice 元数据，字段 `parentStage` 表示依赖关系。报告按真实
+begin/end cycle 将 wait 事件覆盖在对应 role/core 的同一泳道，并用落在父阶段内部的等待区间计算：
+
+```text
+activeCycles = stageCycles - sum(waitIntervalCycles)
+```
+
+因此父阶段块与 wait 块会在时间轴上重叠，这是为了直接表达“该阶段的这一段正在等待”，不是重复执行。
+Dispatch 内部的 buffer/MTE 握手暂未拆分。`activeCycles` 仍包含地址准备、调度和普通完成同步，并非纯
+MMAD/Vector 指令耗时。工具继续兼容协议 v1 的 8-word event 和协议 v2 的累计等待格式。
 
 GMM/Activation/Combine 事件按 Wave 内的专家 token 切片记录。Dispatch 仍以完整专家执行，因此一个跨多个 Wave
 的专家只在首次 Dispatch 时产生一次 Dispatch 事件，该事件标记其开始服务的 Wave。
@@ -152,7 +176,7 @@ GMM/Activation/Combine 事件按 Wave 内的专家 token 切片记录。Dispatch
 
 ## 4. 当前有意保留的限制
 
-- 每条 core 记录最多 256 个事件；超出后在记录中设置 `truncated=1`；
+- 每条 core 记录最多 256 个事件；独立 wait 事件也占用容量，超出后在记录中设置 `truncated=1`；
 - 只支持 A8W4 token-wave，不兼容旧 A8W8/coarse trace 协议；
 - 暂不自动修改外部测试脚本，也不绑定某个固定的 `moe_test` checkout；
 - 打点会增加 Scalar 写 GM 和 AIV0 完成同步开销，适合判断流水结构，不应把绝对耗时当成无打点性能。
