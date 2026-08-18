@@ -1048,7 +1048,12 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
     uint32_t preExpertNum = sharedExpertRankNum_ + (epRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
     uint32_t calCnt = 0;
     for (uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; expertIdx++) {
-        uint64_t sendBytes = static_cast<uint64_t>(statusTensor_((preExpertNum + expertIdx) * 8 + 1)) * hAlignWinSize_;
+        uint32_t tokenNum = static_cast<uint32_t>(statusTensor_((preExpertNum + expertIdx) * 8 + 1));
+        // 目的槽只有 expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_，超了会侵入下一个 expert
+        ascendc_assert(tokenNum <= axisMaxBS_,
+                       "dispatch_setup tokenNum exceeds slot capacity, rank=%u dst=%u expert=%u tokenNum=%u max=%u",
+                       epRankId_, epRankId_, expertIdx, tokenNum, axisMaxBS_);
+        uint64_t sendBytes = static_cast<uint64_t>(tokenNum) * hAlignWinSize_;
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> copyPadExtParams{false, 0U, 0U, 0U};
         GlobalTensor<uint8_t> srcAddr_T;
@@ -1079,7 +1084,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
         dstAddrStatus.SetGlobalBuffer((__gm__ int32_t*)(GetUrmaStateAddrByRankId(epRankId_) +
             (epRankId_ + expertIdx * epWorldSize_) * stateOffset_));
         DataCopy<int32_t>(dstAddrStatus, statusTensor_[(expertIdx + preExpertNum) * 8], 8);
-        calCnt += statusTensor_((preExpertNum + expertIdx) * 8 + 1);
+        calCnt += tokenNum;
         tmpTokenQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
     }
     moeStartToken += calCnt;
@@ -1162,6 +1167,11 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             for (uint32_t dstExpertId = 0; dstExpertId < moeExpertNumPerRank_; ++dstExpertId) {
                 // 当前rank --> dstExpertId 的所有 token 数量
                 uint32_t tokenNum = statusTensor_((preExpertNum + dstExpertId) * 8 + 1);
+                // 目的槽只有 expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_，超了会侵入下一个 expert
+                ascendc_assert(tokenNum <= axisMaxBS_,
+                               "dispatch_setup tokenNum exceeds slot capacity, rank=%u dst=%u expert=%u tokenNum=%u "
+                               "max=%u",
+                               epRankId_, dstRankId, dstExpertId, tokenNum, axisMaxBS_);
 
                 // 发送token
                 if (tokenNum > 0) {
