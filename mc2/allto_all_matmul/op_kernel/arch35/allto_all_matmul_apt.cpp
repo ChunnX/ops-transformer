@@ -38,14 +38,18 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
         TransposeType transposeImplName(&pipe);                                                                        \
+        DEFINE_MC2_ADD_BIAS_FOR_MATH_COMPUTATION(DTYPE_Y, DtypeBias, MC2KernelTemplate::SplitMode::M_SPLIT,           \
+                                                 AddBiasType);                                                        \
+        AddBiasType addBiasImplName(&pipe);                                                                            \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_FP(ComputationContextType);                                   \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(false, X2TRANSPOSE, ComputationType);                              \
         ComputationType matmulImplName(&pipe);                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMmPipelineContext<ComputationContextType>;                     \
-        using SchedulerType = Mc2Kernel::AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType,     \
-                                                                SchedulerContextType>;                                 \
-        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &matmulImplName);                               \
-        Mc2Kernel::AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData> op(         \
+        using SchedulerType = Mc2Kernel::AlltoAllMatmulAddBiasPipeLine<CommunicationType, TransposeType,               \
+                                                                        ComputationType, AddBiasType,                   \
+                                                                        SchedulerContextType>;                         \
+        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &matmulImplName, &addBiasImplName);             \
+        Mc2Kernel::AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData, true> op(   \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe);                                        \
         op.Process();                                                                                                  \
