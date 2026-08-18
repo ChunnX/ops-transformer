@@ -2049,6 +2049,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
 }
 
@@ -2320,6 +2321,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
                         static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_));
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
@@ -2680,7 +2682,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
         }
     }
-
+    if constexpr (g_coreType == AIV) {
+        for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
+            uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
+            hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
+        }
+    }
     SyncAll<true>();
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     GMMAddrInfo gmm2AddrInfo;
