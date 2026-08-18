@@ -126,7 +126,6 @@ private:
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
     uint32_t channelsPerRank_{1};
-    uint32_t numMaxTokensPerRank_{0};
     uint32_t numTokens_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
@@ -175,7 +174,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
     epWorldSize_ = tilingData_->cfg.epWorldSize;
-    numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     numTokens_ = tilingData_->cfg.numTokens;
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
