@@ -187,7 +187,7 @@ cann_ops_transformer.lightning_indexer(
   - 支持num_heads_q = 1~64、q_n = 1~64。
   - cmp_ratio支持[1, 128]。
   - 当传入output_idx_offset时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
-  - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的q长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的q长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1的差值部分的q输出的sparse_indices和sparse_values全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，可能会导致执行超时（aicore error类型报错，errorStr为：timeout or trap error），可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
+  - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的q长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的q长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1的差值部分的q输出的sparse_indices和sparse_values全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
   - 参数metadata必须传入。
 <!-- end id8 -->
 
