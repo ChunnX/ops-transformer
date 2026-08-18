@@ -20,8 +20,8 @@
 
 namespace l0op {
 const std::array<const aclTensor *, 2> MoeFusedTopk(
-    const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable,
-    uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, 
+    const aclTensor *x, const aclTensor *addNum, const aclTensor *mappingNum, const aclTensor *mappingTable,
+    uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType,
     bool isNorm, float scale, bool enableExpertMapping, aclOpExecutor *executor);
 }
 
