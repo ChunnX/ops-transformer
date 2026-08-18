@@ -187,6 +187,7 @@ __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::InitTilingData()
     constInfo.mLoopNum = tilingData_->baseParams.mLoopNum;
     constInfo.kBaseNum = tilingData_->baseParams.kBaseNum;
     constInfo.kBaseSize = tilingData_->baseParams.kBaseSize;
+    constInfo.batchConsistency = tilingData_->baseParams.batchConsistency;
 }
 
 template <typename COMP>
