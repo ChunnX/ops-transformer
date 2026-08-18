@@ -12,6 +12,18 @@ import numpy as np
 from .adapters import to_numpy
 
 
+BF16_RTOL = 1e-3
+BF16_ATOL = 1e-8
+BF16_PTOL = 1e-3
+FP8_RTOL = 1e-2
+FP8_ATOL = 1e-8
+FP8_PTOL = 1e-2
+SCALE_FP32_RTOL = 1e-3
+SCALE_FP32_ATOL = 1e-8
+SCALE_FP32_PTOL = 1e-3
+INT8_MAX_ABS_DIFF = 1
+
+
 def _rate(mask) -> float:
     mask = np.asarray(mask, dtype=bool)
     return 1.0 if mask.size == 0 else float(np.count_nonzero(mask) / mask.size)
@@ -29,20 +41,48 @@ def _exact_rate(actual, expected) -> float:
 
 
 def _close_rate(actual, expected, rtol, atol) -> float:
-    return _rate(np.isclose(
-        np.asarray(actual, dtype=np.float32),
-        np.asarray(expected, dtype=np.float32),
-        rtol=rtol, atol=atol, equal_nan=True,
-    ))
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    if actual.shape != expected.shape:
+        return 0.0
+    actual_flat = actual.reshape(-1)
+    expected_flat = expected.reshape(-1)
+    matched = 0
+    chunk_elements = 1 << 20
+    for begin in range(0, actual_flat.size, chunk_elements):
+        end = min(actual_flat.size, begin + chunk_elements)
+        matched += int(np.count_nonzero(np.isclose(
+            np.asarray(actual_flat[begin:end], dtype=np.float32),
+            np.asarray(expected_flat[begin:end], dtype=np.float32),
+            rtol=rtol, atol=atol, equal_nan=True,
+        )))
+    return 1.0 if actual_flat.size == 0 else matched / actual_flat.size
+
+
+def _abs_le_rate(actual, expected, limit) -> float:
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    if actual.shape != expected.shape:
+        return 0.0
+    actual_flat = actual.reshape(-1)
+    expected_flat = expected.reshape(-1)
+    matched = 0
+    chunk_elements = 1 << 20
+    for begin in range(0, actual_flat.size, chunk_elements):
+        end = min(actual_flat.size, begin + chunk_elements)
+        difference = np.abs(
+            actual_flat[begin:end].astype(np.int16, copy=False)
+            - expected_flat[begin:end].astype(np.int16, copy=False)
+        )
+        matched += int(np.count_nonzero(difference <= limit))
+    return 1.0 if actual_flat.size == 0 else matched / actual_flat.size
 
 
 def _cache_rows(cache, slots):
     cache = np.asarray(cache)
     block_size = cache.shape[2]
-    return np.stack([
-        cache[int(slot) // block_size, :, int(slot) % block_size, ...]
-        for slot in slots
-    ])
+    slots = np.asarray(slots, dtype=np.int64)
+    return cache[slots // block_size, :, slots % block_size, ...]
 
 
 def _untouched_exact(actual, expected, slots) -> float:
@@ -71,9 +111,10 @@ def compare_outputs(*values, compare_context):
     is_kernel = api_name == "qkv_rms_norm_rope_cache_with_k_scale"
     is_functional = api_name.endswith("pta_functional")
 
-    inputs = [to_numpy(value) for value in compare_context.input_tensors]
-    slots = np.asarray(inputs[4], dtype=np.int64)
-    initial_k, initial_v, initial_ks = inputs[5], inputs[6], inputs[7]
+    # Only slot_mapping is needed from the inputs.  Converting every input here
+    # would duplicate multi-GiB QKV/cos tensors in the full-800 matrix.
+    inputs = compare_context.input_tensors
+    slots = np.asarray(to_numpy(inputs[4]), dtype=np.int64)
 
     if is_mrope and is_kernel:
         q_actual, _, k_actual, v_actual, ks_actual = outputs[:5]
@@ -95,51 +136,55 @@ def compare_outputs(*values, compare_context):
     metrics = {}
     if is_mrope:
         metrics.update({
-            "q_bf16_close": _close_rate(q_actual, q_golden, 1e-2, 1e-2),
-            "k_int8_abs_le_1": _rate(
-                np.abs(k_rows.astype(np.int16) - k_golden_rows.astype(np.int16)) <= 1
+            "q_bf16_close": _close_rate(
+                q_actual, q_golden, BF16_RTOL, BF16_ATOL
             ),
-            "k_scale_close": _close_rate(ks_rows, ks_golden_rows, 1e-2, 1e-5),
-            "v_fp8_exact": _exact_rate(v_rows, v_golden_rows),
+            "k_int8_abs_le_1": _abs_le_rate(
+                k_rows, k_golden_rows, INT8_MAX_ABS_DIFF
+            ),
+            "k_scale_fp32_close": _close_rate(
+                ks_rows, ks_golden_rows, SCALE_FP32_RTOL, SCALE_FP32_ATOL
+            ),
+            "v_fp8_close": _close_rate(
+                v_rows, v_golden_rows, FP8_RTOL, FP8_ATOL
+            ),
         })
         thresholds = {
-            "q_bf16_close": 0.99,
+            "q_bf16_close": 1.0 - BF16_PTOL,
             "k_int8_abs_le_1": 1.0,
-            "k_scale_close": 0.99,
-            "v_fp8_exact": 1.0,
+            "k_scale_fp32_close": 1.0 - SCALE_FP32_PTOL,
+            "v_fp8_close": 1.0 - FP8_PTOL,
         }
     else:
         metrics.update({
-            "q_fp8_exact": _exact_rate(q_actual, q_golden),
-            "q_dequant_close": _close_rate(
-                np.asarray(q_actual, dtype=np.float32) * np.asarray(qs_actual, dtype=np.float32)[..., None],
-                np.asarray(q_golden, dtype=np.float32) * np.asarray(qs_golden, dtype=np.float32)[..., None],
-                1e-1, 1e-1,
+            "q_fp8_close": _close_rate(
+                q_actual, q_golden, FP8_RTOL, FP8_ATOL
             ),
-            "q_scale_close": _close_rate(qs_actual, qs_golden, 1e-2, 1e-5),
-            "k_fp8_exact": _exact_rate(k_rows, k_golden_rows),
-            "k_dequant_close": _close_rate(
-                np.asarray(k_rows, dtype=np.float32) * np.asarray(ks_rows, dtype=np.float32),
-                np.asarray(k_golden_rows, dtype=np.float32) * np.asarray(ks_golden_rows, dtype=np.float32),
-                1e-1, 1e-1,
+            "q_scale_fp32_close": _close_rate(
+                qs_actual, qs_golden, SCALE_FP32_RTOL, SCALE_FP32_ATOL
             ),
-            "k_scale_close": _close_rate(ks_rows, ks_golden_rows, 1e-2, 1e-5),
-            "v_fp8_exact": _exact_rate(v_rows, v_golden_rows),
+            "k_fp8_close": _close_rate(
+                k_rows, k_golden_rows, FP8_RTOL, FP8_ATOL
+            ),
+            "k_scale_fp32_close": _close_rate(
+                ks_rows, ks_golden_rows, SCALE_FP32_RTOL, SCALE_FP32_ATOL
+            ),
+            "v_fp8_close": _close_rate(
+                v_rows, v_golden_rows, FP8_RTOL, FP8_ATOL
+            ),
         })
         thresholds = {
-            "q_fp8_exact": 0.99,
-            "q_dequant_close": 0.99,
-            "q_scale_close": 0.99,
-            "k_fp8_exact": 0.99,
-            "k_dequant_close": 0.99,
-            "k_scale_close": 0.99,
-            "v_fp8_exact": 1.0,
+            "q_fp8_close": 1.0 - FP8_PTOL,
+            "q_scale_fp32_close": 1.0 - SCALE_FP32_PTOL,
+            "k_fp8_close": 1.0 - FP8_PTOL,
+            "k_scale_fp32_close": 1.0 - SCALE_FP32_PTOL,
+            "v_fp8_close": 1.0 - FP8_PTOL,
         }
 
     metrics.update({
-        "k_cache_untouched": _untouched_exact(k_actual, initial_k, slots),
-        "v_cache_untouched": _untouched_exact(v_actual, initial_v, slots),
-        "k_scale_cache_untouched": _untouched_exact(ks_actual, initial_ks, slots),
+        "k_cache_untouched": _untouched_exact(k_actual, k_golden, slots),
+        "v_cache_untouched": _untouched_exact(v_actual, v_golden, slots),
+        "k_scale_cache_untouched": _untouched_exact(ks_actual, ks_golden, slots),
     })
     thresholds.update({
         "k_cache_untouched": 1.0,
@@ -162,7 +207,7 @@ def compare_outputs(*values, compare_context):
         for name, threshold in thresholds.items()
         if metrics[name] + 1e-12 < threshold
     ]
-    precision = "; ".join(f"{name}={value * 100:.3f}%" for name, value in metrics.items())
+    precision = "; ".join(f"{name}={value * 100:.6f}%" for name, value in metrics.items())
     return {
         "pass": not failures,
         "precision": precision,

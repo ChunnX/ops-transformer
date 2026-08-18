@@ -20,6 +20,19 @@ from impl.numpy_golden import (  # noqa: E402
     qkv_rms_norm_rope_cache_with_k_scale_numpy,
     saturating_fp8_cast,
 )
+from impl.compare import (  # noqa: E402
+    BF16_ATOL,
+    BF16_PTOL,
+    BF16_RTOL,
+    FP8_ATOL,
+    FP8_PTOL,
+    FP8_RTOL,
+    INT8_MAX_ABS_DIFF,
+    SCALE_FP32_ATOL,
+    SCALE_FP32_PTOL,
+    SCALE_FP32_RTOL,
+    _close_rate,
+)
 
 
 def _inputs(layout_qkv="TND", layout_q_out="TND", mrope=False, zero=False):
@@ -127,3 +140,44 @@ def test_zero_quant_row_preserves_unguarded_divide_policy():
     result = qkv_rms_norm_rope_cache_with_k_scale_numpy(**data)
     assert np.all(result.q_scale[0] == 0)
     assert np.all(np.isnan(result.q_out[0].astype(np.float32)))
+
+
+def test_output_precision_contract_boundaries():
+    bf16_expected = np.ones(1000, dtype=np.float32)
+    bf16_actual = bf16_expected.copy()
+    bf16_actual[0] += 2 * BF16_RTOL
+    assert _close_rate(
+        bf16_actual, bf16_expected, BF16_RTOL, BF16_ATOL
+    ) >= 1.0 - BF16_PTOL
+    bf16_actual[1] += 2 * BF16_RTOL
+    assert _close_rate(
+        bf16_actual, bf16_expected, BF16_RTOL, BF16_ATOL
+    ) < 1.0 - BF16_PTOL
+
+    fp8_expected = np.ones(100, dtype=np.float32)
+    fp8_actual = fp8_expected.copy()
+    fp8_actual[0] += 2 * FP8_RTOL
+    assert _close_rate(
+        fp8_actual, fp8_expected, FP8_RTOL, FP8_ATOL
+    ) >= 1.0 - FP8_PTOL
+    fp8_actual[1] += 2 * FP8_RTOL
+    assert _close_rate(
+        fp8_actual, fp8_expected, FP8_RTOL, FP8_ATOL
+    ) < 1.0 - FP8_PTOL
+
+    scale_expected = np.ones(1000, dtype=np.float32)
+    scale_actual = scale_expected.copy()
+    scale_actual[0] += 2 * SCALE_FP32_RTOL
+    assert _close_rate(
+        scale_actual, scale_expected, SCALE_FP32_RTOL, SCALE_FP32_ATOL,
+    ) >= 1.0 - SCALE_FP32_PTOL
+    scale_actual[1] += 2 * SCALE_FP32_RTOL
+    assert _close_rate(
+        scale_actual, scale_expected, SCALE_FP32_RTOL, SCALE_FP32_ATOL,
+    ) < 1.0 - SCALE_FP32_PTOL
+
+    expected = np.array([-128, 0, 127], dtype=np.int8)
+    within = np.array([-127, -1, 126], dtype=np.int8)
+    outside = np.array([-126, 0, 127], dtype=np.int8)
+    assert np.max(np.abs(within.astype(np.int16) - expected.astype(np.int16))) <= INT8_MAX_ABS_DIFF
+    assert np.max(np.abs(outside.astype(np.int16) - expected.astype(np.int16))) > INT8_MAX_ABS_DIFF
