@@ -22,7 +22,7 @@ ASCENDC_TPL_ARGS_DECL(MoeEpCombineEpilogue, ASCENDC_TPL_BOOL_DECL(TILINGKEY_HAS_
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_HAS_TOPK_WEIGHTS, 0, 1),
                                      ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(MoeEpCombineEpilogueTilingData)), );
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(MoeEpCombineEpilogueTilingData)));
 
 } // namespace Mc2Tiling
 #endif // MOE_EP_COMBINE_EPILOGUE_TILING_KEY_H
