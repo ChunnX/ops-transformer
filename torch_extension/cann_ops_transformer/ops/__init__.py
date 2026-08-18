@@ -50,6 +50,7 @@ from .compressor import compressor
 from .quant_compressor import quant_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
+from .apply_rotary_pos_emb_grad import apply_rotary_pos_emb_grad
 from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
