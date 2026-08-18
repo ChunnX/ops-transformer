@@ -25,7 +25,7 @@ __global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma(
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR workspaceGM,
                            GM_ADDR cGM,
-                           QuantMatmulReduceScatterTilingData tilingData)
+                           ApaceQuantMatmulReduceScatterTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
   Apace::ApaceQuantMatmulReduceScatterUdmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;

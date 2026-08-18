@@ -1,1 +1,214 @@
+│   │      │         │         │         │        │         │        │ PASS=0; │
+│   │      │         │         │         │        │         │        │ FAIL=0; │
+│   │      │         │         │         │        │         │        │ 'ALL    │
+│   │      │         │         │         │        │         │        │ PASS';  │
+│   │      │         │         │         │        │         │        │ PASS';  │
+│   │      │         │         │         │        │         │        │ PASS=$… │
+│   │      │         │         │         │        │         │        │ FAIL';  │
+│   │      │         │         │         │        │         │        │ FAIL=$… │
+│   │      │         │         │         │        │         │        │ PASS=$… │
+│   │      │         │         │         │        │         │        │ FAIL=$… │
+tmulReduceScatter && PASS=0; FAIL=0; while IFS=, read m k n r h; do [[ $m == m 
+]] && continue; echo "=== Case M=$m K=$k N=$n R=$r H=$h ==="; rm -rf input 
+scripts/verify_result.py $m $n $r ./output 2>&1 | grep -q 'ALL PASS'; then echo 
+'RESULT: PASS'; PASS=$((PASS+1)); else echo 'RESULT: FAIL'; FAIL=$((FAIL+1)); 
+fi; echo ''; done < cases.csv; echo "=== SUMMARY: PASS=$PASS FAIL=$FAIL ===" 
+=== Case M=2048 K=3584 N=4096 R=2 H=512 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=4 H=512 ===
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=4096 K=3584 N=4096 R=2 H=512 ===
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=1024 K=3584 N=4096 R=2 H=512 ===
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=4096 K=3584 N=4096 R=4 H=512 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+RESULT: PASS
+=== Case M=4032 K=8192 N=4096 R=4 H=512 ===
+  chunk_m=1008, output per rank: [1008, 4096]
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=2 H=256 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=2 H=128 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=2 H=1024 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=4 H=256 ===
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=4 H=128 ===
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=4096 K=3584 N=4096 R=4 H=256 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=4096 K=3584 N=4096 R=2 H=1024 ===
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=8192 K=3584 N=4096 R=2 H=512 ===
+  chunk_m=4096, output per rank: [4096, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=8192 K=3584 N=4096 R=4 H=512 ===
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+RESULT: PASS
+=== Case M=8192 K=8192 N=4096 R=4 H=512 ===
+  chunk_m=2048, output per rank: [2048, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=256 K=3584 N=256 R=2 H=256 ===
+  chunk_m=128, output per rank: [128, 256]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=256 K=3584 N=256 R=2 H=128 ===
+  chunk_m=128, output per rank: [128, 256]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=512 K=128 N=1024 R=2 H=512 ===
+  chunk_m=256, output per rank: [256, 1024]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=512 K=512 N=256 R=2 H=512 ===
+  chunk_m=256, output per rank: [256, 256]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=1024 K=128 N=8192 R=2 H=512 ===
+  chunk_m=512, output per rank: [512, 8192]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=1024 K=2048 N=8192 R=2 H=512 ===
+  chunk_m=512, output per rank: [512, 8192]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=8192 R=4 H=512 ===
+  chunk_m=512, output per rank: [512, 8192]
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=256 R=2 H=256 ===
+  chunk_m=1024, output per rank: [1024, 256]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=4096 K=3584 N=1024 R=4 H=512 ===
+  chunk_m=1024, output per rank: [1024, 1024]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=512 N=4096 R=2 H=512 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=1024 K=1024 N=4096 R=2 H=512 ===
+  chunk_m=512, output per rank: [512, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=1024 K=1024 N=4096 R=4 H=256 ===
+  chunk_m=256, output per rank: [256, 4096]
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=4032 K=3584 N=4096 R=4 H=512 ===
+  chunk_m=1008, output per rank: [1008, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+RESULT: PASS
+=== Case M=4032 K=3584 N=4096 R=4 H=128 ===
+  chunk_m=1008, output per rank: [1008, 4096]
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=800 K=3584 N=4096 R=2 H=256 ===
+  chunk_m=400, output per rank: [400, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=2048 K=3584 N=4096 R=2 H=2048 ===
+  chunk_m=1024, output per rank: [1024, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+RESULT: PASS
+=== Case M=4032 K=8192 N=4096 R=2 H=512 ===
+  chunk_m=2016, output per rank: [2016, 4096]
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 0] Step 13: stream synced
+RESULT: PASS
+=== Case M=4160 K=3584 N=4096 R=4 H=512 ===
+  chunk_m=1040, output per rank: [1040, 4096]
+[INFO] [Rank 0] Step 13: stream synced
+[INFO] [Rank 1] Step 13: stream synced
+[INFO] [Rank 3] Step 13: stream synced
+[INFO] [Rank 2] Step 13: stream synced
+RESULT: PASS
 === SUMMARY: PASS=34 FAIL=0 ===

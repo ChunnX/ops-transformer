@@ -67,7 +67,7 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 /**
  * @brief quantMatmulReduceScatter 核心实现类 (PUT 模式)
  *
- * 计算在前(AIC) + GET 通信(AIV) + reduceSum(AIV)
+ * 计算在前(AIC) + PUT 通信(AIV) + reduceSum(AIV)
  */
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 class ApaceQuantMatmulReduceScatterUdmaImpl {
@@ -146,13 +146,16 @@ private:
         uint64_t scaleARowBytes{0};    // ScaleA 每行字节数 = CeilDiv(axisK, 64) * 2 (MXFP8)
     } baseParams_;
 
+    // ---------------- reduceSum 组件 ----------------
+    TPipe pipe_;
+    AiVReduceSumImpl::ReduceSumForAlltoAll<CType> reduceSum_;
+
     const ApaceQuantMatmulReduceScatterTilingData* tilingData_{nullptr};
 
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const ApaceQuantMatmulReduceScatterTilingData *tilingData);
     __aicore__ inline void RunMatmul();                    // AIC: per-tile matmul → workspaceGM
-    __aicore__ inline void RunAllToAllAndReduceSum();      // AIV: per-tile WaitFlag + AllToAll PUT + 多核 reduceSum
-    __aicore__ inline void RunReduceSumTile(uint32_t t);   // AIV: 单 tile reduceSum (多核按行分片) → output
+    __aicore__ inline void RunAllToAllAndReduceSum();      // AIV: per-tile WaitFlag + AllToAll PUT + reduceSum
 };
 
 // =================================================================================
@@ -312,73 +315,6 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 // =================================================================================
-// AIV 侧: 单 tile reduceSum → output
-// =================================================================================
-
-template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunReduceSumTile(
-    uint32_t t)
-{
-    // 多核并行 reduceSum: 按 blockIdx 分配行段, 每个 block 处理不同的 M 行区间
-    // 所有 block 写不同 output 地址 (无竞争)
-    //
-    // tile t 的行范围: [tileMOffset, tileMOffset + tileM)
-    // 按 blockIdx 均分行段: 每个 block 处理 rowsPerBlock 行
-    // block b 处理: [tileMOffset + b*rowsPerBlock, tileMOffset + (b+1)*rowsPerBlock)
-
-    ReduceSumImpl<CType> reduceSum;
-    uint32_t nSize = static_cast<uint32_t>(baseParams_.axisN);
-    uint32_t chunkM = baseParams_.chunkM;
-    uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
-    uint32_t rankSize = baseParams_.rankSize;
-
-    uint32_t tileM;
-    uint32_t tileMOffset;
-
-    if (t < baseParams_.headTileCnt) {
-        tileM = static_cast<uint32_t>(baseParams_.headMSize);
-        tileMOffset = t * tileM;
-    } else {
-        tileM = static_cast<uint32_t>(baseParams_.tailMSize);
-        tileMOffset = baseParams_.headTileCnt * static_cast<uint32_t>(baseParams_.headMSize);
-    }
-
-    // 按 blockIdx 分配行段 (前 rankSize 个 block 参与)
-    uint32_t totalBlocks = rankSize;
-    if (blockIdx >= totalBlocks || tileM == 0) {
-        return;
-    }
-
-    uint32_t rowsPerBlock = tileM / totalBlocks;
-    uint32_t remainder = tileM % totalBlocks;
-
-    uint32_t myRowStart;
-    uint32_t myRowCnt;
-    if (blockIdx < remainder) {
-        myRowStart = blockIdx * (rowsPerBlock + 1);
-        myRowCnt = rowsPerBlock + 1;
-    } else {
-        myRowStart = remainder * (rowsPerBlock + 1) + (blockIdx - remainder) * rowsPerBlock;
-        myRowCnt = rowsPerBlock;
-    }
-
-    if (myRowCnt == 0) {
-        return;
-    }
-
-    reduceSum.RunTile(
-        baseParams_.workspaceGm,
-        baseParams_.selfWinAddr,
-        baseParams_.cGm,
-        baseParams_.rankId,
-        baseParams_.rankSize,
-        chunkM,
-        nSize,
-        myRowCnt,
-        tileMOffset + myRowStart);
-}
-
-// =================================================================================
 // AIV 侧: per-tile WaitFlag + AllToAll PUT + reduceSum
 // =================================================================================
 
@@ -386,27 +322,53 @@ template<typename AType, typename BType, typename CType, bool TransA, bool Trans
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
     // AllToAll: block 0 单核通信 (totalJobs=1)
-    // reduceSum: 前 rankSize 个 block 并行 (按行分片, block >= rankSize 空闲)
+    // reduceSum: 所有 block 并行 (ReduceSumForAlltoAll 自动分配)
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
-    uint32_t rankSize = baseParams_.rankSize;
-    uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
+    uint32_t nSize = static_cast<uint32_t>(baseParams_.axisN);
+    uint32_t elemBytes = sizeof(CType);
+    uint32_t rowBytes = nSize * elemBytes;
+    uint32_t usedCoreNum = tilingData_->mmTilingData.usedCoreNum;
 
-    // AllToAll: block 0 通信 (totalJobs=1)
-    // reduceSum: 前 rankSize 个 block 并行 (按行分片)
     for (uint32_t t = 0; t < commTurn; ++t) {
+        // 1. 等待 AIC 完成本 tile 的 matmul
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();
 
+        // 2. AllToAll PUT 通信 (仅 block 0)
         if (GetBlockIdx() == 0) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         }
         SyncAll<true>();
 
-        // 多核并行 reduceSum: 前 rankSize 个 block 各处理一部分行
-        if (blockIdx < rankSize) {
-            RunReduceSumTile(t);
+        // 3. 计算 tile 参数
+        uint32_t tileM;
+        uint64_t tileMOffset;
+        if (t < baseParams_.headTileCnt) {
+            tileM = static_cast<uint32_t>(baseParams_.headMSize);
+            tileMOffset = static_cast<uint64_t>(t) * baseParams_.headMSize;
+        } else {
+            tileM = static_cast<uint32_t>(baseParams_.tailMSize);
+            tileMOffset = static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
         }
+        if (tileM == 0) { continue; }
+
+        // 4. reduceSum (所有 block 并行)
+        //    srcAddr = win 区 + tile 偏移 (received 数据, rank i 在 slot i)
+        //    selfAddr = workspace + tile 偏移 (self 数据, workspace 也是 rank-major 布局)
+        //    ReadDataBlockReduceSum 内部用 curRank * stride 计算 rank 偏移
+        //    stride = chunkM * N (rank 间偏移, 元素单位)
+        //    outputSize = tileM * N (本 tile 的元素数)
+        uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
+        uint64_t stride = static_cast<uint64_t>(baseParams_.chunkM) * nSize;
+        GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
+        GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
+        GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
+
+        pipe_.Reset();
+        reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                        usedCoreNum, srcAddr, selfAddr, dstAddr, &pipe_);
+        reduceSum_.ExecuteReduceSum();
     }
 
     if (GetBlockIdx() == 0) {

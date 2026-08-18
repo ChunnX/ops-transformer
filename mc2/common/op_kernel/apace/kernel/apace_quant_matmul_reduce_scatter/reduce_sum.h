@@ -1,241 +1,272 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file reduce_sum.h
- * \brief 独立的 reduceSum 实现 — float32 累加保证精度
- *
- * 实现要点:
- * - 使用框架提供的 TOTAL_UB_SIZE 常量 (DAV_3510 实际 248KB)
- * - BF16→float32 Cast 累加，最终 Cast 回 BF16 输出 (参考 vec_comp.h DequantReduceSum)
- * - float Add/Cast/Duplicate 的 repeatTime 为 uint8_t (max 255), 每次处理 256/sizeof(float)=64 元素
- *   单次调用上限 255*64=16320 元素, 超过需分批调用
- * - RunTile 方法支持多核按行分片处理 (多核并行 reduceSum)
- *
- * reduceSum 流程 (float32 累加):
- *   1. Duplicate 初始化 accumF32 为 0
- *   2. 逐 rank (含 self) 读数据 (BF16) → Cast 到 float32 → Add 到 accumF32
- *   3. Cast accumF32 (float32) → BF16 → 写入 output GM
+ * \brief 使用AIV 进行 reduce_sum kernel代码公共部分
  */
 
-#pragma once
+#ifndef REDUCE_SUM_H
+#define REDUCE_SUM_H
 
-#include "kernel_operator.h"
+#include "reduce_sum_utils.h"
 
-namespace Apace {
+namespace AiVReduceSumImpl {
 
 using namespace AscendC;
 
-template<typename CType>
-class ReduceSumImpl {
+constexpr static uint32_t UB_BUFFER_NUM =
+    5; // sumF32 + castF32 + outBF16 + vecInQueue(double buffer=2)
+constexpr static uint32_t MAX_PER_BLOCK_NUM = 1024UL * 15UL; // 经验最优上限, 限制UB每块最大可搬运的元素数
+constexpr static uint32_t UB_ALIGN_BYTES = 32U;              // UB搬运需按32B对齐
+constexpr uint32_t BUFFER_NUM = 2U;                          // 用于double buffer
+
+template <typename DataType>
+class ReduceSumForAlltoAll {
 public:
-    __aicore__ inline ReduceSumImpl() {}
-    __aicore__ inline ~ReduceSumImpl() {}
-
-    /*!
-     * \brief 执行 reduceSum (float32 累加) — 单 tile（整个 chunkM 一次性处理）
-     * \param selfDataGM     本 rank 的 self 数据基址 (AIC 写入 workspace 的 C_i)
-     * \param receivedDataGM received 数据基址 (PUT 推送到 win 区的其他 rank 数据)
-     * \param outputGM       输出 GM 基址 (最终求和结果)
-     * \param rankId         本 rank ID
-     * \param rankSize       总 rank 数
-     * \param chunkM         每个 rank 的 M 分片大小 (m / rankSize)
-     * \param nSize          N 维度大小
-     */
-    __aicore__ inline void Run(
-        GM_ADDR selfDataGM,
-        GM_ADDR receivedDataGM,
-        GM_ADDR outputGM,
-        uint32_t rankId,
-        uint32_t rankSize,
-        uint32_t chunkM,
-        uint32_t nSize)
-    {
-        RunImpl(selfDataGM, receivedDataGM, outputGM,
-                rankId, rankSize, chunkM, nSize, chunkM, 0);
-    }
-
-    /*!
-     * \brief 执行 reduceSum (float32 累加) — 多 tile 分块处理
-     * \param selfDataGM      本 rank 的 self 数据基址 (AIC 写入 workspace 的 C_i)
-     * \param receivedDataGM  received 数据基址 (PUT 推送到 win 区的其他 rank 数据)
-     * \param outputGM        输出 GM 基址 (最终求和结果)
-     * \param rankId          本 rank ID
-     * \param rankSize        总 rank 数
-     * \param totalChunkM     每个 rank 的完整 M 分片大小 (m / rankSize，地址偏移用)
-     * \param nSize           N 维度大小
-     * \param tileM           当前 tile 的 M 行数
-     * \param tileMOffset     当前 tile 在 chunk 内的 M 偏移（行数）
-     */
-    __aicore__ inline void RunTile(
-        GM_ADDR selfDataGM,
-        GM_ADDR receivedDataGM,
-        GM_ADDR outputGM,
-        uint32_t rankId,
-        uint32_t rankSize,
-        uint32_t totalChunkM,
-        uint32_t nSize,
-        uint32_t tileM,
-        uint32_t tileMOffset)
-    {
-        RunImpl(selfDataGM, receivedDataGM, outputGM,
-                rankId, rankSize, totalChunkM, nSize, tileM, tileMOffset);
-    }
+    __aicore__ inline ReduceSumForAlltoAll(){};
+    __aicore__ inline void Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim, uint64_t rankId,
+                                uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR selfAddr, GM_ADDR dstAddr, TPipe *tPipe);
+    __aicore__ inline void ExecuteReduceSum();
 
 private:
-    /*!
-     * \brief reduceSum 核心实现（支持单 tile 和多 tile）
-     * \param totalChunkM  地址偏移用的完整 chunkM
-     * \param tileM        实际处理的 M 行数
-     * \param tileMOffset  tile 在 chunk 内的 M 偏移
-     */
-    __aicore__ inline void RunImpl(
-        GM_ADDR selfDataGM,
-        GM_ADDR receivedDataGM,
-        GM_ADDR outputGM,
-        uint32_t rankId,
-        uint32_t rankSize,
-        uint32_t totalChunkM,
-        uint32_t nSize,
-        uint32_t tileM,
-        uint32_t tileMOffset)
-    {
-        using FloatType = float;
-        constexpr uint32_t FLOAT_BYTES = sizeof(FloatType);  // 4
-        uint32_t elemBytes = sizeof(CType);                  // 2 for bfloat16_t
-        uint32_t rowBytes = nSize * elemBytes;               // bytes per row (BF16)
-        // 地址偏移用 totalChunkM（跨 rank 步进），处理大小用 tileM
-        uint64_t chunkBytes = static_cast<uint64_t>(totalChunkM) * nSize * elemBytes;
-        uint32_t chunkM = tileM;  // 处理逻辑用 tileM 作为 chunkM
+    __aicore__ inline void InitParams(uint64_t outputSize, uint64_t stride, uint64_t rankDim,
+                                      uint64_t rankId, uint64_t aivNum);
+    __aicore__ inline void InitBuffers(GM_ADDR srcAddr, GM_ADDR selfAddr, GM_ADDR dstAddr, TPipe *tPipe);
+    __aicore__ inline void ReadDataBlockReduceSum(uint64_t curOffset, uint64_t elemsPerBlock, uint64_t curRank);
+    __aicore__ inline void ComputeTailAivId();
 
-        // 使用框架提供的 TOTAL_UB_SIZE 常量
-        constexpr uint32_t COMM_RESERVED = 1024;
-        uint32_t availUb = TOTAL_UB_SIZE - COMM_RESERVED;
+    TBuf<> sumBuf_;       // float32 累加器
+    TBuf<> castBuf_;      // BF16→float32 Cast 临时 buffer
+    TBuf<> outBuf_;       // float32→BF16 输出 buffer
+    LocalTensor<float> sumTensor_;    // float32 累加
+    LocalTensor<float> castTensor_;   // float32 Cast 中间结果
+    LocalTensor<DataType> outTensor_; // BF16 输出
+    GlobalTensor<DataType> srcGm_;    // received 数据 (win 区)
+    GlobalTensor<DataType> selfGm_;   // self 数据 (workspace)
+    GlobalTensor<DataType> dstGm_;
+    TQue<QuePosition::VECIN, 1> vecInQueue_;
 
-        // 3 个缓冲区: accumF32 (float) + tempCType (CType) + tempF32 (float)
-        uint32_t perRowBytes = nSize * (FLOAT_BYTES + elemBytes + FLOAT_BYTES);
-        uint32_t subM = availUb / perRowBytes;
-
-        // 对齐: 确保 DataCopy (32B) 和 Cast (32B) 对齐
-        uint32_t castAlignElems = 32 / elemBytes;  // 16 for BF16
-        uint32_t alignRows = 1;
-        while (alignRows < castAlignElems && (alignRows * nSize) % castAlignElems != 0) {
-            alignRows++;
-        }
-        subM = (subM / alignRows) * alignRows;
-        if (subM == 0) { subM = alignRows; }
-        if (subM > chunkM) { subM = chunkM; }
-
-        // float Vector API repeatTime 为 uint8_t (max 255)
-        // 每次处理 256/FLOAT_BYTES = 64 个 float 元素, 单次上限 255*64 = 16320
-        // 超过会导致 repeatTime 溢出, 部分元素不被处理 → 数据错误
-        constexpr uint32_t FLOAT_ELEMS_PER_REPEAT = 256 / FLOAT_BYTES;  // 64
-        constexpr uint32_t MAX_FLOAT_ELEMS_PER_CALL = 255 * FLOAT_ELEMS_PER_REPEAT;  // 16320
-        uint32_t maxSubMForFloat = MAX_FLOAT_ELEMS_PER_CALL / nSize;
-        if (subM > maxSubMForFloat) { subM = maxSubMForFloat; }
-        // 重新对齐
-        subM = (subM / alignRows) * alignRows;
-        if (subM == 0) { subM = alignRows; }
-        if (subM > chunkM) { subM = chunkM; }
-
-        // UB 分配: 使用 LocalTensor 覆盖可用区域
-        LocalTensor<CType> ubCType{TPosition::VECIN, 0, TOTAL_UB_SIZE / elemBytes};
-        LocalTensor<FloatType> ubFloat{TPosition::VECIN, 0, TOTAL_UB_SIZE / FLOAT_BYTES};
-
-        // 缓冲区字节偏移
-        uint32_t accumOffsetBytes = COMM_RESERVED;
-        uint32_t tempCTypeOffsetBytes = accumOffsetBytes + subM * nSize * FLOAT_BYTES;
-        uint32_t tempF32OffsetBytes = tempCTypeOffsetBytes + subM * nSize * elemBytes;
-
-        // 元素偏移 (各自类型)
-        uint32_t accumFloatOff = accumOffsetBytes / FLOAT_BYTES;
-        uint32_t tempCTypeOff = tempCTypeOffsetBytes / elemBytes;
-        uint32_t tempF32FloatOff = tempF32OffsetBytes / FLOAT_BYTES;
-
-        // 分批处理的 chunk 大小 (确保 float Add/Cast/Duplicate 不超 255 repeats)
-        uint32_t floatChunkSize = MAX_FLOAT_ELEMS_PER_CALL;  // 16320
-        // 确保按 nSize 对齐 (整行处理)
-        if (floatChunkSize > nSize) {
-            floatChunkSize = (floatChunkSize / nSize) * nSize;
-        }
-        if (floatChunkSize == 0) { floatChunkSize = nSize; }
-
-        uint32_t processedRows = 0;
-
-        // 逐 sub-tile 处理
-        for (uint32_t mOffset = 0; mOffset < chunkM; mOffset += subM) {
-            uint32_t curSubM = (mOffset + subM <= chunkM) ? subM : (chunkM - mOffset);
-            uint32_t curCount = curSubM * nSize;
-
-            auto accumF32 = ubFloat[accumFloatOff];
-            auto tempCType = ubCType[tempCTypeOff];
-            auto tempF32 = ubFloat[tempF32FloatOff];
-
-            // 1. 初始化 accumF32 为 0 (分批 Duplicate, 避免 repeatTime 溢出)
-            for (uint32_t off = 0; off < curCount; off += floatChunkSize) {
-                uint32_t chunkCount = (off + floatChunkSize <= curCount) ? floatChunkSize : (curCount - off);
-                Duplicate<FloatType>(accumF32[off], (FloatType)0.0, chunkCount);
-            }
-            PipeBarrier<PIPE_V>();
-
-            // 2. 逐 rank (含 self) 读数据 → Cast → Add 到 accumF32
-            for (uint32_t r = 0; r < rankSize; ++r) {
-                GM_ADDR dataGM = (r == rankId) ? selfDataGM : receivedDataGM;
-                // 地址偏移 = rank 步进 + tile 偏移 + sub-tile 内偏移
-                uint64_t readOffset = static_cast<uint64_t>(r) * chunkBytes
-                                    + static_cast<uint64_t>(tileMOffset + mOffset) * rowBytes;
-
-                GlobalTensor<CType> dataGm;
-                dataGm.SetGlobalBuffer(reinterpret_cast<__gm__ CType*>(dataGM + readOffset));
-
-                // V→MTE2 sync: 确保 V (Duplicate/Add) 完成后再 MTE2 DataCopy
-                // 对于 r=0: V 包含 WaitFlag<MTE3_V>, V_MTE2 间接保证 MTE3→MTE2 (WAR on tempCType)
-                // 对于 r>0: V 包含 Cast/Add, V_MTE2 保证 V 读 tempCType → MTE2 写 tempCType (WAR)
-                SetFlag<HardEvent::V_MTE2>(0);
-                WaitFlag<HardEvent::V_MTE2>(0);
-                // DataCopy (BF16, 不受 float repeat 限制)
-                DataCopy(tempCType, dataGm, curCount);
-                SetFlag<HardEvent::MTE2_V>(0);
-                WaitFlag<HardEvent::MTE2_V>(0);
-
-                // Cast BF16 → float32 + Add (分批处理, 避免 repeatTime 溢出)
-                for (uint32_t off = 0; off < curCount; off += floatChunkSize) {
-                    uint32_t chunkCount = (off + floatChunkSize <= curCount) ? floatChunkSize : (curCount - off);
-                    // Cast BF16 → float32 (lossless)
-                    Cast(tempF32[off], tempCType[off], RoundMode::CAST_NONE, chunkCount);
-                    PipeBarrier<PIPE_V>();
-                    // Add in float32 (高精度累加)
-                    Add(accumF32[off], accumF32[off], tempF32[off], static_cast<int32_t>(chunkCount));
-                    PipeBarrier<PIPE_V>();
-                }
-            }
-
-            // 3. Cast accumF32 (float32) → tempCType (BF16) for output (分批)
-            for (uint32_t off = 0; off < curCount; off += floatChunkSize) {
-                uint32_t chunkCount = (off + floatChunkSize <= curCount) ? floatChunkSize : (curCount - off);
-                Cast(tempCType[off], accumF32[off], RoundMode::CAST_RINT, chunkCount);
-            }
-            SetFlag<HardEvent::V_MTE3>(0);
-            WaitFlag<HardEvent::V_MTE3>(0);
-
-            // 4. 写 tempCType (BF16) → output GM (偏移包含 tileMOffset)
-            uint64_t writeOffset = static_cast<uint64_t>(tileMOffset + processedRows) * rowBytes;
-            GlobalTensor<CType> outGm;
-            outGm.SetGlobalBuffer(reinterpret_cast<__gm__ CType*>(outputGM + writeOffset));
-            DataCopy(outGm, tempCType, curCount);
-            SetFlag<HardEvent::MTE3_V>(0);
-            WaitFlag<HardEvent::MTE3_V>(0);
-
-            processedRows += curSubM;
-        }
-    }
+    uint64_t sliceSize_{0};
+    uint64_t strideSize_{0};
+    uint64_t totalBlockNums_{0};
+    uint64_t round_{0};
+    uint64_t tailBlockNums_{0};
+    uint64_t rankDim_{0};
+    uint64_t rankId_{0};
+    uint64_t aivNum_{0};
+    uint64_t aivId_{0};
+    uint64_t assignedBlockNums_{0};
+    uint64_t blockIdx_{0};
+    uint64_t curAivOffset_{0};
+    uint64_t perBlockNum_{0};
+    uint64_t lastAivId_{0};
+    uint64_t tailBytes_{0};
+    uint64_t tailPerBlockNumAlign_{0};
 };
 
-} // namespace Apace
+/**
+ * @brief 统一初始化入口：完成参数计算与 GM/UB Tensor 设置。
+ *
+ * @param outputSize 期望输出的数据量。与每次 All2All 的通信量相同，即 sliceM * N（单位：sizeof(dataType)）。
+ * @param stride     求和数据块间的偏移量, 与 All2All通信的数据块间隔相同（单位：sizeof(dataType)）。
+ *                   - stride = 0：表示相邻数据块地址连续；
+ *                   - stride > 0：表示相邻数据块起始地址的偏移量为 stride。
+ * @param rankDim    参与 All2All 的卡数（Rank 数量）。
+ * @param aivNum     启用的 AIV 核数量。
+ * @param srcAddr    全局内存中源数据起始地址（All2All 接收缓冲区）。
+ * @param dstAddr    全局内存中目标输出起始地址（Reduce-Sum 结果写回位置）。
+ * @param tPipe      Tensor Pipe 对象，用于申请和管理 UB 缓冲区。
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim,
+                                                             uint64_t rankId, uint64_t aivNum,
+                                                             GM_ADDR srcAddr, GM_ADDR selfAddr,
+                                                             GM_ADDR dstAddr, TPipe *tPipe)
+{
+    InitParams(outputSize, stride, rankDim, rankId, aivNum);
+    InitBuffers(srcAddr, selfAddr, dstAddr, tPipe);
+}
+
+/**
+ * @brief 初始化 ReduceSum 所需的参数，包括分片大小、块数、核分配策略等。
+ *
+ * @param outputSize 期望输出的数据量（数据个数）
+ * @param stride 期望求和的个个数据块间的偏移量。(数据个数)
+ * @param rankDim 参与 All2All 的卡数（rank 数量）
+ * @param aivNum  AIV 核数量
+ *
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::InitParams(uint64_t outputSize, uint64_t stride,
+                                                                   uint64_t rankDim, uint64_t rankId, uint64_t aivNum)
+{
+    rankDim_ = rankDim;
+    rankId_ = rankId;
+    aivNum_ = aivNum;
+
+    // 计算理论UB每块可搬运的最大容量（向下 32B 对齐）
+    uint64_t maxPerBlockNum_ = FloorAlign(TOTAL_UB_SIZE / UB_BUFFER_NUM, UB_ALIGN_BYTES) / sizeof(DataType);
+
+    // 限制UB每次搬运数据块大小。
+    perBlockNum_ = MIN(MAX_PER_BLOCK_NUM, maxPerBlockNum_);
+
+    // 分片大小与总块数
+    sliceSize_ = outputSize;                             // 每张卡分片的数据大小，与输出大小一致
+    strideSize_ = (stride == 0U) ? sliceSize_ : stride;  // 累加数据块间的数据量偏移，即卡间偏移
+    totalBlockNums_ = CeilDiv(sliceSize_, perBlockNum_); // 1/rank 数据需要搬运的总块数
+
+    // 尾块搬运大小
+    tailBytes_ =
+        BlockAlignMod(sliceSize_, perBlockNum_) * sizeof(DataType); // 即计算分卡后每片的最后一个搬运数据块的字节大小
+    tailPerBlockNumAlign_ = CeilAlign(tailBytes_, UB_ALIGN_BYTES) /
+                            sizeof(DataType); // 即计算分卡后每片的最后一个搬运数据块的大小, 向上32B对齐
+
+    // 核分配策略
+    round_ = totalBlockNums_ / aivNum_;         // 计算数据分核搬运需要的轮次数
+    tailBlockNums_ = totalBlockNums_ % aivNum_; // 搬运的尾块数
+    aivId_ = GetBlockIdx();                     // 获取当前核Id
+    assignedBlockNums_ =
+        (aivId_ < tailBlockNums_) ? (round_ + 1) : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
+    blockIdx_ =
+        aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
+    curAivOffset_ = blockIdx_ * perBlockNum_; // 当前核偏移，块数 * 一块有多少数据，得到要搬第几个数据
+    ComputeTailAivId();                       // 计算最后一个核的id
+}
+
+/**
+ * @brief 初始化 GM 源/目标地址及 UB 内部缓冲区（sum buffer 与 double buffer 队列）。
+ *
+ * @param srcAddr 全局内存中源数据起始地址（All2All 接收缓冲区）
+ * @param dstAddr 全局内存中目标输出起始地址（Reduce-Sum 结果写回位置）
+ * @param tPipe Tensor Pipe 对象，用于申请和管理 UB 缓冲区
+ *
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::InitBuffers(GM_ADDR srcAddr, GM_ADDR selfAddr, GM_ADDR dstAddr, TPipe *tPipe)
+{
+    srcGm_.SetGlobalBuffer((__gm__ DataType *)srcAddr);
+    selfGm_.SetGlobalBuffer((__gm__ DataType *)selfAddr);
+    dstGm_.SetGlobalBuffer((__gm__ DataType *)dstAddr);
+
+    // float32 累加: sumTensor (float) + castTensor (float) + outTensor (BF16) + vecInQueue (BF16 double buffer)
+    tPipe->InitBuffer(sumBuf_, perBlockNum_ * sizeof(float));                   // float32 累加器
+    tPipe->InitBuffer(castBuf_, perBlockNum_ * sizeof(float));                  // float32 Cast 中间结果
+    tPipe->InitBuffer(outBuf_, perBlockNum_ * sizeof(DataType));                // BF16 输出
+    tPipe->InitBuffer(vecInQueue_, BUFFER_NUM, perBlockNum_ * sizeof(DataType)); // BF16 输入 double buffer
+    sumTensor_ = sumBuf_.Get<float>();
+    castTensor_ = castBuf_.Get<float>();
+    outTensor_ = outBuf_.Get<DataType>();
+}
+
+/**
+ * @brief 从 GM 指定偏移读取一块数据到 UB，并将其累加到当前 sumTensor_ 中。
+ *
+ * @param curOffset 当前要读取的数据在 GM 中的偏移（元素单位）
+ * @param elemsPerBlock 本次搬运的元素个数（主块或尾块大小）
+ *
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::ReadDataBlockReduceSum(uint64_t curOffset,
+                                                                              uint64_t elemsPerBlock,
+                                                                              uint64_t curRank)
+{
+    LocalTensor<DataType> tempBuf = vecInQueue_.template AllocTensor<DataType>();
+
+    // self rank 从 selfGm_ (workspace) 读, 其他 rank 从 srcGm_ (win 区) 读
+    // selfGm_ 的偏移: rankId * stride + blockOffset (与 win 区布局一致)
+    // srcGm_ 的偏移: rank * stride + blockOffset (win 区中 rank slot)
+    DataCopy(tempBuf, (curRank == rankId_) ? selfGm_[curOffset] : srcGm_[curOffset], elemsPerBlock);
+    vecInQueue_.EnQue(tempBuf);
+    tempBuf = vecInQueue_.DeQue<DataType>();
+
+    // float32 累加: Cast BF16→float32, Add 到 sumTensor_
+    Cast(castTensor_, tempBuf, RoundMode::CAST_NONE, elemsPerBlock);
+    PipeBarrier<PIPE_V>();
+    Add(sumTensor_, sumTensor_, castTensor_, elemsPerBlock);
+    PipeBarrier<PIPE_V>();
+
+    vecInQueue_.FreeTensor(tempBuf);
+}
+
+/**
+ * @brief 执行完整的多卡 Reduce-Sum 流程：遍历分配块，累加各 rank 分片后写回 GM。
+ *
+ * @note 对每个数据块清零 sumTensor_，循环读取 rankDim_ 个分片累加，最后将结果写入 dstGm_。
+ *       尾块由最后一个 AIV 的最后一轮搬运特殊处理。
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::ExecuteReduceSum()
+{
+    const uint64_t lastAivBlockIdx = assignedBlockNums_ - 1;
+    const bool isLastAiv = (aivId_ == lastAivId_);
+
+    // 遍历当前核分配到的数据块
+    for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
+        // 判定是否为全局最后一个数据块 (Tail Block)
+        const bool isTailBlock = isLastAiv && (curBlock == lastAivBlockIdx);
+        // 如果是尾块，使用对齐后的尾块长度；否则使用标准块长度
+        const uint64_t copyBlockNum = isTailBlock ? tailPerBlockNumAlign_ : perBlockNum_;
+        // 计算当前块的偏移
+        uint64_t curBlockOffset = curAivOffset_ + curBlock * perBlockNum_;
+
+        // 1. 清零 float32 累加器
+        Duplicate<float>(sumTensor_, static_cast<float>(0.0), perBlockNum_);
+        PipeBarrier<PIPE_V>();
+
+        // 2. 对每个 rank 的 slice 进行 float32 累加
+        for (uint64_t curRank = 0; curRank < rankDim_; ++curRank) {
+            uint64_t srcSliceOffset = curRank * strideSize_;
+            uint64_t curOffset = srcSliceOffset + curBlockOffset;
+            ReadDataBlockReduceSum(curOffset, copyBlockNum, curRank);
+        }
+
+        // 3. Cast float32 → DataType (BF16) 输出
+        Cast(outTensor_, sumTensor_, RoundMode::CAST_RINT, copyBlockNum);
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(0);
+        WaitFlag<HardEvent::V_MTE3>(0);
+
+        // 4. 写入 output (UB -> GM)
+        if (isTailBlock) {
+            DataCopyExtParams copyOutParams;
+            copyOutParams.blockCount = 1;
+            copyOutParams.blockLen = static_cast<uint32_t>(tailBytes_);
+            copyOutParams.srcStride = 0;
+            copyOutParams.dstStride = 0;
+            copyOutParams.rsv = 0;
+            DataCopyPad(dstGm_[curBlockOffset], outTensor_, copyOutParams);
+        } else {
+            DataCopy(dstGm_[curBlockOffset], outTensor_, copyBlockNum);
+        }
+        SetFlag<HardEvent::MTE3_V>(0);
+        WaitFlag<HardEvent::MTE3_V>(0);
+    }
+}
+
+/**
+ * @brief 计算负责处理尾部数据的AIV核ID
+ *
+ * @note 当数据量较小时，此时计算仅仅只有一轮（round_ == 0），此时处理尾块的aiv并非最后一个，
+ *       需根据当前数据块数量计算。
+ */
+template <typename DataType>
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::ComputeTailAivId()
+{
+    if (round_ == 0) {
+        // 小数据量时，如果只有一轮搬运，负责尾块的aiv由此时计算的总块数决定
+        lastAivId_ = tailBlockNums_ - 1;
+    } else {
+        // 轮次大于一轮时，负责尾块的aiv必定是最后一个
+        lastAivId_ = aivNum_ - 1;
+    }
+}
+} // namespace AiVReduceSumImpl
+#endif // REDUCE_SUM_H
