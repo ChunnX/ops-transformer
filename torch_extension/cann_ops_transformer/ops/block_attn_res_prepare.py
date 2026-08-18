@@ -70,6 +70,4 @@ def block_attn_res_prepare(
         ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32.
     """
     op_module = block_attn_res_prepare_op_builder.load()
-    return op_module.block_attn_res_prepare(
-        block_res, valid_blocks, pseudo_query, eps
-    )
+    return op_module.block_attn_res_prepare(block_res, valid_blocks, pseudo_query, eps)

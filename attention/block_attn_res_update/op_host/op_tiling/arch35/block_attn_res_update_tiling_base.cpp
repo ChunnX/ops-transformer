@@ -47,10 +47,7 @@ bool SameShape(const gert::Shape &lhs, const gert::Shape &rhs)
 
 } // namespace
 
-ge::graphStatus BlockAttnResUpdateTilingBase::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus BlockAttnResUpdateTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus BlockAttnResUpdateTilingBase::GetWorkspaceSize()
 {
@@ -84,20 +81,10 @@ ge::graphStatus BlockAttnResUpdateTilingBase::GetShapeAttrsInfo()
 ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
 {
     constexpr const char *INPUT_NAMES[] = {
-        "partial_block",
-        "delta",
-        "pseudo_query",
-        "numerator",
-        "logit_max",
-        "exp_sum",
+        "partial_block", "delta", "pseudo_query", "numerator", "logit_max", "exp_sum",
     };
     constexpr ge::DataType EXPECTED_DTYPES[] = {
-        ge::DT_FLOAT,
-        ge::DT_BF16,
-        ge::DT_FLOAT,
-        ge::DT_FLOAT,
-        ge::DT_FLOAT,
-        ge::DT_FLOAT,
+        ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
     };
 
     for (uint32_t i = INPUT_PARTIAL_BLOCK; i <= INPUT_EXP_SUM; ++i) {
@@ -145,18 +132,15 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
 
     if (partialShape.GetDimNum() != MATRIX_RANK || deltaShape.GetDimNum() != MATRIX_RANK ||
         numeratorShape.GetDimNum() != MATRIX_RANK || partialRefShape.GetDimNum() != MATRIX_RANK ||
-        hShape.GetDimNum() != MATRIX_RANK ||
-        pseudoQueryShape.GetDimNum() != VECTOR_RANK || logitMaxShape.GetDimNum() != VECTOR_RANK ||
-        expSumShape.GetDimNum() != VECTOR_RANK) {
-        OP_LOGE(opName_,
-                "Expected partial_block/delta/numerator/partial_block_ref/h rank 2 and "
-                "pseudo_query/logit_max/exp_sum rank 1.");
+        hShape.GetDimNum() != MATRIX_RANK || pseudoQueryShape.GetDimNum() != VECTOR_RANK ||
+        logitMaxShape.GetDimNum() != VECTOR_RANK || expSumShape.GetDimNum() != VECTOR_RANK) {
+        OP_LOGE(opName_, "Expected partial_block/delta/numerator/partial_block_ref/h rank 2 and "
+                         "pseudo_query/logit_max/exp_sum rank 1.");
         return ge::GRAPH_FAILED;
     }
     if (!SameShape(partialShape, deltaShape) || !SameShape(partialShape, numeratorShape) ||
         !SameShape(partialShape, partialRefShape) || !SameShape(partialShape, hShape)) {
-        OP_LOGE(opName_,
-                "Partial_block input/output, delta, numerator and h must have the same [T, D] shape.");
+        OP_LOGE(opName_, "Partial_block input/output, delta, numerator and h must have the same [T, D] shape.");
         return ge::GRAPH_FAILED;
     }
 
@@ -173,12 +157,10 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
         return ge::GRAPH_FAILED;
     }
     if (tSize > std::numeric_limits<int64_t>::max() / dSize) {
-        OP_LOGE(opName_, "T * D exceeds the signed 64-bit kernel GM offset range, T=%ld, D=%ld.", tSize,
-                dSize);
+        OP_LOGE(opName_, "T * D exceeds the signed 64-bit kernel GM offset range, T=%ld, D=%ld.", tSize, dSize);
         return ge::GRAPH_FAILED;
     }
-    if (logitMaxShape.GetDim(0) != tSize || expSumShape.GetDim(0) != tSize ||
-        pseudoQueryShape.GetDim(0) != dSize) {
+    if (logitMaxShape.GetDim(0) != tSize || expSumShape.GetDim(0) != tSize || pseudoQueryShape.GetDim(0) != dSize) {
         OP_LOGE(opName_, "Logit_max/exp_sum must be [T] and pseudo_query must be [D].");
         return ge::GRAPH_FAILED;
     }
@@ -207,8 +189,7 @@ ge::graphStatus BlockAttnResUpdateTilingBase::GetPlatformInfo()
     }
     compileInfo_ = *compileInfo;
     if (compileInfo_.aivNum == 0 || compileInfo_.ubSize == 0) {
-        OP_LOGE(opName_, "Invalid CompileInfo: aivNum=%u, ubSize=%lu.", compileInfo_.aivNum,
-                compileInfo_.ubSize);
+        OP_LOGE(opName_, "Invalid CompileInfo: aivNum=%u, ubSize=%lu.", compileInfo_.aivNum, compileInfo_.ubSize);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

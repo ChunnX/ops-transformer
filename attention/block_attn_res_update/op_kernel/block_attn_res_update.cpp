@@ -15,9 +15,10 @@
 // Six tensor inputs + two tensor outputs + workspace + tiling.
 // ACLNNGraph aliases partial_block_ref with partial_block. Direct kernel launchers must pass the same GM address in
 // both ABI slots. This kernel writes through partial_block and does not use workspace storage.
-extern "C" __global__ __aicore__ void block_attn_res_update(
-    GM_ADDR partial_block, GM_ADDR delta, GM_ADDR pseudo_query, GM_ADDR numerator, GM_ADDR logit_max,
-    GM_ADDR exp_sum, GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void block_attn_res_update(GM_ADDR partial_block, GM_ADDR delta, GM_ADDR pseudo_query,
+                                                            GM_ADDR numerator, GM_ADDR logit_max, GM_ADDR exp_sum,
+                                                            GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace,
+                                                            GM_ADDR tiling)
 {
     (void)partial_block_ref;
     (void)workspace;

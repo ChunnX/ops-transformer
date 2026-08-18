@@ -25,8 +25,7 @@ namespace l0op {
 
 OP_TYPE_REGISTER(BlockAttnResPrepare);
 
-const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes,
-                                                           const aclTensor *validBlocks,
+const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes, const aclTensor *validBlocks,
                                                            const aclTensor *pseudoQuery, float eps,
                                                            aclOpExecutor *executor)
 {
@@ -38,8 +37,7 @@ const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *bloc
     auto numerator = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     auto logitMax = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     auto expSum = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare,
-                                        OP_INPUT(blockRes, validBlocks, pseudoQuery),
+    const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
                                         OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare infer shape failed.");

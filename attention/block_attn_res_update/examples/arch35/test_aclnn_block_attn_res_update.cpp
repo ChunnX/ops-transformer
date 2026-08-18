@@ -141,8 +141,8 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     aclTensor *expSum = nullptr;
     aclTensor *h = nullptr;
 
-    ret = CreateAclTensor<float>(partialBlockHostData, matrixShape, &partialBlockDeviceAddr,
-                                 aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &partialBlock);
+    ret = CreateAclTensor<float>(partialBlockHostData, matrixShape, &partialBlockDeviceAddr, aclDataType::ACL_FLOAT,
+                                 aclFormat::ACL_FORMAT_ND, &partialBlock);
     std::unique_ptr<void, aclError (*)(void *)> partialBlockDeviceAddrPtr(partialBlockDeviceAddr, aclrtFree);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> partialBlockTensorPtr(partialBlock,
                                                                                          aclDestroyTensor);
@@ -189,10 +189,9 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
-    ret = aclnnBlockAttnResUpdateGetWorkspaceSize(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum,
-                                                  eps, h, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnBlockAttnResUpdateGetWorkspaceSize failed. ERROR: %d\n", ret);
+    ret = aclnnBlockAttnResUpdateGetWorkspaceSize(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps, h,
+                                                  &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttnResUpdateGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     std::unique_ptr<void, aclError (*)(void *)> workspaceAddrPtr(nullptr, aclrtFree);

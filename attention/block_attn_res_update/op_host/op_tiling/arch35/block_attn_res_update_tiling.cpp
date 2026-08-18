@@ -40,10 +40,10 @@ ge::graphStatus TilingPrepare4BlockAttnResUpdate(gert::TilingParseContext *conte
     compileInfo->aivNum = platform.GetCoreNumAiv();
     compileInfo->aicNum = platform.GetCoreNumAic();
     compileInfo->npuArch = platform.GetCurNpuArch();
-    OP_CHECK_IF(compileInfo->aivNum == 0 || compileInfo->ubSize == 0,
-                OP_LOGE(OP_NAME, "Invalid platform data: aivNum=%u, ubSize=%lu.", compileInfo->aivNum,
-                        compileInfo->ubSize),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        compileInfo->aivNum == 0 || compileInfo->ubSize == 0,
+        OP_LOGE(OP_NAME, "Invalid platform data: aivNum=%u, ubSize=%lu.", compileInfo->aivNum, compileInfo->ubSize),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

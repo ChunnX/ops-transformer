@@ -40,8 +40,7 @@ static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delt
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate only supports Ascend950."), return false);
 
     OP_CHECK(partialBlock->GetDataType() == DataType::DT_FLOAT && delta->GetDataType() == DataType::DT_BF16 &&
-                 pseudoQuery->GetDataType() == DataType::DT_FLOAT &&
-                 numerator->GetDataType() == DataType::DT_FLOAT &&
+                 pseudoQuery->GetDataType() == DataType::DT_FLOAT && numerator->GetDataType() == DataType::DT_FLOAT &&
                  logitMax->GetDataType() == DataType::DT_FLOAT && expSum->GetDataType() == DataType::DT_FLOAT,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                      "BlockAttnResUpdate input dtypes are not supported by the AiCore implementation."),
@@ -50,9 +49,9 @@ static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delt
 }
 } // namespace
 
-const aclTensor *BlockAttnResUpdate(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
-    const aclTensor *logitMax, const aclTensor *expSum, float eps, aclOpExecutor *executor)
+const aclTensor *BlockAttnResUpdate(aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery,
+                                    const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum,
+                                    float eps, aclOpExecutor *executor)
 {
     L0_DFX(BlockAttnResUpdate, partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 
@@ -64,14 +63,13 @@ const aclTensor *BlockAttnResUpdate(
     auto h = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     OP_CHECK(h != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor failed."), return nullptr);
 
-    auto ret = INFER_SHAPE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
-        OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
+    auto ret = INFER_SHAPE(BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
+                           OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return nullptr, "BlockAttnResUpdate InferShape failed.");
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
-        OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(BlockAttnResUpdate,
+                                      OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
+                                      OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
                                          "BlockAttnResUpdate ADD_TO_LAUNCHER_LIST_AICORE failed.");
     return h;

@@ -36,10 +36,11 @@ extern "C" {
  * @param executor [out] 返回执行器。
  * @return aclnnStatus 状态码。
  */
-ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
-    const aclTensor *logitMax, const aclTensor *expSum, float eps, aclTensor *h, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(aclTensor *partialBlock, const aclTensor *delta,
+                                                              const aclTensor *pseudoQuery, const aclTensor *numerator,
+                                                              const aclTensor *logitMax, const aclTensor *expSum,
+                                                              float eps, aclTensor *h, uint64_t *workspaceSize,
+                                                              aclOpExecutor **executor);
 
 /**
  * @brief 执行 BlockAttnResUpdate 算子计算。
@@ -49,8 +50,8 @@ ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
  * @param stream [in] ACL 流。
  * @return aclnnStatus 状态码。
  */
-ACLNN_API aclnnStatus aclnnBlockAttnResUpdate(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnBlockAttnResUpdate(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                              aclrtStream stream);
 
 #ifdef __cplusplus
 }

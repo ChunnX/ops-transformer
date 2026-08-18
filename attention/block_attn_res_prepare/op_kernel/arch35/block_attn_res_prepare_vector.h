@@ -44,14 +44,14 @@ public:
         }
     }
 
-    __aicore__ inline bool Init(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
-                                GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum)
+    __aicore__ inline bool Init(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator,
+                                GM_ADDR logitMax, GM_ADDR expSum)
     {
         initialized_ = false;
         const uint64_t dAlign = (tilingData_->totalD / FP32_32B_ALIGN_ELEMS) * FP32_32B_ALIGN_ELEMS +
                                 ((tilingData_->totalD % FP32_32B_ALIGN_ELEMS) != 0U ? FP32_32B_ALIGN_ELEMS : 0U);
-        const uint64_t dTileNum = tilingData_->totalD / tilingData_->baseD +
-                                  ((tilingData_->totalD % tilingData_->baseD) != 0U ? 1U : 0U);
+        const uint64_t dTileNum =
+            tilingData_->totalD / tilingData_->baseD + ((tilingData_->totalD % tilingData_->baseD) != 0U ? 1U : 0U);
         if (dAlign > MAX_UINT32_VALUE || dTileNum == 0U || dTileNum > MAX_UINT32_VALUE) {
             return false;
         }
@@ -62,8 +62,7 @@ public:
         // granularity.  VF keeps the 64-element register width internally and
         // masks tail elements during arithmetic.
         const uint64_t baseDAlign =
-            ((static_cast<uint64_t>(tilingData_->baseD) + FP32_32B_ALIGN_ELEMS - 1U) /
-             FP32_32B_ALIGN_ELEMS) *
+            ((static_cast<uint64_t>(tilingData_->baseD) + FP32_32B_ALIGN_ELEMS - 1U) / FP32_32B_ALIGN_ELEMS) *
             FP32_32B_ALIGN_ELEMS;
         if (baseDAlign > MAX_UINT32_VALUE) {
             return false;
@@ -124,10 +123,7 @@ private:
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint64_t MAX_UINT32_VALUE = 0xFFFFFFFFULL;
 
-    __aicore__ inline static bool IsBufferNumValid(uint32_t bufferNum)
-    {
-        return bufferNum == 1U || bufferNum == 2U;
-    }
+    __aicore__ inline static bool IsBufferNumValid(uint32_t bufferNum) { return bufferNum == 1U || bufferNum == 2U; }
 
     __aicore__ inline static event_t GetEvent(uint32_t bufferIndex)
     {
@@ -149,13 +145,10 @@ private:
     __aicore__ inline void BuildUbLayout()
     {
         qUbOffset_ = 0U;
-        oUbOffset_ = qUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->vBufferNum) * baseDAlign_ * FP32_BYTES;
-        statUbOffset_ = oUbOffset_ +
-                        static_cast<uint64_t>(tilingData_->oBufferNum) * baseDAlign_ * FP32_BYTES;
+        oUbOffset_ = qUbOffset_ + static_cast<uint64_t>(tilingData_->vBufferNum) * baseDAlign_ * FP32_BYTES;
+        statUbOffset_ = oUbOffset_ + static_cast<uint64_t>(tilingData_->oBufferNum) * baseDAlign_ * FP32_BYTES;
         vCacheUbOffset_ = statUbOffset_ + static_cast<uint64_t>(tilingData_->statUbElems) * FP32_BYTES;
-        vUbOffset_ = vCacheUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
+        vUbOffset_ = vCacheUbOffset_ + static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
     }
 
     template <typename T>
@@ -167,26 +160,22 @@ private:
     template <typename T>
     __aicore__ inline static auto MakeNDExtLayout(int64_t rows, int64_t columns, int64_t rowPitch)
     {
-        auto shape = AscendC::Te::MakeShape(
-            AscendC::Te::MakeShape(AscendC::Std::Int<1>{}, rows),
-            AscendC::Te::MakeShape(AscendC::Std::Int<1>{}, columns));
-        auto stride = AscendC::Te::MakeStride(
-            AscendC::Te::MakeStride(AscendC::Std::Int<0>{}, rowPitch),
-            AscendC::Te::MakeStride(AscendC::Std::Int<0>{}, AscendC::Std::Int<1>{}));
-        return AscendC::Te::MakePatternLayout<AscendC::Te::NDExtLayoutPtn,
-                                              AscendC::Te::LayoutTraitDefault<T>>(shape, stride);
+        auto shape = AscendC::Te::MakeShape(AscendC::Te::MakeShape(AscendC::Std::Int<1>{}, rows),
+                                            AscendC::Te::MakeShape(AscendC::Std::Int<1>{}, columns));
+        auto stride = AscendC::Te::MakeStride(AscendC::Te::MakeStride(AscendC::Std::Int<0>{}, rowPitch),
+                                              AscendC::Te::MakeStride(AscendC::Std::Int<0>{}, AscendC::Std::Int<1>{}));
+        return AscendC::Te::MakePatternLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(shape,
+                                                                                                               stride);
     }
 
     template <typename T>
     __aicore__ inline static void CopyGmToUb(uint64_t dstByteOffset, __gm__ T *src, int64_t validElements,
                                              int64_t ubPitch)
     {
-        auto ubTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(dstByteOffset),
-            MakeNDExtLayout<T>(1, validElements, ubPitch));
-        auto gmTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(src),
-            MakeNDExtLayout<T>(1, validElements, validElements));
+        auto ubTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(dstByteOffset),
+                                                MakeNDExtLayout<T>(1, validElements, ubPitch));
+        auto gmTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(src),
+                                                MakeNDExtLayout<T>(1, validElements, validElements));
         auto copyGmToUb = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
         AscendC::Te::Copy(copyGmToUb, ubTensor, gmTensor);
     }
@@ -195,12 +184,10 @@ private:
     __aicore__ inline static void CopyUbToGm(__gm__ T *dst, uint64_t srcByteOffset, int64_t validElements,
                                              int64_t ubPitch)
     {
-        auto gmTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(dst),
-            MakeNDExtLayout<T>(1, validElements, validElements));
-        auto ubTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(srcByteOffset),
-            MakeNDExtLayout<T>(1, validElements, ubPitch));
+        auto gmTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(dst),
+                                                MakeNDExtLayout<T>(1, validElements, validElements));
+        auto ubTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(srcByteOffset),
+                                                MakeNDExtLayout<T>(1, validElements, ubPitch));
         auto copyUbToGm = AscendC::Te::MakeCopy(AscendC::Te::CopyUB2GM{});
         AscendC::Te::Copy(copyUbToGm, gmTensor, ubTensor);
     }
@@ -208,16 +195,14 @@ private:
     __aicore__ inline int32_t ReadValidBlocks() const
     {
         auto validBlocksTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(validBlocksAddr_),
-            MakeNDExtLayout<int32_t>(1, 1, 1));
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(validBlocksAddr_), MakeNDExtLayout<int32_t>(1, 1, 1));
         return validBlocksTensor[AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0))];
     }
 
     __aicore__ inline __ubuf__ float *CopyInQ(uint64_t qOffset, uint32_t validD, uint32_t dLoop)
     {
         const uint32_t bufferIndex = dLoop % tilingData_->qBufferNum;
-        const uint64_t byteOffset = qUbOffset_ +
-                                    static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
+        const uint64_t byteOffset = qUbOffset_ + static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
         CopyGmToUb(byteOffset, pseudoQueryAddr_ + qOffset, validD, baseDAlign_);
         WaitMte2ToVector(GetEvent(bufferIndex));
         return GetUbAddr<float>(byteOffset);
@@ -226,8 +211,7 @@ private:
     __aicore__ inline __ubuf__ float *CopyInV(uint64_t vOffset, uint32_t validD, uint64_t vLoop_)
     {
         const uint32_t bufferIndex = static_cast<uint32_t>(vLoop_ % tilingData_->vBufferNum);
-        const uint64_t byteOffset = vUbOffset_ +
-                                    static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
+        const uint64_t byteOffset = vUbOffset_ + static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
         CopyGmToUb(byteOffset, blockResAddr_ + vOffset, validD, baseDAlign_);
         WaitMte2ToVector(GetEvent(bufferIndex));
         return GetUbAddr<float>(byteOffset);
@@ -255,16 +239,14 @@ private:
     __aicore__ inline void CopyOutO(uint64_t outputOffset, uint32_t validD, uint32_t dLoop)
     {
         const uint32_t bufferIndex = dLoop % tilingData_->oBufferNum;
-        const uint64_t byteOffset = oUbOffset_ +
-                                    static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
+        const uint64_t byteOffset = oUbOffset_ + static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
         const event_t eventId = GetEvent(bufferIndex);
         WaitVectorToMte3(eventId);
         CopyUbToGm(numeratorAddr_ + outputOffset, byteOffset, validD, baseDAlign_);
     }
 
-    __aicore__ inline void AccumulateStats(__ubuf__ float *qAddr, __ubuf__ float *vAddr,
-                                           __ubuf__ float *statAddr, uint32_t dLoop, uint32_t validD,
-                                           uint32_t nIndex)
+    __aicore__ inline void AccumulateStats(__ubuf__ float *qAddr, __ubuf__ float *vAddr, __ubuf__ float *statAddr,
+                                           uint32_t dLoop, uint32_t validD, uint32_t nIndex)
     {
         if (dLoop == 0U) {
             BlockAttnResPrepareVF::AccumulateSquareDot<true>(qAddr, vAddr, statAddr, validD, nIndex);
@@ -307,8 +289,8 @@ private:
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
             const uint64_t remainingD = tilingData_->totalD - dOffset;
-            const uint32_t validD = static_cast<uint32_t>(
-                remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
+            const uint32_t validD =
+                static_cast<uint32_t>(remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint32_t outputBufferIndex = oLoop_ % tilingData_->oBufferNum;
             const uint64_t outputByteOffset =
                 oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
@@ -317,8 +299,7 @@ private:
             wait_flag(PIPE_MTE3, PIPE_V, outputEvent);
             BlockAttnResPrepareVF::FillZero(outputAddr, validD);
 
-            const uint64_t outputOffset =
-                (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
+            const uint64_t outputOffset = (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
             CopyOutO(outputOffset, validD, oLoop_);
             set_flag(PIPE_MTE3, PIPE_V, outputEvent);
             ++oLoop_;
@@ -334,8 +315,8 @@ private:
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
             const uint64_t remainingD = tilingData_->totalD - dOffset;
-            const uint32_t validD = static_cast<uint32_t>(
-                remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
+            const uint32_t validD =
+                static_cast<uint32_t>(remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint64_t qOffset = sIndex * tilingData_->totalD + dOffset;
             const uint32_t qBufferIndex = dLoop % tilingData_->qBufferNum;
             const event_t qEvent = GetEvent(qBufferIndex);
@@ -343,8 +324,7 @@ private:
             __ubuf__ float *qAddr = CopyInQ(qOffset, validD, dLoop);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
-                const uint64_t vOffset =
-                    (tIndex * tilingData_->totalN + nIndex) * tilingData_->totalD + dOffset;
+                const uint64_t vOffset = (tIndex * tilingData_->totalN + nIndex) * tilingData_->totalD + dOffset;
                 __ubuf__ float *vAddr;
                 if (cacheAllV) {
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + nIndex);
@@ -369,8 +349,8 @@ private:
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
             const uint64_t remainingD = tilingData_->totalD - dOffset;
-            const uint32_t validD = static_cast<uint32_t>(
-                remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
+            const uint32_t validD =
+                static_cast<uint32_t>(remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint32_t outputBufferIndex = oLoop_ % tilingData_->oBufferNum;
             const uint64_t outputByteOffset =
                 oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
@@ -384,8 +364,7 @@ private:
                     vAddr = GetUbAddr<float>(vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES);
                 } else {
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ & 1));
-                    const uint64_t vOffset =
-                        (tIndex * tilingData_->totalN + nIndex) * tilingData_->totalD + dOffset;
+                    const uint64_t vOffset = (tIndex * tilingData_->totalN + nIndex) * tilingData_->totalD + dOffset;
                     vAddr = CopyInV(vOffset, validD, vLoop_);
                 }
                 AccumulateOutput(vAddr, weightAddr + nIndex, outputAddr, nIndex, validN, validD);
@@ -396,8 +375,7 @@ private:
                 }
             }
 
-            const uint64_t outputOffset =
-                (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
+            const uint64_t outputOffset = (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
             CopyOutO(outputOffset, validD, oLoop_);
             set_flag(PIPE_MTE3, PIPE_V, outputEvent);
             ++oLoop_;

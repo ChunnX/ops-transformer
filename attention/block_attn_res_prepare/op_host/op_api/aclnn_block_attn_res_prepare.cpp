@@ -88,16 +88,15 @@ aclnnStatus CheckShape(const aclTensor *blockRes, const aclTensor *validBlocks, 
     const int64_t totalN = blockResShape.GetDim(1);
     const int64_t totalD = blockResShape.GetDim(2);
     const int64_t totalS = pseudoQueryShape.GetDim(0);
-    if (totalT < 0 || totalS < 0 || totalN < MIN_BLOCK_NUM || totalN > MAX_BLOCK_NUM ||
-        totalD < MIN_HEAD_DIM || totalD > MAX_HEAD_DIM || validShape.GetDim(0) != 1 ||
-        pseudoQueryShape.GetDim(1) != totalD) {
+    if (totalT < 0 || totalS < 0 || totalN < MIN_BLOCK_NUM || totalN > MAX_BLOCK_NUM || totalD < MIN_HEAD_DIM ||
+        totalD > MAX_HEAD_DIM || validShape.GetDim(0) != 1 || pseudoQueryShape.GetDim(1) != totalD) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare input shape is invalid.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (numeratorShape.GetDim(0) != totalS || numeratorShape.GetDim(1) != totalT ||
-        numeratorShape.GetDim(2) != totalD || logitMaxShape.GetDim(0) != totalS ||
-        logitMaxShape.GetDim(1) != totalT || expSumShape.GetDim(0) != totalS || expSumShape.GetDim(1) != totalT) {
+        numeratorShape.GetDim(2) != totalD || logitMaxShape.GetDim(0) != totalS || logitMaxShape.GetDim(1) != totalT ||
+        expSumShape.GetDim(0) != totalS || expSumShape.GetDim(1) != totalT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare output shape does not match the input shape.");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -108,15 +107,14 @@ aclnnStatus CheckParams(const aclTensor *blockRes, const aclTensor *validBlocks,
                         const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum, float eps,
                         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    CHECK_RET(CheckNotNull(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum,
-                           workspaceSize, executor) == ACLNN_SUCCESS,
+    CHECK_RET(CheckNotNull(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, workspaceSize, executor) ==
+                  ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
     if (!std::isfinite(eps) || eps <= 0.0F) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "eps must be finite and greater than zero.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    CHECK_RET(CheckDtype(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum) ==
-                  ACLNN_SUCCESS,
+    CHECK_RET(CheckDtype(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     return CheckShape(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
 }
@@ -125,16 +123,16 @@ aclnnStatus CheckParams(const aclTensor *blockRes, const aclTensor *validBlocks,
 
 extern "C" {
 
-aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
-    const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery, aclTensor *numerator,
-    aclTensor *logitMax, aclTensor *expSum, float eps, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(const aclTensor *blockRes, const aclTensor *validBlocks,
+                                                     const aclTensor *pseudoQuery, aclTensor *numerator,
+                                                     aclTensor *logitMax, aclTensor *expSum, float eps,
+                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnBlockAttnResPrepare, DFX_IN(blockRes, validBlocks, pseudoQuery, eps),
                    DFX_OUT(numerator, logitMax, expSum));
 
-    CHECK_RET(CheckNotNull(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum,
-                           workspaceSize, executor) == ACLNN_SUCCESS,
+    CHECK_RET(CheckNotNull(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, workspaceSize, executor) ==
+                  ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "BlockAttnResPrepare only supports Ascend 950.");
@@ -145,8 +143,8 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto *executorImpl = uniqueExecutor.get();
 
-    const aclnnStatus checkRet = CheckParams(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, eps,
-                                             workspaceSize, executor);
+    const aclnnStatus checkRet =
+        CheckParams(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, eps, workspaceSize, executor);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     blockRes = l0op::Contiguous(blockRes, executorImpl);
@@ -154,8 +152,7 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     pseudoQuery = l0op::Contiguous(pseudoQuery, executorImpl);
     CHECK_RET(blockRes != nullptr && validBlocks != nullptr && pseudoQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const auto outputs =
-        l0op::BlockAttnResPrepare(blockRes, validBlocks, pseudoQuery, eps, executorImpl);
+    const auto outputs = l0op::BlockAttnResPrepare(blockRes, validBlocks, pseudoQuery, eps, executorImpl);
     CHECK_RET(outputs[0] != nullptr && outputs[1] != nullptr && outputs[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(l0op::ViewCopy(outputs[0], numerator, executorImpl) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(l0op::ViewCopy(outputs[1], logitMax, executorImpl) != nullptr, ACLNN_ERR_INNER_NULLPTR);

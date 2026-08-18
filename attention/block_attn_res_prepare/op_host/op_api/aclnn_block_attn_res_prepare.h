@@ -32,10 +32,10 @@ extern "C" {
  * @param executor [OUT] Executor consumed by the second-stage API.
  * @return ACLNN_SUCCESS on success.
  */
-ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
-    const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery, aclTensor *numerator,
-    aclTensor *logitMax, aclTensor *expSum, float eps, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(const aclTensor *blockRes, const aclTensor *validBlocks,
+                                                               const aclTensor *pseudoQuery, aclTensor *numerator,
+                                                               aclTensor *logitMax, aclTensor *expSum, float eps,
+                                                               uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief Runs BlockAttnResPrepare using the executor produced by the first-stage API.

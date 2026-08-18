@@ -50,8 +50,7 @@ private:
     void SetTilingData();
     ge::graphStatus SelectUbTiling(uint64_t maxTPerCore);
     bool TryUbTiling(uint64_t maxTPerCore);
-    uint64_t CalcUbBytes(uint32_t tileT, uint32_t &statsTStride,
-                         BlockAttnResUpdatePhase2Mode &phase2Mode) const;
+    uint64_t CalcUbBytes(uint32_t tileT, uint32_t &statsTStride, BlockAttnResUpdatePhase2Mode &phase2Mode) const;
 
     BlockAttnResUpdateFullDTilingInfo tilingInfo_{};
     BlockAttnResUpdateTilingData tilingData_{};
