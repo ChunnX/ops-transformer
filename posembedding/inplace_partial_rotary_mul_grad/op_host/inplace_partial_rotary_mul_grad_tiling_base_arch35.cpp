@@ -384,15 +384,18 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckAttr()
     sliceEnd_ = partialSlicePtr->GetData()[1];
     sliceLength_ = sliceEnd_ - sliceStart_;
 
-    // No-op: empty slice (start == end) or empty dy/cos/sin. Nothing to compute,
-    // the kernel goes through TILING_KEY_EMPTY and returns, dx == dy (in-place).
+    // No-op: empty slice (start == end) or any of dy/cos/sin is an empty tensor
+    // (some dim is 0). Nothing to compute, the kernel goes through TILING_KEY_EMPTY
+    // and returns, dx == dy (in-place). Use total element count so an empty
+    // B/S/N dim of cos/sin is caught too, not just an empty D dim.
     auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     int64_t cosD = cosShape.GetDim(DIM_3);
-    int64_t sinD = sinShape.GetDim(DIM_3);
     int64_t dySize = dyShape.GetShapeSize();
-    if (sliceLength_ == 0 || dySize == 0 || cosD == 0 || sinD == 0) {
+    int64_t cosSize = cosShape.GetShapeSize();
+    int64_t sinSize = sinShape.GetShapeSize();
+    if (sliceLength_ == 0 || dySize == 0 || cosSize == 0 || sinSize == 0) {
         isNoOp_ = true;
         return ge::GRAPH_SUCCESS;
     }
@@ -425,9 +428,14 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckParam()
 ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check param fail."), return ge::GRAPH_FAILED);
-    // Note: JudgeLayoutByShape still runs for the no-op case — the template dispatch
-    // (TilingRegistry) selects a tiling class by layout_, and the no-op path relies on
-    // a capable template to emit TILING_KEY_EMPTY (kernel returns immediately).
+    if (isNoOp_) {
+        // No-op: kernel returns at TILING_KEY_EMPTY and ignores the tiling data. Set a
+        // valid layout so the template dispatch (TilingRegistry) selects a capable class
+        // (A&B handles BROADCAST_BSN), then skip JudgeLayoutByShape — an empty B/S/N dim
+        // of cos/sin has no valid broadcast pattern and would fail there.
+        layout_ = InplacePartialRotaryMulGradLayout::BROADCAST_BSN;
+        return ge::GRAPH_SUCCESS;
+    }
 
     auto &dyInputShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     auto &cosInputShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
