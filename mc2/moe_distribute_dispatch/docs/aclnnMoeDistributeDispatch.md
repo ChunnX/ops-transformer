@@ -594,32 +594,13 @@ aclnnStatus aclnnMoeDistributeDispatch(
 <!-- npu="910b" id15 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-    - 文件准备：
-
-        1. 按照下方指导创建rank_table_m2.json文件并修改。
-
-        2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-
-        3. 安装cann包并参考下方指导编译运行。
-
-    - 关于rankTable:
-
-        1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommunityHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
-
-        2. 使用`cat /etc/hccn.conf`或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
-
-        > 注意：两机16卡场景中，两机器的device_id都是0~7，其中一台机器的rank_id为0~7，另一台机器的rank_id为8~15。单机16卡场景中，device_id和rank_id都是0~15。
 
     - 环境变量配置：
 
         ```bash
-        # 运行前需设置三个环境变量
-        ## FIRST_RANK_ID说明：以两机16卡为例，其中一机器设置为0，另一机器设置为8
-        ## 如export FIRST_RANK_ID=0
-        export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
-        export FIRST_RANK_ID=<设备的起始rank_id>
+        # 运行前需设置一个环境变量ENV_DEV_NUM。
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
-        export ENV_DEV_NUM=16
+        export ENV_DEV_NUM = 16
         ```
 
     - 机器数量设置：
@@ -651,9 +632,60 @@ aclnnStatus aclnnMoeDistributeDispatch(
     - 环境变量配置：
 
         ```bash
-        # 运行前需设置一个环境变量ENV_DEV_NUM，无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
-        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将两台机器设置为16
-        export ENV_DEV_NUM=16
+        # 运行前需设置一个环境变量ENV_DEV_NUM。
+        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将单台机器设置为16
+        export ENV_DEV_NUM = 16
+        ```
+    - 机器数量设置：
+
+        两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
+        ```Cpp
+        const uint32_t MACHINE_NUM = 2;
+        ```
+
+        单机16卡场景则无需修改。
+    - 算子编译执行：
+        算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
+        ```bash
+        bash build.sh --pkg --soc=ascend910_93 --ops=moe_distribute_dispatch,moe_distribute_combine
+        ```
+
+        示例算子执行命令如下：
+
+        ```bash
+        bash build.sh --run_example --ops=moe_distribute_dispatch eager cust
+        ```
+- <term>Ascend 950DT</term> ：
+
+    - 环境变量配置：
+
+        ```bash
+        # 运行前需设置一个环境变量ENV_DEV_NUM。
+        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将单台机器设置为16
+        export ENV_DEV_NUM = 16
+        ```
+    - 机器数量设置：
+
+        两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
+        ```Cpp
+        const uint32_t MACHINE_NUM = 2;
+        ```
+
+        单机16卡场景则无需修改。
+    - 算子编译执行：
+        算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
+        ```bash
+        bash build.sh --pkg --soc=ascend950 --ops=moe_distribute_dispatch,moe_distribute_combine
+        ```
+
+        示例算子执行命令如下：
+
+        ```bash
+        bash build.sh --run_example --ops=moe_distribute_dispatch eager cust
         ```
 
 <!-- end id16 -->
