@@ -145,9 +145,6 @@ public:
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
-
         kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
@@ -308,7 +305,6 @@ private:
     GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
     GlobalTensor<vInnerType> vInner_; // (Nv, maxGroupLength, Dv) primary vInner
     GlobalTensor<lowType> qPrime_;    // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> attnInter_; // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;       // (Nv, maxGroupLength, C)
     // mask矩阵
