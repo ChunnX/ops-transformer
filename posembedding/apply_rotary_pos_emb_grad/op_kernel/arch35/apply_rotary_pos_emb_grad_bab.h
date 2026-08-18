@@ -49,8 +49,8 @@ private:
     GlobalTensor<T> keyGm_;
     GlobalTensor<T> gradQOutGm_;
     GlobalTensor<T> gradKOutGm_;
-    GlobalTensor<T> cosWsGm_;
-    GlobalTensor<T> sinWsGm_;
+    GlobalTensor<float> cosWsGm_;
+    GlobalTensor<float> sinWsGm_;
 
     TQue<QuePosition::VECIN, bufferNum> gradQInQue_;
     TQue<QuePosition::VECIN, bufferNum> gradKInQue_;
@@ -66,6 +66,7 @@ private:
 
     int64_t blockIdx_ = 0;
     int64_t dAlign_ = 0;
+    int64_t partialDAlign_ = 0;
     int64_t dHalfSize_ = 0;       // D/2 (元素个数)
     bool dHalfAligned_ = false;   // D/2 是否 32 字节对齐
     int64_t bIdx_ = 0;
@@ -79,13 +80,14 @@ private:
     __aicore__ inline void PrePareParams();
     __aicore__ inline void ProcessNLoop(uint32_t bIdx, uint32_t sIdx, uint32_t currSNum);
     __aicore__ inline void ProcessN(const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, int64_t gmOffset,
-        int64_t nPath, int64_t currXN, uint32_t currSNum, LocalTensor<T>& cosPartial, LocalTensor<T>& sinPartial,
+        int64_t nPath, int64_t currXN, uint32_t currSNum, LocalTensor<float>& cosPartial, LocalTensor<float>& sinPartial,
         bool isQPath, bool isAccumulate);
     __aicore__ inline void ComputeOnePath(const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
         const LocalTensor<T>& inTensor, const LocalTensor<T>& outTensor, uint32_t currSNum, uint32_t currDNum);
     __aicore__ inline void ComputeGradWithCosSinVF(const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
-        const LocalTensor<T>& gradIn, const LocalTensor<T>& gradOut, const LocalTensor<T>& xIn, const LocalTensor<T>& cosPartial,
-        const LocalTensor<T>& sinPartial, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum, bool isAccumulate);
+        const LocalTensor<T>& gradIn, const LocalTensor<T>& gradOut, const LocalTensor<T>& xIn,
+        const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial, uint32_t dLen, uint32_t dAlign,
+        uint16_t currSNum, uint16_t currDNum, bool isAccumulate);
 };
 
 // =================================================================
@@ -103,6 +105,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Init(GM_ADDR gradQueryEmbed,
     this->dHalfSize_ = tilingData_->d / HALF_COEF;
     this->dHalfAligned_ = (dHalfSize_ % (BLOCK_TYPE_SIZE / sizeof(T))) == 0;
     this->dAlign_ = Ops::Base::CeilAlign<int64_t>(dHalfSize_, BLOCK_TYPE_SIZE / sizeof(T)) * HALF_COEF;
+    this->partialDAlign_ = Ops::Base::CeilAlign<int64_t>(dHalfSize_, BLOCK_TYPE_SIZE / sizeof(float)) * HALF_COEF;
     ubFactorN_ = tilingData_->ubFactorN;
     ubFactorS_ = tilingData_->ubFactorS;
 
@@ -114,8 +117,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Init(GM_ADDR gradQueryEmbed,
     this->keyGm_.SetGlobalBuffer((__gm__ T*)key);
     this->gradQOutGm_.SetGlobalBuffer((__gm__ T*)gradQueryOut);
     this->gradKOutGm_.SetGlobalBuffer((__gm__ T*)gradKeyOut);
-    this->cosWsGm_.SetGlobalBuffer((__gm__ T*)cosWs);
-    this->sinWsGm_.SetGlobalBuffer((__gm__ T*)sinWs);
+    this->cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
+    this->sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
 
     this->pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
@@ -127,8 +130,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Init(GM_ADDR gradQueryEmbed,
     if (tilingData_->dCosFlag) {
         this->pipe_->InitBuffer(queryInQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
         this->pipe_->InitBuffer(keyInQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
-        this->pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
-        this->pipe_->InitBuffer(gradSinOutQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        this->pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
+        this->pipe_->InitBuffer(gradSinOutQue_, bufferNum, ubFactorS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
     }
 }
 
@@ -179,7 +182,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Process()
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, uint32_t sIdx, uint32_t currSNum)
 {
-    int64_t dByteSize = tilingData_->d * sizeof(T);
+    int64_t partialDByteSize = tilingData_->d * sizeof(float);
     int64_t bSStride = bIdx * tilingData_->s + sIdx;
     int64_t maxN = max(tilingData_->nQ, tilingData_->nK);
     int64_t cosWsBase = bSStride * maxN * tilingData_->d;
@@ -210,10 +213,10 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, 
             min(ubFactorN_, tilingData_->nK - static_cast<int64_t>(idxN) * ubFactorN_);
         if (currQN <= 0 && currKN <= 0) break;
 
-        LocalTensor<T> cosPartial, sinPartial;
+        LocalTensor<float> cosPartial, sinPartial;
         if (tilingData_->dCosFlag) {
-            cosPartial = gradCosOutQue_.AllocTensor<T>();
-            sinPartial = gradSinOutQue_.AllocTensor<T>();
+            cosPartial = gradCosOutQue_.AllocTensor<float>();
+            sinPartial = gradSinOutQue_.AllocTensor<float>();
         }
 
         // Q/K tile：先 SET head 数更多的一路（覆盖整个 cos/sin 部分积范围），
@@ -246,15 +249,15 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, 
         if (tilingData_->dCosFlag && (currQN > 0 || currKN > 0)) {
             gradCosOutQue_.EnQue(cosPartial);
             gradSinOutQue_.EnQue(sinPartial);
-            cosPartial = gradCosOutQue_.DeQue<T>();
-            sinPartial = gradSinOutQue_.DeQue<T>();
+            cosPartial = gradCosOutQue_.DeQue<float>();
+            sinPartial = gradSinOutQue_.DeQue<float>();
             int64_t wsOffset = cosWsBase + idxN * ubFactorN_ * tilingData_->d;
             uint32_t wsCurrN = static_cast<uint32_t>(max(currQN, currKN));
             if (dHalfAligned_) {
                 DataCopyExtParams copyWsParams = {static_cast<uint16_t>(currSNum),
-                                                  static_cast<uint32_t>(wsCurrN * dByteSize),
-                                                  static_cast<uint32_t>((ubFactorN_ - wsCurrN) * dByteSize),
-                                                  static_cast<uint32_t>((maxN - wsCurrN) * dByteSize), 0};
+                                                  static_cast<uint32_t>(wsCurrN * partialDByteSize),
+                                                  static_cast<uint32_t>((ubFactorN_ - wsCurrN) * partialDByteSize),
+                                                  static_cast<uint32_t>((maxN - wsCurrN) * partialDByteSize), 0};
                 DataCopyPad(cosWsGm_[wsOffset], cosPartial, copyWsParams);
                 DataCopyPad(sinWsGm_[wsOffset], sinPartial, copyWsParams);
             } else {
@@ -262,12 +265,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, 
                 // 跨 S 行 UB 行距(ubFactorN_*dAlign_) != GM 行距(maxN*d), DMA stride 无法统一,
                 // 只能按 S 逐行写回
                 DataCopyExtParams copyWsParams = {static_cast<uint16_t>(wsCurrN * HALF_COEF),
-                                                  static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
+                                                  static_cast<uint32_t>(dHalfSize_ * sizeof(float)), 0, 0, 0};
                 for (uint32_t s = 0; s < currSNum; s++) {
                     DataCopyPad(cosWsGm_[wsOffset + s * maxN * tilingData_->d],
-                                cosPartial[static_cast<int64_t>(s * ubFactorN_ * dAlign_)], copyWsParams);
+                                cosPartial[static_cast<int64_t>(s * ubFactorN_ * partialDAlign_)], copyWsParams);
                     DataCopyPad(sinWsGm_[wsOffset + s * maxN * tilingData_->d],
-                                sinPartial[static_cast<int64_t>(s * ubFactorN_ * dAlign_)], copyWsParams);
+                                sinPartial[static_cast<int64_t>(s * ubFactorN_ * partialDAlign_)], copyWsParams);
                 }
             }
             gradCosOutQue_.FreeTensor(cosPartial);
@@ -288,7 +291,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessN(
     const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, int64_t gmOffset, int64_t nPath,
-    int64_t currXN, uint32_t currSNum, LocalTensor<T>& cosPartial, LocalTensor<T>& sinPartial,
+    int64_t currXN, uint32_t currSNum, LocalTensor<float>& cosPartial, LocalTensor<float>& sinPartial,
     bool isQPath, bool isAccumulate)
 {
     int64_t dByteSize = tilingData_->d * sizeof(T);
@@ -376,7 +379,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ComputeOnePath(const LocalTe
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ComputeGradWithCosSinVF(
     const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& gradIn, const LocalTensor<T>& gradOut,
-    const LocalTensor<T>& xIn, const LocalTensor<T>& cosPartial, const LocalTensor<T>& sinPartial,
+    const LocalTensor<T>& xIn, const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial,
     uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum, bool isAccumulate)
 {
     __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
@@ -384,12 +387,14 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ComputeGradWithCosSinVF(
     __local_mem__ T* gradUb = (__local_mem__ T*)gradIn.GetPhyAddr();
     __local_mem__ T* gradOutUb = (__local_mem__ T*)gradOut.GetPhyAddr();
     __local_mem__ T* xUb = (__local_mem__ T*)xIn.GetPhyAddr();
-    __local_mem__ T* cosPartialUb = (__local_mem__ T*)cosPartial.GetPhyAddr();
-    __local_mem__ T* sinPartialUb = (__local_mem__ T*)sinPartial.GetPhyAddr();
+    __local_mem__ float* cosPartialUb = (__local_mem__ float*)cosPartial.GetPhyAddr();
+    __local_mem__ float* sinPartialUb = (__local_mem__ float*)sinPartial.GetPhyAddr();
     uint32_t halfD = dLen / HALF_COEF;
     uint32_t halfDAlign = Ops::Base::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
+    uint32_t halfPartialDAlign = partialDAlign_ / HALF_COEF;
     uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
-    __local_mem__ T *currGradUb, *currGradOutUb, *currSinUb, *currCosUb, *currXUb, *currCosPartialUb, *currSinPartialUb;
+    __local_mem__ T *currGradUb, *currGradOutUb, *currSinUb, *currCosUb, *currXUb;
+    __local_mem__ float *currCosPartialUb, *currSinPartialUb;
 
     __VEC_SCOPE__
     {
@@ -405,8 +410,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ComputeGradWithCosSinVF(
                 currXUb = xUb + (sIdx * currDNum + row) * dAlign;
                 // cosPartial/sinPartial 为 Q/K 共享缓冲，行距必须用固定的 ubFactorN_（而非 currDNum），
                 // 否则 nQ != nK 时 Q/K 两路的行偏移不一致，累加/写回会错位
-                currCosPartialUb = cosPartialUb + (sIdx * ubFactorN_ + row) * dAlign;
-                currSinPartialUb = sinPartialUb + (sIdx * ubFactorN_ + row) * dAlign;
+                currCosPartialUb = cosPartialUb + (sIdx * ubFactorN_ + row) * partialDAlign_;
+                currSinPartialUb = sinPartialUb + (sIdx * ubFactorN_ + row) * partialDAlign_;
                 uint32_t updateCnt = halfD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = Reg::UpdateMask<float>(updateCnt);
@@ -440,27 +445,29 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ComputeGradWithCosSinVF(
                     if (!isAccumulate) {
                         ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp1, preg, offset);
                         ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp3, preg, halfOffset);
-                        ops::StoreOneTensorForDtypeT<T>(currCosPartialUb, vregTmp5, preg, offset);
-                        ops::StoreOneTensorForDtypeT<T>(currCosPartialUb, vregTmp6, preg, halfOffset);
-                        ops::StoreOneTensorForDtypeT<T>(currSinPartialUb, vregTmp7, preg, offset);
-                        ops::StoreOneTensorForDtypeT<T>(currSinPartialUb, vregTmp8, preg, halfOffset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregTmp5, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregTmp6, preg, halfPartialDAlign + offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregTmp7, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregTmp8, preg, halfPartialDAlign + offset);
                     } else {
                         ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp1, preg, offset);
                         ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp3, preg, halfOffset);
 
-                        ops::LoadTwoTensorForDtypeT<T>(
-                            currCosPartialUb, currCosPartialUb, vregCos1, vregCos2, preg, preg, offset, halfOffset);
+                        ops::LoadTwoTensorForDtypeT<float>(
+                            currCosPartialUb, currCosPartialUb, vregCos1, vregCos2, preg, preg,
+                            offset, halfPartialDAlign + offset);
                         Add(vregCos1, vregCos1, vregTmp5, preg);
                         Add(vregCos2, vregCos2, vregTmp6, preg);
-                        ops::StoreOneTensorForDtypeT<T>(currCosPartialUb, vregCos1, preg, offset);
-                        ops::StoreOneTensorForDtypeT<T>(currCosPartialUb, vregCos2, preg, halfOffset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregCos1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregCos2, preg, halfPartialDAlign + offset);
 
-                        ops::LoadTwoTensorForDtypeT<T>(
-                            currSinPartialUb, currSinPartialUb, vregSin1, vregSin2, preg, preg, offset, halfOffset);
+                        ops::LoadTwoTensorForDtypeT<float>(
+                            currSinPartialUb, currSinPartialUb, vregSin1, vregSin2, preg, preg,
+                            offset, halfPartialDAlign + offset);
                         Add(vregSin1, vregSin1, vregTmp7, preg);
                         Add(vregSin2, vregSin2, vregTmp8, preg);
-                        ops::StoreOneTensorForDtypeT<T>(currSinPartialUb, vregSin1, preg, offset);
-                        ops::StoreOneTensorForDtypeT<T>(currSinPartialUb, vregSin2, preg, halfOffset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregSin1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregSin2, preg, halfPartialDAlign + offset);
                     }
                 }
             }

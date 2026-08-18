@@ -23,8 +23,10 @@ constexpr uint32_t DOUBLE_BUFFER = 2;
 // UB buffer count for inner-loop tensors × double buffer
 // dCosFlag=0: gradQ + gradK + dxQ + dxK = 4 tensors × Db(2) = 8
 // dCosFlag=1: + query + key + gradCos + gradSin = 8 tensors × Db(2) = 16
+// non-float dCosFlag=1: gradCos/gradSin partial 用 float buffer, 按更保守预算切 UB
 constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS0 = 8;
 constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS1 = 16;
+constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS1_FLOAT_PARTIAL = 20;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassBAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
@@ -92,6 +94,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::DoOpTiling()
     OP_CHECK_IF(
         InitTilingData() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "InitTilingData failed."), return ge::GRAPH_FAILED);
+    reduceInputFloat_ = true;
     OP_CHECK_IF(
         TilingReduce() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "TilingReduce failed."), return ge::GRAPH_FAILED);
@@ -104,7 +107,12 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitUb()
     int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
     // dCosFlag=0: gradQueryEmb+gradKeyEmb+gradQ+gradK = 4路 tensor, double buffer → ×8
     // dCosFlag=1: +query+key+gradCos+gradSin = 8路 tensor, double buffer → ×16
-    uint32_t minUbLoadDNum = dCosFlag_ ? MIN_UB_LOAD_D_NUM_DCOS1 : MIN_UB_LOAD_D_NUM_DCOS0;
+    // 非 float 输入下 gradCos/gradSin partial 按 float 申请, 需要额外 UB 预算
+    uint32_t minUbLoadDNum = MIN_UB_LOAD_D_NUM_DCOS0;
+    if (dCosFlag_ == 1) {
+        minUbLoadDNum = (typeSize == sizeof(float)) ? MIN_UB_LOAD_D_NUM_DCOS1
+                                                    : MIN_UB_LOAD_D_NUM_DCOS1_FLOAT_PARTIAL;
+    }
     int64_t canLoadDNum = Ops::Base::FloorDiv(ubSize_, dAlign);
     if (canLoadDNum < static_cast<int64_t>(minUbLoadDNum)) {
         OP_LOGE(context_->GetNodeName(),

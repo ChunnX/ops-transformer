@@ -73,7 +73,7 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB)) {
         ApplyRotaryPosEmbGradBAB<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradParams);
         if constexpr (DcosFlag) {
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * PARTIAL_TYPE_SIZE;
             op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
                 gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
         } else {
@@ -137,6 +137,9 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     // A 模板 (205): grad_cos/grad_sin 已在 Phase 1 融合计算直接写回 GM，无 reduce
     // ================================================================
     if constexpr (DcosFlag) {
+        constexpr bool isBroadcastPartialFloatTemplate =
+            DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB) ||
+            DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB);
         // SyncAll 内部先执行核内 PipeBarrier<PIPE_ALL> (排空本核 MTE3 写 GM) 再做全核同步,
         // 覆盖跨核 RAW 依赖: Phase1 各核写 workspace -> Phase2 reduce 跨核读取全量分片,
         // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
@@ -147,7 +150,7 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         // 注意: 本算子 DAG 为单输入 (In0=部分积, DAG 内无 Mul), Init 按占位符顺序绑定,
         // 只需 (pipe, In0, Out0, ws) 四参; 若照抄双输入 DAG 的五参写法多传 dy,
         // 会错位绑定导致 reduce 读原始梯度、暂存区覆盖 grad_cos/sin 输出 (越界写)
-        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
+        if constexpr (isBroadcastPartialFloatTemplate) {
             using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
                 ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
             ReduceOp reduceOp0(&tilingData.reduceTiling);

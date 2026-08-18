@@ -50,6 +50,14 @@ static const std::vector<std::string> outputNames = {
 namespace optiling {
 using namespace Ops::Base;
 
+namespace {
+bool IsBroadcastPartialFloatTemplate(uint32_t dxTilingKey)
+{
+    return dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB) ||
+           dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB);
+}
+} // namespace
+
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -782,8 +790,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
         reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
-    auto partialTypeSize = (dCosFlag_ == 1 &&
-                            dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB))
+    auto partialTypeSize = (dCosFlag_ == 1 && IsBroadcastPartialFloatTemplate(dxTilingKey))
                                ? PARTIAL_TYPE_SIZE
                                : ge::GetSizeByDataType(dtype_);
     auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * partialTypeSize * INPUT_OUTPUT_NUM;
