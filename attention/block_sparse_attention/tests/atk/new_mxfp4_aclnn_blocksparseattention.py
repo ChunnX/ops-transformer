@@ -681,7 +681,7 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
             result = torch.zeros(batch, max_s, num_heads, embedding_size,
                                  dtype=cpu_chunks[0].dtype)
             for bi in range(batch):
-                result[bi, :q_seqlen_list[bi]] = cpu_chunks[bi][0].permute(0, 2, 1, 3)[0]
+                result[bi, :q_seqlen_list[bi]] = cpu_chunks[bi][0].permute(1, 0, 2)
 
         return result.to(torch.float32)
 
@@ -856,7 +856,6 @@ class BlockSparseAttentionV3Api(BaseApi):
                 self.v_packed = v_packed_t
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        logging.info("=======================================__call__=======================================")
         if self.device == "cpu":
             testObj = TestBlockSparseAttentionMxfp4GenBmGt()
             aux_attrs = testObj.AuxAttrs(
@@ -873,10 +872,8 @@ class BlockSparseAttentionV3Api(BaseApi):
                 aux_attrs)
 
             if self.task_result.is_benchmark_task:
-                logging.info("=======================================is_benchmark_task=======================================")
                 result = testObj.compute_output_benchmark(attention_inputs)
             else:
-                logging.info("=======================================not_benchmark_task=======================================")
                 result = testObj.compute_output(attention_inputs)
             return result.to(torch.float32)
 
@@ -884,7 +881,6 @@ class BlockSparseAttentionV3Api(BaseApi):
         elif self.device in ("npu", "pyaclnn"):
             # NPU 调用 block_sparse_attention_v3
             import torch_npu
-            logging.info("=======================================pyaclnn=======================================")
             with torch.no_grad():
                 npu_out, _ = block_sparse_attention_v3(
                     self.q_packed.contiguous().npu(),
