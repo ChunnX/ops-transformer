@@ -12,6 +12,7 @@
 #ifndef GEMM_BLOCK_MMAD_QK_SPLIT_KV_ARCH35_HPP
 #define GEMM_BLOCK_MMAD_QK_SPLIT_KV_ARCH35_HPP
 
+#include <type_traits>
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/arch/resource.hpp"
 #include "../../../attn_infra/arch/cross_core_sync.hpp"
@@ -306,17 +307,31 @@ struct BlockMmadQKSplitKvArch35 {
             uint32_t gSplit = CeilDiv(groupCount, 2U);
             uint32_t mSub0 = gSplit * groupRows;
             uint32_t mSub1 = (groupCount - gSplit) * groupRows;
-            auto ubSTileSub0 = GetTile(ubSTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub0, nFixPAligned16));
-            auto l0CTileSub0 = GetTile(l0CTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(mSub0, nAct));
-            copyL0CToDstSub0(ubSTileSub0, l0CTileSub0, false);
-            if (mSub1 > 0U) {
-                auto ubSTileSub1 = GetTile(ubSTensor,
-                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub1, nFixPAligned16));
-                auto l0CTileSub1 = GetTile(l0CTensorTla,
-                    tla::MakeCoord(mSub0, 0), tla::MakeShape(mSub1, nAct));
-                copyL0CToDstSub1(ubSTileSub1, l0CTileSub1, true);
+            if constexpr (std::is_same<ElementS, float>::value) {
+                // A5 NoQuant L0C→UB: dualDstCtl=1 deadlocks with CrossCore (Fixpipe waits
+                // for both AIVs while they wait for mm1ToSmFlag after Fixpipe). Sequential
+                // subBlockId=1 is the original 20003 MTE exception. Write the full S tile
+                // to AIV0 only; high-prec softmax / ScatterBatchStats are AIV0-only.
+                auto ubSTile = GetTile(ubSTensor,
+                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(M, nFixPAligned16));
+                auto l0CTile = GetTile(l0CTensorTla,
+                    tla::MakeCoord(0, 0), tla::MakeShape(M, nAct));
+                copyL0CToDstSub0(ubSTile, l0CTile, false);
+                (void)mSub0;
+                (void)mSub1;
+            } else {
+                auto ubSTileSub0 = GetTile(ubSTensor,
+                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub0, nFixPAligned16));
+                auto l0CTileSub0 = GetTile(l0CTensorTla,
+                    tla::MakeCoord(0, 0), tla::MakeShape(mSub0, nAct));
+                copyL0CToDstSub0(ubSTileSub0, l0CTileSub0, false);
+                if (mSub1 > 0U) {
+                    auto ubSTileSub1 = GetTile(ubSTensor,
+                        tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mSub1, nFixPAligned16));
+                    auto l0CTileSub1 = GetTile(l0CTensorTla,
+                        tla::MakeCoord(mSub0, 0), tla::MakeShape(mSub1, nAct));
+                    copyL0CToDstSub1(ubSTileSub1, l0CTileSub1, true);
+                }
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }

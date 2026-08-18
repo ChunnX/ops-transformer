@@ -34,6 +34,7 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
 #if (__CCE_AICORE__ == 310)
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_TILING
+        // innerPrecise==4 (default): bf16 softmax S + fp32 O_partial.
         MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, float>(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
@@ -45,6 +46,16 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
         // innerPrecise==1: REDtype(bf16) => PV fixpipe F322BF16 + Phase2 regbase cast
         // (bf16 O_partial). fp32 path (above) stays byte-identical.
         MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, bfloat16_t>(
+            query, key, value, blockTable,
+            k2qRowPtr, k2qQIndices, k2qSlotIndices,
+            actualSeqLengths, actualSeqLengthsKv,
+            attentionOut, user, tiling);
+#endif
+        TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING);
+#if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING
+        // innerPrecise==0: SMDtype(float) => QK fixpipe NoQuant fp32 S + fp32 softmax;
+        // REDtype(float) => fp32 O_partial (same Phase2 path as innerPrecise==4).
+        MinimaxSaSplitKvInferIntf<bfloat16_t, float, float>(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,

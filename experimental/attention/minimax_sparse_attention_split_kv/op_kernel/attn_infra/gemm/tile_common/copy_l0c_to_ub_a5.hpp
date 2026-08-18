@@ -11,6 +11,7 @@
 #ifndef GEMM_TILE_COPY_L0C_TO_UB_A5_HPP
 #define GEMM_TILE_COPY_L0C_TO_UB_A5_HPP
 
+#include <type_traits>
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/arch/arch.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_dst.hpp"
@@ -84,6 +85,17 @@ struct CopyL0CToUBTla<
         intriParams.mSize = tla::get<0>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         intriParams.dstStride = tla::get<0>(dstTensor.stride());
+        // A5 NoQuant L0C→UB (lightning_indexer / FixpipeOut): n 8-aligned (32B), m even,
+        // srcStride 16-aligned, ndNum=1. F322BF16 keeps the same layout fields; extra
+        // even-round is a no-op for groupRows-aligned tiles.
+        if constexpr (std::is_same<ElementDst, float>::value) {
+            intriParams.nSize = (intriParams.nSize + 7) >> 3 << 3;
+            intriParams.mSize = (intriParams.mSize + 1) >> 1 << 1;
+            intriParams.srcStride = ((intriParams.srcStride + 15) >> 4) << 4;
+        }
+        intriParams.params.ndNum = 1;
+        intriParams.params.srcNdStride = 0;
+        intriParams.params.dstNdStride = 0;
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;
@@ -130,9 +142,16 @@ struct CopyL0CToUBTla<
 
         // Fixpipe layout information
         intriParams.nSize = tla::get<1>(dstTensor.shape());
-        intriParams.mSize = RoundUp(tla::get<0>(dstTensor.shape()), 2); // m must be even when spilt m
+        intriParams.mSize = RoundUp(tla::get<0>(dstTensor.shape()), 2); // m must be even when split m
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         intriParams.dstStride = tla::get<0>(dstTensor.stride());
+        if constexpr (std::is_same<ElementDst, float>::value) {
+            intriParams.nSize = (intriParams.nSize + 7) >> 3 << 3;
+            intriParams.srcStride = ((intriParams.srcStride + 15) >> 4) << 4;
+        }
+        intriParams.params.ndNum = 1;
+        intriParams.params.srcNdStride = 0;
+        intriParams.params.dstNdStride = 0;
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;

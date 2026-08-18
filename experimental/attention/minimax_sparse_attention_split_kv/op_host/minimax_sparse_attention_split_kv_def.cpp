@@ -59,6 +59,8 @@ public:
         this->Attr("scaleValue").AttrType(OPTIONAL).Float(0.0);
         this->Attr("blockSize").AttrType(OPTIONAL).Int(128);
         this->Attr("topK").AttrType(OPTIONAL).Int(8);
+        // 0: fp32 softmax + fp32 O_partial; 1: bf16 softmax + bf16 O_partial;
+        // 4 (default): bf16 softmax + fp32 O_partial.
         this->Attr("innerPrecise").AttrType(OPTIONAL).Int(4);
 
         this->AICore().AddConfig("ascend950");

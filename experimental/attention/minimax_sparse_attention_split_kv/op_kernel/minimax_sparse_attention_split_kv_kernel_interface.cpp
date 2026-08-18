@@ -27,11 +27,11 @@ __global__ __aicore__ void MinimaxSaSplitKvInferIntf(
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
     GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
 {
-    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKSplitKvArch35<InDtype, InDtype, bfloat16_t>;
+    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKSplitKvArch35<InDtype, InDtype, SMDtype>;
     using LayoutS = layout::RowMajor;
     using LayoutPDummy = layout::zN;
     using PType = Gemm::GemmType<InDtype, LayoutPDummy>;
-    using SType = Gemm::GemmType<bfloat16_t, LayoutS>;
+    using SType = Gemm::GemmType<SMDtype, LayoutS>;
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using KernelEpilogueSoftmax = Epilogue::Block::BlockEpilogue<
         DispatchPolicyOnlineSoftmax, PType, SType>;
