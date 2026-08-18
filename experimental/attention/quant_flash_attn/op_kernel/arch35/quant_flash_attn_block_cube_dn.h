@@ -56,9 +56,9 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
             return GmFormat::PA_BnNBsD;
         }
     } else {
-        static_assert((LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) ||
-                          (LAYOUT_KV == QFA_LAYOUT::TND),
-                      "Get Key or Value GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
+        static_assert(
+            (LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) || (LAYOUT_KV == QFA_LAYOUT::TND),
+            "Get Key or Value GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
         if constexpr (LAYOUT_KV == QFA_LAYOUT::BSND) {
             return GmFormat::BSND;
         } else if constexpr (LAYOUT_KV == QFA_LAYOUT::BNSD) {
@@ -93,9 +93,9 @@ __aicore__ inline constexpr GmFormat GetKeyScaleGmFormat()
             return GmFormat::PA_BnNBsD;
         }
     } else {
-        static_assert((LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) ||
-                          (LAYOUT_KV == QFA_LAYOUT::TND),
-                      "Get Key DeScale GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
+        static_assert(
+            (LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) || (LAYOUT_KV == QFA_LAYOUT::TND),
+            "Get Key DeScale GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
         if constexpr (LAYOUT_KV == QFA_LAYOUT::BSND) {
             return GmFormat::BSND;
         } else if constexpr (LAYOUT_KV == QFA_LAYOUT::BNSD) {
@@ -118,9 +118,9 @@ __aicore__ inline constexpr GmFormat GetValueScaleGmFormat()
             return GmFormat::PA_BnNBsD;
         }
     } else {
-        static_assert((LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) ||
-                          (LAYOUT_KV == QFA_LAYOUT::TND),
-                      "Get Key DeScale GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
+        static_assert(
+            (LAYOUT_KV == QFA_LAYOUT::BSND) || (LAYOUT_KV == QFA_LAYOUT::BNSD) || (LAYOUT_KV == QFA_LAYOUT::TND),
+            "Get Key DeScale GmFormat fail, LAYOUT_KV is incorrect when KV Continuous");
         if constexpr (LAYOUT_KV == QFA_LAYOUT::BSND) {
             return GmFormat::BSND;
         } else if constexpr (LAYOUT_KV == QFA_LAYOUT::BNSD) {
@@ -201,11 +201,11 @@ private:
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                      // 8K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);         // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                     // 32K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T);        // 2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                      // 16K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
     static constexpr uint32_t L1_KV_BUFCNT = 4;
@@ -307,10 +307,9 @@ public:
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
                          constInfo.dSize / MXFP_GROUP_SIZE, kvSeqLensTool, keyScaleGm, dequantScaleKey);
 
-        InitVScaleBuffer(constInfo.bSize,
-                         static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
-                         constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool,
-                         valueScaleGm, dequantScaleValue);
+        InitVScaleBuffer(
+            constInfo.bSize, static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
+            constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool, valueScaleGm, dequantScaleValue);
     }
 
     __aicore__ inline void InitTensors()
@@ -374,10 +373,7 @@ public:
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, 229888, 128 * 4);
     }
 
-    __aicore__ inline void ReleaseTensors()
-    {
-        FreeEventID();
-    }
+    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
 
     __aicore__ inline void ComputeMm1(const RunInfo &info)
     {

@@ -297,9 +297,7 @@ public:
         }
     }
 
-    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
-    {
-    }
+    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur) {}
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
@@ -378,22 +376,22 @@ public:
         if (loop >= DELAY_P_SCALE_N && runInfo3.isValid) {
             if (runInfo3.isUpdatePScale) {
                 if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2);
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2 + 16);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
+                                                              runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
+                                                              runInfo3.tileMaxIdx / 2 + 16);
                     CopyGMaxL1ToUb(runInfo3);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                             runInfo3.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                             runInfo3.tileMaxIdx / 2 + 16);
                     if (runInfo3.tileMaxIdx == 3) {
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1 + 16);
                     }
                 } else {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                           runInfo3.tileMaxIdx / 2);
                     UpdatePScale(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo3.pscaleNum);
                 }
@@ -418,47 +416,26 @@ public:
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_UB_L1);
                     }
                     CopyGMaxUbToL1(runInfo0);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(
-                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
+                                                             runInfo0.tileMaxIdx / 2);
                 }
             }
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
-    {
-        cubeBlock.ComputeMm1(runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfo &runInfo) { cubeBlock.ComputeMm1(runInfo); }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
-    {
-        cubeBlock.ComputeMm2(runInfo);
-    }
+    __aicore__ inline void ComputeMm2(RunInfo &runInfo) { cubeBlock.ComputeMm2(runInfo); }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
-    {
-        vectorBlock.ComputeVec1(runInfo);
-    }
+    __aicore__ inline void ComputeVec1(RunInfo &runInfo) { vectorBlock.ComputeVec1(runInfo); }
 
-    __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo)
-    {
-        vectorBlock.CopyGMaxUbToL1(runInfo);
-    }
+    __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo) { vectorBlock.CopyGMaxUbToL1(runInfo); }
 
-    __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo)
-    {
-        cubeBlock.CopyGMaxL1ToUb(runInfo);
-    }
+    __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo) { cubeBlock.CopyGMaxL1ToUb(runInfo); }
 
-    __aicore__ inline void UpdatePScale(RunInfo &runInfo)
-    {
-        vectorBlock.UpdatePScale(runInfo);
-    }
+    __aicore__ inline void UpdatePScale(RunInfo &runInfo) { vectorBlock.UpdatePScale(runInfo); }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
-    {
-        vectorBlock.ComputeVec2(runInfo);
-    }
+    __aicore__ inline void ComputeVec2(RunInfo &runInfo) { vectorBlock.ComputeVec2(runInfo); }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])

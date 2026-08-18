@@ -42,9 +42,9 @@ namespace QFA_KERNEL {
 template <QFA_LAYOUT LAYOUT_OUT>
 __aicore__ inline constexpr GmFormat GetAttentionOutGmFormat()
 {
-    static_assert((LAYOUT_OUT == QFA_LAYOUT::BSND) || (LAYOUT_OUT == QFA_LAYOUT::BNSD) ||
-                      (LAYOUT_OUT == QFA_LAYOUT::TND),
-                  "Get OUT GmFormat fail, LAYOUT_OUT is incorrect");
+    static_assert(
+        (LAYOUT_OUT == QFA_LAYOUT::BSND) || (LAYOUT_OUT == QFA_LAYOUT::BNSD) || (LAYOUT_OUT == QFA_LAYOUT::TND),
+        "Get OUT GmFormat fail, LAYOUT_OUT is incorrect");
     if constexpr (LAYOUT_OUT == QFA_LAYOUT::BSND) {
         return GmFormat::BSNGD;
     } else if constexpr (LAYOUT_OUT == QFA_LAYOUT::BNSD) {
@@ -57,9 +57,9 @@ __aicore__ inline constexpr GmFormat GetAttentionOutGmFormat()
 template <QFA_LAYOUT LAYOUT_OUT>
 __aicore__ inline constexpr UbFormat GetOutUbFormat()
 {
-    static_assert((LAYOUT_OUT == QFA_LAYOUT::BNSD) || (LAYOUT_OUT == QFA_LAYOUT::BSND) ||
-                      (LAYOUT_OUT == QFA_LAYOUT::TND),
-                  "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
+    static_assert(
+        (LAYOUT_OUT == QFA_LAYOUT::BNSD) || (LAYOUT_OUT == QFA_LAYOUT::BSND) || (LAYOUT_OUT == QFA_LAYOUT::TND),
+        "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
     if constexpr (LAYOUT_OUT == QFA_LAYOUT::BSND || LAYOUT_OUT == QFA_LAYOUT::TND) {
         return UbFormat::S1G;
     } else if constexpr (LAYOUT_OUT == QFA_LAYOUT::BNSD) {
@@ -268,10 +268,7 @@ public:
         Mxfp4Api::InitIndexesAndDuplicateCallVF<half>(nd2nzIndexUB, localGlobalMaxUB);
     }
 
-    __aicore__ inline void ReleaseTensors()
-    {
-        FreeEventID();
-    }
+    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
 
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {
