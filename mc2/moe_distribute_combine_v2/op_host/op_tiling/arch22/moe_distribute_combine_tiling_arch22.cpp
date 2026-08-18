@@ -115,8 +115,7 @@ static ge::graphStatus MoeDistributeCombineCheckCommAlg(const gert::TilingContex
         isLayered = true;
         return ge::GRAPH_SUCCESS;
     } else {
-        OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commAlg", commAlg != nullptr ? commAlg : "null",
-                                  "fullmesh or hierarchy");
+        OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "commAlg", commAlg != nullptr ? commAlg : "null", "fullmesh or hierarchy");
         return GRAPH_FAILED;
     }
 }
@@ -258,11 +257,11 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(const gert::T
                                               epWorldSizePtr ? std::to_string(*epWorldSizePtr).c_str() : "null",
                                               "in valid range or 8-aligned"),
                     return GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId",
-                                              epRankIdPtr ? std::to_string(*epRankIdPtr).c_str() : "null",
-                                              "in range [0, epWorldSize)"),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
+        OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", epRankIdPtr ? std::to_string(*epRankIdPtr).c_str() : "null",
+                                  "in range [0, epWorldSize)"),
+        return GRAPH_FAILED);
     int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > maxMoeExpertNums ||
                         *moeExpertNumPtr % *epWorldSizePtr != 0,
@@ -272,10 +271,10 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(const gert::T
                     return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "tpWorldSize"),
                     return GRAPH_FAILED);
-    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
-                    OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "tp_world_size",
-                                              std::to_string(*tpWorldSizePtr).c_str(), "less than 2"),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *tpWorldSizePtr >= 2,
+        OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "tp_world_size", std::to_string(*tpWorldSizePtr).c_str(), "less than 2"),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "expertSharedType"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "sharedExpertRankNum"),
@@ -341,10 +340,9 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
                     return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "expertIdShape"),
                     return GRAPH_FAILED);
-    OP_TILING_CHECK(
-        elasticInfoStorageShape != nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "elasticInfo", "present", "not supported in current version"),
-        return GRAPH_FAILED);
+    OP_TILING_CHECK(elasticInfoStorageShape != nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "elasticInfo", "present", "not supported in current version"),
+                    return GRAPH_FAILED);
 
     // copy expert and const expert
     const gert::StorageShape *oriXStorageShape = context->GetOptionalInputShape(config.oriXIndex);
@@ -354,23 +352,23 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         context->GetOptionalInputShape(config.constExpertAlpha2Index);
     const gert::StorageShape *constExpertVStorageShape = context->GetOptionalInputShape(config.constExpertVIndex);
 
-    OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        K_OP_NAME, "expandX",
-                        std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(),
-                        "The shape dim of expandX must be 2D."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            K_OP_NAME, "expandX", std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()).c_str(),
+            "The shape dim of expandX must be 2D."),
+        return GRAPH_FAILED);
     uint32_t h = expandXStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(h == 0 || h > MAX_HIDDEN_SIZE_A2 || h % BLOCK_SIZE_A2 != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "h", std::to_string(h).c_str(),
-                                              "in valid range [1, 10240], 32-aligned"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        K_OP_NAME, "expertId",
-                        std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(),
-                        "The shape dim of expertId must be 2D."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        h == 0 || h > MAX_HIDDEN_SIZE_A2 || h % BLOCK_SIZE_A2 != 0,
+        OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "h", std::to_string(h).c_str(), "in valid range [1, 10240], 32-aligned"),
+        return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            K_OP_NAME, "expertId", std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()).c_str(),
+            "The shape dim of expertId must be 2D."),
+        return GRAPH_FAILED);
     uint32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
     uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
     OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
@@ -408,26 +406,26 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
                             "The dim0 of xActiveMask should equal to bs=" + std::to_string(bs)),
                         return GRAPH_FAILED);
 
-        OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
-                         (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
-                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                            K_OP_NAME, "xActiveMask",
-                            std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)).c_str(),
-                            "The dim1 of xActiveMask should equal to k=" + std::to_string(k)),
-                        return GRAPH_FAILED);
+        OP_TILING_CHECK(
+            ((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
+             (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                K_OP_NAME, "xActiveMask", std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)).c_str(),
+                "The dim1 of xActiveMask should equal to k=" + std::to_string(k)),
+            return GRAPH_FAILED);
     }
 
     // copy expert and const expert
-    OP_TILING_CHECK(copyExpertNum > 0 && oriXStorageShape == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_OP_NAME, "oriX", "missing",
-                                                          "oriX must exist when copyExpertNum > 0"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(constExpertNum > 0 &&
-                        (oriXStorageShape == nullptr || constExpertAlpha1StorageShape == nullptr ||
-                         constExpertAlpha2StorageShape == nullptr || constExpertVStorageShape == nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_OP_NAME, "const_expert_inputs", "missing",
-                                                          "oriX, alpha1, alpha2, V must exist when constExpertNum > 0"),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        copyExpertNum > 0 && oriXStorageShape == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_OP_NAME, "oriX", "missing", "oriX must exist when copyExpertNum > 0"),
+        return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        constExpertNum > 0 && (oriXStorageShape == nullptr || constExpertAlpha1StorageShape == nullptr ||
+                               constExpertAlpha2StorageShape == nullptr || constExpertVStorageShape == nullptr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_OP_NAME, "const_expert_inputs", "missing",
+                                              "oriX, alpha1, alpha2, V must exist when constExpertNum > 0"),
+        return GRAPH_FAILED);
 
     OP_TILING_CHECK(
         constExpertAlpha1StorageShape != nullptr || constExpertAlpha2StorageShape != nullptr ||
@@ -440,8 +438,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         // 必须是2维
         OP_TILING_CHECK(oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                            K_OP_NAME, "ori_x",
-                            std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()).c_str(),
+                            K_OP_NAME, "ori_x", std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()).c_str(),
                             "The shape dim of ori_x must be 2D."),
                         return GRAPH_FAILED);
 
@@ -525,15 +522,15 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
                         return GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(performanceInfoStorageShape != nullptr &&
-                        performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        K_OP_NAME, "performanceInfo",
-                        performanceInfoStorageShape != nullptr ?
-                            std::to_string(performanceInfoStorageShape->GetStorageShape().GetDimNum()).c_str() :
-                            "null",
-                        "When performanceInfo is not null, it needs to be one-dimensional."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            K_OP_NAME, "performanceInfo",
+            performanceInfoStorageShape != nullptr ?
+                std::to_string(performanceInfoStorageShape->GetStorageShape().GetDimNum()).c_str() :
+                "null",
+            "When performanceInfo is not null, it needs to be one-dimensional."),
+        return GRAPH_FAILED);
     attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_OP_NAME, "attrs"), return ge::GRAPH_FAILED);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
@@ -599,16 +596,19 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckCommAlg Failed"),
                     return ge::GRAPH_FAILED);
     int32_t commQuantMode = 0;
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info, isLayered, config) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered, config) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2CheckShapeAndSetTiling(context, info, isLayered, config) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered, config) !=
+            ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);

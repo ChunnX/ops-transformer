@@ -136,16 +136,16 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
     OP_TILING_CHECK(!isLayered && *moeExpertNumPtr / *epWorldSizePtr > UNLAYERED_EXP_NUM_PER_RANK_A2,
                     OP_LOGE_WITH_INVALID_ATTR(
                         K_INNER_DEBUG, "moe_expert_num", std::to_string(*moeExpertNumPtr).c_str(),
-                        (std::string("at most ") +
-                         std::to_string(UNLAYERED_EXP_NUM_PER_RANK_A2 * *epWorldSizePtr) + " in unlayered mode")
+                        (std::string("at most ") + std::to_string(UNLAYERED_EXP_NUM_PER_RANK_A2 * *epWorldSizePtr) +
+                         " in unlayered mode")
                             .c_str()),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"), return GRAPH_FAILED);
     OP_TILING_CHECK(*tpWorldSizePtr >= 2,
-                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "tp_world_size",
-                                              std::to_string(*tpWorldSizePtr).c_str(), "less than 2"),
+                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "tp_world_size", std::to_string(*tpWorldSizePtr).c_str(),
+                                              "less than 2"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"),
                     return GRAPH_FAILED);
@@ -326,21 +326,25 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
 
     // 1. tilingData
     MoeDistributeDispatchA2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."),
+                    return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "MoeDistributeDispatchA2 get tilingData.");
     MoeDistributeDispatchA2Info &info = tilingData->moeDistributeDispatchInfo;
     OP_LOGI(nodeName, "MoeDistributeDispatchA2 get tilingData info.");
 
     bool isLayered = MoeDistributeDispatchA2IsLayered();
-    OP_TILING_CHECK(MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
@@ -355,7 +359,8 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     context->SetTilingKey(tilingKey);
     // 2. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "workSpaces is nullptr."),
+                    return ge::GRAPH_FAILED);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + USER_WORKSPACE_A2;
 
     // 3. communication
@@ -396,16 +401,15 @@ ge::graphStatus MoeDistributeDispatchTilingA2A3::CheckEpWorldSizeAttrs(const cha
     uint32_t epWorldSize = tilingData.moeDistributeDispatchInfo.epWorldSize;
 
     // 检验epWorldSize是否是8的倍数
-    OP_TILING_CHECK(epWorldSize % 8 != 0,
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
-                                              "divisible by 8"),
-                    return ge::GRAPH_FAILED);
-
     OP_TILING_CHECK(
-        (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
-        OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
-                                  "one of [8, 16, 32, 64, 128, 144, 256, 288]"),
+        epWorldSize % 8 != 0,
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(), "divisible by 8"),
         return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
+                                              "one of [8, 16, 32, 64, 128, 144, 256, 288]"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

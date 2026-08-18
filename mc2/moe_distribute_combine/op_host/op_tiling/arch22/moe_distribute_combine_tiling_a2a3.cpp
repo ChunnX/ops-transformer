@@ -166,8 +166,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
                     OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epWorldSize", "invalid", "valid epWorldSize"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"),
-                    return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "epRankId", "invalid", "valid epRankId"), return GRAPH_FAILED);
     OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
                         *moeExpertNumPtr % *epWorldSizePtr != 0,
                     OP_LOGE_FOR_INVALID_VALUE(K_OP_NAME, "moeExpertNum", "invalid", "valid moeExpertNum"),
@@ -282,21 +281,24 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     auto ret = context->SetScheduleMode(batch_mode);
     MC2_CHECK_LOG_RET(nodeName, ret);
     MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."),
+                    return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "MoeDistributeCombineA2 get tilingData.");
     MoeDistributeCombineA2Info &info = tilingData->moeDistributeCombineInfo;
     bool isLayered = MoeDistributeCombineA2IsLayered();
     int32_t commQuantMode = 0;
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
@@ -308,7 +310,8 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     uint64_t tilingKey = MoeDistributeCombineA2CalcTilingKey(context, isLayered, commQuantMode);
     context->SetTilingKey(tilingKey);
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "workSpaces is nullptr."),
+                    return ge::GRAPH_FAILED);
     uint32_t userWorkspaceSize = static_cast<uint32_t>(info.moeExpertNum) * sizeof(uint32_t) * 2;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkspaceSize;
     auto attrs = context->GetAttrs();
@@ -339,14 +342,14 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingChec
     commQuantMode = 0U;
 
     // 获取入参属性
-    OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) ==
-                        ge::GRAPH_FAILED,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, groupTp, commQuantMode) == ge::GRAPH_FAILED,
+        OP_LOGE_WITHOUT_REPORT(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // 检查输入输出的dim、format、dataType
-    OP_TILING_CHECK(MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombine(context, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
 
     // 检查属性的取值是否合法
     OP_TILING_CHECK(!CheckAttrs(context, *tilingData, nodeName, localMoeExpertNum),
@@ -367,7 +370,8 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingChec
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "Tiling set workspace Failed"),
+                    return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
@@ -385,7 +389,8 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingFunc
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeCombine Tiling func");
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(nodeName, "tilingData is nullptr."),
+                    return ge::GRAPH_FAILED);
     uint32_t commQuantMode;
 
     // 统一调用所有校验逻辑
@@ -420,16 +425,15 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingFunc
 bool MoeDistributeCombineTilingA2A3::CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize)
 {
     // 检验epWorldSize是否是8的倍数
-    OP_TILING_CHECK(epWorldSize % 8 != 0,
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
-                                              "divisible by 8"),
-                    return false);
-
     OP_TILING_CHECK(
-        (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
-        OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
-                                  "one of [8, 16, 32, 64, 128, 144, 256, 288]"),
+        epWorldSize % 8 != 0,
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(), "divisible by 8"),
         return false);
+
+    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "ep_world_size", std::to_string(epWorldSize).c_str(),
+                                              "one of [8, 16, 32, 64, 128, 144, 256, 288]"),
+                    return false);
 
     return true;
 }

@@ -296,8 +296,8 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(const gert::
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(*tpWorldSizePtr >= 2,
-                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "tp_world_size",
-                                              std::to_string(*tpWorldSizePtr).c_str(), "less than 2"),
+                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "tp_world_size", std::to_string(*tpWorldSizePtr).c_str(),
+                                              "less than 2"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"), return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"),
@@ -622,15 +622,18 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTili
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckCommAlg(context, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckCommAlg Failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
@@ -659,9 +662,11 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTili
     std::string algConfig = MoeDistributeCombineA2GetAlgConfig(*epWorldSizePtr, isLayered);
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(18), algConfig); // opType=18 BatchWrite
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"),
+                    return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Leave MoeDistributeDispatchA2 tiling func.");
     return ge::GRAPH_SUCCESS;
