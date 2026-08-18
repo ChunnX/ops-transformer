@@ -29,6 +29,13 @@
   </thead>
   <tbody>
     <tr>
+    <td>context</td>
+    <td>输入</td>
+    <td>本卡通信域信息数据。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    </tr>
+    <tr>
     <td>x</td>
     <td>输入</td>
     <td>本卡发送的token数据，2D Tensor，shape为 <code>(Y, H)</code>（H=hidden size）。</td>

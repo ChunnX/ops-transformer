@@ -29,6 +29,13 @@
   </thead>
   <tbody>
     <tr>
+    <td style="white-space: nowrap">context</td>
+    <td style="white-space: nowrap">输入</td>
+    <td style="white-space: nowrap">本卡通信域信息数据。</td>
+    <td style="white-space: nowrap">INT32</td>
+    <td style="white-space: nowrap">ND</td>
+    </tr>
+    <tr>
     <td style="white-space: nowrap">x</td>
     <td style="white-space: nowrap">输入</td>
     <td style="white-space: nowrap">本卡发送的token数据，3D Tensor，shape为 <code>(X, Bs, H)。</code></td>
