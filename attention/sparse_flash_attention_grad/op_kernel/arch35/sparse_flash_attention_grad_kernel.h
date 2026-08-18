@@ -220,6 +220,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
         if (sTaskId > 0) {
             if ASCEND_IS_AIC {
+                // det 归约 AIV→AIC 回传：等 AIV0/AIV1 上一轮 ScatterAddDeter 读完 mm4/mm5 后才允许 AIC 覆盖
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+                // mode0 全 AIC barrier：保证所有 AIC 核本轮 C4/C5(mm4/mm5) 写完，之后 Set(13) 才代表"全核 mm4/mm5 就绪"
                 CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                 CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -228,6 +232,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                 this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
                                 this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
             }
         }
         sTaskId++;
@@ -236,6 +241,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
         if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
             CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -244,12 +251,20 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
                             this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
         }
+    }
+
+    // 【新增】dSink 第1步：tail ProcessNotFirst 完成后（dSinkAcc 累加完仍在 UB）、补偿段之前写回
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
     }
 
     // 分核不均匀时部分核会少一个C核的全核同步
     if (this->processBS1ByCore < this->tilingData->baseParams.formerCoreProcessNNum) {
         if ASCEND_IS_AIC {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
             CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
@@ -259,6 +274,23 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
                             this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+        }
+    }
+
+    // 【新增】dSink 第2步：补偿段之后、循环外，单 writer 跨核 reduce（仅 IS_SINKS，ReduceDSink 内再 constexpr 守护 IS_DETER）
+    // 全核 barrier（AIC+AIV 都到达）保证各 AIV 的 dSinkAcc slot 写（FinalizeDSinkAcc 的 MTE3 写 GM）
+    // 全部完成并可见，之后才允许单 writer（cBlockIdx==usedCoreNum-1&&vSubBlockIdx==0）读取归约。
+    // 不能依赖 CrossCore flag(11-14)：David 上非全核 barrier / set-wait 计数错配，
+    // 单 writer 会提前读到未写完的 slot（d_sinks 竞态、值离散跳变 10x）。
+    // SyncAll<false> 已在 entry（opPre/op 后）复用且验证可靠，此处复用同一硬 barrier。
+    // 性能隔离：无 sink 时无 dSink 归约，整块（含全核 barrier）编译期消除
+    if constexpr (IS_SINKS) {
+        this->SyncALLCores();
+        if ASCEND_IS_AIV {
+            LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
+            LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
+            this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
         }
     }
     this->FreeEventID();
@@ -291,6 +323,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+    }
+
+    // 【新增】dSink 第1步：非 deter 走 AtomicAdd 直写 dSinksGm（FinalizeDSinkAcc 内 IS_DETER=false 分支）
+    // 第2步 reduce 仅 deter，非 deter 不调用
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
     }
     this->FreeEventID();
 }

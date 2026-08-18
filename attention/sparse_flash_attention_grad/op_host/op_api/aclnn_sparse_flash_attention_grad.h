@@ -18,6 +18,8 @@
 extern "C" {
 #endif
 
+// 【回退商发兼容】V1 不带 sinks/dSinks（5 输出），位置参数与商发 npu_sparse_flash_attention_grad 严格对齐。
+// 带 sinks/dSinks（6 输出）请使用 aclnnSparseFlashAttentionGradV2。
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,

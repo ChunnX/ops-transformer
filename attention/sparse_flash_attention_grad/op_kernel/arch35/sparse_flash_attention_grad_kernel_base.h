@@ -24,11 +24,12 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 class FlashAttentionScoreGradKernelBase {
 public:
     ARGS_TRAITS;
-    __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparse_indices, GM_ADDR dy, 
+    __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparse_indices, GM_ADDR dy,
                                 GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                 GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR queryRope,
                                 GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope,
-                                GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData, TPipe *pipeIn);
+                                GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData, TPipe *pipeIn,
+                                GM_ADDR sinks, GM_ADDR dSinks);
     __aicore__ inline void InitCVCommonBuffer();
     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace);
     __aicore__ inline void SetConstInfo();
@@ -162,6 +163,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[1]);
+        // det 归约 AIV→AIC 回传握手：预置一次，供 AIC 首个 Wait(14) 消费
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
     }
 }
 
@@ -179,16 +182,20 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[1]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[1]);
-    } 
+        // det 归约 AIV→AIC 回传握手：等待 AIV 最后一次 ScatterAddDeter 完成
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+    }
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init(
-    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparseIndices, GM_ADDR dy, 
+    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparseIndices, GM_ADDR dy,
     GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
     GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR queryRope,
     GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope,
-    GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData, TPipe *pipeIn)
+    GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData, TPipe *pipeIn,
+    GM_ADDR sinks, GM_ADDR dSinks)
 {
     // init current core tilingInfo
     if ASCEND_IS_AIV {
@@ -223,7 +230,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     vecBlock.SetVecBlockParams(pipeIn, tilingData, vBlockIdx, cBlockIdx, vSubBlockIdx, constInfo, attenMaskInfo, pseInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(key, dy, y, sparseIndices, softmaxMax, softmaxSum, keyRope,
-                              dq, dk, dv, actualSeqQlen, actualSeqKvlen, workspace);
+                              dq, dk, dv, actualSeqQlen, actualSeqKvlen, workspace, sinks, dSinks);
  
     // pass params to cube block
     cubeBlock.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);

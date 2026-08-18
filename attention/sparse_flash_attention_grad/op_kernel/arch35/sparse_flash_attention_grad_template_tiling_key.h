@@ -50,12 +50,16 @@
      //      0: DISABLE
      //      1: ENABLE
      ASCENDC_TPL_BOOL_DECL(IsRope, 0, 1),
-     // bit: 34 IsRope
+     // bit: 34 Deterministic
      //      0: DISABLE
      //      1: ENABLE
-     ASCENDC_TPL_BOOL_DECL(Deterministic, 0, 1)
+     ASCENDC_TPL_BOOL_DECL(Deterministic, 0, 1),
+     // bit: 35 HasSinks  【新增】sink 增量：sinks 是否存在（编译期模板参数 HAS_SINKS）
+     //      0: DISABLE
+     //      1: ENABLE
+     ASCENDC_TPL_BOOL_DECL(HasSinks, 0, 1)
  );
- 
+
  ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 0, 1),
@@ -65,6 +69,7 @@
         ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512, 576),
         ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasSinks, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfagTilingWithTemplate)
     )
  );
