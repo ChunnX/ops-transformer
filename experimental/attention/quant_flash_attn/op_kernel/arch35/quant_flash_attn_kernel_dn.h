@@ -391,6 +391,7 @@ public:
             if (runInfo3.isUpdatePScale) {
                 if ASCEND_IS_AIC {
 <<<<<<< HEAD
+<<<<<<< HEAD
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                               runInfo3.tileMaxIdx / 2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
@@ -407,17 +408,33 @@ public:
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2 + 16);
+                    CopyGMaxL1ToUb(runInfo3);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
+>>>>>>> 68a2959f3... cleancode清理
                     if (runInfo3.tileMaxIdx == 3) {
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1 + 16);
                     }
                 } else {
 <<<<<<< HEAD
+<<<<<<< HEAD
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
                                                            runInfo3.tileMaxIdx / 2);
 =======
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+>>>>>>> 68a2959f3... cleancode清理
                     UpdatePScale(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo3.pscaleNum);
                 }
@@ -443,11 +460,16 @@ public:
                     }
                     CopyGMaxUbToL1(runInfo0);
 <<<<<<< HEAD
+<<<<<<< HEAD
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                              runInfo0.tileMaxIdx / 2);
 =======
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
+>>>>>>> 68a2959f3... cleancode清理
                 }
             }
         }
@@ -503,11 +525,16 @@ public:
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
 <<<<<<< HEAD
+<<<<<<< HEAD
             info.actSingleLoopS2Size =
                 (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
 =======
             info.actSingleLoopS2Size = (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+            info.actSingleLoopS2Size =
+                (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
+>>>>>>> 68a2959f3... cleancode清理
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK);      // 统一对齐到32
