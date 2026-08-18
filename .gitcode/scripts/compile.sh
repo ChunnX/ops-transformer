@@ -180,6 +180,7 @@ if [[ -z "${compile_package_name}" ]]; then
         echo "not need compile"
         mkdir build_out
         touch build_out/cann-ops-transformer_linux-${OS_TYPE}.run
+        echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
         exit 0
     else
         echo "ERROR: Not find *.run in  ${WORKSPACE}/output/package/!"
