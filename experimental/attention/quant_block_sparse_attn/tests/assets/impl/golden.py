@@ -89,7 +89,7 @@ def cpu_quant_block_sparse_attn(
     sparse_block_size_q=128,
     sparse_block_size_kv=128,
     layout_q="TND",
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_out="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
@@ -240,7 +240,7 @@ def _mxfp8_cpu_golden(
     seqused_q=None,
     seqused_kv=None,
     block_table=None,
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
@@ -283,7 +283,6 @@ def _mxfp8_cpu_golden(
             "layout_sparse_indices": layout_sparse_indices,
             "layout_out": layout_out,
             "kv_cache_layout": "BnNBsD",
-            "is_contiguous": True,
             "p_scale_value": (
                 None
                 if kwargs.get("p_scale_value") is None
@@ -409,7 +408,7 @@ def _fp8_cpu_golden(
     seqused_kv=None,
     block_table=None,
     blocksize=0,
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
