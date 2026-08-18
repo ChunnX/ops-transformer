@@ -11,6 +11,7 @@
 #include "grouped_matmul_activation_quant_tiling.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -77,6 +78,8 @@ constexpr uint8_t ACTIVATION_TYPE_GELU_TANH = 2;
 constexpr char ACTIVATION_TYPE_GELU_TANH_STR[] = "gelu_tanh";
 constexpr char QUANT_MODE_MX_STR[] = "mx";
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
+constexpr float FP4_E2M1_DST_TYPE_MAX_MIN = 6.0f;
+constexpr float FP4_E2M1_DST_TYPE_MAX_MAX = 12.0f;
 
 std::string ShapeToDebugString(const gert::Shape &shape)
 {
@@ -137,9 +140,10 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
+    const float *dstTypeMaxPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_DST_TYPE_MAX);
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
     OP_CHECK_IF(yDtypePtr == nullptr || roundModePtr == nullptr || scaleAlgPtr == nullptr ||
-                    activationTypePtr == nullptr,
+                    dstTypeMaxPtr == nullptr || activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
     if (yDtype == ge::DT_UNDEFINED) {
@@ -190,6 +194,23 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                                                       std::to_string(*scaleAlgPtr),
                                                       "scale_alg 2 only supports FLOAT4_E2M1 output"),
                 return false);
+    const bool isDefaultDstTypeMax = Ops::Base::IsFloatEqual(*dstTypeMaxPtr, DEFAULT_DST_TYPE_MAX);
+    if (*scaleAlgPtr == SCALE_ALG_DYNAMIC_DTYPE_RANGE) {
+        OP_CHECK_IF(!std::isfinite(*dstTypeMaxPtr) ||
+                        (!isDefaultDstTypeMax &&
+                         (*dstTypeMaxPtr < FP4_E2M1_DST_TYPE_MAX_MIN ||
+                          *dstTypeMaxPtr > FP4_E2M1_DST_TYPE_MAX_MAX)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "dst_type_max", std::to_string(*dstTypeMaxPtr),
+                        "when scale_alg is 2, dst_type_max must be 0.0 or within [6.0, 12.0]"),
+                    return false);
+    } else {
+        OP_CHECK_IF(!isDefaultDstTypeMax,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "dst_type_max",
+                                                          std::to_string(*dstTypeMaxPtr),
+                                                          "when scale_alg is not 2, dst_type_max must be 0.0"),
+                    return false);
+    }
     std::string activationType(activationTypePtr);
     OP_CHECK_IF(activationType != ACTIVATION_TYPE_GELU_TANH_STR,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "activation_type", activationType,
@@ -198,7 +219,7 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     roundMode_ = ROUND_MODE_RINT;
     scaleAlg_ = static_cast<uint8_t>(*scaleAlgPtr);
     activationType_ = ACTIVATION_TYPE_GELU_TANH;
-    dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
+    dstTypeMax_ = isDefaultDstTypeMax ? DEFAULT_DST_TYPE_MAX : *dstTypeMaxPtr;
     yDtype_ = yDtype;
     inputParams_.groupType = GroupedMatmul::SPLIT_M;
     return true;
