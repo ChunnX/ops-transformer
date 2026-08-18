@@ -1,6 +1,6 @@
-# MegaMoe A8W4 token-wave 关键路径打点
+# MegaMoe A8W4 Wave 关键路径打点
 
-这是一套用于当前 A8W4 token-wave 性能分析的轻量诊断工具。它只记录 Wave 切片粒度的
+这是一套用于 A8W4 Wave 性能分析的轻量诊断工具。它只记录 Wave 切片粒度的
 Dispatch、GMM1、prologue、Activation、GMM2 和 Combine，不记录逐 tile 数据。
 
 ## 1. 构建与运行
@@ -10,6 +10,15 @@ Dispatch、GMM1、prologue、Activation、GMM2 和 Combine，不记录逐 tile �
 ```cpp
 MEGA_MOE_ENABLE_A8W4_WAVE_TRACE=1
 ```
+
+Wave 切分粒度由以下开关控制：
+
+```cpp
+MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE=0  // 按完整 expert 分 Wave
+MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE=1  // 允许在 expert 内按 token 分 Wave
+```
+
+生成对比包时只切换该开关，其他编译参数和 Trace 配置应保持一致。
 
 正常代码合入前应将其关闭或删除打点。启用后，kernel 在正常计算完成后把 trace 覆盖到输出 `y`，因此该包只用于
 性能诊断，不能继续用 `y` 做精度比较。
@@ -118,12 +127,15 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py rank0.raw \
 - `events.csv`：便于排序、聚合和计算每个 Wave 的耗时；
 - `timeline.svg`：AIC/AIV0/AIV1 的阶段与等待区间，鼠标悬停可查看 Wave、专家和 token 范围。
 - `index.html`：自包含交互报告，可选择单个或全部 AI Block，并按 Wave 筛选。全部 lane 使用统一的
-  `SYS_CNT` cycle 原点；每个 role/core 只占一条泳道，显式轮询等待以窄色条覆盖在对应阶段区间底部。鼠标悬停
+  `SYS_CNT` cycle 原点；每个 role/core 只占一条泳道，显式轮询等待以全高灰色区间覆盖在对应阶段上。鼠标悬停
   或点击事件块可查看 begin/end cycle、父阶段和对应的代码打点边界。当前平台按 `1000 cycles = 1 μs` 换算。
 
 交互报告还提供泳道概览。筛选、排序和前 N 限制均以 Block 为单位，同一 Block 的 AIC/AIV0/AIV1 始终绑定
 显示；可按是否存在等待筛选，并按 Block 的 Process 总时长、事件覆盖时长、累计等待、等待占比、最后打点位置
-或尾部空洞排序。概览表先显示 Block 汇总，再显示三个角色的明细；点击任意一行可定位到对应 Block。
+或尾部空洞排序。时间线中每个 Block 的三条泳道使用同一背景框，左侧只展示角色及 Process/Wait 简写。点击图钉可将
+整个 Block 或单条泳道固定到顶部对比区；固定项仍跟随 Wave 筛选，但不受 AI Block、等待筛选、排序和 Top-N 限制影响。概览表先显示
+pin 只影响固定对比区，下方普通 Block 列表仍按原筛选和排序显示，不会将已固定 Block 置顶或高亮。概览表先显示 Block 汇总，再显示三个
+角色的明细；点击任意一行可定位到对应 Block。
 
 也可以一次显式传入多个文件：
 

@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_trace.h
- * \brief 仅供诊断构建使用的 A8W4 token-wave 轻量关键路径打点。
+ * \brief 仅供诊断构建使用的 A8W4 Wave 轻量关键路径打点。
  */
 
 #ifndef MEGA_MOE_TRACE_H
