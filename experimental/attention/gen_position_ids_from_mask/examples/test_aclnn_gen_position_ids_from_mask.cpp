@@ -85,6 +85,7 @@ const char *DtypeName(aclDataType dt)
 }
 
 // ---- 单个用例 ----
+// 仅 ACL/运行时失败时返回 false；数值不一致通过 g_failed 计数。
 bool RunCase(const std::string &name, const std::vector<int32_t> &mask, int64_t B, int64_t S, int64_t fill,
              aclDataType inDtype, aclrtStream stream)
 {
@@ -131,12 +132,29 @@ bool RunCase(const std::string &name, const std::vector<int32_t> &mask, int64_t 
     std::cout << "[" << (ok ? "PASS" : "FAIL") << "] " << DtypeName(inDtype) << " | " << name << " B=" << B
               << " S=" << S << " fill=" << fill;
     if (!ok) {
-        std::cout << "\n        got   :";
-        for (auto v : hostOut)
-            std::cout << " " << v;
-        std::cout << "\n        expect:";
-        for (auto v : golden)
-            std::cout << " " << v;
+        size_t firstBad = 0;
+        while (firstBad < hostOut.size() && hostOut[firstBad] == golden[firstBad]) {
+            ++firstBad;
+        }
+
+        if (firstBad < hostOut.size()) {
+            const int64_t row = static_cast<int64_t>(firstBad) / S;
+            const int64_t col = static_cast<int64_t>(firstBad) % S;
+
+            std::cout << "\n        first mismatch: flat=" << firstBad << " row=" << row << " col=" << col
+                      << " got=" << hostOut[firstBad] << " expect=" << golden[firstBad];
+
+            const size_t begin = (firstBad > 4) ? firstBad - 4 : 0;
+            const size_t end = (firstBad + 5 < hostOut.size()) ? firstBad + 5 : hostOut.size();
+
+            std::cout << "\n        context:";
+            for (size_t i = begin; i < end; ++i) {
+                std::cout << "\n          [" << i << "] got=" << hostOut[i] << " expect=" << golden[i];
+                if (i == firstBad) {
+                    std::cout << "  <--";
+                }
+            }
+        }
     }
     std::cout << std::endl;
 

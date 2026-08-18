@@ -13,6 +13,7 @@
  * \brief
  */
 #include "gen_position_ids_from_mask_tiling.h"
+#include "tiling/platform/platform_ascendc.h"
 #include "register/op_def_registry.h"
 
 using namespace ge;
@@ -59,8 +60,8 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     if (shape.GetDimNum() != DIMS_LIMIT) {
         return ge::GRAPH_FAILED;
     }
-    int64_t b = shape.GetDim(DIM_B);
-    int64_t s = shape.GetDim(DIM_S);
+    const int64_t b = shape.GetDim(DIM_B);
+    const int64_t s = shape.GetDim(DIM_S);
     if (b <= 0 || s <= 0) {
         return ge::GRAPH_FAILED;
     }
@@ -71,9 +72,18 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
         return ge::GRAPH_FAILED;
     }
     const int64_t *pFill = attrs->GetAttrPointer<int64_t>(ATTR_PADDING_FILL_VALUE_INDEX);
-    int64_t fillValue = (pFill != nullptr) ? *pFill : 1;
+    const int64_t fillValue = (pFill != nullptr) ? *pFill : 1;
 
-    uint32_t blockDim = 1;
+    // 各行相互独立，按可用 Vector 核分配整行任务，保证 carry 不跨核。
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+
+    uint32_t availableCoreNum = ascendcPlatform.GetCoreNum();
+    if (availableCoreNum == 0) {
+        availableCoreNum = 1;
+    }
+
+    const uint32_t blockDim =
+        (b < static_cast<int64_t>(availableCoreNum)) ? static_cast<uint32_t>(b) : availableCoreNum;
 
     tiling.set_b(b);
     tiling.set_s(s);
@@ -91,12 +101,11 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    // workspace: 计算在片上完成, 仅需系统预留
     size_t *workspaces = context->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    workspaces[0] = static_cast<size_t>(16 * 1024 * 1024);
+    workspaces[0] = 0;
 
     return ge::GRAPH_SUCCESS;
 }

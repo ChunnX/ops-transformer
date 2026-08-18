@@ -63,3 +63,35 @@ TEST_F(GenPositionIdsFromMaskInferShapeTest, infershape_another_shape)
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+TEST_F(GenPositionIdsFromMaskInferShapeTest, infershape_reject_1d_input)
+{
+    int64_t s = 256;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "GenPositionIdsFromMask",
+        {// input info
+         {{{s}, {s}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {// output info
+         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {// attr
+         {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(GenPositionIdsFromMaskInferShapeTest, infershape_reject_3d_input)
+{
+    int64_t b = 2, s = 256;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "GenPositionIdsFromMask",
+        {// input info
+         {{{b, s, 1}, {b, s, 1}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {// output info
+         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {// attr
+         {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
+}

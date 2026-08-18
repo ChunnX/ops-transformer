@@ -19,6 +19,10 @@ using namespace ge;
 
 namespace ops {
 constexpr uint32_t MASK_INPUT_INDEX = 0;
+constexpr uint32_t POSITION_IDS_OUTPUT_INDEX = 0;
+constexpr size_t DIMS_LIMIT = 2;
+constexpr size_t DIM_B = 0;
+constexpr size_t DIM_S = 1;
 
 ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *context)
 {
@@ -26,15 +30,16 @@ ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *contex
                 return ge::GRAPH_FAILED);
     const gert::Shape *maskShape = context->GetInputShape(MASK_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, maskShape);
-    gert::Shape *posShape = context->GetOutputShape(0);
+    gert::Shape *posShape = context->GetOutputShape(POSITION_IDS_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, posShape);
 
-    // 输出 shape == 输入 shape, 逐维构造
-    size_t dimNum = maskShape->GetDimNum();
-    posShape->SetDimNum(dimNum);
-    for (size_t i = 0; i < dimNum; i++) {
-        posShape->SetDim(i, maskShape->GetDim(i));
-    }
+    const size_t dimNum = maskShape->GetDimNum();
+    OP_CHECK_IF(dimNum != DIMS_LIMIT, OP_LOGE("GenPositionIdsFromMask", "attentionMask must be a 2D tensor."),
+                return ge::GRAPH_FAILED);
+
+    posShape->SetDimNum(DIMS_LIMIT);
+    posShape->SetDim(DIM_B, maskShape->GetDim(DIM_B));
+    posShape->SetDim(DIM_S, maskShape->GetDim(DIM_S));
     return GRAPH_SUCCESS;
 }
 
@@ -42,7 +47,7 @@ ge::graphStatus InferDataTypeGenPositionIdsFromMask(gert::InferDataTypeContext *
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("GenPositionIdsFromMask", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    context->SetOutputDataType(0, ge::DT_INT64); // 固定 int64, 不跟随输入
+    context->SetOutputDataType(POSITION_IDS_OUTPUT_INDEX, ge::DT_INT64);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -21,7 +21,7 @@ BEGIN_TILING_DATA_DEF(GenPositionIdsFromMaskTilingData)
 TILING_DATA_FIELD_DEF(int64_t, b);                // batch
 TILING_DATA_FIELD_DEF(int64_t, s);                // seq len
 TILING_DATA_FIELD_DEF(int64_t, paddingFillValue); // padding 填充值
-TILING_DATA_FIELD_DEF(int64_t, coreNum);          // 实际使用核数
+TILING_DATA_FIELD_DEF(uint32_t, coreNum);         // 实际使用核数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GenPositionIdsFromMask, GenPositionIdsFromMaskTilingData)
