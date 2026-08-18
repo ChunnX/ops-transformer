@@ -147,7 +147,6 @@ private:
     } baseParams_;
 
     // ---------------- reduceSum 组件 ----------------
-    TPipe pipe_;
     AiVReduceSumImpl::ReduceSumForAlltoAll<CType> reduceSum_;
 
     const ApaceQuantMatmulReduceScatterTilingData* tilingData_{nullptr};
@@ -353,10 +352,9 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         }
         if (tileM == 0) { continue; }
 
-        // 4. reduceSum (所有 block 并行)
-        //    srcAddr = win 区 + tile 偏移 (received 数据, rank i 在 slot i)
-        //    selfAddr = workspace + tile 偏移 (self 数据, workspace 也是 rank-major 布局)
-        //    ReadDataBlockReduceSum 内部用 curRank * stride 计算 rank 偏移
+        // 4. reduceSum (所有 block 并行, 手动 UB 管理)
+        //    srcAddr = win 区 + tile 偏移 (received 数据)
+        //    selfAddr = workspace + tile 偏移 (self 数据, workspace 也是 rank-major)
         //    stride = chunkM * N (rank 间偏移, 元素单位)
         //    outputSize = tileM * N (本 tile 的元素数)
         uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
@@ -365,10 +363,9 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
         GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
 
-        pipe_.Reset();
         reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                        usedCoreNum, srcAddr, selfAddr, dstAddr, &pipe_);
-        reduceSum_.ExecuteReduceSum();
+                        usedCoreNum, srcAddr, selfAddr, dstAddr);
+        reduceSum_.ExecuteReduceSum(tileM, nSize);
     }
 
     if (GetBlockIdx() == 0) {
