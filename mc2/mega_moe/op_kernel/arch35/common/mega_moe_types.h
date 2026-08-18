@@ -32,6 +32,12 @@ struct ExpertLoopState {
     uint32_t expertIdx = 0U;
 };
 
+// 标识 MoE 专家序列中的二维 token 位置。
+struct ExpertTokenPosition {
+    uint32_t expertIdx = 0U;
+    uint32_t tokenIndexInExpert = 0U;
+};
+
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
