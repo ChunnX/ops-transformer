@@ -8,7 +8,7 @@ export ATK_CUSTOM_OPP_PATH=/usr/local/Ascend/cann-9.1.0/opp/vendors/custom_trans
 atk case -f op_block_sparse_attention.yaml -p generator_blocksparseattention.py
 
 # 执行 (V3 MXFP4)
-atk task -c ./result/op_block_sparse_attention/json/all_op_block_sparse_attention.json -n nodes.yaml -p new_mxfp4_aclnn_blocksparseattention.py -to 7200
+atk task -c ./result/op_block_sparse_attention/json/all_op_block_sparse_attention.json -n nodes.yaml -p new_mxfp4_aclnn_blocksparseattention.py -to 7200 -rn 2000
 
 # 复检命令
 # atk task -c ./result/op_block_sparse_attention/json/all_op_block_sparse_attention.json -n nodes.yaml -p new_mxfp4_aclnn_blocksparseattention.py -wl [0] -to 7200
