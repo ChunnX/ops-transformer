@@ -176,11 +176,11 @@ public:
             // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
             // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
             // 无需 LocalMemAllocator 线性分配器。
-            constexpr uint32_t mm1Sz = mBaseSize / 2U * s2BaseSize * sizeof(T);
-            constexpr uint32_t mm2Sz = mBaseSize / 2U * dVBaseSize * sizeof(T);
+            // bmm1和bmm2复用buffer
+            constexpr uint32_t mmSz = mBaseSize / 2U * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
 
             // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U;
+            constexpr uint32_t BASE = mmSz * ((dVBaseSize > 128) ? 2U : 4U);
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
@@ -202,16 +202,15 @@ public:
             // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K,
-                                                BUFFER_SIZE_BYTE_16K)
-                               .template ReinterpretCast<OUTPUT_T>();
+            fdOutputBuf_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                    .template ReinterpretCast<OUTPUT_T>();
 
             // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
             constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
             fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3, STRIDE).template ReinterpretCast<T>();
-            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE,
-                                              STRIDE)
-                             .template ReinterpretCast<T>();
+            fdSumBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf1_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 2U * STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf2_ =
