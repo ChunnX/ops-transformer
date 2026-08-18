@@ -126,7 +126,6 @@ private:
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
     uint32_t channelsPerRank_{1};
-    uint32_t numTokens_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
     uint32_t hAlignSize_{0};
@@ -143,7 +142,6 @@ private:
     uint32_t aivId_{0};
 
     GlobalTensor<XType> xGm_;
-    GlobalTensor<int32_t> topkIdxGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int64_t> numRecvPerExpertGm_;
     GlobalTensor<float> topkWeightsGm_;
@@ -174,7 +172,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
     epWorldSize_ = tilingData_->cfg.epWorldSize;
-    numTokens_ = tilingData_->cfg.numTokens;
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
@@ -205,7 +202,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
-    topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
 
