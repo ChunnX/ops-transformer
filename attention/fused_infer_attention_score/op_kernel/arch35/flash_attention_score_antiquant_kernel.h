@@ -376,6 +376,14 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
         this->constInfo.paLayoutType = inputParamsRegbase.paLayoutType;
         this->constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
     }
+    constInfo.keyBnStride = inputParamsRegbase.keyStrides.get_bnStride();
+    constInfo.keyN2Stride = inputParamsRegbase.keyStrides.get_n2Stride();
+    constInfo.valueBnStride = inputParamsRegbase.valueStrides.get_bnStride();
+    constInfo.valueN2Stride = inputParamsRegbase.valueStrides.get_n2Stride();
+    constInfo.kScaleBnStride = inputParamsRegbase.kScaleStrides.get_bnStride();
+    constInfo.kScaleN2Stride = inputParamsRegbase.kScaleStrides.get_n2Stride();
+    constInfo.vScaleBnStride = inputParamsRegbase.vScaleStrides.get_bnStride();
+    constInfo.vScaleN2Stride = inputParamsRegbase.vScaleStrides.get_n2Stride();
 
     this->constInfo.transposeLayout = inputParamsRegbase.transposeLayout;
     if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND)) {

@@ -1829,6 +1829,16 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
             inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeBnStride);
             inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeN2Stride);
         }
+        if (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 0) {
+            inputParams.kScaleStrides.set_bnStride(fiaInfo.kScaleStrides->GetStride(0));
+            inputParams.kScaleStrides.set_n2Stride(
+                fiaInfo.kScaleStrides->GetDimNum() > 1 ? fiaInfo.kScaleStrides->GetStride(1) : 0);
+        }
+        if (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 0) {
+            inputParams.vScaleStrides.set_bnStride(fiaInfo.vScaleStrides->GetStride(0));
+            inputParams.vScaleStrides.set_n2Stride(
+                fiaInfo.vScaleStrides->GetDimNum() > 1 ? fiaInfo.vScaleStrides->GetStride(1) : 0);
+        }
     }
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);

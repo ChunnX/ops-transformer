@@ -84,6 +84,10 @@ struct AntiquantTaskParamBaseAPI {
     uint64_t kvPaddingBeginOffset;
 
     bool isPrefixLoop = 0;
+    uint64_t kvBnStride = 0;
+    uint64_t kvN2Stride = 0;
+    uint64_t scaleBnStride = 0;
+    uint64_t scaleN2Stride = 0;
 };
 
 
@@ -138,7 +142,8 @@ public:
                                             uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam,
                                             int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
     __aicore__ inline void CopyKV(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
-                                  uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType);
+                                  uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType,
+                                  uint64_t kvN2Stride = 0);
     __aicore__ inline void CopyKVPaNz(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
                                       uint32_t rowCnt, uint32_t dealRowCount,
                                       const AntiquantTaskParamBaseAPI &taskParam);
@@ -268,8 +273,16 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
     uint32_t grpNum = taskParam.headDim / grpSize;
     uint64_t scaleOffset = 0;
     if (taskParam.isKvCacheNz) {
-        scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
-                      taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
+        uint64_t batchStride = taskParam.kvHeadNum * taskParam.seqSize * grpNum;
+        uint64_t headStride = taskParam.seqSize * grpNum;
+        if (taskParam.scaleBnStride != 0) {
+            batchStride = taskParam.scaleBnStride * grpNum;
+        }
+        if (taskParam.scaleN2Stride != 0) {
+            headStride = taskParam.scaleN2Stride * grpNum;
+        }
+        scaleOffset = taskParam.bIdx * batchStride +
+                      taskParam.n2Idx * headStride + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
                       taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
         if constexpr (FLASH_DECODE) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * 1;
@@ -287,23 +300,38 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
         antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
     } else {
         if constexpr (enableKVPrefix) {
+            uint64_t batchStride = taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum;
+            uint64_t headStride = taskParam.antiqSeqSize * grpNum;
+            if (taskParam.scaleBnStride != 0) {
+                batchStride = taskParam.scaleBnStride * grpNum;
+            }
+            if (taskParam.scaleN2Stride != 0) {
+                headStride = taskParam.scaleN2Stride * grpNum;
+            }
             if (taskParam.isPrefixLoop) {
-                scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
-                              taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
+                scaleOffset = taskParam.bIdx * batchStride +
+                              taskParam.n2Idx * headStride +
                               taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
                               taskParam.kvPaddingBeginOffset * grpNum +
                               subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
             } else {
-                scaleOffset =
-                    taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
-                    taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
-                    (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
-                        grpNum +
-                    taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                scaleOffset = taskParam.bIdx * batchStride +
+                              taskParam.n2Idx * headStride +
+                              (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
+                                  grpNum +
+                              taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
             }
         } else {
-            scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
-                          taskParam.n2Idx * taskParam.seqSize * grpNum +
+            uint64_t batchStrideNP = taskParam.kvHeadNum * taskParam.seqSize * grpNum;
+            uint64_t headStrideNP = taskParam.seqSize * grpNum;
+            if (taskParam.scaleBnStride != 0) {
+                batchStrideNP = taskParam.scaleBnStride * grpNum;
+            }
+            if (taskParam.scaleN2Stride != 0) {
+                headStrideNP = taskParam.scaleN2Stride * grpNum;
+            }
+            scaleOffset = taskParam.bIdx * batchStrideNP +
+                          taskParam.n2Idx * headStrideNP +
                           taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
                           taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
         }
@@ -338,34 +366,55 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
     }
     uint64_t scaleOffset = 0;
     if (taskParam.isPerHead) {
+        uint64_t batchStride = taskParam.kvHeadNum * taskParam.antiqSeqSize;
+        uint64_t headStride = taskParam.antiqSeqSize;
+        uint64_t seqStride = taskParam.singleSInnerSize;
+        if (taskParam.scaleBnStride != 0) {
+            batchStride = taskParam.scaleBnStride;
+        }
+        if (taskParam.scaleN2Stride != 0) {
+            headStride = taskParam.scaleN2Stride;
+        }
         if constexpr (enableKVPrefix) {
             if (taskParam.isPrefixLoop) {
-                scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize +
-                              taskParam.n2Idx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+                scaleOffset = taskParam.bIdx * batchStride +
+                              taskParam.n2Idx * headStride + taskParam.s2Idx * seqStride +
                               taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
             } else {
-                scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize +
-                              taskParam.n2Idx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+                scaleOffset = taskParam.bIdx * batchStride +
+                              taskParam.n2Idx * headStride + taskParam.s2Idx * seqStride +
                               (taskParam.antiqSeqSize - taskParam.seqSize) + taskParam.kvPaddingBeginOffset +
                               subBlockIdx * GetRealDealSize(s2RealSize);
             }
         } else {
-            scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize +
-                          taskParam.n2Idx * taskParam.seqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+            uint64_t batchStrideNP = taskParam.kvHeadNum * taskParam.seqSize;
+            if (taskParam.scaleBnStride != 0) {
+                batchStrideNP = taskParam.scaleBnStride;
+            }
+            uint64_t headStrideNP = taskParam.seqSize;
+            if (taskParam.scaleN2Stride != 0) {
+                headStrideNP = taskParam.scaleN2Stride;
+            }
+            scaleOffset = taskParam.bIdx * batchStrideNP +
+                          taskParam.n2Idx * headStrideNP + taskParam.s2Idx * seqStride +
                           taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
         }
     } else {
+        uint64_t batchStride = taskParam.antiqSeqSize;
+        if (taskParam.scaleBnStride != 0) {
+            batchStride = taskParam.scaleBnStride;
+        }
         if constexpr (enableKVPrefix) {
             if (taskParam.isPrefixLoop) {
-                scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+                scaleOffset = taskParam.bIdx * batchStride + taskParam.s2Idx * taskParam.singleSInnerSize +
                               taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
             } else {
-                scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+                scaleOffset = taskParam.bIdx * batchStride + taskParam.s2Idx * taskParam.singleSInnerSize +
                               (taskParam.antiqSeqSize - taskParam.seqSize) + taskParam.kvPaddingBeginOffset +
                               subBlockIdx * GetRealDealSize(s2RealSize);
             }
         } else {
-            scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
+            scaleOffset = taskParam.bIdx * batchStride + taskParam.s2Idx * taskParam.singleSInnerSize +
                           taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
         }
     }
@@ -421,7 +470,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     if (taskParam.isPertensor) {
         Duplicate(dstLocal, srcGm.GetValue(0), rowCnt * dBaseSize);
     } else if (taskParam.isPerHead) {
-        Duplicate(dstLocal, srcGm.GetValue(taskParam.n2Idx), rowCnt * dBaseSize);
+        uint64_t perHeadOffset = taskParam.n2Idx;
+        if (taskParam.scaleN2Stride != 0) {
+            perHeadOffset = taskParam.n2Idx * taskParam.scaleN2Stride;
+        }
+        Duplicate(dstLocal, srcGm.GetValue(perHeadOffset), rowCnt * dBaseSize);
     } else {
         constexpr uint64_t BYTE_BLOCK = 32UL;
 
@@ -437,7 +490,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         copyInPadParams.rightPadding = 0;
         copyInPadParams.paddingValue = 0;
 
-        DataCopyPad(dstLocal, srcGm[taskParam.antiqParamOffset], copyInParams, copyInPadParams);
+        uint64_t antiqOffset = taskParam.antiqParamOffset;
+        if (taskParam.scaleN2Stride != 0) {
+            antiqOffset = taskParam.n2Idx * taskParam.scaleN2Stride;
+        }
+        DataCopyPad(dstLocal, srcGm[antiqOffset], copyInParams, copyInPadParams);
     }
 }
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
@@ -486,7 +543,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
     if constexpr (!PAGE_ATTENTION) {
         uint64_t kvOffset = taskParam.kvGmOffset + copyLoopIdx * taskParam.copySplitS * taskParam.kvStep;
-        CopyKV(tmpUb, kvGm, kvOffset, dealRowCount, taskParam.headDim, taskParam.kvHeadNum, taskParam.paKvShapeType);
+        CopyKV(tmpUb, kvGm, kvOffset, dealRowCount, taskParam.headDim, taskParam.kvHeadNum, taskParam.paKvShapeType,
+               taskParam.kvN2Stride);
     } else {
         uint64_t curSeqence = taskParam.s2BatchOffset + copyLoopIdx * taskParam.copySplitS;
         CopyKVPageAttention(tmpUb, kvGm, blockTableGm, taskParam, curSeqence, dealRowCount);
@@ -530,8 +588,16 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
-        uint64_t srcOffset = idInBlockTable * taskParam.kvCacheBlockSize * useKvHeadNum +
-                             taskParam.kvCacheBlockSize * useN2Idx + remainElmenCnt;
+        uint64_t blockStride = taskParam.kvCacheBlockSize * useKvHeadNum;
+        uint64_t headStride = taskParam.kvCacheBlockSize;
+        if (taskParam.scaleBnStride != 0) {
+            blockStride = taskParam.scaleBnStride;
+        }
+        if (taskParam.scaleN2Stride != 0) {
+            headStride = taskParam.scaleN2Stride;
+        }
+        uint64_t srcOffset = idInBlockTable * blockStride +
+                             useN2Idx * headStride + remainElmenCnt;
         copyInParams.blockLen = copyElmenCnt * sizeof(ANTIQ_PARAMS_T);
         DataCopyPad(dstLocal[dstOffset], srcGm[srcOffset], copyInParams, copyInPadParams);
         dstOffset += copyElmenCnt;
@@ -543,7 +609,7 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyKV(
     LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t headDim,
-    uint32_t kvHeadNum, uint32_t paKvShapeType)
+    uint32_t kvHeadNum, uint32_t paKvShapeType, uint64_t kvN2Stride)
 {
     uint32_t typeElementSize = ONE_BLK_SIZE / sizeof(KV_T);
 
@@ -563,7 +629,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
     if constexpr (PAGE_ATTENTION) {
         if (paKvShapeType == 0) {
-            copyInParams.srcStride = copyInParams.blockLen * (kvHeadNum - 1);
+            if (kvN2Stride != 0) {
+                copyInParams.srcStride = static_cast<int64_t>(kvHeadNum - 1) * kvN2Stride * sizeof(KV_T);
+            } else {
+                copyInParams.srcStride = copyInParams.blockLen * (kvHeadNum - 1);
+            }
         } else {
             copyInParams.srcStride = 0;
         }
@@ -571,7 +641,11 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
             copyInParams.srcStride = 0;
         } else {
-            copyInParams.srcStride = copyInParams.blockLen * (kvHeadNum - 1);
+            if (kvN2Stride != 0) {
+                copyInParams.srcStride = static_cast<int64_t>(kvHeadNum - 1) * kvN2Stride * sizeof(KV_T);
+            } else {
+                copyInParams.srcStride = copyInParams.blockLen * (kvHeadNum - 1);
+            }
         }
     }
 
@@ -624,23 +698,48 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         }
         uint64_t curOffset = 0;
         if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ)) { // NZ
-            curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.headDim * taskParam.kvCacheBlockSize +
-                        (uint64_t)(taskParam.n2Idx * taskParam.headDim * taskParam.kvCacheBlockSize) +
+            uint64_t nzHeadStride = taskParam.headDim * taskParam.kvCacheBlockSize;
+            uint64_t nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            if (taskParam.kvN2Stride != 0) {
+                nzHeadStride = taskParam.kvN2Stride;
+            }
+            if (taskParam.kvBnStride != 0) {
+                nzBlockStride = taskParam.kvBnStride;
+            } else if (taskParam.kvN2Stride != 0) {
+                nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            }
+            curOffset = idInBlockTable * nzBlockStride +
+                        (uint64_t)(taskParam.n2Idx * nzHeadStride) +
                         reaminRowCnt * typeElementSize;
             CopyKVPaNz(dstLocal[copyFinishRowCnt * typeElementSize], srcGm, curOffset, copyRowCnt, dealRowCount,
                        taskParam);
         } else {
             if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) { // BBH
-                curOffset = (idInBlockTable * taskParam.kvCacheBlockSize + reaminRowCnt) * taskParam.kvHeadNum *
-                                taskParam.headDim +
+                uint64_t bsStride = taskParam.kvHeadNum * taskParam.headDim;
+                uint64_t bnStride = taskParam.kvCacheBlockSize * bsStride;
+                if (taskParam.kvBnStride != 0) {
+                    bnStride = taskParam.kvBnStride;
+                }
+                curOffset = idInBlockTable * bnStride +
+                            reaminRowCnt * bsStride +
                             (uint64_t)(taskParam.n2Idx * taskParam.headDim);
             } else { // BNBD
-                curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.kvCacheBlockSize * taskParam.headDim +
-                            (uint64_t)(taskParam.n2Idx * taskParam.kvCacheBlockSize * taskParam.headDim) +
+                uint64_t headStride = taskParam.kvCacheBlockSize * taskParam.headDim;
+                uint64_t blockStride = taskParam.kvHeadNum * headStride;
+                if (taskParam.kvN2Stride != 0) {
+                    headStride = taskParam.kvN2Stride;
+                }
+                if (taskParam.kvBnStride != 0) {
+                    blockStride = taskParam.kvBnStride;
+                } else if (taskParam.kvN2Stride != 0) {
+                    blockStride = taskParam.kvHeadNum * headStride;
+                }
+                curOffset = idInBlockTable * blockStride +
+                            (uint64_t)(taskParam.n2Idx * headStride) +
                             reaminRowCnt * taskParam.headDim;
             }
             CopyKV(dstLocal[copyFinishRowCnt * dBaseSize], srcGm, curOffset, copyRowCnt, taskParam.headDim,
-                   taskParam.kvHeadNum, taskParam.paKvShapeType);
+                   taskParam.kvHeadNum, taskParam.paKvShapeType, taskParam.kvN2Stride);
         }
 
         copyFinishRowCnt += copyRowCnt;

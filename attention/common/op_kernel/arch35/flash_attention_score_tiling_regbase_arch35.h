@@ -232,6 +232,8 @@ public:
     StridesParams keyStrides;
     StridesParams valueStrides;
     StridesParams kRopeStrides;
+    StridesParams kScaleStrides;
+    StridesParams vScaleStrides;
 
     int64_t get_bSize() const
     {
@@ -869,6 +871,26 @@ public:
     StridesParams get_kRopeStrides() const
     {
         return kRopeStrides;
+    }
+
+    void set_kScaleStrides(StridesParams kScaleStrides)
+    {
+        this->kScaleStrides = kScaleStrides;
+    }
+
+    StridesParams get_kScaleStrides() const
+    {
+        return kScaleStrides;
+    }
+
+    void set_vScaleStrides(StridesParams vScaleStrides)
+    {
+        this->vScaleStrides = vScaleStrides;
+    }
+
+    StridesParams get_vScaleStrides() const
+    {
+        return vScaleStrides;
     }
 };
 
