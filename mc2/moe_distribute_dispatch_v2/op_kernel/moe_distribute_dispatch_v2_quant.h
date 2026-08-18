@@ -241,9 +241,8 @@ public:
                 // per-group路径不使用floatLocalTemp_，复用这块UB暂存各group的最大值和量化系数。
                 __ubuf__ float *groupScaleLocalAddr = (__ubuf__ float *)floatLocalTemp_.GetPhyAddr();
                 Quant::ComputePerTileDynamicBatchScale<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT,
-                                                       IsSmoothScaleExist>(srcAddr, smoothLocalAddr,
-                                                                           groupScaleLocalAddr, scaleOutLocalAddr,
-                                                                           outLocalAddr, axisH_);
+                                                       IsSmoothScaleExist>(
+                    srcAddr, smoothLocalAddr, groupScaleLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
             } else {
                 Quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT,
                                              IsSmoothScaleExist>(srcAddr, smoothLocalAddr, scaleOutLocalAddr,
