@@ -38,7 +38,7 @@ constexpr uint64_t COMBINE_STATE_BANK_STRIDE = 128ULL * 1024ULL;
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
 constexpr uint64_t CTRL_DISPATCH_STATE_OFFSET = 0ULL;
-constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 32ULL;
+constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 256ULL;
 // kernel 侧 epHcclBuffer_[rank] = HcclGetHcclBuffer() + rank * 1024，dump 必须用同一基址
 constexpr uint64_t EP_RANK_OFFSET_STEP = 1024ULL;
 constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 D_S/C_S
@@ -136,7 +136,7 @@ void FreeDeviceAddr(void *deviceAddr)
 // host 超时后 dump 本卡 EP window 状态区
 // layout（与 kernel 一致，基址含 rank*1024）:
 //   kernBase     = HcclGetHcclBuffer() + epRankId*1024
-//   D_S/C_S[aiv] = *(int32*)(kernBase + 950KB + aiv*512 + 0/32)
+//   D_S/C_S[aiv] = *(int32*)(kernBase + 950KB + aiv*512 + 0/256)
 //   D bank[S]    = kernBase + S*256KB
 //   C bank[S]    = kernBase + 512KB + S*128KB
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)

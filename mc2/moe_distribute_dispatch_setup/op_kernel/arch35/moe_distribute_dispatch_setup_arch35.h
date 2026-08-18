@@ -538,6 +538,10 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     }
     // 发送状态分核
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
+    // staging 每 expert 8*int32，越界会盖住 [950KB,1MB) 的 D_S/C_S
+    ascendc_assert(static_cast<uint64_t>(totalExpertNum_) * 8U * sizeof(int32_t) <=
+                       (STATE_WIN_OFFSET - DISPATCH_STAGING_OFFSET),
+                   "dispatch_setup D staging overflow, rank=%u experts=%u", epRankId_, totalExpertNum_);
     SplitToCore(totalExpertNum_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
     PipeBarrier<PIPE_V>();
 }
