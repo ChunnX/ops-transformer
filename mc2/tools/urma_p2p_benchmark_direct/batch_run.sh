@@ -33,7 +33,9 @@ set -euo pipefail
 CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)
 CASES_DIR="${CURRENT_DIR}/cases"
 INPUT_CSV="${CASES_DIR}/input_batch_write.csv"
-OUTPUT_CSV="${CASES_DIR}/output_results.csv"
+# 输出 CSV 名根据输入 CSV 自动生成: input_xxx.csv → output_xxx.csv
+INPUT_BASENAME=$(basename "$INPUT_CSV" .csv)
+OUTPUT_CSV="${CASES_DIR}/output_${INPUT_BASENAME#input_}.csv"
 DEV_COUNT=2
 DEV_IDS=""
 CASE_IDS=""
