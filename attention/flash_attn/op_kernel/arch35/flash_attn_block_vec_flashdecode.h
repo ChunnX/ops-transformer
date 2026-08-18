@@ -19,11 +19,11 @@
 
 #if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #endif
-
-#include "memory_copy_arch35.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -457,20 +457,19 @@ public:
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                   actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseTNDtoNT<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                    actualGSplitSize, constInfo_.gSize, constInfo_.t1Size);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseBSND<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                            actualGSplitSize, constInfo_.s1Size, constInfo_.gSize);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, qActSeqLens);
+                    DataCopySoftmaxLseBNSD<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                        actualGSplitSize, qActSeqLens, constInfo_.s1Size);
                 }
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
