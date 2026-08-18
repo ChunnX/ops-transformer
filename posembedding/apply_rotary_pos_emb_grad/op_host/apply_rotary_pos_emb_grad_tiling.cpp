@@ -260,13 +260,15 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::ValidateBroadcastByLayo
         d_  = gqShape.GetDim(DIM_3);
         // cosB==1 → BSND(BAB), cosB==gqB → SBND(AB)
         // 如果全shape完全一致 → NO_BROADCAST (A)
+        // A 模板 MergeDim 按 nQ==nK 合并迭代空间, 若 gk 的 N 轴与 gq 不一致,
+        // grad_key 无法全覆盖且 dcos/dsin 的 K 路贡献会读错行, 故 NO_BROADCAST
+        // 须同时要求 gkN == gqN, 否则回落 BAB/AB (两者均支持 nQ≠nK)
         if (gqB == cosB && gqS == cosS) {
-            // 所有 dim 都相等 → NO_BROADCAST
-            int64_t gqN = gqShape.GetDim(DIM_2);
-            if (cosShape.GetDim(DIM_2) == gqN) {
+            // 所有 dim 都相等 (含 gq/gk 的 N 轴) → NO_BROADCAST
+            if (cosShape.GetDim(DIM_2) == nQ_ && nK_ == nQ_) {
                 layout_ = ApplyRopeGradLayout::NO_BROADCAST;
             } else {
-                // cos N=1 ≠ gq N, so still broadcast
+                // cos N=1 ≠ gq N 或 gk N ≠ gq N, so still broadcast
                 layout_ = (cosb_ == 1) ? ApplyRopeGradLayout::BSND : ApplyRopeGradLayout::SBND;
             }
         } else {
@@ -684,7 +686,14 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::GetInputParam(
     OP_CHECK_NULL_WITH_CONTEXT(context_, cosInput);
     auto cosShape = Ops::Transformer::OpTiling::EnsureNotScalar(cosInput->GetStorageShape());
     for (size_t i = 0; i < shapeSize; i++) {
-        if (cosShape.GetDim(i) == 1 && opInput.shape[i] != 1) {
+        int64_t dimExtent = static_cast<int64_t>(opInput.shape[i]);
+        if (reduceInputFloat_ && i + 2 == shapeSize) {
+            // N 轴(倒数第二维)的有效范围取双路 max(nQ, nK), 与 TilingReduce 的 shape 改写保持一致:
+            // nQ==1<nK 时 cos 的 N 轴(=1)相对 K 路仍为广播轴, 仅按 gq 判会漏掉该轴,
+            // 导致 reduce 输出 shape 与 grad_cos 不符
+            dimExtent = std::max(dimExtent, nK_);
+        }
+        if (cosShape.GetDim(i) == 1 && dimExtent != 1) {
             opInput.axes.push_back(i);
         }
     }
@@ -756,7 +765,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
     ge::graphStatus status;
     if (reduceInputFloat_) {
         opInput.inputDtype = ge::DT_FLOAT;
-        opInput.shape[DIM_2] = std::max(nQ_, nK_);
+        opInput.shape[opInput.shape.size() - 2] = std::max(nQ_, nK_);
     }
     if (reduceInputFloat_ && dtype_ == ge::DT_FLOAT) {
         status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float, float>::OpDag>(

@@ -166,22 +166,6 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
             reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
             reduceOp1.Process();
             pipe.Reset();
-        } else {
-            using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
-                ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
-            ReduceOp reduceOp0(&tilingData.reduceTiling);
-            ReduceOp reduceOp1(&tilingData.reduceTiling);
-            GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_GRAD_QUERY_EMBED);
-
-            reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
-            reduceOp0.Process();
-            pipe.Reset();
-            PipeBarrier<PIPE_ALL>();
-
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
-            reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
-            reduceOp1.Process();
-            pipe.Reset();
         }
     }
 }
