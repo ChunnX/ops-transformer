@@ -26,10 +26,10 @@ extern "C" {
  * @domain aclnn_ops_infer
  * @param partialBlock [in/out] 必选连续输入输出，数据类型为 FLOAT，计算结果原地写回。
  * @param delta [in] 必选连续输入，数据类型为 BFLOAT16。
- * @param interNumerator [in] 必选连续输入，数据类型为 FLOAT。
- * @param interMax [in] 必选连续输入，数据类型为 FLOAT。
- * @param interExpSum [in] 必选连续输入，数据类型为 FLOAT。
- * @param effectiveQuery [in] 必选连续输入，数据类型为 FLOAT。
+ * @param pseudoQuery [in] 必选连续输入，数据类型为 FLOAT。
+ * @param numerator [in] 必选连续输入，数据类型为 FLOAT。
+ * @param logitMax [in] 必选连续输入，数据类型为 FLOAT。
+ * @param expSum [in] 必选连续输入，数据类型为 FLOAT。
  * @param eps [in] 必选 FP32 浮点属性，必须为有限正数。
  * @param h [out] 必选连续输出，数据类型为 BFLOAT16，shape 与 delta 一致。
  * @param workspaceSize [out] 返回所需 workspace 大小。
@@ -37,8 +37,8 @@ extern "C" {
  * @return aclnnStatus 状态码。
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *interNumerator, const aclTensor *interMax,
-    const aclTensor *interExpSum, const aclTensor *effectiveQuery, float eps, aclTensor *h, uint64_t *workspaceSize,
+    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
+    const aclTensor *logitMax, const aclTensor *expSum, float eps, aclTensor *h, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**

@@ -415,6 +415,7 @@ private:
     uint32_t baseDAlign_ = 0U;
     uint32_t dAlign_ = 0U;
     uint32_t dTileNum_ = 0U;
+    uint32_t qLoop_ = 0;
     uint32_t vLoop_ = 0;
     uint32_t oLoop_ = 0;
     uint8_t qBufferNum_ = 1;

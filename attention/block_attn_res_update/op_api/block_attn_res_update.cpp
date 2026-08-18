@@ -22,29 +22,27 @@ namespace l0op {
 OP_TYPE_REGISTER(BlockAttnResUpdate);
 
 namespace {
-static bool CheckNotNull(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *interNumerator,
-                         const aclTensor *interMax, const aclTensor *interExpSum, const aclTensor *effectiveQuery,
+static bool CheckNotNull(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery,
+                         const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum,
                          const aclOpExecutor *executor)
 {
-    OP_CHECK(partialBlock != nullptr && delta != nullptr && interNumerator != nullptr && interMax != nullptr &&
-                 interExpSum != nullptr && effectiveQuery != nullptr && executor != nullptr,
+    OP_CHECK(partialBlock != nullptr && delta != nullptr && pseudoQuery != nullptr && numerator != nullptr &&
+                 logitMax != nullptr && expSum != nullptr && executor != nullptr,
              OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate input or executor is nullptr."), return false);
     return true;
 }
 
-static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *interNumerator,
-                            const aclTensor *interMax, const aclTensor *interExpSum,
-                            const aclTensor *effectiveQuery)
+static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery,
+                            const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
     auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
     OP_CHECK(npuArch == NpuArch::DAV_3510,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate only supports Ascend950."), return false);
 
     OP_CHECK(partialBlock->GetDataType() == DataType::DT_FLOAT && delta->GetDataType() == DataType::DT_BF16 &&
-                 interNumerator->GetDataType() == DataType::DT_FLOAT &&
-                 interMax->GetDataType() == DataType::DT_FLOAT &&
-                 interExpSum->GetDataType() == DataType::DT_FLOAT &&
-                 effectiveQuery->GetDataType() == DataType::DT_FLOAT,
+                 pseudoQuery->GetDataType() == DataType::DT_FLOAT &&
+                 numerator->GetDataType() == DataType::DT_FLOAT &&
+                 logitMax->GetDataType() == DataType::DT_FLOAT && expSum->GetDataType() == DataType::DT_FLOAT,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                      "BlockAttnResUpdate input dtypes are not supported by the AiCore implementation."),
              return false);
@@ -53,26 +51,26 @@ static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delt
 } // namespace
 
 const aclTensor *BlockAttnResUpdate(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *interNumerator, const aclTensor *interMax,
-    const aclTensor *interExpSum, const aclTensor *effectiveQuery, float eps, aclOpExecutor *executor)
+    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
+    const aclTensor *logitMax, const aclTensor *expSum, float eps, aclOpExecutor *executor)
 {
-    L0_DFX(BlockAttnResUpdate, partialBlock, delta, interNumerator, interMax, interExpSum, effectiveQuery, eps);
+    L0_DFX(BlockAttnResUpdate, partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 
-    OP_CHECK(CheckNotNull(partialBlock, delta, interNumerator, interMax, interExpSum, effectiveQuery, executor),
+    OP_CHECK(CheckNotNull(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, executor),
              OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate null pointer check failed."), return nullptr);
-    OP_CHECK(IsAiCoreSupport(partialBlock, delta, interNumerator, interMax, interExpSum, effectiveQuery),
+    OP_CHECK(IsAiCoreSupport(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate IsAiCoreSupport check failed."), return nullptr);
 
     auto h = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     OP_CHECK(h != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor failed."), return nullptr);
 
     auto ret = INFER_SHAPE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, interNumerator, interMax, interExpSum, effectiveQuery),
+        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
         OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return nullptr, "BlockAttnResUpdate InferShape failed.");
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, interNumerator, interMax, interExpSum, effectiveQuery),
+        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
         OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
                                          "BlockAttnResUpdate ADD_TO_LAUNCHER_LIST_AICORE failed.");

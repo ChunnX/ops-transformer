@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  `cann_ops_transformer.block_attn_res_update`将当前`partial_delta`累加到FP32类型的`partial_block`，计算当前partial block的RMSNorm score，并与Phase 1产生的online softmax中间状态合并，输出当前层结果`h`和更新后的`partial_blocks`。底层调用`aclnnBlockAttnResUpdate`接口完成计算。
+  `cann_ops_transformer.block_attn_res_update`将当前`delta`累加到FP32类型的`partial_block`，计算当前partial block的RMSNorm score，并与Phase 1产生的online softmax中间状态合并，输出当前层结果`h`和更新后的`partial_blocks`。底层调用`aclnnBlockAttnResUpdate`接口完成计算。
 
 - **计算公式**：
 
@@ -34,35 +34,35 @@
   1. 更新当前partial block：
 
      $$
-     p[t,d] = partial\_block[t,d] + \operatorname{FP32}(partial\_delta[t,d])
+     p[t,d] = partial\_block[t,d] + \operatorname{FP32}(delta[t,d])
      $$
 
   2. 计算RMSNorm分母和当前score：
 
      $$
-     r[t] = \sqrt{\frac{1}{D}\sum_{d=0}^{D-1}p[t,d]^2 + epsilon}
+     r[t] = \sqrt{\frac{1}{D}\sum_{d=0}^{D-1}p[t,d]^2 + eps}
      $$
 
      $$
-     score[t] = \frac{\sum_{d=0}^{D-1}p[t,d] \times effective\_query[d]}{r[t]}
+     score[t] = \frac{\sum_{d=0}^{D-1}p[t,d] \times pseudo\_query[d]}{r[t]}
      $$
 
   3. 将当前score与历史online softmax状态合并：
 
      $$
-     m[t] = \max(inter\_max[t], score[t])
+     m[t] = \max(logit\_max[t], score[t])
      $$
 
      $$
-     alpha[t] = \exp(inter\_max[t] - m[t]), \qquad beta[t] = \exp(score[t] - m[t])
+     alpha[t] = \exp(logit\_max[t] - m[t]), \qquad beta[t] = \exp(score[t] - m[t])
      $$
 
      $$
-     ell[t] = inter\_exp\_sum[t] \times alpha[t] + beta[t]
+     ell[t] = exp\_sum[t] \times alpha[t] + beta[t]
      $$
 
      $$
-     numerator[t,d] = inter\_numerator[t,d] \times alpha[t] + p[t,d] \times beta[t]
+     updated\_numerator[t,d] = numerator[t,d] \times alpha[t] + p[t,d] \times beta[t]
      $$
 
   4. 生成输出：
@@ -72,7 +72,7 @@
      $$
 
      $$
-     h[t,d] = \operatorname{Cast}_{partial\_delta.dtype}\left(\frac{numerator[t,d]}{ell[t]}\right)
+     h[t,d] = \operatorname{Cast}_{delta.dtype}\left(\frac{updated\_numerator[t,d]}{ell[t]}\right)
      $$
 
 ## 函数原型
@@ -80,12 +80,12 @@
 ```python
 cann_ops_transformer.block_attn_res_update(
     partial_block,
-    partial_delta,
-    inter_numerator,
-    inter_max,
-    inter_exp_sum,
-    effective_query,
-    epsilon,
+    delta,
+    pseudo_query,
+    numerator,
+    logit_max,
+    exp_sum,
+    eps,
 ) -> (Tensor, Tensor)
 ```
 
@@ -94,18 +94,18 @@ cann_ops_transformer.block_attn_res_update(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | `partial_block` | Tensor | 必选 | 当前已累计的partial block。必须为NPU上的连续Tensor。 | `torch.float32` | `(T, D)` |
-| `partial_delta` | Tensor | 必选 | 本次需要累加的partial增量。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.bfloat16` | `(T, D)` |
-| `inter_numerator` | Tensor | 必选 | Phase 1输出的历史online softmax加权和。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.float32` | `(T, D)` |
-| `inter_max` | Tensor | 必选 | Phase 1输出的历史最大logit。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
-| `inter_exp_sum` | Tensor | 必选 | Phase 1输出的历史softmax分母累积值。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
-| `effective_query` | Tensor | 必选 | 算子外部预计算的有效query。必须为NPU上的连续Tensor，长度必须等于`D`。 | `torch.float32` | `(D,)` |
-| `epsilon` | float | 必选 | RMSNorm计算中的FP32数值稳定项，必须为有限正数。 | float | - |
+| `delta` | Tensor | 必选 | 本次需要累加的partial增量。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.bfloat16` | `(T, D)` |
+| `pseudo_query` | Tensor | 必选 | 算子外部预计算的伪query。必须为NPU上的连续Tensor，长度必须等于`D`。 | `torch.float32` | `(D,)` |
+| `numerator` | Tensor | 必选 | Phase 1输出的历史online softmax加权和。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.float32` | `(T, D)` |
+| `logit_max` | Tensor | 必选 | Phase 1输出的历史最大logit。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
+| `exp_sum` | Tensor | 必选 | Phase 1输出的历史softmax分母累积值。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
+| `eps` | float | 必选 | RMSNorm计算中的FP32数值稳定项，必须为有限正数。 | float | - |
 
 ## 返回值说明
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `h` | Tensor | 必选 | 当前层BlockAttnRes输出。数据类型和shape与`partial_delta`一致，为连续Tensor。 | `torch.bfloat16` | `(T, D)` |
+| `h` | Tensor | 必选 | 当前层BlockAttnRes输出。数据类型和shape与`delta`一致，为连续Tensor。 | `torch.bfloat16` | `(T, D)` |
 | `partial_blocks` | Tensor | 必选 | 更新后的partial block。shape与`partial_block`一致，为连续Tensor。 | `torch.float32` | `(T, D)` |
 
 ## 约束说明
@@ -116,12 +116,12 @@ cann_ops_transformer.block_attn_res_update(
 - 两个输出均为连续Tensor，且位于输入所在的NPU device。
 - `T`必须大于0，不支持空Tensor。
 - hidden维`D`必须满足`1 <= D <= 8192`。
-- `partial_block`、`partial_delta`和`inter_numerator`的shape必须一致，均为`(T, D)`。
-- `effective_query`的shape必须为`(D,)`，`inter_max`和`inter_exp_sum`的shape必须为`(T,)`。
-- `epsilon`必须为有限正数。
+- `partial_block`、`delta`和`numerator`的shape必须一致，均为`(T, D)`。
+- `pseudo_query`的shape必须为`(D,)`，`logit_max`和`exp_sum`的shape必须为`(T,)`。
+- `eps`必须为有限正数。
 - 数据类型组合必须满足：
 
-  | partial_block | partial_delta | inter_numerator | inter_max | inter_exp_sum | effective_query | h | partial_blocks |
+  | partial_block | delta | pseudo_query | numerator | logit_max | exp_sum | h | partial_blocks |
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | `torch.float32` | `torch.bfloat16` | `torch.float32` | `torch.float32` | `torch.float32` | `torch.float32` | `torch.bfloat16` | `torch.float32` |
 
@@ -147,31 +147,31 @@ cann_ops_transformer.block_attn_res_update(
   partial_block = torch.randn(
       (T, D), dtype=torch.float32, device="npu:0"
   )
-  partial_delta = torch.randn(
+  delta = torch.randn(
       (T, D), dtype=torch.bfloat16, device="npu:0"
   )
-  effective_query = torch.randn(
+  pseudo_query = torch.randn(
       (D,), dtype=torch.float32, device="npu:0"
   )
-  inter_max = torch.randn(
-      (T,), dtype=torch.float32, device="npu:0"
-  )
-  inter_exp_sum = torch.rand(
-      (T,), dtype=torch.float32, device="npu:0"
-  )
-  inter_numerator = torch.randn(
+  numerator = torch.randn(
       (T, D), dtype=torch.float32, device="npu:0"
   )
-  epsilon = 1.0e-5
+  logit_max = torch.randn(
+      (T,), dtype=torch.float32, device="npu:0"
+  )
+  exp_sum = torch.rand(
+      (T,), dtype=torch.float32, device="npu:0"
+  )
+  eps = 1.0e-5
 
   h, partial_blocks = cann_ops_transformer.block_attn_res_update(
       partial_block,
-      partial_delta,
-      inter_numerator,
-      inter_max,
-      inter_exp_sum,
-      effective_query,
-      epsilon,
+      delta,
+      pseudo_query,
+      numerator,
+      logit_max,
+      exp_sum,
+      eps,
   )
 
   assert h.is_contiguous()

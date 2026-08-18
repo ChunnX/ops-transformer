@@ -12,16 +12,17 @@
 
 Naming correspondence with the Phase-2 calculation document:
 
-    partial_block   -> partial
-    partial_delta   -> delta
-    inter_numerator -> history_o
-    inter_max       -> history_m
-    inter_exp_sum   -> history_ell
-    h               -> output
-    partial_blocks  -> partial_out / updated partial block
+    partial_block  -> partial
+    delta          -> delta
+    pseudo_query   -> query
+    numerator      -> history_o
+    logit_max      -> history_m
+    exp_sum        -> history_ell
+    h              -> output
+    partial_blocks -> partial_out / updated partial block
 
 The current operator contract uses FP32 ``partial_block`` and a scalar FP32
-``epsilon`` attribute.  For compatibility with an older BF16-partial draft,
+``eps`` attribute.  For compatibility with an older BF16-partial draft,
 ``_compute`` also models a low-precision add when ``partial_block`` itself is
 FP16/BF16; the installed operator's normal path remains FP32 add.
 """
@@ -31,7 +32,6 @@ import numpy as np
 
 __golden__ = {
     "e2e": {
-        "block_attn_res_update_ttk_ops.block_attn_res_update_ttk": "block_attn_res_update_e2e_golden",
         "cann_ops_transformer.block_attn_res_update": "block_attn_res_update_e2e_golden",
     },
     "kernel": {
@@ -89,22 +89,22 @@ def _cast_like(value, template, use_torch=False):
 
 def _validate_shapes(
     partial_block,
-    partial_delta,
-    inter_numerator,
-    inter_max,
-    inter_exp_sum,
-    effective_query,
+    delta,
+    pseudo_query,
+    numerator,
+    logit_max,
+    exp_sum,
 ):
     shape = partial_block.shape
     if partial_block.ndim != 2:
         raise ValueError(f"partial_block must have shape [T, D], got {shape}")
     token_num, hidden_size = shape
     expected = {
-        "partial_delta": (partial_delta.shape, shape),
-        "effective_query": (effective_query.shape, (hidden_size,)),
-        "inter_max": (inter_max.shape, (token_num,)),
-        "inter_exp_sum": (inter_exp_sum.shape, (token_num,)),
-        "inter_numerator": (inter_numerator.shape, shape),
+        "delta": (delta.shape, shape),
+        "pseudo_query": (pseudo_query.shape, (hidden_size,)),
+        "numerator": (numerator.shape, shape),
+        "logit_max": (logit_max.shape, (token_num,)),
+        "exp_sum": (exp_sum.shape, (token_num,)),
     }
     for name, (actual, wanted) in expected.items():
         if actual != wanted:
@@ -114,41 +114,39 @@ def _validate_shapes(
 
 def _compute(
     partial_block,
-    partial_delta,
-    inter_numerator,
-    inter_max,
-    inter_exp_sum,
-    effective_query,
-    epsilon,
+    delta,
+    pseudo_query,
+    numerator,
+    logit_max,
+    exp_sum,
+    eps,
 ):
     partial_block_np = _to_numpy(partial_block)
-    partial_delta_np = _to_numpy(partial_delta)
-    effective_query_np = _to_numpy(effective_query)
-    inter_max_np = _to_numpy(inter_max)
-    inter_exp_sum_np = _to_numpy(inter_exp_sum)
-    inter_numerator_np = _to_numpy(inter_numerator)
+    delta_np = _to_numpy(delta)
+    pseudo_query_np = _to_numpy(pseudo_query)
+    numerator_np = _to_numpy(numerator)
+    logit_max_np = _to_numpy(logit_max)
+    exp_sum_np = _to_numpy(exp_sum)
 
     _, hidden_size = _validate_shapes(
         partial_block_np,
-        partial_delta_np,
-        inter_numerator_np,
-        inter_max_np,
-        inter_exp_sum_np,
-        effective_query_np,
+        delta_np,
+        pseudo_query_np,
+        numerator_np,
+        logit_max_np,
+        exp_sum_np,
     )
-    epsilon = float(epsilon)
-    if not np.isfinite(epsilon) or epsilon <= 0.0:
-        raise ValueError(f"epsilon must be finite and positive, got {epsilon}")
-    if np.any(inter_exp_sum_np < 0.0):
-        raise ValueError("inter_exp_sum must be non-negative")
+    eps = float(eps)
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError(f"eps must be finite and positive, got {eps}")
+    if np.any(exp_sum_np < 0.0):
+        raise ValueError("exp_sum must be non-negative")
 
     # Current interface: partial_block is FP32, so the accumulation is FP32.
     # Compatibility path: the linked calculation draft described BF16 add;
     # casting the sum back before promotion reproduces that rounding point.
     partial_dtype = _dtype_name(partial_block)
-    partial_sum_f32 = (
-        partial_block_np.astype(np.float32) + partial_delta_np.astype(np.float32)
-    )
+    partial_sum_f32 = partial_block_np.astype(np.float32) + delta_np.astype(np.float32)
     if partial_dtype in ("float16", "bfloat16"):
         partial_sum = partial_sum_f32.astype(partial_block_np.dtype).astype(np.float32)
     else:
@@ -156,23 +154,27 @@ def _compute(
 
     # RMSNorm denominator, score, and online-softmax merge are all FP32.
     square_sum = np.sum(partial_sum * partial_sum, axis=-1, dtype=np.float32)
-    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(epsilon)).astype(np.float32)
-    score = np.sum(
-        partial_sum * effective_query_np.astype(np.float32),
-        axis=-1,
-        dtype=np.float32,
-    ) / rms
+    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(eps)).astype(
+        np.float32
+    )
+    score = (
+        np.sum(
+            partial_sum * pseudo_query_np.astype(np.float32),
+            axis=-1,
+            dtype=np.float32,
+        )
+        / rms
+    )
 
-    history_max = inter_max_np.astype(np.float32)
+    history_max = logit_max_np.astype(np.float32)
     merged_max = np.maximum(history_max, score).astype(np.float32)
     alpha = np.exp(history_max - merged_max).astype(np.float32)
     beta = np.exp(score - merged_max).astype(np.float32)
-    merged_denominator = (
-        alpha * inter_exp_sum_np.astype(np.float32) + beta
-    ).astype(np.float32)
+    merged_denominator = (alpha * exp_sum_np.astype(np.float32) + beta).astype(
+        np.float32
+    )
     merged_numerator = (
-        alpha[:, None] * inter_numerator_np.astype(np.float32)
-        + beta[:, None] * partial_sum
+        alpha[:, None] * numerator_np.astype(np.float32) + beta[:, None] * partial_sum
     ).astype(np.float32)
     output = (merged_numerator / merged_denominator[:, None]).astype(np.float32)
 
@@ -183,10 +185,10 @@ def _compute(
 def block_attn_res_update_golden(
     partial_block,
     delta,
-    inter_numerator,
-    inter_max,
-    inter_exp_sum,
-    effective_query,
+    pseudo_query,
+    numerator,
+    logit_max,
+    exp_sum,
     eps=1e-6,
     **kwargs,
 ):
@@ -195,10 +197,10 @@ def block_attn_res_update_golden(
     h, partial_blocks = _compute(
         partial_block,
         delta,
-        inter_numerator,
-        inter_max,
-        inter_exp_sum,
-        effective_query,
+        pseudo_query,
+        numerator,
+        logit_max,
+        exp_sum,
         eps,
     )
     # OpDef output order is partial_block (reference output), then h.
@@ -210,27 +212,27 @@ def block_attn_res_update_golden(
 
 def block_attn_res_update_e2e_golden(
     partial_block,
-    partial_delta,
-    inter_numerator,
-    inter_max,
-    inter_exp_sum,
-    effective_query,
-    epsilon,
+    delta,
+    pseudo_query,
+    numerator,
+    logit_max,
+    exp_sum,
+    eps,
     **kwargs,
 ):
     """E2E golden; return order matches the public Torch API: (h, partial_blocks)."""
     output, updated_partial = _compute(
         partial_block,
-        partial_delta,
-        inter_numerator,
-        inter_max,
-        inter_exp_sum,
-        effective_query,
-        epsilon,
+        delta,
+        pseudo_query,
+        numerator,
+        logit_max,
+        exp_sum,
+        eps,
     )
     use_torch = kwargs.get("use_torch", False)
     return (
-        _cast_like(output, partial_delta, use_torch),
+        _cast_like(output, delta, use_torch),
         _cast_like(updated_partial, partial_block, use_torch),
     )
 
@@ -238,10 +240,10 @@ def block_attn_res_update_e2e_golden(
 def aclnn_block_attn_res_update_golden(
     partialBlock,
     delta,
-    interNumerator,
-    interMax,
-    interExpSum,
-    effectiveQuery,
+    pseudoQuery,
+    numerator,
+    logitMax,
+    expSum,
     eps,
     h,
     **kwargs,
@@ -250,10 +252,10 @@ def aclnn_block_attn_res_update_golden(
     output, updated_partial = _compute(
         partialBlock,
         delta,
-        interNumerator,
-        interMax,
-        interExpSum,
-        effectiveQuery,
+        pseudoQuery,
+        numerator,
+        logitMax,
+        expSum,
         eps,
     )
     use_torch = kwargs.get("use_torch", False)
