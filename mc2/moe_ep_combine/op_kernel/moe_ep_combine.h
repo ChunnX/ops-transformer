@@ -100,7 +100,7 @@ private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
-    __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount);
+    __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t beginIndex);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void SendPhaseExpertToToken();
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank,
@@ -540,7 +540,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex, uint32_t copyCount)
+__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex, uint32_t beginIndex)
 {
     // 计算地址偏移
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + tokenIndex * topK_ * WIN_ADDR_ALIGN;
@@ -561,7 +561,8 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t localState = stateSumTensor(1);
-    if (localState == copyCount) {
+    int32_t target = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIndex - beginIndex));
+    if (localState == target) {
         return true;
     }
     return false;
@@ -684,7 +685,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             if (tokenStatusTensor.GetValue(tokenIdx - tStart_) == 1) {
                 continue;
             }
-            if (!WaitDispatch(tokenIdx, copyCount)) {
+            if (!WaitDispatch(tokenIdx, tStart_)) {
                 continue;
             }
             CompletedtokenNum++;
