@@ -71,10 +71,15 @@ constexpr TilingProfile kM131072K2048N512ExportTiling{
 
 const TilingProfile &SelectTiling(
     uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,
-    uint32_t outputRows, bool outputAllToAllV)
+    bool outputAllToAllV)
 {
+    // Every rank participating in one collective launch must select the same
+    // communication geometry. In an imbalanced route, received_rows is local
+    // to a rank and may differ, so it must not participate in tiling selection.
+    // This operator requires the input M/K/N and the export mode to be
+    // rank-invariant; those values are therefore safe selection keys.
     const bool isEightRank256ExpertCase =
-        worldSize == 8 && expertNum == 256 && outputRows == m;
+        worldSize == 8 && expertNum == 256;
     if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024) {
         return outputAllToAllV
             ? kM131072K2048N1024ExportTiling
@@ -249,7 +254,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const uint32_t receivedRows = static_cast<uint32_t>(receivedRows64);
     const TilingProfile &tiling = SelectTiling(
         m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
-        receivedRows, allToAllVOutputOptional.has_value());
+        allToAllVOutputOptional.has_value());
     const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
     const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
     TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <

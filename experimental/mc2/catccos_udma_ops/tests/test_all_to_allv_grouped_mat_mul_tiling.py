@@ -21,7 +21,7 @@ def test_business_shapes_select_tuned_tiling_profiles():
         "KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4"
         in source
     )
-    assert "worldSize == 8 && expertNum == 256 && outputRows == m" in source
+    assert "worldSize == 8 && expertNum == 256" in source
     assert (
         "isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024"
         in source
@@ -32,8 +32,21 @@ def test_business_shapes_select_tuned_tiling_profiles():
     )
     assert "static_cast<uint32_t>(worldSize)" in source
     assert "static_cast<uint32_t>(expertNum)" in source
-    assert "receivedRows" in source
     assert "return kDefaultTiling" in source
+
+
+def test_tiling_selection_is_rank_invariant_for_imbalanced_routes():
+    source = (ASCEND950_ROOT / "all_to_allv_grouped_mat_mul_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    select_tiling = source[
+        source.index("const TilingProfile &SelectTiling("):
+        source.index("uint32_t RoundUp")
+    ]
+    assert "receivedRows" not in select_tiling
+    assert "outputRows" not in select_tiling
+    assert "rank-invariant" in select_tiling
+    assert "SelectTiling(\n        m, k, n," in source
 
 
 def test_export_business_shapes_use_separate_tuned_profiles():
