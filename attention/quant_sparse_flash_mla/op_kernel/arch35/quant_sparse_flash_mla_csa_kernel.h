@@ -662,9 +662,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (IS_BATCH_CONSISTENCY) {
-                    int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-                        runParam.baseBlockNumPerReductionBlock : 1LL;
-                    if (runParam.isCrossCoreSplit && s2LoopCount % safeBaseBlockNum == 0) {
+                    if (runParam.isCrossCoreSplit &&
+                        s2LoopCount % runParam.baseBlockNumPerReductionBlock == 0) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
                 }
@@ -741,9 +740,7 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::C
     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
     int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
     int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-    int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-        runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t reductionBlockSize = safeBaseBlockNum * s2BaseSize;
+    int64_t reductionBlockSize = runParam.baseBlockNumPerReductionBlock * s2BaseSize;
     int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
     if (s2BlockIdx <= oriReductionBlockNum) {
         int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
@@ -875,12 +872,16 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     runInfo.isCrossCoreSplit = runParam.isCrossCoreSplit;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
-    int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-        runParam.baseBlockNumPerReductionBlock : 1LL;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
-    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
+    int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumPerReductionBlock;
+    runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumPerReductionBlock;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
-    runInfo.isLastBase = safeBaseBlockNum - baseBlockIdInReduceBlock == 1LL || s2LoopCount == s2LoopLimit;
+    runInfo.isLastBase = runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL ||
+                         s2LoopCount == s2LoopLimit;
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        runInfo.isFirstReduce = baseBlockIdInReduceBlock == 1;
+    } else {
+        runInfo.isFirstReduce = runInfo.s2LoopCount == 1;
+    }
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);

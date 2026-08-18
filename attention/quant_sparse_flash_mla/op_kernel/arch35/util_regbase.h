@@ -144,6 +144,7 @@ struct RunInfo {
     uint32_t cmpSparseBlockCount;
     bool isFirstBase = true;
     bool isLastBase = true;
+    bool isFirstReduce = false;
     bool needReduce = false;
     int64_t reduceBlockId = 0;
 };
