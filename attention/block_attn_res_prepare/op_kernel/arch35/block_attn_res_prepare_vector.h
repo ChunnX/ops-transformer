@@ -313,13 +313,15 @@ private:
             const uint64_t outputByteOffset =
                 oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
             __ubuf__ float *outputAddr = GetUbAddr<float>(outputByteOffset);
-            wait_flag(PIPE_MTE3, PIPE_V, oLoop_ & 1);
+            const event_t outputEvent = GetEvent(outputBufferIndex);
+            wait_flag(PIPE_MTE3, PIPE_V, outputEvent);
             BlockAttnResPrepareVF::FillZero(outputAddr, validD);
 
             const uint64_t outputOffset =
                 (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
             CopyOutO(outputOffset, validD, oLoop_);
-            set_flag(PIPE_MTE3, PIPE_V, oLoop_++ & 1);
+            set_flag(PIPE_MTE3, PIPE_V, outputEvent);
+            ++oLoop_;
         }
     }
 
@@ -335,7 +337,9 @@ private:
             const uint32_t validD = static_cast<uint32_t>(
                 remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint64_t qOffset = sIndex * tilingData_->totalD + dOffset;
-            wait_flag(PIPE_V, PIPE_MTE2, qLoop_ & 1);
+            const uint32_t qBufferIndex = dLoop % tilingData_->qBufferNum;
+            const event_t qEvent = GetEvent(qBufferIndex);
+            wait_flag(PIPE_V, PIPE_MTE2, qEvent);
             __ubuf__ float *qAddr = CopyInQ(qOffset, validD, dLoop);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
@@ -355,8 +359,7 @@ private:
                     set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_++ & 1));
                 }
             }
-            set_flag(PIPE_V, PIPE_MTE2, qLoop_ & 1);
-            qLoop_++;
+            set_flag(PIPE_V, PIPE_MTE2, qEvent);
         }
 
         FinalizeStats(statAddr, validN);
@@ -372,7 +375,8 @@ private:
             const uint64_t outputByteOffset =
                 oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
             __ubuf__ float *outputAddr = GetUbAddr<float>(outputByteOffset);
-            wait_flag(PIPE_MTE3, PIPE_V, oLoop_ & 1);
+            const event_t outputEvent = GetEvent(outputBufferIndex);
+            wait_flag(PIPE_MTE3, PIPE_V, outputEvent);
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
                 __ubuf__ float *vAddr;
                 if (cacheAllV) {
@@ -395,7 +399,8 @@ private:
             const uint64_t outputOffset =
                 (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
             CopyOutO(outputOffset, validD, oLoop_);
-            set_flag(PIPE_MTE3, PIPE_V, oLoop_++ & 1);
+            set_flag(PIPE_MTE3, PIPE_V, outputEvent);
+            ++oLoop_;
         }
     }
 
