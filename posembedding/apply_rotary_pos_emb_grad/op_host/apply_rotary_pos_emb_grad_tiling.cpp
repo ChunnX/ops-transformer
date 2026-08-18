@@ -744,12 +744,32 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
         (GetInputParam(opInput, GQ_INDEX, COS_INDEX) == ge::GRAPH_FAILED),
         OP_LOGE(context_->GetNodeName(), "ReduceOp get input param failed"),
         return ge::GRAPH_FAILED);
+    // workspace 部分积布局为 (..bs.., max(nQ,nK), d) 连续, N 轴实际行数是 maxN 而非 gQ 的 nQ;
+    // 覆盖读取 shape 的 N 轴, 保证 reduce stride 与跨核写入布局一致 (nK > nQ 场景必改, 其余不变)
+    // 4D (B/S, B/S, N, D) N 为 dim2; 3D TND (T, N, D) N 为 dim1
+    if (opInput.shape.size() >= DIM_NUM_TND) {
+        size_t nDimIdx = (opInput.shape.size() == DIM_NUM) ? static_cast<size_t>(DIM_2) :
+                                                            static_cast<size_t>(DIM_1);
+        int64_t maxN = std::max(nQ_, nK_);
+        if (opInput.shape[nDimIdx] != maxN) {
+            // nQ==1 而 nK>1: 原 N 轴为 1 未被识别为广播轴 (cos N 也是 1),
+            // 但 workspace 实际有 maxN 行 (K 路 SET 覆盖), N 轴必须参与规约
+            int64_t nAxis = static_cast<int64_t>(nDimIdx);
+            if (std::find(opInput.axes.begin(), opInput.axes.end(), nAxis) == opInput.axes.end()) {
+                opInput.axes.push_back(nAxis);
+            }
+            opInput.shape[nDimIdx] = maxN;
+        }
+    }
     ge::graphStatus status;
+    // BAB/AB 模板: 部分积以 fp32 存储 workspace, reduce 输入恒为 fp32, 输出 Cast 回 T;
+    // reduce tiling 的 basicBlock/resultBlock 按输入(fp32)/输出(T)字节数推导, 必须与 kernel 侧 DAG 一致。
+    // 与 rotary_position_embedding_grad 一致, 2 字节 dtype 统一用 half 推导 (tiling 仅关心字节数)
     if (ge::GetSizeByDataType(opInput.inputDtype) == sizeof(float)) {
-        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float>::OpDag>(
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDagFp32In<float>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     } else {
-        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<Ops::Base::half, float>::OpDag>(
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDagFp32In<Ops::Base::half>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     }
     OP_CHECK_IF(
@@ -771,12 +791,18 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
         reduceBlockNum, usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
-    auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * ge::GetSizeByDataType(dtype_) * INPUT_OUTPUT_NUM;
+    // BAB/AB: 部分积 fp32 存储 (dcos + dsin 两份), 尺寸 = b*s*maxN*d*sizeof(float)*2
+    // A 模板: rotate 中间量按 T 存储 (ws_q + ws_k 两份), 尺寸 = b*s*maxN*d*sizeof(T)*2
+    int64_t partialWsSize = b_ * s_ * std::max(nQ_, nK_) * d_ * static_cast<int64_t>(sizeof(float)) * INPUT_OUTPUT_NUM;
+    int64_t usrWorkSpaceSize = partialWsSize;
     if (dCosFlag_ == 1) {
         context_->SetScheduleMode(1); // batch mode, all cores start simultaneously
         if (dxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
             constexpr int64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
             workspaces[0] = workspaces[0] + SYS_WORKSPACE_SIZE;
+            // A 模板 rotate 中间量按 T 存储，覆盖上面 fp32 的保守估计
+            usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ *
+                ge::GetSizeByDataType(dtype_) * INPUT_OUTPUT_NUM;
         }
     }
     workspaces[0] = workspaces[0] + usrWorkSpaceSize;

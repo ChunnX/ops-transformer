@@ -22,9 +22,11 @@ constexpr uint32_t DOUBLE_BUFFER = 2;
 
 // UB buffer count for inner-loop tensors × double buffer
 // dCosFlag=0: gradQ + gradK + dxQ + dxK = 4 tensors × Db(2) = 8
-// dCosFlag=1: + query + key + gradCos + gradSin = 8 tensors × Db(2) = 16
+// dCosFlag=1: + query + key (T) + gradCos + gradSin (fp32, 等效 4/sizeof(T) 路 T)
+//   → bf16/fp16: 8 + 2*2 = 12 路 × Db(2) = 24; fp32: 8 + 2*1 = 10 路 × Db(2) = 20
+// 按 bf16 (最保守) 取 24
 constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS0 = 8;
-constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS1 = 16;
+constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS1 = 24;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassBAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
