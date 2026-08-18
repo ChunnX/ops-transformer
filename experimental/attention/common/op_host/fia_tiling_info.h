@@ -23,7 +23,7 @@
 // the definition reachable directly. (Unrelated to blitz_sparse_attention; this
 // file is part of attention/common.)
 #include "platform/soc_spec.h"
-#include "fia_tiling_base.h"
+#include "fia_tiling_base_exp_attn_common.h"
 
 namespace optiling {
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";

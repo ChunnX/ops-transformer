@@ -38,7 +38,7 @@ const int VC_MM2RES_EVENT[2] = {10, 15};
 #include "flash_attention_score_antiquant_block_cube.h"
 #include "infer_flash_attention_kvcache.h"
 #include "infer_flash_attention_sparse.h"
-#include "../../../common/op_kernel/arch35/pse.h"
+#include "../../../common/op_kernel/arch35/pse_arch35.h"
 #include "../../../common/op_kernel/arch35/attenmask.h"
 
 using namespace AscendC;

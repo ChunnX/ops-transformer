@@ -15,7 +15,7 @@
 
 
 #include "tests/utest/ts.h"
-#include "ncai_case.h"
+#include "ncai_case_exp_ncai.h"
 
 using ncaInferCase = ops::adv::tests::ncaInfer::NcaInferCase;
 

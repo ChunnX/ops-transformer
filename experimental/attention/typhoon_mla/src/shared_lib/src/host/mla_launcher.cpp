@@ -10,7 +10,7 @@
 
 #include <acl/acl.h>
 #include "catlass_kernel.h"
-#include "helper.hpp"
+#include "helper_exp_typhoon.hpp"
 #include "mla_tiling.cpp"
 
 #include "kernel/mla_kernel.cpp"

@@ -16,7 +16,7 @@
 #define FIA_BLOCK_CUBE_FULLQUANT_MX_H_
 #include "../offset_calculator.h"
 #include "../matmul.h"
-#include "../FixpipeOut.h"
+#include "../FixpipeOut_exp_attn_common.h"
 #include "../memory_copy_arch35.h"
 
 #include "infer_flash_attention_comm.h"

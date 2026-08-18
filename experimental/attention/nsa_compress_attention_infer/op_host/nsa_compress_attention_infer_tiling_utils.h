@@ -16,7 +16,7 @@
 #ifndef NSA_COMPRESS_ATTENTION_INFER_TILING_UTILS_H
 #define NSA_COMPRESS_ATTENTION_INFER_TILING_UTILS_H
 
-#include "nsa_compress_attention_infer_tiling.h"
+#include "nsa_compress_attention_infer_tiling_exp_ncai.h"
 
 namespace optiling {
 

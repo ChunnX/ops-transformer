@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "mc2_log.h"
+#include "mc2_log_exp_mc2_common.h"
 
 namespace Mc2Log {
 using namespace Mc2Tiling;

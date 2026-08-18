@@ -19,13 +19,13 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
-#include "../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../common/op_host/fia_tiling_templates_registry_exp_attn_common.h"
 #include "prompt_flash_attention_tiling_context.h"
 #include "prompt_flash_attention_tiling_struct.h"
 #include "prompt_flash_attention_tiling_const.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "../op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
-#include "../../common/op_host/fia_tiling_base.h"
+#include "../../common/op_host/fia_tiling_base_exp_attn_common.h"
 
 namespace optiling {
 namespace v2 {

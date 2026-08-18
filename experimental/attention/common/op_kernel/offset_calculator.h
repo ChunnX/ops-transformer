@@ -21,9 +21,9 @@
 #include "kernel_operator.h"
 #endif
 
-#include "memcopy/gm_layout.h"
-#include "memcopy/parser.h"
-#include "memcopy/offset_calculator_v2.h"
+#include "memcopy/gm_layout_exp_attn_common.h"
+#include "memcopy/parser_exp_attn_common.h"
+#include "memcopy/offset_calculator_v2_exp_attn_common.h"
 #include "memcopy/fa_gm_tensor.h"
 #include "memcopy/fa_l1_tensor.h"
 #include "memcopy/gm_coord.h"

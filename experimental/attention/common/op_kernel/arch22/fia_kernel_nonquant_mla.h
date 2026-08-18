@@ -22,7 +22,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../fia_public_define.h"
-#include "../vector_common.h"
+#include "../vector_common_exp_attn_common.h"
 #include "../memory_copy.h"
 #include "fia_block_vec_nonquant_mla.h"
 #include "fia_block_cube_nonquant_mla.h"

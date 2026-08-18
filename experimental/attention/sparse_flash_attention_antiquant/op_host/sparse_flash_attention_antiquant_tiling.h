@@ -21,7 +21,7 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "split_core.h"
+#include "split_core_exp_sfa_antiquant.h"
 
 using std::map;
 using std::string;

@@ -23,7 +23,7 @@
 #endif
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include <cstdint>
-#include "../../../common/op_kernel/buffers_policy.h"
+#include "../../../common/op_kernel/buffers_policy_exp_attn_common.h"
 using namespace fa_base_matmul;
 using namespace regbaseutil;
 using AscendC::Cast;

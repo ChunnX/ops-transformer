@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
-#include "kernel_data_copy_transpose.h"
+#include "kernel_data_copy_transpose_exp_blitz.h"
 
 constexpr uint32_t FP32_ONE_BLOCK_SIZE_PFA = 8; 
 constexpr uint32_t BYTE_BLOCK_PFA= 32; // datacopy的block块大小，datacopy按block块粒度搬移数据

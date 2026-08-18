@@ -19,7 +19,7 @@
 #include <stdexcept>
 
 #include "catlass/detail/alignment.hpp"
-#include "helper.hpp"
+#include "helper_exp_typhoon.hpp"
 
 namespace MLATiling {
 using namespace std;  // to not pollute global namespace

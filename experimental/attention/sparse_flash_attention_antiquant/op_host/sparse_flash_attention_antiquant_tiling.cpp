@@ -22,7 +22,7 @@
 #include "register/op_def_registry.h"
 #include "../op_kernel/sparse_flash_attention_antiquant_template_tiling_key.h"
 #include "sparse_flash_attention_antiquant_tiling.h"
-#include "split_core.h"
+#include "split_core_exp_sfa_antiquant.h"
 #include "split_core_BN.h"
 
 using std::map;

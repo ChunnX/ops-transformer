@@ -22,7 +22,7 @@ namespace RotaryStride {
 #include <stdio.h>
 #include "kernel_operator.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "dtype_convert.h"
+#include "dtype_convert_exp_rotary_stride.h"
 
         using namespace AscendC;
 
