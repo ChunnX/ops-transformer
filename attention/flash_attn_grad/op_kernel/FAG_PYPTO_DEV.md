@@ -65,24 +65,72 @@ S1=S2=8192，D=128，36 核。口径为 msprof `task_duration`（**这才是端�
 
 ### 多 head 扩展性（S=8192）
 
-| N | ASC | 线性切分 | swizzle | 判据 | 最终 |
-|---|---|---|---|---|---|
-| 1 | 206.7 | **193.5** | 220.8 | 0 | 0.94x |
-| 2 | — | **378.0** | 427.3 | 0 | |
-| 4 | — | **747.7** | 857.6 | 0 | |
-| 8 | 1696.8 | 1630.5 | **1602.6** | 1 | 1.04x |
-| 16 | — | 4103.6 | **3438.2** | 1 | |
-| 32 | 6859.0 | 10106.1 | **6555.6** | 1 | 0.96x |
-| 64 | 14294.8 | 22215.7 | **13395.3** | 1 | 0.94x |
+接口对齐 `flash_attn_grad`（13 入 / 3 出 / 单 workspace）后重测，单位 us：
 
-判据切换点（N=6）与实测拐点（N=8）之间无反例。
+| N | 线性切分 | swizzle | 工作集 | 判据 | 判据是否选中更快项 |
+|---|---|---|---|---|---|
+| 1 | **193.4** | 221.7 | 22 MB | 0 | ✅ |
+| 8 | **1556.5** | 1760.6 | 176 MB | 0 | ✅ |
+| 10 | **1904.3** | 2007.4 | 220 MB | 0 | ✅ |
+| 12 | 2833.4 | **2676.8** | 264 MB | 1 | ✅ |
+| 16 | 4120.5 | **3549.5** | 352 MB | 1 | ✅ |
+| 24 | 6482.9 | **4982.3** | 528 MB | 1 | ✅ |
+
+实测拐点在 N=10 与 N=12 之间，即工作集约 2×L2（264 MB），**不是**刚超 1×L2
+的 N=6。原因是刚超 L2 时仍有可观的部分命中，此时 swizzle 更粗的分配粒度
+（整列 s1Outer 块）带来的负载不均反而占上风。判据阈值因此取 `2 * L2`，六个
+测点全部选中更快的那条路径。
+
+早期（接口改造前）以 ASC 为基线的对比：N=1 ASC 206.7 / pypto 193.5（0.94x）、
+N=8 1696.8 / 1602.6（1.04x）、N=32 6859.0 / 6555.6（0.96x）、
+N=64 14294.8 / 13395.3（0.94x）。线性路径在接口改造后进一步变快
+（N=8 1630→1556），拐点随之右移。
 
 ### 精度
 
 对 AscendC 结果直接比对（**不是 CPU golden**）：max/sum 版 dQ/dK 3.05e-05、
 dV 6.1e-05；LSE 版三项均 6.1e-05。差异来自舍入次序，在 fp16 精度内。
 
-## 3. 数据流与内存布局
+## 3. 接口定义
+
+kernel 入口 `flash_attn_grad`：**13 输入 / 3 输出 / 1 workspace / 1 tiling**，
+形参顺序严格对齐 `op_host/flash_attn_grad_def.cpp` 的 `Input()` 声明。
+
+```
+输入  q, k, v, dout, attn_out, softmax_lse,
+      cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata
+输出  dq, dk, dv
+其余  workspace, tiling
+```
+
+后 7 个输入本实现不读取（变长 TND、sinks、attn_mask 不在支持范围，metadata
+预留）。**形参必须原样保留** —— 少一个就会与 host 的 13 输入按位错位，症状是
+读到相邻张量的数据而非报错。
+
+`FlashAttnGradTilingData` 的字段名与顺序必须与 host 的
+`TILING_DATA_FIELD_DEF` 逐一对应，codegen 出的
+`FlashAttnGradTilingData_tiling.h` 按此声明顺序排布内存：
+
+```python
+b, s1, s2, n1, n2, d, dv: int
+scaleValue: float
+```
+
+注意其中**没有 coreNum 字段**，kernel 里改用 `pl.get_block_num()`（实测
+cube/vector 两侧都返回物理核数 36，故 CV 双侧算出的 `numBlocks` 一致，
+set/wait 能正确配对）。
+
+单块 workspace 内部再切三份 fp32 累加区（主循环用 atomicAdd 累加，pre 阶段清零）：
+
+```
+dq_workspace : b*s1*n2 * 128 fp32
+dk_workspace : b*s2*n2 * 128 fp32
+dv_workspace : b*s2*n2 * 128 fp32
+```
+
+host 侧尺寸为 `libapiSize + (dqElems + 2*dkvElems) * 4`。
+
+## 4. 数据流与内存布局
 
 ### 五个 matmul
 
@@ -120,9 +168,9 @@ L0C 正好用满 256 KB（4 × 64 KB）。
 pre/post 与主循环靠 `sync_all` 完全隔开，**直接从 0 地址复用主循环的 UB 与
 mutex_id**，不额外占空间。
 
-## 4. 核心优化
+## 5. 核心优化
 
-### 4.1 L0A/L0B/L0C 双缓冲（收益最大，135 us）
+### 5.1 L0A/L0B/L0C 双缓冲（收益最大，135 us）
 
 五个 matmul 串行复用同一块 L0A/L0B 时，`pl.move` 填充期间 mac 只能干等。
 每个缓冲 64 KB、`[128,128]` fp16 占 32 KB，正好放两槽；把所有 matmul 的
@@ -136,7 +184,7 @@ acc（L0C）同理：fixpipe 写出期间下一个 matmul 被阻塞。
 **诊断方法**：算 `kernel_time − max(各流水忙时)`。若缺口大且无流水接近 1.0，
 就是等待而非工作量 —— 优先查双缓冲，而不是试图减少计算。
 
-### 4.2 融合 cast + ND2NZ VF
+### 5.2 融合 cast + ND2NZ VF
 
 独立的 `pl.move` 做 ND→NZ 转换跑在 **vector 计算流水**（`aiv_vec_ratio`），
 不是 MTE3。它曾是与 ASC 差距最大的单项（+127 us）。折进产生数据的 VF：
@@ -164,7 +212,7 @@ pl.set_validshape(nzp_ub, [NZP_ROWS, N])       # 必须恢复 65
 错位。两个子核 insert 到 `rowOff` 0/64 各占 64 行互不重叠，超出 `s1Real` 的
 脏行只落在本子核半区内，由 matmul `valid_shape` 与 store 裁掉。
 
-### 4.3 kernel 内 pre/post
+### 5.3 kernel 内 pre/post
 
 AscendC 把三段融进**一个** kernel（`entry_regbase.h`:
 `opPre.Process()` → `op.Process()` → `opPost.Process()`，msprof 也只见一个
@@ -191,7 +239,7 @@ pre=496 时 8192 行只切出 17 块，72 个核有 55 个空跑。post chunk �
 （165→32 仅差 1.3 us），因为它每轮都有 load/cast/store 三段可重叠。
 定稿 `PRE_CHUNK_ROWS=128` / `POST_CHUNK_ROWS=64`（depth 2 双槽，96 KB）。
 
-### 4.4 Swizzle 分核（大 N 的 L2 复用）
+### 5.4 Swizzle 分核（大 N 的 L2 复用）
 
 线性切分让 36 核同时落在 32+ 个不同 head 上，工作集撑爆 L2（128 MB）：
 
@@ -220,7 +268,32 @@ AscendC 用 swizzle 应对（`M/N_SWIZZLE_SIZE = 32768`，`common.h:67`，
 k+v 读 fp16、dk+dv 写 fp32）。另外列数 < `2*coreNum` 时不开（N=1 只有 64 列，
 核 0 拿 2 列而核 35 拿 1 列，2 倍失衡反而慢 14%）。
 
-## 5. LSE 接口变更
+**阈值取 `2 * L2` 而非 `1 * L2`**：实测拐点是工作集 264 MB（N=12），不是刚超
+128 MB 的 N=6，详见 2 节的表。
+
+### 判据落点：tilingkey bit4，不是 tiling data 字段
+
+host 在 `TilingFunc` 里按输入 shape 算出 `swizzle`，OR 进 tilingkey：
+
+```
+bit0-1 = template, bit2 = layout, bit3 = hasAttenMask, bit4 = swizzle
+```
+
+kernel 侧 `swizzle = TilingKeyField(bits=1, values=[0, 1])`，函数体内当**编译期
+常量**用（`set_const_info(tiling, coreNum, swizzle)`），两条分核路径各自编译成
+独立分支，运行期无判断开销。tilingkey 组合数从 16 升到 32，可在生成的
+`FlashAttnGradTilingKey_tilingkey.h` 里查到 `// bit:4-4 ASCENDC_TPL_UINT_DECL(swizzle, ...)`。
+
+host 计数活跃 head 时**必须用 `aicNum`，不能用 `blockDim`**：后者是
+`CalcTschBlockDim(aivNum, aicNum, aivNum)` 的混合调度值，而 kernel 里
+`pl.get_block_num()` 返回物理 cube 核数（36）。
+
+判据在 kernel 与 host 两处各有一份实现，**必须同步改**：
+`op_kernel/flash_attn_grad.py` 的 `decide_swizzle()`（JIT 路径与测试用）
+和 `op_host/flash_attn_grad_tiling.cpp` 的 C++ 门控（AOT 路径用）。
+调试时可用 `FAG_FORCE_SWIZZLE=0/1` 绕过判据强制指定分支。
+
+## 6. LSE 接口变更
 
 不再输入 `softmax_max` / `softmax_sum` 两个张量，改为单个 `softmax_lse`，
 形状 **`[B, N, S1]`** fp32。约定对标
@@ -239,7 +312,7 @@ pl.load(lse_ub, tensor_lse,
         [runInfo.boIdx, runInfo.n2oIdx, loadBase], order=[2, 0])
 ```
 
-## 6. 踩过的坑
+## 7. 踩过的坑
 
 | 现象 | 根因 |
 |---|---|
@@ -262,35 +335,89 @@ def sel(flag, whenOne, whenZero):
     return whenZero + flag * (whenOne - whenZero)
 ```
 
-## 7. 文件与用法
+## 8. 文件与用法
+
+代码位于 `attention/flash_attn_grad/`：
 
 | 文件 | 说明 |
 |---|---|
-| `flash_attention_score_grad_pypto.py` | kernel 实现（1528 行） |
-| `test_flash_attention_score_grad_pypto.py` | 13 个 shape 用例，含 S1/S2 尾块；带 2 分钟执行看护 |
-| `prof_pypto.py` | msprof 各流水占用率，支持 `B/N/S1/S2/CORES` 环境变量 |
-| `bench_fag_asc_vs_pypto.py` | 与 AscendC 端到端对比 + 正确性交叉验证 |
+| `op_kernel/flash_attn_grad.py` | kernel 实现（~1530 行），含 `FlashAttnGradTilingData` / `FlashAttnGradTilingKey` / `decide_swizzle()` |
+| `op_kernel/test_flash_attention_score_grad_pypto.py` | 13 个 shape 用例，含 S1/S2 尾块；带 2 分钟执行看护 |
+| `op_kernel/prof_pypto.py` | msprof 各流水占用率，支持 `B/N/S1/S2/CORES` 环境变量 |
+| `op_kernel/bench_fag_asc_vs_pypto.py` | 与 AscendC 端到端对比 + 正确性交叉验证 |
+| `op_host/flash_attn_grad_tiling.cpp` | tiling：workspace 尺寸、swizzle 门控、tilingkey 拼装 |
+| `op_host/flash_attn_grad_tiling_check.cpp` | 参数校验。**文件名必须含 `_tiling`**，tiling 对象库按 `*_tiling*.cpp` glob 收源文件，原名 `_check.cpp` 会漏编，链接期报 `undefined symbol CheckParams` |
+| `examples/test_aclnn_flash_attn_grad.cpp` | aclnn 单算子调用 + host fp32 golden |
+
+### JIT 路径（快速迭代）
 
 ```bash
 export PYPTO=/usr/local/Ascend/cann-9.2.0/python/site-packages
 export PY=/root/.conda/envs/zyj/bin/python3
+cd op_kernel
 
-PYTHONPATH=$PYPTO $PY test_flash_attention_score_grad_pypto.py      # 全部用例
-CASE_FILTER=11 PYTHONPATH=$PYPTO $PY test_...py                     # 单个用例
+PYTHONPATH=$PYPTO $PY test_flash_attention_score_grad_pypto.py   # 全部用例
+CASE_FILTER=11 PYTHONPATH=$PYPTO $PY test_...py                  # 单个用例
+FAG_FORCE_SWIZZLE=1 PYTHONPATH=$PYPTO $PY test_...py             # 强制分核方式
 B=1 N=32 S1=8192 S2=8192 PROF_OUT=/tmp/p PYTHONPATH=$PYPTO $PY prof_pypto.py
-PYTHONPATH=$PYPTO $PY bench_fag_asc_vs_pypto.py                     # 对比 ASC
+PYTHONPATH=$PYPTO $PY bench_fag_asc_vs_pypto.py                  # 对比 ASC
 ```
+
+### AOT 路径（对标 ASC 交付件）
+
+```bash
+cd <repo root>
+export PATH=/root/.conda/envs/zyj/bin:$PATH          # 需 cmake >= 3.18
+export Python3_ROOT_DIR=/root/.conda/envs/zyj \
+       Python3_EXECUTABLE=/root/.conda/envs/zyj/bin/python3
+bash build.sh --op_debug_config dump_cce --soc=ascend950 --ops=flash_attn_grad --pkg
+cd build && ./cann-ops-transformer-custom_linux-x86_64.run
+```
+
+两个环境变量不是可选的：默认会挑到 `/root/miniconda3/bin/python3.13`（无
+`pypto_pro`），于是 `require_pypto_pro` 提前返回、整个算子被跳过，最终报成
+`CMake Error: No SOURCES given to target: cust_proto` —— 报错位置和真因毫无关系。
+`--ops` 的取值是**目录名** `flash_attn_grad`；写错（如 `flash_atten_grad`）会因
+匹配不到算子而报出同一条 `cust_proto` 错误。
+
+运行 aclnn 用例：
+
+```bash
+CANN=/home/kjc/kjc_cann_0701/cann-9.1.0
+VEND=$CANN/opp/vendors/custom_transformer
+g++ -std=c++17 -O2 examples/test_aclnn_flash_attn_grad.cpp -o /tmp/fag_aclnn \
+  -I$CANN/include -I$VEND/op_api/include \
+  -L$CANN/lib64 -L$VEND/op_api/lib -lascendcl -lnnopbase -lcust_opapi
+export LD_LIBRARY_PATH=$VEND/op_api/lib:$CANN/lib64:$LD_LIBRARY_PATH
+export ASCEND_CUSTOM_OPP_PATH=$VEND
+FAG_B=1 FAG_N=1 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
+```
+
+`FAG_CHECK=0` 跳过 host golden（`O(B*N*S1*S2*D)` 三重循环，大 shape 太慢），
+只校验执行成功与输出量级非零。加
+`ASCEND_GLOBAL_LOG_LEVEL=1 ASCEND_SLOG_PRINT_TO_STDOUT=1` 可看到 tiling 日志里
+实际选中的 `swizzle=`。
 
 性能测试固定用 S=8192。
 
-## 8. 状态与后续
+## 9. 状态与后续
 
-13 个用例全 PASS（含尾块），对 AscendC 交叉验证通过。N=1 0.93x、N=32 0.96x、
-N=64 0.94x。
+已完成并验证：
 
-已提交在 `FAG_pro` 分支。**推送受阻**：token 认证正常（Julius47，全 scope，
-对 fork 是 Owner），但 gitcode 返回
-`<CH.00905403> You are not allowed to push code to this project` 403，
+- **JIT 路径**：13 个用例全 PASS（含 S1/S2 尾块），`FAG_FORCE_SWIZZLE=0` 与 `=1`
+  两条分核路径各自跑满 13 例。对 AscendC 交叉验证通过。
+- **AOT 路径**：按 ASC 交付件形态编出 bf16/fp16 两个 MIX 核 ELF（各 316 KB），
+  导出 `aclnnFlashAttnGrad` / `aclnnFlashAttnGradGetWorkspaceSize`；aclnn 用例
+  PASS，dQ 6.14e-05 / dK 6.12e-05 / dV 6.61e-05，rms 与 golden 前 5 位有效数字
+  一致（dQ 1.503249e-03 vs 1.503265e-03）。workspace 随 shape 正确缩放
+  （N=1 16.38 MB，N=8 112 MB）。
+- **swizzle 判据**：已改为 tilingkey bit4，阈值校准到 `2 * L2`；N=1/8/10/12/16/24
+  六个测点，host 判据全部选中实测更快的那条路径。
+
+性能：N=1 0.93x、N=32 0.96x、N=64 0.94x（ASC 为 1.0 基线）。
+
+**推送受阻**：token 认证正常（Julius47，全 scope，对 fork 是 Owner），但 gitcode
+返回 `<CH.00905403> You are not allowed to push code to this project` 403，
 新分支同样如此 —— 需在平台侧解除推送限制。
 
 可继续的方向（当前无明显瓶颈，mac 已 0.941 近饱和）：
@@ -298,6 +425,8 @@ N=64 0.94x。
 - vec 计算 127.9 vs ASC 85.3 us、vec mte2 66.3 vs 24.6 us 仍偏高；后者部分来自
   post 阶段读回 fp32 workspace
 - cube mte2 94.0 vs 69.6 us
-- N=8 是 1.04x，为判据切换点附近的唯一劣势档位，可细调阈值
+- 拐点邻域（N=11 附近）未测，阈值可再细调
+- `flash_attn_grad_binary.json` 目前只产 bf16/fp16 两个变体，两个 swizzle 分支
+  是各自出核还是派发期选择，尚未确认
 
 进一步优化 vector 侧收益有限，除非同时降低 cube 侧工作量。

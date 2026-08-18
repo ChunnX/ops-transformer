@@ -126,12 +126,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // only K+V lands exactly on 128 MB at N=32 and wrongly reports "fits",
     // where swizzle actually wins by 34%.
     //
-    // Measured (S=8192, 36 cores, us): N=1 linear 193.5 / swizzle 220.8;
-    // N=4 748/858; N=8 1631/1603; N=32 10106/6556; N=64 22216/13395.
-    // The crossover sits at N=8 and the gate switches at N=6 -- no counterexample
-    // in between. Swizzle's granularity is a whole column, so it is skipped when
-    // there are too few columns to balance (N=1 has 64 columns for 36 cores:
-    // core 0 takes 2 while core 35 takes 1, a 2x skew that costs 14%).
+    // Swizzle's granularity is a whole column, so it is skipped when there are
+    // too few columns to balance (N=1 has 64 columns for 36 cores: core 0 takes
+    // 2 while core 35 takes 1, a 2x skew that costs 14%).
     int64_t swizzle = 0;
     if (layout != 1) {
         constexpr int64_t CUBE_BASE_M = 128;
@@ -158,13 +155,20 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
             int64_t perHeadBytes = 3 * s1Size * dSize * FP16_BYTES + s1Size * dSize * FP32_BYTES +
                                    2 * s2Size * dSize * FP16_BYTES + 2 * s2Size * dSize * FP32_BYTES;
             int64_t liveBytes = static_cast<int64_t>(liveHeads.size()) * perHeadBytes;
-            if (liveBytes > L2_CACHE_BYTES && bSize * n2Size * s2Outer >= 2 * cores) {
+            // 2x L2, not 1x: the measured crossover is a 264 MB working set
+            // (N=12), not the N=6 that merely exceeds 128 MB. Just past L2 there
+            // is still substantial partial hitting, and there swizzle's coarser
+            // granularity (a whole s1Outer column) loses on load balance.
+            // Measured (S=8192, 36 cores, us, linear/swizzle): N=1 193/222,
+            // N=8 1556/1761, N=10 1904/2007, N=12 2833/2677, N=16 4121/3550,
+            // N=24 6483/4982. Linear wins through N=10, swizzle from N=12 on.
+            if (liveBytes > 2 * L2_CACHE_BYTES && bSize * n2Size * s2Outer >= 2 * cores) {
                 swizzle = 1;
             }
         }
     }
 
-FlashAttnGradTilingData *tilingData = context->GetTilingData<FlashAttnGradTilingData>();
+    FlashAttnGradTilingData *tilingData = context->GetTilingData<FlashAttnGradTilingData>();
     tilingData->b = bSize;
     tilingData->s1 = s1Size;
     tilingData->s2 = s2Size;

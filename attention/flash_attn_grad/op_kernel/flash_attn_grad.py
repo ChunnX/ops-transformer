@@ -373,7 +373,15 @@ def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2):
     per_head = 3 * s1 * d * dtype_bytes + s1 * d * fp32
     # k + v 读 (fp16) + dk + dv 写 (fp32)
     per_head += 2 * s2 * d * dtype_bytes + 2 * s2 * d * fp32
-    if live_heads * per_head <= L2_CACHE_BYTES:
+    # 阈值取 2x L2 而非 1x：实测拐点在工作集 264MB(N=12)，不是刚超 128MB
+    # 的 N=6。原因是超出 L2 一点时仍有可观的部分命中，此时 swizzle 那套
+    # 更粗的分配粒度(整列 s1Outer 块)带来的负载不均反而占上风。
+    #   S=8192 36核 实测(us)：N=8  线性 1556 / swizzle 1761  -> 线性胜
+    #                        N=10 线性 1904 / swizzle 2007  -> 线性胜
+    #                        N=12 线性 2833 / swizzle 2677  -> swizzle 胜
+    #                        N=16 线性 4121 / swizzle 3550
+    #                        N=24 线性 6483 / swizzle 4982
+    if live_heads * per_head <= 2 * L2_CACHE_BYTES:
         return 0
     # swizzle 的分配粒度是「一整列 s1Outer 块」，列数太少会失衡到不划算
     # (N=1 时仅 64 列 < 2*36 核，核0 拿 2 列而核35 拿 1 列，实测反慢 14%)
