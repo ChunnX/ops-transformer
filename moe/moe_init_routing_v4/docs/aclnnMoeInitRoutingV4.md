@@ -286,7 +286,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>expertCapacity（int64_t）</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数</td>
-      <td>入参校验大于0小于NUM_ROWS。</td>
+      <td>Dropless场景下仅校验其值，不使用该参数；DropPad场景下取值范围为(0, NUM_ROWS]。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -296,7 +296,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>expertNum（int64_t）</td>
       <td>输入</td>
       <td>表示专家数</td>
-      <td>expertTokensNumType为key_value模式时，取值范围为[0, 5120]，其它模式取值范围[0, 10240]</td>
+      <td>expertTokensNumType为key_value模式时，取值范围为[1, 5120]，其它模式取值范围为[1, 10240]</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -423,10 +423,10 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>输出</td>
       <td>输出每个专家处理的token数量的统计结果或累加值</td>
       <td><ul>
-        <li>在expertTokensNumType为0时，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和。</li>
-        <li>在expertTokensNumType为1时，表示activeExpertRangeOptional范围内expert对应的处理token的总数。</li>
-        <li>在expertTokensNumType为2时，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</li>
-        <li>在expertTokensNumType为0或1时，输出shape为[expertEnd-expertStart]；在expertTokensNumType为2时，输出shape为[expertNum, 2]。</li>
+        <li>当expertTokensNumFlag为false时，输出为空tensor。</li>
+        <li>在expertTokensNumType为0时，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和，输出shape为[expertEnd-expertStart]。</li>
+        <li>在expertTokensNumType为1时，表示activeExpertRangeOptional范围内expert对应的处理token的总数，输出shape为[expertEnd-expertStart]。</li>
+        <li>在expertTokensNumType为2时，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数，输出shape为[expertNum, 2]。</li>
       </ul></td>
       <td>INT64</td>
       <td>ND</td>
@@ -441,7 +441,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
         <ul style="list-style-type: circle;">
         <li>非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。当Drop/Pad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，输出FLOAT32类型。</li>
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
-        <li>静态量化场景下不输出。</li>
+        <li>静态量化场景下（quantMode为0）、HIF8直转量化场景下（quantMode为6）、HIF8 PERTENSOR量化场景下（quantMode为7），expandedScaleOut不输出。</li>
         <li>MXFP8量化场景下（quantMode为2、3、16、17），输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
         <li>按照直转方式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
         <li>按照PERTENSOR模式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>

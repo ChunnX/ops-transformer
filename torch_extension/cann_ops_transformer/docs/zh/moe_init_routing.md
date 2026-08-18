@@ -188,6 +188,7 @@ cann_ops_transformer.moe_init_routing(
 **quant_mode支持取值：**
 
 -1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17。各取值含义如下：
+
 - -1：表示非量化场景。
 - 0：表示静态量化场景。
 - 1：表示动态量化场景，`expanded_x`量化到INT8。
@@ -211,7 +212,7 @@ cann_ops_transformer.moe_init_routing(
 
 |  参数名   | 参数类型 |  可选/必选 |    描述    |     数据类型    |   维度(shape)   |
 |---------|----------|----------|---------------|---------------|------------|
-|  expanded_x  |  Tensor |  必选  |  根据expert_idx进行扩展过的特征。非量化场景下数据类型同`x`；量化场景下数据类型根据quant_mode确定。量化场景下，当`x`的数据类型为`int8`时，输出值无意义。Dropless场景shape为[NUM_ROWS * K, H]，Active场景shape为[min(activeNum, NUM_ROWS * K), H]，Drop/Pad场景下shape为[expertNum * expertCapacity, H]。  |  float16、bfloat16、float32、int8、float8_e5m2、float8_e4m3fn、hifloat8、float4_e2m1、int4   | 2-3  |
+|  expanded_x  |  Tensor |  必选  |  根据expert_idx进行扩展过的特征。非量化场景下数据类型同`x`；量化场景下数据类型根据quant_mode确定。量化场景下，当`x`的数据类型为`int8`时，输出值无意义。Dropless场景shape为[NUM_ROWS *K, H]，Active场景shape为[min(activeNum, NUM_ROWS* K), H]，Drop/Pad场景下shape为[expertNum * expertCapacity, H]。  |  float16、bfloat16、float32、int8、float8_e5m2、float8_e4m3fn、hifloat8、float4_e2m1、int4   | 2-3  |
 |  expanded_row_idx  |  Tensor |  必选  |  expanded_x和x的映射关系，shape与expanded_x第一维一致。前availableIdxNum个元素为有效数据，其余无效数据由`row_idx_type`决定：为0时由-1填充，为1时未初始化。  |  int32   | 1-2  |
 |  expert_token_cumsum_or_count  |  Tensor |  必选  |  表示每个专家处理的token数量的统计结果或累加值。  |  int64   | 1-2  |
 |  expanded_scale  |  Tensor |  必选  |  输出不同量化过程中scale的中间值。不同场景下的输出shape和数据类型见下方说明。  |  float32、float8_e8m0   | 1-3  |
