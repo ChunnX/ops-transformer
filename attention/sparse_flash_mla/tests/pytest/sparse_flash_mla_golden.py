@@ -26,7 +26,7 @@ DATA_RANGE_RIGHT = 10
 RUN_MODE = 1
 
 
-def _is_empty(obj):
+def is_empty(obj):
     if isinstance(obj, list):
         return len(obj) == 0
     if isinstance(obj, torch.Tensor):
@@ -217,7 +217,7 @@ class GeneralizedSFA:
                                 self.cmp_ratio,
                                 cur_cmp_act_kv,
                             )
-                        if _is_empty(cur_cmp_k):
+                        if is_empty(cur_cmp_k):
                             cmp_s2_loop_time = 0
                             cur_cmp_k_fp32 = []
                         else:
@@ -248,7 +248,7 @@ class GeneralizedSFA:
                             1,
                             cur_ori_act_kv,
                         )
-                        if _is_empty(cur_ori_k_bnsd):
+                        if is_empty(cur_ori_k_bnsd):
                             ori_s2_loop_time = 0
                         else:
                             ori_s2_loop_time = math.ceil(
@@ -287,7 +287,7 @@ class GeneralizedSFA:
                             ]
                             empty_flag_ori = False
 
-                    if _is_empty(cur_ori_k_bnsd) and _is_empty(cur_cmp_k):
+                    if is_empty(cur_ori_k_bnsd) and is_empty(cur_cmp_k):
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
@@ -298,11 +298,11 @@ class GeneralizedSFA:
                         if empty_flag:
                             k_concat = (
                                 cur_ori_k_bnsd
-                                if not _is_empty(cur_ori_k_bnsd)
+                                if not is_empty(cur_ori_k_bnsd)
                                 else cur_cmp_k
                             )
                         else:
-                            if _is_empty(cur_ori_k_bnsd):
+                            if is_empty(cur_ori_k_bnsd):
                                 k_concat = cur_cmp_k
                             else:
                                 k_concat = torch.concat(
