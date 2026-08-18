@@ -31,6 +31,7 @@ const aclTensor* FlashAttnMetadata(
     const char* layoutQ,
     const char* layoutKv,
     const char* layoutOut,
+    bool isGradEnabled,
     const char* socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
