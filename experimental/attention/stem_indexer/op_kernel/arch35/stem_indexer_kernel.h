@@ -108,7 +108,7 @@ protected:
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
-    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, SICommon::RunInfo &runInfo);
+    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
@@ -507,9 +507,12 @@ __aicore__ inline void SIPreload<SIT>::Process()
         CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0U);
         CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1U);
         CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
     }
 }
 
@@ -532,7 +535,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
                 continue;
             }
 
-            for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
+            for (uint32_t s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
                 ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
                 ++gloop;
             }
@@ -543,7 +546,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
+__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx,
                                                         SICommon::RunInfo &runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
