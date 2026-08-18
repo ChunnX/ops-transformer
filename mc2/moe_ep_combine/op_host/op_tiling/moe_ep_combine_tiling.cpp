@@ -330,7 +330,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t dispatchNotifySize = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN * epWorldSize * COMM_ALIGN;
     uint64_t dispatchWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * COMM_ALIGN + dispatchNotifySize;
-    uint64_t combineRankFlagSize = epWorldSize * COMM_ALIGN; // one completion flag slot per source rank
+    // Reserve one completion flag per source rank plus one local persistent epoch counter.
+    uint64_t combineRankFlagSize = (epWorldSize + 1UL) * COMM_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + combineRankFlagSize;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;

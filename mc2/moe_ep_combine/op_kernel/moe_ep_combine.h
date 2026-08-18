@@ -141,6 +141,10 @@ private:
     {
         return (static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ + srcRank) * WIN_ADDR_ALIGN;
     }
+    __aicore__ inline uint64_t GetEpochCounterOffset() const
+    {
+        return GetRankFlagOffset(epWorldSize_);
+    }
 
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
@@ -492,8 +496,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
 
+    // Keep the persistent epoch counter separate from the per-source completion flags. In
+    // particular, the self-rank flag must not become visible until all local payload writes finish.
     GM_ADDR localEpochAddr =
-        GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + GetRankFlagOffset(rankId_);
+        GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + GetEpochCounterOffset();
     GlobalTensor<uint32_t> localEpoch;
     localEpoch.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localEpochAddr));
     DataCopyParams epochCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
