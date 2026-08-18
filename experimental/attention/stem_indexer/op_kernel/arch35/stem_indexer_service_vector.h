@@ -608,8 +608,8 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
             InitSparseIndicesToNegOne(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
         }
 
-        // DirectOutput does not participate in the MM1 slot protocol. Reuse the idle TopK index buffer here to
-        // avoid racing with a later Cube Fixpipe write to resMm1Local_[0] in mixed DirectOutput/MM1 cases.
+        // DirectOutput不参与MM1槽同步，复用空闲的TopK索引区，
+        // 避免混合DirectOutput/MM1场景下与后续Cube Fixpipe写resMm1Local_[0]产生冲突。
         LocalTensor<uint32_t> indicesOutLocal = globalIndexLocal_;
 
         // 当前处理的gS1行起始索引（全局位置）

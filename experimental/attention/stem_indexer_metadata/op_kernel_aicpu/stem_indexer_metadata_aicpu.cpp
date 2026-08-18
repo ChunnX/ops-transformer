@@ -25,6 +25,7 @@
 namespace aicpu {
 namespace {
 constexpr uint32_t STEM_M_BASE_SIZE = 64U;
+constexpr uint32_t STEM_S2_BASE_SIZE = 256U;
 }
 
 uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
@@ -195,7 +196,7 @@ bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::Sec
 {
     param.l2Byte = 96U * 1024U * 1024U;
     param.mBaseSize = STEM_M_BASE_SIZE;
-    param.s2BaseSize = 256; // 256: Fix s2BaseSize
+    param.s2BaseSize = STEM_S2_BASE_SIZE;
     param.fdOn = false;
     return true;
 }
