@@ -207,6 +207,7 @@ public:
         constInfo_.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo_.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = fiaBaseParams.scaleValue;
+        constInfo_.l2CacheOffFlag = fiaBaseParams.l2CacheOffFlag;
         constInfo_.coreNum = fiaBaseParams.coreNum;
         constInfo_.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
