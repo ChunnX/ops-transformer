@@ -20,8 +20,8 @@
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
 #include "block_epilogue_arch35_utils.hpp"
-#include "mxfp4_vf/vf_updateScale_dn_mxfp4.h"
-#include "mxfp4_vf/vf_attenOut_dn_mxfp4.h"
+#include "mxfp4_vf/vf_rescale_o_dn_mxfp4.h"
+#include "mxfp4_vf/vf_attn_out_transpose_mxfp4.h"
 
 namespace NpuArch::Epilogue::Block {
 using namespace MXFP4Kernel;
@@ -100,7 +100,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
-                Mxfp4VF::ProcessOutCallVF<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
+                Mxfp4VF::TransposeAttnOutCallVF<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
