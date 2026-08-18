@@ -50,6 +50,8 @@ TILING_DATA_FIELD_DEF(uint64_t, accumOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, lseStatSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
+// 1: paged KV cache (block_table + 4D key/value). 0: TND non-kvcache [T, N, D].
+TILING_DATA_FIELD_DEF(uint32_t, isPageAttention);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MinimaxSparseAttentionSplitKv, MinimaxSparseAttentionSplitKvTilingData)
 
@@ -98,6 +100,7 @@ private:
     uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t innerPrecise_ = 4;
+    uint32_t isPageAttention_ = 1;
 
     const int32_t *qSeqLenList_ = nullptr;
     const int32_t *kvSeqLenList_ = nullptr;

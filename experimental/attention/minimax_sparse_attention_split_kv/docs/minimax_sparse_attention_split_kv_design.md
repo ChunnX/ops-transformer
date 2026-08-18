@@ -19,16 +19,21 @@
 
 ### 2.1 算子输入
 
+KV 支持两种存储：
+
+1. **Paged KV Cache**（`block_table` 非空）：`key`/`value` 为 4 维 `[num_physical_blocks, blockSize, kvHeads, D]`，用 `block_table` 把 logical block 映射到 physical block。
+2. **非 kvcache / TND**（`block_table` 为空）：`key`/`value` 与 `query` 同一套 layout，shape 为 `[total_kv_tokens, kvHeads, D]`。token 按 `actual_seq_lengths_kv` 在 T 轴紧密拼接；logical block `(batchIdx, localBlockIdx)` 的起始 token 为 `sum(kv_seqlen[0..batchIdx)) + localBlockIdx * blockSize`。`input_layout` 对 K/V 生效。
+
 | Tensor | Shape | Type | 说明 |
 | --- | --- | --- | --- |
 | `query` | `[total_q_tokens, num_q_heads, D]` | bf16/fp16 | TND 格式 Q。`qToken` 是跨 batch 展平后的 token 下标。 |
-| `key` | `[num_physical_blocks, blockSize, kvHeads, D]` | bf16/fp16 | Paged K Cache。 |
-| `value` | `[num_physical_blocks, blockSize, kvHeads, D]` | bf16/fp16 | Paged V Cache。 |
-| `block_table` | `[batch, maxBlocksPerBatch]` | int32 | 每个 batch 内 logical block 到 physical block 的映射。第二维是寻址 stride，必须来自 shape，不能由 `kv_seqlen` 推导。 |
+| `key` | PA：`[num_physical_blocks, blockSize, kvHeads, D]`；TND：`[total_kv_tokens, kvHeads, D]` | bf16/fp16 | Paged K Cache，或非 kvcache TND。 |
+| `value` | 与 `key` 相同 | bf16/fp16 | Paged V Cache，或非 kvcache TND。 |
+| `block_table` | `[batch, maxBlocksPerBatch]` | int32 | **可选**。传入则为 PA；不传则为 TND 非 kvcache。PA 下第二维是寻址 stride，必须来自 shape，不能由 `kv_seqlen` 推导。 |
 | `k2q_row_ptr` | `[kvHeads, totalPackedRows + 1]` | int32 | Dense packed-row CSR 行指针；`totalPackedRows = sum(ceil(kv_seqlen/blockSize))`。 |
 | `k2q_q_indices` | `[kvHeads, totalQTokens * topK]` | int32 | CSR 列数据：global `qToken` id，按 head 分段存储。 |
 | `k2q_slot_indices` | `[kvHeads, totalQTokens * topK]` | int32 | 每条边在 workspace 中的 `slotK`，范围 `[0, topK)`。 |
-| `actual_seq_lengths` | `[batch]` | int32 | **必选**。每个 batch 的 Q sequence length。 |
+| `actual_seq_lengths` | `[batch]` | int32 | **必选**。每个 batch 的 Q sequence length。TND 模式下 `batch` 取该 tensor（或 `actual_seq_lengths_kv`）的长度。 |
 | `actual_seq_lengths_kv` | `[batch]` | int32 | **必选**。每个 batch 的 KV sequence length。 |
 
 
@@ -41,7 +46,7 @@
 1. Host 侧 forward 选块为 `select_idx[kvHeads, totalQTokens, topK]`（可用 global logical id 表达，构建 CSR 时转为 batch-local q2k）与 `select_num_idx[kvHeads, totalQTokens]`。
 2. **`totalPackedRows`** = `sum_b ceil(kv_seqlen[b]/blockSize)`，与 MSA/CUDA `build_k2q_csr` 一致；未选中的块对应 CSR 空行（`row_ptr[r+1]==row_ptr[r]`）。
 3. Phase1 task：`taskIdx = packedRow * kvHeads + kvHeadIdx`，其中 `packedRow` 由 `(batch, local_kv_block)` 按 MSA 规则打包。
-4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §5.1 / §6.1），再经 `block_table` 取 physical block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
+4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §5.1 / §6.1），再按 PA/`block_table` 或 TND token 偏移取 K/V block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
 5. `csrStart = k2q_row_ptr[kvHeadIdx, packedRow]`，`csrEnd = k2q_row_ptr[kvHeadIdx, packedRow + 1]`，`numQTokens = csrEnd - csrStart`。
 6. `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`（global flattened q id），`slotK = k2q_slot_indices[...]`。
 7. `k2qNnzUpperBound = k2q_q_indices.shape[1]`，通常为 `totalQTokens * topK`。
@@ -62,16 +67,17 @@
 
 | 字段 | 含义 |
 | --- | --- |
-| `batch` | batch 数，来自 `block_table.shape[0]`。 |
+| `batch` | batch 数。PA 来自 `block_table.shape[0]`；TND 非 kvcache 来自 `actual_seq_lengths_kv` 的长度。 |
 | `numHeads` | Q head 数，来自 `query.shape[1]`。 |
-| `kvHeads` | KV head 数，优先来自 attr，否则来自 `key.shape[2]`。 |
+| `kvHeads` | KV head 数，优先来自 attr，否则 PA 来自 `key.shape[2]`、TND 来自 `key.shape[1]`。 |
 | `groupSize` | `numHeads / kvHeads`，GQA 中一个 KV head 对应的 Q head 数。 |
 | `embeddingSize` | head size D。当前主目标为 D=128。 |
 | `blockSize` | KV block token 数，通常为 128。 |
 | `topK` | 每个 Q token 选择的 KV block 数（attr）。 |
 | `totalQTokens` | 所有 batch 的 Q token 总数，来自 `query.shape[0]`。 |
 | `totalPackedRows` / `numKvBlocks` | `k2q_row_ptr.shape[1] - 1` = `sum_b ceil(kv_seqlen[b]/blockSize)`。tiling 字段名为 `numKvBlocks`。 |
-| `maxBlocksPerBatch` | `block_table.shape[1]`，用于 `block_table` 行 stride。 |
+| `maxBlocksPerBatch` | PA：`block_table.shape[1]`，用于 `block_table` 行 stride。TND：0，不参与寻址。 |
+| `isPageAttention` | `1`：paged KV cache；`0`：TND 非 kvcache。 |
 | `k2qNnzUpperBound` | `k2q_q_indices.shape[1]`，CSR 数据区每 head 的上界，通常 `totalQTokens * topK`。 |
 | `totalTaskNumP1` | Phase 1 task 数，`totalPackedRows * kvHeads`。 |
 | `totalTaskNumP2` | Phase 2 task 数，`totalQTokens * kvHeads`。 |
@@ -209,7 +215,13 @@ for b in [0, batch):
 **Phase1** 不直接使用跨 batch 展平的 `kvBlockIdx`，而是通过 `(packedRow → batchIdx, localBlockIdx)` MSA coord 步进定位 logical KV block（§6.1）：
 
 ```text
+# PA
 physicalBlock = block_table[batchIdx * maxBlocksPerBatch + localBlockIdx]
+kvBlockBase   = physicalBlock * blockSize * kvHeads * D + kvHeadIdx * D
+
+# TND 非 kvcache
+kvTokenStart  = sum(kv_seqlen[0..batchIdx)) + localBlockIdx * blockSize
+kvBlockBase   = kvTokenStart * kvHeads * D + kvHeadIdx * D
 ```
 
 **Q token** 仍按展平 id 反查所属 batch（与 KV block 的 batch 可不同，causal 用 Q 侧 sequence length）：
@@ -264,10 +276,10 @@ for taskIdx = blockIdx; taskIdx < totalTaskNumP1; taskIdx += blockDim
 
 目标实现应按 tile 化矩阵乘实现，而不是逐元素 GM 标量循环：
 
-1. 从 `block_table` 读取 `physicalBlockId`。
+1. PA：从 `block_table` 读取 `physicalBlockId`。TND：用 `cumKvStart + localBlockIdx * blockSize` 得到 token 起点。
 2. 根据 §5.2 计算 `validSize`。
-3. 将该 physical block 当前 `kvHeadIdx` 的 `K[validSize, D]`、`V[validSize, D]` 搬到 L1/片上缓冲；每个 `(packedRow, kvHeadIdx)` task 加载一次，矩阵乘仅用前 `validSize` 行。
-4. 从 CSR 得到 `numQTokens`；`packedRow` 变化时 inline 步进得 `(batchIdx, localBlockIdx)` 后查 `block_table`。
+3. 将该 logical block 当前 `kvHeadIdx` 的 `K[validSize, D]`、`V[validSize, D]` 搬到 L1/片上缓冲；每个 `(packedRow, kvHeadIdx)` task 加载一次，矩阵乘仅用前 `validSize` 行。
+4. 从 CSR 得到 `numQTokens`；`packedRow` 变化时 inline 步进得 `(batchIdx, localBlockIdx)`，再按 §5.1 取 K/V 起点。
 5. 按 `qi in [0, numQTokens)` 遍历 Q 列表。
 6. 对每个 `qi`：
    - `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`。

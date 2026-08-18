@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * On-device smoke + golden check for MinimaxSparseAttentionSplitKv (innerPrecise=0/4).
- * One paged KV block, dense local-block CSR, causal prefill. Shapes are table-driven.
+ * Paged KV cache and TND non-kvcache. Dense local-block CSR, causal prefill.
  */
 
 #include <algorithm>
@@ -41,6 +41,7 @@ struct CaseSpec {
     int64_t kvHeads;
     int64_t topK;
     const char *name;
+    bool pagedKv;
 };
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -120,6 +121,7 @@ void FillRandom(std::vector<uint16_t> &dst, uint32_t seed)
 }
 
 // innerPrecise=0 golden: fp32 softmax, P rounded to bf16 before PV.
+// pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D].
 void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::vector<uint16_t> &k,
                const std::vector<uint16_t> &v, std::vector<float> &outFp32, float scale, bool roundPToBf16)
 {
@@ -133,10 +135,11 @@ void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::
             float rowMax = -1e30f;
             for (int64_t c = 0; c < causalLen; ++c) {
                 float s = 0.0f;
+                const int64_t kvTok = spec.pagedKv ? (0 * spec.blockSize + c) : c;
                 for (int64_t d = 0; d < kHeadDim; ++d) {
                     float qv = Bf16ToFloat(q[static_cast<size_t>((t * spec.numHeads + h) * kHeadDim + d)]);
                     float kv = Bf16ToFloat(k[static_cast<size_t>(
-                        ((0 * spec.blockSize + c) * spec.kvHeads + kvh) * kHeadDim + d)]);
+                        (kvTok * spec.kvHeads + kvh) * kHeadDim + d)]);
                     s += qv * kv;
                 }
                 s *= scale;
@@ -155,8 +158,9 @@ void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::
             for (int64_t d = 0; d < kHeadDim; ++d) {
                 float o = 0.0f;
                 for (int64_t c = 0; c < causalLen; ++c) {
+                    const int64_t kvTok = spec.pagedKv ? (0 * spec.blockSize + c) : c;
                     float vv = Bf16ToFloat(v[static_cast<size_t>(
-                        ((0 * spec.blockSize + c) * spec.kvHeads + kvh) * kHeadDim + d)]);
+                        (kvTok * spec.kvHeads + kvh) * kHeadDim + d)]);
                     o += scores[static_cast<size_t>(c)] * vv;
                 }
                 outFp32[static_cast<size_t>((t * spec.numHeads + h) * kHeadDim + d)] = o / rowSum;
@@ -258,7 +262,9 @@ struct CaseTensors {
 int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
 {
     const std::vector<int64_t> qShape = {spec.seq, spec.numHeads, kHeadDim};
-    const std::vector<int64_t> kvShape = {1, spec.blockSize, spec.kvHeads, kHeadDim};
+    const std::vector<int64_t> kvShape = spec.pagedKv
+        ? std::vector<int64_t>{1, spec.blockSize, spec.kvHeads, kHeadDim}
+        : std::vector<int64_t>{spec.seq, spec.kvHeads, kHeadDim};
     const std::vector<int64_t> btShape = {1, 1};
     const std::vector<int64_t> rowPtrShape = {spec.kvHeads, 2};
     const std::vector<int64_t> csrShape = {spec.kvHeads, spec.seq * spec.topK};
@@ -278,7 +284,6 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
         FillRandom(c.vHost, 3);
     }
 
-    std::vector<int32_t> blockTable(1, 0);
     std::vector<int32_t> rowPtr(static_cast<size_t>(spec.kvHeads * 2));
     for (int64_t h = 0; h < spec.kvHeads; ++h) {
         rowPtr[static_cast<size_t>(h * 2)] = 0;
@@ -300,8 +305,14 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
     CHECK_RET(ret == 0, return ret);
     ret = CreateAclTensor(c.vHost, kvShape, &c.valueAddr, ACL_BF16, &c.value);
     CHECK_RET(ret == 0, return ret);
-    ret = CreateAclTensor(blockTable, btShape, &c.blockTableAddr, ACL_INT32, &c.blockTable);
-    CHECK_RET(ret == 0, return ret);
+    if (spec.pagedKv) {
+        std::vector<int32_t> blockTable(1, 0);
+        ret = CreateAclTensor(blockTable, btShape, &c.blockTableAddr, ACL_INT32, &c.blockTable);
+        CHECK_RET(ret == 0, return ret);
+    } else {
+        c.blockTable = nullptr;
+        c.blockTableAddr = nullptr;
+    }
     ret = CreateAclTensor(rowPtr, rowPtrShape, &c.k2qRowPtrAddr, ACL_INT32, &c.k2qRowPtr);
     CHECK_RET(ret == 0, return ret);
     ret = CreateAclTensor(qIdx, csrShape, &c.k2qQAddr, ACL_INT32, &c.k2qQIndices);
@@ -322,7 +333,9 @@ void DestroyCase(CaseTensors &c)
     aclDestroyTensor(c.query);
     aclDestroyTensor(c.key);
     aclDestroyTensor(c.value);
-    aclDestroyTensor(c.blockTable);
+    if (c.blockTable != nullptr) {
+        aclDestroyTensor(c.blockTable);
+    }
     aclDestroyTensor(c.k2qRowPtr);
     aclDestroyTensor(c.k2qQIndices);
     aclDestroyTensor(c.k2qSlotIndices);
@@ -332,7 +345,9 @@ void DestroyCase(CaseTensors &c)
     aclrtFree(c.queryAddr);
     aclrtFree(c.keyAddr);
     aclrtFree(c.valueAddr);
-    aclrtFree(c.blockTableAddr);
+    if (c.blockTableAddr != nullptr) {
+        aclrtFree(c.blockTableAddr);
+    }
     aclrtFree(c.k2qRowPtrAddr);
     aclrtFree(c.k2qQAddr);
     aclrtFree(c.k2qSlotAddr);
@@ -397,20 +412,25 @@ int main()
 
     const CaseSpec kCases[] = {
         // baseline: former hole at token 2 / head 4 (M-row 36 of a 64-row tile)
-        {32, 32, 16, 1, 1, "base_t32_g16"},
+        {32, 32, 16, 1, 1, "base_t32_g16", true},
         // P_ZN_CHUNK leftovers: 1 / 2 / 3 groups => M=16 / 32 / 48
-        {4, 32, 16, 1, 1, "m16_one_group"},
-        {8, 32, 16, 1, 1, "m32_one_chunk"},
-        {12, 32, 16, 1, 1, "m48_chunk_32_16"},
+        {4, 32, 16, 1, 1, "m16_one_group", true},
+        {8, 32, 16, 1, 1, "m32_one_chunk", true},
+        {12, 32, 16, 1, 1, "m48_chunk_32_16", true},
         // tail batch after full 4-group tiles
-        {17, 32, 16, 1, 1, "tail_t17"},
+        {17, 32, 16, 1, 1, "tail_t17", true},
         // GQA and other groupSize (still M=64 high-prec tiles)
-        {32, 32, 32, 2, 1, "gqa_h32_kv2"},
-        {32, 32, 8, 1, 1, "g8"},
+        {32, 32, 32, 2, 1, "gqa_h32_kv2", true},
+        {32, 32, 8, 1, 1, "g8", true},
         // larger K / production-ish blockSize
-        {64, 64, 16, 1, 1, "bs64_t64"},
-        {32, 128, 16, 1, 1, "bs128_t32"},
-        {16, 64, 64, 4, 1, "prod_gqa_h64_kv4"},
+        {64, 64, 16, 1, 1, "bs64_t64", true},
+        {32, 128, 16, 1, 1, "bs128_t32", true},
+        {16, 64, 64, 4, 1, "prod_gqa_h64_kv4", true},
+        // TND non-kvcache: key/value [T, kvHeads, D], no block_table
+        {32, 32, 16, 1, 1, "tnd_t32_g16", false},
+        {32, 32, 32, 2, 1, "tnd_gqa_h32_kv2", false},
+        {32, 128, 16, 1, 1, "tnd_bs128_t32", false},
+        {16, 64, 64, 4, 1, "tnd_prod_gqa_h64_kv4", false},
     };
 
     const char *ipEnv = std::getenv("MSA_INNER_PRECISE");

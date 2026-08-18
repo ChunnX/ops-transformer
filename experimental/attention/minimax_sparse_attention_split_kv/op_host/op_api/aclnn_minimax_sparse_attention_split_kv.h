@@ -18,6 +18,8 @@
 extern "C" {
 #endif
 
+// blockTable: paged KV cache [batch, maxBlocksPerBatch]; pass nullptr for TND
+// non-kvcache key/value [T_kv, kvHeads, D] (same layout family as query).
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
