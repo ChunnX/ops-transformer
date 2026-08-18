@@ -412,15 +412,16 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
-    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8) {
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8 ||
+        tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         if (opParamInfo.metadata.desc == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                kOpName, "metadata", "nullptr", "The metadata tensor must be provided when quant_mode is 1.");
+                kOpName, "metadata", "nullptr", "The metadata tensor must be provided when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo.metadata.tensor == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                kOpName, "metadata", "empty", "The metadata tensor cannot be empty when quant_mode is 1.");
+                kOpName, "metadata", "empty", "The metadata tensor cannot be empty when quant_mode is 1 or 2.");
             return ge::GRAPH_FAILED;
         }
     }
