@@ -47,10 +47,11 @@
 namespace Mc2Kernel {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
-#define CombineMC2TypeClass                                                                                            \
-    typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t QuantMode,           \
+#define CombineMC2TypeClass \
+    typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t QuantMode, \
         bool HasAddRmsNorm
 #define CombineMC2TypeFunc ContextHolder, ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm
+constexpr uint32_t MOE_BATCH_SLOT_MIN = 2U; // 批量连读最少slot数，不足则回退逐slot路径
 
 using namespace AscendC;
 template <CombineMC2TypeClass>
@@ -88,6 +89,7 @@ private:
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
+    __aicore__ inline void MoeExpertBatchCopyIn(uint32_t tokenIndexOffset, uint32_t topkId);
     __aicore__ inline void ProcessExpert(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void ExpertScaleCopy(const uint32_t beginIndex, const uint32_t endIndex,
                                            const uint32_t tokenPerAivNum);
@@ -120,10 +122,7 @@ private:
         return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + winStatusOffset_;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
+    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y) { return (x < y) ? x : y; }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGM_;
@@ -218,6 +217,9 @@ private:
     uint32_t expertScaleBeginIdx_{0};
     uint32_t performanceInfoSizeAlign_{0};
     uint32_t tokenNumPerCoreAlign_{0};
+    uint32_t moeBatchSlotNum_{0};    // moe专家批量连读批容量S（探针自适应，<MOE_BATCH_SLOT_MIN禁用）
+    uint32_t moeBatchSlotEleCnt_{0}; // 窗口slot步长按XType元素数（hAlignWinSize_/sizeof(XType)）
+    uint32_t moeBatchFirst_{0};      // 当前批覆盖的首个topkId（由MoeExpertBatchCopyIn写入）
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
 
@@ -248,6 +250,9 @@ private:
     TBuf<> performanceInfoBuf_;
     TBuf<> performanceInfoTmpBuf_;
     TBuf<> firstRecordBuf_;
+    TBuf<> moeBatchBuf_;    // moe专家窗口slot批量连读缓冲（span连读，命中批内slot免逐个MTE2）
+    TBuf<> moeCalBeginBuf_; // 探针锚点：接收阶段首个InitBuffer的地址
+    TBuf<> moeCalEndBuf_;   // 探针末端：测量接收阶段实际已用UB
     bool isInputTokenMaskFlag_ = false;
     bool isInputExpertMaskFlag_ = false;
     bool hasSharedExpertX_ = false;
@@ -276,6 +281,7 @@ private:
     LocalTensor<float> rowTmpFloatLocal_;
     LocalTensor<float> mulBufLocal_;
     LocalTensor<float> sumFloatBufLocal_;
+    LocalTensor<XType> moeBatchTensor_; // moeBatchBuf_的XType视图，按slot步长取段
 
     uint32_t scaleNum_{0};
     MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm> quantInst_;
@@ -370,8 +376,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitInputAndO
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(
+    const MoeDistributeCombineV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
     axisH_ = tilingData->moeDistributeCombineV2Info.h;
@@ -402,9 +408,8 @@ MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeC
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::InitCommContext(GM_ADDR mc2Context,
-                                                            const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitCommContext(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     statusDataSpaceGm_ = ctx_.GetStatusDataSpaceGm();
     uint32_t epRankIdHccl = ctx_.GetEpRankId();
@@ -424,9 +429,8 @@ MoeDistributeCombineV2<CombineMC2TypeFunc>::InitCommContext(GM_ADDR mc2Context,
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context,
-                                                      const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     InitTilingAttrs(tilingData);
     InitCommContext(mc2Context, tilingData);
@@ -662,6 +666,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllCommB
             (activeMaskAlignHalfSize > hFloatAlign32Size_ ? activeMaskAlignHalfSize : hFloatAlign32Size_);
     }
     // InitBuffer需要在tiling中计算ub总量
+    // 探针锚点：必须是接收阶段首个InitBuffer，用于探针测量接收阶段实际已用UB
+    tpipe_->InitBuffer(moeCalBeginBuf_, UB_ALIGN);
     tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);             // 16K 用于搬入输入token
     tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf); // 32K 用于存储cast之后的fp32 token数据
     tpipe_->InitBuffer(mulBuf_, mulBufSize); // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
@@ -812,9 +818,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId,
-                                                                               uint32_t topkId, uint32_t tkIndex)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId,
+                                                                                                      uint32_t tokenId,
+                                                                                                      uint32_t topkId,
+                                                                                                      uint32_t tkIndex)
 {
     uint32_t epOffset = tokenId * (axisK_ + sharedExpertNum_) + topkId;
     uint32_t tokenGMOffset = tkIndex * axisH_;
@@ -857,9 +864,8 @@ MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchInnerCopyAdd(u
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::PerformanceInfoPerToken(uint32_t tokenIndex, uint64_t performanceTimeStart,
-                                                                    uint32_t beginIndex, LocalTensor<float> stateTensor)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::PerformanceInfoPerToken(
+    uint32_t tokenIndex, uint64_t performanceTimeStart, uint32_t beginIndex, LocalTensor<float> stateTensor)
 {
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t i = 0; i < flagRcvCount_; i++) {
@@ -1002,9 +1008,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormRms
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2<CombineMC2TypeFunc>::CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM,
-                                                                uint32_t const_expert_idx, float &alphaFloat)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::CalConstExpertAlpha(
+    GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat)
 {
     LocalTensor<ExpandXType> weightLocal = moeSumQueue_.AllocTensor<ExpandXType>();
     LocalTensor<float> weightFloatLocal = mulBuf_.Get<float>();
@@ -1129,23 +1134,28 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
     const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
     const DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
 
-    GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + (tokenIndexOffset + topkId) * hAlignWinSize_;
-    rowTmpGlobal_.SetGlobalBuffer((__gm__ XType *)wAddr);
-    LocalTensor<XType> tmpUb = moeSumQueue_.AllocTensor<XType>();
-    if constexpr (QuantMode > UNQUANT) {
-        DataCopyPad(tmpUb, rowTmpGlobal_, xScaleCopyParams, copyPadExtParams);
+    LocalTensor<XType> tmpUb;
+    if (moeBatchSlotNum_ >= MOE_BATCH_SLOT_MIN) {
+        // 批量连读路径：数据已由ProcessExpert的批外层循环经MoeExpertBatchCopyIn读入批缓冲，直接取段
+        tmpUb = moeBatchTensor_[(topkId - moeBatchFirst_) * moeBatchSlotEleCnt_];
     } else {
-        DataCopyPad(tmpUb, rowTmpGlobal_, expandXCopyParams, copyPadExtParams);
+        GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + (tokenIndexOffset + topkId) * hAlignWinSize_;
+        rowTmpGlobal_.SetGlobalBuffer((__gm__ XType *)wAddr);
+        tmpUb = moeSumQueue_.AllocTensor<XType>();
+        if constexpr (QuantMode > UNQUANT) {
+            DataCopyPad(tmpUb, rowTmpGlobal_, xScaleCopyParams, copyPadExtParams);
+        } else {
+            DataCopyPad(tmpUb, rowTmpGlobal_, expandXCopyParams, copyPadExtParams);
+        }
+        moeSumQueue_.EnQue(tmpUb);
+        tmpUb = moeSumQueue_.DeQue<XType>();
     }
-    moeSumQueue_.EnQue(tmpUb);
-    tmpUb = moeSumQueue_.DeQue<XType>();
     LocalTensor<XType> outLocalTensor = fp16CastTensor_.template ReinterpretCast<XType>();
     if constexpr (QuantMode > UNQUANT) {
         if (hasExpertScalesFlag_) {
             quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
         } else {
-            quantInst_.DeQuantProcessWithoutExpertScale(
-                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+            quantInst_.DeQuantProcessWithoutExpertScale(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
         }
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
         // 非 A5 在外层完成 INT8 加权求和
@@ -1172,7 +1182,33 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
             Add(sumFloatBufLocal_, sumFloatBufLocal_, rowTmpFloatLocal_, processLen);
         }
     }
-    moeSumQueue_.FreeTensor<XType>(tmpUb);
+    if (moeBatchSlotNum_ < MOE_BATCH_SLOT_MIN) {
+        moeSumQueue_.FreeTensor<XType>(tmpUb);
+    }
+}
+
+// moe专家窗口slot批量span连读：一条DataCopy读入[batchFirst, batchFirst+batchCnt)连续slot（末批按axisK_截断）。
+// 批容量不足（探针禁用）时直接返回，ProcessExpert外层循环步长退化为1，保持单一循环结构
+template <CombineMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::MoeExpertBatchCopyIn(uint32_t tokenIndexOffset,
+                                                                                        uint32_t batchFirst)
+{
+    if (moeBatchSlotNum_ < MOE_BATCH_SLOT_MIN) {
+        return;
+    }
+    uint32_t batchCnt = MIN(moeBatchSlotNum_, axisK_ - batchFirst);
+    uint32_t slotReadBytes = hExpandXTypeSize_;
+    if constexpr (QuantMode > UNQUANT) {
+        slotReadBytes = static_cast<uint32_t>(tokenScaleCnt_ * sizeof(ExpandXType));
+    }
+    const DataCopyExtParams batchCopyParams{1U, (batchCnt - 1) * hAlignWinSize_ + slotReadBytes, 0U, 0U, 0U};
+    const DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+    GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + (tokenIndexOffset + batchFirst) * hAlignWinSize_;
+    rowTmpGlobal_.SetGlobalBuffer((__gm__ XType *)wAddr);
+    SyncFunc<AscendC::HardEvent::V_MTE2>(); // 等上一批段计算(V)排空后再重写批缓冲
+    DataCopyPad(moeBatchTensor_, rowTmpGlobal_, batchCopyParams, copyPadExtParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    moeBatchFirst_ = batchFirst;
 }
 
 template <CombineMC2TypeClass>
@@ -1216,51 +1252,61 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessExpert
     LocalTensor<XType> tmpUb;
     uint32_t tokenIndexOffset = tokenIndex * (axisK_ + sharedExpertNum_);
 
+    uint32_t moeBatchStride = (moeBatchSlotNum_ >= MOE_BATCH_SLOT_MIN) ? moeBatchSlotNum_ : 1U;
     if ((zeroExpertNum_ + copyExpertNum_ + constExpertNum_) == 0U) {
-        for (uint32_t topkId = 0U; topkId < axisK_; topkId++) {
-            if (isInputExpertMaskFlag_) {
-                bool maskExpertFlag = expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId);
-                if (!maskExpertFlag) {
-                    index++;
-                    continue;
+        // 批外层循环：每批一条span连读（MoeExpertBatchCopyIn内含禁用守卫），批内逐slot取段计算
+        for (uint32_t batchFirst = 0U; batchFirst < axisK_; batchFirst += moeBatchStride) {
+            MoeExpertBatchCopyIn(tokenIndexOffset, batchFirst);
+            uint32_t batchEnd = MIN(batchFirst + moeBatchStride, axisK_);
+            for (uint32_t topkId = batchFirst; topkId < batchEnd; topkId++) {
+                if (isInputExpertMaskFlag_) {
+                    bool maskExpertFlag = expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId);
+                    if (!maskExpertFlag) {
+                        index++;
+                        continue;
+                    }
                 }
-            }
-            if (hasExpertScalesFlag_) {
-                scaleVal = expertScalesLocal_.GetValue(index);
-            }
-            ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);
-            index++;
-        }
-    } else {
-        for (uint32_t topkId = 0U; topkId < axisK_; topkId++) {
-            // 读取expert_id
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                expertIdsGM_[tokenIndex * axisK_ + topkId]);
-            uint32_t expert_id = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId);
-            if (isInputExpertMaskFlag_) {
-                bool maskExpertFlag = expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId);
-                if (!maskExpertFlag) {
-                    index++;
-                    continue;
+                if (hasExpertScalesFlag_) {
+                    scaleVal = expertScalesLocal_.GetValue(index);
                 }
-            }
-            if (hasExpertScalesFlag_) {
-                scaleVal = expertScalesLocal_.GetValue(index);
-            }
-
-            if (expert_id < moeExpertOriginalNum_) {
                 ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);
                 index++;
-            } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_) {
-                // 零专家不需要任何操作
-                index++;
-            } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_) {
-                ProcessCopyExpert(tokenIndex, scaleVal);
-                index++;
-            } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_ + constExpertNum_) {
-                uint32_t const_expert_idx = expert_id - (moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_);
-                ProcessConstantExpert(tokenIndex, const_expert_idx, scaleVal);
-                index++;
+            }
+        }
+    } else {
+        for (uint32_t batchFirst = 0U; batchFirst < axisK_; batchFirst += moeBatchStride) {
+            MoeExpertBatchCopyIn(tokenIndexOffset, batchFirst);
+            uint32_t batchEnd = MIN(batchFirst + moeBatchStride, axisK_);
+            for (uint32_t topkId = batchFirst; topkId < batchEnd; topkId++) {
+                // 读取expert_id
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                    expertIdsGM_[tokenIndex * axisK_ + topkId]);
+                uint32_t expert_id = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId);
+                if (isInputExpertMaskFlag_) {
+                    bool maskExpertFlag = expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId);
+                    if (!maskExpertFlag) {
+                        index++;
+                        continue;
+                    }
+                }
+                if (hasExpertScalesFlag_) {
+                    scaleVal = expertScalesLocal_.GetValue(index);
+                }
+
+                if (expert_id < moeExpertOriginalNum_) {
+                    ProcessMoeExpert(tokenIndexOffset, topkId, scaleVal);
+                    index++;
+                } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_) {
+                    // 零专家不需要任何操作
+                    index++;
+                } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_) {
+                    ProcessCopyExpert(tokenIndex, scaleVal);
+                    index++;
+                } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_ + constExpertNum_) {
+                    uint32_t const_expert_idx = expert_id - (moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_);
+                    ProcessConstantExpert(tokenIndex, const_expert_idx, scaleVal);
+                    index++;
+                }
             }
         }
     }
@@ -1364,6 +1410,33 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
         tpipe_->InitBuffer(firstRecordBuf_, tokenNumPerCoreAlign_);
         firstRecordTensor_ = firstRecordBuf_.Get<int32_t>();
         Duplicate<int32_t>(firstRecordTensor_, static_cast<int32_t>(0), tokenPerAivNum * flagRcvCount_);
+    }
+    // 探针测量接收阶段剩余UB，自适应moe专家批量连读的批容量（不足MOE_BATCH_SLOT_MIN则禁用，回退逐slot路径）
+    uint32_t moeSlotReadBytes = hExpandXTypeSize_;
+    if constexpr (QuantMode > UNQUANT) {
+        moeSlotReadBytes = static_cast<uint32_t>(tokenScaleCnt_ * sizeof(ExpandXType));
+    }
+    if ((axisK_ >= MOE_BATCH_SLOT_MIN) && (moeSlotReadBytes % UB_ALIGN == 0U) && (hAlignWinSize_ % UB_ALIGN == 0U)) {
+        tpipe_->InitBuffer(moeCalEndBuf_, UB_ALIGN);
+        uint64_t beginUbAddr = (moeCalBeginBuf_.Get<uint8_t>()).GetPhyAddr();
+        uint64_t endUbAddr = (moeCalEndBuf_.Get<uint8_t>()).GetPhyAddr();
+        uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
+        uint64_t remainUbSize =
+            (static_cast<uint64_t>(ubSize_) > usedUbSize) ? (static_cast<uint64_t>(ubSize_) - usedUbSize) : 0U;
+        // span连读S个slot的UB占用为 (S-1)*hAlignWinSize_ + slot实读字节
+        uint32_t batchSlotNum = 0U;
+        if (remainUbSize > moeSlotReadBytes) {
+            batchSlotNum = 1U + static_cast<uint32_t>((remainUbSize - moeSlotReadBytes) / hAlignWinSize_);
+            batchSlotNum = MIN(batchSlotNum, axisK_);
+        }
+        if (batchSlotNum >= MOE_BATCH_SLOT_MIN) {
+            moeBatchSlotNum_ = batchSlotNum;
+            moeBatchSlotEleCnt_ = hAlignWinSize_ / sizeof(XType);
+            uint32_t moeBatchBufSize =
+                Ceil((moeBatchSlotNum_ - 1) * hAlignWinSize_ + moeSlotReadBytes, UB_ALIGN) * UB_ALIGN;
+            tpipe_->InitBuffer(moeBatchBuf_, moeBatchBufSize);
+            moeBatchTensor_ = moeBatchBuf_.Get<XType>();
+        }
     }
     SyncFunc<AscendC::HardEvent::V_S>();
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
