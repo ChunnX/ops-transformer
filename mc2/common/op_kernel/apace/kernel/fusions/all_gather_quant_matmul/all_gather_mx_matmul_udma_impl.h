@@ -36,6 +36,13 @@ using LayoutB = AscendC::Te::DNExtLayoutPtn;
 using LayoutC = AscendC::Te::NDExtLayoutPtn;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
+struct UdmaCommWaitPolicy {
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    {
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+    }
+};
+
 template <typename AType, typename BType, typename CType>
 class AllGatherMxMatmulUdmaImpl {
 public:
@@ -46,7 +53,7 @@ public:
                                 const AllGatherMxMatmulUdmaTilingData *tilingData);
     __aicore__ inline void Process();
 
-    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
+    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, UdmaCommWaitPolicy>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using FragmentParams = typename QuantMatmulKernelImpl::FragmentParams;
