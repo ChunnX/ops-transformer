@@ -22,12 +22,7 @@ public:
     explicit BlockAttnResPrepare(const char *name)
         : OpDef(name == nullptr ? "BlockAttnResPrepare" : name)
     {
-        this->Input("block_residual")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("effective_query")
+        this->Input("block_res")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
@@ -37,24 +32,29 @@ public:
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
-        this->Output("softmax_max")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Output("weighted_output")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Output("softmax_sum")
+        this->Input("pseudo_query")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6F);
+        this->Output("numerator")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Output("logit_max")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Output("exp_sum")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+
+        this->Attr("eps").AttrType(OPTIONAL).Float(1e-6F);
 
         OpAICoreConfig config950;
         config950.DynamicCompileStaticFlag(true)

@@ -45,7 +45,7 @@ struct VectorTilingDataView {
     uint8_t oBufferNum;
     uint32_t statUbElems;
     uint32_t workUbElems;
-    float epsilon;
+    float eps;
 };
 
 struct CubeTilingDataView {
@@ -82,34 +82,35 @@ struct CubeTilingDataView {
     uint64_t reduceUbElems;
     uint64_t softmaxUbElems;
     uint64_t workspacePerCoreElems;
-    float epsilon;
+    float eps;
 };
 
 static_assert(sizeof(VectorTilingDataView) == 64U);
 static_assert(sizeof(CubeTilingDataView) == 168U);
 
 gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
-                                  const gert::StorageShape &vShape, const gert::StorageShape &qShape,
-                                  ge::DataType vType = ge::DT_FLOAT, ge::DataType qType = ge::DT_FLOAT,
-                                  ge::DataType validType = ge::DT_INT32, float epsilon = 1e-6F,
+                                  const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
+                                  ge::DataType blockResType = ge::DT_FLOAT,
+                                  ge::DataType validBlocksType = ge::DT_INT32,
+                                  ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = 1e-6F,
                                   uint64_t coreNum = ASCEND_950_AIV_CORE_NUM)
 {
-    const int64_t totalT = vShape.GetOriginShape().GetDim(0);
-    const int64_t totalD = vShape.GetOriginShape().GetDim(2);
-    const int64_t totalS = qShape.GetOriginShape().GetDim(0);
+    const int64_t totalT = blockResShape.GetOriginShape().GetDim(0);
+    const int64_t totalD = blockResShape.GetOriginShape().GetDim(2);
+    const int64_t totalS = pseudoQueryShape.GetOriginShape().GetDim(0);
     return gert::TilingContextPara(
         "BlockAttnResPrepare",
         {
-            {vShape, vType, ge::FORMAT_ND},
-            {qShape, qType, ge::FORMAT_ND},
-            {{{1}, {1}}, validType, ge::FORMAT_ND},
+            {blockResShape, blockResType, ge::FORMAT_ND},
+            {{{1}, {1}}, validBlocksType, ge::FORMAT_ND},
+            {pseudoQueryShape, pseudoQueryType, ge::FORMAT_ND},
         },
         {
-            {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{totalS, totalT, totalD}, {totalS, totalT, totalD}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(epsilon)}}, &compileInfo, "Ascend950",
+        {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, "Ascend950",
         coreNum, ASCEND_950_UB_SIZE, 4096);
 }
 
@@ -200,7 +201,7 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnava
     auto compileInfo = Ascend950CompileInfo();
     compileInfo.aivCoreNum = 1U;
     auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}},
-                             ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT32, 1e-6F, 1U);
+                             ge::DT_FLOAT, ge::DT_INT32, ge::DT_FLOAT, 1e-6F, 1U);
     ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
 }
 
@@ -218,11 +219,11 @@ TEST_F(BlockAttnResPrepareTilingTest, MismatchedDIsRejected)
     ExecuteTestCase(context, ge::GRAPH_FAILED);
 }
 
-TEST_F(BlockAttnResPrepareTilingTest, NonPositiveEpsilonIsRejected)
+TEST_F(BlockAttnResPrepareTilingTest, NonPositiveEpsIsRejected)
 {
     auto compileInfo = Ascend950CompileInfo();
     auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}},
-                             ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT32, 0.0F);
+                             ge::DT_FLOAT, ge::DT_INT32, ge::DT_FLOAT, 0.0F);
     ExecuteTestCase(context, ge::GRAPH_FAILED);
 }
 

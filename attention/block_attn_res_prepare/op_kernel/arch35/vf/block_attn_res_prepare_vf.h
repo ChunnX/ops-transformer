@@ -142,7 +142,7 @@ __simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *
     MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-__simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reciprocalD, float epsilon)
+__simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reciprocalD, float eps)
 {
     MicroAPI::RegTensor<float> sumSquareReg;
     MicroAPI::RegTensor<float> dotReg;
@@ -154,7 +154,7 @@ __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reci
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
     MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, oneMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, epsilon, oneMask);
+    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, oneMask);
     MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, oneMask);
     MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, oneMask);
     MicroAPI::Duplicate(oneReg, 1.0F, oneMask);
@@ -164,7 +164,7 @@ __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reci
     MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-__simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t validN, float reciprocalD, float epsilon)
+__simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t validN, float reciprocalD, float eps)
 {
     MicroAPI::RegTensor<float> sumSquareReg;
     MicroAPI::RegTensor<float> dotReg;
@@ -184,7 +184,7 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
     MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
                                                                    validMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, epsilon, validMask);
+    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
     MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
     MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
 
@@ -207,7 +207,7 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
 
 __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubuf__ float *dotAddr,
                                             __ubuf__ float *maxAddr, __ubuf__ float *sumAddr, uint32_t validN,
-                                            uint32_t nAlign, float reciprocalD, float epsilon)
+                                            uint32_t nAlign, float reciprocalD, float eps)
 {
     MicroAPI::RegTensor<float> sumSquareReg;
     MicroAPI::RegTensor<float> dotReg;
@@ -230,7 +230,7 @@ __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubu
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, dotAddr);
     MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
                                                                    validMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, epsilon, validMask);
+    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
     MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
     MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
     MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(maxReg, zReg,
