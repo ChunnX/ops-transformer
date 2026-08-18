@@ -20,10 +20,10 @@ namespace {
 
 constexpr uint32_t INPUT_PARTIAL_BLOCK = 0;
 constexpr uint32_t INPUT_DELTA = 1;
-constexpr uint32_t INPUT_INTER_NUMERATOR = 2;
-constexpr uint32_t INPUT_INTER_MAX = 3;
-constexpr uint32_t INPUT_INTER_EXP_SUM = 4;
-constexpr uint32_t INPUT_EFFECTIVE_QUERY = 5;
+constexpr uint32_t INPUT_PSEUDO_QUERY = 2;
+constexpr uint32_t INPUT_NUMERATOR = 3;
+constexpr uint32_t INPUT_LOGIT_MAX = 4;
+constexpr uint32_t INPUT_EXP_SUM = 5;
 constexpr uint32_t OUTPUT_PARTIAL_BLOCK = 0;
 constexpr uint32_t OUTPUT_H = 1;
 constexpr uint32_t ATTR_EPS = 0;
@@ -86,10 +86,10 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
     constexpr const char *INPUT_NAMES[] = {
         "partial_block",
         "delta",
-        "inter_numerator",
-        "inter_max",
-        "inter_exp_sum",
-        "effective_query",
+        "pseudo_query",
+        "numerator",
+        "logit_max",
+        "exp_sum",
     };
     constexpr ge::DataType EXPECTED_DTYPES[] = {
         ge::DT_FLOAT,
@@ -100,7 +100,7 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
         ge::DT_FLOAT,
     };
 
-    for (uint32_t i = INPUT_PARTIAL_BLOCK; i <= INPUT_EFFECTIVE_QUERY; ++i) {
+    for (uint32_t i = INPUT_PARTIAL_BLOCK; i <= INPUT_EXP_SUM; ++i) {
         if (context_->GetInputShape(i) == nullptr || context_->GetInputDesc(i) == nullptr) {
             OP_LOGE(opName_, "Input %s shape or desc is null.", INPUT_NAMES[i]);
             return ge::GRAPH_FAILED;
@@ -136,25 +136,27 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
 
     const gert::Shape &partialShape = context_->GetInputShape(INPUT_PARTIAL_BLOCK)->GetOriginShape();
     const gert::Shape &deltaShape = context_->GetInputShape(INPUT_DELTA)->GetOriginShape();
-    const gert::Shape &numeratorShape = context_->GetInputShape(INPUT_INTER_NUMERATOR)->GetOriginShape();
-    const gert::Shape &maxShape = context_->GetInputShape(INPUT_INTER_MAX)->GetOriginShape();
-    const gert::Shape &sumShape = context_->GetInputShape(INPUT_INTER_EXP_SUM)->GetOriginShape();
-    const gert::Shape &queryShape = context_->GetInputShape(INPUT_EFFECTIVE_QUERY)->GetOriginShape();
+    const gert::Shape &pseudoQueryShape = context_->GetInputShape(INPUT_PSEUDO_QUERY)->GetOriginShape();
+    const gert::Shape &numeratorShape = context_->GetInputShape(INPUT_NUMERATOR)->GetOriginShape();
+    const gert::Shape &logitMaxShape = context_->GetInputShape(INPUT_LOGIT_MAX)->GetOriginShape();
+    const gert::Shape &expSumShape = context_->GetInputShape(INPUT_EXP_SUM)->GetOriginShape();
     const gert::Shape &partialRefShape = context_->GetOutputShape(OUTPUT_PARTIAL_BLOCK)->GetOriginShape();
     const gert::Shape &hShape = context_->GetOutputShape(OUTPUT_H)->GetOriginShape();
 
     if (partialShape.GetDimNum() != MATRIX_RANK || deltaShape.GetDimNum() != MATRIX_RANK ||
         numeratorShape.GetDimNum() != MATRIX_RANK || partialRefShape.GetDimNum() != MATRIX_RANK ||
         hShape.GetDimNum() != MATRIX_RANK ||
-        maxShape.GetDimNum() != VECTOR_RANK || sumShape.GetDimNum() != VECTOR_RANK ||
-        queryShape.GetDimNum() != VECTOR_RANK) {
-        OP_LOGE(opName_, "Expected partial/delta/numerator/partial_ref/h rank 2 and max/sum/query rank 1.");
+        pseudoQueryShape.GetDimNum() != VECTOR_RANK || logitMaxShape.GetDimNum() != VECTOR_RANK ||
+        expSumShape.GetDimNum() != VECTOR_RANK) {
+        OP_LOGE(opName_,
+                "Expected partial_block/delta/numerator/partial_block_ref/h rank 2 and "
+                "pseudo_query/logit_max/exp_sum rank 1.");
         return ge::GRAPH_FAILED;
     }
     if (!SameShape(partialShape, deltaShape) || !SameShape(partialShape, numeratorShape) ||
         !SameShape(partialShape, partialRefShape) || !SameShape(partialShape, hShape)) {
         OP_LOGE(opName_,
-                "Partial_block input/output, delta, inter_numerator and h must have the same [T, D] shape.");
+                "Partial_block input/output, delta, numerator and h must have the same [T, D] shape.");
         return ge::GRAPH_FAILED;
     }
 
@@ -175,8 +177,9 @@ ge::graphStatus BlockAttnResUpdateTilingBase::CheckContext()
                 dSize);
         return ge::GRAPH_FAILED;
     }
-    if (maxShape.GetDim(0) != tSize || sumShape.GetDim(0) != tSize || queryShape.GetDim(0) != dSize) {
-        OP_LOGE(opName_, "Inter_max/inter_exp_sum must be [T] and effective_query must be [D].");
+    if (logitMaxShape.GetDim(0) != tSize || expSumShape.GetDim(0) != tSize ||
+        pseudoQueryShape.GetDim(0) != dSize) {
+        OP_LOGE(opName_, "Logit_max/exp_sum must be [T] and pseudo_query must be [D].");
         return ge::GRAPH_FAILED;
     }
 
