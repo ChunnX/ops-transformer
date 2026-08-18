@@ -83,9 +83,8 @@ constexpr static int64_t UND_MASK_BITS = static_cast<int64_t>(sizeof(uint64_t) *
 static_assert(IDX_REGION_POS + MROPE_AXIS_NUM == IDX_REGION_NUM, "index regions must be contiguous and exhaustive");
 static_assert(IDX_WINDOW_TOKENS * static_cast<int64_t>(sizeof(int64_t)) % BLOCK_ALIGN_BYTES == 0,
               "index region stride must be 32B-aligned for DataCopyPad");
-// ubFactor 上限是 undMask_ 的位宽（host 的 MAX_UB_FACTOR）。CopyOut 延后一拍后，窗口要
-// 同时容纳三个 tile：待写出的 pend tile、正在算的 tile、以及预取中的下一 tile，
-// 否则 CopyOut 读 pend tile 的 slot 时窗口可能已被换窗覆盖
+// ubFactor 上限是 undMask_ 的位宽（host 的 MAX_UB_FACTOR）。窗口要同时容纳
+// pend / 在算 / 预取三个 tile，否则 CopyOut 读 pend 的 slot 时可能已被换窗覆盖
 static_assert(IDX_WINDOW_TOKENS >= DIGIT_THREE * UND_MASK_BITS,
               "index window must hold the pending, in-flight and prefetched tiles");
 
@@ -114,35 +113,22 @@ public:
 
     __aicore__ inline void Process()
     {
-        // 没分到 token 的核直接退出。放在最前面，空核就不必白搬一次权重、白建一次
-        // gather 索引，也省掉为提前退出补的那次配对 FreeTensor。正常路径下 SetBlockDim
-        // 已按 usedCoreNum 下发走不到这里，与 CalcCoreRange 里的 blockIdx 判断同为兜底。
+        // 没分到 token 的核直接退出
         if (coreStart_ >= coreEnd_) {
             return;
         }
 
-        // 权重每核只搬一次，常驻到整个 tile 循环结束。走 VECIN 队列而不是裸 TBuf，
-        // 是为了拿到 EnQue/DeQue 提供的 MTE2->V 同步，保证搬运落地后计算才读
+        // 权重每核只搬一次，常驻到整个 tile 循环结束
         PrepareWeights();
         // axisLut 与 token 无关，每核只建一次
         BuildMropeGatherIndex();
 
-        // 三段式软件流水，稳态下每轮同时经手三个 tile。行序即循环体内的执行顺序，
-        // "序幕"是循环之前那次 CopyIn —— 它先把 T0 搬起来，i=0 轮进来才有东西可算：
+        // 三段式软件流水，稳态下每轮同时经手三个 tile。行序即循环体内的执行顺序
         //
         //   轮次       序幕   i=0    i=1    i=2    收尾
         //   Compute    --     T0     T1     T2     --     发 VF，发完就走，VF 自己跑
         //   CopyIn     T0     T1     T2     --     --     预取下一个，被 MTE2 队列反压时与 VF 并行
         //   CopyOut    --     --     T0     T1     T2     写上一拍的，其 VF 早已完成，DeQue 不阻塞
-        //
-        // 于是 CopyIn 比 Compute 早一拍、CopyOut 比 Compute 晚一拍，三个 tile 错位并行。
-        //
-        // 三者的先后不可调换，各有 cannsim 指令级 trace 的实测依据：
-        //   Compute 提到最前 —— CopyIn 一个 tile 要发 num*4 条 DataCopy，远超 MTE2 硬件指令
-        //     队列深度，标量核会被反压住走走停停（单次停顿 0.19~0.51us，期间 MTE2 只放行
-        //     1 条）。VF 若排在它后面，向量单元就得干等标量核脱身，MTE2 与 VEC 的重叠只有 0.117。
-        //   CopyOut 延后一拍 —— 若紧接着写出当前 tile，DeQue 会把标量核钉在刚发出、还在跑的
-        //     那次 VF 上干等 2.58us/tile（aiv_mte3_wait_ratio 高达 0.47）。
         //
         // 三种资源的生命周期各不相同，不要混为一谈：
         //   qkv/cosSin/out 的 UB buffer —— TQue 自动乒乓（depth 2 + BUFFER_NUM_DB 2），
@@ -159,8 +145,7 @@ public:
             const Tile next = NextTile(cur);
             Compute(cur);
             if (next.Valid()) {
-                // anchor 取"最早一个还要读索引的 tile"：CopyOut 读的是 pend 的 slot_mapping，
-                // 换窗时必须把它连同 cur 一起留在窗口里
+                // anchor 取最早一个还要读索引的 tile：CopyOut 还要读 pend 的 slot_mapping
                 EnsureIndexWindow(pend.Valid() ? pend.start : cur.start, next.start + next.num);
                 CopyIn(next);
             }
@@ -332,12 +317,11 @@ private:
     }
 
     // 本 tile 的 token 数：尾块不足 ubFactor 时按实际数量
-    // 一个 tile 的全部身份。num == 0 表示"不存在"（序幕与收尾的边界），
-    // 于是不再需要额外的哨兵下标来表达"还没有 pend tile"
+    // 一个 tile 的身份。num == 0 表示"不存在"，用于序幕与收尾的边界判断
     struct Tile {
         int64_t start = 0;
         int64_t num = 0;
-        int64_t maskSlot = 0;  // undMask_ 的下标，见 Process 里对三种资源生命周期的说明
+        int64_t maskSlot = 0;  // undMask_ 的下标
         __aicore__ inline bool Valid() const
         {
             return num > 0;
@@ -359,8 +343,7 @@ private:
         return t;
     }
 
-    // 推进一拍：起点接在 cur 之后，越过 coreEnd_ 则 num 归零表示没有下一个；
-    // maskSlot 在这里翻转，调用方不必再关心乒乓
+    // 推进一拍，maskSlot 一并翻转，调用方不必关心乒乓
     __aicore__ inline Tile NextTile(const Tile& cur)
     {
         Tile t;
@@ -543,8 +526,7 @@ private:
     // 模板参数是 queue depth（同时"已 EnQue 未 DeQue"的句柄数），不是 buffer 数。
     // Process 是两段式流水，稳态下 tile i 与 tile i+1 同时挂着，所以输入队列 depth 取 2；
     // 物理 buffer 数仍由 InitUbBuffers 的 BUFFER_NUM_DB 决定，UB 占用不受 depth 影响。
-    // outQue_ 的 CopyOut 延后一拍（见 Process），Compute(i) EnQue 时 tile i-1 还没
-    // DeQue，outstanding 稳态为 2，depth 必须跟着取 2
+    // outQue_ 的 CopyOut 延后一拍，稳态 outstanding 为 2，depth 也取 2
     TQue<QuePosition::VECIN, DIGIT_TWO> qkvInQue_;
     TQue<QuePosition::VECIN, DIGIT_TWO> cosSinInQue_;
     TQue<QuePosition::VECOUT, DIGIT_TWO> outQue_;

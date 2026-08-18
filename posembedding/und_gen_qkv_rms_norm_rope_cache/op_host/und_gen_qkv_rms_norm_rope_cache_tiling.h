@@ -137,10 +137,8 @@ static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
 // DataCopyPad 对 UB 落点的 32B 对齐要求，host 这边也不用为对齐留余量、预算保持精确。
 static_assert(IDX_WINDOW_TOKENS * INT64_BYTES % BLOCK_ALIGN_BYTES == 0,
               "index regions must stay 32B-aligned so DataCopyPad needs no per-region padding");
-// kernel 的 CopyOut 延后一拍写出，所以窗口要同时容纳三个 tile：待写出的 pend tile、
-// 正在算的 tile、以及预取中的下一 tile —— pend tile 的 slot 要到它被写出时才读完。
-// 与 op_kernel/arch35/..._regbase.h 里同名的 static_assert 是同一个不变量的两侧表述，
-// 改这里必须同步改那边
+// 窗口要同时容纳 pend / 在算 / 预取三个 tile。与 op_kernel/arch35/..._regbase.h
+// 里同名的 static_assert 是同一不变量，改这里必须同步改那边
 static_assert(IDX_WINDOW_TOKENS >= DIM_NUM_THREE * MAX_UB_FACTOR,
               "index window must hold the pending, in-flight and prefetched tiles");
 

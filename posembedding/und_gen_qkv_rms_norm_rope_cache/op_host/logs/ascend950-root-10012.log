@@ -1,0 +1,97 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:37:26] >>> [ascend950-root-10012] cd /home/qianzehong/workspace/cann/ops-transformer && ./build/cann-ops-transformer-custom_linux-x86_64.run --quiet 2>&1 | tail -8; echo "EXIT=${PIPESTATUS[0]}"; echo "--- vendors ---"; ls $ASCEND_HOME_PATH/opp/vendors/; cat $ASCEND_HOME_PATH/opp/vendors/config.ini; ls $ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/ 2>&1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ops_custom] [2026-08-12 10:37:59] [INFO] copy new ops op_api files ......
+[ops_custom] [2026-08-12 10:37:59] [INFO] upgrade uninstall
+[ops_custom] [2026-08-12 10:37:59] [INFO] copy new uninstall.sh files ......
+[ops_custom] [2026-08-12 10:37:59] [INFO] upgrade version.info
+[ops_custom] [2026-08-12 10:37:59] [INFO] copy new version.info files ......
+[ops_custom] [2026-08-12 10:37:59] [INFO] no need to upgrade custom.proto files
+[ops_custom] [2026-08-12 10:37:59] [INFO] using requirements: when custom module install finished or before you run the custom module, execute the command [ export LD_LIBRARY_PATH=/home/qianzehong/Ascend/cann-9.2.0/opp/vendors/custom_transformer/op_api/lib/:${LD_LIBRARY_PATH} ] to set the environment path
+SUCCESS
+EXIT=0
+--- vendors ---
+config.ini
+custom_transformer
+load_priority=custom_transformer
+libcust_opapi.so
+[10:37:29] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:37:42] >>> [ascend950-root-10012] cd /home/qianzehong/workspace/cann/ops-transformer/torch_extension && python3 -m pip install . --no-deps --force-reinstall -q 2>&1 | tail -5; echo "PIPEXIT=${PIPESTATUS[0]}"; python3 -c "import cann_ops_transformer as m; print(m.__file__); print([a for a in dir(m) if \"und_gen\" in a])" 2>&1 | tail -5
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+PIPEXIT=0
+An error occurred when import `torchair` and the above is the specific error message. 
+This error message was generated when import torchair, but thrown asynchronously here. 
+Please check the error message above. 
+
+[ERROR] 2026-08-12-10:38:26 (PID:3101644, Device:-1, RankID:-1) ERR00005 PTA internal error
+[10:37:57] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:38:06] >>> [ascend950-root-10012] python3 -c "import cann_ops_transformer" 2>&1 | head -40
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/importlib/metadata/__init__.py", line 397, in from_name
+    return next(cls.discover(name=name))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/__init__.py", line 93, in __getattr__
+    from . import torchair
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/__init__.py", line 11, in <module>
+    from torchair.npu_fx_compiler import get_compiler
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/npu_fx_compiler.py", line 45, in <module>
+    from torchair.ge._ge_graph import is_sym, _torch_tensor_to_ge_const
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/ge/__init__.py", line 4, in <module>
+    from torchair.ge.ge_custom import custom_op
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/ge/ge_custom.py", line 4, in <module>
+    from torchair.ge.attr import _Attr
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/ge/attr.py", line 84, in <module>
+    Int = _make_attr_builder("i", cls="Int")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/ge/attr.py", line 57, in _make_attr_builder
+    from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/ge/_ge_graph.py", line 18, in <module>
+    from torchair._ge_concrete_graph.ge_ir_pb2 import ModelDef, GraphDef, OpDef, AttrDef, TensorDescriptor
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch_npu/dynamo/torchair/_ge_concrete_graph/ge_ir_pb2.py", line 6, in <module>
+    protobuf_version = version("protobuf")
+                       ^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/importlib/metadata/__init__.py", line 889, in version
+    return distribution(distribution_name).version
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/importlib/metadata/__init__.py", line 862, in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/qianzehong/lib/python3.12/importlib/metadata/__init__.py", line 399, in from_name
+    raise PackageNotFoundError(name)
+importlib.metadata.PackageNotFoundError: No package metadata was found for protobuf
+
+The above exception was the direct cause of the following exception:
+[10:38:16] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:38:26] >>> [ascend950-root-10012] python3 -m pip install protobuf -q 2>&1 | tail -3; python3 -c "import cann_ops_transformer as m; print(\"import ok\", m.__file__)" 2>&1 | tail -6
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+torch_npu.dynamo._ImportError: 
+An error occurred when import `torchair` and the above is the specific error message. 
+This error message was generated when import torchair, but thrown asynchronously here. 
+Please check the error message above. 
+
+[ERROR] 2026-08-12-10:39:11 (PID:3104260, Device:-1, RankID:-1) ERR00005 PTA internal error
+[10:38:41] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:38:49] >>> [ascend950-root-10012] python3 -c "import cann_ops_transformer" 2>&1 | grep -E "Error|error:" | head -20; echo "--- protobuf ---"; python3 -c "import google.protobuf, importlib.metadata as m; print(google.protobuf.__version__, m.version(\"protobuf\"))" 2>&1|tail -2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ImportError: cannot import name 'hint_int' from 'torch.fx.experimental.symbolic_shapes' (/root/miniconda3/envs/qianzehong/lib/python3.12/site-packages/torch/fx/experimental/symbolic_shapes.py). Did you mean: '_is_int'?
+torch_npu.dynamo._ImportError: 
+--- protobuf ---
+7.35.1 7.35.1
+[10:38:59] <<< 完成 (exit: 0)
