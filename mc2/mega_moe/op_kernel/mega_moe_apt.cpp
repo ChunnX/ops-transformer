@@ -22,11 +22,11 @@
 #endif
 
 #ifdef ENABLE_TENSOR_API
-#include "mega_moe_a8w8_wave.h"
+#include "arch92/mega_moe_a8w8_wave.h"
 #endif
 
-#include "mega_moe_tiling.h"
-#include "mega_moe_tiling_key.h"
+#include "arch92/mega_moe_tiling.h"
+#include "arch92/mega_moe_tiling_key.h"
 
 using namespace AscendC;
 

@@ -24,12 +24,13 @@
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
-// Shared arch35 headers must bind to the arch92 WorkspaceInfo definition in this translation unit.
+#include "common/mega_moe_quant_compat.h"
 #include "common/mega_moe_workspace.h"
-#include "../arch35/common/mega_moe_types.h"
+#include "common/mega_moe_types.h"
 #include "common/mega_moe_core_context.h"
-#include "../arch35/common/mega_moe_utils.h"
-#include "../arch35/blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "common/mega_moe_utils.h"
+#include "common/mega_moe_mxfp8_utils.h"
+#include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../arch35/stage/mega_moe_token_quant.h"
 #include "../arch35/stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
@@ -38,11 +39,6 @@
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "../arch35/stage/mega_moe_unpermute.h"
-#if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
-#include "../../moe_distribute_dispatch_v2/quantize_functions.h"
-#else
-#include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
-#endif
 
 namespace MegaMoeImpl {
 

@@ -16,7 +16,13 @@
 #ifndef MEGA_MOE_WORKSPACE_H
 #define MEGA_MOE_WORKSPACE_H
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__) || defined(__DAV_310R6_CUBE__) || \
+    defined(__DAV_310R6_VEC__) || defined(__DAV_920R1_CUBE__) || defined(__DAV_920R1_VEC__) || \
+    defined(__NPU_ARCH__)
+#define MEGA_MOE_IS_KERNEL_COMPILE
+#endif
+
+#if defined(MEGA_MOE_IS_KERNEL_COMPILE)
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #define HOST_DEVICE __forceinline__[aicore]
@@ -46,7 +52,7 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+#if defined(MEGA_MOE_IS_KERNEL_COMPILE)
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;

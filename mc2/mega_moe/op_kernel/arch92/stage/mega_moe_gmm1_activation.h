@@ -18,9 +18,8 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
-#include "../../arch35/blaze/epilogue/block_epilogue_activation_mx_quant.h"
-#include "../blaze/gemm/block/mega_moe_block_mmad_mx_fp8.h"
-#include "../../arch35/common/mega_moe_gmm_common.h"
+#include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "../common/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
 

@@ -807,24 +807,27 @@ Workspace 本地副本增加：
 当前第一版结构：
 
 ```text
-mc2/mega_moe/op_kernel/arch92/
+mc2/mega_moe/op_kernel/
 ├─ mega_moe_apt.cpp
-├─ mega_moe.h
-├─ mega_moe_a8w8_wave.h
-├─ mega_moe_tiling.h
-├─ mega_moe_tiling_key.h
-├─ common/
-│  ├─ mega_moe_core_context.h
-│  └─ mega_moe_workspace.h
-└─ stage/
-   ├─ mega_moe_workspace_reset.h
-   ├─ mega_moe_token_dispatch.h
-   ├─ mega_moe_gmm1_activation.h
-   └─ mega_moe_gmm2_combine.h
+└─ arch92/
+   ├─ mega_moe.h
+   ├─ mega_moe_a8w8_wave.h
+   ├─ mega_moe_tiling.h
+   ├─ mega_moe_tiling_key.h
+   ├─ common/
+   │  ├─ mega_moe_core_context.h
+   │  └─ mega_moe_workspace.h
+   └─ stage/
+      ├─ mega_moe_workspace_reset.h
+      ├─ mega_moe_token_dispatch.h
+      ├─ mega_moe_gmm1_activation.h
+      └─ mega_moe_gmm2_combine.h
 ```
 
-### 13.1 `mega_moe_apt.cpp`
+### 13.1 `op_kernel/mega_moe_apt.cpp`
 
+- 入口文件必须直接位于 `op_kernel`，即 `arch92` 的上级目录，以匹配 A6 编译仓扫描 Kernel 源文件的目录约定；放在 `arch92` 内不会进入 A6 Kernel 编译。
+- 通过 `arch92/` 显式包含 `mega_moe_a8w8_wave.h`、`mega_moe_tiling.h` 和 `mega_moe_tiling_key.h`，不依赖编译命令额外注入 `arch92` 目录。
 - `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1)`。
 - 保留 `MEGA_MOE_WEIGHT1_INTERLEAVED` 编译期开关和0/1合法性检查，并将其传入A6 Generic GMM1调度。
 - 注册与arch92 Host一致的TilingData。
@@ -1358,7 +1361,7 @@ arch92/mega_moe.h
 
 GMM1、GMM2、workspace reset和token dispatch的arch92副本应优先include上述本地文件。仍然引用arch35的文件只允许是经过确认不包含架构宏、Hcomm签名、Workspace类型或A8W4符号差异的稳定公共实现。
 
-`mega_moe_mxfp8_utils.h` 的 `<quantize_functions.h>` fallback已经验证有效。正式记录必须与实际文件位置一致：如果保留在arch35，它是一处公共include可移植性修复；如果迁到arch92副本，才可以继续保持arch35文件零差异。两种方式都不改变计算逻辑。
+`mega_moe_mxfp8_utils.h` 的 `<quantize_functions.h>` fallback已经验证有效。本实现选择arch92本地副本，并通过 `mega_moe_quant_compat.h` 统一处理相对路径和 `<quantize_functions.h>` fallback，因此arch35保持零修改。该兼容头在所有stage之前引入，也保证A6的 `namespace Quant = quant;` 早于第一个 `Quant::` 使用点可见。
 
 ### 24.5 Hcomm兼容处理
 

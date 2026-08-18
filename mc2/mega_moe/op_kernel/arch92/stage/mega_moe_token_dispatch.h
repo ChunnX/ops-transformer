@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
-#include "../../arch35/common/mega_moe_utils.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 

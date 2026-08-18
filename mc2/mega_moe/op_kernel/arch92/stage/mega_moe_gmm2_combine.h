@@ -23,16 +23,13 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
-#include "../blaze/gemm/block/mega_moe_block_mmad_mx_fp8.h"
-#include "../../arch35/common/mega_moe_gmm_common.h"
-#include "../../arch35/common/mega_moe_utils.h"
-#include "../../arch35/common/mega_moe_mxfp8_utils.h"
+#include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_utils.h"
+#include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
-#include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
 #include "../../../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
 namespace MegaMoeImpl {
