@@ -355,7 +355,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         runParam.s2OriLineStartIdx = 0;
-        runParam.s2OriLineEndIdx = runParam.oriSparseBlockCount;
+        runParam.s2OriLineEndIdx = Min(runParam.actualS2OriSize, runParam.oriSparseBlockCount);
     } else {
         runParam.s2OriLineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatchOri, 0, runParam.actualS2OriSize);
@@ -388,7 +388,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     } else { // ORI_CMP_SPARSE_TEMPLATE_MODE
         runParam.s2CmpLineStartIdx = 0;
-        runParam.s2CmpLineEndIdx = runParam.cmpSparseBlockCount;
+        runParam.s2CmpLineEndIdx = Min(runParam.actualS2CmpSize, runParam.cmpSparseBlockCount);
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     }
 
