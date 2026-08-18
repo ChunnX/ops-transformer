@@ -13,7 +13,6 @@
 #include <c10/core/DeviceGuard.h>
 
 #include <cmath>
-#include <tuple>
 
 #include "aclnn_common.h"
 
@@ -35,14 +34,14 @@ void CheckTensorContiguous(const at::Tensor &tensor, const char *name)
     TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous.");
 }
 
-void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &partialDelta,
+void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &delta,
                  const at::Tensor &pseudoQuery, const at::Tensor &numerator,
-                 const at::Tensor &logitMax, const at::Tensor &expSum, float epsilon)
+                 const at::Tensor &logitMax, const at::Tensor &expSum, float eps)
 {
     TORCH_CHECK(partialBlock.scalar_type() == at::kFloat,
                 "partial_block must be float32, but got ", partialBlock.scalar_type(), ".");
-    TORCH_CHECK(partialDelta.scalar_type() == at::kBFloat16,
-                "partial_delta must be bfloat16, but got ", partialDelta.scalar_type(), ".");
+    TORCH_CHECK(delta.scalar_type() == at::kBFloat16,
+                "delta must be bfloat16, but got ", delta.scalar_type(), ".");
     TORCH_CHECK(pseudoQuery.scalar_type() == at::kFloat,
                 "pseudo_query must be float32, but got ", pseudoQuery.scalar_type(), ".");
     TORCH_CHECK(numerator.scalar_type() == at::kFloat,
@@ -52,16 +51,26 @@ void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &partialDelta,
     TORCH_CHECK(expSum.scalar_type() == at::kFloat,
                 "exp_sum must be float32, but got ", expSum.scalar_type(), ".");
     CheckTensorContiguous(partialBlock, "partial_block");
-    CheckTensorContiguous(partialDelta, "partial_delta");
+    CheckTensorContiguous(delta, "delta");
     CheckTensorContiguous(pseudoQuery, "pseudo_query");
     CheckTensorContiguous(numerator, "numerator");
     CheckTensorContiguous(logitMax, "logit_max");
     CheckTensorContiguous(expSum, "exp_sum");
 
+    const auto expectedDevice = partialBlock.device();
+    CheckTensorDevice(delta, expectedDevice, "delta");
+    CheckTensorDevice(pseudoQuery, expectedDevice, "pseudo_query");
+    CheckTensorDevice(numerator, expectedDevice, "numerator");
+    CheckTensorDevice(logitMax, expectedDevice, "logit_max");
+    CheckTensorDevice(expSum, expectedDevice, "exp_sum");
+
+    TORCH_CHECK(std::isfinite(eps) && eps > 0.0F,
+                "eps must be finite and greater than 0, but got ", eps, ".");
+
     TORCH_CHECK(partialBlock.dim() == MATRIX_DIM,
                 "partial_block must be 2D, but got ", partialBlock.dim(), "D.");
-    TORCH_CHECK(partialDelta.dim() == MATRIX_DIM,
-                "partial_delta must be 2D, but got ", partialDelta.dim(), "D.");
+    TORCH_CHECK(delta.dim() == MATRIX_DIM,
+                "delta must be 2D, but got ", delta.dim(), "D.");
     TORCH_CHECK(pseudoQuery.dim() == VECTOR_DIM,
                 "pseudo_query must be 1D, but got ", pseudoQuery.dim(), "D.");
     TORCH_CHECK(numerator.dim() == MATRIX_DIM,
@@ -71,8 +80,8 @@ void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &partialDelta,
     TORCH_CHECK(expSum.dim() == VECTOR_DIM,
                 "exp_sum must be 1D, but got ", expSum.dim(), "D.");
 
-    TORCH_CHECK(partialDelta.sizes() == partialBlock.sizes(),
-                "partial_delta shape must match partial_block, but got ", partialDelta.sizes(),
+    TORCH_CHECK(delta.sizes() == partialBlock.sizes(),
+                "delta shape must match partial_block, but got ", delta.sizes(),
                 " and ", partialBlock.sizes(), ".");
     TORCH_CHECK(numerator.sizes() == partialBlock.sizes(),
                 "numerator shape must match partial_block, but got ", numerator.sizes(),
@@ -86,43 +95,33 @@ void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &partialDelta,
     TORCH_CHECK(expSum.size(TOKEN_DIM) == partialBlock.size(TOKEN_DIM),
                 "exp_sum length must match the token dimension of partial_block, but got ",
                 expSum.sizes(), " and ", partialBlock.sizes(), ".");
-    TORCH_CHECK(partialBlock.size(TOKEN_DIM) > 0,
-                "the token dimension T must be greater than 0, but got ", partialBlock.size(TOKEN_DIM), ".");
-    TORCH_CHECK(partialBlock.size(HIDDEN_DIM) >= 1 && partialBlock.size(HIDDEN_DIM) <= 8192,
-                "the hidden dimension D must be in [1, 8192], but got ", partialBlock.size(HIDDEN_DIM), ".");
+    TORCH_CHECK(partialBlock.size(TOKEN_DIM) >= 0,
+                "the token dimension T must be greater than or equal to 0, but got ",
+                partialBlock.size(TOKEN_DIM), ".");
+    TORCH_CHECK(partialBlock.size(HIDDEN_DIM) >= 0 && partialBlock.size(HIDDEN_DIM) <= 8192,
+                "the hidden dimension D must be in [0, 8192], but got ", partialBlock.size(HIDDEN_DIM), ".");
 
-    const auto expectedDevice = partialBlock.device();
-    CheckTensorDevice(partialDelta, expectedDevice, "partial_delta");
-    CheckTensorDevice(pseudoQuery, expectedDevice, "pseudo_query");
-    CheckTensorDevice(numerator, expectedDevice, "numerator");
-    CheckTensorDevice(logitMax, expectedDevice, "logit_max");
-    CheckTensorDevice(expSum, expectedDevice, "exp_sum");
-
-    TORCH_CHECK(std::isfinite(epsilon) && epsilon > 0.0F,
-                "epsilon must be finite and greater than 0, but got ", epsilon, ".");
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> block_attn_res_update(
-    at::Tensor partialBlock, const at::Tensor &partialDelta, const at::Tensor &pseudoQuery,
-    const at::Tensor &numerator, const at::Tensor &logitMax, const at::Tensor &expSum, float epsilon)
+at::Tensor block_attn_res_update(
+    at::Tensor &partialBlock, const at::Tensor &delta, const at::Tensor &pseudoQuery,
+    const at::Tensor &numerator, const at::Tensor &logitMax, const at::Tensor &expSum, float eps)
 {
-    CheckInputs(partialBlock, partialDelta, pseudoQuery, numerator, logitMax, expSum, epsilon);
+    CheckInputs(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 
     at::Tensor h{nullptr};
-    at::Tensor partialBlocks{nullptr};
     {
         const auto localDevice = c10::Device(partialBlock.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
-        h = at::empty(partialDelta.sizes(), partialDelta.options());
-        // The ACLNN contract updates partialBlock in place. Clone it so the public Torch API remains functional.
-        partialBlocks = partialBlock.clone(c10::MemoryFormat::Contiguous);
+        h = at::empty(delta.sizes(), delta.options());
     }
 
-    ACLNN_CMD(aclnnBlockAttnResUpdate, partialBlocks, partialDelta, pseudoQuery, numerator, logitMax, expSum,
-              epsilon, h);
+    // ACLNN updates partialBlock in place; the Torch API only returns h.
+    ACLNN_CMD(aclnnBlockAttnResUpdate, partialBlock, delta, pseudoQuery, numerator, logitMax, expSum,
+              eps, h);
 
-    return std::make_tuple(h, partialBlocks);
+    return h;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

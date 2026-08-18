@@ -16,8 +16,8 @@
 // ACLNNGraph aliases partial_block_ref with partial_block. Direct kernel launchers must pass the same GM address in
 // both ABI slots. This kernel writes through partial_block and does not use workspace storage.
 extern "C" __global__ __aicore__ void block_attn_res_update(
-    GM_ADDR partial_block, GM_ADDR delta, GM_ADDR inter_numerator, GM_ADDR inter_max, GM_ADDR inter_exp_sum,
-    GM_ADDR effective_query, GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR partial_block, GM_ADDR delta, GM_ADDR pseudo_query, GM_ADDR numerator, GM_ADDR logit_max,
+    GM_ADDR exp_sum, GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace, GM_ADDR tiling)
 {
     (void)partial_block_ref;
     (void)workspace;
@@ -26,6 +26,6 @@ extern "C" __global__ __aicore__ void block_attn_res_update(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
     BlockAttnResUpdateOps::BlockAttnResUpdateKernel op;
-    op.Init(partial_block, delta, inter_numerator, inter_max, inter_exp_sum, effective_query, h, &tilingData);
+    op.Init(partial_block, delta, pseudo_query, numerator, logit_max, exp_sum, h, &tilingData);
     op.Process();
 }

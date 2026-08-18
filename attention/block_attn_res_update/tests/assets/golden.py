@@ -12,17 +12,17 @@
 
 Naming correspondence with the Phase-2 calculation document:
 
-    partial_block   -> partial
-    partial_delta   -> delta
-    pseudo_query    -> query
-    numerator       -> history_o
-    logit_max       -> history_m
-    exp_sum         -> history_ell
-    h               -> output
-    partial_blocks  -> partial_out / updated partial block
+    partial_block  -> partial
+    delta          -> delta
+    pseudo_query   -> query
+    numerator      -> history_o
+    logit_max      -> history_m
+    exp_sum        -> history_ell
+    h              -> output
+    partial_blocks -> partial_out / updated partial block
 
 The current operator contract uses FP32 ``partial_block`` and a scalar FP32
-``epsilon`` attribute.  For compatibility with an older BF16-partial draft,
+``eps`` attribute.  For compatibility with an older BF16-partial draft,
 ``_compute`` also models a low-precision add when ``partial_block`` itself is
 FP16/BF16; the installed operator's normal path remains FP32 add.
 """
@@ -32,7 +32,6 @@ import numpy as np
 
 __golden__ = {
     "e2e": {
-        "block_attn_res_update_ttk_ops.block_attn_res_update_ttk": "block_attn_res_update_e2e_golden",
         "cann_ops_transformer.block_attn_res_update": "block_attn_res_update_e2e_golden",
     },
     "kernel": {
@@ -90,7 +89,7 @@ def _cast_like(value, template, use_torch=False):
 
 def _validate_shapes(
     partial_block,
-    partial_delta,
+    delta,
     pseudo_query,
     numerator,
     logit_max,
@@ -101,7 +100,7 @@ def _validate_shapes(
         raise ValueError(f"partial_block must have shape [T, D], got {shape}")
     token_num, hidden_size = shape
     expected = {
-        "partial_delta": (partial_delta.shape, shape),
+        "delta": (delta.shape, shape),
         "pseudo_query": (pseudo_query.shape, (hidden_size,)),
         "numerator": (numerator.shape, shape),
         "logit_max": (logit_max.shape, (token_num,)),
@@ -115,31 +114,37 @@ def _validate_shapes(
 
 def _compute(
     partial_block,
-    partial_delta,
+    delta,
     pseudo_query,
     numerator,
     logit_max,
     exp_sum,
-    epsilon,
+    eps,
 ):
     partial_block_np = _to_numpy(partial_block)
-    partial_delta_np = _to_numpy(partial_delta)
+    delta_np = _to_numpy(delta)
     pseudo_query_np = _to_numpy(pseudo_query)
     numerator_np = _to_numpy(numerator)
     logit_max_np = _to_numpy(logit_max)
     exp_sum_np = _to_numpy(exp_sum)
 
-    _, hidden_size = _validate_shapes(
+    eps = float(eps)
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError(f"eps must be finite and positive, got {eps}")
+
+    token_num, hidden_size = _validate_shapes(
         partial_block_np,
-        partial_delta_np,
+        delta_np,
         pseudo_query_np,
         numerator_np,
         logit_max_np,
         exp_sum_np,
     )
-    epsilon = float(epsilon)
-    if not np.isfinite(epsilon) or epsilon <= 0.0:
-        raise ValueError(f"epsilon must be finite and positive, got {epsilon}")
+    if token_num == 0 or hidden_size == 0:
+        return np.empty_like(delta_np, dtype=np.float32), partial_block_np.astype(
+            np.float32, copy=True
+        )
+
     if np.any(exp_sum_np < 0.0):
         raise ValueError("exp_sum must be non-negative")
 
@@ -148,7 +153,7 @@ def _compute(
     # casting the sum back before promotion reproduces that rounding point.
     partial_dtype = _dtype_name(partial_block)
     partial_sum_f32 = (
-        partial_block_np.astype(np.float32) + partial_delta_np.astype(np.float32)
+        partial_block_np.astype(np.float32) + delta_np.astype(np.float32)
     )
     if partial_dtype in ("float16", "bfloat16"):
         partial_sum = partial_sum_f32.astype(partial_block_np.dtype).astype(np.float32)
@@ -157,7 +162,7 @@ def _compute(
 
     # RMSNorm denominator, score, and online-softmax merge are all FP32.
     square_sum = np.sum(partial_sum * partial_sum, axis=-1, dtype=np.float32)
-    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(epsilon)).astype(np.float32)
+    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(eps)).astype(np.float32)
     score = np.sum(
         partial_sum * pseudo_query_np.astype(np.float32),
         axis=-1,
@@ -211,27 +216,27 @@ def block_attn_res_update_golden(
 
 def block_attn_res_update_e2e_golden(
     partial_block,
-    partial_delta,
+    delta,
     pseudo_query,
     numerator,
     logit_max,
     exp_sum,
-    epsilon,
+    eps,
     **kwargs,
 ):
-    """E2E golden; return order matches the public Torch API: (h, partial_blocks)."""
+    """E2E golden: explicit output h followed by TTK-collected inplace input 0."""
     output, updated_partial = _compute(
         partial_block,
-        partial_delta,
+        delta,
         pseudo_query,
         numerator,
         logit_max,
         exp_sum,
-        epsilon,
+        eps,
     )
     use_torch = kwargs.get("use_torch", False)
     return (
-        _cast_like(output, partial_delta, use_torch),
+        _cast_like(output, delta, use_torch),
         _cast_like(updated_partial, partial_block, use_torch),
     )
 
