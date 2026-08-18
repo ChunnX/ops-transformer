@@ -43,6 +43,7 @@ class BlockEpilogue {
 }  // namespace NpuArch::Epilogue::Block
 
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_high_prec.hpp"
 
 namespace NpuArch::Epilogue::Block {
 template <class InDtype, class Tws>

@@ -103,6 +103,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (innerPrecise != 0 && innerPrecise != 1 && innerPrecise != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "innerPrecise must be 0, 1 or 4, got %ld.", innerPrecise);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     L2_DFX_PHASE_1(aclnnMinimaxSparseAttentionSplitKv,
                    DFX_IN(query, key, value, blockTable,

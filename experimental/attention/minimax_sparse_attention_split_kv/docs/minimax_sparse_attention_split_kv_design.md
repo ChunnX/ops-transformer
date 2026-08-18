@@ -78,6 +78,36 @@
 | `accumOutSize` | workspace 中 O_partial float 元素总数，`totalQTokens * kvHeads * topK * groupSize * D`。 |
 | `lseStatSize` | workspace 中 softmaxMax 或 softmaxSum 各自 float 元素总数，`totalQTokens * kvHeads * topK * groupSize`。 |
 | `workSpaceSize` | `libapiWorkspaceSize + userWorkspace` 字节数。 |
+| `innerPrecise` | 内部计算精度。`0`：fp32 softmax + fp32 `O_partial`；`1`：bf16 softmax + bf16 `O_partial`；`4`（默认）：bf16 softmax + fp32 `O_partial`。其它值 tiling / aclnn 均拒绝。 |
+| `tilingKey` | `20001`（`innerPrecise=4`）、`20002`（`=1`）、`20003`（`=0`）。 |
+
+### 3.1.1 innerPrecise 与 tilingKey
+
+| `innerPrecise` | Softmax S（QK fixpipe） | `O_partial` | tilingKey |
+| --- | --- | --- | --- |
+| **0** ALL_HIGH | fp32（NoQuant） | fp32 | `20003` `INNER_HIGH` |
+| **1** ALL_LOW | bf16 | bf16 | `20002` `INNER_LOW` |
+| **4** MIXED（默认） | bf16 | fp32 | `20001` |
+
+`innerPrecise=0` 走独立 fp32 softmax epilogue（`block_epilogue_online_softmax_arch35_reg_high_prec.hpp`）：按行 `scale → causal -inf mask → max → exp(S-max) → sum`，P cast 为 bf16 后再 ND→zN 写入 L1，供 PV 使用。跨 block 的 rescale 仍在 Phase2，与 `=4` 相同（fp32 `O_partial`）。
+
+**高精度 tiling 约束（host `CheckTilingConstraints`）**：fp32 S 把 UB 占满，不能沿用 bf16 的「只换 tilingKey」假设。Atlas A5 UB=256KB，kernel 固定：
+
+```text
+S   2 stage * 16384 * 4B = 128KB   # offset 0；bf16 路径只有 64KB
+P   2 stage * 16384 * 2B =  64KB   # offset 128KB（bf16 路径在 64KB）
+tmp                    32KB        # offset 192KB，row-max/sum 破坏性拷贝 + ND P
+stats  gmUb/glUb                   # offset 224KB = 7*32KB，与 SM_UB_GM_OFFSET 对齐
+```
+
+因此 `innerPrecise=0` 必须同时满足：
+
+1. `D == 128`，`blockSize ∈ (0, 128]`（与 `L0_TILE_M/N`、tilingKey `D128` 一致）。
+2. 单 AIV 的 S tile `Align16(ceil(gCount/2)*groupSize) * Align16(blockSize) ≤ 8192`（tmp=32KB）。`groupSize=16, blockSize=128` → `64*128=8192` 刚好满；`groupSize=128` 单核吃整块 M=128 会撑爆 tmp，tiling 直接失败。
+3. 统计 UB：`ceil(gCount/2) * Align8(groupSize) ≤ 64`（`SM_ROW_MAX_ELEM_NUM`）。
+4. 平台 `ubSize ≥ stats 末端`。Workspace 仍按 fp32 `O_partial` 计（与 `innerPrecise=4` 相同），不必为 0 再加倍 GM。
+
+`innerPrecise=1/4` 的 S 为 bf16，不受 tmp=8192 这条限制，但仍受 D/blockSize/groupSize 与 stats 64 条约束。
 
 ### 3.2 blockDim 策略
 
@@ -423,7 +453,7 @@ Phase 2 必须全在 Vector 侧完成，不再触发 Cube 计算。
 | Phase2 scale | `ComputeScaleValue_VF`（`softmaxLseFlag=false`） | `_compute_scale_weights` |
 | Phase2 O/rowSum | `CopyAccumOutIn` 从 `gmSoftmaxSum` 读 rowSum 再 `Divs` | `o_norm = o_partial / rowSum`（`rowSum<=0` 置 0） |
 | Phase2 combine | `ReduceFinalRes_VF` | `sum(scale * o_norm)` |
-| QK/SM 中间精度 | QK fp32 S；SM Vector fp32；P cast bf16 | fp32 softmax；P cast bf16 供 PV |
+| QK/SM 中间精度 | 由 `innerPrecise` 决定：`0` 为 QK fp32 S + Vector fp32 softmax + P cast bf16；`4` 为 bf16 S softmax + fp32 `O_partial`；`1` 为 bf16 S + bf16 `O_partial` | fp32 softmax；P cast bf16 供 PV（对齐 `innerPrecise=0`） |
 | ws_max 初值 | 依赖 runtime zero-fill | 显式 `-inf` |
 
 Golden 不模拟 Cube tile 搬运；数值路径与 §7.2 一致。

@@ -57,6 +57,27 @@ constexpr int ATTR_INNER_PRECISE_INDEX = 4;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
+constexpr uint32_t INNER_PRECISE_ALL_HIGH = 0;
+constexpr uint32_t INNER_PRECISE_ALL_LOW = 1;
+constexpr uint32_t INNER_PRECISE_MIXED = 4;
+
+// Keep in sync with kernel: BlockMmadQK L0 tile, softmax MAX_UB_S_ELEM_NUM, SM_UB offsets.
+constexpr uint32_t KERNEL_L0_TILE_M = 128;
+constexpr uint32_t KERNEL_L0_TILE_N = 128;
+constexpr uint32_t KERNEL_HEAD_SIZE = 128;
+constexpr uint32_t KERNEL_MAX_BATCH_GROUPS = 8;
+constexpr uint32_t KERNEL_UB_S_STAGES = 2;
+constexpr uint32_t KERNEL_MAX_UB_S_ELEM = 16384;
+constexpr uint32_t KERNEL_SM_ROW_MAX_ELEM = 64;
+constexpr uint32_t KERNEL_UB_BLOCK = 32768;
+constexpr uint32_t KERNEL_HIGH_PREC_S_BYTES =
+    KERNEL_UB_S_STAGES * KERNEL_MAX_UB_S_ELEM * static_cast<uint32_t>(sizeof(float));
+constexpr uint32_t KERNEL_HIGH_PREC_P_BYTES =
+    KERNEL_UB_S_STAGES * KERNEL_MAX_UB_S_ELEM * static_cast<uint32_t>(sizeof(uint16_t));
+constexpr uint32_t KERNEL_HIGH_PREC_TMP_BYTES = KERNEL_UB_BLOCK;
+constexpr uint32_t KERNEL_HIGH_PREC_TMP_FLOATS =
+    KERNEL_HIGH_PREC_TMP_BYTES / static_cast<uint32_t>(sizeof(float));
+
 namespace optiling {
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
@@ -90,6 +111,15 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
     blockSize_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_BLOCK_SIZE_INDEX));
     topK_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_TOP_K_INDEX));
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
+    if (innerPrecise_ != INNER_PRECISE_ALL_HIGH &&
+        innerPrecise_ != INNER_PRECISE_ALL_LOW &&
+        innerPrecise_ != INNER_PRECISE_MIXED) {
+        OP_LOGE(context->GetNodeName(),
+                "innerPrecise must be 0 (fp32 softmax), 1 (bf16 softmax + bf16 O_partial) "
+                "or 4 (bf16 softmax + fp32 O_partial), got %u.",
+                innerPrecise_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -133,6 +163,101 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     dataType_ = qTensor->GetDataType();
 
     // printf("[MinimaxSparseAttentionSplitKvTiling] ParseInputTensors done\n");
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CheckTilingConstraints(gert::TilingContext *context)
+{
+    if (embeddingSize_ != KERNEL_HEAD_SIZE) {
+        OP_LOGE(context->GetNodeName(),
+                "Only D=%u is supported, got embeddingSize=%u.",
+                KERNEL_HEAD_SIZE, embeddingSize_);
+        return ge::GRAPH_FAILED;
+    }
+    if (blockSize_ == 0U || blockSize_ > KERNEL_L0_TILE_N) {
+        OP_LOGE(context->GetNodeName(),
+                "blockSize must be in (0, %u], got %u.", KERNEL_L0_TILE_N, blockSize_);
+        return ge::GRAPH_FAILED;
+    }
+    if (kvHeads_ == 0U || numHeads_ % kvHeads_ != 0U) {
+        OP_LOGE(context->GetNodeName(),
+                "numHeads (%u) must be divisible by kvHeads (%u).", numHeads_, kvHeads_);
+        return ge::GRAPH_FAILED;
+    }
+    if (groupSize_ == 0U || groupSize_ > KERNEL_L0_TILE_M) {
+        OP_LOGE(context->GetNodeName(),
+                "groupSize must be in (0, %u], got %u.", KERNEL_L0_TILE_M, groupSize_);
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t batchGroupsMax = KERNEL_L0_TILE_M / groupSize_;
+    if (batchGroupsMax == 0U || batchGroupsMax > KERNEL_MAX_BATCH_GROUPS) {
+        batchGroupsMax = KERNEL_MAX_BATCH_GROUPS;
+    }
+    uint32_t batchM = batchGroupsMax * groupSize_;
+    if (batchM > KERNEL_L0_TILE_M) {
+        batchM = KERNEL_L0_TILE_M;
+    }
+    // Matches kernel softmax / QK split: AIV0 owns ceil(groupCount/2) whole groups.
+    uint32_t mPerAiv = CeilDiv(batchGroupsMax, 2U) * groupSize_;
+    if (mPerAiv > batchM) {
+        mPerAiv = batchM;
+    }
+    uint32_t mAlign = AlignUp(static_cast<uint64_t>(mPerAiv), 16ULL);
+    uint32_t nAlign = AlignUp(static_cast<uint64_t>(blockSize_), 16ULL);
+    uint64_t sElem = static_cast<uint64_t>(mAlign) * nAlign;
+    uint32_t grpStride = static_cast<uint32_t>(AlignUp(static_cast<uint64_t>(groupSize_), 8ULL));
+    uint32_t statsElem = CeilDiv(batchGroupsMax, 2U) * grpStride;
+    if (statsElem > KERNEL_SM_ROW_MAX_ELEM) {
+        OP_LOGE(context->GetNodeName(),
+                "softmax stats UB overflow: per-AIV rowMax/rowSum need %u floats, cap is %u "
+                "(groupSize=%u batchGroupsMax=%u).",
+                statsElem, KERNEL_SM_ROW_MAX_ELEM, groupSize_, batchGroupsMax);
+        return ge::GRAPH_FAILED;
+    }
+
+    if (innerPrecise_ != INNER_PRECISE_ALL_HIGH) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // innerPrecise=0: fp32 S is 2x bf16. Kernel UB map (256KB):
+    //   S  2 * 16384 * 4B = 128KB at 0
+    //   P  2 * 16384 * 2B =  64KB at 128KB
+    //   tmp 32KB at 192KB (destructive row-max/sum copy; also ND P)
+    //   stats at 224KB (7*32KB), must match kernel SM_UB_GM_OFFSET
+    // AIV0-only softmax (NoQuant cannot split to AIV1): shrink batchGroupsMax until
+    // the FULL tile fits tmp (8192 fp32) and stats (64).
+    uint64_t ubNeed = static_cast<uint64_t>(KERNEL_HIGH_PREC_S_BYTES) +
+        KERNEL_HIGH_PREC_P_BYTES + KERNEL_HIGH_PREC_TMP_BYTES +
+        2ULL * KERNEL_SM_ROW_MAX_ELEM * sizeof(float) * KERNEL_UB_S_STAGES * 2ULL;
+    if (ubSize_ > 0U && ubNeed > ubSize_) {
+        OP_LOGE(context->GetNodeName(),
+                "innerPrecise=0 needs %lluB UB (fp32 S ping-pong + P + tmp + stats), platform UB is %lluB.",
+                static_cast<unsigned long long>(ubNeed),
+                static_cast<unsigned long long>(ubSize_));
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t gFit = batchGroupsMax;
+    while (gFit > 0U) {
+        uint32_t bm = gFit * groupSize_;
+        if (bm > KERNEL_L0_TILE_M) {
+            bm = KERNEL_L0_TILE_M;
+        }
+        uint64_t se = static_cast<uint64_t>(AlignUp(static_cast<uint64_t>(bm), 16ULL)) * nAlign;
+        uint32_t st = gFit * grpStride;
+        if (se <= KERNEL_HIGH_PREC_TMP_FLOATS && se <= KERNEL_MAX_UB_S_ELEM &&
+            st <= KERNEL_SM_ROW_MAX_ELEM) {
+            break;
+        }
+        gFit--;
+    }
+    if (gFit == 0U) {
+        OP_LOGE(context->GetNodeName(),
+                "innerPrecise=0 AIV0-only S tile cannot fit tmp=%u fp32 / stats=%u "
+                "(groupSize=%u blockSize=%u).",
+                KERNEL_HIGH_PREC_TMP_FLOATS, KERNEL_SM_ROW_MAX_ELEM, groupSize_, blockSize_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -216,7 +341,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     //   fp32 (compact per slot) regardless.
     accumOutSize_ = taskSlots * slotOElems;
     lseStatSize_ = taskSlots * slotStatElems;
-    // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
+    // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); 0 and 4 keep fp32.
+    // lse stats stay fp32 for all modes.
     uint64_t accumOutBytes = accumOutSize_ *
         (innerPrecise_ == 1U ? sizeof(uint16_t) : sizeof(float));
     uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
@@ -245,11 +371,12 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
     tilingData_->set_accumOutSize(accumOutSize_);
     tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
-    // innerPrecise==1 selects the bf16 O_partial path (PV fixpipe F322BF16 + Phase2
-    // regbase cast); otherwise the fp32 O_partial path (byte-identical to prior behavior).
-    uint64_t tilingKeyVal = (innerPrecise_ == 1U)
-        ? MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING
-        : MINIMAX_SA_SPLIT_KV_BF16_D128_TILING;
+    uint64_t tilingKeyVal = MINIMAX_SA_SPLIT_KV_BF16_D128_TILING;
+    if (innerPrecise_ == INNER_PRECISE_ALL_LOW) {
+        tilingKeyVal = MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING;
+    } else if (innerPrecise_ == INNER_PRECISE_ALL_HIGH) {
+        tilingKeyVal = MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING;
+    }
     tilingData_->set_tilingKey(tilingKeyVal);
     context->SetTilingKey(tilingKeyVal);
     return ge::GRAPH_SUCCESS;
@@ -267,6 +394,9 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::GetTiling(gert::TilingConte
     if (ret != ge::GRAPH_SUCCESS) return ret;
 
     ret = ParseInputTensors(context);
+    if (ret != ge::GRAPH_SUCCESS) return ret;
+
+    ret = CheckTilingConstraints(context);
     if (ret != ge::GRAPH_SUCCESS) return ret;
 
     ret = ParseSeqlens(context);

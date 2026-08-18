@@ -11,6 +11,7 @@
 #ifndef MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_ARCH35_H
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_ARCH35_H
 
+#include <type_traits>
 #include "kernel_utils.hpp"
 #include "../kernel_common.hpp"
 
@@ -30,7 +31,7 @@ public:
 
     using ElementQ = typename BlockMmadQK::ElementQ;
     using ElementK = typename BlockMmadQK::ElementK;
-    using ElementS = bfloat16_t;
+    using ElementS = typename BlockMmadQK::ElementS;
     using ElementP = typename BlockMmadPV::ElementP;
     using ElementV = typename BlockMmadPV::ElementV;
     using ElementO = typename BlockMmadQK::ElementQ;
@@ -59,14 +60,10 @@ public:
     static constexpr uint32_t WS_INIT_EVT = 5U;          // free V_MTE3/MTE3_V id on VEC
     static constexpr uint32_t WS_INIT_CHUNK = 4096U;      // fp32 elems per chunk (multiple of 8)
 
-    // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (see
-    // reg_low_prec_bf16.hpp ctor). CopyPartialStatsToGm (MTE3) reads gmUb[ubSBufId]/
-    // glUb[ubSBufId] right after each softmax; the epilogue waits MTE3_V(ubSBufId)
-    // before overwriting the same stage, and this kernel sets MTE3_V(ubSBufId) after
-    // the copy. InitSyncFlags pre-sets MTE3_V(0,1) so the first block per stage is
-    // unblocked. No single-buffer reuse -> no race.
-    // Offsets alias the prefill softmax ctor's 2-deep gmUb/glUb regions (must stay
-    // byte-identical to that ctor). gmUb = this AIV's rowMax (fp32), glUb = rowSum.
+    // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (bf16:
+    // reg_low_prec_bf16.hpp; fp32: reg_high_prec.hpp). Both ctors keep stats at
+    // 7*32KB so this offset stays valid. CopyPartialStatsToGm (MTE3) reads
+    // gmUb[ubSBufId]/glUb[ubSBufId] right after each softmax.
     static constexpr uint32_t SM_UB_BLOCK = 32768U;  // UB_UINT8_BLOCK_SIZE
     static constexpr uint32_t SM_UB_GM_OFFSET = 7U * SM_UB_BLOCK;                       // 229376 rowMax base
     static constexpr uint32_t SM_UB_GL_OFFSET = SM_UB_GM_OFFSET + 2U * 64U * sizeof(float);  // 229888 rowSum base
@@ -457,18 +454,30 @@ private:
                            const uint32_t *qTokens, const uint32_t *slotKs,
                            uint32_t kvHeadIdx, uint32_t groupCount)
     {
-        // mCopyOffset = AIV0's group count * groupRows (groupRows-aligned = AIV1 startRow).
-        // Matches BlockMmadQK's group-dim S split and the softmax epilogue's group-dim split.
-        uint32_t gSplit = CeilDiv(groupCount, 2U);
-        uint32_t mCopyOffset = gSplit * groupRows;
-        uint32_t mHalf = mCopyOffset < batchM ? mCopyOffset : batchM;
-        uint32_t m = (AscendC::GetSubBlockIdx() == 0U) ? mHalf : (batchM - mHalf);
+        // AIV0-only for fp32 S (innerPrecise=0): matches QK NoQuant Fixpipe and high-prec
+        // softmax. AIV1 returns immediately (no stats to scatter).
+        uint32_t m;
+        uint32_t startRow;
+        uint32_t gLo;
+        uint32_t gHi;
+        if constexpr (std::is_same<ElementS, float>::value) {
+            m = (AscendC::GetSubBlockIdx() == 0U) ? batchM : 0U;
+            startRow = 0U;
+            gLo = 0U;
+            gHi = groupCount;
+        } else {
+            uint32_t gSplit = CeilDiv(groupCount, 2U);
+            uint32_t mCopyOffset = gSplit * groupRows;
+            uint32_t mHalf = mCopyOffset < batchM ? mCopyOffset : batchM;
+            m = (AscendC::GetSubBlockIdx() == 0U) ? mHalf : (batchM - mHalf);
+            startRow = AscendC::GetSubBlockIdx() * mCopyOffset;
+            gLo = (m == 0U) ? 0U : startRow / groupRows;
+            gHi = gLo + ((m == 0U) ? 0U : m / groupRows);
+        }
         if (m == 0U) {
             return;
         }
-        uint32_t startRow = AscendC::GetSubBlockIdx() * mCopyOffset;
-        uint32_t gLo = startRow / groupRows;
-        uint32_t gHi = gLo + m / groupRows;
+        (void)startRow;
         // rowMax/rowSum group base stride = 8-float aligned (matches softmax epilogue's statsOff;
         // DataCopyPad source must be 32B-aligned). No-op for groupRows>=8 (production 16).
         uint32_t grpStride = RoundUp(groupRows, 8U);
@@ -600,6 +609,27 @@ private:
         if (batchGroupsMax == 0U || batchGroupsMax > MAX_BATCH_GROUPS) {
             batchGroupsMax = MAX_BATCH_GROUPS;
         }
+        if constexpr (std::is_same<ElementS, float>::value) {
+            // AIV0-only softmax: full S tile must fit tmp (32KB=8192 fp32) and stats (64).
+            constexpr uint32_t HIGH_PREC_TMP_FLOATS = 8192U;
+            uint32_t nRound = RoundUp(blockSize_, 16U);
+            uint32_t grpStride = RoundUp(groupSize_, 8U);
+            while (batchGroupsMax > 0U) {
+                uint32_t batchMCap = batchGroupsMax * groupSize_;
+                if (batchMCap > BlockMmadQK::L0_TILE_M) {
+                    batchMCap = BlockMmadQK::L0_TILE_M;
+                }
+                uint64_t sElem = static_cast<uint64_t>(RoundUp(batchMCap, 16U)) * nRound;
+                uint32_t statsElem = batchGroupsMax * grpStride;
+                if (sElem <= HIGH_PREC_TMP_FLOATS && statsElem <= 64U) {
+                    break;
+                }
+                batchGroupsMax--;
+            }
+            if (batchGroupsMax == 0U) {
+                batchGroupsMax = 1U;
+            }
+        }
 
 #ifdef __DAV_CUBE__
         BlockMmadQK blockMmadQK;
@@ -611,8 +641,8 @@ private:
         // PV P L1 stage must hold the batched P [L0_TILE_M, blockSize_] (max batchM, K=validSize<=blockSize).
         blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, BlockMmadQK::L0_TILE_M);
 
-        // CUBE Fixpipe dst aliases decode softmax lsUbTensor (offset 0,
-        // MAX_UB_S_ELEM_NUM bf16 = 32768B/stage), shared cross-core with VEC softmax.
+        // CUBE Fixpipe dst aliases softmax lsUbTensor (offset 0,
+        // MAX_UB_S_ELEM_NUM * sizeof(ElementS) per stage), shared cross-core with VEC softmax.
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
@@ -622,9 +652,8 @@ private:
         int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
 #endif
 #ifdef __DAV_VEC__
-        // decode bf16 regbase softmax self-allocates its UB (lsUb/lpUb/lmUb/gmUb/glUb/
-        // dmUb/llUb at fixed offsets, see reg_low_prec_bf16.hpp ctor). VEC no longer
-        // pre-allocates ubSTensor/ubPBuf/ubRowMax/ubRowSum/ubTmpBuf.
+        // Softmax self-allocates UB (lsUb/lpUb/gmUb/glUb; high-prec also tmpUb).
+        // Stats offsets must match SM_UB_GM_OFFSET / SM_UB_GL_OFFSET above.
         EpilogueOnlineSoftmax epilogueSoftmax(resource, scaleValue_);
 
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
@@ -801,11 +830,15 @@ private:
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
 
 #ifdef __DAV_CUBE__
-                    // per-block S stride = nRound = RoundUp(validSize,16), matches the softmax
-                    // LoadAlign(srcUb + i*S2BaseSize) read stride. mAligned per-batch (VecRowSplit).
-                    uint32_t mPerSubCoreB = VecRowSplit(batchM);
-                    uint32_t mAlignedB = RoundUp(mPerSubCoreB, 16u);
-                    auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAlignedB, RoundUp(validSize, 16U));
+                    // per-block S stride = nRound = RoundUp(validSize,16). fp32 S is AIV0-only
+                    // (full batchM); bf16 still uses the per-AIV half-tile layout.
+                    uint32_t mLayoutB;
+                    if constexpr (std::is_same<ElementS, float>::value) {
+                        mLayoutB = RoundUp(batchM, 16u);
+                    } else {
+                        mLayoutB = RoundUp(VecRowSplit(batchM), 16u);
+                    }
+                    auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mLayoutB, RoundUp(validSize, 16U));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
                     blockMmadQK(gQ, batchQToken[stage], batchGroupCount, groupSize_,
                                 ubSTensorTla, validSize, embed_, perQTokenStrideQ, qHeadStartBase,

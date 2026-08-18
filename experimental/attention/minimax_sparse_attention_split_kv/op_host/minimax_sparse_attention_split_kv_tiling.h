@@ -24,9 +24,11 @@ namespace optiling {
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BASE_TILING = 20000;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_TILING = 20001;
 // innerPrecise==1: O_partial written/read as bf16 (Phase1 PV fixpipe F322BF16, Phase2
-// regbase-cast bf16->fp32 before combine). Otherwise (e.g. innerPrecise==4) the fp32
-// O_partial path is used byte-for-byte (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING).
+// regbase-cast bf16->fp32 before combine). innerPrecise==4 (default) uses bf16 S +
+// fp32 O_partial (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING). innerPrecise==0 uses fp32 S
+// + fp32 O_partial (MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING).
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING = 20002;
+constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING = 20003;
 
 BEGIN_TILING_DATA_DEF(MinimaxSparseAttentionSplitKvTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
@@ -75,6 +77,7 @@ private:
     ge::graphStatus GetNpuInfo(gert::TilingContext *context);
     ge::graphStatus ParseAttrs(gert::TilingContext *context);
     ge::graphStatus ParseInputTensors(gert::TilingContext *context);
+    ge::graphStatus CheckTilingConstraints(gert::TilingContext *context);
     ge::graphStatus ParseSeqlens(gert::TilingContext *context);
     ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext *context);
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
@@ -94,7 +97,7 @@ private:
     uint32_t maxBlocksPerBatch_ = 0;
     uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
-    uint32_t innerPrecise_ = 0;
+    uint32_t innerPrecise_ = 4;
 
     const int32_t *qSeqLenList_ = nullptr;
     const int32_t *kvSeqLenList_ = nullptr;

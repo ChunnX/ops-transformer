@@ -16,7 +16,7 @@
 
 namespace NpuArch::Epilogue {
 
-// Prefill Phase1 online softmax (bf16 S path)
+// Prefill Phase1 online softmax (bf16 S / fp32 S specializations)
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
 };
