@@ -2425,7 +2425,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test43)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933665;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -2482,7 +2482,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test44)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933665;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2539,7 +2539,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test45)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933665;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2596,7 +2596,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test46)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933345;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2654,7 +2654,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test48)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933665;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2711,7 +2711,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test49)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -2768,7 +2768,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test50)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -2825,7 +2825,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test51)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2882,7 +2882,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test52)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2940,7 +2940,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test53)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -2998,7 +2998,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test54)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3055,7 +3055,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test55)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933729;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3112,7 +3112,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test56)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3169,7 +3169,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test57)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3226,7 +3226,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test58)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3283,7 +3283,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test59)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3340,7 +3340,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test60)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3397,7 +3397,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test61)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3454,7 +3454,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test62)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3511,7 +3511,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test63)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933730;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -3568,7 +3568,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test64)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3932177;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3625,7 +3625,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test65)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3932178;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3682,7 +3682,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test66)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933666;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3739,7 +3739,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test67)
             {"qc_qr_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     int64_t expectTilingKey = 3933665;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3857,7 +3857,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false)
             {"kc_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"do_rope", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
-        &compileInfo, "Ascend950", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
     // 与 test43 相同场景；do_rope=false → ENABLE_ROPE=0
     int64_t expectTilingKey = 3671521;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
