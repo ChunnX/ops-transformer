@@ -185,6 +185,8 @@ private:
     uint32_t totalCompressedCnt_ = 0;
     uint32_t kvStateIdx_ = 0;
     uint32_t scoreStateIdx_ = 1;
+    uint32_t singleCoreCompressedCnt_ = 0;
+    uint32_t singleCoreCurBStart_ = 0;
     bool isExistSeqUsed_ = false;
     bool isExistStartPos_ = false;
     bool useSingleCore_ = false;
@@ -1185,6 +1187,7 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(Vec1SplitInfo &splitInfo)
 {
     splitInfo.preCompressedCnt = 0;
+    splitInfo.curCompressedCnt = 0;
     splitInfo.dealSeqStartIdx = splitInfo.preDealBatchNum * constInfo_.sSize;
     splitInfo.curBStart = splitInfo.preDealBatchNum;
     splitInfo.dealSeqCnt = splitInfo.dealBatchNum * constInfo_.sSize;
@@ -1193,14 +1196,21 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(
     uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
     for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
         uint32_t startPos = GetStartPos(curB);
-        uint32_t seqLength = GetSeqLength(curB);
+        uint32_t seqUsed = GetSeqUsed(curB);
         if (curB < splitInfo.curBStart) {
-            splitInfo.preCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            splitInfo.preCompressedCnt += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
+        } else if (curB < endB) {
+            splitInfo.curCompressedCnt += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         } else {
-            totalCompressedCnt_ += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            totalCompressedCnt_ += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         }
     }
-    totalCompressedCnt_ += splitInfo.preCompressedCnt;
+    if (useSingleCore_) {
+        singleCoreCompressedCnt_ = splitInfo.curCompressedCnt;
+        singleCoreCurBStart_ = splitInfo.curBStart;
+    }
+    
+    totalCompressedCnt_ += splitInfo.preCompressedCnt + splitInfo.curCompressedCnt;
 }
 
 template <typename COMP>
@@ -1302,8 +1312,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         for (uint32_t curB = vec1SplitInfo_.curBStart; curB < vec1SplitInfo_.curBStart + curLoopBatchNum; curB++) {
             uint32_t startPos = GetStartPos(curB);
             uint32_t seqLength = GetSeqLength(curB);
+            uint32_t seqUsed = GetSeqUsed(curB);
             vec1SplitInfo_.dealTcNum += CeilDivT(startPos + seqLength, cmpRatio_) - (startPos / cmpRatio_);
-            curLoopCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            curLoopCompressedCnt += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         }
         sliceIterator.Reset(vec1SplitInfo_.curBStart, vec1SplitInfo_.curSStart, 0U, 0U);
         sliceIterator.SetNeedDealTcSize(vec1SplitInfo_.dealTcNum);
@@ -1362,36 +1373,40 @@ __aicore__ inline Vec2SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV2
     uint32_t blockIdx = GetBlockIdx();
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
 
-    if (blockIdx < (totalCompressedCnt_ % aiCoreNum)) {
-        splitInfo.dealScNum = totalCompressedCnt_ / aiCoreNum + 1;
-        splitInfo.preScCnt = splitInfo.dealScNum * blockIdx;
-    } else if (blockIdx < aiCoreNum) {
-        splitInfo.dealScNum = totalCompressedCnt_ / aiCoreNum;
-        splitInfo.preScCnt = splitInfo.dealScNum * blockIdx + totalCompressedCnt_ % aiCoreNum;
-    } else {
-        splitInfo.dealScNum = 0;
-        splitInfo.preScCnt = totalCompressedCnt_;
-    }
-
-    if (splitInfo.dealScNum == 0) {
-        return splitInfo;
-    }
-
-    uint32_t preScCnt = splitInfo.preScCnt;
-    for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
-        uint32_t startPos = GetStartPos(curB);
-        uint32_t seqUsed = GetSeqUsed(curB);
-        uint32_t curScNum = (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
-        if (preScCnt < curScNum) {
-            splitInfo.curBStart = curB;
-            splitInfo.curScStart = preScCnt;
-            break;
-        }
-        preScCnt -= curScNum;
-    }
-
+    
     if (useSingleCore_) {
+        splitInfo.dealScNum = singleCoreCompressedCnt_;
         splitInfo.preScCnt = 0;
+        splitInfo.curBStart = singleCoreCurBStart_;
+        splitInfo.curScStart = 0;
+    } else {
+        if (blockIdx < (totalCompressedCnt_ % aiCoreNum)) {
+            splitInfo.dealScNum = totalCompressedCnt_ / aiCoreNum + 1;
+            splitInfo.preScCnt = splitInfo.dealScNum * blockIdx;
+        } else if (blockIdx < aiCoreNum) {
+            splitInfo.dealScNum = totalCompressedCnt_ / aiCoreNum;
+            splitInfo.preScCnt = splitInfo.dealScNum * blockIdx + totalCompressedCnt_ % aiCoreNum;
+        } else {
+            splitInfo.dealScNum = 0;
+            splitInfo.preScCnt = totalCompressedCnt_;
+        }
+
+        if (splitInfo.dealScNum == 0) {
+            return splitInfo;
+        }
+
+        uint32_t preScCnt = splitInfo.preScCnt;
+        for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
+            uint32_t startPos = GetStartPos(curB);
+            uint32_t seqUsed = GetSeqUsed(curB);
+            uint32_t curScNum = (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
+            if (preScCnt < curScNum) {
+                splitInfo.curBStart = curB;
+                splitInfo.curScStart = preScCnt;
+                break;
+            }
+            preScCnt -= curScNum;
+        }
     }
 
     splitInfo.dealedScCnt = 0;
