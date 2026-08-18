@@ -182,6 +182,7 @@ private:
     uint32_t tEnd_{0};
     uint32_t tPerCore_{0};
     uint32_t ubXBytes_{0};
+    uint32_t expectedEpoch_{0};
 
     uint32_t mask_tokenNum_{0};
     uint32_t bsKCastCnt_{0};
@@ -589,9 +590,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     SyncAll<true>();
 
+    DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    expectedEpoch_ = statusTensor_(0);
     if (aivId_ < activeAivNum) {
-        DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
         GlobalTensor<uint32_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
         DataCopyPad(flagWorkspace, statusTensor_, epochCopyParams);
@@ -605,6 +607,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    SyncAll<true>();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
@@ -666,12 +669,11 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    uint32_t expectedEpoch = stateTensor(rankId_ * FLOAT_PER_UB_ALIGN);
-    if (expectedEpoch == 0U) {
+    if (expectedEpoch_ == 0U) {
         return false;
     }
     for (uint32_t srcRank = 0; srcRank < epWorldSize_; ++srcRank) {
-        if (stateTensor(srcRank * FLOAT_PER_UB_ALIGN) != expectedEpoch) {
+        if (stateTensor(srcRank * FLOAT_PER_UB_ALIGN) != expectedEpoch_) {
             return false;
         }
     }
@@ -733,6 +735,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 #endif
