@@ -179,7 +179,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ## 约束说明
 
 - 该接口支持训练、推理场景下使用。
-- 该接口支持单算子模式调用。
+- 该接口支持单算子模式和图模式调用。
 - 数据类型约束：
   - `x`和`h_out`的数据类型必须相同。
   - 输出`y`的数据类型与`x`保持一致。
@@ -224,4 +224,35 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
   y = mhc_post(x, h_res, h_out, h_post)
   print(f"output shape: {y.shape}")
+  ```
+
+- 图模式调用：
+
+  ```python
+  import torch
+  import torch_npu
+  import torchair
+  from cann_ops_transformer.ops import mhc_post
+
+  torch_npu.npu.set_device(0)
+
+  B = 2
+  S = 8
+  n = 4
+  D = 128
+
+  class MhcPostModel(torch.nn.Module):
+      def forward(self, x, h_res, h_out, h_post):
+          return mhc_post(x, h_res, h_out, h_post)
+
+  model = MhcPostModel().npu()
+  npu_backend = torchair.get_npu_backend()
+  model = torch.compile(model, backend=npu_backend, dynamic=False)
+
+  x = torch.randn(B, S, n, D, dtype=torch.bfloat16, device="npu")
+  h_res = torch.randn(B, S, n, n, dtype=torch.float32, device="npu")
+  h_out = torch.randn(B, S, D, dtype=torch.bfloat16, device="npu")
+  h_post = torch.randn(B, S, n, dtype=torch.float32, device="npu")
+
+  y = model(x, h_res, h_out, h_post)
   ```
