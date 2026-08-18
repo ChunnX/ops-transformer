@@ -478,7 +478,8 @@ def _build_attributes(row, col_by_name):
     if B_val is None:
         cu_q = _str_to_int_list(row.get(col_by_name["AP_cu_seqlens_q_value"]))
         B_val = max(1, len(cu_q) - 1) if cu_q and len(cu_q) >= 2 else 1
-    _set_force("batch_size", B_val)
+    _set("B", B_val)
+    _set("batch_size", B_val)
     _set_force("enable_pa", isinstance(layout_kv, str) and layout_kv.startswith("PA_"))
     _set_force("kv_cache_layout", layout_kv)
     _set_force("q_scale_layout", layout_q_descale)
