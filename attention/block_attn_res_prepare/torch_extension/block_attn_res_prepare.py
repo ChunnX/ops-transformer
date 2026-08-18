@@ -27,23 +27,23 @@ class BlockAttnResPrepareOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return (
-            "block_attn_res_prepare(Tensor block_residual, Tensor effective_query, "
-            "Tensor valid_blocks, *, float epsilon=0.000001) -> (Tensor, Tensor, Tensor)"
+            "block_attn_res_prepare(Tensor block_res, Tensor valid_blocks, "
+            "Tensor pseudo_query, *, float eps=0.000001) -> (Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def block_attn_res_prepare_meta(
-            block_residual, effective_query, valid_blocks, *, epsilon=1e-6
+            block_res, valid_blocks, pseudo_query, *, eps=1e-6
         ):
-            total_t = block_residual.size(0)
-            total_s = effective_query.size(0)
-            total_d = block_residual.size(2)
+            total_t = block_res.size(0)
+            total_s = pseudo_query.size(0)
+            total_d = block_res.size(2)
             output_options = {"dtype": torch.float32, "device": "meta"}
-            softmax_max = torch.empty((total_s, total_t), **output_options)
-            weighted_output = torch.empty((total_s, total_t, total_d), **output_options)
-            softmax_sum = torch.empty((total_s, total_t), **output_options)
-            return softmax_max, weighted_output, softmax_sum
+            numerator = torch.empty((total_s, total_t, total_d), **output_options)
+            logit_max = torch.empty((total_s, total_t), **output_options)
+            exp_sum = torch.empty((total_s, total_t), **output_options)
+            return numerator, logit_max, exp_sum
 
 
 block_attn_res_prepare_op_builder = BlockAttnResPrepareOpBuilder()
@@ -52,26 +52,26 @@ block_attn_res_prepare_op_builder._ensure_initialized()
 
 @impl(get_as_library(), block_attn_res_prepare_op_builder.name, "PrivateUse1")
 def block_attn_res_prepare(
-    block_residual: torch.Tensor,
-    effective_query: torch.Tensor,
+    block_res: torch.Tensor,
     valid_blocks: torch.Tensor,
+    pseudo_query: torch.Tensor,
     *,
-    epsilon: float = 1e-6,
+    eps: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run the Ascend 950 BlockAttnResPrepare Phase 1 operator.
 
     Args:
-        block_residual: FP32 tensor with shape ``[T, N, D]``.
-        effective_query: FP32 tensor with shape ``[S, D]``.
+        block_res: FP32 tensor with shape ``[T, N, D]``.
         valid_blocks: INT32 device tensor with shape ``[1]``. Values below zero are clipped to zero; zero
             produces the empty online-softmax state, and values above ``N`` are clipped to ``N``.
-        epsilon: Positive numerical-stability coefficient. Defaults to ``1e-6``.
+        pseudo_query: FP32 tensor with shape ``[S, D]``.
+        eps: Positive numerical-stability coefficient. Defaults to ``1e-6``.
 
     Returns:
-        ``(softmax_max, weighted_output, softmax_sum)`` with shapes
-        ``[S, T]``, ``[S, T, D]``, and ``[S, T]`` respectively; all outputs are FP32.
+        ``(numerator, logit_max, exp_sum)`` with shapes
+        ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32.
     """
     op_module = block_attn_res_prepare_op_builder.load()
     return op_module.block_attn_res_prepare(
-        block_residual, effective_query, valid_blocks, epsilon
+        block_res, valid_blocks, pseudo_query, eps
     )
