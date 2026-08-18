@@ -164,5 +164,36 @@ struct MC2MatmulV3TilingData {
     uint32_t isHf32;
     uint32_t aswWindowLen;
 };
+
+// workspace分段类型枚举，标识workspace中各分段的用途
+enum WorkspaceSegType : uint8_t {
+    WS_SEG_TYPE_LIB_API = 0,       // 库API预留空间
+    WS_SEG_TYPE_COMM_OUT = 1,      // 通信输出空间
+    WS_SEG_TYPE_PERMUTE_OUT = 2,   // 重排输出空间
+    WS_SEG_TYPE_BIAS = 3,          // bias空间
+    WS_SEG_TYPE_X1_SCALE = 4,      // x1Scale空间
+    WS_SEG_TYPE_QUANT_OUT = 5,     // 量化输出空间
+    WS_SEG_TYPE_COMM_SCALE = 6,    // 通信scale空间
+    WS_SEG_TYPE_PERMUTE_SCALE = 7, // 重排scale空间
+    WS_SEG_TYPE_RESERVED = 8,      // 预留分段
+};
+
+constexpr uint8_t WORKSPACE_SEG_MAX_CNT = 8;
+
+// workspace分段信息，描述单个分段在workspace中的地址、大小及排列顺序
+struct WorkspaceSegInfo {
+    uint64_t addr;       // 分段在workspace中的偏移地址
+    uint64_t size;       // 分段大小（字节）
+    uint8_t segType;     // 分段类型，参考WorkspaceSegType
+    uint8_t order;       // 排序序号，表示在workspace中的排列顺序，从0开始递增
+    uint8_t reserved[6]; // 预留字段，保证字节对齐
+};
+
+// workspace空间规划信息，包含所有分段的地址、大小及排序
+struct WorkspacePlanInfo {
+    WorkspaceSegInfo segInfos[WORKSPACE_SEG_MAX_CNT]; // 分段信息数组，按order排序
+    uint8_t segCnt;      // 实际分段数量
+    uint8_t reserved[7]; // 预留字段，保证字节对齐
+};
 } // namespace Mc2Tiling
 #endif // MC2_TILING_STRUCT_H

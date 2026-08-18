@@ -16,7 +16,7 @@
 #include <register/op_impl_registry.h>
 
 #include "allto_all_matmul_tiling_base.h"
-#include "../../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
+#include "../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
 #include "../../../common/op_kernel/moe_distribute_comm_ctx.h"
 #include "mc2_exception_dump.h"
 
