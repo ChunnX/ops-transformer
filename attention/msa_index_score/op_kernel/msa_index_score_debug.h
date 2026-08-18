@@ -83,15 +83,11 @@ __aicore__ inline void MsaPrintGmFloats(const AscendC::GlobalTensor<T> &g, uint3
 
 #else // !MSA_INDEX_SCORE_DEBUG
 
-__aicore__ inline bool MsaDebugPrimaryCore()
-{
-    return false;
-}
+__aicore__ inline bool MsaDebugPrimaryCore() { return false; }
 
 template <typename T>
 __aicore__ inline void MsaDumpGmSample(const AscendC::GlobalTensor<T> &, uint32_t, uint32_t)
-{
-}
+{}
 
 __aicore__ inline void MsaDumpUbSample(const AscendC::LocalTensor<float> &, uint32_t, uint32_t) {}
 

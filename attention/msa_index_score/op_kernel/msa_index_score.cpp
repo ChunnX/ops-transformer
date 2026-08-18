@@ -27,16 +27,14 @@ using namespace MsaIndexScoreNs;
 #define MSA_INVOKE_KERNEL(ElementQ, IsQuant) \
     do { \
         MsaIndexScoreKernel<ElementQ, IsQuant> op; \
-        op.Init(query, key, blockTable, scale, actualSeqQlen, actualSeqKlen, startLoc, score, \
-                userWs, tilingData); \
+        op.Init(query, key, blockTable, scale, actualSeqQlen, actualSeqKlen, startLoc, score, userWs, tilingData); \
         op.Process(); \
     } while (0)
 
-extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable,
-                                                      GM_ADDR scale, GM_ADDR attenMask,
-                                                      GM_ADDR actualSeqQlen,
-                                                      GM_ADDR actualSeqKlen, GM_ADDR startLoc,
-                                                      GM_ADDR score, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable, GM_ADDR scale,
+                                                      GM_ADDR attenMask, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKlen,
+                                                      GM_ADDR startLoc, GM_ADDR score, GM_ADDR workspace,
+                                                      GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     (void)attenMask; // host 校验；device 按 sparse_mode 解析 rightDownCausal

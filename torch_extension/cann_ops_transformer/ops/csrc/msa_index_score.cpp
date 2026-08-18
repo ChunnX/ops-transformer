@@ -39,22 +39,18 @@ constexpr int64_t SPARSE_MODE_DEFAULT = 0;
 constexpr int64_t SPARSE_MODE_RIGHT_DOWN = 3;
 } // namespace
 
-at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
-                           const c10::optional<at::Tensor> &block_table,
-                           const c10::optional<at::Tensor> &scale,
-                           const c10::optional<at::Tensor> &atten_mask,
+at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key, const c10::optional<at::Tensor> &block_table,
+                           const c10::optional<at::Tensor> &scale, const c10::optional<at::Tensor> &atten_mask,
                            const c10::optional<at::Tensor> &actual_seq_qlen,
-                           const c10::optional<at::Tensor> &actual_seq_klen,
-                           const at::Tensor &start_loc, c10::string_view layout_key,
-                           int64_t sparse_mode, int64_t init_blocks, int64_t local_blocks)
+                           const c10::optional<at::Tensor> &actual_seq_klen, const at::Tensor &start_loc,
+                           c10::string_view layout_key, int64_t sparse_mode, int64_t init_blocks, int64_t local_blocks)
 {
     TORCH_CHECK(query.defined() && query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.defined() && key.numel() > 0, "Tensor key is empty.");
     TORCH_CHECK(start_loc.defined() && start_loc.numel() > 0, "Tensor start_loc is empty.");
     TORCH_CHECK(actual_seq_qlen.has_value() && actual_seq_qlen.value().defined(),
                 "TND query requires actual_seq_qlen.");
-    TORCH_CHECK(actual_seq_klen.has_value() && actual_seq_klen.value().defined(),
-                "actual_seq_klen is required.");
+    TORCH_CHECK(actual_seq_klen.has_value() && actual_seq_klen.value().defined(), "actual_seq_klen is required.");
 
     std::string layoutKeyStr = std::string(layout_key);
     if (layoutKeyStr.empty()) {
@@ -68,19 +64,16 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     const bool is_tnd = (layoutKeyStr == "TND");
     TORCH_CHECK(query.dim() == QUERY_DIM, "query must be 3D [T, Hq, D], but got dim=", query.dim());
     if (is_tnd) {
-        TORCH_CHECK(key.dim() == KEY_TND_DIM, "layout_key=TND requires key [T2,N2,D], but got dim=",
-                    key.dim());
+        TORCH_CHECK(key.dim() == KEY_TND_DIM, "layout_key=TND requires key [T2,N2,D], but got dim=", key.dim());
         TORCH_CHECK(!block_table.has_value() || !block_table.value().defined(),
                     "layout_key=TND must not pass block_table.");
     } else {
         TORCH_CHECK(key.dim() == KEY_PA_DIM, "layout_key=", layoutKeyStr,
                     " requires key rank 4, but got dim=", key.dim());
-        TORCH_CHECK(block_table.has_value() && block_table.value().defined() &&
-                        block_table.value().numel() > 0,
+        TORCH_CHECK(block_table.has_value() && block_table.value().defined() && block_table.value().numel() > 0,
                     "PageAttention (BBND/BNBD) requires block_table.");
     }
-    TORCH_CHECK(cu_q.dim() == SEQ_LEN_Q_DIM, "actual_seq_qlen must be 1D [B+1], but got dim=",
-                cu_q.dim());
+    TORCH_CHECK(cu_q.dim() == SEQ_LEN_Q_DIM, "actual_seq_qlen must be 1D [B+1], but got dim=", cu_q.dim());
     TORCH_CHECK(kv_len.dim() == SEQ_LEN_K_DIM, "actual_seq_klen must be 1D, but got dim=", kv_len.dim());
     TORCH_CHECK(start_loc.dim() == START_LOC_DIM, "start_loc must be 1D [B], but got dim=", start_loc.dim());
 
@@ -89,8 +82,7 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     if (sparse_mode == SPARSE_MODE_RIGHT_DOWN) {
         TORCH_CHECK(atten_mask.has_value() && atten_mask.value().defined(),
                     "sparse_mode=3 requires atten_mask of shape [2048, 2048].");
-        TORCH_CHECK(atten_mask.value().dim() == ATTEN_MASK_DIM &&
-                        atten_mask.value().size(0) == ATTEN_MASK_SIZE &&
+        TORCH_CHECK(atten_mask.value().dim() == ATTEN_MASK_DIM && atten_mask.value().size(0) == ATTEN_MASK_SIZE &&
                         atten_mask.value().size(1) == ATTEN_MASK_SIZE,
                     "atten_mask must be [2048, 2048].");
         TORCH_CHECK(atten_mask.value().scalar_type() == at::kChar, "atten_mask dtype must be int8.");
@@ -108,8 +100,7 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
                     "int8 key requires dequant scale.");
         TORCH_CHECK(scale.value().scalar_type() == at::kFloat, "scale dtype must be float32.");
         if (is_tnd) {
-            TORCH_CHECK(scale.value().dim() == SCALE_TND_DIM ||
-                            (scale.value().dim() == 1 && key.size(1) == 1),
+            TORCH_CHECK(scale.value().dim() == SCALE_TND_DIM || (scale.value().dim() == 1 && key.size(1) == 1),
                         "TND scale must be [T2, N2] or [T2].");
         } else {
             TORCH_CHECK(scale.value().dim() == SCALE_PA_DIM, "PA scale must be 3D [NP, N_kv, P].");
@@ -178,19 +169,15 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
         const c10::OptionalDeviceGuard device_guard(local_device);
         const int64_t total_q = query.size(0);
         const int64_t num_q_heads = query.size(1);
-        const int64_t score_stride =
-            ((max_blocks + SCORE_STRIDE_ALIGN - 1) / SCORE_STRIDE_ALIGN) * SCORE_STRIDE_ALIGN;
+        const int64_t score_stride = ((max_blocks + SCORE_STRIDE_ALIGN - 1) / SCORE_STRIDE_ALIGN) * SCORE_STRIDE_ALIGN;
         score = at::empty({num_q_heads, total_q, score_stride}, query.options().dtype(at::kFloat));
     }
 
     char *layoutKeyPtr = const_cast<char *>(layoutKeyStr.c_str());
-    ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_qlen,
-              actual_seq_klen, start_loc, layoutKeyPtr, sparse_mode, init_blocks, local_blocks, score);
+    ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_qlen, actual_seq_klen,
+              start_loc, layoutKeyPtr, sparse_mode, init_blocks, local_blocks, score);
     return score;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-    m.def("msa_index_score", &msa_index_score, "msa_index_score");
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("msa_index_score", &msa_index_score, "msa_index_score"); }
 } // namespace op_api

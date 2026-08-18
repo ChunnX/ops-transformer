@@ -87,8 +87,7 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0B_STAGES;
     static constexpr uint32_t L0C_TILE_SIZE = L1_M * L1_N * sizeof(ElementAccumulator);
 
-    static_assert(std::is_same_v<LayoutC, Catlass::layout::RowMajor>,
-                  "LayoutC must be RowMajor (fixpipe nz2nd)");
+    static_assert(std::is_same_v<LayoutC, Catlass::layout::RowMajor>, "LayoutC must be RowMajor (fixpipe nz2nd)");
     // A2 的 L0A/L0B 各仅 64KB：A/B tile 32KB，乒乓最多 2 级（32KB/级）。
     static_assert(L0A_PINGPONG_BUF_SIZE >= L1A_SIZE, "L0A pingpong buf smaller than A tile");
     static_assert(L0B_PINGPONG_BUF_SIZE >= L1B_SIZE, "L0B pingpong buf smaller than B tile");
@@ -118,8 +117,7 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[i]);
         }
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
-            l0CTensorList_[i] =
-                resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_TILE_SIZE * i);
+            l0CTensorList_[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_TILE_SIZE * i);
             l0CEventList_[i] = static_cast<int32_t>(i);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventList_[i]);
         }
@@ -170,8 +168,7 @@ public:
                 // 搬运与两次标量同步。先让 MTE1 等上一 M-tile 的 mmad 读完。
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[L0A_RESIDENT_ID]);
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[L0A_RESIDENT_ID]);
-                LayoutAInL0 layoutAInL0 =
-                    LayoutAInL0::template MakeLayout<ElementA>(mRound, kActual);
+                LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mRound, kActual);
                 copyL1ToL0A_(l0ATensorList_[L0A_RESIDENT_ID], l1ATensor_, layoutAInL0, layoutAInL1);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventList_[L0A_RESIDENT_ID]);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventList_[L0A_RESIDENT_ID]);
@@ -208,15 +205,12 @@ public:
             const uint32_t kPartLoop = CeilDiv<L1_K>(kActual);
 
             for (uint32_t mPartIdx = 0; mPartIdx < mPartLoop; ++mPartIdx) {
-                const uint32_t mPartActual =
-                    (mPartIdx < mPartLoop - 1) ? L1_M : (mRound - mPartIdx * L1_M);
+                const uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ? L1_M : (mRound - mPartIdx * L1_M);
                 for (uint32_t kPartIdx = 0; kPartIdx < kPartLoop; ++kPartIdx) {
-                    const uint32_t kPartActual =
-                        (kPartIdx < kPartLoop - 1) ? L1_K : (kActual - kPartIdx * L1_K);
+                    const uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ? L1_K : (kActual - kPartIdx * L1_K);
                     auto l0ATile = l0ATensorList_[qResident ? L0A_RESIDENT_ID : L0A_FALLBACK_ID];
                     if (!qResident) {
-                        LayoutAInL0 layoutAInL0 =
-                            LayoutAInL0::template MakeLayout<ElementA>(mPartActual, kPartActual);
+                        LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mPartActual, kPartActual);
                         Catlass::MatrixCoord l1AOffset{mPartIdx * L1_M, kPartIdx * L1_K + kLoopIdx * L1_K};
                         auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1AOffset)];
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[L0A_FALLBACK_ID]);
@@ -224,11 +218,9 @@ public:
                     }
 
                     for (uint32_t nPartIdx = 0; nPartIdx < nPartLoop; ++nPartIdx) {
-                        const uint32_t nPartActual =
-                            (nPartIdx < nPartLoop - 1) ? L1_N : (nRound - nPartIdx * L1_N);
+                        const uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ? L1_N : (nRound - nPartIdx * L1_N);
                         auto l0BTile = l0BTensorList_[l0BListId_];
-                        LayoutBInL0 layoutBInL0 =
-                            LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
+                        LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
                         Catlass::MatrixCoord l1BOffset{kPartIdx * L1_K, nPartIdx * L1_N};
                         auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BOffset)];
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0BListId_]);
@@ -250,8 +242,7 @@ public:
                                               (kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1);
                             unitFlag = last ? 0b11 : 0b10;
                         }
-                        tileMmad_(l0CTile, l0ATile, l0BTile, mPartActual, nPartActual, kPartActual, initC,
-                                  unitFlag);
+                        tileMmad_(l0CTile, l0ATile, l0BTile, mPartActual, nPartActual, kPartActual, initC, unitFlag);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0BListId_]);
                         l0BListId_ = (l0BListId_ + 1 < L0B_STAGES) ? (l0BListId_ + 1) : 0;
                     }

@@ -34,16 +34,12 @@ constexpr uint32_t MSA_ATTR_LAYOUT_KEY = 0;
 constexpr int64_t MSA_SCORE_STRIDE_ALIGN = 16;
 constexpr int64_t MSA_BLOCK_SIZE = 128;
 
-inline int64_t RoundUpTo(int64_t value, int64_t align)
-{
-    return (value + align - 1) / align * align;
-}
+inline int64_t RoundUpTo(int64_t value, int64_t align) { return (value + align - 1) / align * align; }
 } // namespace
 
 static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("MsaIndexScore", "InferShapeContext is nullptr!"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("MsaIndexScore", "InferShapeContext is nullptr!"), return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter MsaIndexScore InferShape impl.");
 
     const gert::Shape *queryShape = context->GetInputShape(MSA_QUERY_INDEX);
@@ -63,16 +59,15 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
     const char *layoutKey = (layoutKeyPtr == nullptr || layoutKeyPtr[0] == '\0') ? "BBND" : layoutKeyPtr;
     OP_CHECK_IF(std::strcmp(layoutKey, "TND") != 0 && std::strcmp(layoutKey, "BBND") != 0 &&
                     std::strcmp(layoutKey, "BNBD") != 0,
-                OP_LOGE(context, "layout_key must be TND, BBND or BNBD, got %s.", layoutKey),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context, "layout_key must be TND, BBND or BNBD, got %s.", layoutKey), return ge::GRAPH_FAILED);
     const bool isTnd = (std::strcmp(layoutKey, "TND") == 0);
 
     const int64_t totalQ = queryShape->GetDim(0);
     const int64_t numQHeads = queryShape->GetDim(1);
     int64_t maxBlocks = 0;
     if (!isTnd) {
-        OP_CHECK_IF(blockTableShape == nullptr,
-                    OP_LOGE(context, "layout_key=BBND/BNBD requires block_table."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "layout_key=BBND/BNBD requires block_table."),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(blockTableShape->GetDimNum() != MSA_BLOCK_TABLE_DIM_NUM,
                     OP_LOGE(context, "block_table must have 2 dims, but got %zu.", blockTableShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
@@ -82,10 +77,8 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
                     OP_LOGE(context, "layout_key=TND requires key rank 3."), return ge::GRAPH_FAILED);
         const gert::Shape *klenShape = context->GetOptionalInputShape(MSA_ACTUAL_SEQ_KLEN_INDEX);
         const gert::Tensor *klenTensor = context->GetOptionalInputTensor(MSA_ACTUAL_SEQ_KLEN_INDEX);
-        const int32_t *klenData =
-            (klenTensor != nullptr) ? klenTensor->GetData<int32_t>() : nullptr;
-        if (klenData != nullptr && klenShape != nullptr && klenShape->GetDimNum() == 1 &&
-            klenShape->GetDim(0) >= 2) {
+        const int32_t *klenData = (klenTensor != nullptr) ? klenTensor->GetData<int32_t>() : nullptr;
+        if (klenData != nullptr && klenShape != nullptr && klenShape->GetDimNum() == 1 && klenShape->GetDim(0) >= 2) {
             const int64_t prefixN = klenShape->GetDim(0);
             for (int64_t i = 0; i + 1 < prefixN; ++i) {
                 const int64_t kv = static_cast<int64_t>(klenData[i + 1]) - static_cast<int64_t>(klenData[i]);
@@ -121,7 +114,5 @@ static ge::graphStatus InferDataTypeMsaIndexScore(gert::InferDataTypeContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(MsaIndexScore)
-    .InferShape(InferShapeMsaIndexScore)
-    .InferDataType(InferDataTypeMsaIndexScore);
+IMPL_OP_INFERSHAPE(MsaIndexScore).InferShape(InferShapeMsaIndexScore).InferDataType(InferDataTypeMsaIndexScore);
 } // namespace ops

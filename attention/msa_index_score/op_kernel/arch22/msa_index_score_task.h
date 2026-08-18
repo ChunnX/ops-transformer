@@ -28,15 +28,9 @@
 
 namespace MsaIndexScoreNs {
 
-__aicore__ inline uint32_t MsaCeilDiv(uint32_t a, uint32_t b)
-{
-    return (a + b - 1) / b;
-}
+__aicore__ inline uint32_t MsaCeilDiv(uint32_t a, uint32_t b) { return (a + b - 1) / b; }
 
-__aicore__ inline uint32_t MsaMinU32(uint32_t a, uint32_t b)
-{
-    return a < b ? a : b;
-}
+__aicore__ inline uint32_t MsaMinU32(uint32_t a, uint32_t b) { return a < b ? a : b; }
 
 __aicore__ inline int32_t MsaClampI32(int32_t v, int32_t lo, int32_t hi)
 {
@@ -95,17 +89,13 @@ public:
 
         totalTasks_ = 0;
         for (uint32_t b = 0; b < batch_; ++b) {
-            const uint32_t qLen =
-                static_cast<uint32_t>(gActualSeqQlen_.GetValue(b + 1) - gActualSeqQlen_.GetValue(b));
+            const uint32_t qLen = static_cast<uint32_t>(gActualSeqQlen_.GetValue(b + 1) - gActualSeqQlen_.GetValue(b));
             totalTasks_ += MsaCeilDiv(qLen * numQHeads_, MSA_ROW_TILE_M);
         }
         Reset();
     }
 
-    __aicore__ inline uint32_t TotalTasks() const
-    {
-        return totalTasks_;
-    }
+    __aicore__ inline uint32_t TotalTasks() const { return totalTasks_; }
 
     __aicore__ inline void Reset()
     {
@@ -157,8 +147,7 @@ public:
         const int32_t visibleKeyEndHi = VisibleKeyEndOf(static_cast<int32_t>(tHi));
         const int32_t visibleKeyEndLo = VisibleKeyEndOf(static_cast<int32_t>(tLo));
 
-        uint32_t visibleEndBlk =
-            MsaCeilDiv(static_cast<uint32_t>(visibleKeyEndHi), MSA_BLOCK_SIZE);
+        uint32_t visibleEndBlk = MsaCeilDiv(static_cast<uint32_t>(visibleKeyEndHi), MSA_BLOCK_SIZE);
         visibleEndBlk = MsaMinU32(visibleEndBlk, maxBlocksPerBatch_);
 
         const uint32_t causalFull = static_cast<uint32_t>(visibleKeyEndLo) / MSA_BLOCK_SIZE;
