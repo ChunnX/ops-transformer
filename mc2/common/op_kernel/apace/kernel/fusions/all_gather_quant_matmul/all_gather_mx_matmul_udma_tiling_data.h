@@ -36,5 +36,6 @@ using Apace::AivComm::CommContext;
 struct alignas(8) AllGatherMxMatmulUdmaTilingData {
     QuantMatmulTilingData mmTile;
     CommTilingData commTile;
+    uint8_t isBias{0};
 };
 #pragma pack(pop)

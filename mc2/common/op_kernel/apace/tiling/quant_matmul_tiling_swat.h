@@ -53,6 +53,7 @@ private:
     using Base::runInfo_;
     using Base::isOpenOptimize_;
     using Base::enableMTailAlign_;
+    using Base::enableAdjustBasicBlock_;
 
 private:
     uint32_t CalcScaleKL1() const
@@ -269,7 +270,7 @@ private:
             TILING_MXFP_DIVISOR_SIZE);
 
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
-        if (blockNum < platformInfo_.aicNum) {
+        if (enableAdjustBasicBlock_ && blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
         CHECK_COND(
