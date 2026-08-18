@@ -47,6 +47,7 @@ using namespace AscendC;
 
 constexpr static int64_t MROPE_AXIS_NUM = 3;
 constexpr static int64_t DIGIT_TWO = 2;
+constexpr static int64_t DIGIT_THREE = 3;
 constexpr static int64_t WEIGHT_NUM = 4;          // und_q / und_k / gen_q / gen_k
 constexpr static int64_t BLOCK_ALIGN_BYTES = 32;
 constexpr static int64_t BUFFER_NUM_DB = 2;
@@ -82,10 +83,11 @@ constexpr static int64_t UND_MASK_BITS = static_cast<int64_t>(sizeof(uint64_t) *
 static_assert(IDX_REGION_POS + MROPE_AXIS_NUM == IDX_REGION_NUM, "index regions must be contiguous and exhaustive");
 static_assert(IDX_WINDOW_TOKENS * static_cast<int64_t>(sizeof(int64_t)) % BLOCK_ALIGN_BYTES == 0,
               "index region stride must be 32B-aligned for DataCopyPad");
-// ubFactor 上限是 undMask_ 的位宽（host 的 MAX_UB_FACTOR），窗口要同时容纳当前 tile 与
-// 预取中的下一 tile，否则 CopyOut 读 slot 时窗口可能已被下一 tile 的换窗覆盖
-static_assert(IDX_WINDOW_TOKENS >= DIGIT_TWO * UND_MASK_BITS,
-              "index window must hold both the in-flight tile and the prefetched one");
+// ubFactor 上限是 undMask_ 的位宽（host 的 MAX_UB_FACTOR）。CopyOut 延后一拍后，窗口要
+// 同时容纳三个 tile：待写出的 pend tile、正在算的 tile、以及预取中的下一 tile，
+// 否则 CopyOut 读 pend tile 的 slot 时窗口可能已被换窗覆盖
+static_assert(IDX_WINDOW_TOKENS >= DIGIT_THREE * UND_MASK_BITS,
+              "index window must hold the pending, in-flight and prefetched tiles");
 
 /**
  * @brief UndGenQkvRmsNormRopeCache regbase 模板
@@ -118,10 +120,17 @@ public:
         // axisLut 与 token 无关，每核只建一次
         BuildMropeGatherIndex();
 
-        // 两段式流水：每轮先把下一 tile 的搬运发出去，再算当前 tile，
-        // 于是 tile i+1 的 MTE2 与 tile i 的 VF 在硬件上重叠。qkvInQue_/cosSinInQue_ 的
-        // depth 必须是 2——稳态下 tile i 与 tile i+1 会同时处于"已 EnQue 未 DeQue"。
-        // 索引不参与这个乒乓：它走跨 tile 的滑窗，见 EnsureIndexWindow。
+        // 三段式软件流水。标量核是单发射顺序的：CopyIn 的地址计算、DataCopy 发射、
+        // VF 参数打包全排在同一条指令流上，而 VF 一旦发出就自己跑（实测 2.59us/tile）。
+        // 若在发出 VF 后紧接着 CopyOut 当前 tile，DeQue 会把标量核钉在刚发出的那次 VF 上
+        // 干等——实测这段空窗有 2.58us/tile，标量流水一条指令都没有。
+        // 所以把 CopyOut 延后一拍：写出的是上一轮已经算完的 tile，它的 VF 早已完成，
+        // DeQue 不阻塞，标量核得以在 VF(i) 执行期间去发 CopyOut(i-1) 和 CopyIn(i+1)。
+        //   CopyIn(i+1) -> Compute(i) 发 VF -> CopyOut(i-1) -> 下一轮
+        // qkvInQue_/cosSinInQue_ 的 depth 是 2：稳态下 tile i 与 tile i+1 同时"已 EnQue
+        // 未 DeQue"。outQue_ 的 depth 也必须是 2：Compute(i) EnQue 时 tile i-1 还挂着没
+        // DeQue。两者的物理 buffer 数都由 InitUbBuffers 的 BUFFER_NUM_DB 决定，depth 改
+        // 大不额外占 UB。索引不参与这个乒乓：它走跨 tile 的滑窗，见 EnsureIndexWindow。
         if (coreStart_ >= coreEnd_) {
             wInQue_.FreeTensor(wBf16Local_);
             return;
@@ -133,20 +142,33 @@ public:
         EnsureIndexWindow(tileStart, tileStart + tokenNum);
         CopyIn(tileStart, tokenNum, slot);
 
+        // 已算完但还没写出的那个 tile（延后一拍的 CopyOut 对象）。-1 表示还没有
+        int64_t pendStart = -1;
+        int64_t pendTokenNum = 0;
+
         while (tileStart < coreEnd_) {
             const int64_t nextStart = tileStart + tokenNum;
             const int64_t nextTokenNum = (nextStart < coreEnd_) ? TileTokenNum(nextStart) : 0;
             if (nextTokenNum > 0) {
-                // anchor 用 tileStart 而不是 nextStart：本 tile 的 slot 要到下面 CopyOut
-                // 才读，换窗时必须把它一起留在窗口里
-                EnsureIndexWindow(tileStart, nextStart + nextTokenNum);
+                // anchor 取"最早一个还要读索引的 tile"：CopyOut 读的是 pend tile 的 slot，
+                // 换窗时必须把它连同当前 tile 一起留在窗口里
+                const int64_t anchor = (pendStart >= 0) ? pendStart : tileStart;
+                EnsureIndexWindow(anchor, nextStart + nextTokenNum);
                 CopyIn(nextStart, nextTokenNum, slot ^ 1);
             }
             Compute(tokenNum, slot);
-            CopyOut(tileStart, tokenNum);
+            if (pendStart >= 0) {
+                CopyOut(pendStart, pendTokenNum);
+            }
+            pendStart = tileStart;
+            pendTokenNum = tokenNum;
             tileStart = nextStart;
             tokenNum = nextTokenNum;
             slot ^= 1;
+        }
+        // 收尾：最后一个 tile 的结果还挂在 outQue_ 上
+        if (pendStart >= 0) {
+            CopyOut(pendStart, pendTokenNum);
         }
 
         wInQue_.FreeTensor(wBf16Local_);
@@ -480,10 +502,11 @@ private:
     // 模板参数是 queue depth（同时"已 EnQue 未 DeQue"的句柄数），不是 buffer 数。
     // Process 是两段式流水，稳态下 tile i 与 tile i+1 同时挂着，所以输入队列 depth 取 2；
     // 物理 buffer 数仍由 InitUbBuffers 的 BUFFER_NUM_DB 决定，UB 占用不受 depth 影响。
-    // outQue_ 在同一轮里 EnQue 完立刻 DeQue，outstanding 恒为 1，保持 depth 1
+    // outQue_ 的 CopyOut 延后一拍（见 Process），Compute(i) EnQue 时 tile i-1 还没
+    // DeQue，outstanding 稳态为 2，depth 必须跟着取 2
     TQue<QuePosition::VECIN, DIGIT_TWO> qkvInQue_;
     TQue<QuePosition::VECIN, DIGIT_TWO> cosSinInQue_;
-    TQue<QuePosition::VECOUT, 1> outQue_;
+    TQue<QuePosition::VECOUT, DIGIT_TWO> outQue_;
     TQue<QuePosition::VECIN, 1> wInQue_;
 
     TBuf<TPosition::VECCALC> wFp32Buf_;
