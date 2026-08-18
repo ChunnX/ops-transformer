@@ -943,6 +943,34 @@ ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
+ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext)
+{
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X_QS64 = 64;
+        // MXFP8 kvs128：blockShapeY 按 128 对齐；其它 float8 全量化路径仍要求 256 倍数
+        const int64_t supportedMultipleOfBlockShapeY =
+            (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_128) : static_cast<int64_t>(TILE_SIZE_256);
+        const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) &&
+            (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X || blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
+        if (!mxfp8QsOk && blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be 64 or 128 for MXFP8 "
+                    "(quantMode=4), or 128 otherwise, but now it is %ld.",
+                    blockShapeX_);
+            return ge::GRAPH_FAILED;
+        }
+        if (blockShapeY_ % supportedMultipleOfBlockShapeY != 0) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 1 must be a multiple of %ld, but now "
+                    "it is %ld.",
+                    supportedMultipleOfBlockShapeY, blockShapeY_);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS || ParseSparsePattern(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -953,7 +981,8 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     if (socVer_ == SOC_VER_950_CODE) {
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
-            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS) {
+            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
+            CheckBlockShapeQuantConstraint(bsaContext) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }

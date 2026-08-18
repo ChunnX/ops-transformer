@@ -131,28 +131,27 @@ public:
         }
 #endif
 
+        // softmax 在 qs pad 到 128 后写出 128 宽 group-max（even/odd），pscale 必须同宽。
+        const bool sRowIsQs128 = (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE);
         if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
-            if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
+            if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
-                // AscendC::PRINTF("lwg first 64\n");
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         } else {
-            if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
+            if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
-                // AscendC::PRINTF("lwg first222 64 \n");
-
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,

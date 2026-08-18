@@ -128,6 +128,9 @@ public:
         const uint32_t actKvsTile = actualBlockShape.m();
         const uint32_t actQsTile = actualBlockShape.n();
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
+        // QK 已将 qs pad 到 align128，S 行宽与 qs128 相同（even/odd + SPLIT_CONSEC64）。
+        // align64 仍表示真实 qs 宽度，供 CopyP / PV / rescale 使用。
+        const bool sRowIsQs128 = (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE);
 #ifndef BSA_MXFP8_DUMP
 #define BSA_MXFP8_DUMP 0
 #endif
@@ -144,15 +147,15 @@ public:
 
         // if (tileInfo.isFirstKvsTile) {
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
-            if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                // qs=128, kvs=128 整基块 softmax
+            if (sRowIsQs128) {
+                // qs=128 或 qs=64 pad 到 128：整基块 softmax
                 Mxfp8VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                     indexUBTensor, scaleValue_, NEG_LOG2_CX_);
             } else {
-                // qs=64, kvs=128 整基块 softmax
+                // 未 pad 的 qs=64 整基块 softmax（当前路径不应走到）
                 Mxfp8VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
@@ -163,13 +166,13 @@ public:
         } else {
             // kvs padding 32 multi
             if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
-                if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
+                if (sRowIsQs128) {
                     Mxfp8VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
                         sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
                     
                 } else {
-                    // qs=64
+                    // 未 pad 的 qs=64
                     Mxfp8VF::Mm1ResPrePaddingAlignKvs32MultiQs64CallVF<ElementInput>(
                         sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
@@ -178,22 +181,22 @@ public:
             }
             // softmax
             if (tileInfo.kvsActBaseTileAlign32 == MXFP8::DATA_BLOCK_BYTE) {
-                if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                    // softmax padding 32, qs=128
+                if (sRowIsQs128) {
+                    // softmax padding 32, qs=128 或 qs64 pad 到 128
                     Mxfp8VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                         indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 } else {
-                    // softmax padding 32, qs=64
+                    // softmax padding 32, 未 pad 的 qs=64
                     Mxfp8VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                         indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 }
             } else {
-                if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                    // softmax padding 32 multi >= 64, qs=128
+                if (sRowIsQs128) {
+                    // softmax padding 32 multi >= 64, qs=128 或 qs64 pad 到 128
                     Mxfp8VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                         MXFP8::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
@@ -201,7 +204,7 @@ public:
                         indexUBTensor, scaleValue_, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 } else {
-                    // softmax padding 32 multi >= 64, qs=64
+                    // softmax padding 32 multi >= 64, 未 pad 的 qs=64
                     Mxfp8VF::SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                         MXFP8::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
@@ -248,9 +251,12 @@ public:
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-            // L1 按 128 行 NZ；kvs<128 也搬满 64 个 TLA 行，LoadP srcStride=8 只读前 kvs 行。
+        if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE ||
+            tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
+            // qs128：整基块/尾块都搬满 64 个 TLA 行（LoadP srcStride=8 只读前 kvs）。
+            // qs64 + kvs128：与 mxfp4 相同，blockCount 减半。
             AscendC::DataCopyParams repeatParams;
+            // qs128 / qs64 都走 K-outer：C0 高平面在 +8064，搬满 64 个 TLA 行（16KB）
             repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize);
             repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
             repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
@@ -259,7 +265,7 @@ public:
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
             AscendC::DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], repeatParams);
-        } else if (tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
+        } else if (tileInfo.kvsActBaseTileAlign32 != 0) {
             // 消去高位 低位中间的间隙搬运
             // 低位搬运
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));

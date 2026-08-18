@@ -43,9 +43,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(__ubuf_
     RegTensor<half> min_val_reg;
     RegTensor<uint8_t> idx_nd2nz;
 
-    // 量化专用寄存器
-    RegTensor<bfloat16_t> src_bf16_0, src_bf16_1, src_bf16_2, src_bf16_3;
-    RegTensor<fp8_e4m3fn_t> quant_0, quant_1, quant_2, quant_3;
+    // 量化专用寄存器（qs64 = qs128 的 lo 64，走同一套 K-outer VL128）
+    RegTensor<float> src_f0, src_f1, src_f2, src_f3;
 
     // ====================== 分块常量 ======================
     const uint16_t ROWS_PER_GROUP = 32;
@@ -61,6 +60,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(__ubuf_
     MaskReg preg_all_16bit = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_VL64_16bit = CreateMask<uint16_t, MaskPattern::VL64>();
     MaskReg preg_all_8bit = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_all_fp32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_vl128 = CreateMask<uint8_t, MaskPattern::VL128>();
     MaskReg preg_vl128_not;
     MaskNot(preg_vl128_not, preg_vl128, preg_all_8bit);
@@ -148,31 +148,14 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(__ubuf_
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
 
-            // e4m3 两路打包（qs=64，每 2 行 128B）
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_0, src_bf16_0, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_1, src_bf16_1, preg_VL64_16bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128);
-
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_2, src_bf16_2, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_3, src_bf16_3, preg_VL64_16bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, idx_nd2nz);
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_2,
-                       preg_vl128);
-
-            // 偶数块：高128字节写入（远端地址）
-            // StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
-            //            preg_vl128_not  // 高128字节掩码
-            // );
+            // K-outer（qs64 仅 lo 64 qs）：C0=0,1 占 TLA 0-15 / 16-31
+            Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f1, src_c1, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f2, src_c2, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f3, src_c3, preg_all_fp32);
+            uint32_t pOff = i * 2048 + j * 256;
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff, pOff + 8064, src_f0, src_f1, src_f2, src_f3,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
         }
 
         // ========== 第二个内循环：处理奇数子块 j+1 = 1,3,5,7 ==========
@@ -211,30 +194,13 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_multi_vf(__ubuf_
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
 
-            // e4m3 两路打包（qs=64）
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_0, src_bf16_0, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_1, src_bf16_1, preg_VL64_16bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128);
-
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_2, src_bf16_2, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_3, src_bf16_3, preg_VL64_16bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, idx_nd2nz);
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 384, (RegTensor<uint8_t> &)quant_2,
-                       preg_vl128);
-
-            // 奇数块：高128字节写入（远端地址）
-            // StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16384, (RegTensor<uint8_t> &)quant_0,
-            //            preg_vl128_not);
+            Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f1, src_c1, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f2, src_c2, preg_all_fp32);
+            Cast<float, T, castTraitZero>(src_f3, src_c3, preg_all_fp32);
+            uint32_t pOff = i * 2048 + j * 256;
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 128, pOff + 8192, src_f0, src_f1, src_f2, src_f3,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
         }
 
         // ====================== 全局/局部最大值更新 ======================

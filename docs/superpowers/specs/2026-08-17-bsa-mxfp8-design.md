@@ -175,8 +175,7 @@ C0：`FP8_C0_ELEMS = 32`。
 
 - L1/L0/UB `static_assert` 通过。  
 - Golden：与 MXFP4 同口径（`rtol=1/128`、`atol=1e-4`、满足率 ≥99.5%、`maxRE<10`）。  
-- **已过线（2026-08-18，dump-off，`cann_bsa_0817`）**：qs128 的 kvs64 / 128 / 160 / 192 GQA / 256 dense / 256 sparse。  
-- **未进比对**：qs64（host `blockShapeX` 必须为 128）。  
+- **已过线（2026-08-18，dump-off，`cann_bsa_0817`）**：qs128 的 kvs64 / 128 / 160 / 192 GQA / 256 dense / 256 sparse；**qs64 / kvs128**。  
 - **套件外未达标**：单 tile `s2=32`、`s2=96`（上次约 98.91% / 99.15%）。  
 - 性能：对比 MXFP4 仍未测；Q 切 D 未启用。
 
@@ -190,7 +189,8 @@ C0：`FP8_C0_ELEMS = 32`。
 | 4 | VF e4m3 打包 + pScale 环/分形与 kvs128 对齐 | **已完成（板上已确认）** |
 | 5 | 调用链：aclnn/Torch `quantMode=4` | **已完成** |
 | 6 | 板上：qs128 精度 / 尾块 / sparse | **已完成** |
-| 7 | qs64 tiling + 套件外 s2=32/96 + 性能 / 可选 Q 切 D | **待做** |
+| 7 | qs64 tiling + QK pad-to-128 + qs128 VF | **已完成** |
+| 8 | 套件外 s2=32/96 + 性能 / 可选 Q 切 D | **待做** |
 
 ## 13. 与 0814 / MXFP4 对照摘要
 
@@ -246,7 +246,7 @@ C0：`FP8_C0_ELEMS = 32`。
 
 ### 14.5 待板上确认（2026-08-18 已关闭大部分）
 
-原清单已由 §15 实测关闭：kvs 64/128/160/192/256、sparse、e4m3 NZ、P-scale 768B 分形均已过线。仍开放：qs64、套件外短 kvs、性能 vs MXFP4、Q 切 D。
+原清单已由 §15 实测关闭：kvs 64/128/160/192/256、sparse、**qs64/kvs128**、e4m3 NZ、P-scale 768B 分形均已过线。仍开放：套件外短 kvs、性能 vs MXFP4、Q 切 D。
 
 ### 14.6 调用链（quantMode=4）
 
@@ -261,7 +261,7 @@ C0：`FP8_C0_ELEMS = 32`。
 
 对照 dump 中间量、FIA/mxfp4 参考和 dump-off 全量 pytest，几何表（§1–§6）仍然成立；原稿未写死的实现选择与若干错误路径，以下为 **as-built 约束**，后续改动不得回退。
 
-### 15.1 精度结果（dump-off，`cann_bsa_0817`，NPU 3）
+### 15.1 精度结果（dump-off，`cann_bsa_0817`，NPU 1）
 
 判据：`rtol=1/128`，`atol=1e-4`，满足率 ≥99.5%，`maxRE<10`。`_E8M0_QK_FLIP_PAIR=False`。`BSA_MXFP8_DUMP=0`。
 
@@ -272,8 +272,8 @@ C0：`FP8_C0_ELEMS = 32`。
 | qs128 / kvs160 tail | 99.95% | 过 |
 | qs128 / kvs256 dense | 99.99% | 过 |
 | GQA qs128 / kvs192 | 99.86% | 过 |
-| sparse qs128 / kvs256 | 99.64% | 过（须与 qs64 分进程；同进程会被 tiling inner error 污染） |
-| qs64 / kvs128 | — | **未进比对**：`CheckBlockShapeQuantConstraint` 要求 `blockShapeX==128` |
+| sparse qs128 / kvs256 | 99.64% | 过 |
+| qs64 / kvs128 dense | 100.00% | 过 |
 | 套件外 s2=32 | ≈98.91% | 未纳入验收 |
 | 套件外 s2=96 | ≈99.15% | 未纳入验收 |
 
@@ -294,7 +294,7 @@ C0：`FP8_C0_ELEMS = 32`。
 | peer gmax | 「组尾经 L1 交换」 | AIC 上 `GetSubBlockIdx()` **恒 0**，普通 DataCopy 写不到两个 AIV UB。必须 `asc_copy_l12ub_sync`：L1 row0→AIV0、row1→AIV1。UB dest 偏移 **160KB+512**（不是 mxfp4/QFA 的 224KB+512） |
 | pScale 槽 | 每基块 1 槽 | kvs128 = **1 slot/tile**。不可套 mxfp4 的 `*2+1` 再 `/2`（那是 2 slot / kvs256） |
 | 尾块 pad | 未写 | kvs32 VF 必须把 groupmax pad 满 **4 组**（`computePscale` 固定 `ulmaxLoopRow=m*4`）。`PadPS2NotAlign64` 按 **128 行 × 4 个 FP8 C0 平面** 填 `[align32, align64)` |
-| qs64 | 验收覆盖 | host 仍强制 `blockShapeX==128`；VF 有 qs64 文件但未走通 |
+| qs64 | 验收覆盖 | host 允许 `blockShapeX=64/128`。QK 将 Q(M) **pad 到 128**（L1 Q/Q-scale `InitConstValue` 清零），Fixpipe N=128；softmax/pscale 走 **qs128 VF**（even/odd + `SPLIT_CONSEC64`）。`qsActBaseTileAlign64` 仍为 64，供 CopyP / PV / rescale。不要用 qs64 VF 的 VL64 直接打 even/odd 128-half（约 3.125%） |
 | `processUpdate` 循环长 | 未写 | 仍按 `KvsBase=256` 量级覆盖 mxfp8 32KB O，不要改成 128 |
 
 ### 15.3 板上修过的根因（保留）
@@ -303,11 +303,10 @@ C0：`FP8_C0_ELEMS = 32`。
 2. **P store 密度/平面顺序** → 99.74% 路径：even/odd VL128 + K-outer C0。  
 3. **两 tile 独立 softmax**（kvs256 ~1.4%）→ cube `asc_copy_l12ub_sync` 交换 peer gmax 后 99.99%。AIV 侧 DataCopy L1→UB 无效；cube `GetValue` dump 曾导致 507015。  
 4. **kvs160 行 NaN**（99.17%）→ kvs32 只 pad 1 个 groupmax，残留 Inf 变成 e8m0=255；PadPS2 曾按 64 行 2 平面写。  
+5. **qs64 约 3.125%** → Fixpipe N=64 时 VF 按 QsBase=128 读 even/odd 128-half，VL64 不是连续 qs[0:64)。QK pad N=128 + qs128 VF 后 100%。  
 
 ### 15.4 仍开放
 
-- qs64：放开 `blockShapeX` + 接 qs64 VF。  
 - 套件外 `s2=32` / `s2=96`。  
-- 性能 vs MXFP4；Q L0B 单缓冲是否瓶颈。  
-- 全量 pytest 不要把 qs64 和后续 case 放在同一进程（tiling 失败会 inner-error 污染）。
+- 性能 vs MXFP4；Q L0B 单缓冲是否瓶颈。
 
