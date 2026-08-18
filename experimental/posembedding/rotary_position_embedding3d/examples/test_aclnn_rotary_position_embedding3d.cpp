@@ -220,8 +220,8 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const floa
 }
 
 // 显式指定真实视频网格(T/H/W)的参考实现（Wan2.2 风格）
-static void RefRoPE3DExplicit(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH,
-                              int64_t vidW, const float *x, float *y, float freqBase)
+static void RefRoPE3DExplicit(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH, int64_t vidW,
+                             x, float *y, float freqBase)
 {
     RoPE3DCore(batch, seqLen, headDim, vidT, vidH, vidW, x, y, freqBase);
 }
