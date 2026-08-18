@@ -25,8 +25,10 @@ constexpr int64_t AB_DOUBLE_BUFFER = 2;
 constexpr int64_t AB_CONST_TWO = 2;
 // UB 主 tensor 数 × double buffer:
 //   DcosFlag=0: gradQ + gradK + dxQ + dxK = 4 路 × Db(2) = 8 (cos/sin 折算到 (ubFactorN+1) 的 +1)
-//   DcosFlag=1: + query + key + gradCos + gradSin = 8 路 × Db(2) = 16
-constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 16;
+//   DcosFlag=1: + query + key (T) + gradCos + gradSin (fp32, 等效 4/typeSize 路 T)
+//     → bf16/fp16: 8 + 2*2 = 12 路 × Db(2) = 24; fp32: 8 + 2*1 = 10 路 × Db(2) = 20
+//     按 bf16 (最保守) 取 24
+constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 24;
 constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 8;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
@@ -76,10 +78,6 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
     // half 模式按 D/2 搬运，每个半行独立按 32B 对齐；kernel/VF 均使用该 UB 行步长。
     dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
     int64_t bufferSize = dAlign_ * typeSize;  // 一行 dAlign 元素的字节数
-    // D/2 恰好 32B 对齐 (dAlign==d) 时 kernel 走整行连续搬运分支 (BAB 同款):
-    // DMA blockCount = 行数(ubFactorBS) 而非 currXN*dSplitCoef, 不受半行模式 blockCount 上限约束
-    bool dHalfAligned = (dAlign_ == d_);
-    int64_t maxCopyN = dHalfAligned ? MAX_COPY_BLOCK_COUNT : MAX_COPY_BLOCK_COUNT / dSplitCoef_;
 
     int64_t divisor = (dCosFlag_ == 1) ? AB_UB_DIVISOR_WITH_DCOS : AB_UB_DIVISOR_WITHOUT_DCOS;
     // UB 能容纳多少行 dAlign: 可用空间 = ubSize / divisor, 先 floor 对齐到 blockSize 再除以单行字节
@@ -91,7 +89,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
 
     // 先定 N: 留 1 行预算给 cos/sin
     ubFactorN_ = std::min(blockFactorN_, baseBlockInUb - 1);
-    ubFactorN_ = std::min(ubFactorN_, maxCopyN);  // DataCopy blockCount 上限 (按搬运模式区分)
+    ubFactorN_ = std::min(ubFactorN_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);  // DataCopy blockCount 上限
     OP_CHECK_IF(ubFactorN_ < 1,
         OP_LOGE(context_->GetNodeName(), "AB SplitUb ubFactorN < 1, baseBlockInUb=%ld", baseBlockInUb),
         return ge::GRAPH_FAILED);

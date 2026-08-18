@@ -25,17 +25,14 @@
 namespace ApplyRotaryPosEmbGrad {
 using namespace Ops::Base;
 
-template <typename T, typename PromteT>
-struct ApplyRotaryPosEmbGradDag {
-    // 输入: workspace 中的部分积 (query*gradQ + key*gradK 的逐元素累加结果)
-    using OpCopyIn = Bind<Vec::CopyIn<T>, Placeholder::In0<T>>;
-    // 提升到 fp32 做 reduce，保证精度
-    using Cast0 = Bind<Vec::Cast<PromteT, T, 0>, OpCopyIn>;
-    // 跨广播轴求和
-    using Reduce0 = Bind<Vec::ReduceSumOp<PromteT>, Cast0>;
-    // 转回原始数据类型
-    using Cast1 = Bind<Vec::Cast<T, PromteT, 1>, Reduce0>;
-    // 写出 grad_cos / grad_sin
+// BAB/AB 模板 grad_cos/grad_sin 归约 DAG:
+// 输入: workspace 中的部分积 (query*gradQ + key*gradK 的逐元素累加结果, fp32 存储)
+// fp32 直接归约(无前置提升 Cast), 跨广播轴(B/N)求和后一次 Cast 回 T 写出
+template <typename T>
+struct ApplyRotaryPosEmbGradDagFp32In {
+    using OpCopyIn = Bind<Vec::CopyIn<float>, Placeholder::In0<float>>;
+    using Reduce0 = Bind<Vec::ReduceSumOp<float>, OpCopyIn>;
+    using Cast1 = Bind<Vec::Cast<T, float, 1>, Reduce0>;
     using OpCopyOut = Bind<Vec::CopyOut<T>, Placeholder::Out0<T>, Cast1>;
     using Outputs = Elems<OpCopyOut>;
     using MemCfg = MemOptCfg<MemLevel::LEVEL_2>;

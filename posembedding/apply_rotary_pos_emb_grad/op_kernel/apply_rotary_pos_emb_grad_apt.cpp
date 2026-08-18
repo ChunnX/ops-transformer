@@ -56,13 +56,23 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     TPipe pipe;
 
     // 部分积 workspace 基址（DcosFlag=1 且非 A 模板时，BAB/AB 需在 Phase 1 写 grad_cos/grad_sin 部分积到 workspace）
+    // 注意: BAB/AB 部分积以 fp32 存储（精度），A 模板 rotate 中间量按 T 存储
     GM_ADDR usrWorkSpace = nullptr;
     int64_t partSize = 0;
     if constexpr (DcosFlag && DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
         SetSysWorkspace(workspace);
         usrWorkSpace = AscendC::GetUserWorkspace(workspace);
         int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
-        partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s * maxN * tilingData.ropeGradParams.d;
+        // BAB/AB: 部分积 fp32 存储，偏移按 sizeof(float) 计算
+        partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s * maxN * tilingData.ropeGradParams.d *
+            static_cast<int64_t>(sizeof(float));
+    } else if constexpr (DcosFlag) {
+        // A 模板: rotate 中间量按 T 存储, wsK 偏移仍按 sizeof(T)
+        SetSysWorkspace(workspace);
+        usrWorkSpace = AscendC::GetUserWorkspace(workspace);
+        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
+        partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s * maxN * tilingData.ropeGradParams.d *
+            static_cast<int64_t>(sizeof(DTYPE_GRAD_QUERY_EMBED));
     }
 
     // ================================================================
@@ -72,24 +82,21 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB)) {
         ApplyRotaryPosEmbGradBAB<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradParams);
         if constexpr (DcosFlag) {
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
-                gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+            // partSize 已为字节数 (fp32)
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize;
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key, gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
         } else {
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
-                gradQueryOut, gradKeyOut, nullptr, nullptr);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key, gradQueryOut, gradKeyOut, nullptr, nullptr);
         }
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
         ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED, (DcosFlag != 0)> op(&pipe, &tilingData.ropeGradABParams);
         if constexpr (DcosFlag) {
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
-                gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize;
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key, gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
         } else {
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
-                gradQueryOut, gradKeyOut, nullptr, nullptr);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key, gradQueryOut, gradKeyOut, nullptr, nullptr);
         }
         op.Process();
         pipe.Reset();
@@ -136,13 +143,13 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     // A 模板 (205): grad_cos/grad_sin 已在 Phase 1 融合计算直接写回 GM，无 reduce
     // ================================================================
     if constexpr (DcosFlag) {
-        // SyncAll 内部先执行核内 PipeBarrier<PIPE_ALL> (排空本核 MTE3 写 GM) 再做全核同步,
-        // 覆盖跨核 RAW 依赖: Phase1 各核写 workspace -> Phase2 reduce 跨核读取全量分片,
-        // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
+        // 核间同步: 各核 BAB/AB Phase1 的 MTE3 写部分积 workspace 必须全部落地,
+        // reduceOp0 才能读 (PipeBarrier 仅核内流水同步, 不含核间语义)
         SyncAll();
+        PipeBarrier<PIPE_ALL>();
 
         using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
-            ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
+            ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDagFp32In<DTYPE_GRAD_QUERY_EMBED>::OpDag>;
         ReduceOp reduceOp0(&tilingData.reduceTiling);
         ReduceOp reduceOp1(&tilingData.reduceTiling);
 
@@ -151,14 +158,18 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         // 注意: 本算子 DAG 为单输入 (In0=部分积, DAG 内无 Mul), Init 按占位符顺序绑定,
         // 只需 (pipe, In0, Out0, ws) 四参; 若照抄双输入 DAG 的五参写法多传 dy,
         // 会错位绑定导致 reduce 读原始梯度、暂存区覆盖 grad_cos/sin 输出 (越界写)
-        GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_GRAD_QUERY_EMBED);
+        // partSize 已为字节数 (fp32)
+        GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM;
 
         reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
         reduceOp0.Process();
         pipe.Reset();
+        // 核间同步: reduceOp0 的 groupOp 阶段尚未结束的核仍占用 reduceWorkSpace,
+        // reduceOp1 复用同一 reduceWorkSpace 前必须等全部核写完
+        SyncAll();
         PipeBarrier<PIPE_ALL>();
 
-        GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+        GM_ADDR dSinWorkSpace = usrWorkSpace + partSize;
         reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
         reduceOp1.Process();
         pipe.Reset();
