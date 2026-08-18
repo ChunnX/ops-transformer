@@ -388,8 +388,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
     }
-    // Reserve the final WQE for this channel's ODR 6 completion flag.
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY - 1U) {
+    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites();
     }
     if (preparedWriteCount_ == 0) {
@@ -453,21 +452,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
         DataCopyPad(localFlag, statusTensor_, flagCopyParams);
         return;
     }
-    uint64_t commHandle = GetCommHandle(dstRank, channelIndex);
-    if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
-        FlushPreparedWrites();
-    }
-    if (preparedWriteCount_ == 0) {
-        activeBatchHandle_ = hcomm_.MakeBatchHandle(
-            commHandle, winRankAddr_[dstRank], nullptr, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
-        activeBatchChannel_ = commHandle;
-        ascendc_assert(
-            activeBatchHandle_.channelHandle == commHandle, "MakeBatchHandle failed, channel=%lu", commHandle);
-    }
-    int32_t ret = hcomm_.WriteNbi<RANK_FLAG_WQE_CONFIG>(
-        activeBatchHandle_, flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
-    ascendc_assert(ret == HCOMM_SUCCESS, "batch rank flag WriteNbi failed, ret=%d", ret);
-    ++preparedWriteCount_;
+    PrepareWrite<RANK_FLAG_WQE_CONFIG>(
+        GetCommHandle(dstRank, channelIndex), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -590,11 +576,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
+        FlushPreparedWrites();
     }
 
-    // Preserve the version-8 token partition and write order, then append one ODR 6 sub-flag to
-    // each active channel's final batch so no channel can release the receiver prematurely.
+    // Token/weight batches and completion flags use separate submission phases. Every active
+    // channel reaches this barrier after publishing its payload batches, then sends one ODR 6 flag.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncAll<true>();
     if (aivId_ < activeAivNum) {
         Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
