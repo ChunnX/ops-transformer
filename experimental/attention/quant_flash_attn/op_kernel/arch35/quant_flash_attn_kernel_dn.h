@@ -377,17 +377,22 @@ public:
         if (loop >= DELAY_P_SCALE_N && runInfo3.isValid) {
             if (runInfo3.isUpdatePScale) {
                 if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2);
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2 + 16);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2 + 16);
                     CopyGMaxL1ToUb(runInfo3);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
                     if (runInfo3.tileMaxIdx == 3) {
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1 + 16);
                     }
                 } else {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
                     UpdatePScale(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo3.pscaleNum);
                 }
@@ -412,7 +417,8 @@ public:
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_UB_L1);
                     }
                     CopyGMaxUbToL1(runInfo0);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(
+                        CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
                 }
             }
         }
@@ -488,7 +494,8 @@ public:
         }
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
+            info.actSingleLoopS2Size =
+                (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK);      // 统一对齐到32

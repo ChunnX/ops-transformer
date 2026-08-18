@@ -315,7 +315,8 @@ ge::graphStatus QuantChecker::CheckKVShape(const QuantFlashAttnTilingInfo &qfaIn
                qfaInfo.layoutKV == FiaLayout::BNSD) {
         expected[expected.size() - 1] = qfaInfo.vHeadDim;
     }
-    if (valueShape != nullptr && CheckShapeEqual(*valueShape, expected, VALUE_NAME, qfaInfo.opName) != ge::GRAPH_SUCCESS) {
+    if (valueShape != nullptr &&
+        CheckShapeEqual(*valueShape, expected, VALUE_NAME, qfaInfo.opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
