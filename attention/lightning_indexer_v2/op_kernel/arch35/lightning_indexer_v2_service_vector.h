@@ -166,9 +166,9 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // returnvalue
-    // 大小：topK * sizeof(float)
+    // 大小：topK * sizeof(float) 64:duplicate刷-1需要额外空间
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(float));
+        pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 64) * sizeof(float));
         valueOutLocal_ = valueOutBuf_.Get<float>();
     } else {
         valueOutLocal_ = mrgValueBuf_.Get<float>();
@@ -323,9 +323,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const LIV2Common::RunInfo &info)
 {
+    auto pingpong = info.loop % 2;
     // CV同步
     CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
-        LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2); // V核等C核计算完mm1，mm1Res已搬运到UB
+        LIV2Common::ConstInfo::CROSS_CV_EVENT + pingpong); // V核等C核计算完mm1，mm1Res已搬运到UB
 
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
@@ -336,12 +337,11 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     if (curAivS1ProcNum == 0) {
         // V核处理完，通知C核可以把mm1Res搬运到UB
         CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT +
-                                                                       info.loop % 2);
+                                                                       pingpong);
         return;
     }
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     // weightsGm --> weightUB_
-    uint64_t gSizeAlign16 = LIV2Common::Align((uint64_t)gSize_, (uint64_t)16);
     int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
     DataCopyPadExtParams<W_T> padWeightsParams{true, 0, 0, 0};
     DataCopyExtParams qwDataCopyExtParams;
@@ -349,26 +349,24 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
     qwDataCopyExtParams.srcStride = 0;
     qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
-    DataCopyPad(weightUB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(W_T))], weightsGm[weightGmOffset],
+    DataCopyPad(weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))], weightsGm[weightGmOffset],
                 qwDataCopyExtParams, padWeightsParams);
 
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
-    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
     auto qkVLStride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * M_BASIC_BLOCK;
-    for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-        liV2Vector1::MulWeightAndReduceSum(
-            vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
-            resMm1UB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T)) +
-                      s1IdxTmp * gSize_ * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T))],
-            qkVLStride,
-            weightUB_[(info.loop % 2) * (UB_BANK_STRIDE / sizeof(float)) +
-                      s1IdxTmp * (UB_BANK_DEPTH_STRIDE / sizeof(W_T))],
-            gSize_);
-    }
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
-    SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
-    WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + (info.loop % 2));
+    auto outBase = vec1OutUB_[(pingpong) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_];
+    auto qkBase = resMm1UB_[(pingpong) * (UB_BANK_STRIDE / sizeof(QK_T))];
+    auto weightBase = weightUB_[(pingpong) * (UB_BANK_STRIDE / sizeof(float))];
+    liV2Vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+                                        qkBase, qkVLStride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
+                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
+                                        gSize_, curAivS1ProcNum);
+
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+    WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     // outUB_ --->  scoreGm
     int64_t vec1OutGmOffset =
         blockId_ % 2 == 0 ?
@@ -382,12 +380,12 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     copyOutParams.dstStride =
         (LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
 
-    DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_],
+    DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_],
                 copyOutParams);
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
+    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
     // V核处理完，通知C核可以把mm1Res搬运到UB
     CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT +
-                                                                   info.loop % 2);
+                                                                   pingpong);
 }
 
 template <typename LIT>
@@ -657,17 +655,17 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 if (validS2Len < topkCount_) {
                     uint64_t mask[1];
                     mask[0] = ~0;
-                    mask[0] = mask[0] << (validS2Len % 16);
+                    mask[0] = mask[0] << (validS2Len % 8);
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 8 * 8],
                             constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
                 }
             
-                if (validS2Len / 16 * 16 + 64 < topkCount_) {
+                if (validS2Len / 8 * 8 + 64 < topkCount_) {
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 8 * 8 + 64],
                             constInfo_.NEG_INF_FLOAT,
-                            topkCount_ - (validS2Len / 16 * 16 + 64));
+                            topkCount_ - (validS2Len / 8 * 8 + 64));
                 }
                 SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);

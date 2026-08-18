@@ -16,18 +16,12 @@
 #ifndef FLASH_ATTN_KERNEL_DN_H_
 #define FLASH_ATTN_KERNEL_DN_H_
 
-#include "adv_api/activation/softmax.h"
-#include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_dn.h"
 #include "flash_attn_block_vec_dn.h"
-#if __has_include("../../../common/op_kernel/memory_copy_arch35.h")
 #include "memory_copy_arch35.h"
-#else
-#include "memory_copy_arch35.h"
-#endif
 #include "flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -176,7 +170,6 @@ public:
         constInfo_.seqUsedQSize = tilingData_->flashAttnBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = tilingData_->flashAttnBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(tilingData_->flashAttnBaseParams.scaleValue);
-        constInfo_.isKvContinuous = tilingData_->flashAttnBaseParams.isKvContinuous != 0;
         constInfo_.coreNum = tilingData_->flashAttnBaseParams.coreNum;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(tilingData_->flashAttnBaseParams.outputLayout);
         constInfo_.needInitOutput = tilingData_->flashAttnBaseParams.needInitOutput;
@@ -510,16 +503,6 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo_.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start_);
-            }
-        }
 
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
 

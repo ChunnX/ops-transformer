@@ -129,12 +129,13 @@ struct QuantBlockSparseAttnTilingInfo {
     uint32_t quantModeVal = 1;
     uint32_t layoutQValue = 0;
     std::string layoutQStr = "TND";
-    std::string layoutKVStr = "PA_BNSD";
+    std::string layoutKVStr = "PA_BNBD";
     std::string layoutSparseIndicesStr = "B_N_Qb_Kb";
     std::string layoutOutStr = "TND";
     bool returnSoftmaxLseVal = false;
 
     bool isGqa = false;
+    bool hasViewStride = true;
 };
 
 class QuantBlockSparseAttnInfoParser {

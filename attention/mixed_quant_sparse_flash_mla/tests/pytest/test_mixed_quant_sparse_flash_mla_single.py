@@ -28,8 +28,8 @@ import utils
 
 pt_save_path = "mqsmla_testcase"
 device_id = 0
-save_pt = False
-result_path = Path("result.xlsx")
+save_pt = os.environ.get("SAVE_PT", "0") == "1"
+result_path = Path(os.environ.get("MQSMLA_RESULT_SAVE_PATH", "result.xlsx"))
 
 param_combinations = []
 for params in ENABLED_PARAMS:
@@ -163,13 +163,13 @@ def mqsmla(param_combinations):
 
     utils.save_result(test_data["params"], result, fulfill_percent, result_path)
 
-    if result == "Failed":
-        pytest.fail(
-            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
-        )
     if result == "NPU ERROR":
         pytest.fail(
             f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}"
+        )
+    elif result != "Pass":
+        pytest.fail(
+            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
         )
 
 

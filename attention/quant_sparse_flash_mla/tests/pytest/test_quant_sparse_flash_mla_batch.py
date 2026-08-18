@@ -47,7 +47,7 @@ else:
 
 
 def qsmla(testcase_files):
-    test_data = torch.load(testcase_files, map_location="cpu")
+    test_data = torch.load(testcase_files, map_location="cpu", weights_only=False)
     try:
         if is_run_graph:
             npu_result, cpu_quant_result, cpu_lse, npu_lse = (
@@ -97,7 +97,7 @@ def qsmla(testcase_files):
 
     utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
 
-    if result in ("NPU ERROR", "Failed"):
+    if result != "PASS":
         pytest.fail(
             f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
         )

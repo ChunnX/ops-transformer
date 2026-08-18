@@ -33,7 +33,10 @@ w &= hMix \odot invRms\\
     [split(w, [n, n]), 0], & alpha.shape=[2]
 \end{cases}\\
 hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
-hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+hPost &= \begin{cases}
+    2\sigma(pPost \odot alpha1 + bias1), & alpha.shape=[3] \\
+    2\sigma(pPost \odot alpha1 + bias1) + hcEps, & alpha.shape=[2]
+\end{cases}\\
 hRes &= \begin{cases}
     pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
     0, & alpha.shape=[2]
@@ -107,8 +110,15 @@ $$
       <tr>
         <td>hc_eps</td>
         <td>可选输入</td>
-        <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
+        <td>h_pre的sigmoid后的eps参数，以及当alpha.shape=[2]时h_post的sigmoid后的eps参数，对应公式中的hcEps。</td>
         <td>FLOAT</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>op_impl_mode</td>
+        <td>可选输入</td>
+        <td>指定MhcPre算子的计算模式，0表示Cube使用FP32模式计算，1表示Cube使用HF32模式计算，默认值为0。</td>
+        <td>INT64</td>
         <td>-</td>
       </tr>
       <tr>
@@ -166,3 +176,4 @@ $$
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_pre](examples/test_aclnn_mhc_pre.cpp) | 通过[aclnnMhcPre](docs/aclnnMhcPre.md)接口方式调用MhcPre算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre_v2](examples/test_aclnn_mhc_pre_v2.cpp) | 通过[aclnnMhcPreV2](docs/aclnnMhcPreV2.md)接口方式调用MhcPre算子，并通过opImplMode选择Cube的FP32或HF32计算模式。 |

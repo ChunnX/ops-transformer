@@ -500,8 +500,9 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcOpTiling()
     tilingData_.set_cubeBlockDimK(actualKBlockNum);
     tilingData_.set_mL1Size(std::min(M_L1_MAX_SIZE, singleCoreM));
     tilingData_.set_multCoreSplitKSize(splitKSize);
-    tilingData_.set_kL1Size(std::min(A_L1_SIZE / tilingData_.get_mL1Size(), static_cast<uint64_t>(K_L1_MAX_SIZE)) /
-                            128 * 128);
+    // 开启batch一致性开关时mL1Size固定取M_L1_MAX_SIZE，使kL1Size不随实际bs_切分结果变化，保证在不同batch下切分一致
+    uint64_t mSizeForKL1 = (deterministicLevel == BATCH_CONSISTENCY_LEVEL) ? M_L1_MAX_SIZE : tilingData_.get_mL1Size();
+    tilingData_.set_kL1Size(std::min(A_L1_SIZE / mSizeForKL1, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128);
 
     bool isKSplit = kDimNum != 1;
     if (isKSplit) {
@@ -561,13 +562,23 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetWorkspaceSize()
 ge::graphStatus MhcPreSinkhornTilingRegbase::PostTiling()
 {
     context_->SetTilingKey(tilingKey_);
-    context_->SetBlockDim(aicCoreNum_);
+    // 按实际参与计算的核数启动，避免多余核空转：
+    // - M+K 分核模板(1000/2000)：stage1 需要 cubeBlockDimM * cubeBlockDimK 个 AIC 块；
+    //    stage2 需要 secondUsedCoreNum 个 AIV，按 MIX 1 AIC:2 AIV 折算成块参与比较。
+    uint64_t blockDim = aicCoreNum_;
+    if (tilingKey_ == TILING_KEY_NO_GRAD_K_SPLIT || tilingKey_ == TILING_KEY_GRAD_K_SPLIT) {
+        uint64_t stage1BlockNum =
+            tilingData_.get_cubeBlockDimM() * tilingData_.get_cubeBlockDimK();
+        uint64_t stage2BlockNum = CeilDiv(tilingData_.get_secondUsedCoreNum(), 2);
+        blockDim = std::min(std::max(stage1BlockNum, stage2BlockNum), aicCoreNum_);
+    }
+    context_->SetBlockDim(blockDim);
     context_->SetScheduleMode(BATCH_MODE);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-    PrintFinalTilingData(context_, tilingData_, tilingKey_, aicCoreNum_, workspaceSize_);
+    PrintFinalTilingData(context_, tilingData_, tilingKey_, blockDim, workspaceSize_);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
