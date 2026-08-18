@@ -318,9 +318,14 @@ public:
     // ========================================================================
     __aicore__ inline void Drain(int32_t dstRankId)
     {
-        // 轮询 CQ 等待完成, 更新 sqCi
-        PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
-                             outSqCi_, outCqCi_, outCqCiLinear_);
+        // 循环 PollCQ 直到所有已提交的 WQE 都完成 (cqe=1 时每个 WQE 产 1 个 CQE)
+        // PollCommCQUpdateSQCI 碰到 status=0xff 会 break, 不保证等完
+        // 需要循环调用直到 outSqCi_ 追上 outSqPi_ (消费者追上生产者)
+        uint32_t outSqPiLinearBefore = outSqPiLinear_;
+        while (outSqCi_ != outSqPi_) {
+            PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
+                                 outSqCi_, outCqCi_, outCqCiLinear_);
+        }
 
         // 更新 PICI, 保存到 HcclCombinOpParam 的 windowsOut 中
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, dstRankId,
@@ -474,8 +479,11 @@ private:
     {
         if (pendingSqCnt_ == 0) return;
         Commit();
-        PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
-                             outSqCi_, outCqCi_, outCqCiLinear_);
+        // 循环 PollCQ 直到所有已提交的 WQE 都完成
+        while (outSqCi_ != outSqPi_) {
+            PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
+                                 outSqCi_, outCqCi_, outCqCiLinear_);
+        }
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, curDstRankId_,
                    outSqPi_, outSqCi_, outCqPi_, outCqCi_, outSqPiLinear_, outCqCiLinear_);
         pendingSqCnt_ = 0;
