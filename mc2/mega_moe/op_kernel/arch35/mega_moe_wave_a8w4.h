@@ -76,6 +76,7 @@ private:
     using MegaMoeBase::SendAndQuantBuffInit;
     using MegaMoeBase::dispatchPrepareConfig_;
     using MegaMoeBase::epilogueOp_;
+    using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmm1Config_;
     using MegaMoeBase::gmm2Config_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
@@ -169,6 +170,7 @@ template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages(
     int32_t &gmTileSequence)
 {
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
     DispatchBuffInit();
 
     ExpertLoopState gmm1State = CreateExpertLoopState(gmm1Config_.common);
@@ -207,6 +209,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     uint32_t currentWaveBegin = 0U;
     while (currentWaveBegin < expertCount) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
         uint32_t currentGmm1Expert = currentWaveBegin;
         uint32_t currentWaveEnd = currentWaveBegin;
         uint32_t currentWaveTileCount = 0U;
@@ -247,6 +250,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
             }
         }
         // 当前 Wave 完成后立即消费，使其 GMM2/Combine 与下一 Wave 的输入预取重叠。
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM2_COMBINE);
         for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
             RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, gmTileSequence, expertIdx);
         }
@@ -262,6 +266,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     SendAndQuantBuffInit();
 
     // 输入准备：量化本卡 token、发布路由 mask，并重置共享同步状态。
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         dispatchPrepareConfig_, params_, quantProcessConfig_, quantScratch_);
     GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
@@ -278,9 +283,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     int32_t gmTileSequence = 0;
     if (sharedExpertNum_ > 0U) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1(gmTileSequence);
     }
 
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_INPUT);
     CrossRankSyncInWorldSize();
 
     // MoE 专家流水：动态 Wave Dispatch、GMM1/Activation、GMM2 和 Combine。
@@ -295,17 +302,21 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     }
 
     if (sharedExpertNum_ > 0U) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM2);
         ProcessSharedExpertGmm2(gmTileSequence);
     }
 
     // 所有 rank 完成 Combine 结果发送后，再开始输出聚合。
     if constexpr (g_coreType == AIV) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_OUTPUT);
         CrossRankSyncInWorldSize();
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::UNPERMUTE);
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::COMPLETE);
 }
 
 } // namespace MegaMoeImpl
