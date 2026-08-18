@@ -167,6 +167,7 @@ public:
                                         GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
                                         GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
                                         ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo);
 
 private:
     template <bool UPDATE>
@@ -1447,6 +1448,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
     initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
+{
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
+        WaitFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+    }
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

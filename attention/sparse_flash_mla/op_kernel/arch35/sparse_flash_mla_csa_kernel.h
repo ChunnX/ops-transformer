@@ -90,6 +90,7 @@ private:
                                             __gm__ uint8_t *workspace,
                                             const SparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void FreeEvent();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
@@ -546,6 +547,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
     }
+    FreeEvent();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -875,6 +877,19 @@ __aicore__ inline int64_t SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::
     }
     int64_t cmpToken = (reductionBlockIdx - oriReductionBlockNum) * reductionBlockSize;
     return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::FreeEvent()
+{
+    if ASCEND_IS_AIC {
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm2Buffers.Get().WaitCrossCore();
+        this->cubeBlock.FreeEvent();
+    } else {
+        this->vecBlock.FreeEvent(constInfo);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
