@@ -58,7 +58,7 @@ __aicore__ inline void WaitPipe(AscendC::TPipe &pipe)
 }
 
 __aicore__ inline void ComputeTileHistogram(
-    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
+    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t shiftBits,
     __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
     __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb,
     __local_mem__ uint32_t *histWideUb);
@@ -74,9 +74,15 @@ public:
 
     __aicore__ inline void SetMaxValue(uint32_t maxVal);
 
+    __aicore__ inline void SetValueOffset(int32_t offset);
+
     __aicore__ inline void Process(uint32_t actualCount, AscendC::TPipe &pipe);
 
 private:
+    __aicore__ inline void ApplyValueOffset(AscendC::TPipe &pipe);
+
+    __aicore__ inline void RestoreValueOffset(AscendC::TPipe &pipe);
+
     __aicore__ inline void ComputePrefixAndOffsets(
         uint32_t tc, AscendC::GlobalTensor<int32_t> &prefixGm, AscendC::GlobalTensor<int32_t> &tileOffsetsGm,
         AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe);
@@ -93,7 +99,7 @@ private:
         AscendC::GlobalTensor<int32_t> *&dstIndex);
 
     __aicore__ inline void ProcessHist(
-        uint32_t byteRound, uint32_t batchCount,
+        uint32_t shiftBits, uint32_t batchCount,
         AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe);
 
     __aicore__ inline void ScatterOneKey(
@@ -103,7 +109,7 @@ private:
         AscendC::GlobalTensor<int32_t> *dstValue, AscendC::GlobalTensor<int32_t> *dstIndex, AscendC::TPipe &pipe);
 
     __aicore__ inline void ProcessScatter(
-        uint32_t byteRound, uint32_t batchCount,
+        uint32_t execRound, uint32_t shiftBits, uint32_t batchCount,
         AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &indexGm,
         AscendC::GlobalTensor<int32_t> &outputValueGm, AscendC::GlobalTensor<int32_t> &outputIndexGm,
         AscendC::GlobalTensor<int32_t> &tempValueGm, AscendC::GlobalTensor<int32_t> &tempIndexGm,
@@ -116,11 +122,21 @@ private:
         AscendC::TPipe &pipe);
 
     __aicore__ inline void ProcessOneByteRound(
-        uint32_t byteRound, AscendC::GlobalTensor<int32_t> &valueGm, AscendC::GlobalTensor<int32_t> &indexGm,
+        uint32_t execRound, uint32_t shiftByte,
+        AscendC::GlobalTensor<int32_t> &valueGm, AscendC::GlobalTensor<int32_t> &indexGm,
         AscendC::GlobalTensor<int32_t> &outputValueGm, AscendC::GlobalTensor<int32_t> &outputIndexGm,
         AscendC::GlobalTensor<int32_t> &tempValueGm, AscendC::GlobalTensor<int32_t> &tempIndexGm,
         AscendC::GlobalTensor<int32_t> &histGm, AscendC::GlobalTensor<int32_t> &prefixGm,
         AscendC::GlobalTensor<int32_t> &tileOffsetsGm, AscendC::TPipe &pipe);
+
+    __aicore__ inline void ComputeCoreRange(
+        AscendC::GlobalTensor<int32_t> &prefixGm,
+        uint32_t &myBucketStart, uint32_t &myBucketEnd,
+        AscendC::TPipe &pipe);
+
+    __aicore__ inline void ProcessLocalLsdRound(
+        uint32_t execRound, uint32_t shiftByte, uint32_t coreStart, uint32_t coreEnd,
+        AscendC::TPipe &pipe);
 
     static constexpr AscendC::SortConfig sortConfig{AscendC::SortType::RADIX_SORT, false};
 
@@ -141,6 +157,7 @@ private:
     uint32_t tileCount_{0};
     uint32_t coreCount_{0};
     uint32_t byteRounds_{BYTES_PER_INT32};
+    int32_t valueOffset_{0};
 
     AscendC::GlobalTensor<int32_t> valueGm_;
     AscendC::GlobalTensor<int32_t> indexGm_;
@@ -154,12 +171,11 @@ private:
 // ==== implementations ====
 
 __aicore__ inline void ComputeTileHistogram(
-    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
+    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t shiftBits,
     __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
     __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb,
     __local_mem__ uint32_t *histWideUb)
 {
-    uint32_t shiftBits = byteRound * BITS_PER_BYTE;
     __VEC_SCOPE__
     {
         using namespace AscendC::Reg;
@@ -311,6 +327,86 @@ __aicore__ inline void EngramFetchGradSort::SetMaxValue(uint32_t maxVal)
     }
 }
 
+__aicore__ inline void EngramFetchGradSort::SetValueOffset(int32_t offset)
+{
+    valueOffset_ = offset;
+}
+
+__aicore__ inline void EngramFetchGradSort::ApplyValueOffset(AscendC::TPipe &pipe)
+{
+    if (valueOffset_ == 0) {
+        return;
+    }
+
+    AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
+    event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
+    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
+
+    uint32_t chunk = CeilDiv(elementCount_, coreCount_);
+    uint32_t start = AscendC::GetBlockIdx() * chunk;
+    uint32_t end = MinU32(start + chunk, elementCount_);
+
+    for (uint32_t off = start; off < end; off += tileElements_) {
+        uint32_t tileLen = MinU32(end - off, tileElements_);
+        AscendC::LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+
+        uint32_t valBytes = tileLen * sizeof(int32_t);
+        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+        AscendC::DataCopyPad(valueLocal, valueGm_[off], valParam, valPad);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+
+        AscendC::Adds<int32_t>(valueLocal, valueLocal, static_cast<int32_t>(-valueOffset_),
+                               static_cast<int32_t>(tileLen));
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+
+        AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(valBytes), 0U, 0U};
+        AscendC::DataCopyPad(valueGm_[off], valueLocal, outParams);
+        WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+    }
+
+    AscendC::SyncAll<true>();
+}
+
+__aicore__ inline void EngramFetchGradSort::RestoreValueOffset(AscendC::TPipe &pipe)
+{
+    if (valueOffset_ == 0) {
+        return;
+    }
+
+    AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
+    event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
+    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
+
+    uint32_t chunk = CeilDiv(elementCount_, coreCount_);
+    uint32_t start = AscendC::GetBlockIdx() * chunk;
+    uint32_t end = MinU32(start + chunk, elementCount_);
+
+    for (uint32_t off = start; off < end; off += tileElements_) {
+        uint32_t tileLen = MinU32(end - off, tileElements_);
+        AscendC::LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+
+        uint32_t valBytes = tileLen * sizeof(int32_t);
+        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+        AscendC::DataCopyPad(valueLocal, valueGm_[off], valParam, valPad);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+
+        AscendC::Adds<int32_t>(valueLocal, valueLocal, valueOffset_, static_cast<int32_t>(tileLen));
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+
+        AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(valBytes), 0U, 0U};
+        AscendC::DataCopyPad(valueGm_[off], valueLocal, outParams);
+        WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+    }
+
+    AscendC::SyncAll<true>();
+}
+
 __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(
     uint32_t tc, AscendC::GlobalTensor<int32_t> &prefixGm, AscendC::GlobalTensor<int32_t> &tileOffsetsGm,
     AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe)
@@ -382,7 +478,7 @@ __aicore__ inline void EngramFetchGradSort::GetDstBuffers(
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessHist(
-    uint32_t byteRound, uint32_t batchCount,
+    uint32_t shiftBits, uint32_t batchCount,
     AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe)
 {
     AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
@@ -415,7 +511,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(
             AscendC::LocalTensor<int32_t> histWide = histWideBuffer_.Get<int32_t>();
 
             ComputeTileHistogram(
-                (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, byteRound,
+                (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, shiftBits,
                 (__local_mem__ uint16_t *)histLocal.GetPhyAddr(),
                 (__local_mem__ uint16_t *)cumsumLocal.GetPhyAddr(),
                 (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(),
@@ -457,7 +553,7 @@ __aicore__ inline void EngramFetchGradSort::ScatterOneKey(
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessScatter(
-    uint32_t byteRound, uint32_t batchCount,
+    uint32_t execRound, uint32_t shiftBits, uint32_t batchCount,
     AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &indexGm,
     AscendC::GlobalTensor<int32_t> &outputValueGm, AscendC::GlobalTensor<int32_t> &outputIndexGm,
     AscendC::GlobalTensor<int32_t> &tempValueGm, AscendC::GlobalTensor<int32_t> &tempIndexGm,
@@ -482,7 +578,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::GlobalTensor<int32_t> *srcIdx;
             AscendC::GlobalTensor<int32_t> *dstValue;
             AscendC::GlobalTensor<int32_t> *dstIndex;
-            GetDstBuffers(byteRound, indexGm, outputValueGm, outputIndexGm,
+            GetDstBuffers(execRound, indexGm, outputValueGm, outputIndexGm,
                           tempValueGm, tempIndexGm, srcIdx, dstValue, dstIndex);
 
             AscendC::LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
@@ -505,7 +601,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
 
-            uint32_t shiftBits = byteRound * BITS_PER_BYTE;
+            uint32_t shiftBitsLocal = shiftBits;
             __VEC_SCOPE__
             {
                 using namespace AscendC::Reg;
@@ -520,10 +616,10 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                     DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input2, valuePtr, VECTOR_LEN_INT32);
                     DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input3, valuePtr, VECTOR_LEN_INT32);
                     RegTensor<uint32_t> s0, s1, s2, s3;
-                    ShiftRights<uint32_t, int16_t>(s0, input0, shiftBits, mask32);
-                    ShiftRights<uint32_t, int16_t>(s1, input1, shiftBits, mask32);
-                    ShiftRights<uint32_t, int16_t>(s2, input2, shiftBits, mask32);
-                    ShiftRights<uint32_t, int16_t>(s3, input3, shiftBits, mask32);
+                    ShiftRights<uint32_t, int16_t>(s0, input0, shiftBitsLocal, mask32);
+                    ShiftRights<uint32_t, int16_t>(s1, input1, shiftBitsLocal, mask32);
+                    ShiftRights<uint32_t, int16_t>(s2, input2, shiftBitsLocal, mask32);
+                    ShiftRights<uint32_t, int16_t>(s3, input3, shiftBitsLocal, mask32);
                     RegTensor<uint16_t> d0, d1, d2, d3;
                     DeInterleave(d0, d1, (RegTensor<uint16_t> &)s0, (RegTensor<uint16_t> &)s1);
                     DeInterleave(d2, d3, (RegTensor<uint16_t> &)s2, (RegTensor<uint16_t> &)s3);
@@ -604,25 +700,174 @@ __aicore__ inline void EngramFetchGradSort::CopyTempToOutput(
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
-    uint32_t byteRound, AscendC::GlobalTensor<int32_t> &valueGm, AscendC::GlobalTensor<int32_t> &indexGm,
+    uint32_t execRound, uint32_t shiftByte,
+    AscendC::GlobalTensor<int32_t> &valueGm, AscendC::GlobalTensor<int32_t> &indexGm,
     AscendC::GlobalTensor<int32_t> &outputValueGm, AscendC::GlobalTensor<int32_t> &outputIndexGm,
     AscendC::GlobalTensor<int32_t> &tempValueGm, AscendC::GlobalTensor<int32_t> &tempIndexGm,
     AscendC::GlobalTensor<int32_t> &histGm, AscendC::GlobalTensor<int32_t> &prefixGm,
     AscendC::GlobalTensor<int32_t> &tileOffsetsGm, AscendC::TPipe &pipe)
 {
     uint32_t batchCount = CeilDiv(tileCount_, coreCount_);
-    AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
+    AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(execRound, valueGm, tempValueGm, outputValueGm);
 
-    ProcessHist(byteRound, batchCount, srcValueGm, histGm, pipe);
+    ProcessHist(shiftByte * BITS_PER_BYTE, batchCount, srcValueGm, histGm, pipe);
 
     if (AscendC::GetBlockIdx() == 0) {
         ComputePrefixAndOffsets(tileCount_, prefixGm, tileOffsetsGm, histGm, pipe);
     }
     AscendC::SyncAll<true>();
 
-    ProcessScatter(byteRound, batchCount, srcValueGm, indexGm, outputValueGm,
+    ProcessScatter(execRound, shiftByte * BITS_PER_BYTE, batchCount, srcValueGm, indexGm, outputValueGm,
                    outputIndexGm, tempValueGm, tempIndexGm, histGm, prefixGm,
                    tileOffsetsGm, pipe);
+}
+
+__aicore__ inline void EngramFetchGradSort::ComputeCoreRange(
+    AscendC::GlobalTensor<int32_t> &prefixGm,
+    uint32_t &myBucketStart, uint32_t &myBucketEnd,
+    AscendC::TPipe &pipe)
+{
+    AscendC::LocalTensor<int32_t> prefixLocal = prefixBuffer_.Get<int32_t>();
+    AscendC::DataCopyExtParams param{1U, HISTOGRAM_BINS * sizeof(int32_t), 0U, 0U, 0U};
+    AscendC::DataCopyPadExtParams<int32_t> padParam{false, 0, 0, 0};
+    AscendC::DataCopyPad(prefixLocal, prefixGm, param, padParam);
+    WaitPipe<AscendC::HardEvent::MTE2_S>(pipe);
+
+    uint32_t coreId = AscendC::GetBlockIdx();
+
+    // uint32_t nonEmpty = 0;
+    // for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
+    //     uint32_t prev = (b == 0) ? 0 : static_cast<uint32_t>(prefixLocal.GetValue(b));
+    //     uint32_t next = (b + 1 == HISTOGRAM_BINS) ? elementCount_ : static_cast<uint32_t>(prefixLocal.GetValue(b + 1));
+    //     uint32_t cnt = next - prev;
+    //     if (cnt > 0) {
+    //         AscendC::printf("SORT core=%uu bucket[%u]=%uu\n", coreId, b, cnt);
+    //         nonEmpty++;
+    //     }
+    // }
+    // AscendC::printf("SORT core=%uu nonEmptyBuckets=%uu total=%uu\n", coreId, nonEmpty, elementCount_);
+
+    uint32_t bucketsPerCore = CeilDiv(HISTOGRAM_BINS, coreCount_);
+    myBucketStart = coreId * bucketsPerCore;
+    myBucketEnd = myBucketStart + bucketsPerCore;
+    if (myBucketEnd > HISTOGRAM_BINS) {
+        myBucketEnd = HISTOGRAM_BINS;
+    }
+}
+
+__aicore__ inline void EngramFetchGradSort::ProcessLocalLsdRound(
+    uint32_t execRound, uint32_t shiftByte, uint32_t coreStart, uint32_t coreEnd,
+    AscendC::TPipe &pipe)
+{
+    if (coreStart >= coreEnd) {
+        return;
+    }
+
+    AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(execRound, valueGm_, tempValueGm_, valueGm_);
+    AscendC::GlobalTensor<int32_t> *srcIdx;
+    AscendC::GlobalTensor<int32_t> *dstValue;
+    AscendC::GlobalTensor<int32_t> *dstIndex;
+    GetDstBuffers(execRound, indexGm_, valueGm_, indexGm_,
+                  tempValueGm_, tempIndexGm_, srcIdx, dstValue, dstIndex);
+
+    AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
+    event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
+    event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
+    event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
+    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
+
+    AscendC::LocalTensor<int32_t> localHist = histWideBuffer_.Get<int32_t>();
+    AscendC::Duplicate(localHist, (int32_t)0, HISTOGRAM_BINS);
+
+    uint32_t shiftBits = shiftByte * BITS_PER_BYTE;
+    for (uint32_t off = coreStart; off < coreEnd; off += tileElements_) {
+        uint32_t tileLen = MinU32(coreEnd - off, tileElements_);
+        AscendC::LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+        AscendC::LocalTensor<uint16_t> histLocal = histogramBuffer_.Get<uint16_t>();
+        AscendC::LocalTensor<uint16_t> cumsumLocal = cumulativeBuffer_.Get<uint16_t>();
+        AscendC::LocalTensor<uint32_t> exclusiveLocal = exclusiveBuffer_.Get<uint32_t>();
+        AscendC::LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
+        AscendC::LocalTensor<int32_t> histWide = prefixBuffer_.Get<int32_t>();
+
+        uint32_t valBytes = tileLen * sizeof(int32_t);
+        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+        AscendC::DataCopyPad(valueLocal, (*srcValueGm)[off], valParam, valPad);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+
+        AscendC::Duplicate(exclusiveLocal, (uint32_t)0, HISTOGRAM_BINS);
+        ComputeTileHistogram(
+            (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, shiftBits,
+            (__local_mem__ uint16_t *)histLocal.GetPhyAddr(),
+            (__local_mem__ uint16_t *)cumsumLocal.GetPhyAddr(),
+            (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(),
+            (__local_mem__ uint32_t *)exclusiveLocal.GetPhyAddr(),
+            (__local_mem__ uint32_t *)histWide.GetPhyAddr());
+
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+
+        for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
+            localHist.SetValue(b, localHist.GetValue(b) + static_cast<int32_t>(histLocal.GetValue(b)));
+        }
+    }
+
+    WaitPipe<AscendC::HardEvent::V_S>(pipe);
+    AscendC::LocalTensor<int32_t> localPrefix = prefixBuffer_.Get<int32_t>();
+    int32_t running = 0;
+    for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
+        localPrefix.SetValue(b, running);
+        running += localHist.GetValue(b);
+    }
+
+    AscendC::LocalTensor<int32_t> runningOffset = histogramBuffer_.Get<int32_t>();
+    AscendC::Duplicate(runningOffset, (int32_t)0, HISTOGRAM_BINS);
+
+    for (uint32_t off = coreStart; off < coreEnd; off += tileElements_) {
+        uint32_t tileLen = MinU32(coreEnd - off, tileElements_);
+        AscendC::LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+        AscendC::LocalTensor<int32_t> indexLocal = indexBuffer_.Get<int32_t>();
+        AscendC::LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
+        AscendC::LocalTensor<uint8_t> sortedKey = sortedKeyBuffer_.Get<uint8_t>();
+        AscendC::LocalTensor<uint32_t> sortIndices = exclusiveBuffer_.Get<uint32_t>();
+
+        uint32_t valBytes = tileLen * sizeof(int32_t);
+        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+        AscendC::DataCopyPad(valueLocal, (*srcValueGm)[off], valParam, valPad);
+        AscendC::DataCopyPad(indexLocal, (*srcIdx)[off], valParam, valPad);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
+
+        for (uint32_t i = 0; i < tileLen; i++) {
+            keyLocal.SetValue(i, (uint8_t)((valueLocal.GetValue(i) >> shiftBits) & 0xFF));
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+        AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+
+        AscendC::LocalTensor<uint8_t> sortTemp = sortTempBuffer_.Get<uint8_t>();
+        AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+
+        AscendC::LocalTensor<int32_t> gatheredBuf = sortTempBuffer_.Get<int32_t>();
+        uint32_t keyStart = 0;
+        uint8_t curKey = sortedKey.GetValue(0);
+        for (uint32_t i = 1; i <= tileLen; i++) {
+            if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                uint32_t keyCount = i - keyStart;
+                int32_t gmPos = static_cast<int32_t>(coreStart) +
+                                localPrefix.GetValue(curKey) +
+                                runningOffset.GetValue(curKey);
+                ScatterOneKey(keyStart, keyCount, gmPos, gatheredBuf, valueLocal,
+                              indexLocal, sortIndices, dstValue, dstIndex, pipe);
+                runningOffset.SetValue(curKey, runningOffset.GetValue(curKey) + static_cast<int32_t>(keyCount));
+                if (i < tileLen) {
+                    curKey = sortedKey.GetValue(i);
+                    keyStart = i;
+                }
+            }
+        }
+    }
 }
 
 __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, AscendC::TPipe &pipe)
@@ -633,14 +878,49 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
         tileElements_ = dynTile;
     }
     tileCount_ = CeilDiv(elementCount_, tileElements_);
-    for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
-        ProcessOneByteRound(byteRound, valueGm_, indexGm_, valueGm_, indexGm_,
-                            tempValueGm_, tempIndexGm_, histGm_, prefixGm_, tileOffsetsGm_, pipe);
+
+    // AscendC::printf("SORT byteRounds=%uu msbByte=%uu\n", byteRounds_, byteRounds_ - 1U);
+    ApplyValueOffset(pipe);
+
+    ProcessOneByteRound(0, byteRounds_ - 1U, valueGm_, indexGm_, valueGm_, indexGm_,
+                        tempValueGm_, tempIndexGm_, histGm_, prefixGm_, tileOffsetsGm_, pipe);
+
+    if (byteRounds_ <= 1U) {
+        CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
+        RestoreValueOffset(pipe);
+        return;
+    }
+
+    uint32_t myBucketStart = 0;
+    uint32_t myBucketEnd = 0;
+    ComputeCoreRange(prefixGm_, myBucketStart, myBucketEnd, pipe);
+
+    AscendC::LocalTensor<int32_t> prefixLocal = prefixBuffer_.Get<int32_t>();
+    uint32_t savedBoundaries[HISTOGRAM_BINS + 1];
+    savedBoundaries[0] = 0;
+    for (uint32_t b = 1; b <= HISTOGRAM_BINS; b++) {
+        savedBoundaries[b] = (b == HISTOGRAM_BINS) ? elementCount_
+            : static_cast<uint32_t>(prefixLocal.GetValue(b));
+    }
+
+    for (uint32_t execRound = 1U; execRound < byteRounds_; execRound++) {
+        uint32_t shiftByte = execRound - 1U;
+        for (uint32_t b = myBucketStart; b < myBucketEnd; b++) {
+            uint32_t bucketStart = savedBoundaries[b];
+            uint32_t bucketEnd = savedBoundaries[b + 1];
+            if (bucketEnd <= bucketStart) {
+                continue;
+            }
+            ProcessLocalLsdRound(execRound, shiftByte, bucketStart, bucketEnd, pipe);
+        }
+        AscendC::SyncAll<true>();
     }
 
     if (byteRounds_ % 2 == 1) {
         CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
     }
+
+    RestoreValueOffset(pipe);
 }
 
 } // namespace EngramFetchGradSort
