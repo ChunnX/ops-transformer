@@ -33,6 +33,8 @@ static constexpr float FLOAT_INF = 3e+99;
 
 static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
+static constexpr uint32_t FA_BYTE_BLOCK = 32; // equivalent to BYTE_BLOCK in block_vec_flashdecode.h
+
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
@@ -132,13 +134,20 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned64},
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
      inferDTemplateType::Aligned128},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128},
 };
 
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
+#define Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64 2
+#define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 3
 
 #define QFA_MXFP8_FP32_PREFILL 1
 #define QFA_MXFP8_FP32_DECODE 2
+#define QFA_HIF8_FP32_PREFILL 7
 
 #define false 0
 #define true 1
