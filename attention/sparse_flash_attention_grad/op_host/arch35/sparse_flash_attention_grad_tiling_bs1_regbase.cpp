@@ -422,7 +422,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
                 sparse_mode);
         return ge::GRAPH_FAILED;
     }
-    if (dimDq != D_SIZE && dimDq != D_SIZE) {
+    if (dimDq != D_SIZE && dimDk != D_SIZE) {
         OP_LOGE(context_, "head_dim of Query[%ld] should be equal to head_dim of Key[%ld], and their value must be 512.", dimDq, dimDk);
         return ge::GRAPH_FAILED;
     }
