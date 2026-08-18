@@ -155,16 +155,11 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be even in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((!args_.isBTrans),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
-                                                          "x2 only support transpose"),
-                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         opName_, "scale1", (Ops::Base::ToString(scaleInv1Desc->GetDataType())).c_str(),
                         "The dtypes of scale1 must be float8_e8m0 when x1/x2 is float4_e2m1"),
                     return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
