@@ -23,7 +23,6 @@ if [ ! -f "${arm_package}" ] || [ ! -s "${arm_package}" ];then
     rm -f ${arm_package}
     exit 0
 fi
-
 log() {
   local dt
   dt=$(date '+%Y%m%d.%H%M%S')
