@@ -117,6 +117,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 │        │ commTilingData              │  通信侧切分                    │
 │        │ mmTilingData                │  MatMul 侧 tiling (全量)       │
 │        │ subMmTilingData             │  子问题 tiling (baseM=128)    │
+│        │ tailMmTilingData            │  tail tile tiling              │
 │        └─────────────────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
@@ -148,7 +149,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 | FragmentTensor Kernel | `qmm_mx_kernel_rs_frag.h` | FragmentTensor 版量化 MatMul 内核，参考 allgather `QmmMxKernelAgUdma`，消除 R 循环 |
 | 通信框架 | `apace/block/aiv_comm/` | `CollectiveComm` 统一通信 API、AllToAll PUT 实现 |
 | 算子编排 | `apace_quant_matmul_reduce_scatter_udma_impl.h` | 本算子的 Init/Run 编排逻辑 |
-| reduceSum | `reduce_sum.h` | 独立的 reduceSum 实现，float32 累加保证精度 |
+| reduceSum | `reduce_sum.h` | 参考 `ReadRemoteDataAdd` 实现，手动 UB 管理（无 TPipe），多行 block + float32 累加 |
 
 ---
 
@@ -229,8 +230,9 @@ win 区布局 (接收方):
 ```cpp
 struct ApaceQuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
-    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化 + tail tile)
+    QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, baseM=128, T>1 head tile)
+    QuantMatmulTilingData tailMmTilingData; // tail tile tiling (m=rankSize*tailMSize, T>1 tail tile)
 };
 ```
 
@@ -241,7 +243,7 @@ struct ApaceQuantMatmulReduceScatterTilingData {
 3. **baseM 减半**：若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除，手动减半为 128
    - 产生更多 tiles（32→64），每核 tiles/core 从 1.14 提升到 2.29
    - L1 安全：baseM 减半 → A buffer 减半，stepK/scaleKL1/nBufferNum 不变
-4. **统一选择**：T>1 head tile 用 subMmTilingData（baseM=128），T=1 或 tail tile 用 mmTilingData
+4. **统一选择**：T>1 head tile 用 subMmTilingData（baseM=128），T>1 tail tile 用 tailMmTilingData（m=rankSize×tailMSize），T=1 用 mmTilingData
 
 ### 5.3 调度器
 
@@ -331,7 +333,7 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 
 - **workspace**：`m × n × sizeof(CType)` 字节（Host 侧申请传入，存放 AIC 计算的 C_i）
 - **win 区**：`rankSize × chunkM × n × sizeof(CType)` 字节（AllToAll PUT 接收缓冲区）
-- **reduceSum UB 缓冲区**：3 个（accumF32 + tempCType + tempF32），float32 累加需要
+- **reduceSum UB 缓冲区**：手动 UB 偏移管理（无 TPipe），4 个区域：`[sumF32 | localBF16 | localF32 | outBF16]`，多行 block 处理（rowsPerBlock 行/block，UB 容量自适应）
 
 ---
 
@@ -396,10 +398,15 @@ for (t = 0..commTurn) {
 for (t = 0..commTurn) {
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);  // 等 AIC tile t
     SyncAll<true>();
-    allToAllC_.Commit();      // PUT 推送 tile t
+    allToAllC_.Commit();      // PUT 推送 tile t (仅 block 0)
     allToAllC_.Wait<BARRIER_DEVICE>();
     SyncAll<true>();
-    RunReduceSumTile(t);      // float32 累加 → output
+    // reduceSum: 所有 block 并行, 手动 UB 管理 (无 TPipe)
+    //   self 从 workspace 读, received 从 win 区读
+    //   多行 block: rowsPerBlock 行/block, float32 累加
+    reduceSum_.Init(outputSize, stride, rankSize, rankId, usedCoreNum,
+                    srcAddr, selfAddr, dstAddr);
+    reduceSum_.ExecuteReduceSum(tileM, nSize);
 }
 allToAllC_.Finalize();
 ```
@@ -446,7 +453,16 @@ allToAllC_.Finalize();
 - float32 累加：BF16 → Cast float32 → Add → Cast 回 BF16
 - 修复后 max rel_err 降至 6.21e-3
 
-### 9.5 AIC / AIV 的 per-tile 流水重叠
+### 9.5 为什么 reduceSum 用手动 UB 管理（无 TPipe）
+
+参考 ops-transformer 仓的 `ReadRemoteDataAdd` 实现：
+- **手动 UB 偏移**：直接用 `LocalTensor` + 字节偏移管理 buffer 布局 `[sumF32 | localBF16 | localF32 | outBF16]`
+- **多行 block**：一次处理 `rowsPerBlock` 行（UB 容量自适应），减少 GM↔UB 同步次数
+- **所有 block 参与**：28 个 AIV block 全部参与 reduceSum（旧实现仅前 rankSize 个）
+- **性能**：相比旧实现平均 2.0x 加速（msprof Task Duration）
+- **无 TPipe 依赖**：不需要 `pipe_.Reset()` 清理，per-tile 调用无状态冲突
+
+### 9.6 AIC / AIV 的 per-tile 流水重叠
 
 ```
 AIC: [tile0 frag mm] SetFlag [tile1 frag mm] SetFlag ...
@@ -464,6 +480,7 @@ AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算�
   - B 矩阵 shape 为 `[k, n]`（TransB=true，存储为 `[n, k]` FN 格式）
   - Scale shape 为 `[m, ceil(k/64) * 2]` / `[n, ceil(k/64) * 2]`
   - CeilDiv(k, 64) 必须为偶数
+  - tailMSize（chunkM % headMSize）必须为 16 的倍数（Blaze matmul 最小行粒度）
   - 支持 MXFP8（`fp8_e4m3fn`/`fp8_e5m2`）
 
 - **卡数约束**：支持 2、4、8、16、32、64 卡
@@ -486,6 +503,8 @@ AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算�
 
 ---
 
-> **文档状态**：已更新至 R9 FragmentTensor 版本
+> **文档状态**：已更新至多行 block reduceSum 版本（无 TPipe，参考 ReadRemoteDataAdd）
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：qmm_mx_kernel_rs_frag.h + FragmentTensor 消除 R 循环
+> **代码版本**：qmm_mx_kernel_rs_frag.h + FragmentTensor + reduce_sum.h (手动 UB, 多行 block)
+> **精度验证**：34/34 case ALL PASS
+> **性能**：msprof Task Duration, 平均 2.0x 加速 (vs 旧实现)
