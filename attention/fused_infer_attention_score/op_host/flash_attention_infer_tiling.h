@@ -160,7 +160,7 @@ struct FAInferContext {
     bool flashDecodeFlag = false;
     bool decodingFlag = false;
     bool kvcacheNzFlag = false;
-        bool kvcacheBnbdFlag = false;
+    bool kvcacheBnbdFlag = false;
     string layout;
     uint64_t keyBnStride = 0;
     uint64_t valueBnStride = 0;
