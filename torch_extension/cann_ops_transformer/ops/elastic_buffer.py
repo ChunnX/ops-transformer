@@ -195,14 +195,17 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = _inline_align(num_max_tokens_per_rank, notify_cnt_align) // notify_cnt_align
-    dispatch_notify_size = world_size * win_addr_align + world_size * dispatch_notify_count * win_addr_align
+    dispatch_notify_count = (
+        _inline_align(num_max_tokens_per_rank, notify_cnt_align) // notify_cnt_align
+    )
+    dispatch_notify_size = (
+        world_size * win_addr_align
+        + world_size * dispatch_notify_count * win_addr_align
+    )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
     )
-    state_buffer_size = (
-        dispatch_count_size + dispatch_notify_size + combine_state_size
-    )
+    state_buffer_size = dispatch_count_size + dispatch_notify_size + combine_state_size
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
@@ -412,9 +415,7 @@ class ElasticBuffer:
                 win_addr_align,
             )
             scaleout_recv_data_size = (
-                scaleout_rank_count
-                * num_max_tokens_per_rank
-                * scaleout_per_slot_bytes
+                scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
             )
             scaleout_recv_status_size = (
                 scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
@@ -726,24 +727,22 @@ class ElasticBuffer:
             route_count,
             route_dst_scaleout,
             route_scaleout_slot,
-        ) = (
-            self._runtime.moe_ep_dispatch(
-                args.x,
-                args.topk_idx,
-                topk_weights,
-                args.scales,
-                args.cached_dst_slot_idx,
-                args.cached_route_count,
-                args.cached_route_dst_scaleout,
-                args.cached_route_scaleout_slot,
-                self._ep_world_size,
-                self._rank_id,
-                args.num_experts,
-                args.num_max_tokens_per_rank,
-                args.expert_alignment,
-                args.do_cpu_sync,
-                hp_addr,
-            )
+        ) = self._runtime.moe_ep_dispatch(
+            args.x,
+            args.topk_idx,
+            topk_weights,
+            args.scales,
+            args.cached_dst_slot_idx,
+            args.cached_route_count,
+            args.cached_route_dst_scaleout,
+            args.cached_route_scaleout_slot,
+            self._ep_world_size,
+            self._rank_id,
+            args.num_experts,
+            args.num_max_tokens_per_rank,
+            args.expert_alignment,
+            args.do_cpu_sync,
+            hp_addr,
         )
 
         actual_a = self._get_dispatch_recv_count(args)
@@ -812,18 +811,37 @@ class ElasticBuffer:
             lambda: ("bias is not supported, please set bias to None."),
         )
 
-        combined_x, combined_topk_weights = (
-            self._runtime.moe_ep_combine(
-                x,
-                handle.topk_idx,
-                handle.recv_src_metadata,
-                handle.num_recv_tokens_per_expert,
-                topk_weights,
-                self._ep_world_size,
-                self._rank_id,
-                handle.num_experts,
-                handle.num_max_tokens_per_rank,
-            )
+        num_tokens = handle.topk_idx.shape[0]
+        hidden = x.shape[1]
+        topk = handle.topk_idx.shape[1]
+        combined_x = torch.empty((num_tokens, hidden), dtype=x.dtype, device=x.device)
+        combined_topk_weights = (
+            None
+            if topk_weights is None
+            else torch.empty((num_tokens, topk), dtype=torch.float32, device=x.device)
+        )
+
+        self._runtime.moe_ep_combine(
+            x,
+            handle.topk_idx,
+            handle.recv_src_metadata,
+            handle.num_recv_tokens_per_expert,
+            topk_weights,
+            self._ep_world_size,
+            self._rank_id,
+            handle.num_experts,
+            handle.num_max_tokens_per_rank,
+        )
+
+        combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
+            handle.topk_idx,
+            topk_weights,
+            self._ep_world_size,
+            self._rank_id,
+            handle.num_experts,
+            handle.num_max_tokens_per_rank,
+            combined_x,
+            combined_topk_weights,
         )
         return combined_x, combined_topk_weights
 

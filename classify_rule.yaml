@@ -470,13 +470,14 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/prompt_flash_attention_base_api.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/prompt_flash_attention_base_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/attn_infra
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/flash_attention_interface.cpp
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/flash_attention_regular_decode.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/flash_attention_regular.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch35/fused_infer_attention_score_template_tiling_key.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/fused_infer_attention_score_tilingkey.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/fia_kernel_common.hpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/attn_infra
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_interface.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_regular_decode.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/flash_attention_regular.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_tilingkey.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/kernel_common.hpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/examples/test_aclnn_fused_infer_attention_score.cpp
             kernel_style: null
         unrelease:
             test_code:
@@ -671,6 +672,10 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_ep_combine/op_api/
                 - ops/ops-transformer/mc2/moe_ep_combine/op_kernel/
                 - ops/ops-transformer/mc2/moe_ep_combine/CMakeLists.txt
+                - ops/ops-transformer/mc2/moe_ep_combine_epilogue/op_host/
+                - ops/ops-transformer/mc2/moe_ep_combine_epilogue/op_api/
+                - ops/ops-transformer/mc2/moe_ep_combine_epilogue/op_kernel/
+                - ops/ops-transformer/mc2/moe_ep_combine_epilogue/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_ep_dispatch/op_host/
                 - ops/ops-transformer/mc2/moe_ep_dispatch/op_api/
                 - ops/ops-transformer/mc2/moe_ep_dispatch/op_kernel/
