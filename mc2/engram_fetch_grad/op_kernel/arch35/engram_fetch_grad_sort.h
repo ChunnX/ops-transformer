@@ -13,6 +13,7 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
+#include "adv_api/math/cumsum.h"
 
 namespace EngramFetchGradSort {
 
@@ -142,6 +143,8 @@ private:
         AscendC::GlobalTensor<int32_t> &tileOffsetsGm, AscendC::TPipe &pipe);
 
     static constexpr AscendC::SortConfig sortConfig{AscendC::SortType::RADIX_SORT, false};
+    static constexpr AscendC::CumSumConfig prefixScanCfg{
+        true, false, false, AscendC::CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 
     AscendC::TBuf<AscendC::TPosition::VECCALC> valueBuffer_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> indexBuffer_;
@@ -432,15 +435,21 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(
         AscendC::Add(prefixUb, prefixUb, histogram, HISTOGRAM_BINS);
     }
 
-    WaitPipe<AscendC::HardEvent::V_S>(pipe);
-    int32_t running = 0;
-    for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
-        int32_t count = prefixUb.GetValue(b);
-        prefixUb.SetValue(b, running);
-        running += count;
-    }
+    AscendC::LocalTensor<float> floatBuf = histogramBuffer_.Get<float>();
+    AscendC::LocalTensor<int32_t> inclBuf = sortTempBuffer_.Get<int32_t>();
 
-    WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+    AscendC::Cast<float, int32_t>(floatBuf, prefixUb, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
+    AscendC::PipeBarrier<PIPE_V>();
+
+    AscendC::CumSumInfo prefixScanInfo{1U, HISTOGRAM_BINS};
+    AscendC::CumSum<float, prefixScanCfg>(floatBuf, floatBuf, floatBuf, prefixScanInfo);
+    AscendC::PipeBarrier<PIPE_V>();
+
+    AscendC::Cast<int32_t, float>(inclBuf, floatBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::Sub(prefixUb, inclBuf, prefixUb, HISTOGRAM_BINS);
+
+    WaitPipe<AscendC::HardEvent::V_MTE3>(pipe);
     AscendC::DataCopyPad(prefixGm, prefixUb, offsetParam);
     WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
     prefixQueue_.FreeTensor(histogram);
