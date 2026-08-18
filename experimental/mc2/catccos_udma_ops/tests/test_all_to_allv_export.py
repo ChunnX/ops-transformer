@@ -218,3 +218,26 @@ def test_peer_completion_signal_is_published_after_data_completion():
         "aclshmem_signal_wait_until(syncCommFinish", completion_signal
     )
     assert finalize < completion_signal < receiver_wait
+
+
+def test_workspace_reuse_guard_checks_loop_count_before_unsigned_subtraction():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    safe_guard = (
+        "commLoops >= WORKSPACE_STAGES && "
+        "commIdx < commLoops - WORKSPACE_STAGES"
+    )
+    unsafe_guard = (
+        "commIdx < commLoops - WORKSPACE_STAGES && "
+        "commLoops >= WORKSPACE_STAGES"
+    )
+    assert safe_guard in kernel
+    assert unsafe_guard not in kernel

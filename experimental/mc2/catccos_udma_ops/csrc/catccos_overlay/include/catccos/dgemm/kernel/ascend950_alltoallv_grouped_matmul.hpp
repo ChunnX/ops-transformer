@@ -350,7 +350,7 @@ public:
 #ifdef ENABLE_TIMER
             timer.Tok<Overwrite>(AscendTimer::AIC);
 #endif
-            if (commIdx < commLoops - WORKSPACE_STAGES && commLoops >= WORKSPACE_STAGES) {
+            if (commLoops >= WORKSPACE_STAGES && commIdx < commLoops - WORKSPACE_STAGES) {
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[stageIdx]);
             }
         }
