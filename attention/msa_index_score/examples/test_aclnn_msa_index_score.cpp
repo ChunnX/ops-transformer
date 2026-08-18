@@ -77,15 +77,9 @@ constexpr int64_t kInitBlocks = 0;
 constexpr int64_t kLocalBlocks = 1;
 constexpr int64_t kAttenMaskSize = 2048;
 
-int64_t CeilDivI64(int64_t a, int64_t b)
-{
-    return (a + b - 1) / b;
-}
+int64_t CeilDivI64(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
-int64_t RoundUpI64(int64_t a, int64_t b)
-{
-    return CeilDivI64(a, b) * b;
-}
+int64_t RoundUpI64(int64_t a, int64_t b) { return CeilDivI64(a, b) * b; }
 
 // 简单可复现的伪随机源，取值落在 [-1, 1)。
 float PseudoRandom(uint32_t seed)
@@ -162,10 +156,9 @@ private:
 
 /// CPU 参考：score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask
 void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen,
-                   const std::vector<int32_t> &actualSeqKlen, const std::vector<int32_t> &blockTable,
-                   int64_t maxBlocks, int64_t scoreStride, int64_t totalQ, const std::vector<float> &queryF,
-                   const std::vector<float> &keyF, const std::vector<float> &deqScale,
-                   std::vector<float> &golden)
+                   const std::vector<int32_t> &actualSeqKlen, const std::vector<int32_t> &blockTable, int64_t maxBlocks,
+                   int64_t scoreStride, int64_t totalQ, const std::vector<float> &queryF,
+                   const std::vector<float> &keyF, const std::vector<float> &deqScale, std::vector<float> &golden)
 {
     const int64_t batch = static_cast<int64_t>(tc.qLen.size());
     golden.assign(static_cast<size_t>(tc.numQHeads * totalQ * scoreStride), kNegInf);
@@ -212,7 +205,9 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen
             }
             for (int64_t h = 0; h < tc.numQHeads; ++h) {
                 for (int64_t blk = 0; blk < numBlocks; ++blk) {
-                    const int32_t pageOrTok = (tc.keyLayout == KeyLayout::TND) ? (cuK + static_cast<int32_t>(blk * BLOCK_SIZE)) : blockTable[b * maxBlocks + blk];
+                    const int32_t pageOrTok = (tc.keyLayout == KeyLayout::TND) ?
+                                                  (cuK + static_cast<int32_t>(blk * BLOCK_SIZE)) :
+                                                  blockTable[b * maxBlocks + blk];
                     float best = 0.0F;
                     bool any = false;
                     for (int64_t n = 0; n < BLOCK_SIZE; ++n) {
@@ -262,15 +257,13 @@ void PrintVec(const char *tag, const float *data, int64_t n)
 
 /// 小尺寸用例的 host 侧逐步拆解：Q/K -> DOT/DEQUANT -> MASK -> MAX。
 void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen,
-                        const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride,
-                        int64_t totalQ, const std::vector<float> &queryF, const std::vector<float> &keyF,
+                        const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride, int64_t totalQ,
+                        const std::vector<float> &queryF, const std::vector<float> &keyF,
                         const std::vector<float> &deqScale, const std::vector<float> &actual)
 {
     (void)printf("\n======== HOST TRACE: %s (int8=%d) ========\n", tc.name, tc.useInt8Key ? 1 : 0);
-    (void)printf(
-        "shape: Hq=%ld D=%ld qLen=%d kvLen=%d startLoc=%d blockSize=%ld maxBlocks=%ld scoreStride=%ld\n",
-        tc.numQHeads, tc.headDim, tc.qLen[0], tc.kvLen[0], tc.startLoc[0], BLOCK_SIZE, maxBlocks,
-        scoreStride);
+    (void)printf("shape: Hq=%ld D=%ld qLen=%d kvLen=%d startLoc=%d blockSize=%ld maxBlocks=%ld scoreStride=%ld\n",
+                 tc.numQHeads, tc.headDim, tc.qLen[0], tc.kvLen[0], tc.startLoc[0], BLOCK_SIZE, maxBlocks, scoreStride);
     const int32_t page = blockTable[0];
     for (int64_t t = 0; t < tc.qLen[0]; ++t) {
         for (int64_t h = 0; h < tc.numQHeads; ++h) {
@@ -293,15 +286,14 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSe
             bool any = false;
             for (int64_t n = 0; n < visibleKeyEnd + 2 && n < BLOCK_SIZE; ++n) {
                 const float *k = &keyF[static_cast<size_t>((page * BLOCK_SIZE + n) * tc.headDim)];
-                const float ds =
-                    tc.useInt8Key ? deqScale[static_cast<size_t>(page) * BLOCK_SIZE + n] : 1.0F;
+                const float ds = tc.useInt8Key ? deqScale[static_cast<size_t>(page) * BLOCK_SIZE + n] : 1.0F;
                 float acc = 0.0F;
                 for (int64_t d = 0; d < tc.headDim; ++d) {
                     acc += q[d] * (k[d] * ds);
                 }
                 const bool visible = (n < visibleKeyEnd);
-                (void)printf("    S[%ld]=%.6g deqScale=%.6g %s\n", n, static_cast<double>(acc),
-                             static_cast<double>(ds), visible ? "KEEP" : "MASK");
+                (void)printf("    S[%ld]=%.6g deqScale=%.6g %s\n", n, static_cast<double>(acc), static_cast<double>(ds),
+                             visible ? "KEEP" : "MASK");
                 if (visible && (!any || acc > best)) {
                     best = acc;
                     any = true;
@@ -361,8 +353,8 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
     }
 
     const bool pass = (badCount == 0) && (infBad == 0);
-    (void)printf("  [%s] valid=%zu mismatch=%zu fill_mismatch=%zu max_abs_diff=%.6g -> %s\n", name.c_str(),
-                 total, badCount, infBad, static_cast<double>(maxAbsDiff), pass ? "PASS" : "FAIL");
+    (void)printf("  [%s] valid=%zu mismatch=%zu fill_mismatch=%zu max_abs_diff=%.6g -> %s\n", name.c_str(), total,
+                 badCount, infBad, static_cast<double>(maxAbsDiff), pass ? "PASS" : "FAIL");
     if (!pass) {
         (void)printf("    first mismatch at %zu: actual=%g golden=%g\n", firstBad,
                      static_cast<double>(actual[firstBad]), static_cast<double>(golden[firstBad]));
@@ -424,8 +416,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     for (size_t i = 0; i < keyF.size(); ++i) {
         if (tc.useInt8Key) {
             // int8 量化值：落在 [-64, 63]，golden 用同一整数值的 fp32。
-            const int8_t qv = static_cast<int8_t>(
-                static_cast<int>(PseudoRandom(static_cast<uint32_t>(i) + 999983U) * 64.0F));
+            const int8_t qv =
+                static_cast<int8_t>(static_cast<int>(PseudoRandom(static_cast<uint32_t>(i) + 999983U) * 64.0F));
             keyF[i] = static_cast<float>(qv);
         } else {
             const float v = PseudoRandom(static_cast<uint32_t>(i) + 999983U) * 0.5F;
@@ -463,7 +455,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     }
     const std::vector<int64_t> scoreShape = {tc.numQHeads, totalQ, scoreStride};
 
-    aclTensor *queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
+    aclTensor *queryT =
+        tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
     aclTensor *keyT = nullptr;
     if (tc.useInt8Key) {
         keyT = buf.Create(keyI8, keyShape, ACL_INT8);
@@ -506,16 +499,15 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT, actualSeqKlenT,
-                                                 startLocT, const_cast<char *>(LayoutKeyName(tc.keyLayout)),
-                                                 tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize,
-                                                 &executor);
+    int ret =
+        aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT,
+                                           actualSeqKlenT, startLocT, const_cast<char *>(LayoutKeyName(tc.keyLayout)),
+                                           tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
         (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);
         return false;
     }
-    if (workspaceSize > 0ULL &&
-        aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+    if (workspaceSize > 0ULL && aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
         (void)printf("  [%s] malloc workspace failed -> FAIL\n", tc.name);
         return false;
     }
@@ -528,15 +520,15 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     (void)aclrtSynchronizeStream(stream);
 
     std::vector<float> actual(scoreInit.size(), 0.0F);
-    (void)aclrtMemcpy(actual.data(), actual.size() * sizeof(float), scoreDev,
-                      actual.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    (void)aclrtMemcpy(actual.data(), actual.size() * sizeof(float), scoreDev, actual.size() * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     if (workspaceAddr != nullptr) {
         (void)aclrtFree(workspaceAddr);
     }
 
     std::vector<float> golden;
-    ComputeGolden(tc, actualSeqQlen, isTnd ? actualSeqKlenPrefix : tc.kvLen, blockTable, maxBlocks, scoreStride,
-                  totalQ, queryF, keyF, deqScale, golden);
+    ComputeGolden(tc, actualSeqQlen, isTnd ? actualSeqKlenPrefix : tc.kvLen, blockTable, maxBlocks, scoreStride, totalQ,
+                  queryF, keyF, deqScale, golden);
     if (std::strstr(tc.name, "debug-trace") != nullptr) {
         PrintTracePipeline(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
                            actual);
@@ -564,7 +556,15 @@ int main()
         {"L0-prefill-aligned", 8, 128, 8, {32}, {256}, {1}, false, false},
         {"L1-prefill-unaligned", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false},
         {"L1-prefill-multi-mtile", 8, 128, 16, {64, 48}, {700, 520}, {4, 3}, false, false},
-        {"L1-decode-lq1", 8, 128, 16, {1, 1, 1, 1, 1, 1}, {900, 512, 128, 129, 1, 4096}, {7, 3, 0, 1, 0, 31}, false, false},
+        {"L1-decode-lq1",
+         8,
+         128,
+         16,
+         {1, 1, 1, 1, 1, 1},
+         {900, 512, 128, 129, 1, 4096},
+         {7, 3, 0, 1, 0, 31},
+         false,
+         false},
         {"L1-decode-speculative", 8, 128, 16, {4, 2}, {1024, 260}, {7, 2}, false, false},
         {"L1-long-seq-multi-stile", 8, 128, 40, {8}, {4096}, {31}, false, false},
         {"L1-bf16", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, true, false},
@@ -586,8 +586,7 @@ int main()
             ++passed;
         }
     }
-    (void)printf("%s: %zu/%zu cases passed\n", passed == cases.size() ? "[PASS]" : "[FAIL]", passed,
-                 cases.size());
+    (void)printf("%s: %zu/%zu cases passed\n", passed == cases.size() ? "[PASS]" : "[FAIL]", passed, cases.size());
 
     (void)aclrtDestroyStream(stream);
     (void)aclrtResetDevice(deviceId);

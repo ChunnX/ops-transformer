@@ -84,11 +84,10 @@ public:
 
     __aicore__ inline MsaSegRowMaxEpilogue() {}
 
-    __aicore__ inline void Init(Catlass::Arch::Resource<ArchTag> &resource, uint32_t numQHeads,
-                                uint32_t strideOutHead, uint32_t strideOutToken, uint32_t maxBlocksPerBatch,
-                                uint32_t strideScalePage, uint32_t strideScaleHead, bool isQuant,
-                                uint32_t keyLayout, uint32_t totalK, const AscendC::GlobalTensor<float> &gScore,
-                                const AscendC::GlobalTensor<float> &gScale,
+    __aicore__ inline void Init(Catlass::Arch::Resource<ArchTag> &resource, uint32_t numQHeads, uint32_t strideOutHead,
+                                uint32_t strideOutToken, uint32_t maxBlocksPerBatch, uint32_t strideScalePage,
+                                uint32_t strideScaleHead, bool isQuant, uint32_t keyLayout, uint32_t totalK,
+                                const AscendC::GlobalTensor<float> &gScore, const AscendC::GlobalTensor<float> &gScale,
                                 const AscendC::GlobalTensor<int32_t> &gBlockTable)
     {
         numQHeads_ = numQHeads;
@@ -111,8 +110,7 @@ public:
 
         ubS_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_S);
         ubS16Ping_[0] = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16);
-        ubS16Ping_[1] =
-            resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16 + UB_SIZE_S16);
+        ubS16Ping_[1] = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16 + UB_SIZE_S16);
         ubS16_ = ubS16Ping_[0];
         ubT64_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T64);
         ubT8_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T8);
@@ -153,8 +151,7 @@ public:
 
     /// 处理一个 S tile（MSA_BLOCKS_PER_STILE 个 sparse block）中属于本 subcore 的行。
     __aicore__ inline void ProcessSTile(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
-                                        uint32_t blkBase, uint32_t subIdx, uint32_t subBlockNum,
-                                        bool dumpDebug = false)
+                                        uint32_t blkBase, uint32_t subIdx, uint32_t subBlockNum, bool dumpDebug = false)
     {
         if (mSub_ == 0U) {
             return;
@@ -169,11 +166,10 @@ public:
 
 #if MSA_INDEX_SCORE_DEBUG
         if (dumpDebug) {
-            AscendC::printf(
-                "[MSA_DBG][AIV] ProcessSTile blkBase=%u subIdx=%u mOff=%u mSub=%u "
-                "fullEndBlk=%u visibleEndBlk=%u isQuant=%u\n",
-                blkBase, subIdx, mOff, mSub, task.fullEndBlk, task.visibleEndBlk,
-                static_cast<uint32_t>(isQuant_));
+            AscendC::printf("[MSA_DBG][AIV] ProcessSTile blkBase=%u subIdx=%u mOff=%u mSub=%u "
+                            "fullEndBlk=%u visibleEndBlk=%u isQuant=%u\n",
+                            blkBase, subIdx, mOff, mSub, task.fullEndBlk, task.visibleEndBlk,
+                            static_cast<uint32_t>(isQuant_));
         }
 #endif
 
@@ -200,8 +196,7 @@ public:
                 IssueS16(gS, rowOff, rows, stage);
                 if (hasPrev) {
                     WaitS16(prevStage);
-                    ProcessPass(gS, task, blkBase, prevRowOff, prevRows,
-                                dumpDebug && (prevRowOff == mOff), true);
+                    ProcessPass(gS, task, blkBase, prevRowOff, prevRows, dumpDebug && (prevRowOff == mOff), true);
                     ReleaseS16(prevStage);
                 }
                 hasPrev = true;
@@ -221,8 +216,8 @@ public:
 
 private:
     /// 非量化乒乓：把本 pass 的 S 搬进 ubS16Ping_[stage]，不阻塞 Vector。
-    __aicore__ inline void IssueS16(const AscendC::GlobalTensor<ElementS> &gS, uint32_t rowOff,
-                                    uint32_t rows, uint32_t stage)
+    __aicore__ inline void IssueS16(const AscendC::GlobalTensor<ElementS> &gS, uint32_t rowOff, uint32_t rows,
+                                    uint32_t stage)
     {
         if constexpr (IS_QUANT) {
             return;
@@ -231,12 +226,10 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evt);
             auto dst = ubS16Ping_[stage];
             if (rows < MSA_ROWS_PER_PASS) {
-                AscendC::Duplicate(dst, static_cast<half>(MSA_FILL_VALUE),
-                                   MSA_ROWS_PER_PASS * STILE_WIDTH);
+                AscendC::Duplicate(dst, static_cast<half>(MSA_FILL_VALUE), MSA_ROWS_PER_PASS * STILE_WIDTH);
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            AscendC::DataCopy(dst, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH],
-                              rows * STILE_WIDTH);
+            AscendC::DataCopy(dst, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evt);
         }
     }
@@ -254,17 +247,15 @@ private:
 
     /// 处理一个 pass（最多 MSA_ROWS_PER_PASS 行 × MSA_BLOCKS_PER_STILE 个 block）。
     /// sLoaded：非量化乒乓路径已把 S 搬进 ubS16_，跳过本函数内的 GM→UB。
-    __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
-                                       uint32_t blkBase, uint32_t rowOff, uint32_t rows, bool dumpDebug,
-                                       bool sLoaded = false)
+    __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task, uint32_t blkBase,
+                                       uint32_t rowOff, uint32_t rows, bool dumpDebug, bool sLoaded = false)
     {
         const bool allInvalid = (blkBase >= task.visibleEndBlk);
 
 #if MSA_INDEX_SCORE_DEBUG
         if (dumpDebug) {
-            AscendC::printf(
-                "[MSA_DBG][AIV] ProcessPass rowOff=%u rows=%u allInvalid=%u STILE_WIDTH=%u\n", rowOff,
-                rows, static_cast<uint32_t>(allInvalid), STILE_WIDTH);
+            AscendC::printf("[MSA_DBG][AIV] ProcessPass rowOff=%u rows=%u allInvalid=%u STILE_WIDTH=%u\n", rowOff, rows,
+                            static_cast<uint32_t>(allInvalid), STILE_WIDTH);
         }
 #endif
 
@@ -301,8 +292,7 @@ private:
 
 #if MSA_INDEX_SCORE_DEBUG
             if (dumpDebug) {
-                AscendC::printf(
-                    "[MSA_DBG][AIV] after DOT load S ub (row0, blk0 first %u fp32):\n", sDumpN);
+                AscendC::printf("[MSA_DBG][AIV] after DOT load S ub (row0, blk0 first %u fp32):\n", sDumpN);
                 MsaDumpUbSample(ubS_, MSA_DUMP_DESC_S_DOT, sDumpN);
                 AscendC::printf("[MSA_DBG][AIV] S_after_dot:");
                 MsaPrintUbFloats(ubS_, sDumpN);
@@ -323,10 +313,9 @@ private:
 
 #if MSA_INDEX_SCORE_DEBUG
             if (dumpDebug) {
-                AscendC::printf(
-                    "[MSA_DBG][AIV] after MASK S ub (row0, blk0 first %u fp32), "
-                    "maskRange=[fullEndBlk,visibleEndBlk)=[%u,%u):\n",
-                    sDumpN, task.fullEndBlk, task.visibleEndBlk);
+                AscendC::printf("[MSA_DBG][AIV] after MASK S ub (row0, blk0 first %u fp32), "
+                                "maskRange=[fullEndBlk,visibleEndBlk)=[%u,%u):\n",
+                                sDumpN, task.fullEndBlk, task.visibleEndBlk);
                 MsaDumpUbSample(ubS_, MSA_DUMP_DESC_S_MASK, sDumpN);
                 AscendC::printf("[MSA_DBG][AIV] S_after_mask:");
                 MsaPrintUbFloats(ubS_, sDumpN);
@@ -344,9 +333,8 @@ private:
                     if (validCount > static_cast<int32_t>(MSA_BLOCK_SIZE)) {
                         validCount = static_cast<int32_t>(MSA_BLOCK_SIZE);
                     }
-                    AscendC::printf(
-                        "[MSA_DBG][AIV] row r=%u flat=%u tokenOff=%u visibleEnd=%d validCount=%d\n", r,
-                        rowInReq, tOff, visibleKeyEnd, validCount);
+                    AscendC::printf("[MSA_DBG][AIV] row r=%u flat=%u tokenOff=%u visibleEnd=%d validCount=%d\n", r,
+                                    rowInReq, tOff, visibleKeyEnd, validCount);
                     if (validCount < static_cast<int32_t>(MSA_BLOCK_SIZE) && validCount >= 0) {
                         const uint32_t base = (r * MSA_BLOCKS_PER_STILE) * MSA_BLOCK_SIZE;
                         const uint32_t lo = (validCount >= 2) ? static_cast<uint32_t>(validCount - 2) : 0U;
@@ -370,9 +358,8 @@ private:
 
 #if MSA_INDEX_SCORE_DEBUG
             if (dumpDebug) {
-                AscendC::printf(
-                    "[MSA_DBG][AIV] after MAX rowmax (rows[0:%u) x %u blocks):\n", rows,
-                    MSA_BLOCKS_PER_STILE);
+                AscendC::printf("[MSA_DBG][AIV] after MAX rowmax (rows[0:%u) x %u blocks):\n", rows,
+                                MSA_BLOCKS_PER_STILE);
                 MsaDumpUbSample(ubRowMax_, MSA_DUMP_DESC_SCORE_MAX, rows * MSA_BLOCKS_PER_STILE);
                 for (uint32_t r = 0; r < rows && r < 8U; ++r) {
                     AscendC::printf("[MSA_DBG][AIV] score_after_max[r=%u]:", r);
@@ -399,10 +386,9 @@ private:
 
 #if MSA_INDEX_SCORE_DEBUG
         if (dumpDebug) {
-            AscendC::printf(
-                "[MSA_DBG][AIV] final score before store (after fillInvalid+localMask), "
-                "rows[0:%u) x %u blocks:\n",
-                rows, MSA_BLOCKS_PER_STILE);
+            AscendC::printf("[MSA_DBG][AIV] final score before store (after fillInvalid+localMask), "
+                            "rows[0:%u) x %u blocks:\n",
+                            rows, MSA_BLOCKS_PER_STILE);
             MsaDumpUbSample(ubRowMax_, MSA_DUMP_DESC_SCORE_FINAL, rows * MSA_BLOCKS_PER_STILE);
             for (uint32_t r = 0; r < rows && r < 8U; ++r) {
                 AscendC::printf("[MSA_DBG][AIV] score_final[r=%u]:", r);
@@ -449,8 +435,7 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         uint32_t tOff = rowInReqBase_ / numQHeads_;
         uint32_t h = rowInReqBase_ - tOff * numQHeads_;
-        uint64_t tokenBase =
-            static_cast<uint64_t>(tokenBase0_ + tOff) * strideOutToken_ + stageBlkBase_;
+        uint64_t tokenBase = static_cast<uint64_t>(tokenBase0_ + tOff) * strideOutToken_ + stageBlkBase_;
         for (uint32_t r = 0; r < mSub_; ++r) {
             AscendC::DataCopy(gScore_[tokenBase + static_cast<uint64_t>(h) * strideOutHead_],
                               ubStage_[r * MSA_STAGE_BLOCKS], count);
@@ -483,8 +468,8 @@ private:
         if (jLo >= MSA_BLOCKS_PER_STILE) {
             return;
         }
-        const uint32_t jHi = MsaMinU32(MSA_BLOCKS_PER_STILE,
-                                       (task.visibleEndBlk > blkBase) ? (task.visibleEndBlk - blkBase) : 0);
+        const uint32_t jHi =
+            MsaMinU32(MSA_BLOCKS_PER_STILE, (task.visibleEndBlk > blkBase) ? (task.visibleEndBlk - blkBase) : 0);
 
         bool touched = false;
         for (uint32_t r = 0; r < rows; ++r) {
@@ -501,8 +486,7 @@ private:
                     continue;
                 }
                 if constexpr (IS_QUANT) {
-                    FillBlockTail((r * MSA_BLOCKS_PER_STILE + j) * MSA_BLOCK_SIZE,
-                                  static_cast<uint32_t>(validCount));
+                    FillBlockTail((r * MSA_BLOCKS_PER_STILE + j) * MSA_BLOCK_SIZE, static_cast<uint32_t>(validCount));
                 } else {
                     // 非量化归约在 fp16 域起步，mask 必须先落在 ubS16_ 上。
                     FillBlockTailFp16((r * MSA_BLOCKS_PER_STILE + j) * MSA_BLOCK_SIZE,
@@ -524,8 +508,9 @@ private:
             return;
         }
         const int32_t qBlock = task.startLoc;
-        const int32_t localStart =
-            (qBlock + 1 > static_cast<int32_t>(task.localBlocks)) ? (qBlock + 1 - static_cast<int32_t>(task.localBlocks)) : 0;
+        const int32_t localStart = (qBlock + 1 > static_cast<int32_t>(task.localBlocks)) ?
+                                       (qBlock + 1 - static_cast<int32_t>(task.localBlocks)) :
+                                       0;
 
         uint64_t initBits = 0;
         uint64_t localBits = 0;
@@ -605,8 +590,7 @@ private:
             hi = ~0ULL << (validCount - MSA_HALF_PER_MASK_WORD);
         }
         uint64_t mask[2] = {lo, hi};
-        AscendC::Duplicate<half>(ubS16_[base], FILL_VALUE_H, mask, 1, 1,
-                                 MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
+        AscendC::Duplicate<half>(ubS16_[base], FILL_VALUE_H, mask, 1, 1, MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
     }
 
     /// int8 路径：S 已是 Q · cast(K_int8)，再按列乘 scale[page,0,n] 完成反量化。
