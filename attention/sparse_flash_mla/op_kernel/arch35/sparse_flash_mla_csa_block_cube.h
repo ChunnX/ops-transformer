@@ -405,7 +405,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::GM, SyncType::CROS
             CrossCoreWaitFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
         }
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
     }
     SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
     l1KLoadBufId = (l1KLoadBufId + 1) % l1KBufNum;
