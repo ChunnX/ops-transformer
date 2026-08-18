@@ -921,6 +921,7 @@ void MlaPrologTiling::ConvertOptionalParams(gert::TilingContext &context, MlaPro
 
 MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context)
 {
+    std::printf("*********TilingMlaProlog start********\n");
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR(V1_OP_NAME, "Context is nullptr."),
                 return ge::GRAPH_FAILED);
 

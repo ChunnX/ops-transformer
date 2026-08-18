@@ -230,6 +230,8 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     //     return ge::GRAPH_FAILED;
     // };
 
+    std::printf("*********op_api 233********\n");
+
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
     aclDataType queryNormDataType =
