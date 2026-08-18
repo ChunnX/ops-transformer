@@ -99,13 +99,13 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-// 这里的单buffer条件必须与InitMMResBuf中bmm2ResSingleBuffer的取值完全一致，
+// 这里的单buffer条件必须与InitMMResBuf中预留的字节数完全一致，
 // 策略切几块和BufferManager预留几块不匹配时，多出来的那块会和bmm1的区域重叠
-template <bool useDn, bool isFp8, bool hasAtten>
+template <bool useDn, bool isFp8>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<((useDn && isFp8) || hasAtten),
-                                    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
+    using Type =
+        std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                           BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
 
 TEMPLATES_DEF
