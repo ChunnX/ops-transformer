@@ -302,8 +302,8 @@ private:
 };
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Params const &params)
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(
+    Params const &params)
 {
     if constexpr (g_coreType == AscendC::AIC) {
         return;
@@ -328,8 +328,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
 
     // 重构UB内存
     // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS =
-        IsInterleaved_ ? MAX_SINGLE_MN / ACTIVATION_N_HALF : MAX_SINGLE_MN;
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / ACTIVATION_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -347,14 +346,12 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
         constexpr uint32_t vecinEnd = MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U;
-        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd,
-                                                MAX_TILE_M * INT32_PER_256B);
+        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd, MAX_TILE_M * INT32_PER_256B);
     }
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
     const BlockCoord &baseOffset)
 {
     if constexpr (g_coreType == AscendC::AIV) {
@@ -368,9 +365,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     const ProblemShape &problemShape)
 {
     n_ = Get<N_VALUE>(problemShape); // n/2
-    scaleN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(n_),
-                                 static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-              MXFP_MULTI_BASE_SIZE;
+    scaleN_ =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -400,10 +396,9 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopySc
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN =
-        Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
-                           static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
+    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
+                                          static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.blockLen = blockScaleN;  // 8
@@ -627,8 +622,8 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
  * 注意: 宏在函数内展开，所用寄存器须在调用点函数作用域内声明；
  *       宏会覆盖 sqrReg/polyReg/tmpReg/expReg/absReg/cmpMask，结果写入 result
  */
-#define COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, \
-                             polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask) \
+#define COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, polyReg, tmpReg, expReg, c1Reg, c2Reg, \
+                             cmpMask) \
     do { \
         AscendC::MicroAPI::Mul(sqrReg, zReg, zReg, msk); \
         AscendC::MicroAPI::Muls(polyReg, sqrReg, 0.0157396831f, msk); \
@@ -644,8 +639,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
         AscendC::MicroAPI::Muls(tmpReg, tmpReg, 2.0f, msk); \
         AscendC::MicroAPI::Adds(tmpReg, tmpReg, -1.0f, msk); \
         AscendC::MicroAPI::Abs(absReg, zReg, msk); \
-        AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(cmpMask, absReg, \
-                                                                      0.60000002384185791016f, msk); \
+        AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(cmpMask, absReg, 0.60000002384185791016f, msk); \
         AscendC::MicroAPI::Select(result, tmpReg, polyReg, cmpMask); \
     } while (0)
 
@@ -656,8 +650,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
  */
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 template <bool IsInterleaved>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSwiGLU(
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSwiGLU(
     const ActivationContext<DataTypeIn> &ctx)
 {
     const float scalarOne = 1.0f;
@@ -776,8 +769,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
  */
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 template <ActSubMode ActSub, bool IsInterleaved>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSiTU(
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSiTU(
     const ActivationContext<DataTypeIn> &ctx)
 {
     // tanh 多项式近似的奇次项系数（8 阶 Padé 近似，仅取奇次项）
@@ -858,8 +850,8 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
                 // gate路: z = gate / beta
                 AscendC::MicroAPI::Muls(zReg, vregX1F, ctx.invBeta, mask);
                 // tanh(gate/beta) — 两段式, 结果存 sigmoidReg
-                COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg,
-                                     c1Reg, c2Reg, cmpMaskReg);
+                COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg, c1Reg,
+                                     c2Reg, cmpMaskReg);
                 // beta * sigmoid(gate) = beta / (exp(-gate)+1)
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -gate
                 AscendC::MicroAPI::Exp(expReg, negReg, mask);                 // exp(-gate)
@@ -968,12 +960,15 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     // ---- 标量分块计算（原样保留）----
     uint32_t nSrcUbAligned;
     if constexpr (IsInterleavedSrc) {
-        // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize
+        // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize。
+        // 注意：2*nSize==实际行距(TileN) 仅在满 tile 成立；交织调度宽度为完整 hiddenDim 且
+        // tiling 已约束 hiddenDim%256==0，故交织路径不会出现尾 tile。若未来放宽该约束，
+        // 此处须与非交织分支一样改用 TileN，否则尾 tile 整行错位。
         nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
     } else {
-        // 非interleaved源布局为两块独立UB，按原master逻辑只需要对齐单个nSize
-        nSrcUbAligned = Ops::Base::CeilAlign(static_cast<uint32_t>(nSize),
-                                             static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn)));
+        // 非interleaved源是两块独立 UB tile，生产端按固定行距 TileN 写入（MakeLayoutC(tileM, L1_TILE_N)）；
+        // 尾块 nSize < TileN 时行距不随 nSize 收缩，否则第 1 行起整行错位。
+        nSrcUbAligned = TileN;
     }
     uint32_t nDstUbAligned =
         Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
@@ -1050,7 +1045,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2); // 128
     uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;         // 8
     ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);                          // 获取最大值
-    ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);       // 计算scale和halfScale
+    ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum); // 计算scale和halfScale
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb,
@@ -1096,16 +1091,16 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
                                                             l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr,
                                                             mSize, singleN_, mLoc);
         } else {
-            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                        ActMode::SITU, ActSubMode::DEFAULT>(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-                l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
+            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_, ActMode::SITU,
+                                        ActSubMode::DEFAULT>(quantOutputInUbAddr, quantScaleOutputInUbAddr,
+                                                             l0cOutUbBase, l0cOutUbSecondAddr, gluResAddr, maxExpAddr,
+                                                             halfScaleAddr, mSize, singleN_, mLoc);
         }
     } else {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
+        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_, ActMode::SWIGLU,
+                                    ActSubMode::DEFAULT>(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
+                                                         l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr,
+                                                         mSize, singleN_, mLoc);
     }
 }
 
