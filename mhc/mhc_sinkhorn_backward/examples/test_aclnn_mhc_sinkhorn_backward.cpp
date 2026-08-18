@@ -16,6 +16,8 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include <cstdlib>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mhc_sinkhorn_backward.h"
 
@@ -43,6 +45,98 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 // 向上对齐到align的倍数
 int64_t CeilAlign(int64_t value, int64_t align) {
   return (value + align - 1) / align * align;
+}
+
+// MhcSinkhornBackward 的 CPU 参考实现（独立于 kernel 实现，依据文档数学公式）。
+// norm/sum 在 GM 中的布局与正向算子保持一致：分核块优先，
+// norm 为 [blockIdx][iter][row][matrix_local][align]，列和为 [blockIdx][iter][matrix_local][align]，
+// 行和为 [blockIdx][iter][row][matrix_local]。此处仅覆盖单 loop 场景（适用于 T <= coreCount）。
+void MhcSinkhornBackwardRef(const std::vector<float> &grad_y, const std::vector<float> &norm,
+                            const std::vector<float> &sum, int64_t T, int64_t N, int64_t num_iters, int64_t n_align,
+                            std::vector<float> &grad_input) {
+  const int64_t coreCount = 64;
+  int64_t coreTSize = (T + coreCount - 1) / coreCount;
+  if (coreTSize < 1) {
+    coreTSize = 1;
+  }
+  auto NormAt = [&](int64_t k, int64_t g, int64_t i, int64_t j) -> double {
+    int64_t b = g / coreTSize;
+    int64_t t = g % coreTSize;
+    int64_t idx = b * (2 * num_iters * coreTSize * N * n_align) + k * (coreTSize * N * n_align) +
+                  i * (coreTSize * n_align) + t * n_align + j;
+    return norm[idx];
+  };
+  auto SumColAt = [&](int64_t k, int64_t g, int64_t j) -> double {
+    int64_t b = g / coreTSize;
+    int64_t t = g % coreTSize;
+    int64_t idx = b * (2 * num_iters * coreTSize * n_align) + k * (coreTSize * n_align) + t * n_align + j;
+    return sum[idx];
+  };
+  auto SumRowAt = [&](int64_t k, int64_t g, int64_t i) -> double {
+    int64_t b = g / coreTSize;
+    int64_t t = g % coreTSize;
+    int64_t idx = b * (2 * num_iters * coreTSize * n_align) + k * (coreTSize * n_align) + i * coreTSize + t;
+    return sum[idx];
+  };
+  std::vector<double> grad(T * N * N);
+  for (int64_t i = 0; i < T * N * N; ++i) {
+    grad[i] = grad_y[i];
+  }
+  for (int64_t it = num_iters - 1; it >= 1; --it) {
+    for (int64_t t = 0; t < T; ++t) {
+      std::vector<double> dot(N, 0.0);
+      for (int64_t i = 0; i < N; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          dot[j] += grad[t * N * N + i * N + j] * NormAt(2 * it + 1, t, i, j);
+        }
+      }
+      for (int64_t i = 0; i < N; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          grad[t * N * N + i * N + j] = (grad[t * N * N + i * N + j] - dot[j]) / SumColAt(2 * it + 1, t, j);
+        }
+      }
+    }
+    for (int64_t t = 0; t < T; ++t) {
+      std::vector<double> dot(N, 0.0);
+      for (int64_t i = 0; i < N; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          dot[i] += grad[t * N * N + i * N + j] * NormAt(2 * it, t, i, j);
+        }
+      }
+      for (int64_t i = 0; i < N; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          grad[t * N * N + i * N + j] = (grad[t * N * N + i * N + j] - dot[i]) / SumRowAt(2 * it, t, i);
+        }
+      }
+    }
+  }
+  for (int64_t t = 0; t < T; ++t) {
+    std::vector<double> dot(N, 0.0);
+    for (int64_t i = 0; i < N; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        dot[j] += grad[t * N * N + i * N + j] * NormAt(1, t, i, j);
+      }
+    }
+    for (int64_t i = 0; i < N; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        grad[t * N * N + i * N + j] = (grad[t * N * N + i * N + j] - dot[j]) / SumColAt(1, t, j);
+      }
+    }
+  }
+  grad_input.resize(T * N * N);
+  for (int64_t t = 0; t < T; ++t) {
+    std::vector<double> dot(N, 0.0);
+    for (int64_t i = 0; i < N; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        dot[i] += grad[t * N * N + i * N + j] * NormAt(0, t, i, j);
+      }
+    }
+    for (int64_t i = 0; i < N; ++i) {
+      for (int64_t j = 0; j < N; ++j) {
+        grad_input[t * N * N + i * N + j] = (grad[t * N * N + i * N + j] - dot[i]) * NormAt(0, t, i, j);
+      }
+    }
+  }
 }
 
 // 初始化AscendCL环境（Device/Context/Stream）
@@ -155,7 +249,7 @@ int CreateOutputTensor(
   return 0;
 }
 
-int main() {
+int main(int argc, char **argv) {
   // ========== 1. 初始化环境 ==========
   int32_t device_id = 0;  // 根据实际Device ID调整
   aclrtContext context = nullptr;
@@ -174,6 +268,11 @@ int main() {
   int64_t T = 128;       // total length
   int64_t N = 4;         // n size (N x N矩阵)
   int64_t num_iters = 20; // Sinkhorn迭代次数
+  if (argc >= 4) {
+    T = std::atoll(argv[1]);
+    N = std::atoll(argv[2]);
+    num_iters = std::atoll(argv[3]);
+  }
   
   // 计算对齐后的N大小（对齐到8）
   int64_t align_unit = 8;
@@ -282,6 +381,29 @@ int main() {
             return -1);
 
   LOG_PRINT("MhcSinkhornBackward compute success!\n");
+
+  // ========== 7.5 精度校验（CPU 参考） ==========
+  std::vector<float> grad_input_host(grad_y_size);
+  ret = aclrtMemcpy(grad_input_host.data(), grad_input_host.size() * sizeof(float), grad_input_device_addr,
+                    grad_input_host.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy output failed, error: %d\n", ret); return -1);
+
+  std::vector<float> grad_input_ref;
+  MhcSinkhornBackwardRef(grad_y_host_data, norm_host_data, sum_host_data, T, N, num_iters, n_align_size,
+                         grad_input_ref);
+
+  double max_abs_err = 0.0;
+  double max_rel_err = 0.0;
+  for (int64_t i = 0; i < grad_y_size; ++i) {
+    double abs_err = std::fabs(static_cast<double>(grad_input_host[i]) - static_cast<double>(grad_input_ref[i]));
+    double denom = std::fabs(static_cast<double>(grad_input_ref[i]));
+    double rel_err = denom > 1e-6 ? abs_err / denom : abs_err;
+    max_abs_err = std::max(max_abs_err, abs_err);
+    max_rel_err = std::max(max_rel_err, rel_err);
+  }
+  LOG_PRINT("Precision check: max_abs_err=%g max_rel_err=%g\n", max_abs_err, max_rel_err);
+  bool pass = (max_rel_err < 1e-3);
+  LOG_PRINT("Precision check %s\n", pass ? "PASS" : "FAIL");
 
   // ========== 8. 释放资源 ==========
   // 销毁Tensor
