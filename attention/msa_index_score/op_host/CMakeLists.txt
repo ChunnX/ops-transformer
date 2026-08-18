@@ -18,6 +18,9 @@ endif()
 
 # MsaIndexScore 的 device 侧实现直接依赖 3rdparty/catlass 的头文件模板库。
 # Catlass 为 header-only，只需把 include 根目录注入 kernel 编译选项即可。
+# CATLASS >= 1.5.0 按架构拆分 TileCopy/CopyGmToL1 等实现：A2/A3 必须定义 CATLASS_ARCH=2201，
+# 否则旧 notla API（TileCopy<ArchTag,A,B,C,Bias>）不会被实例化。
+# v1.3.1-notla 头文件不读取该宏（仅 include guard 含 CATLASS_ARCH_ 前缀），定义后为 no-op。
 #
 # MSA_INDEX_SCORE_DEBUG=1 打开 device 侧 printf/DumpTensor。
 # 大 shape 对齐测试必须关闭：DumpTensor/printf 会导致 device 子进程超时（E39007）。
@@ -27,6 +30,7 @@ add_ops_compile_options(
             -Wno-deprecated-declarations
             -fpermissive
     OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+    OPTIONS -DCATLASS_ARCH=2201
     OPTIONS -DMSA_INDEX_SCORE_DEBUG=0
 )
 
