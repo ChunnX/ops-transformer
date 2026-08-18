@@ -61,6 +61,7 @@ from dataclasses import dataclass
 import os
 
 import pypto_pro.language as pl
+from pypto_pro.runtime.tilingkey import TilingKeyField
 
 # `vf` 由 parser 按语法识别(_call_parser.py: attrs[0] == "vf")，无需 import
 
@@ -210,49 +211,64 @@ UB_LSE_1   = 0x3C400
 
 
 @dataclass
-class FagTiling:
+class FlashAttnGradTilingData:
+    """对齐 op_host/flash_attn_grad_tiling.h 的 TILING_DATA_FIELD_DEF 顺序。
+
+    字段名与顺序必须与 host 侧逐一对应 —— codegen 出的
+    FlashAttnGradTilingData_tiling.h 是按这里的声明顺序排布内存的。
+    """
     b: int
-    n: int
     s1: int
     s2: int
+    n1: int
+    n2: int
     d: int
-    scale_value: float
-    # 参与分核的物理核数。必须由 host 传入而非用 get_block_num() 推导：
-    # AIC/AIV 两侧的 block 计数口径不同(AIV 按 vector 子核计数)，
-    # 两侧算出的 numBlocks 一旦不一致，set/wait 就无法配对。
-    core_num: int
-    # 是否启用 swizzle 分核(1/0)，由 host 的 decide_swizzle() 按输入 shape
-    # 判定后传入，kernel 在执行期动态取用。对应 ASC 的 tiling 字段
-    # isSplitByBlockIdx(tiling_data_regbase.h:117)。
-    enable_swizzle: int = 1
+    dv: int
+    scaleValue: float
+
+
+# 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
+class FlashAttnGradTilingKey:
+    template = TilingKeyField(bits=2, values=[0, 1, 2, 3])
+    layout = TilingKeyField(bits=1, values=[0, 1])
+    has_atten_mask = TilingKeyField(bits=1, values=[0, 1])
 
 
 
 # ==================================================================
 #  SetConstInfo —— 对应 kernel_base.h::SetConstInfo
 # ==================================================================
-def set_const_info(tiling):
+def set_const_info(tiling, coreNum, enableSwizzle):
+    """由 tiling + 运行期核数推导常量。
+
+    coreNum 不在 tiling 里(新接口的 TilingData 没有该字段)，改由调用方从
+    pl.get_block_num() 取。已实测 cube/vector 两侧该 API 都返回物理核数
+    (36)，口径一致，故 CV 两侧算出的 numBlocks 必然相同 —— 这是 set/wait
+    能配对的前提。
+
+    enableSwizzle 同理由 host 判据算好后经 tilingkey/常量传入。
+    """
     s1Outer = (tiling.s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2Outer = (tiling.s2 + CUBE_BASEN - 1) // CUBE_BASEN
     return pl.struct(
         "FagConstInfo",
         bSize=tiling.b,
-        n2Size=tiling.n,
+        n2Size=tiling.n2,
         s1Size=tiling.s1,
         s2Size=tiling.s2,
         dSize=tiling.d,
-        scaleValue=tiling.scale_value,
+        scaleValue=tiling.scaleValue,
         s1Outer=s1Outer,
         s2Outer=s2Outer,
         s1CvTail=tiling.s1 - (s1Outer - 1) * CUBE_BASEM,
         s2CvTail=tiling.s2 - (s2Outer - 1) * CUBE_BASEN,
         # BSND: [B,S,N,D] 的行距，mm2Ka/mm2Kb 即 AscendC 同名字段
-        n2D=tiling.n * tiling.d,
+        n2D=tiling.n2 * tiling.d,
         s1oS2o=s1Outer * s2Outer,
-        n2GS1oS2o=tiling.n * s1Outer * s2Outer,
-        totalBlockNum=tiling.b * tiling.n * s1Outer * s2Outer,
-        coreNum=tiling.core_num,
-        enableSwizzle=tiling.enable_swizzle,
+        n2GS1oS2o=tiling.n2 * s1Outer * s2Outer,
+        totalBlockNum=tiling.b * tiling.n2 * s1Outer * s2Outer,
+        coreNum=coreNum,
+        enableSwizzle=enableSwizzle,
     )
 
 
@@ -319,6 +335,12 @@ def make_run_infos():
 #   32   10017 (1.46x)    6650 (0.97x)     swizzle
 #   64   21993 (1.54x)   13434 (0.94x)     swizzle
 L2_CACHE_BYTES = 128 * 1024 * 1024
+
+# kernel 侧 swizzle 开关。sel() 让它成为运行期可选的算术选择，但取值本身
+# 是模块级常量：AOT 编译一次固化。默认 0(线性切分)，即 N 较小时的最优路径；
+# 大 N 场景把它置 1(或由 host 经 tilingkey 扩展一个 bit 来区分)。
+# host 侧判据见 decide_swizzle()。
+ENABLE_SWIZZLE_DEFAULT = int(os.environ.get("FAG_SWIZZLE", "0"))
 
 
 
@@ -1056,44 +1078,76 @@ def flush_dkv(runInfo, tensor_dk_ws, tensor_dv_ws, dk_at, dv_at):
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
 
 
-@pl.jit(auto_mutex=True)
-def flash_attention_score_grad(
-    query: pl.Ptr[pl.DT_UINT8],
-    key: pl.Ptr[pl.DT_UINT8],
-    value: pl.Ptr[pl.DT_UINT8],
-    dy: pl.Ptr[pl.DT_UINT8],
-    y: pl.Ptr[pl.DT_UINT8],
+@pl.jit(
+    auto_mutex=True,
+    tiling_key=FlashAttnGradTilingKey,
+    datatype={
+        "q": "input_dtype",
+    },
+)
+def flash_attn_grad(
+    # 13 个输入，顺序严格对齐 op_host/flash_attn_grad_def.cpp 的 Input() 声明
+    q: pl.Ptr[pl.DT_UINT8],
+    k: pl.Ptr[pl.DT_UINT8],
+    v: pl.Ptr[pl.DT_UINT8],
+    dout: pl.Ptr[pl.DT_UINT8],
+    attn_out: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
-    dq_workspace: pl.Ptr[pl.DT_UINT8],
-    dk_workspace: pl.Ptr[pl.DT_UINT8],
-    dv_workspace: pl.Ptr[pl.DT_UINT8],
+    # 以下 6 个为可选输入。本实现只覆盖 BSND 非 sparse 无 mask 路径，
+    # 故 cu_seqlens/seqused(TND 变长)、sinks、attn_mask 均不读取；
+    # metadata 预留给 FAG 元数据(head[4] + 116 int32)，当前未用。
+    # 保留形参是为了与 host 的 13 输入按位对齐 —— 少一个都会错位。
+    cu_seqlens_q: pl.Ptr[pl.DT_UINT8],
+    cu_seqlens_kv: pl.Ptr[pl.DT_UINT8],
+    seqused_q: pl.Ptr[pl.DT_UINT8],
+    seqused_kv: pl.Ptr[pl.DT_UINT8],
+    sinks: pl.Ptr[pl.DT_UINT8],
+    attn_mask: pl.Ptr[pl.DT_UINT8],
+    metadata: pl.Ptr[pl.DT_UINT8],
+    # 3 个输出
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
     dv: pl.Ptr[pl.DT_UINT8],
-    tiling: FagTiling,
+    # 单块 workspace，内部再切三份 fp32 累加区（见下方 make_ptr 分区）
+    workspace: pl.Ptr[pl.DT_UINT8],
+    tiling: FlashAttnGradTilingData,
 ):
-    constInfo = set_const_info(tiling)
+    # coreNum 从内建 API 取而非 tiling：新接口的 TilingData 无此字段。
+    # 已实测 cube/vector 两侧 get_block_num() 都返回物理核数(36)，
+    # 故两侧算出的 numBlocks 一致，set/wait 可配对。
+    coreNum = pl.get_block_num()
+    constInfo = set_const_info(tiling, coreNum, ENABLE_SWIZZLE_DEFAULT)
+
+    # ---- workspace 分区 ----
+    # host(GetWorkspaceSizes) 给的是单块连续内存，这里按 fp32 元素切成
+    # dq/dk/dv 三段累加区。三段大小必须与 host 的 CalcWorkSpace 逐一对齐。
+    wsRowsQ = tiling.b * tiling.s1 * tiling.n2
+    wsRowsKV = tiling.b * tiling.s2 * tiling.n2
+    ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
+    dq_workspace = ws_ptr
+    dk_workspace = pl.addptr(dq_workspace, wsRowsQ * HEAD_DIM_ALIGN)
+    dv_workspace = pl.addptr(dk_workspace, wsRowsKV * HEAD_DIM_ALIGN)
 
     s1nd = constInfo.s1Size * constInfo.n2D
     s2nd = constInfo.s2Size * constInfo.n2D
 
     # 输入按 BSND [B,S,N,D] 建 tensor
-    tensor_q = pl.make_tensor(query, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_q = pl.make_tensor(q, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                               [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_k = pl.make_tensor(key, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_k = pl.make_tensor(k, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                               [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     # MM3(dQ = dS@K) 需要「未转置」的 K，而 MM2 需要 K^T。
     # 每个 GM tensor 只会推导出一种 Layout：tensor_k 因 MM2 的转置读被定成
     # Layout::DN，MM3 若共用它，plain 读也会被按 DN 解释，实测等价于拿到 K^T
     # (partial 与 K[s2o]^T 吻合到 1e-4)。故为 MM3 单独建一份同 buffer 的
     # tensor 视图，让它独立推导 layout。
-    tensor_k_nt = pl.make_tensor(key, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_k_nt = pl.make_tensor(k, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                                  [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_v = pl.make_tensor(value, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_v = pl.make_tensor(v, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                               [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_dy = pl.make_tensor(dy, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_dy = pl.make_tensor(dout, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                                [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_y = pl.make_tensor(y, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
+    tensor_y = pl.make_tensor(attn_out, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
                               [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     # softmax_lse : [B,N,S1]
     tensor_lse = pl.make_tensor(
@@ -1185,7 +1239,7 @@ def flash_attention_score_grad(
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
     with pl.section_vector():
         vBlockIdx = pl.get_block_idx()
-        vecCoreNum = tiling.core_num * pl.get_subblock_num()
+        vecCoreNum = coreNum * pl.get_subblock_num()
         # 单缓冲吃满 248KB(496 行)。mutex_ids 复用主循环的 id：
         # pre 与主循环被 sync_all 完全隔开，不会同时活跃。
         zero_ub = pl.make_tile_group(
@@ -1504,7 +1558,7 @@ def flash_attention_score_grad(
 
     with pl.section_vector():
         vBlockIdxP = pl.get_block_idx()
-        vecCoreNumP = tiling.core_num * pl.get_subblock_num()
+        vecCoreNumP = coreNum * pl.get_subblock_num()
         # depth 2：两个 f32 槽 + 两个 f16 槽，各自独立 mutex_ids，
         # 框架据此判定「下一块的 load」与「本块的 cast/store」无冲突，
         # 从而让 MTE2 / V / MTE3 三条流水重叠。

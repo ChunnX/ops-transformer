@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "flash_attn_grad_check.h"
+#include "flash_attn_grad_tiling_check.h"
 
 namespace optiling {
 

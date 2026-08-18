@@ -8,14 +8,15 @@ import math
 import os
 import sys
 
+import pypto_pro.language as pl
 import torch
 import torch_npu
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from flash_attention_score_grad_pypto import (  # noqa: E501
+from flash_attn_grad import (  # noqa: E501
     decide_swizzle,
-    flash_attention_score_grad,
-    FagTiling,
+    flash_attn_grad,
+    FlashAttnGradTilingData,
 )
 
 B = int(os.environ.get("B", "1"))
@@ -47,15 +48,25 @@ def main():
     dq_o = torch.zeros(B, S1, N, D, device=device, dtype=torch.float16)
     dk_o = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
     dv_o = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
-    tiling = FagTiling(
-        b=B, n=N, s1=S1, s2=S2, d=D, scale_value=scale, core_num=CORES,
-        enable_swizzle=decide_swizzle(B, N, S1, S2, D, CORES),
+    tiling = FlashAttnGradTilingData(
+        b=B, s1=S1, s2=S2, n1=N, n2=N, d=D, dv=D, scaleValue=scale,
     )
+    swizzle = decide_swizzle(B, N, S1, S2, D, CORES)
+    _force = os.environ.get("FAG_FORCE_SWIZZLE")
+    if _force is not None:
+        swizzle = int(_force)
+    ws_elems = (B * S1 * N * D) + 2 * (B * S2 * N * D)
+    workspace = torch.zeros(ws_elems, device=device, dtype=torch.float32)
 
     def once():
-        flash_attention_score_grad[None, CORES](
-            q, k, v, dy, y, lse, dq_ws, dk_ws, dv_ws,
-            dq_o, dk_o, dv_o, tiling)
+        flash_attn_grad[
+            None, CORES,
+            {"template": 0, "layout": 0, "has_atten_mask": 0,
+             "swizzle": swizzle},
+            {"q": pl.DT_FP16},
+        ](q, k, v, dy, y, lse,
+          None, None, None, None, None, None, None,
+          dq_o, dk_o, dv_o, workspace, tiling)
 
     # warmup + 编译
     once()

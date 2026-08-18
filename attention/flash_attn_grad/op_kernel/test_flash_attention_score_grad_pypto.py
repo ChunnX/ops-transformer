@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 
+import pypto_pro.language as pl
 import torch
 import torch_npu
 
@@ -18,10 +19,10 @@ KERNEL_TIMEOUT_EXIT = 124  # 与 timeout(1) 的约定一致
 
 # Add op_kernel directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from flash_attention_score_grad_pypto import (  # noqa: E501
+from flash_attn_grad import (  # noqa: E501
     decide_swizzle,
-    flash_attention_score_grad,
-    FagTiling,
+    flash_attn_grad,
+    FlashAttnGradTilingData,
     TILE_M, TILE_N, TILE_D,
 )
 
@@ -120,24 +121,27 @@ def run_case(B, N, S1, S2, D, num_cores):
     y_in = y_gold.to(device).contiguous()
     lse_gold = lse_gold.to(device).contiguous()
 
-    # workspace 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
+    # 单块 workspace，kernel 内切成 dq/dk/dv 三段 fp32（见 make_ptr 处）。
+    # 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
     # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
-    dq_ws = torch.full((B, S1, N, D), float("nan"), device=device,
-                       dtype=torch.float32)
-    dk_ws = torch.full((B, S2, N, D), float("nan"), device=device,
-                       dtype=torch.float32)
-    dv_ws = torch.full((B, S2, N, D), float("nan"), device=device,
-                       dtype=torch.float32)
+    ws_elems = (B * S1 * N * D) + 2 * (B * S2 * N * D)
+    workspace = torch.full((ws_elems,), float("nan"), device=device,
+                           dtype=torch.float32)
     # fp16 最终输出：由 kernel 的 post 阶段写(scale + cast)
     dq_out_t = torch.zeros(B, S1, N, D, device=device, dtype=torch.float16)
     dk_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
     dv_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
-    tiling = FagTiling(
-        b=B, n=N, s1=S1, s2=S2, d=D,
-        scale_value=scale,
-        core_num=num_cores,
-        enable_swizzle=decide_swizzle(B, N, S1, S2, D, num_cores),
+    tiling = FlashAttnGradTilingData(
+        b=B, s1=S1, s2=S2, n1=N, n2=N, d=D, dv=D, scaleValue=scale,
     )
+    # swizzle 由 tilingkey 区分(每种分核各编一份二进制)，不再走 tiling 字段。
+    # 判据与 host 的 TilingFunc 保持一致。
+    swizzle = decide_swizzle(B, N, S1, S2, D, num_cores)
+    # FAG_FORCE_SWIZZLE 用于覆盖判据，单独验证另一条编译产物的正确性 ——
+    # 两种分核对同一输入必须给出相同结果(仅分块顺序不同)。
+    _force = os.environ.get("FAG_FORCE_SWIZZLE")
+    if _force is not None:
+        swizzle = int(_force)
 
     # Launch kernel
     print(f"Launching kernel: B={B}, N={N}, S1={S1}, S2={S2}, D={D}, "
@@ -146,11 +150,19 @@ def run_case(B, N, S1, S2, D, num_cores):
     # 先触发编译（不计入执行看护窗口）：编译发生在首次调用内部，
     # 故这里用 launch + 同步作为一次完整执行，并只对「执行」计时看护。
     run_kernel_with_timeout(
-        lambda: flash_attention_score_grad[None, num_cores](
-            q, k, v, dy, y_in,
-            lse_gold,
-            dq_ws, dk_ws, dv_ws,
+        lambda: flash_attn_grad[
+            None, num_cores,
+            # tilingkey：swizzle 走这里(每种分核各编一份二进制)
+            {"template": 0, "layout": 0,
+             "has_atten_mask": 0, "swizzle": swizzle},
+            # datatype：对应 @pl.jit 的 datatype={"q": "input_dtype"}
+            {"q": pl.DT_FP16},
+        ](
+            q, k, v, dy, y_in, lse_gold,
+            # 6 个未使用的可选输入 + metadata：位置必须占齐
+            None, None, None, None, None, None, None,
             dq_out_t, dk_out_t, dv_out_t,
+            workspace,
             tiling,
         ),
         timeout_s=KERNEL_TIMEOUT_S,

@@ -9,7 +9,9 @@
  */
 
 #include "flash_attn_grad_tiling.h"
-#include "flash_attn_grad_check.h"
+#include <set>
+
+#include "flash_attn_grad_tiling_check.h"
 #include "log/log.h"
 #include "op_host/tiling_util.h"
 
@@ -110,7 +112,59 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         n2Size = kShape->GetStorageShape().GetDim(2);
     }
 
-    FlashAttnGradTilingData *tilingData = context->GetTilingData<FlashAttnGradTilingData>();
+        // Decide the block-to-core mapping. Linear splitting spreads the live cores
+    // across many heads: at S=8192 D=128 with 36 cores, core 0 works head 0
+    // while core 35 works head 31, so 36 cores stream K/V for 32 heads at once
+    // and the working set blows past L2 (128 MB). msprof shows mte2_ratio 0.72
+    // on both cube and vector while mac *drops* to 0.733 -- HBM-bound, not
+    // compute-bound. Swizzle hands out whole s2 columns strided across cores
+    // instead, keeping the live cores inside one head.
+    //
+    // Mirrors the AscendC reference's isExceedL2Cache / isSplitByBlockIdx gate.
+    // Count every tensor a head touches (~22 MB/head at S=8192): q+dout+attn_out
+    // read fp16, dq written fp32, k+v read fp16, dk+dv written fp32. Counting
+    // only K+V lands exactly on 128 MB at N=32 and wrongly reports "fits",
+    // where swizzle actually wins by 34%.
+    //
+    // Measured (S=8192, 36 cores, us): N=1 linear 193.5 / swizzle 220.8;
+    // N=4 748/858; N=8 1631/1603; N=32 10106/6556; N=64 22216/13395.
+    // The crossover sits at N=8 and the gate switches at N=6 -- no counterexample
+    // in between. Swizzle's granularity is a whole column, so it is skipped when
+    // there are too few columns to balance (N=1 has 64 columns for 36 cores:
+    // core 0 takes 2 while core 35 takes 1, a 2x skew that costs 14%).
+    int64_t swizzle = 0;
+    if (layout != 1) {
+        constexpr int64_t CUBE_BASE_M = 128;
+        constexpr int64_t CUBE_BASE_N = 128;
+        constexpr int64_t L2_CACHE_BYTES = 128L * 1024 * 1024;
+        constexpr int64_t FP16_BYTES = 2;
+        constexpr int64_t FP32_BYTES = 4;
+        int64_t s1Outer = (s1Size + CUBE_BASE_M - 1) / CUBE_BASE_M;
+        int64_t s2Outer = (s2Size + CUBE_BASE_N - 1) / CUBE_BASE_N;
+        int64_t perHeadBlocks = s1Outer * s2Outer;
+        int64_t totalBlocks = bSize * n2Size * perHeadBlocks;
+        // Must use aicNum, not blockDim: blockDim is the mixed scheduling value
+        // from CalcTschBlockDim, while the kernel's coreNum comes from
+        // pl.get_block_num() which equals the physical cube core count (36).
+        // Using blockDim here would miscount the live heads.
+        if (perHeadBlocks > 0 && aicNum > 0) {
+            int64_t cores = static_cast<int64_t>(aicNum);
+            int64_t perCore = (totalBlocks + cores - 1) / cores;
+            // How many distinct heads are live at once under linear splitting
+            std::set<int64_t> liveHeads;
+            for (int64_t c = 0; c < cores; ++c) {
+                liveHeads.insert((c * perCore) / perHeadBlocks);
+            }
+            int64_t perHeadBytes = 3 * s1Size * dSize * FP16_BYTES + s1Size * dSize * FP32_BYTES +
+                                   2 * s2Size * dSize * FP16_BYTES + 2 * s2Size * dSize * FP32_BYTES;
+            int64_t liveBytes = static_cast<int64_t>(liveHeads.size()) * perHeadBytes;
+            if (liveBytes > L2_CACHE_BYTES && bSize * n2Size * s2Outer >= 2 * cores) {
+                swizzle = 1;
+            }
+        }
+    }
+
+FlashAttnGradTilingData *tilingData = context->GetTilingData<FlashAttnGradTilingData>();
     tilingData->b = bSize;
     tilingData->s1 = s1Size;
     tilingData->s2 = s2Size;
@@ -122,19 +176,33 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
 
     bool hasAttenMask = HasAttenMask(context, maskMode);
     // TilingKey: bit[1:0]=template(0=bn2gs1s2,1=bn2,2=bn2s2,3=bn2multiblk),
-    //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask
+    //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask,
+    //            bit4=swizzle(0=linear split, 1=s2-column strided)
     uint64_t tilingKey = static_cast<uint64_t>(0) |
                          (static_cast<uint64_t>(layout) << 2) |
-                         (static_cast<uint64_t>(hasAttenMask) << 3);
+                         (static_cast<uint64_t>(hasAttenMask) << 3) |
+                         (static_cast<uint64_t>(swizzle) << 4);
     context->SetTilingKey(tilingKey);
 
-    size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    // Workspace layout must match the kernel's make_ptr partitioning exactly:
+    //   [0]          libapi reserve (system)
+    //   [+libapi]    dq accumulator  B*S1*N2*D fp32
+    //   [+...]       dk accumulator  B*S2*N2*D fp32
+    //   [+...]       dv accumulator  B*S2*N2*D fp32
+    // The kernel accumulates dq/dk/dv in fp32 via atomicAdd, then its post
+    // stage applies scale and casts down to the fp16/bf16 outputs. dv gets no
+    // scale (matches qkvIdx < 2 in the AscendC reference).
+    constexpr size_t FP32_SIZE = 4;
+    size_t libapiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    size_t dqElems = static_cast<size_t>(bSize) * s1Size * n2Size * dSize;
+    size_t dkvElems = static_cast<size_t>(bSize) * s2Size * n2Size * dSize;
+    size_t workspaceSize = libapiSize + (dqElems + dkvElems * 2) * FP32_SIZE;
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: blockDim=%u, layout=%ld, maskMode=%ld, hasAttenMask=%d, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, tilingKey=%llu, workspaceSize=%zu.",
-            blockDim, layout, maskMode, hasAttenMask, bSize, s1Size, s2Size, n1Size, dSize, tilingKey, workspaceSize);
+            "FlashAttnGrad tiling: blockDim=%u, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, tilingKey=%llu, workspaceSize=%zu.",
+            blockDim, layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size, dSize, tilingKey, workspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }
