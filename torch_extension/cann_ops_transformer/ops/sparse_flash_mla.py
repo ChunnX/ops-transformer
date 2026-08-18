@@ -48,8 +48,8 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "
             "Tensor? sinks=None, Tensor? metadata=None, "
             "float softmax_scale=1.0, int cmp_ratio=1, "
-            "int ori_mask_mode=4, int cmp_mask_mode=3, "
-            "int ori_win_left=127, int ori_win_right=0, "
+            "int ori_mask_mode=0, int cmp_mask_mode=0, "
+            "int ori_win_left=-1, int ori_win_right=-1, "
             'str layout_q="BSND", str layout_kv="BSND", '
             "int topk_value_mode=1, bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
@@ -114,19 +114,19 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             metadata=None,
             softmax_scale=1.0,
             cmp_ratio=1,
-            ori_mask_mode=4,
-            cmp_mask_mode=3,
-            ori_win_left=127,
-            ori_win_right=0,
+            ori_mask_mode=0,
+            cmp_mask_mode=0,
+            ori_win_left=-1,
+            ori_win_right=-1,
             layout_q="BSND",
             layout_kv="BSND",
             topk_value_mode=1,
             return_softmax_lse=False,
         ):
-            if q.size() == 0:
-                raise ValueError(f"The shape size of q should not be 0")
-            if ori_kv is not None and ori_kv.size() == 0:
-                raise ValueError(f"The shape size of ori_kv should not be 0")
+            if q.numel() == 0:
+                raise ValueError("The shape size of q should not be 0")
+            if ori_kv is not None and ori_kv.numel() == 0:
+                raise ValueError("The shape size of ori_kv should not be 0")
             key_headnum = ori_kv.shape[1] if layout_kv == "TND" else ori_kv.shape[2]
             if layout_q == "BSND":
                 ## 添加softmax_lse
@@ -333,10 +333,10 @@ def sparse_flash_mla(
     metadata=None,
     softmax_scale=1.0,
     cmp_ratio=1,
-    ori_mask_mode=4,
-    cmp_mask_mode=3,
-    ori_win_left=127,
-    ori_win_right=0,
+    ori_mask_mode=0,
+    cmp_mask_mode=0,
+    ori_win_left=-1,
+    ori_win_right=-1,
     layout_q="BSND",
     layout_kv="BSND",
     topk_value_mode=1,
