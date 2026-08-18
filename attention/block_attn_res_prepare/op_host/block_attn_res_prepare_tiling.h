@@ -60,7 +60,7 @@ protected:
     uint64_t totalN_ = 0;
     uint64_t totalS_ = 0;
     uint64_t totalD_ = 0;
-    float epsilon_ = 1e-6F;
+    float eps_ = 1e-6F;
 
     uint64_t aicCoreNum_ = 0;
     uint64_t aivCoreNum_ = 0;

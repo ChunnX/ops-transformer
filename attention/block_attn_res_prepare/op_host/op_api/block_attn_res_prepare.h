@@ -17,9 +17,9 @@
 
 namespace l0op {
 
-const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockResidual,
-                                                           const aclTensor *effectiveQuery,
-                                                           const aclTensor *validBlocks, float epsilon,
+const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes,
+                                                           const aclTensor *validBlocks,
+                                                           const aclTensor *pseudoQuery, float eps,
                                                            aclOpExecutor *executor);
 
 } // namespace l0op
