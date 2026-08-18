@@ -133,13 +133,24 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py rank0.raw rank1.raw
 ## 3. 记录语义
 
 每个物理 AI Block 对应三条记录：`AIC core N`、`AIV0 core N`、`AIV1 core N`。时间戳来自
-`AscendC::GetSystemCycle()`，只比较同一物理 AI Block 内三个角色的相对关系。
+`AscendC::GetSystemCycle()`；同一份 rank trace 中的全部 AI Block 使用统一 cycle 坐标，跨 rank 不合并时间轴。
 
 每个事件保存：
 
 ```text
-stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, beginCycle, endCycle
+stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, waitCycles, beginCycle, endCycle
 ```
+
+协议 v2 在轮询前后读取 cycle 并累计 `waitCycles`，报告据此计算：
+
+```text
+activeCycles = totalCycles - waitCycles
+```
+
+GMM1 统计等待 Dispatch 输入，Activation 统计等待 GMM1 tile，GMM2 统计等待 Activation 输出，Combine 统计
+等待 GMM2 completion counter。Dispatch 内部的 buffer/MTE 握手属于自身流水，暂不拆分，报告中显示为“等待未拆分”。
+这里的 `activeCycles` 表示扣除显式轮询等待后的时间，仍包含地址准备、调度和完成同步，并非纯 MMAD/Vector
+指令耗时。旧版 8-word event raw 仍可解析，但无法提供等待拆分。
 
 GMM/Activation/Combine 事件按 Wave 内的专家 token 切片记录。Dispatch 仍以完整专家执行，因此一个跨多个 Wave
 的专家只在首次 Dispatch 时产生一次 Dispatch 事件，该事件标记其开始服务的 Wave。

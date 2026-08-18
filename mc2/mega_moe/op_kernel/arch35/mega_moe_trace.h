@@ -31,13 +31,14 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_A8W4_WAVE_TRACE != 0
 
 constexpr uint32_t A8W4_WAVE_TRACE_MAGIC = 0x41575452U; // "AWTR"
-constexpr uint32_t A8W4_WAVE_TRACE_VERSION = 1U;
+constexpr uint32_t A8W4_WAVE_TRACE_VERSION = 2U;
 constexpr uint32_t A8W4_WAVE_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t A8W4_WAVE_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A8W4_WAVE_TRACE_RECORD_HEADER_WORDS = 4U;
-constexpr uint32_t A8W4_WAVE_TRACE_EVENT_WORDS = 8U;
+constexpr uint32_t A8W4_WAVE_TRACE_EVENT_WORDS = 9U;
 constexpr uint32_t A8W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD = 256U;
 constexpr uint64_t A8W4_WAVE_TRACE_SCRATCH_BYTES = 50ULL * 1024ULL * 1024ULL;
+constexpr uint32_t A8W4_WAVE_TRACE_WAIT_CYCLES_UNAVAILABLE = 0xFFFFFFFFU;
 
 enum class A8W4WaveTraceRole : uint32_t {
     AIC = 0U,
@@ -149,7 +150,7 @@ struct A8W4WaveTrace {
 
     __aicore__ inline void Record(A8W4WaveTraceEvent event, uint32_t waveIndex, uint32_t expertIndex,
                                   uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount,
-                                  uint32_t beginCycle, uint32_t endCycle)
+                                  uint32_t waitCycleCount, uint32_t beginCycle, uint32_t endCycle)
     {
         if (!enabled) {
             return;
@@ -166,8 +167,9 @@ struct A8W4WaveTrace {
         AscendC::WriteGmByPassDCache(dst + 3U, tokenStartIndexInExpert);
         AscendC::WriteGmByPassDCache(dst + 4U, tokenCount);
         AscendC::WriteGmByPassDCache(dst + 5U, mGroupCount);
-        AscendC::WriteGmByPassDCache(dst + 6U, beginCycle);
-        AscendC::WriteGmByPassDCache(dst + 7U, endCycle);
+        AscendC::WriteGmByPassDCache(dst + 6U, waitCycleCount);
+        AscendC::WriteGmByPassDCache(dst + 7U, beginCycle);
+        AscendC::WriteGmByPassDCache(dst + 8U, endCycle);
         ++eventCount;
     }
 

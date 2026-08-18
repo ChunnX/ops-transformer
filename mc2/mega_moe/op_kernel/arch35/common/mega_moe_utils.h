@@ -340,6 +340,19 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
 
+// 诊断打点可传入计数器累计轮询等待时间；正常路径传空指针时不读取系统 cycle。
+__aicore__ inline uint32_t BeginWaitCycleCount(uint32_t *waitCycleCount)
+{
+    return waitCycleCount == nullptr ? 0U : static_cast<uint32_t>(AscendC::GetSystemCycle());
+}
+
+__aicore__ inline void EndWaitCycleCount(uint32_t *waitCycleCount, uint32_t beginCycle)
+{
+    if (waitCycleCount != nullptr) {
+        *waitCycleCount += static_cast<uint32_t>(AscendC::GetSystemCycle()) - beginCycle;
+    }
+}
+
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_UTILS_H

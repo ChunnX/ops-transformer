@@ -12,6 +12,7 @@ import struct
 from pathlib import Path
 
 MAGIC = 0x41575452
+WAIT_CYCLES_UNAVAILABLE = 0xFFFFFFFF
 HEADER_WORDS = 24
 RECORD_HEADER_WORDS = 4
 ROLE_NAMES = ("AIC", "AIV0", "AIV1")
@@ -97,7 +98,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
     }
     if header["header_words"] != HEADER_WORDS:
         raise ValueError(f"unsupported header size: {header['header_words']}")
-    if header["event_words"] != 8:
+    if header["event_words"] not in (8, 9):
         raise ValueError(f"unsupported event size: {header['event_words']}")
     expected_record_count = len(ROLE_NAMES) * header["logical_core_count"]
     if header["record_count"] != expected_record_count:
@@ -119,9 +120,16 @@ def parse_trace(words: tuple[int, ...]) -> dict:
         events = []
         for event_index in range(event_count):
             base = record_base + RECORD_HEADER_WORDS + event_index * header["event_words"]
-            event_type, wave_index, expert_index, token_start, token_count, m_group_count, begin, end = words[
-                base : base + 8
-            ]
+            event_words = words[base : base + header["event_words"]]
+            event_type, wave_index, expert_index, token_start, token_count, m_group_count = event_words[:6]
+            if header["event_words"] == 9:
+                wait_cycles, begin, end = event_words[6:9]
+                wait_cycles = None if wait_cycles == WAIT_CYCLES_UNAVAILABLE else wait_cycles
+            else:
+                wait_cycles = None
+                begin, end = event_words[6:8]
+            duration_cycles = (end - begin) & 0xFFFFFFFF
+            active_cycles = duration_cycles if wait_cycles is None else max(0, duration_cycles - wait_cycles)
             events.append(
                 {
                     "event": EVENT_NAMES.get(event_type, f"unknown({event_type})"),
@@ -133,7 +141,9 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "m_group_count": m_group_count,
                     "begin_cycle": begin,
                     "end_cycle": end,
-                    "duration_cycles": (end - begin) & 0xFFFFFFFF,
+                    "duration_cycles": duration_cycles,
+                    "wait_cycles": wait_cycles,
+                    "active_cycles": active_cycles,
                     "begin_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[0],
                     "end_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[1],
                 }
@@ -166,6 +176,8 @@ def write_csv(trace: dict, path: Path) -> None:
         "begin_cycle",
         "end_cycle",
         "duration_cycles",
+        "active_cycles",
+        "wait_cycles",
         "begin_trace_point",
         "end_trace_point",
     ]
@@ -267,6 +279,7 @@ select {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; backgrou
 .lane {{ position:relative; height:32px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
 .bar {{ position:absolute; top:5px; height:20px; min-width:2px; border-radius:3px; opacity:.9; cursor:pointer; }}
 .bar:hover {{ opacity:1; outline:2px solid #11182755; z-index:2; }}
+.wait-share {{ position:absolute; right:0; bottom:0; height:4px; background:#facc15; pointer-events:none; }}
 .event-detail {{ min-height:54px; margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb;
                  border-radius:6px; color:var(--muted); }}
 .event-detail b {{ color:var(--text); }}
@@ -299,13 +312,16 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
     <span id="selectionSummary" class="muted"></span>
   </div>
   <div class="legend" id="legend"></div>
+  <div class="muted">事件块下沿的黄色部分表示等待占总耗时的比例，仅表达占比，不表示等待在时间段内的实际位置。
+  Active = Total - 轮询等待，仍包含地址准备和完成同步开销。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
 </section>
 <section class="panel">
   <h2>Wave 汇总</h2>
   <div class="table-scroll"><table id="waveTable"><thead><tr>
-    <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>M group</th><th>总 cycles</th><th>最长事件</th>
+    <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>M group</th>
+    <th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th><th>最长事件</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
@@ -317,7 +333,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <h2>事件明细</h2>
   <div class="table-scroll"><table id="eventTable"><thead><tr>
     <th>AI Block</th><th>角色</th><th>阶段</th><th>Wave</th><th>Expert</th><th>Token 范围</th><th>M group</th>
-    <th>Begin cycle</th><th>End cycle</th><th>Cycles</th><th>耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
+    <th>Begin cycle</th><th>End cycle</th><th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th>
+    <th>总耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <script id="traceData" type="application/json">{payload}</script>
@@ -332,6 +349,7 @@ for (let core=0; core<trace.header.logical_core_count; core++) coreSelect.add(ne
 const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
 for (const wave of waves) waveSelect.add(new Option(String(wave),String(wave)));
 document.getElementById('legend').innerHTML = Object.entries(colors).map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
+document.getElementById('legend').innerHTML += '<span><i style="background:#facc15"></i>Wait 占比</span>';
 const cycleModulo = 4294967296;
 const cycleAnchor = trace.records.length ? trace.records[0].process_begin_cycle : 0;
 function signedCycleDelta(cycle) {{
@@ -371,9 +389,12 @@ function renderTimeline(records,events) {{
     out+=`<div class="lane-wrap"><div class="lane-name">Block ${{record.core}} · ${{record.role}}</div><div class="lane">`;
     for(const e of record.events) {{
       const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
-      const tip=`${{e.event}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} duration=${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs) | wave=${{e.wave}} expert=${{e.expert}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
+      const waitKnown=e.wait_cycles!==null, waitText=waitKnown?`${{e.wait_cycles}} cycles (${{(e.wait_cycles/1000).toFixed(3)}} μs)`:'未拆分';
+      const waitPercent=waitKnown&&e.duration_cycles?e.wait_cycles/e.duration_cycles*100:0;
+      const tip=`${{e.event}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} total=${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs) | active=${{e.active_cycles}} cycles | wait=${{waitText}} | wave=${{e.wave}} expert=${{e.expert}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
       const eventIndex=visibleEvents.push({{event:e,record}})-1;
-      out+=`<div class="bar" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
+      const waitShare=waitKnown?`<span class="wait-share" style="width:${{Math.min(waitPercent,100)}}%"></span>`:'';
+      out+=`<div class="bar" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}">${{waitShare}}</div>`;
     }}
     out+='</div></div>';
   }}
@@ -382,24 +403,37 @@ function renderTimeline(records,events) {{
 }}
 function showEventDetail(item) {{
   const e=item.event, r=item.record;
+  const waitKnown=e.wait_cycles!==null;
+  const waitText=waitKnown?`${{e.wait_cycles}} cycles (${{(e.wait_cycles/1000).toFixed(3)}} μs)`:'未拆分';
+  const waitPercent=waitKnown&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
   document.getElementById('eventDetail').innerHTML=`<b>Block ${{r.core}} · ${{r.role}} · ${{esc(e.event)}}</b>　`
     +`Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})<br>`
-    +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Duration: <b>${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs)</b><br>`
+    +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Total: <b>${{e.duration_cycles}} cycles</b><br>`
+    +`Active: <b>${{e.active_cycles}} cycles</b>　Wait: <b>${{waitText}}</b>　Wait 占比: <b>${{waitPercent}}</b><br>`
     +`Begin 打点：${{esc(e.begin_trace_point)}}<br>End 打点：${{esc(e.end_trace_point)}}`;
 }}
 function renderWaveTable(events) {{
   const groups=new Map();
   for(const e of events) {{
     const key=`${{e.core}}|${{e.wave}}|${{e.role}}|${{e.event}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,max:0}};
-    g.count++; g.tokens+=e.token_count; g.mGroups+=e.m_group_count; g.cycles+=e.duration_cycles; g.max=Math.max(g.max,e.duration_cycles); groups.set(key,g);
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}};
+    g.count++; g.tokens+=e.token_count; g.mGroups+=e.m_group_count; g.cycles+=e.duration_cycles; g.active+=e.active_cycles;
+    if(e.wait_cycles===null) g.waitKnown=false; else g.wait+=e.wait_cycles;
+    g.max=Math.max(g.max,e.duration_cycles); groups.set(key,g);
   }}
   const rows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
-  document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>`<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.max.toLocaleString()}}</td></tr>`).join('');
+  document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
+    const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+  }}).join('');
 }}
 function renderEventTable(events) {{
   const rows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
-  document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>`<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`).join('');
+  document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>{{
+    const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
+    const waitPercent=e.wait_cycles!==null&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
+  }}).join('');
 }}
 coreSelect.addEventListener('change',render); waveSelect.addEventListener('change',render); render();
 </script>
