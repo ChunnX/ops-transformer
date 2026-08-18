@@ -46,15 +46,9 @@ using ops::ut::MakeAclTensorDesc;
 
 constexpr size_t kSwigluCsvColumnCount = 45;
 
-aclDataType ParseDtype(const string &dtype)
-{
-    return ops::ut::ParseAclDtype(dtype);
-}
+aclDataType ParseDtype(const string &dtype) { return ops::ut::ParseAclDtype(dtype); }
 
-aclFormat ParseFormat(const string &format)
-{
-    return ops::ut::ParseAclFormat(format);
-}
+aclFormat ParseFormat(const string &format) { return ops::ut::ParseAclFormat(format); }
 
 void SetupPlatformForCase(const string &socVersion)
 {
@@ -173,7 +167,8 @@ struct SwigluOpApiCase {
         const bool hasSmoothScale = !smoothScaleDims.empty();
 
         vector<int64_t> tuningValues = ParseI64List(tuningConfig, "|");
-        aclIntArray *tuningConfigArr = tuningValues.empty() ? nullptr : aclCreateIntArray(tuningValues.data(), tuningValues.size());
+        aclIntArray *tuningConfigArr =
+            tuningValues.empty() ? nullptr : aclCreateIntArray(tuningValues.data(), tuningValues.size());
 
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ACL_SUCCESS;
@@ -185,22 +180,26 @@ struct SwigluOpApiCase {
                 weight_assist_tensor_vec.reserve(weightAssistShapesVec.size());
                 for (const auto &dims : weightAssistShapesVec) {
                     weight_assist_tensor_vec.emplace_back(
-                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat))
+                            .ValueRange(-10, 10));
                 }
                 TensorListDesc weight_assist_desc(weight_assist_tensor_vec);
                 TensorDesc smoothScale_desc =
-                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat))
+                        .ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasWeightAssist) {
@@ -208,78 +207,89 @@ struct SwigluOpApiCase {
                 weight_assist_tensor_vec_b.reserve(weightAssistShapesVec.size());
                 for (const auto &dims : weightAssistShapesVec) {
                     weight_assist_tensor_vec_b.emplace_back(
-                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat))
+                            .ValueRange(-10, 10));
                 }
                 TensorListDesc weight_assist_desc(weight_assist_tensor_vec_b);
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, nullptr, weight_assist_desc, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasSmoothScale) {
                 TensorDesc smoothScale_desc =
-                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat))
+                        .ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else {
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
+                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, nullptr, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
+                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             }
         } else {
-            TensorListDesc weight_scale_desc =
-                BuildAclTensorListDesc(weightScaleShapesVec, ParseDtype(weightScaleDtype),
-                                       ParseFormat(weightScaleFormat), weightScaleStorageShapesVec,
-                                       weightScaleStridesVec);
+            TensorListDesc weight_scale_desc = BuildAclTensorListDesc(
+                weightScaleShapesVec, ParseDtype(weightScaleDtype), ParseFormat(weightScaleFormat),
+                weightScaleStorageShapesVec, weightScaleStridesVec);
             if (hasWeightAssist && hasSmoothScale) {
                 vector<TensorDesc> weight_assist_tensor_vec_c;
                 weight_assist_tensor_vec_c.reserve(weightAssistShapesVec.size());
                 for (const auto &dims : weightAssistShapesVec) {
                     weight_assist_tensor_vec_c.emplace_back(
-                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat))
+                            .ValueRange(-10, 10));
                 }
                 TensorListDesc weight_assist_desc(weight_assist_tensor_vec_c);
                 TensorDesc smoothScale_desc =
-                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat))
+                        .ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr,
+                                              xScale_desc, smoothScale_desc, groupList_desc, dequantMode, dequantDtype,
+                                              quantMode, quantDtype, tuningConfigArr),
                                         OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
                     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr,
+                                              xScale_desc, smoothScale_desc, groupList_desc, dequantMode, dequantDtype,
+                                              quantMode, quantDtype, tuningConfigArr),
                                         OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
@@ -288,50 +298,58 @@ struct SwigluOpApiCase {
                 weight_assist_tensor_vec_d.reserve(weightAssistShapesVec.size());
                 for (const auto &dims : weightAssistShapesVec) {
                     weight_assist_tensor_vec_d.emplace_back(
-                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat)).ValueRange(-10, 10));
+                        TensorDesc(dims, ParseDtype(weightAssistDtype), ParseFormat(weightAssistFormat))
+                            .ValueRange(-10, 10));
                 }
                 TensorListDesc weight_assist_desc(weight_assist_tensor_vec_d);
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_desc, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else if (hasSmoothScale) {
                 TensorDesc smoothScale_desc =
-                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat)).ValueRange(-10, 10);
+                    TensorDesc(smoothScaleDims, ParseDtype(smoothScaleDtype), ParseFormat(smoothScaleFormat))
+                        .ValueRange(-10, 10);
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             } else {
                 if (api == "WeightNzV2") {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 } else {
-                    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr, groupList_desc,
-                                              dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
-                                        OUTPUT(out1_desc, out2_desc));
+                    auto ut = OP_API_UT(
+                        aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, dequantMode, dequantDtype, quantMode, quantDtype, tuningConfigArr),
+                        OUTPUT(out1_desc, out2_desc));
                     ret = ut.TestGetWorkspaceSize(&workspaceSize);
                 }
             }
@@ -463,8 +481,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -492,8 +510,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -521,8 +539,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -550,8 +568,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -580,8 +598,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -642,8 +660,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -672,8 +690,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -702,8 +720,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -732,8 +750,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -762,8 +780,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, smoothScale_desc,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -792,8 +810,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -809,14 +827,10 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     int64_t quantGroupSize = 256;
 
     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-    TensorDesc weight0 =
-        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-    TensorDesc weight1 =
-        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-    TensorDesc weight2 =
-        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-    TensorDesc weight3 =
-        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight0 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight1 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight2 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight3 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
     TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
     TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
@@ -831,8 +845,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -866,8 +880,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -901,8 +915,8 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -936,25 +950,20 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a
     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc, nullptr,
+                              groupList_desc, 0, 0, 0, 0, tuningConfig),
                         OUTPUT(out1_desc, out2_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, 161002);
 }
 
-TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case)
-{
-    GetParam().Run();
-}
+TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case) { GetParam().Run(); }
 
-INSTANTIATE_TEST_SUITE_P(
-    grouped_matmul_swiglu_quant_v2_opapi_csv,
-    grouped_matmul_swiglu_quant_v2_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_grouped_matmul_swiglu_quant_v2.csv",
-        "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_api", __FILE__))),
-    BuildCaseName);
+INSTANTIATE_TEST_SUITE_P(grouped_matmul_swiglu_quant_v2_opapi_csv, grouped_matmul_swiglu_quant_v2_opapi_csv_test,
+                         testing::ValuesIn(LoadCases(
+                             ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2.csv",
+                                                     "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_api", __FILE__))),
+                         BuildCaseName);
 
 } // namespace
