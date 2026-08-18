@@ -71,7 +71,7 @@
 | y_dtype | 可选属性 | 输出`y`的数据类型，默认0（DT_UNDEFINED），此时输出类型跟随`x`；当前支持0、35、36、40、41，其中35/36表示两种FP8，40/41表示两种FP4。 | INT64 | - | - |
 | round_mode | 可选属性 | 量化舍入模式，默认`"rint"`，当前仅支持`"rint"`。 | STRING | - | - |
 | scale_alg | 可选属性 | MX量化scale算法，默认0；支持0、1、2。0支持全部输出类型；1仅支持FP8输出；2仅支持FLOAT4_E2M1输出。 | INT64 | - | - |
-| dst_type_max | 可选属性 | 表示maxType的取值，对应公式中的Amax(DType)，默认0.0。当前MX场景仅支持0.0。 | FLOAT | - | - |
+| dst_type_max | 可选属性 | 表示maxType的取值，对应公式中的Amax(DType)，默认0.0。scale_alg为2时支持0.0或[6.0, 12.0]；其他scale_alg仅支持0.0。 | FLOAT | - | - |
 
 ## 约束说明
 

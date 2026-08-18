@@ -26,6 +26,7 @@ except ModuleNotFoundError:
 
 MXFP_GROUP_SIZE = 64
 MXFP_SCALE_PAIR = 2
+FLOAT_EPS = 1e-6
 MXFP_SCALE_ELEMENT_NUM = 32
 N_ALIGN_SIZE = 64
 FP8_E4M3_MAX = 448.0
@@ -70,7 +71,7 @@ def grouped_matmul_activation_quant_golden(
     dst_type_max: float = 0.0,
     **kwargs,
 ):
-    del bias, tuning_config, round_mode, dst_type_max
+    del bias, tuning_config, round_mode
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
     if quant_mode in (None, ""):
@@ -119,7 +120,7 @@ def grouped_matmul_activation_quant_golden(
     if scale_alg == SCALE_ALG_OCP:
         y_fp32, y_scale = _dynamic_quant_mx_ocp(activated, y_dtype)
     elif scale_alg == SCALE_ALG_DYNAMIC_DTYPE_RANGE:
-        y_fp32, y_scale = _dynamic_quant_mx_dynamic_dtype_range(activated)
+        y_fp32, y_scale = _dynamic_quant_mx_dynamic_dtype_range(activated, dst_type_max)
     else:
         y_fp32, y_scale = _dynamic_quant_mx(activated, y_dtype)
     return _cast_mx(y_fp32, y_dtype), _astype(y_scale, y_scale_dtype)
@@ -227,8 +228,8 @@ def _to_bfloat16_float32(x):
     )
 
 
-def _dynamic_quant_mx(x, y_dtype):
-    dtype_max = _get_dtype_max(y_dtype)
+def _dynamic_quant_mx(x, y_dtype, dst_type_max=0.0):
+    dtype_max = dst_type_max if dst_type_max != 0.0 else _get_dtype_max(y_dtype)
     m, n = x.shape
     scale_block_n = int(np.ceil(n / MXFP_GROUP_SIZE))
     scale_n = scale_block_n * MXFP_SCALE_PAIR
@@ -271,8 +272,14 @@ def _dynamic_quant_mx_ocp(x, y_dtype):
     return y, y_scale.reshape(m, scale_block_n, MXFP_SCALE_PAIR)
 
 
-def _dynamic_quant_mx_dynamic_dtype_range(x):
-    """scaleAlg=2 for FLOAT4_E2M1 with dstTypeMax=0.0."""
+def _dynamic_quant_mx_dynamic_dtype_range(x, dst_type_max):
+    """scaleAlg=2 for FLOAT4_E2M1."""
+    if abs(dst_type_max) <= FLOAT_EPS:
+        dst_type_max = 0.0
+    if dst_type_max not in (0.0, 6.0, 7.0):
+        return _dynamic_quant_mx(x, "float4_e2m1", dst_type_max)
+
+    add_value = 0x001F if dst_type_max == 7.0 else 0x003F
     m, n = x.shape
     scale_block_n = int(np.ceil(n / MXFP_GROUP_SIZE))
     scale_n = scale_block_n * MXFP_SCALE_PAIR
@@ -292,7 +299,7 @@ def _dynamic_quant_mx_dynamic_dtype_range(x):
                 scale_byte = MAX_EXP_FOR_FP8
                 half_scale = _bf16_bits_to_float32(NAN_CUSTOMIZATION)
             else:
-                rounded_max_exp = (max_value + 0x003F) & BF16_EXP_MASK
+                rounded_max_exp = (max_value + add_value) & BF16_EXP_MASK
                 rounded_max_exp = max(rounded_max_exp, FP4_E2M1_MAX_EXP)
                 shared_exp = (rounded_max_exp - FP4_E2M1_MAX_EXP) & 0xFFFF
                 scale_byte = (shared_exp >> 7) & 0xFF

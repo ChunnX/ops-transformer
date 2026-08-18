@@ -53,7 +53,8 @@ extern "C" {
  * 表示量化因子计算算法，支持0、1和2。0表示OCP实现；1表示cuBLAS实现且仅支持FLOAT8输出；
  * 2表示FLOAT4动态范围实现且仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。
  * @param [in] dstTypeMax:
- * 表示maxType的取值，对应公式中的Amax(DType)。当前MX场景仅支持0.0。
+ * 表示maxType的取值，对应公式中的Amax(DType)。scaleAlg为2时支持0.0或[6.0, 12.0]；
+ * 其他scaleAlg仅支持0.0。
  * @param [out] y:
  * 表示激活并量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2；MXFP4输入时还支持
  * FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND。

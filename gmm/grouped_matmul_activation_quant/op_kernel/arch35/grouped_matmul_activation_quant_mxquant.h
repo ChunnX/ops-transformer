@@ -91,7 +91,7 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
          DEFAULT_PROBLEM_SHAPE_VALUE},
         {x, weightData, y, nullptr, xScale, weightScaleData},
         {y, yScale, static_cast<uint32_t>(mmTilingData_.baseM), static_cast<uint32_t>(mmTilingData_.baseN),
-         static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg)},
+         static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax},
         groupList,
         gmmParams};
     QGmmKernel op;
