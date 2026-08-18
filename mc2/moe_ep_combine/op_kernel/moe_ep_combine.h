@@ -92,12 +92,6 @@ static constexpr struct UrmaWqeEntry RANK_FLAG_WQE_CONFIG = {
     .se = 0,
     .cqe = 0,
     .inlineEn = 0};
-static constexpr struct UrmaWqeEntry FOLLOWING_RANK_FLAG_WQE_CONFIG = {
-    .odr = 5,
-    .fence = 1,
-    .se = 0,
-    .cqe = 0,
-    .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -116,7 +110,7 @@ private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
-    __aicore__ inline bool SendRankFlag(uint32_t dstRank, bool firstRemoteFlag);
+    __aicore__ inline void SendRankFlag(uint32_t dstRank);
     template <auto const& config>
     __aicore__ inline void PrepareWrite(
         uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
@@ -442,8 +436,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
-    uint32_t dstRank, bool firstRemoteFlag)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(uint32_t dstRank)
 {
     GM_ADDR flagAddr =
         GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + GetRankFlagOffset(rankId_);
@@ -452,16 +445,10 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagAddr));
         DataCopyParams flagCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
         DataCopyPad(localFlag, statusTensor_, flagCopyParams);
-        return firstRemoteFlag;
+        return;
     }
-    if (firstRemoteFlag) {
-        PrepareWrite<RANK_FLAG_WQE_CONFIG>(
-            GetCommHandle(dstRank, 0), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
-    } else {
-        PrepareWrite<FOLLOWING_RANK_FLAG_WQE_CONFIG>(
-            GetCommHandle(dstRank, 0), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
-    }
-    return false;
+    PrepareWrite<RANK_FLAG_WQE_CONFIG>(
+        GetCommHandle(dstRank, 0), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -596,13 +583,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     // Publish every token/weight batch before preparing the per-rank completion flags.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
-    Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
 
     if (aivId_ == 0) {
-        bool firstRemoteFlag = true;
+        statusTensor_(0) = 1U;
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
         for (uint32_t dstRank = 0; dstRank < epWorldSize_; ++dstRank) {
-            firstRemoteFlag = SendRankFlag(dstRank, firstRemoteFlag);
+            SendRankFlag(dstRank);
         }
     }
     FlushPreparedWrites();
