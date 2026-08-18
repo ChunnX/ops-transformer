@@ -43,6 +43,7 @@ if _TORCHAIR_AVAILABLE:
         actual_seq_klen: Optional[Tensor],
         start_loc: Tensor,
         *,
+        layout_key: str = "BBND",
         sparse_mode: int = 3,
         init_blocks: int = 0,
         local_blocks: int = 1,
@@ -63,6 +64,7 @@ if _TORCHAIR_AVAILABLE:
             "start_loc": start_loc,
         }
         attrs = {
+            "layout_key": attr.Str(layout_key),
             "sparse_mode": attr.Int(sparse_mode),
             "init_blocks": attr.Int(init_blocks),
             "local_blocks": attr.Int(local_blocks),
@@ -83,6 +85,7 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("actual_seq_qlen", "DT_INT32")
             .optional_input("actual_seq_klen", "DT_INT32")
             .input("start_loc", "DT_INT32")
+            .attr("layout_key", attr.Str("BBND"))
             .attr("sparse_mode", attr.Int(3))
             .attr("init_blocks", attr.Int(0))
             .attr("local_blocks", attr.Int(1))
@@ -102,6 +105,7 @@ if _TORCHAIR_AVAILABLE:
         actual_seq_klen: Optional[Tensor],
         start_loc: Tensor,
         *,
+        layout_key: str = "BBND",
         sparse_mode: int = 3,
         init_blocks: int = 0,
         local_blocks: int = 1,
@@ -116,6 +120,7 @@ if _TORCHAIR_AVAILABLE:
             actual_seq_qlen=actual_seq_qlen,
             actual_seq_klen=actual_seq_klen,
             start_loc=start_loc,
+            layout_key=layout_key,
             sparse_mode=sparse_mode,
             init_blocks=init_blocks,
             local_blocks=local_blocks,

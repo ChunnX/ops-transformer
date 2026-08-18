@@ -37,6 +37,7 @@ cann_ops_transformer.msa_index_score(
     atten_mask=None,
     actual_seq_qlen=None,
     actual_seq_klen=None,
+    layout_key="BBND",
     sparse_mode=3,
 ) -> Tensor
 ```
@@ -53,6 +54,7 @@ cann_ops_transformer.msa_index_score(
 | atten_mask | mode=3 必选 | 压缩下三角模板 | int8 | `[2048,2048]` |
 | actual_seq_qlen | TND query 必选 | query 前缀和 | int32 | `[B+1]` |
 | actual_seq_klen | 必选 | PA 为各请求 S2；TND 为 key 前缀和 | int32 | `[B]` / `[B+1]` |
+| layout_key | 可选 | key 布局：`TND` / `BBND` / `BNBD`，默认 `BBND` | str | - |
 | sparse_mode | 可选 | 0 / 3，默认 3 | int | - |
 
 ## 输出
@@ -81,10 +83,11 @@ atten_mask = torch.zeros(2048, 2048, dtype=torch.int8).npu()
 score = cann_ops_transformer.msa_index_score(
     query, key_bbnd, start_loc,
     block_table=block_table, atten_mask=atten_mask,
-    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen)
+    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen,
+    layout_key="BBND")
 ```
 
-- TND packed key（不传 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）：
+- TND packed key（`layout_key="TND"`，不传 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）：
 
 ```python
 T2 = 256
@@ -93,5 +96,6 @@ actual_seq_klen_tnd = torch.tensor([0, T2], dtype=torch.int32).npu()
 score_tnd = cann_ops_transformer.msa_index_score(
     query, key_tnd, start_loc,
     atten_mask=atten_mask,
-    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen_tnd)
+    actual_seq_qlen=actual_seq_qlen, actual_seq_klen=actual_seq_klen_tnd,
+    layout_key="TND")
 ```
