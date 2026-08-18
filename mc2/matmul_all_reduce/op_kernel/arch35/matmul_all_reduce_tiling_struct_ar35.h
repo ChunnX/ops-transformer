@@ -64,7 +64,7 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
 struct MatmulAllReduceExtTiling {
     uint32_t isVecBias;
     uint32_t biasUbRows;
-    uint32_t tileN;
+    uint32_t biasTileN; // bias UB 溢出时 N 维分块大小；0 或 >= alignedN 表示不分块，走整行路径
 };
 
 #pragma pack(push, 8)
