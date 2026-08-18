@@ -155,8 +155,8 @@ public:
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
                 kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
             } else if constexpr (BNBD_FLAG) {
-            // BNBD layout: (numBlocks, kvHeads, blockSize, D)
-            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * embed;
+                // BNBD layout: (numBlocks, kvHeads, blockSize, D)
+                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * embed;
             } else {
                 kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
             }

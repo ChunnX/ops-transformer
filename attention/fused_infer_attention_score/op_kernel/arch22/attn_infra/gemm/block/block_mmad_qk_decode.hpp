@@ -156,12 +156,15 @@ public:
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (keyBnStride != 0) {
                 kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
+                if constexpr (BNBD_FLAG) {
+                    // BNBD: token stride within block is embed
+                    kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * embed;
             } else {
                 if constexpr (BNBD_FLAG) {
                 // BNBD: token stride within block is embed
-                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * embed;
-            } else {
-                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+                    kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * embed;
+                } else {
+                    kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
             }
             }
         } else {

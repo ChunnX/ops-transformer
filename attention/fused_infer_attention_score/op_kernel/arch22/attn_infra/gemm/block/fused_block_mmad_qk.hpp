@@ -188,8 +188,8 @@ public:
                 // Row stride within a block = D = embed
                 kOffset = blockTableId * blockSize * strideKV + startOffset * embed;
             } else {
-                    kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
-                }
+                kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
+            }
         }
     }
 
