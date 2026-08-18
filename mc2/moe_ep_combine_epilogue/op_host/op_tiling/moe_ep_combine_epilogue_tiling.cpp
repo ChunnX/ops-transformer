@@ -128,8 +128,9 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     return ge::GRAPH_FAILED);
     info.cfg.hidden = static_cast<uint32_t>(combinedXDim1);
 
-    const gert::StorageShape *combinedTopkWeightsShape = context->GetOutputShape(OUT_COMBINED_TOPK_WEIGHTS_INDEX);
-    if (combinedTopkWeightsShape != nullptr) {
+    if (info.hasTopkWeights) {
+        const gert::StorageShape *combinedTopkWeightsShape = context->GetOutputShape(OUT_COMBINED_TOPK_WEIGHTS_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, combinedTopkWeightsShape);
         OP_TILING_CHECK(combinedTopkWeightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
                         OP_LOGE(nodeName, "combined_topk_weights dims must be 2, but got %lu.",
                                 combinedTopkWeightsShape->GetStorageShape().GetDimNum()),
@@ -147,7 +148,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, const char *nodeName,
+                                          const MoeEpCombineEpilogueInfo &info)
 {
     auto contextDesc = context->GetInputDesc(CONTEXT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
@@ -171,7 +173,8 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
                     return ge::GRAPH_FAILED);
 
     auto combinedTopkWeightsDesc = context->GetOutputDesc(OUT_COMBINED_TOPK_WEIGHTS_INDEX);
-    if (combinedTopkWeightsDesc != nullptr) {
+    if (info.hasTopkWeights) {
+        OP_CHECK_NULL_WITH_CONTEXT(context, combinedTopkWeightsDesc);
         OP_TILING_CHECK(combinedTopkWeightsDesc->GetDataType() != ge::DT_FLOAT,
                         OP_LOGE(nodeName, "combined_topk_weights dtype must be DT_FLOAT, but got %s.",
                                 ge::TypeUtils::DataTypeToSerialString(combinedTopkWeightsDesc->GetDataType()).c_str()),
@@ -336,7 +339,7 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckInputDataType(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckInputDataType(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input tensor dtype failed."), return ge::GRAPH_FAILED);
 
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
