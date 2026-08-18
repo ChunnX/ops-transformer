@@ -14,18 +14,18 @@
  */
 
 #include "arch35/block_attn_res_prepare_vector.h"
-#include "blaze/gemm/kernel/kernel_attention_residuals_phase1.h"
+#include "blaze/gemm/kernel/kernel_block_attn_res_prepare.h"
 
 #define BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY 1000UL
 #define BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY 2000UL
 
 namespace {
-__aicore__ inline Blaze::Gemm::AttentionResidualsPhase1Params MakePhase1Params(
+__aicore__ inline Blaze::Gemm::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
     GM_ADDR blockResidual, GM_ADDR effectiveQuery, GM_ADDR validBlocks, GM_ADDR softmaxMax,
     GM_ADDR weightedOutput, GM_ADDR softmaxSum, GM_ADDR workspace,
     const optiling::BlockAttnResPrepareCubeTilingData &tiling)
 {
-    Blaze::Gemm::AttentionResidualsPhase1Params params{};
+    Blaze::Gemm::BlockAttnResPrepareParams params{};
     params.gmParams.blockResidualGmAddr = blockResidual;
     params.gmParams.effectiveQueryGmAddr = effectiveQuery;
     params.gmParams.validBlocksGmAddr = validBlocks;
@@ -83,9 +83,9 @@ extern "C" __global__ __aicore__ void block_attn_res_prepare(
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
-        const auto params = MakePhase1Params(blockResidual, effectiveQuery, validBlocks, softmaxMax,
-                                             weightedOutput, softmaxSum, userWorkspace, cubeTilingData);
-        Blaze::Gemm::Kernel::KernelAttentionResidualsPhase1<> kernel;
+        const auto params = MakeBlockAttnResPrepareParams(blockResidual, effectiveQuery, validBlocks, softmaxMax,
+                                                          weightedOutput, softmaxSum, userWorkspace, cubeTilingData);
+        Blaze::Gemm::Kernel::KernelBlockAttnResPrepare<> kernel;
         kernel(params);
     }
 }
