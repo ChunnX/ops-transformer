@@ -42,6 +42,7 @@ struct StageTwoParams {
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
     GlobalTensor<bfloat16_t> kg;           // R7: unused, kept for compat
     GlobalTensor<bfloat16_t> keyGm;        // R7: original K (T, Nk, Dk) for CalStateNew strided read
+    GlobalTensor<bfloat16_t> vNewScaledGm; // per-core (C×Dv) scaled v_new for CalStateNew (vInner stays unscaled for Stage3)
     GlobalTensor<bfloat16_t> out;
     int64_t cgStartPos;                    // R7: chunk group start position in T
     GM_ADDR ws;
@@ -81,6 +82,11 @@ public:
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         isFirstGroup_ = sTP_->isFirstGroup;
+        coreId_ = GetBlockIdx();
+        if ASCEND_IS_AIV {
+            coreId_ /= AIC_AIV_1_1;
+        }
+        vNewScaledGm_ = sTP_->vNewScaledGm[coreId_ * chunkSize_ * Dv_];
         InitLocalBuffers();
     }
 
@@ -181,10 +187,11 @@ public:
         if (GetSubBlockIdx() == 0) {
             PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            // R7: compute d = exp(g[-1]-g_cum) then cast+scale vInner
             CalD(sTP_->gCum[nvId * Sp_ + length]);
-            CastGmToGmWithScale<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
-                                                    curChunkSize_ * Dv_);
+            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
+                                          curChunkSize_ * Dv_);
+            CastGmToGmWithScale<float, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
+                                                   curChunkSize_ * Dv_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -201,9 +208,8 @@ public:
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
-            // R7: scale vInner by d[:,None] in-place
             CalD(sTP_->gCum[nvId * Sp_ + length]);
-            ScaleVInnerBf16(nvId, length);
+            CopyAndScaleVInnerBf16(nvId, length);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -225,15 +231,14 @@ public:
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
         CrossCoreWaitFlag(0x5);
-        // R7: CalStateNew uses strided K from original GM
         int64_t kStart = sTP_->cgStartPos + length;
         uint64_t kOffset = static_cast<uint64_t>(kStart) * Nk_ * Dk_ +
                            static_cast<uint64_t>(nvId) * (Nk_ / Nv_) * Dk_;
         uint64_t kStride = static_cast<uint64_t>(Nk_) * Dk_;
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->keyGm[kOffset], stateOut, kStride);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
         } else {
-            CalStateNew(sTP_->vInner[mm_offset1], sTP_->keyGm[kOffset], stateOut, kStride);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
@@ -329,9 +334,8 @@ public:
         }
     }
 
-    // R7: CalStateNew uses strided K from original GM (not kg_)
-    //   state += v_new_scaled^T @ K, where v_new_scaled = v_new * d[:,None]
-    //   d[j] = exp(g[-1]-g_cum[j]) is applied in AIV (CastGmToGmWithScale/ScaleVInnerBf16)
+    // CalStateNew: state += v_new_scaled^T @ K, where v_new_scaled = v_new * d[:,None]
+    //   d[j] = exp(g[-1]-g_cum[j]) is applied in AIV (CastGmToGmWithScale/CopyAndScaleVInnerBf16 → vNewScaledGm_)
     template <typename stateOutType>
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> keyStridedGm,
                                        GlobalTensor<stateOutType> state, uint64_t kStride)
@@ -449,8 +453,8 @@ public:
         outQueue_.FreeTensor(dstLocal);
     }
 
-    // R7: Scale vInner BF16 in-place by d[:,None] (BF16 path)
-    __aicore__ inline void ScaleVInnerBf16(int64_t nvId, int64_t length)
+    // Copy vInner to vNewScaledGm_ with d row scaling (BF16 path, vInner stays unscaled for Stage3)
+    __aicore__ inline void CopyAndScaleVInnerBf16(int64_t nvId, int64_t length)
     {
         uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
         int32_t rowCnt = curChunkSize_;
@@ -482,7 +486,7 @@ public:
         DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(bfloat16_t)),
                                     0, 0, 0};
         DataCopyPadExtParams<bfloat16_t> outPadParams{false, 0, 0, 0};
-        DataCopyPad(sTP_->vInner[mm_offset1], dstLocal, outParams);
+        DataCopyPad(vNewScaledGm_, dstLocal, outParams);
         outQueue_.FreeTensor(dstLocal);
     }
 
@@ -558,6 +562,8 @@ private:
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
     LocalTensor<float> dUb_; // R7: d = exp(g[-1]-g_cum) for v_new row scaling
+    GlobalTensor<bfloat16_t> vNewScaledGm_; // per-core (C×Dv) scaled v_new for CalStateNew
+    int64_t coreId_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;

@@ -359,21 +359,12 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // 同步2
         }
 
-        // R4: 列缩放 β → A_beta → 写 attnWs (供 matmul5 v_inner)
+        // R4+R5 merged: per-chunk column scaling to preserve inverseRes_ across R4→R5
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0xB); // ← AIC: AttnInverseMMCompute 完成
             ColumnScaleBeta(attnWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4: A_beta 就绪
-        }
-
-        // R5: 列缩放 g_exp → A_beta_gexp → 写 attnWsNegGm_ (供 matmul4 k_cumdecay)
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            if constexpr (gOptional) {
-                ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
-            } else {
-                // !gOptional: g_exp = 1, A_beta_gexp = A_beta, copy attnWs → attnWsNegGm_
-                ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
-            }
+            ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3: A_beta_gexp 就绪
         }
 
