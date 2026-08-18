@@ -38,7 +38,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmadTla<
-    MmadAtlasA5BsaQK<true>,
+    MmadAtlasA5BsaQKMX<true>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
@@ -49,7 +49,7 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaQK<true>;
+    using DispatchPolicy = MmadAtlasA5BsaQKMX<true>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
