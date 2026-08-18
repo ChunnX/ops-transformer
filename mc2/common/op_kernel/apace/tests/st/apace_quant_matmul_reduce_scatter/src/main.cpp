@@ -131,7 +131,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     // m 按 rankSize 切分用于 AlltoAll 通信
     uint32_t chunkM = static_cast<uint32_t>(m) / static_cast<uint32_t>(rankNum);
 
-    ApaceQuantMatmulReduceScatterTilingData tilingData;
+    QuantMatmulReduceScatterTilingData tilingData;
 
     // MatMul tiling: 使用完整 m, n, k（无 TP 切分）
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
@@ -147,10 +147,11 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     headMSize = (headMSize / 16) * 16;
     if (headMSize == 0) { headMSize = 16; }
 
-    // 点5: 压缩第 0 轮数据量, 通信尽早启动
-    // 当 headMSize > 128 且 chunkM 可被 128 整除时, 降到 128 (更多更小的 tile)
-    if (headMSize > 128U && chunkM > 128U && (chunkM % 128U) == 0U) {
-        INFO_LOG("[Opt] Compress tile size: %u -> 128 for early communication", headMSize);
+    // 点5: 自适应 headMSize — 通信尽早启动 + 流水掩盖
+    // R<=2: 保持 headMSize (大 tile, 少 SyncAll, 通信效率高)
+    // R>=4: 压缩到 128 (小 tile, 多 commTurn, 流水掩盖效果好, 通信时间短)
+    if (rankNum >= 4 && headMSize > 128U && chunkM > 128U && (chunkM % 128U) == 0U) {
+        INFO_LOG("[Opt] Adaptive compress: rankNum=%d, headMSize %u->128 (R>=4 pipeline mode)", rankNum, headMSize);
         headMSize = 128U;
     }
 
@@ -344,7 +345,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
 
     if (mode == "precision") {
         INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, PUT mode)", rankId, tilingData.mmTilingData.usedCoreNum);
-        ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+        QuantMatmulReduceScatterKernelE4M3E4M3<<<
             tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                 devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                 deviceWorkspace, deviceOutput, tilingData);
@@ -381,7 +382,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
         std::vector<double> durations(PERF_LOOP_COUNT);
         for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
+            QuantMatmulReduceScatterKernelE4M3E4M3<<<
                 tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                     deviceWorkspace, deviceOutput, tilingData);

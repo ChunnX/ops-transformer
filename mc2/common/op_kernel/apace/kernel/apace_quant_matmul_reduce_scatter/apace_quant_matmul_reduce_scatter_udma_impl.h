@@ -51,9 +51,9 @@
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/block/aiv_comm/barrier/barrier_ubmem.h"
 
-#include "apace_quant_matmul_reduce_scatter_tiling_data.h"
+#include "quant_matmul_reduce_scatter_tiling_data.h"
 #include "qmm_mx_kernel_rs_frag.h"
-#include "reduce_sum.h"
+#include "reduce_sum_ref.h"
 
 namespace Apace {
 
@@ -70,17 +70,17 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
  * 计算在前(AIC) + PUT 通信(AIV) + reduceSum(AIV)
  */
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-class ApaceQuantMatmulReduceScatterUdmaImpl {
+class QuantMatmulReduceScatterImpl {
 public:
-    __aicore__ inline ApaceQuantMatmulReduceScatterUdmaImpl() {};
-    __aicore__ inline ~ApaceQuantMatmulReduceScatterUdmaImpl() {}
+    __aicore__ inline QuantMatmulReduceScatterImpl() {};
+    __aicore__ inline ~QuantMatmulReduceScatterImpl() {}
 
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
                      GM_ADDR aGM, GM_ADDR scaleAGM,
                      GM_ADDR bGM, GM_ADDR scaleBGM,
                      GM_ADDR workspaceGM,
                      GM_ADDR cGM,
-                     const ApaceQuantMatmulReduceScatterTilingData *tilingData);
+                     const QuantMatmulReduceScatterTilingData *tilingData);
 
     __aicore__ inline void Run();
 
@@ -149,12 +149,17 @@ private:
     // ---------------- reduceSum 组件 ----------------
     AiVReduceSumImpl::ReduceSumForAlltoAll<CType> reduceSum_;
 
-    const ApaceQuantMatmulReduceScatterTilingData* tilingData_{nullptr};
+    const QuantMatmulReduceScatterTilingData* tilingData_{nullptr};
 
     // ---------------- 私有方法 ----------------
-    __aicore__ inline void InitBaseParams(const ApaceQuantMatmulReduceScatterTilingData *tilingData);
+    __aicore__ inline void InitBaseParams(const QuantMatmulReduceScatterTilingData *tilingData);
     __aicore__ inline void RunMatmul();                    // AIC: per-tile matmul → workspaceGM
     __aicore__ inline void RunAllToAllAndReduceSum();      // AIV: per-tile WaitFlag + AllToAll PUT + reduceSum
+    __aicore__ inline uint32_t GetTileM(uint32_t t);       // 获取 tile t 的 M 大小
+    __aicore__ inline uint64_t GetTileMOffset(uint32_t t); // 获取 tile t 的 M 偏移
+    __aicore__ inline void DoReduceSum(uint32_t tileIdx, uint32_t tileM, uint64_t tileMOffset,
+                                        uint32_t nSize, uint32_t rowBytes, uint64_t stride,
+                                        uint32_t usedCoreNum, uint32_t blockIdx);
 };
 
 // =================================================================================
@@ -162,10 +167,10 @@ private:
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::Init(
+__aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM,
     GM_ADDR workspaceGM, GM_ADDR cGM,
-    const ApaceQuantMatmulReduceScatterTilingData *tilingData)
+    const QuantMatmulReduceScatterTilingData *tilingData)
 {
     tilingData_ = tilingData;
     baseParams_.aGm = aGM;
@@ -201,7 +206,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::Run()
+__aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::Run()
 {
     if ASCEND_IS_AIC {
         // AIC 侧: 一次 matmul 覆盖完整 [m, n] + SetFlag
@@ -219,8 +224,8 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::InitBaseParams(
-    const ApaceQuantMatmulReduceScatterTilingData *tilingData)
+__aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::InitBaseParams(
+    const QuantMatmulReduceScatterTilingData *tilingData)
 {
     baseParams_.headMSize = tilingData->commTilingData.splitAxisTileSize;
     baseParams_.tailMSize = tilingData->commTilingData.splitAxisTailSize;
@@ -250,7 +255,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
+__aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
     // FragmentTensor 方案: 一次 matmul 调用覆盖所有 rank 段
     //   totalLogicalM = rankSize * chunkM = m (或 rankSize * curTileM for per-tile)
@@ -258,18 +263,17 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     //   无 R 循环, 无 if/else — 统一 for t 循环, T=1 自然退化
     const auto& mmT = tilingData_->mmTilingData;
     const auto& commTd = tilingData_->commTilingData;
-    uint32_t commTurn = static_cast<uint32_t>(commTd.splitAxisTileCnt + commTd.splitAxisTailCnt);
+    uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
     uint32_t R = baseParams_.rankSize;
 
     for (uint32_t t = 0; t < commTurn; ++t) {
-        bool isHeadTile = (t < commTd.splitAxisTileCnt);
-        uint32_t curTileM = isHeadTile
-                          ? static_cast<uint32_t>(commTd.splitAxisTileSize)
-                          : static_cast<uint32_t>(commTd.splitAxisTailSize);
+        uint32_t curTileM = GetTileM(t);
+        uint64_t tileMOffset = GetTileMOffset(t);
 
-        // 选择 tiling: T=1 用 mmT, T>1 时 head tile 用 subMmT, tail tile 用 tailMmT
+        // 选择 tiling: T=1 用 mmT, head tile 用 subMmT, tail tile 用 tailMmT
         const auto& subMmT = tilingData_->subMmTilingData;
         const auto& tailMmT = tilingData_->tailMmTilingData;
+        bool isHeadTile = (t < baseParams_.headTileCnt);
         const auto& tileT = (commTurn == 1) ? mmT : (isHeadTile ? subMmT : tailMmT);
 
         // Fragment 参数 — 单一 HEAD region (per-tile 调用, 无 MAIN/TAIL)
@@ -294,10 +298,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         params.mmTile = &tileT;
         params.qbmmParams = {tileT.baseM, tileT.baseN, tileT.baseK, tileT.dbL0c};
         params.fragParams = fragParams;
-        // A/C 地址带 tile 偏移: aGm + tileMOffset * K, workspaceGm + tileMOffset * N * sizeof(CType)
-        uint64_t tileMOffset = isHeadTile
-            ? t * static_cast<uint32_t>(commTd.splitAxisTileSize)
-            : static_cast<uint32_t>(commTd.splitAxisTileCnt) * static_cast<uint32_t>(commTd.splitAxisTileSize);
+        // A/C 地址带 tile 偏移
         params.aGM = baseParams_.aGm + tileMOffset * baseParams_.axisK;
         params.aScaleGM = baseParams_.scaleAGm + tileMOffset * baseParams_.scaleARowBytes;
         params.bGM = baseParams_.bGm;
@@ -318,7 +319,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
+__aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
     // 点4: V 核流水优化 — AllToAll(t) 与 ReduceSum(t-1) 掩盖执行
     //   block 0: AllToAll(t) 期间, block 1-27 执行 ReduceSum(t-1)
@@ -341,22 +342,18 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         SyncAll<true>();
         // ReduceSum tile 0
         {
-            uint32_t tileM = static_cast<uint32_t>(baseParams_.headMSize);
-            uint64_t tileMOffset = 0;
-            uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
-            GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
-            GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
-            GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
-            reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                            usedCoreNum, srcAddr, selfAddr, dstAddr);
-            reduceSum_.ExecuteReduceSum(tileM, nSize);
+            uint32_t tileM = GetTileM(0);
+            uint64_t tileMOffset = GetTileMOffset(0);
+            if (tileM > 0) {
+                DoReduceSum(0, tileM, tileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
+            }
         }
         if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
         return;
     }
 
     // 多 tile: 流水掩盖
-    // Tile 0: AllToAll only (通信尽早启动)
+    // Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
     SyncAll<true>();
     if (blockIdx == 0) {
@@ -375,22 +372,11 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         } else {
-            // ReduceSum(t-1)
             uint32_t rsT = t - 1;
-            uint32_t rsTileM = (rsT < baseParams_.headTileCnt)
-                             ? static_cast<uint32_t>(baseParams_.headMSize)
-                             : static_cast<uint32_t>(baseParams_.tailMSize);
-            uint64_t rsTileMOffset = (rsT < baseParams_.headTileCnt)
-                ? static_cast<uint64_t>(rsT) * baseParams_.headMSize
-                : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+            uint32_t rsTileM = GetTileM(rsT);
+            uint64_t rsTileMOffset = GetTileMOffset(rsT);
             if (rsTileM > 0) {
-                uint64_t outputSize = static_cast<uint64_t>(rsTileM) * nSize;
-                GM_ADDR srcAddr = baseParams_.selfWinAddr + rsTileMOffset * rowBytes;
-                GM_ADDR selfAddr = baseParams_.workspaceGm + rsTileMOffset * rowBytes;
-                GM_ADDR dstAddr = baseParams_.cGm + rsTileMOffset * rowBytes;
-                reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                                usedCoreNum, srcAddr, selfAddr, dstAddr);
-                reduceSum_.ExecuteReduceSum(rsTileM, nSize);
+                DoReduceSum(rsT, rsTileM, rsTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
             }
         }
         SyncAll<true>();
@@ -398,20 +384,10 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         // Phase 2: block 0 补做 ReduceSum(t-1)
         if (blockIdx == 0) {
             uint32_t rsT = t - 1;
-            uint32_t rsTileM = (rsT < baseParams_.headTileCnt)
-                             ? static_cast<uint32_t>(baseParams_.headMSize)
-                             : static_cast<uint32_t>(baseParams_.tailMSize);
-            uint64_t rsTileMOffset = (rsT < baseParams_.headTileCnt)
-                ? static_cast<uint64_t>(rsT) * baseParams_.headMSize
-                : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+            uint32_t rsTileM = GetTileM(rsT);
+            uint64_t rsTileMOffset = GetTileMOffset(rsT);
             if (rsTileM > 0) {
-                uint64_t outputSize = static_cast<uint64_t>(rsTileM) * nSize;
-                GM_ADDR srcAddr = baseParams_.selfWinAddr + rsTileMOffset * rowBytes;
-                GM_ADDR selfAddr = baseParams_.workspaceGm + rsTileMOffset * rowBytes;
-                GM_ADDR dstAddr = baseParams_.cGm + rsTileMOffset * rowBytes;
-                reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                                usedCoreNum, srcAddr, selfAddr, dstAddr);
-                reduceSum_.ExecuteReduceSum(rsTileM, nSize);
+                DoReduceSum(rsT, rsTileM, rsTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
             }
         }
     }
@@ -420,24 +396,54 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     SyncAll<true>();
     {
         uint32_t lastT = commTurn - 1;
-        uint32_t lastTileM = (lastT < baseParams_.headTileCnt)
-                           ? static_cast<uint32_t>(baseParams_.headMSize)
-                           : static_cast<uint32_t>(baseParams_.tailMSize);
-        uint64_t lastTileMOffset = (lastT < baseParams_.headTileCnt)
-            ? static_cast<uint64_t>(lastT) * baseParams_.headMSize
-            : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+        uint32_t lastTileM = GetTileM(lastT);
+        uint64_t lastTileMOffset = GetTileMOffset(lastT);
         if (lastTileM > 0) {
-            uint64_t outputSize = static_cast<uint64_t>(lastTileM) * nSize;
-            GM_ADDR srcAddr = baseParams_.selfWinAddr + lastTileMOffset * rowBytes;
-            GM_ADDR selfAddr = baseParams_.workspaceGm + lastTileMOffset * rowBytes;
-            GM_ADDR dstAddr = baseParams_.cGm + lastTileMOffset * rowBytes;
-            reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                            usedCoreNum, srcAddr, selfAddr, dstAddr);
-            reduceSum_.ExecuteReduceSum(lastTileM, nSize);
+            DoReduceSum(lastT, lastTileM, lastTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
         }
     }
 
     if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
+}
+
+// =================================================================================
+// 辅助方法: GetTileM / GetTileMOffset / DoReduceSum
+// =================================================================================
+
+template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
+__aicore__ inline uint32_t
+QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::GetTileM(uint32_t t)
+{
+    if (t < baseParams_.headTileCnt) {
+        return static_cast<uint32_t>(baseParams_.headMSize);
+    }
+    return static_cast<uint32_t>(baseParams_.tailMSize);
+}
+
+template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
+__aicore__ inline uint64_t
+QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::GetTileMOffset(uint32_t t)
+{
+    if (t < baseParams_.headTileCnt) {
+        return static_cast<uint64_t>(t) * baseParams_.headMSize;
+    }
+    return static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+}
+
+template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
+__aicore__ inline void
+QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::DoReduceSum(
+    uint32_t tileIdx, uint32_t tileM, uint64_t tileMOffset,
+    uint32_t nSize, uint32_t rowBytes, uint64_t stride,
+    uint32_t usedCoreNum, uint32_t blockIdx)
+{
+    uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
+    GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
+    GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
+    GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
+    reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                    usedCoreNum, srcAddr, selfAddr, dstAddr);
+    reduceSum_.ExecuteReduceSum(tileM, nSize);
 }
 
 } // namespace Apace
