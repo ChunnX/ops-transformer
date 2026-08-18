@@ -47,13 +47,16 @@ yr[k] = xl[k] * sin(a[k]) + xr[k] * cos(a[k])
 | x | 输入 | 输入 tensor，shape 为 [B, S, D] | FLOAT16, FLOAT, BFLOAT16 | ND |
 | cos | 输入 | 预计算 cos/sin 表，shape 为 [B, S, D]，左半 cos、右半 sin | FLOAT16, FLOAT, BFLOAT16 | ND |
 | y | 输出 | 旋转结果 tensor，shape 为 [B, S, D] | FLOAT16, FLOAT, BFLOAT16 | ND |
+| t_output_dim | 可选属性 | 视频时间轴帧数 T。不传或为 0 时自动分解。 | INT64 | - |
+| h_output_dim | 可选属性 | 视频高度 token 数 H。不传或为 0 时自动分解。 | INT64 | - |
+| w_output_dim | 可选属性 | 视频宽度 token 数 W。不传或为 0 时自动分解。 | INT64 | - |
 
 ## 约束说明
 
 - 输入 x 和 cos 的 shape 必须相同。
 - D 必须为偶数，且 D >= 8。
 - 序列长度 S 建议能被因子分解为 T x H x W 以充分利用 3D 位置编码；若无法分解，退化为 1D（T=1, H=1, W=S）。
-- 算子通过 FactorVideoDims 自动将 S 分解为视频维度（T, H, W），分解策略优先寻找接近 S^(1/3) 的因子。
+- 默认通过 FactorVideoDims 自动将 S 分解为视频维度（T, H, W）；对视频模型（如 Wan2.2）建议显式传入 t_output_dim / h_output_dim / w_output_dim（需满足 T x H x W == S），保证位置解码正确。
 - 该接口仅支持 ND 格式，不支持其他数据格式。
 - 该接口暂不支持入图模式。
 

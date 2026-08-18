@@ -133,11 +133,33 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     int64_t wBand = 0;
     ComputeBandDims(headDim, tBand, hBand, wBand);
 
-    // Compute video dims
+    // Compute video dims：优先使用调用方显式指定的真实视频网格(T/H/W)，否则自动分解
     int64_t T;
     int64_t H;
     int64_t W;
-    FactorVideoDims(seqLen, T, H, W);
+    bool useExplicitDims = false;
+    auto *attrs = context->GetAttrs();
+    if (attrs != nullptr) {
+        auto *tPtr = attrs->GetAttrPointer<int64_t>(0);
+        auto *hPtr = attrs->GetAttrPointer<int64_t>(1);
+        auto *wPtr = attrs->GetAttrPointer<int64_t>(2);
+        int64_t tDim = (tPtr != nullptr) ? *tPtr : 0;
+        int64_t hDim = (hPtr != nullptr) ? *hPtr : 0;
+        int64_t wDim = (wPtr != nullptr) ? *wPtr : 0;
+        if (tDim > 0 && hDim > 0 && wDim > 0) {
+            OP_CHECK_IF(tDim * hDim * wDim != seqLen,
+                        OP_LOGE(context, "t_output_dim*h_output_dim*w_output_dim(%ld) != seqLen(%ld)",
+                                tDim * hDim * wDim, seqLen),
+                        return ge::GRAPH_FAILED);
+            T = tDim;
+            H = hDim;
+            W = wDim;
+            useExplicitDims = true;
+        }
+    }
+    if (!useExplicitDims) {
+        FactorVideoDims(seqLen, T, H, W);
+    }
 
     // Compute block/tile params matching kernel logic
     int64_t blockLength = totalLength / BLOCK_DIM;

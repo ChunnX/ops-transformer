@@ -97,8 +97,8 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     const float freqBase = 10000.0f;
 
     // 1. Factor video dims
-    int64_t T, H, W;
-    FactorVideoDims(S, T, H, W);
+    int64_t tDim, H, W;
+    FactorVideoDims(S, tDim, H, W);
     int64_t hw = H * W;
     int64_t wv = W;
 
@@ -218,7 +218,7 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     td->totalLength = total;
     td->headDim = D;
     td->seqLen = S;
-    td->T = T;
+    td->T = tDim;
     td->H = H;
     td->W = W;
     td->tBand = tb;

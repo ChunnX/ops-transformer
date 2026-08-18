@@ -127,7 +127,8 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 
 // CPU reference: true 3D spatial RoPE
 // Computes theta tables from freqBase internally, decodes l->(t,i,j)
-static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const float *x, float *y, float freqBase)
+static void RoPE3DCore(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH, int64_t vidW,
+                       const float *x, float *y, float freqBase)
 {
     int64_t tBand, hBand, wBand;
     ComputeBandDims3D(headDim, tBand, hBand, wBand);
@@ -157,8 +158,6 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const floa
             thetaW[i] = thetaW[i - 1] * rW;
     }
 
-    int64_t vidT, vidH, vidW;
-    FactorVideoDims(seqLen, vidT, vidH, vidW);
     int64_t hw = vidH * vidW;
     if (hw <= 0)
         hw = 1;
@@ -210,6 +209,21 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const floa
             }
         }
     }
+}
+
+// 自动分解网格的参考实现（1D 退化或未显式指定时使用）
+static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const float *x, float *y, float freqBase)
+{
+    int64_t vidT, vidH, vidW;
+    FactorVideoDims(seqLen, vidT, vidH, vidW);
+    RoPE3DCore(batch, seqLen, headDim, vidT, vidH, vidW, x, y, freqBase);
+}
+
+// 显式指定真实视频网格(T/H/W)的参考实现（Wan2.2 风格）
+static void RefRoPE3DExplicit(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH,
+                              int64_t vidW, const float *x, float *y, float freqBase)
+{
+    RoPE3DCore(batch, seqLen, headDim, vidT, vidH, vidW, x, y, freqBase);
 }
 
 // ========== 动态加载 aclnn API ==========
@@ -335,7 +349,7 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim, int testIdx, aclrtSt
 
     uint64_t wsSize = 0;
     aclOpExecutor *exec = nullptr;
-    ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
+    ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, 0, 0, 0, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
 
     void *ws = nullptr;
@@ -386,7 +400,7 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim, int testIdx, aclrtSt
         // 每次调用需要重建 executor（one-shot）
         for (int i = 0; i < kWarmup; i++) {
             exec = nullptr;
-            ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
+            ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, 0, 0, 0, out, &wsSize, &exec);
             if (ret != ACL_SUCCESS)
                 break;
             ret = aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
@@ -395,7 +409,7 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim, int testIdx, aclrtSt
         auto t0 = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < kIter; i++) {
             exec = nullptr;
-            aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
+            aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, 0, 0, 0, out, &wsSize, &exec);
             aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
             aclrtSynchronizeStream(stream);
         }
@@ -452,9 +466,8 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim, int 
     std::vector<int64_t> shape = {1, seqLen, headDim};
     int ret;
 
-    // Match kernel's tiling: FactorVideoDims determines actual T/H/W
-    int64_t actualT, actualH, actualW;
-    FactorVideoDims(seqLen, actualT, actualH, actualW);
+    // 显式使用调用方指定的真实视频网格(T/H/W)，不做自动分解（Wan2.2 风格）
+    int64_t actualT = hintT, actualH = hintH, actualW = hintW;
     int64_t hw = actualH * actualW, wv = actualW;
 
     // Random input data
@@ -513,9 +526,9 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim, int 
         }
     }
 
-    // Reference (RefRoPE3D also calls FactorVideoDims internally)
+    // Reference：使用显式网格(T/H/W)生成 golden
     std::vector<float> yRef(total, 0);
-    RefRoPE3D(1, seqLen, headDim, x1Data.data(), yRef.data(), freqBase);
+    RefRoPE3DExplicit(1, seqLen, headDim, actualT, actualH, actualW, x1Data.data(), yRef.data(), freqBase);
 
     // NPU kernel execution
     aclTensor *x1 = nullptr, *x2 = nullptr, *out = nullptr;
@@ -530,7 +543,7 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim, int 
 
     uint64_t wsSize = 0;
     aclOpExecutor *exec = nullptr;
-    ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
+    ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, hintT, hintH, hintW, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[3DTest %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
     void *ws = nullptr;
     if (wsSize > 0) {

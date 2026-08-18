@@ -35,6 +35,10 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
+        this->Attr("t_output_dim").AttrType(OPTIONAL).Int(0);
+        this->Attr("h_output_dim").AttrType(OPTIONAL).Int(0);
+        this->Attr("w_output_dim").AttrType(OPTIONAL).Int(0);
+
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
