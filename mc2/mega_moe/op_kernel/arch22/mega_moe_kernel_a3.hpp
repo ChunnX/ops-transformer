@@ -408,6 +408,10 @@ private:
         preSumBeforeRank.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool *>(params.ptrXActiveMask));
         maskBufferAddr = params.ptrMaskBuffer;
+        if (maskBufferAddr != nullptr) {
+            rankMaskLocal = resource.ubBuf.template GetBufferByByte<int32_t>(RANK_MASK_UB_OFFSET);
+            CopyRankMaskToLocal(params);
+        }
 
         isCombineV1 = false;
         if constexpr (std::is_same_v<ElementB, int8_t>) {
@@ -419,14 +423,26 @@ private:
     }
 
     CATLASS_DEVICE
-    bool IsRankMasked(int32_t rank) const
+    void CopyRankMaskToLocal(Params const &params)
+    {
+        if (maskBufferAddr == nullptr) {
+            return;
+        }
+        AscendC::GlobalTensor<int32_t> rankMaskGm;
+        rankMaskGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(maskBufferAddr));
+        AscendC::DataCopyPad(rankMaskLocal, rankMaskGm,
+                             {1, static_cast<uint16_t>(params.EP * sizeof(int32_t)), 0, 0}, {});
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+    }
+
+    CATLASS_DEVICE
+    bool IsRankMasked(int32_t rank)
     {
         if (maskBufferAddr == nullptr) {
             return false;
         }
-        __gm__ uint8_t *mask = reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr);
-        gm_dcci(mask + rank);
-        return gm_load(mask + rank) != 0;
+        return rankMaskLocal.GetValue(rank) != 0;
     }
 
     template <typename T>
@@ -1219,6 +1235,7 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        CopyRankMaskToLocal(params);
 
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
@@ -1468,7 +1485,7 @@ private:
                 if (maskBufferAddr == nullptr) {
                     shmem.CrossRankSyncV2Set(ctrBuffer);
                 } else {
-                    shmem.CrossRankSyncV2Set(ctrBuffer, reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr));
+                    shmem.CrossRankSyncV2SetWithMask(ctrBuffer, rankMaskLocal);
                 }
             } else {
                 uint32_t uboffset = 0;
@@ -1493,7 +1510,7 @@ private:
                 if (maskBufferAddr == nullptr) {
                     shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
                 } else {
-                    shmem.CrossRankSyncV2Wait(reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr));
+                    shmem.CrossRankSyncV2WaitWithMask(rankMaskLocal);
                 }
 
                 exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
@@ -1509,7 +1526,7 @@ private:
             if (maskBufferAddr == nullptr) {
                 shmem.CrossRankSync();
             } else {
-                shmem.CrossRankSync(reinterpret_cast<__gm__ uint8_t *>(maskBufferAddr));
+                shmem.CrossRankSyncWithMask(rankMaskLocal);
             }
 
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
@@ -1805,6 +1822,8 @@ private:
     uint32_t coreNum;
     uint32_t nSyncSwiglu;
 
+    static constexpr uint32_t RANK_MASK_UB_OFFSET = ArchTag::UB_SIZE - 768 * sizeof(int32_t);
+
     Params params;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
@@ -1825,6 +1844,7 @@ private:
     int32_t paddedExpertNumAligned;
     bool isCombineV1;
     GM_ADDR maskBufferAddr{nullptr};
+    AscendC::LocalTensor<int32_t> rankMaskLocal;
     // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
     // 基址取通信域首地址（shmem()()），根据kRoutingIsQuant选择对应tiling结构体的Policy，
     // ArchTag传入Policy供架构差异扩展。

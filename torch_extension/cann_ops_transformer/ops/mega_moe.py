@@ -294,7 +294,7 @@ class SymmBuffer:
         self.mask_buffer = None
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
-        return torch.zeros(ep_world_size, dtype=torch.bool, device=self.context.device)
+        return torch.zeros(ep_world_size, dtype=torch.int32, device=self.context.device)
 
     def _check_mask_buffer_supported(self) -> None:
         if "Ascend910_93" not in torch.npu.get_device_name():
@@ -303,10 +303,31 @@ class SymmBuffer:
     def destroy(self):
         self._ctx_manager.destroy()
 
-    def query_mask_buffer(self) -> Optional[torch.Tensor]:
-        """Return the current rank mask tensor."""
+    def query_mask_buffer(self, mask_status: torch.Tensor) -> None:
+        """Copy the current rank mask to a caller-provided NPU tensor."""
         self._check_mask_buffer_supported()
-        return self.mask_buffer
+        if self.mask_buffer is None:
+            self.mask_buffer = self._create_mask_buffer(self.ep_world_size)
+        if not isinstance(mask_status, torch.Tensor):
+            raise TypeError(f"mask_status must be a Tensor, got {type(mask_status)}.")
+        if mask_status.dtype != torch.int32:
+            raise TypeError(
+                f"mask_status dtype must be torch.int32, got {mask_status.dtype}."
+            )
+        if mask_status.device.type != "npu":
+            raise ValueError(f"mask_status must be on NPU, got {mask_status.device}.")
+        if mask_status.device != self.mask_buffer.device:
+            raise ValueError(
+                "mask_status must be on the same NPU device as mask_buffer."
+            )
+        if mask_status.shape != self.mask_buffer.shape:
+            raise ValueError(
+                "mask_status shape must match mask_buffer shape "
+                f"{tuple(self.mask_buffer.shape)}, got {tuple(mask_status.shape)}."
+            )
+        if not mask_status.is_contiguous():
+            raise ValueError("mask_status must be contiguous.")
+        mask_status.copy_(self.mask_buffer, non_blocking=True)
 
     def update_mask_buffer(self, rank: int, masked: bool) -> None:
         self._check_mask_buffer_supported()
@@ -322,7 +343,7 @@ class SymmBuffer:
         if self.mask_buffer is None:
             self.mask_buffer = self._create_mask_buffer(self.ep_world_size)
 
-        self.mask_buffer[rank] = masked
+        self.mask_buffer[rank] = int(masked)
 
     def update_group(self, group) -> None:
         """Destroy the old links after a replacement context has been created."""

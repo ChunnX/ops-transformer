@@ -41,7 +41,7 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
                 "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
     if (maskBuffer.has_value()) {
         const at::Tensor &mask = maskBuffer.value();
-        TORCH_CHECK(mask.scalar_type() == at::kBool, "mask_buffer dtype must be bool.");
+        TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
         TORCH_CHECK(mask.dim() == 1 && mask.numel() == epWorldSize, "mask_buffer shape must be [ep_world_size].");
         TORCH_CHECK(mask.device() == x.device(), "mask_buffer must be on the same device as x.");
         TORCH_CHECK(mask.is_contiguous(), "mask_buffer must be contiguous.");

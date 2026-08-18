@@ -395,7 +395,7 @@ public:
     }
 
     FORCE_INLINE_AICORE
-    void CrossRankSync(__gm__ uint8_t *rankMask)
+    void CrossRankSyncWithMask(AscendC::LocalTensor<int32_t> rankMask)
     {
         uint64_t flag_offset = (m_segmentSize - m_tailReservedSize) / sizeof(int64_t);
         __gm__ int64_t *sync_counter = (__gm__ int64_t *)(*this)() + flag_offset;
@@ -405,8 +405,7 @@ public:
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
         // 完成所有发送，再进入等待，不要因为一个rank没有等待到阻塞后续发送
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            gm_dcci(rankMask + i);
-            if (gm_load(rankMask + i) != 0) { // masked rank不再等待
+            if (rankMask.GetValue(i) != 0) { // masked rank不再等待
                 continue;
             }
             __gm__ int64_t *sync_remote = (__gm__ int64_t *)((*this)(i)) + flag_offset + m_rank * 8;
@@ -414,7 +413,7 @@ public:
             gm_dcci((__gm__ uint8_t *)sync_remote);
         }
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            if (gm_load(rankMask + i) != 0) { // masked rank不再等待
+            if (rankMask.GetValue(i) != 0) { // masked rank不再等待
                 continue;
             }
             auto sync_check = sync_counter + i * 8;
@@ -588,7 +587,8 @@ public:
     }
 
     FORCE_INLINE_AICORE
-    void CrossRankSyncV2Set(AscendC::LocalTensor<int32_t> ctrBuffer, __gm__ uint8_t *rankMask)
+    void CrossRankSyncV2SetWithMask(AscendC::LocalTensor<int32_t> ctrBuffer,
+                                    AscendC::LocalTensor<int32_t> rankMask)
     {
         uint64_t flag_offset = (m_segmentSize - m_tailReservedSize) + m_rank * STATE_OFFSET;
         int vec_size = get_block_num();
@@ -601,8 +601,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         for (uint32_t dstEpIdx = vec_id; dstEpIdx < m_rankSize; dstEpIdx += vec_size) {
-            gm_dcci(rankMask + dstEpIdx);
-            if (gm_load(rankMask + dstEpIdx) != 0) {
+            if (rankMask.GetValue(dstEpIdx) != 0) {
                 continue;
             }
             AscendC::GlobalTensor<int32_t> gmDstStates;
@@ -677,15 +676,14 @@ public:
     }
 
     FORCE_INLINE_AICORE
-    void CrossRankSyncV2Wait(__gm__ uint8_t *rankMask)
+    void CrossRankSyncV2WaitWithMask(AscendC::LocalTensor<int32_t> rankMask)
     {
         uint64_t flag_offset = m_segmentSize - m_tailReservedSize;
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
         for (int rank = vec_id; rank < m_rankSize; rank += vec_size) {
-            gm_dcci(rankMask + rank);
-            if (gm_load(rankMask + rank) != 0) {
+            if (rankMask.GetValue(rank) != 0) {
                 continue;
             }
             __gm__ int32_t *status = reinterpret_cast<__gm__ int32_t *>((*this)() + flag_offset + rank * STATE_OFFSET);

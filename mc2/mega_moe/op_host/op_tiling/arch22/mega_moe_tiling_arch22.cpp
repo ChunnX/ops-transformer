@@ -515,8 +515,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_TILING_CHECK(maskShape->GetStorageShape().GetDimNum() != ONE_DIM ||
                             maskShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.epWorldSize),
                         OP_LOGE(K_INNER_DEBUG, "mask_buffer shape must be [ep_world_size]."), return GRAPH_FAILED);
-        OP_TILING_CHECK(maskDesc->GetDataType() != ge::DT_BOOL,
-                        OP_LOGE(K_INNER_DEBUG, "mask_buffer dtype must be bool."), return GRAPH_FAILED);
+        OP_TILING_CHECK(maskDesc->GetDataType() != ge::DT_INT32,
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer dtype must be int32."), return GRAPH_FAILED);
     }
     // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr, info.activationCode) != ge::GRAPH_SUCCESS,

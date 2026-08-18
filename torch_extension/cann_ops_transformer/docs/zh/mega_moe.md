@@ -629,7 +629,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - A3 弹性扩缩容接口：
 
 ```python
-sym_buffer.query_mask_buffer() -> Optional[Tensor]
+sym_buffer.query_mask_buffer(mask_status) -> None
 sym_buffer.update_mask_buffer(rank, masked) -> None
 sym_buffer.update_group(group) -> None
 ```
@@ -637,9 +637,11 @@ sym_buffer.update_group(group) -> None
 `mask_buffer` 及以上三个 `SymmBuffer` 弹性成员函数当前仅支持 Atlas A3。
 `SymmBuffer` 默认不创建 `mask_buffer`，
 因此各代际默认均不会向算子传入该参数。第一次调用 `update_mask_buffer` 时才会在 NPU 上创建
-shape 为 `[ep_world_size]` 的全 False bool 掩码；置为 True 的 rank 会在后续计算和卡间通信中跳过。
-`query_mask_buffer` 在掩码尚未创建时返回 `None`，创建后直接返回当前 NPU 上的 `mask_buffer` Tensor；
-调用者对返回 Tensor 的原地修改会影响后续 `mega_moe` 调用所使用的掩码。
+shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank
+会在后续计算和卡间通信中被跳过。
+`query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、
+所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor；
+掩码尚未创建时，接口会先自动创建全 0 掩码，调用者无需感知内部初始化时机。
 `update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。
 `update_group` 使用新 group 完整重建通信链路，并将 `mask_buffer` 恢复为 `None`，旧通信链路的算子执行完成需要调用者保证。
 
