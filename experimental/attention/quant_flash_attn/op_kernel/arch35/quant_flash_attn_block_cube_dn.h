@@ -12,8 +12,8 @@
  * \file quant_flash_atten_block_cube_dn.h
  * \brief
  */
-#ifndef QUANT_FLASH_ATTN_NOQUANT_BLOCK_CUBE_DN_H_
-#define QUANT_FLASH_ATTN_NOQUANT_BLOCK_CUBE_DN_H_
+#ifndef QUANT_FLASH_ATTN_BLOCK_CUBE_DN_H_
+#define QUANT_FLASH_ATTN_BLOCK_CUBE_DN_H_
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"

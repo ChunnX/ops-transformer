@@ -52,7 +52,6 @@ public:
 
     static constexpr uint8_t SYNC_MODE_2 = 2;
     static constexpr uint8_t SYNC_MODE_4 = 4;
-    // static constexpr uint16_t CROSS_CORE_SYNC_C1_V1[2] = {0, 1};
     static constexpr uint16_t CROSS_CORE_SYNC_V1_C1[2] = {9, 10};
     static constexpr uint16_t CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 = 5;
     static constexpr uint16_t CROSS_CORE_SYNC_BUF1_GMAX_UB_TO_L1 = 6;

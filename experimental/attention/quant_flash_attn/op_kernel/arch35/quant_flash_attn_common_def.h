@@ -122,7 +122,6 @@ struct RunInfo {
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
-    bool isLastSecondS2Loop = true;
     bool isUpdatePScale = false;
     bool isC2Sync = false;            // s2上16个softmax是一个tile，这是每一个tile的第一个softmax 任务
     uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
