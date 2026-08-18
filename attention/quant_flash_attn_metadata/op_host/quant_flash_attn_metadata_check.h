@@ -49,6 +49,10 @@ private:
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
 
+    // 校验 v_descale: quantMode=6 时不应传入, quantMode=1 时必传且维度需与 layoutKv 匹配
+    static inline aclnnStatus CheckVDescale(int64_t quantMode, const aclTensor *vDescaleOptional,
+                                            const char *layoutKv);
+
     // 校验参数存在性: metadata 必须传入; TND 时必须传 cu_seqlens, 非 TND 时不可传 cu_seqlens 且
     // max_seqlen/seqused 至少提供一个
     static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQ,
@@ -70,11 +74,12 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::ParamsCheck(
     int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
     const char *layoutOut, const aclTensor *metadata)
 {
-    (void)vDescaleOptional; // v_descale 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
                              layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode, winLeft, winRight);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckVDescale(quantMode, vDescaleOptional, layoutKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistency(maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional, cuSeqlensKvOptional,
                          sequsedQOptional, sequsedKvOptional, metadata);
