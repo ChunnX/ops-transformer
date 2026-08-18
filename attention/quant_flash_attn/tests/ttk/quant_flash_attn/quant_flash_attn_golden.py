@@ -1770,11 +1770,15 @@ def prepare_npu_inputs(
     K_DTYPE = k_fp8.dtype
     V_DTYPE = v_fp8.dtype
     DK_DTYPE = dequant_scale_k.dtype
-    DV_DTYPE = dequant_scale_v.dtype
+    DV_DTYPE = dequant_scale_v.dtype if dequant_scale_v is not None else None
     k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
     v_npu = v_fp8.contiguous().view(V_DTYPE).npu()
     deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
-    deq_v_npu = dequant_scale_v.view(DV_DTYPE).npu()
+    deq_v_npu = (
+        dequant_scale_v.view(DV_DTYPE).npu()
+        if dequant_scale_v is not None
+        else None
+    )
     logger.info("[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape)
     logger.info(
         "[NPU TND] deq_k=%s, deq_v=%s",
