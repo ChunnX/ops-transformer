@@ -24,16 +24,16 @@
 #include "aclnnop/aclnn_grouped_matmul_weight_nz.h"
 #include "aclnnop/aclnn_weight_quant_preprocess.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 #define CEIL_DIV(x, y) (((x) + (y) - 1) / (y))
@@ -49,7 +49,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 class AclRuntimeGuard {
 public:
-    explicit AclRuntimeGuard(int32_t deviceId) : deviceId_(deviceId) {}
+    explicit AclRuntimeGuard(int32_t deviceId)
+        : deviceId_(deviceId)
+    {}
 
     ~AclRuntimeGuard()
     {
@@ -193,8 +195,8 @@ int AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(int32_t deviceId)
     aclTensorList *antiquantScale = nullptr;
     aclTensorList *out = nullptr;
 
-    ret = CreateAclTensor(xHostData, xShape, xStrides, xShape, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, &xDeviceAddr,
-                          &xTensor);
+    ret =
+        CreateAclTensor(xHostData, xShape, xStrides, xShape, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, &xDeviceAddr, &xTensor);
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorGuard(xTensor, aclDestroyTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -224,7 +226,7 @@ int AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(int32_t deviceId)
                           ACL_FLOAT8_E8M0, ACL_FORMAT_ND, &weightScaleDeviceAddr, &weightScaleTensor);
     std::unique_ptr<void, aclError (*)(void *)> weightScaleDeviceAddrPtr(weightScaleDeviceAddr, aclrtFree);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightScaleTensorPtr(weightScaleTensor,
-                                                                                         aclDestroyTensor);
+                                                                                        aclDestroyTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor(outWeightHostData, weightViewShape, weightStrides, outWeightStorageShape, ACL_FLOAT4_E2M1,
@@ -260,17 +262,17 @@ int AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(int32_t deviceId)
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> outPtr(out, aclDestroyTensorList);
     outTensorGuard.release();
 
-    ret = CreateAclTensor(groupListHostData, groupListShape, groupListStrides, groupListShape, ACL_INT64,
-                          ACL_FORMAT_ND, &groupListDeviceAddr, &groupListTensor);
+    ret = CreateAclTensor(groupListHostData, groupListShape, groupListStrides, groupListShape, ACL_INT64, ACL_FORMAT_ND,
+                          &groupListDeviceAddr, &groupListTensor);
     std::unique_ptr<void, aclError (*)(void *)> groupListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> groupListPtr(groupListTensor, aclDestroyTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnWeightQuantPreprocessGetWorkspaceSize(
-        weightTensor, weightScaleTensor, nullptr, nullptr, ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E8M0, kGroupSize,
-        outWeightTensor, outWeightScaleTensor, nullptr, nullptr, &workspaceSize, &executor);
+    ret = aclnnWeightQuantPreprocessGetWorkspaceSize(weightTensor, weightScaleTensor, nullptr, nullptr,
+                                                     ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E8M0, kGroupSize, outWeightTensor,
+                                                     outWeightScaleTensor, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnWeightQuantPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -289,11 +291,11 @@ int AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(int32_t deviceId)
 
     workspaceSize = 0;
     executor = nullptr;
-    ret = aclnnGroupedMatmulWeightNzGetWorkspaceSize(
-        x, weight, nullptr, nullptr, nullptr, antiquantScale, nullptr, perTokenScale, groupListTensor, nullptr, nullptr,
-        nullptr, 3, 0, 0, 0, nullptr, 0, out, nullptr, nullptr, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnGroupedMatmulWeightNzGetWorkspaceSize(x, weight, nullptr, nullptr, nullptr, antiquantScale, nullptr,
+                                                     perTokenScale, groupListTensor, nullptr, nullptr, nullptr, 3, 0, 0,
+                                                     0, nullptr, 0, out, nullptr, nullptr, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
     void *groupedMatmulWorkspaceAddr = nullptr;
     std::unique_ptr<void, aclError (*)(void *)> groupedMatmulWorkspacePtr(nullptr, aclrtFree);
@@ -323,7 +325,7 @@ int main()
 {
     int32_t deviceId = 0;
     auto ret = AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest failed. ERROR: %d\n", ret);
+              return ret);
     return 0;
 }
