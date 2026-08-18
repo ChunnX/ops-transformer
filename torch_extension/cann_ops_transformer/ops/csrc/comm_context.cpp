@@ -220,7 +220,7 @@ public:
         }
         GetCommProtocol(hcclHandle, protocol);
 
-        protocol = CommProtocol::COMM_PROTOCOL_UBG;
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
@@ -394,7 +394,7 @@ public:
         uint32_t channelNum = channelDesc.size();
         auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL channel init failed, ret: ", hcclRet);
-        ASCEND_LOGI("HCCL channel init success, protocol is %u", protocol);
+        ASCEND_LOGI("HCCL channel init success");
 
         uint32_t netLayerNum = 0;
         uint32_t layerId = 0;
@@ -409,7 +409,7 @@ public:
             uint32_t dstRank = i;
             uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
             CommLink *links = nullptr;
-            layerId = 2;//netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[dstRank];
+            layerId = netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[dstRank];
             GetHcclCommLink(commHandle, layerId, srcRankId, dstRank, protocol, links);
             channelDesc[channelId].channelProtocol = protocol;
             channelDesc[channelId].remoteRank = dstRank;
