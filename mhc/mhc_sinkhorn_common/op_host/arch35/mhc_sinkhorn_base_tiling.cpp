@@ -30,7 +30,6 @@ constexpr int64_t MASK_BUFFER = 64;
 constexpr int64_t MAX_BUFFER_BACKWARD = 256 * BUFFER_NUM;
 constexpr int64_t MAX_BUFFER_FORWARD = 256 * BUFFER_NUM;
 
-
 MhcSinkhornSplitCoreInfo MhcSinkhornBaseTiling::BaseSplitCores(int64_t tSize, int64_t nSize, int64_t xDtypeSize,
                                                                int64_t outFlag)
 {
@@ -62,7 +61,14 @@ int64_t MhcSinkhornBaseTiling::BackwardCalOccupySize(int64_t ubFactor, int64_t n
     int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
     int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
     int64_t normOutSize = Ops::Base::CeilAlign(2 * ubFactor * nSize * nAlignSize, dataBlockNum);
-    int64_t sumOutSize = Ops::Base::CeilAlign(2 * ubFactor * nAlignSize, dataBlockNum);
+    // sum 队列单个 buffer 容量需同时覆盖非 Pad 路径(ubFactor*nAlignSize)与 Pad 路径
+    // (nSize*CeilAlign(ubFactor,8))，与 kernel 中 inputSumQue_ 的分配保持一致。
+    int64_t sumPerBuffer = ubFactor * nAlignSize;
+    int64_t padSumPerBuffer = nSize * Ops::Base::CeilAlign(ubFactor, dataBlockNum);
+    if (padSumPerBuffer > sumPerBuffer) {
+        sumPerBuffer = padSumPerBuffer;
+    }
+    int64_t sumOutSize = Ops::Base::CeilAlign(2 * sumPerBuffer, dataBlockNum);
     int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumOutSize) * xDtypeSize;
     return occupySize;
 }
