@@ -22,8 +22,7 @@ _TESTS_DIR = os.path.join(_ASSETS_DIR, "..", "..")
 if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import result_compare_method
-import quant_flash_attn_golden as mxfp8_golden_mod
-import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_golden as golden_mod
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +32,8 @@ def _resolve_csv_tolerance(idx):
 
     ttk 框架不把 testcase 对象直接传给 custom compare, golden 插件在调用前把
     csv 的 precision_tolerances / absolute_precision 暂存到对应 golden 模块上。
-    按 quant_mode 分流: mxfp8 → mxfp8_golden_mod, gqa_fp8 → fp8_golden_mod。
-    本函数优先检查 fp8_golden_mod (quant_mode=6), 再检查 mxfp8_golden_mod,
+    按 quant_mode 分流: mxfp8 → golden_mod, hif8 → hif8_golden_mod。
+    本函数优先检查 hif8_golden_mod, 再检查 mxfp8 golden_mod,
     取首个非 None 的属性 (两个模块不会同时有值, 因一个 case 只走一条路径)。
     返回 (rtol, atol, diff_thd, pct_thd, max_diff_hd); csv 省略时返回 (None,)*5
     由 check_result 用默认值 (rtol/atol 按 dtype 分支, diff_thd=0.005, pct_thd=0.005,
@@ -43,15 +42,19 @@ def _resolve_csv_tolerance(idx):
     precision_tolerances 格式: tuple of per-output tuple, 每条目可为 2-tuple 或 5-tuple
       2-tuple (向后兼容): (rtol, atol)                       如 ((0.0078125, 0.0001),)
       5-tuple (新):        (rtol, atol, diff_thd, pct_thd, max_diff_hd)
-                          如 ((0.0078125, 0.0001, 0.005, 0.005, 10),)
-    5-tuple 的后三位 None → check_result 用默认值 (0.005/0.005/10)
-    """
-    # 优先检查 fp8_golden_mod (quant_mode=6 路径), 再检查 mxfp8_golden_mod
-    pt = getattr(fp8_golden_mod, "_csv_precision_tolerances", None)
-    ap = getattr(fp8_golden_mod, "_csv_absolute_precision", None)
+                           如 ((0.0078125, 0.0001, 0.005, 0.005, 10),)
+     5-tuple 的后三位 None → check_result 用默认值 (0.005/0.005/10)
+     """
+    try:
+        import quant_flash_attn_hif8_golden as hif8_golden_mod
+        pt = getattr(hif8_golden_mod, "_csv_precision_tolerances", None)
+        ap = getattr(hif8_golden_mod, "_csv_absolute_precision", None)
+    except Exception:
+        pt = None
+        ap = None
     if pt is None and ap is None:
-        pt = getattr(mxfp8_golden_mod, "_csv_precision_tolerances", None)
-        ap = getattr(mxfp8_golden_mod, "_csv_absolute_precision", None)
+        pt = getattr(golden_mod, "_csv_precision_tolerances", None)
+        ap = getattr(golden_mod, "_csv_absolute_precision", None)
     rtol = None
     atol = None
     diff_thd = None
@@ -169,22 +172,6 @@ def compare(*outputs, **kwargs):
             diff_thd,
             pct_thd,
             max_diff_hd,
-        )
-        npu_shape = tuple(npu_torch.shape) if hasattr(npu_torch, "shape") else "N/A"
-        npu_dtype = str(npu_torch.dtype) if hasattr(npu_torch, "dtype") else "N/A"
-        golden_shape = (
-            tuple(golden_torch.shape) if hasattr(golden_torch, "shape") else "N/A"
-        )
-        golden_dtype = (
-            str(golden_torch.dtype) if hasattr(golden_torch, "dtype") else "N/A"
-        )
-        logger.info(
-            "[COMPARE] %s: npu_shape=%s npu_dtype=%s | golden_shape=%s golden_dtype=%s",
-            label,
-            npu_shape,
-            npu_dtype,
-            golden_shape,
-            golden_dtype,
         )
         result, fulfill_percent, max_error = result_compare_method.check_result(
             golden_torch,
