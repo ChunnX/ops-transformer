@@ -1,4 +1,6 @@
 import {
+  BarChart,
+  Button,
   Callout,
   Card,
   CardBody,
@@ -15,12 +17,15 @@ import {
   Stat,
   Table,
   Text,
+  TodoListCard,
   UsageBar,
+  useCanvasState,
   useHostTheme,
   type Color,
   type TextProps,
 } from "cursor/canvas";
 
+type ViewId = "precision" | "asbuilt" | "geometry";
 type MemSeg = { id: string; label: string; kb: number; color: Color };
 
 function Note({ children }: TextProps) {
@@ -120,115 +125,6 @@ const UB: MemSeg[] = [
   { id: "o", label: "attentionOut", kb: 32, color: "green" },
   { id: "gmax", label: "localGroupMax (12×1K)", kb: 12, color: "yellow" },
   { id: "ps", label: "pScale 等杂项", kb: 13, color: "gray" },
-];
-
-const GEO: string[][] = [
-  ["QK 半面 → L0C", "128×128", "64×128"],
-  ["Softmax 基块", "256×128（两轮拼）", "128×128（两轮 64 拼）"],
-  ["组 G / 覆盖", "4 / 1024×128", "8 / 1024×128（同量级）"],
-  ["kvBaseTile", "256", "128"],
-  ["Dpv / P 环", "8", "12"],
-  ["基块 mmad 条数", "6（双切 k）", "3（默认不切 k）"],
-  ["UB P", "半基块双缓冲", "整基块双缓冲"],
-];
-
-const CONST_TABLE: string[][] = [
-  ["TILE_GROUP_N", "16", "4", "8"],
-  ["PV_RE_DELAY_N", "20", "8", "12"],
-  ["DELAY_PSCALE_N", "3", "3", "3"],
-  ["PRELOAD_TASK_CACHE", "21", "9", "13"],
-  ["L1_P_BUF_CNT", "20", "8", "12"],
-  ["KVS_BASE_SIZE", "256", "256", "128"],
-  ["L0C_QK 单槽", "64 KB", "64 KB", "32 KB"],
-];
-
-const L1_TABLE: string[][] = [
-  ["P", "0", "16 KB", "12", "192 KB", "128×128×1B，loop % 12"],
-  ["P-scale", "192 KB", "768 B", "12", "≈9 KB", "128×2×(128/64+1)"],
-  ["Q", "≈201 KB", "16 KB", "2", "32 KB", "128×128×1B"],
-  ["KV", "—", "32 KB", "4", "128 KB", "数据 16KB；余量给 18KB seed"],
-  ["空闲", "—", "—", "—", "≈140 KB", "多于 0814 的 74 KB"],
-];
-
-const UB_TABLE: string[][] = [
-  ["S", "64 KB", "2×32 KB fp16，128×128"],
-  ["oTmp", "32 KB", "fp32"],
-  ["P", "32 KB", "2×16 KB 整基块（不再半块）"],
-  ["attentionOut", "32 KB", "不变"],
-  ["localGroupMax", "12 KB", "Dpv=12"],
-  ["合计", "≈185 KB", "余 ≈70 KB"],
-];
-
-const RISKS: { title: string; body: string; tone: "danger" | "warning" | "info" }[] =
-  [
-    {
-      title: "Vᵀ dstStride 奇（rowsum pad）",
-      body: "dstStride=9 仍可能走 fp8 分段转置。兜底 pad 到 160：L0A 56KB、L0C 208KB 仍可。",
-      tone: "danger",
-    },
-    {
-      title: "基块更碎 × Dpv 更深",
-      body: "同覆盖 1024 S2 时 loop 约为 0814 的 2 倍，且 Dpv=12。Cube/同步是否打平「少切 k」收益需实测。",
-      tone: "warning",
-    },
-    {
-      title: "Q L0B 单缓冲",
-      body: "默认省 L0B 顶满。若 Q 搬移成瓶颈，改 Q 沿 D 切 2×64 双缓冲（QK 变 4 条 mmad）。",
-      tone: "warning",
-    },
-    {
-      title: "Softmax VF NZ 密度",
-      body: "qs128 VF 仍复用脚手架；KvsBase 已随 128 实例化，e4m3 打包密度需 golden（kvs 64/128/尾块）确认。",
-      tone: "warning",
-    },
-  ];
-
-const CHANGELOG: string[][] = [
-  [
-    "kernel_utils.hpp",
-    "TILE_GROUP_N",
-    "4 → 8",
-  ],
-  [
-    "block_mmad_arch35_utils.hpp",
-    "L1/L0/S2",
-    "P 环 12×16K；QK_HALF=64；去 k-split；L0B_Q 单缓；L0C QK 32K×2 / PV@64K",
-  ],
-  [
-    "block_epilogue_arch35_utils.hpp",
-    "UB",
-    "KVS=128；S 2×32K；整块 P；pScale/localGroupMax×12；偏移重排",
-  ],
-  [
-    "block_mmad_qk_arch35_mxfp8.hpp",
-    "QK",
-    "n 向 2×64 拼基块；D 一次打满；Q→L0B[0]",
-  ],
-  [
-    "block_mmad_pv_arch35_mxfp8.hpp",
-    "PV",
-    "去 S2 k-split；单次 mmad；P 槽 %12",
-  ],
-  [
-    "kernel_arch35_mxfp8_full_quant.h",
-    "流水",
-    "PV_RE_DELAY_N 8→12（PRELOAD=13）",
-  ],
-  [
-    "kernel_interface.cpp",
-    "L0TileShapeQK",
-    "<128,128,128> → <128,64,128>",
-  ],
-  [
-    "softmax_*_mxfp8.hpp",
-    "UB→L1",
-    "整基块 16KB NZ 视图（UB_P_NZ_M=64）",
-  ],
-  [
-    "block_sparse_attention_tiling.cpp",
-    "Host",
-    "kvBaseTile=128；blockShapeY 按 128 倍数校验",
-  ],
 ];
 
 const G = 8;
@@ -382,7 +278,7 @@ function PipelineTimeline() {
                   fontSize={9}
                   fill={theme.text.primary}
                 >
-                  ✓
+                  R
                 </text>
               ) : null}
             </g>
@@ -419,55 +315,268 @@ function PipelineTimeline() {
         })}
       </svg>
       <Note>
-        约束：组 0 的 pScale 在 loop 10 就绪（组尾 loop7 +3）；PV 在 loop 12
-        才读组首槽 0。Dpv=12 ≥ G+3。
+        组 0 的 pScale 在 loop 10 就绪（组尾 loop7 +3）；PV 在 loop 12
+        才读组首槽 0。Dpv=12 ≥ G+3。板上未改这条流水。
       </Note>
     </Stack>
   );
 }
 
-export default function BsaMxfp8Kvs128DesignReport() {
+function PrecisionView() {
   return (
-    <Stack gap={24}>
-      <Stack gap={8}>
-        <H1>BSA MXFP8 设计报告（kvs128 修订）</H1>
-        <Row gap={8} wrap>
-          <Pill tone="info">2026-08-17</Pill>
-          <Pill tone="success">几何已落地 · mxfp8_0817</Pill>
-          <Pill tone="warning">取代 0814 几何</Pill>
-          <Pill>OCP · e4m3 / e8m0</Pill>
-          <Pill>低精 softmax (S=fp16)</Pill>
-        </Row>
-        <Text>
-          相对 0814：QK 半面改为 64×128，基块 128×128，组 ×8（覆盖仍
-          1024），Dpv=12。换来整块 P、默认不切 k、更松的 UB/L0C。分支
-          mxfp8_0817 上常量 / Cube / Host 几何迁移已完成。
-        </Text>
-      </Stack>
+    <Stack gap={16}>
+      <H2>官方套件满足率（dump-off）</H2>
+      <BarChart
+        categories={[
+          "kvs128",
+          "kvs64",
+          "kvs160",
+          "kvs256",
+          "GQA192",
+          "sparse",
+        ]}
+        series={[
+          {
+            name: "fulfill (%)",
+            data: [99.7437, 99.7925, 99.9512, 99.9878, 99.855, 99.6368],
+            tone: "success",
+          },
+        ]}
+        beginAtZero={false}
+        yMin={99.4}
+        yMax={100.05}
+        valueSuffix="%"
+        showValues
+        referenceLines={[
+          { value: 99.5, label: "门槛 99.5%", tone: "warning" },
+        ]}
+        height={220}
+      />
+      <Note>
+        Y 轴：NPU vs golden 满足率（%）。门槛 99.5%。Source: mxfp8_pytest ·
+        dump-off · 2026-08-18 · NPU 3 · cann_bsa_0817。判据 rtol=1/128、atol=1e-4、maxRE &lt; 10。
+      </Note>
 
-      <Grid columns={4} gap={12}>
-        <Stat value="64×128" label="QK 半面" tone="info" />
-        <Stat value="128×128×8" label="基块 × 组" tone="info" />
-        <Stat value="12" label="Dpv = P 环" />
-        <Stat value="3" label="基块 mmad 条数" tone="success" />
+      <Table
+        headers={["case", "shape", "fulfill", "结果"]}
+        columnAlign={["left", "left", "right", "left"]}
+        rows={[
+          ["qs128 / kvs128 dense", "b1 n1 s128", "99.74%", "过"],
+          ["qs128 / kvs64 dense", "b1 n1 s64", "99.79%", "过"],
+          ["qs128 / kvs160 tail", "b1 n1 s160", "99.95%", "过"],
+          ["qs128 / kvs256 dense", "b1 n1 s256", "99.99%", "过"],
+          ["GQA qs128 / kvs192", "n1=4 n2=1 s192", "99.86%", "过"],
+          ["sparse qs128 / kvs256", "n1=2 n2=2 s256", "99.64%", "过（隔离复跑）"],
+          ["qs64 / kvs128", "blockShapeX=64", "—", "tiling 失败"],
+        ]}
+        rowTone={[
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+          "danger",
+        ]}
+      />
+
+      <Grid columns={2} gap={12}>
+        <Callout tone="warning" title="qs64 未进精度">
+          host CheckBlockShapeQuantConstraint 要求 float8 全量化
+          blockShapeX==128。不是精度失败。qs64 VF 文件在仓库里，但 tiling
+          拦在前面。
+        </Callout>
+        <Callout tone="info" title="同进程污染">
+          全量一次跑时 qs64 的 tiling inner error 会把后续 sparse
+          带崩。sparse 必须另起进程；官方 6 个 qs128 case 都过线。
+        </Callout>
       </Grid>
 
-      <Divider />
-
-      <H2>相对 0814 几何</H2>
+      <H3>套件外（不纳入验收）</H3>
       <Table
-        headers={["项", "0814 稿", "本修订"]}
-        rows={GEO}
-        rowTone={GEO.map((_, i) => (i % 2 === 0 ? "neutral" : undefined))}
+        headers={["case", "fulfill（dump 开启时）", "说明"]}
+        rows={[
+          ["s2=32 单 tile", "≈98.91%", "kvs32 pad 修过后仍低于 99.5%"],
+          ["s2=96 = 64+32", "≈99.15%", "含 kvs32 尾，未再 dump-off 复测"],
+        ]}
+        rowTone={["warning", "warning"]}
+      />
+
+      <TodoListCard
+        defaultExpanded
+        todos={[
+          {
+            id: "qs64",
+            content: "qs64：放开 blockShapeX==128，接 qs64 VF",
+            status: "pending",
+          },
+          {
+            id: "s32",
+            content: "套件外 s2=32 / s2=96 未达 99.5%",
+            status: "pending",
+          },
+          {
+            id: "perf",
+            content: "性能 vs MXFP4；Q L0B 单缓冲是否瓶颈",
+            status: "pending",
+          },
+        ]}
+      />
+    </Stack>
+  );
+}
+
+function AsBuiltView() {
+  return (
+    <Stack gap={16}>
+      <H2>原稿 vs 板上落地</H2>
+      <Text>
+        §1–§6 几何表仍然成立。下面是原稿没写死、板上用 dump
+        钉死的约束；改这些会回退已过线的 qs128 套件。
+      </Text>
+      <Table
+        headers={["项", "0817 原稿", "板上落地"]}
+        rows={[
+          ["QK / 基块 / G / Dpv", "64×128 / 128×128 / 8 / 12", "一致"],
+          ["kvBaseTile", "128", "一致"],
+          [
+            "多 tile softmax",
+            "未写死",
+            "TILE_GROUP=8 + last-tile Vec2（同 mxfp4）",
+          ],
+          ["P snap", "未写 −2 vs −8", "NEG_TWO_VALE (−2)，同 mxfp4"],
+          [
+            "Cube dtype",
+            "未写 LoadData/Mmad 一致性",
+            "二者都必须是 mx_fp8_e4m3_t",
+          ],
+          [
+            "P NZ",
+            "两路 ZERO/ONE",
+            "mxfp4 even/odd + VL128 + FP8 C0=32 K-outer",
+          ],
+          [
+            "peer gmax",
+            "组尾经 L1 交换",
+            "asc_copy_l12ub_sync；UB 偏移 160KB+512",
+          ],
+          ["pScale 槽", "每基块 1 槽", "kvs128 = 1 slot；不可套 mxfp4 ×2"],
+          [
+            "kvs32 pad",
+            "未写",
+            "groupmax pad 满 4 组；PadPS2 128 行 × 4 C0",
+          ],
+          ["qs64", "验收覆盖", "host 仍要求 blockShapeX==128"],
+        ]}
+        rowTone={[
+          "success",
+          "success",
+          "info",
+          "info",
+          "warning",
+          "warning",
+          "warning",
+          "info",
+          "warning",
+          "danger",
+        ]}
+      />
+
+      <H2>板上修过的根因</H2>
+      <Stack gap={10}>
+        <Callout tone="danger" title="1 · QK/PV Mmad 类型">
+          LoadData 已是 mx，Mmad 仍用 fp8_e4m3fn_t → S 溢出 inf → 全
+          NaN。FIA 同路径要求 Mmad 也是 mx_fp8_e4m3_t；LoadData srcStride=yStep。
+        </Callout>
+        <Callout tone="warning" title="2 · P store 平面">
+          99.74% 路径：连续 4 行 load + 4-way Gather；even/odd j 的
+          VL128 偏移；K-outer C0=32。CopyP 用 64 行 TLA 填 128 行 NZ；LoadP
+          srcStride=8。
+        </Callout>
+        <Callout tone="warning" title="3 · 两 tile peer gmax">
+          kvs256 曾 ~1.4%：两 AIV 独立 softmax。AIC 上 GetSubBlockIdx 恒
+          0。必须 L1 row0→AIV0、row1→AIV1。AIV DataCopy L1→UB
+          无效；cube GetValue dump 曾 507015。修完 99.99%。
+        </Callout>
+        <Callout tone="info" title="4 · kvs160 行 NaN">
+          99.17%→99.95%。kvs32 VF 只 pad 1 个 groupmax，computePscale
+          固定读 4 组，残留 Inf 变成 e8m0=255。PadPS2 曾按 64 行 2
+          平面写，应对 128 行 × 4 个 FP8 C0。
+        </Callout>
+      </Stack>
+
+      <H2>实施分期（as-built）</H2>
+      <Grid columns={2} gap={12}>
+        <Card>
+          <CardHeader trailing={<Pill size="sm" active>已完成</Pill>}>
+            1–5 · 几何 / Cube / Vec / VF / 调用链
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              kvBaseTile=128，G=8，Dpv=12，quantMode=4，e4m3 NZ 与 pScale
+              768B 已由 qs128 套件确认。
+            </Text>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader trailing={<Pill size="sm" active>已完成</Pill>}>
+            6 · qs128 精度
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              dense 64/128/160/256、GQA 192、sparse 256 均 ≥99.5%。dump
+              已关。
+            </Text>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader trailing={<Pill size="sm">待做</Pill>}>
+            7 · qs64 / 短 kvs / 性能
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              blockShapeX、套件外 s2=32/96、MXFP4 性能对比、可选 Q 切 D。
+            </Text>
+          </CardBody>
+        </Card>
+      </Grid>
+    </Stack>
+  );
+}
+
+function GeometryView() {
+  return (
+    <Stack gap={16}>
+      <H2>相对 0814 几何（未改）</H2>
+      <Table
+        headers={["项", "0814 稿", "0817 / as-built"]}
+        rows={[
+          ["QK 半面 → L0C", "128×128", "64×128"],
+          ["Softmax 基块", "256×128（两轮拼）", "128×128（两轮 64 拼）"],
+          ["组 G / 覆盖", "4 / 1024×128", "8 / 1024×128"],
+          ["kvBaseTile", "256", "128"],
+          ["Dpv / P 环", "8", "12"],
+          ["基块 mmad 条数", "6（双切 k）", "3（默认不切 k）"],
+          ["UB P", "半基块双缓冲", "整基块双缓冲"],
+        ]}
       />
 
       <H2>流水常量</H2>
       <Table
-        headers={["常量", "MXFP4", "0814", "本修订"]}
-        rows={CONST_TABLE}
+        headers={["常量", "MXFP4", "0814", "0817 as-built"]}
+        rows={[
+          ["TILE_GROUP_N", "16", "4", "8"],
+          ["PV_RE_DELAY_N", "20", "8", "12"],
+          ["DELAY_PSCALE_N", "3", "3", "3"],
+          ["PRELOAD_TASK_CACHE", "21", "9", "13"],
+          ["L1_P_BUF_CNT", "20", "8", "12"],
+          ["KVS_BASE_SIZE", "256", "256", "128"],
+          ["L0C_QK 单槽", "64 KB", "64 KB", "32 KB"],
+          ["peer gmax UB 偏移", "224KB+512", "—", "160KB+512"],
+        ]}
       />
       <Callout tone="info" title="Dpv 下界">
-        同拍先 PV 后 pScale：Dpv ≥ G+3 → G=8 时 ≥11，取 12（偶 + 余量）。
+        同拍先 PV 后 pScale：Dpv ≥ G+3 → G=8 时 ≥11，取 12。板上流水未改。
       </Callout>
 
       <H2>流水时间线</H2>
@@ -479,7 +588,13 @@ export default function BsaMxfp8Kvs128DesignReport() {
       <MemoryMap segments={L1} total={512} name="L1" />
       <Table
         headers={["区", "偏移", "单槽", "槽数", "合计", "说明"]}
-        rows={L1_TABLE}
+        rows={[
+          ["P", "0", "16 KB", "12", "192 KB", "128×128×1B，loop % 12"],
+          ["P-scale", "192 KB", "768 B", "12", "≈9 KB", "板上分形已确认"],
+          ["Q", "≈201 KB", "16 KB", "2", "32 KB", "128×128×1B"],
+          ["KV", "—", "32 KB", "4", "128 KB", "数据 16KB；余量给 18KB seed"],
+          ["空闲", "—", "—", "—", "≈140 KB", "多于 0814 的 74 KB"],
+        ]}
       />
 
       <H2>L0</H2>
@@ -494,7 +609,7 @@ export default function BsaMxfp8Kvs128DesignReport() {
           <CardHeader>L0B · 48/64 KB</CardHeader>
           <CardBody>
             <MemoryMap segments={L0B} total={64} name="L0B" />
-            <Note>Q 单缓冲；可选再切 D 双缓。</Note>
+            <Note>Q 单缓冲；性能若成瓶颈再切 D。</Note>
           </CardBody>
         </Card>
         <Card>
@@ -504,96 +619,84 @@ export default function BsaMxfp8Kvs128DesignReport() {
           </CardBody>
         </Card>
       </Grid>
-      <Callout tone="neutral" title="默认不切 k">
-        K→L0A / Q→L0B 不变。基块 S2=128 使 Vᵀ/Pᵀ 全宽可装；QK 两轮只沿
-        kvs 拼基块，不再沿 D/S2 切段累加（除非启用 Q 切 D 退路）。
-      </Callout>
 
       <H2>UB（256 KB）</H2>
       <MemoryMap segments={UB} total={256} name="UB" />
-      <Table headers={["区", "大小", "说明"]} rows={UB_TABLE} />
+      <Table
+        headers={["区", "大小", "说明"]}
+        rows={[
+          ["S", "64 KB", "2×32 KB fp16，128×128"],
+          ["oTmp", "32 KB", "fp32"],
+          ["P", "32 KB", "2×16 KB 整基块"],
+          ["attentionOut", "32 KB", "不变"],
+          ["localGroupMax", "12 KB", "Dpv=12"],
+          ["peer gmax", "160KB+512", "不是 mxfp4 的 224KB+512"],
+          ["合计", "≈185 KB", "余 ≈70 KB"],
+        ]}
+      />
+    </Stack>
+  );
+}
 
-      <Divider />
+export default function BsaMxfp8AsBuiltReport() {
+  const [view, setView] = useCanvasState<ViewId>("view", "precision");
 
-      <H2>风险</H2>
-      <Stack gap={10}>
-        {RISKS.map((r) => (
-          <div key={r.title}>
-            <Callout tone={r.tone} title={r.title}>
-              {r.body}
-            </Callout>
-          </div>
-        ))}
+  return (
+    <Stack gap={24}>
+      <Stack gap={8}>
+        <H1>BSA MXFP8 as-built（精度反向分析）</H1>
+        <Row gap={8} wrap>
+          <Pill active>2026-08-18 板上修订</Pill>
+          <Pill>quantMode=4 · e4m3 / e8m0</Pill>
+          <Pill>kvs128 · G=8 · Dpv=12</Pill>
+        </Row>
+        <Text>
+          0817 几何（QK 半面 64×128、基块 128×128）没有改。dump-off
+          全量后，官方 qs128 套件 6/6 过 99.5%；qs64 仍被 host tiling
+          拦住。下面按实测把原稿补成 as-built。
+        </Text>
       </Stack>
 
-      <H2>实施分期</H2>
-      <H2>实施分期</H2>
-      <Grid columns={2} gap={12}>
-        <Card>
-          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
-            1 · 常量 + tiling
-          </CardHeader>
-          <CardBody>
-            <Text size="small">
-              kvBaseTile=128，G=8，Dpv=12，三张内存表与 static_assert。
-            </Text>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
-            2 · Cube
-          </CardHeader>
-          <CardBody>
-            <Text size="small">
-              QK 64×128×2、PV k=128、推荐 L0；去默认双切 k。
-            </Text>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader trailing={<Pill tone="success">已完成</Pill>}>
-            3 · Vec + 流水
-          </CardHeader>
-          <CardBody>
-            <Text size="small">
-              整块 P / delay 12；VF NZ 密度待板上 golden。
-            </Text>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader trailing={<Pill tone="warning">待做</Pill>}>
-            4 · 收尾
-          </CardHeader>
-          <CardBody>
-            <Text size="small">
-              尾块、精度、性能；按需启用 Q 切 D。
-            </Text>
-          </CardBody>
-        </Card>
+      <Grid columns={4} gap={12}>
+        <Stat value="6 / 6" label="qs128 套件过线" tone="success" />
+        <Stat value="99.64%" label="最低 fulfill（sparse）" tone="success" />
+        <Stat value="99.5%" label="门槛" />
+        <Stat value="qs64" label="未进比对（tiling）" tone="warning" />
       </Grid>
 
-      <Divider />
+      <Row gap={8} wrap>
+        <Button
+          variant={view === "precision" ? "primary" : "ghost"}
+          onClick={() => setView("precision")}
+        >
+          精度
+        </Button>
+        <Button
+          variant={view === "asbuilt" ? "primary" : "ghost"}
+          onClick={() => setView("asbuilt")}
+        >
+          原稿到落地
+        </Button>
+        <Button
+          variant={view === "geometry" ? "primary" : "ghost"}
+          onClick={() => setView("geometry")}
+        >
+          几何与内存
+        </Button>
+      </Row>
 
-      <H2>修改点说明（相对 0814 脚手架）</H2>
-      <Callout tone="info" title="落地范围">
-        9 个源文件；几何与流水常量已切到本修订。Softmax VF
-        本体未重写，仅随 KVS_BASE=128 实例化并修正 UB→L1 16KB 布局。
-      </Callout>
-      <Table
-        headers={["文件", "模块", "改动摘要"]}
-        rows={CHANGELOG}
-        rowTone={CHANGELOG.map((_, i) =>
-          i % 2 === 0 ? "neutral" : undefined,
-        )}
-      />
+      {view === "precision" ? <PrecisionView /> : null}
+      {view === "asbuilt" ? <AsBuiltView /> : null}
+      {view === "geometry" ? <GeometryView /> : null}
 
       <Divider />
       <Stack gap={4}>
-        <H3>规格文件</H3>
+        <H3>规格</H3>
         <Code>
-          docs/superpowers/specs/2026-08-17-bsa-mxfp8-design.md
+          docs/superpowers/specs/2026-08-17-bsa-mxfp8-design.md · §15
         </Code>
         <Note>
-          §14 为与代码同步的修改点说明；0814 规格视为被本修订取代。
+          几何表仍是 §1–§6；板上约束与精度表在 §15。0814 规格视为被取代。
         </Note>
       </Stack>
     </Stack>

@@ -1,12 +1,12 @@
-# 任务：关掉 dump 跑全量 mxfp8 pytest
+# 任务：反向分析 BSA mxfp8 设计并更新画布
 
 ## 目标
-BSA_MXFP8_DUMP=0，重编安装，跑 mxfp8_pytest 全量。qs64 仍会 tiling 失败。
+按 dump-off 全量精度结果，把 0817 规格改成 as-built，并更新画布。
 
 ## 待办事项
-- [x] 关掉 dump
-- [x] 重编安装 cann_bsa_0817
-- [x] pytest 全量（qs64 tiling 失败；sparse 隔离复跑 99.64% PASSED）
+- [x] 核对源码与 0817 原稿偏差
+- [x] 更新 2026-08-17 设计规格 §15
+- [x] 更新画布（精度 + as-built + 几何）
 
 ## 进度
 3/3
