@@ -113,6 +113,20 @@ public:
     }
 
 private:
+    struct MxRowInfo {
+        uint32_t queryTokenBase;
+        uint32_t actS1Size;
+        uint32_t actS2Size;
+        uint32_t s1Idx;
+        uint32_t actMSize;
+        uint32_t actMSizeAlign32;
+        uint32_t actVecMSize;
+        uint32_t vecMbaseIdx;
+        int64_t causalDelta;
+        uint64_t queryOffset;
+        uint64_t queryScaleOffset;
+    };
+
     __aicore__ inline void InitConstInfo()
     {
         // 两个 AIV subBlock 共享逻辑 AIC id。
@@ -248,9 +262,35 @@ private:
         }
     }
 
+    __aicore__ inline void BuildRowInfo(MxRowInfo &rowInfo, uint32_t queryTokenBase, uint32_t actualS1Size,
+                                        uint32_t actualS2Size, uint32_t n1Idx, uint32_t s1OuterIdx) const
+    {
+        // 同一个 Q block 的所有 S2 task 共用这些字段，避免每 512-token task 重复做地址和 M 切分计算。
+        rowInfo.queryTokenBase = queryTokenBase;
+        rowInfo.actS1Size = actualS1Size;
+        rowInfo.actS2Size = actualS2Size;
+        rowInfo.s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
+        rowInfo.actMSize = constInfo.qSparseBlockSize;
+        if (unlikely(rowInfo.s1Idx + constInfo.qSparseBlockSize > actualS1Size)) {
+            rowInfo.actMSize = actualS1Size - rowInfo.s1Idx;
+        }
+        rowInfo.actMSizeAlign32 = (rowInfo.actMSize + 31U) >> 5 << 5;
+        rowInfo.actVecMSize = rowInfo.actMSize <= 16U ? rowInfo.actMSize : (rowInfo.actMSizeAlign32 >> 1U);
+        if (constInfo.subBlockIdx == 1U) {
+            rowInfo.vecMbaseIdx = rowInfo.actVecMSize;
+            rowInfo.actVecMSize = rowInfo.actMSize - rowInfo.actVecMSize;
+        }
+        rowInfo.causalDelta = static_cast<int64_t>(actualS2Size) - static_cast<int64_t>(actualS1Size);
+        rowInfo.queryOffset =
+            (static_cast<uint64_t>(queryTokenBase) + rowInfo.s1Idx) * constInfo.n2GD +
+            static_cast<uint64_t>(n1Idx) * constInfo.dSize;
+        rowInfo.queryScaleOffset =
+            (static_cast<uint64_t>(queryTokenBase) + rowInfo.s1Idx) * constInfo.qScaleN1D +
+            static_cast<uint64_t>(n1Idx) * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+    }
+
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx, uint32_t n1Idx,
-                                       uint32_t n2Idx, uint32_t queryTokenBase, uint32_t actualS1Size,
-                                       uint32_t actualS2Size, uint32_t s1OuterIdx, uint32_t s2LoopIdx,
+                                       uint32_t n2Idx, const MxRowInfo &rowInfo, uint32_t s2LoopIdx,
                                        uint32_t s2LoopEnd, uint32_t sparseBlockCount, uint64_t sparseBase,
                                        bool isFirstValidS2Loop)
     {
@@ -264,23 +304,14 @@ private:
         runInfo.bIdx = bIdx;
         runInfo.realN2Idx = n1Idx;
         runInfo.n2Idx = n2Idx;
-        // s1OuterIdx 是 sparse Q block 下标。MX 的计算上限仍为 M=128，
-        // q_block_size=64 时每个 task 只处理对应的 64 行，避免跨两个 sparse 列表。
-        runInfo.s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
-        runInfo.queryTokenBase = queryTokenBase;
-        runInfo.actS1Size = actualS1Size;
-        runInfo.actS2Size = actualS2Size;
-        runInfo.actMSize = constInfo.qSparseBlockSize;
-        if (unlikely(runInfo.s1Idx + constInfo.qSparseBlockSize > runInfo.actS1Size)) {
-            runInfo.actMSize = static_cast<uint32_t>(runInfo.actS1Size) - runInfo.s1Idx;
-        }
-        runInfo.actMSizeAlign32 = (runInfo.actMSize + 31U) >> 5 << 5;
-        runInfo.actVecMSize = runInfo.actMSize <= 16U ? runInfo.actMSize : (runInfo.actMSizeAlign32 >> 1U);
-        runInfo.vecMbaseIdx = 0U;
-        if (constInfo.subBlockIdx == 1U) {
-            runInfo.vecMbaseIdx = runInfo.actVecMSize;
-            runInfo.actVecMSize = runInfo.actMSize - runInfo.actVecMSize;
-        }
+        runInfo.s1Idx = rowInfo.s1Idx;
+        runInfo.queryTokenBase = rowInfo.queryTokenBase;
+        runInfo.actS1Size = rowInfo.actS1Size;
+        runInfo.actS2Size = rowInfo.actS2Size;
+        runInfo.actMSize = rowInfo.actMSize;
+        runInfo.actMSizeAlign32 = rowInfo.actMSizeAlign32;
+        runInfo.actVecMSize = rowInfo.actVecMSize;
+        runInfo.vecMbaseIdx = rowInfo.vecMbaseIdx;
         runInfo.sparseBlockCount = sparseBlockCount;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             runInfo.sparseBlockIdx[i] = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
@@ -302,16 +333,16 @@ private:
             }
             runInfo.sparseBlockTokenOffset[i] = sparseTokenOffset;
             runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
-            runInfo.sparseBlockPartialMask[i] = false;
             if constexpr (HAS_ATTEN) {
-                if (likely(sparseBlockRealSize != 0U)) {
-                    const int64_t causalDelta =
-                        static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
-                    int64_t sparseBlkIdxForMask = sparseBlkIdx;
-                    AttentionMaskFullProcessingOrRequired(
-                        static_cast<int64_t>(runInfo.s1Idx), static_cast<int64_t>(sparseTokenOffset), causalDelta,
-                        sparseBlockRealSize, sparseBlkIdxForMask, runInfo.sparseBlockPartialMask[i]);
-                    if ASCEND_IS_AIV {
+                // causal 分类和 mask bits 仅被 AIV/V1 使用，AIC 不再重复执行这段 scalar 逻辑。
+                if ASCEND_IS_AIV {
+                    runInfo.sparseBlockPartialMask[i] = false;
+                    if (likely(sparseBlockRealSize != 0U)) {
+                        int64_t sparseBlkIdxForMask = sparseBlkIdx;
+                        AttentionMaskFullProcessingOrRequired(
+                            static_cast<int64_t>(rowInfo.s1Idx), static_cast<int64_t>(sparseTokenOffset),
+                            rowInfo.causalDelta, sparseBlockRealSize, sparseBlkIdxForMask,
+                            runInfo.sparseBlockPartialMask[i]);
                         if (unlikely(runInfo.sparseBlockPartialMask[i])) {
                             const uint32_t blockTileStart = runInfo.sparseBlockTileOffset[i];
                             const uint32_t blockTileEnd = blockTileStart + sparseBlockRealSize;
@@ -330,10 +361,8 @@ private:
         runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.isFirstS2Loop = isFirstValidS2Loop;
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
-        runInfo.queryOffset =
-            (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
-        runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
-                                   runInfo.realN2Idx * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+        runInfo.queryOffset = rowInfo.queryOffset;
+        runInfo.queryScaleOffset = rowInfo.queryScaleOffset;
     }
 
     __aicore__ inline bool HasValidTask(MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE]) const
@@ -392,6 +421,10 @@ private:
         MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
+        uint32_t cachedBIdx = static_cast<uint32_t>(-1);
+        uint32_t queryTokenBase = 0U;
+        uint32_t actualS1Size = 0U;
+        uint32_t actualS2Size = 0U;
         // S2_BASE=512, kvSparseBlockSize=64/128(host 侧已拦截), 结果必为 8 或 4。
         const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
         // metadata 可包含多个 section；每个 section 为当前 AIC 提供一段独立的 BN1/S1 边界。
@@ -416,12 +449,18 @@ private:
                 const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
                 const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
                 const uint32_t n2Idx = n1Idx / constInfo.gSize;
-                const uint32_t queryTokenBase = GetQTokenBase(bIdx);
-                const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
-                const uint32_t actualS2Size = GetActualKvSeqLen(bIdx);
+                // 同一 batch 的所有 head 复用三项序列元数据，避免重复 GM scalar load。
+                if (unlikely(bIdx != cachedBIdx)) {
+                    cachedBIdx = bIdx;
+                    queryTokenBase = GetQTokenBase(bIdx);
+                    actualS1Size = GetActualQSeqLen(bIdx);
+                    actualS2Size = GetActualKvSeqLen(bIdx);
+                }
                 const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
                 const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
                 for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
+                    MxRowInfo rowInfo;
+                    BuildRowInfo(rowInfo, queryTokenBase, actualS1Size, actualS2Size, n1Idx, s1OuterIdx);
                     // 当前 query block 的有效 sparse block 数。
                     const int32_t sparseLen = sparseSeqLenGm.GetValue(
                         (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb + s1OuterIdx);
@@ -439,9 +478,8 @@ private:
                         const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                         const uint32_t sparseBlockCount =
                             remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
-                        FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
-                                    actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
-                                    !hasValidS2Task);
+                        FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, rowInfo, s2LoopIdx, s2LoopEnd,
+                                    sparseBlockCount, sparseBase, !hasValidS2Task);
                         if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
                             ExecuteTask(loop, taskRunInfo);
                             hasValidS2Task = true;

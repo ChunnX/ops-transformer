@@ -88,7 +88,7 @@ public:
             if (pScale != nullptr) {
                 GlobalTensor<uint8_t> pScaleGm;
                 pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
-                pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
+                pScaleLnValue_ = DecodeE8M0LnScale(pScaleGm.GetValue(0));
             }
             if constexpr (HAS_ATTEN) {
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
@@ -313,14 +313,16 @@ private:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
 
-    __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
+    __aicore__ inline float DecodeE8M0LnScale(uint8_t scale) const
     {
-        // E8M0 code 0 is 2^-127 (an FP32 subnormal), not FP32 zero.
-        // Code 255 is the format's NaN encoding; all other codes map directly
-        // to the FP32 exponent field.
-        uint32_t bits = scale == 0U ? 0x00400000U :
-                                      (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
-        return *((float *)&bits);
+        // E8M0 code e 表示 2^(e-127)，因此直接在 Scalar 侧构造 ln(scale)，
+        // 避免每个 V1 VF 重复执行 Duplicate(scale)+Ln。code 255 保持 NaN 语义。
+        if (unlikely(scale == 0xFFU)) {
+            uint32_t nanBits = 0x7FC00000U;
+            return *((float *)&nanBits);
+        }
+        constexpr float LN_2 = 0.6931471805599453F;
+        return static_cast<float>(static_cast<int32_t>(scale) - 127) * LN_2;
     }
 
     template <bool IS_UPDATE, bool VF_HAS_ATTEN, uint32_t SUB_LOOP>
@@ -336,7 +338,7 @@ private:
         FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
             ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize,
-            static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
+            static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleLnValue_, negativeFloatScalar_, 0.0F,
             preLoopMaxUb, preLoopSumUb, firstLoopSumUb);
     }
 
@@ -587,7 +589,7 @@ private:
     TEventID mte3ToVId_[1];
     TEventID vToMte3Id_[1];
     MM_T negativeFloatScalar_ = 0.0f;
-    float pScaleValue_ = 1.0f;
+    float pScaleLnValue_ = 0.0f;
 };
 } // namespace BaseApi
 
