@@ -393,6 +393,9 @@ public:
             }
         }
 
+        AscendC::printf("tkd tileMmad pv\n");
+        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
+
         // rescale：GO^T 每批搬 [D 块, 64]（32KB 满一个 L0A buf，双缓冲 2 批装完 GO 全量 64KB）；
         // diag 双子核块 [64,64]×2 一次搬满 L0B（32KB，批 0 前发，地址 0/16KB 隔离并行）；
         // mmad 按 16 列块分开乘（K=16 不浪费计算；diag 块对角 → 批间交叉项为 0）
@@ -502,6 +505,9 @@ public:
                 }
             }
         }
+
+        AscendC::printf("tkd rescale\n");
+        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
 
         // fixpipe
         // 注：FIX_M 的 L0C 释放等待已在 mmad 循环（首个 chunk (mL0Itr==0 && nL0Itr==0 && kL0Itr==0)）执行，
