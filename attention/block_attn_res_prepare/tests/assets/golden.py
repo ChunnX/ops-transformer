@@ -18,25 +18,25 @@ __golden__ = {
 
 
 def block_attn_res_prepare_golden(
-    block_residual, effective_query, valid_blocks, epsilon=1.0e-6, **kwargs
+    block_res, valid_blocks, pseudo_query, eps=1.0e-6, **kwargs
 ):
     """FP32 Phase 1 reference for BlockAttnResPrepare."""
-    inputs_are_numpy = not hasattr(block_residual, "detach")
-    residual = torch.as_tensor(block_residual, dtype=torch.float32)
-    query = torch.as_tensor(effective_query, dtype=torch.float32)
+    inputs_are_numpy = not hasattr(block_res, "detach")
+    residual = torch.as_tensor(block_res, dtype=torch.float32)
     valid = int(torch.as_tensor(valid_blocks, dtype=torch.int32).reshape(-1)[0].item())
+    query = torch.as_tensor(pseudo_query, dtype=torch.float32)
     valid = max(1, min(valid, residual.shape[1]))
     history = residual[:, :valid, :]
-    inv_rms = torch.rsqrt(torch.mean(history * history, dim=-1) + float(epsilon))
+    inv_rms = torch.rsqrt(torch.mean(history * history, dim=-1) + float(eps))
     logits = torch.einsum("sd,tnd->stn", query, history) * inv_rms.unsqueeze(0)
-    softmax_max = torch.max(logits, dim=-1).values
-    weights = torch.exp(logits - softmax_max.unsqueeze(-1))
-    softmax_sum = torch.sum(weights, dim=-1)
-    weighted_output = torch.einsum("stn,tnd->std", weights, history)
+    logit_max = torch.max(logits, dim=-1).values
+    weights = torch.exp(logits - logit_max.unsqueeze(-1))
+    exp_sum = torch.sum(weights, dim=-1)
+    numerator = torch.einsum("stn,tnd->std", weights, history)
     outputs = (
-        softmax_max.to(torch.float32),
-        weighted_output.to(torch.float32),
-        softmax_sum.to(torch.float32),
+        numerator.to(torch.float32),
+        logit_max.to(torch.float32),
+        exp_sum.to(torch.float32),
     )
     if inputs_are_numpy:
         return tuple(output.cpu().numpy().astype(np.float32) for output in outputs)

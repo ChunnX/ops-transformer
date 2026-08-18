@@ -21,17 +21,17 @@
 
 namespace {
 __aicore__ inline Blaze::Gemm::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
-    GM_ADDR blockResidual, GM_ADDR effectiveQuery, GM_ADDR validBlocks, GM_ADDR softmaxMax,
-    GM_ADDR weightedOutput, GM_ADDR softmaxSum, GM_ADDR workspace,
+    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator,
+    GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
     const optiling::BlockAttnResPrepareCubeTilingData &tiling)
 {
     Blaze::Gemm::BlockAttnResPrepareParams params{};
-    params.gmParams.blockResidualGmAddr = blockResidual;
-    params.gmParams.effectiveQueryGmAddr = effectiveQuery;
+    params.gmParams.blockResidualGmAddr = blockRes;
     params.gmParams.validBlocksGmAddr = validBlocks;
-    params.gmParams.softmaxMaxGmAddr = softmaxMax;
-    params.gmParams.weightedOutputGmAddr = weightedOutput;
-    params.gmParams.softmaxSumGmAddr = softmaxSum;
+    params.gmParams.effectiveQueryGmAddr = pseudoQuery;
+    params.gmParams.weightedOutputGmAddr = numerator;
+    params.gmParams.softmaxMaxGmAddr = logitMax;
+    params.gmParams.softmaxSumGmAddr = expSum;
     params.gmParams.workspaceGmAddr = workspace;
 
     params.tilingParams.totalT = tiling.totalT;
@@ -56,26 +56,26 @@ __aicore__ inline Blaze::Gemm::BlockAttnResPrepareParams MakeBlockAttnResPrepare
     params.tilingParams.reduceUbElems = tiling.reduceUbElems;
     params.tilingParams.softmaxUbElems = tiling.softmaxUbElems;
     params.tilingParams.workspacePerCoreElems = tiling.workspacePerCoreElems;
-    params.tilingParams.epsilon = tiling.epsilon;
+    params.tilingParams.epsilon = tiling.eps;
     return params;
 }
 } // namespace
 
 extern "C" __global__ __aicore__ void block_attn_res_prepare(
-    GM_ADDR blockResidual, GM_ADDR effectiveQuery, GM_ADDR validBlocks, GM_ADDR softmaxMax, GM_ADDR weightedOutput,
-    GM_ADDR softmaxSum, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
+    GM_ADDR expSum, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareCubeTilingData);
     KERNEL_TASK_TYPE(BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY, KERNEL_TYPE_AIV_ONLY);
     KERNEL_TASK_TYPE(BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY, KERNEL_TYPE_MIX_AIC_1_2);
-    if (blockResidual == nullptr || effectiveQuery == nullptr || validBlocks == nullptr || softmaxMax == nullptr ||
-        weightedOutput == nullptr || softmaxSum == nullptr || workspace == nullptr || tiling == nullptr) {
+    if (blockRes == nullptr || validBlocks == nullptr || pseudoQuery == nullptr || numerator == nullptr ||
+        logitMax == nullptr || expSum == nullptr || workspace == nullptr || tiling == nullptr) {
         return;
     }
     if (TILING_KEY_IS(BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY)) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
-        if (!op.Init(blockResidual, effectiveQuery, validBlocks, softmaxMax, weightedOutput, softmaxSum)) {
+        if (!op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum)) {
             return;
         }
         op.Process();
@@ -83,8 +83,8 @@ extern "C" __global__ __aicore__ void block_attn_res_prepare(
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
-        const auto params = MakeBlockAttnResPrepareParams(blockResidual, effectiveQuery, validBlocks, softmaxMax,
-                                                          weightedOutput, softmaxSum, userWorkspace, cubeTilingData);
+        const auto params = MakeBlockAttnResPrepareParams(blockRes, validBlocks, pseudoQuery, numerator,
+                                                          logitMax, expSum, userWorkspace, cubeTilingData);
         Blaze::Gemm::Kernel::KernelBlockAttnResPrepare<> kernel;
         kernel(params);
     }
