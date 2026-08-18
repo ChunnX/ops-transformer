@@ -78,6 +78,46 @@ class PKIApi(BaseApi):
                              torch.zeros_like(values), values)
         return values
 
+    @staticmethod
+    def _rerandomize_data(input_data, task_result):
+        """当 --disable_id_seed 时, ATK 用固定 seed 生成数据,
+        导致 --loop_nums 每轮数据相同 (CV=0, 复检无意义)。
+        此方法用 case_config.id 作为种子重新随机化 tensor 值。"""
+        if not getattr(task_result, 'disable_id_seed', False):
+            return
+        case_config = getattr(task_result, 'case_config', None)
+        if case_config is None:
+            return
+        case_id = getattr(case_config, 'id', None)
+        if case_id is None:
+            return
+        inputs_cfg = getattr(case_config, 'inputs', None)
+        if inputs_cfg is None:
+            return
+
+        import hashlib
+        seed = int(hashlib.md5(str(case_id).encode()).hexdigest(), 16) % (2**32)
+        torch.manual_seed(seed)
+
+        args = list(input_data.args) if input_data.args else []
+        kw = dict(input_data.kwargs) if input_data.kwargs else {}
+
+        for idx in range(len(inputs_cfg)):
+            cfg = inputs_cfg[idx]
+            name = getattr(cfg, 'name', None)
+            tensor = args[idx] if idx < len(args) else None
+            if tensor is None and name and name in kw:
+                tensor = kw[name]
+            if tensor is None or not hasattr(tensor, 'is_floating_point'):
+                continue
+            if not tensor.is_floating_point():
+                continue
+            rv = getattr(cfg, 'range_values', None)
+            if not rv or len(rv) < 2:
+                continue
+            lo, hi = float(rv[0]), float(rv[1])
+            tensor.uniform_(lo, hi)
+
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         if not with_output:
             return None
@@ -193,68 +233,9 @@ class PKIApi(BaseApi):
                       block_table, pool_tail_k_t, B, S1, S2, N1, N2, D,
                       layout_query, layout_key, topk, pool_size,
                       mask_mode, return_value):
-        import torch_npu
-
-        q_dtype = query.dtype if hasattr(query, "dtype") else torch.float16
-        compute_dtype = _get_compute_dtype(q_dtype)
-
-        device_id = getattr(self, "device_id", 0)
-        if device_id is None:
-            device_id = 0
-        device_str = f"npu:{device_id}"
-        torch.npu.set_device(device_str)
-
-        query_npu = _safe_to_npu(query, device_id)
-        key_npu = _safe_to_npu(key, device_id)
-        weights_npu = _safe_to_npu(weights, device_id)
-        act_q_npu = _safe_to_npu(act_seq_q_t, device_id)
-        act_k_npu = _safe_to_npu(act_seq_k_t, device_id)
-        ptk_npu = _safe_to_npu(pool_tail_k_t, device_id)
-        bt_npu = _safe_to_npu(block_table, device_id) if block_table is not None else None
-
-        result = torch_npu.npu_pool_key_indexer(
-            query_npu, key_npu, weights_npu, ptk_npu,
-            actual_seq_lengths_query=act_q_npu,
-            actual_seq_lengths_key=act_k_npu,
-            block_table=bt_npu,
-            layout_query=layout_query,
-            layout_key=layout_key,
-            topk=topk,
-            pool_size=pool_size,
-            mask_mode=mask_mode,
-            quant_mode=-1,
-            return_value=return_value,
+        """Operator 模式 (torch_npu 接口). 自定义算子暂无 torch_npu 绑定,
+        请使用 pyaclnn 模式 (run.sh 默认)."""
+        raise NotImplementedError(
+            "torch_npu.npu_pool_key_indexer is not registered. "
+            "Use pyaclnn mode (run.sh without -m npu) instead."
         )
-        torch.npu.synchronize()
-
-        if isinstance(result, tuple):
-            npu_indices = _safe_to_cpu(result[0])
-            npu_values = _safe_to_cpu(result[1]) if (return_value and len(result) > 1) else None
-        else:
-            npu_indices = _safe_to_cpu(result)
-            npu_values = None
-
-        # Golden 归一化
-        query_cpu = _safe_to_cpu(query)
-        key_cpu = _safe_to_cpu(key)
-        weights_cpu = _safe_to_cpu(weights)
-        act_q_cpu = _safe_to_cpu(act_seq_q_t)
-        act_k_cpu = _safe_to_cpu(act_seq_k_t)
-        ptk_cpu = _safe_to_cpu(pool_tail_k_t)
-        block_table_cpu = _safe_to_cpu(block_table) if block_table is not None else None
-
-        ext_values = None
-        golden = PKIGoldenRef(
-            batch_size=B, q_seq=S1, k_seq=S2,
-            q_head_num=N1, k_head_num=N2, head_dim=D,
-            layout_query=layout_query, layout_key=layout_key,
-            topk=topk, pool_size=pool_size,
-            mask_mode=mask_mode, compute_dtype=compute_dtype,
-        )
-        norm_indices, norm_values = golden.forward(
-            query_cpu, key_cpu, weights_cpu, act_q_cpu, act_k_cpu,
-            block_table_cpu, pool_tail_k=ptk_cpu,
-            ext_indices=npu_indices, ext_values=ext_values,
-        )
-        values = self._sanitize_values(norm_values, compute_dtype)
-        return (norm_indices, values)

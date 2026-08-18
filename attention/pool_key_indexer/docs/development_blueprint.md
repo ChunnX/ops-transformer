@@ -3,15 +3,15 @@
 ## 一、总体策略
 
 ```
-步骤1: 退化场景适配 ──→ 步骤2: pool_size/pool_tail_k扩展 ──→ 步骤3: 索引展开与追加 ──→ 步骤4: A5量化支持
-(quantMode=-1,          (参考LIV2 cmp_ratio/               (Expand + Append)           (quantMode=0/1)
- pool_tail_k=0,          cmp_residual_k,                   输出维度:                    arch35 only
+步骤1: 退化场景适配 ──→ 步骤2: pool_size/pool_tail_k扩展 ──→ 步骤3: 索引展开与追加 ──→ 步骤4: A5量化支持 ──→ 步骤5: torch_extension接口适配
+(quantMode=-1,          (参考LIV2 cmp_ratio/               (Expand + Append)           (quantMode=0/1)           (参考LIV2 OpBuilder模式
+ pool_tail_k=0,          cmp_residual_k,                   输出维度:                    arch35 only              JIT编译 + PrivateUse1 dispatch)
  pool_size=1)            不做索引展开)                       topk+pool_size-1)
 ```
 
 **核心原则**：每步可独立编译验证，前步通过后才进入下一步。
 
-**规格参考**：`docs/aclnnKpoolIndexer.md` 全程参照。
+**规格参考**：`docs/aclnnKpoolIndexer.md` 全程参照；步骤5 额外参照 `torch_extension/cann_ops_transformer` 中 `lightning_indexer` / `quant_lightning_indexer` 的 OpBuilder 适配模式。
 
 ---
 
@@ -441,7 +441,289 @@ Cube 核:
 
 ---
 
-## 六、步骤间依赖与里程碑
+## 六、步骤5 — torch_extension 接口适配
+
+### 6.1 目标与定位
+
+将 `aclnnPoolKeyIndexer` 封装为 `cann_ops_transformer` 库中的 PyTorch 算子，使上层模型代码可通过 `cann_ops_transformer.pool_key_indexer(...)` 直接调用，并支持 `torch.compile` / FakeTensor / Autograd 的图模式推导。
+
+**适配位置**：`ops-transformer/torch_extension/cann_ops_transformer`（OpBuilder + JIT 编译体系），**不是**算子目录下既有的 `torch_ops_extension/`（基于 `NpuExtension` + `EXEC_NPU_CMD_V1` 的旧式 custom 命名空间封装，二者并存，步骤5 以 `cann_ops_transformer` 体系为准）。
+
+**参考实现**：
+- 主参考：`ops/lightning_indexer.py` + `ops/csrc/lightning_indexer.cpp`（LIV2 非量化路径）
+- 量化路径参考：`ops/quant_lightning_indexer.py` + `ops/csrc/quant_lightning_indexer.cpp`（FP8 dtype 适配、`TensorWrapper` + `FixAclDtypes` 模式）
+
+**与 LIV2 的关键差异**：
+
+| 维度 | LIV2 | PKI | 影响 |
+|------|------|-----|------|
+| aclnn 接口 | 两段式 + 独立 `aclnnLightningIndexerV2Metadata` | **仅两段式，无 metadata 子算子** | 步骤5 无需 metadata 算子，仅注册单算子 |
+| 输出 values dtype | bfloat16 | **float**（规格要求） | 输出 tensor 用 `at::kFloat` |
+| 输出 indices 维度 | topk | **topk + pool_size - 1** | infershape 需按 pool_size 计算 |
+| 输出 values 维度 | topk | **topk / pool_size**（pool 级，非展开） | 与 indices 维度不同 |
+| return_value=False | values 为空 | values 为空（`{0}` shape） | 一致 |
+| 量化接口分离 | 独立 `quant_lightning_indexer` 算子 | **单算子，quant_mode 驱动** | 步骤5 只注册一个算子，quant_mode 作属性 |
+
+### 6.2 新增文件清单
+
+| 文件 | 职责 | 参考 |
+|------|------|------|
+| `torch_extension/cann_ops_transformer/ops/csrc/pool_key_indexer.cpp` | C++ 后端：构造输出 tensor + `ACLNN_CMD(aclnnPoolKeyIndexer, ...)` 下发 | `csrc/lightning_indexer.cpp` |
+| `torch_extension/cann_ops_transformer/ops/pool_key_indexer.py` | Python 前端：`OpBuilder` + schema + Meta + register_fake + PrivateUse1 dispatch | `ops/lightning_indexer.py` |
+| `torch_extension/cann_ops_transformer/ops/graph_convert/graph_convert_pool_key_indexer.py` | torchair 图模式 GE Converter：`register_fx_node_ge_converter` + `torchair.ge.custom_op("PoolKeyIndexer")` | `graph_convert/graph_convert_lightning_indexer.py`（LIV2 stub）、旧 `torch_ops_extension` converter（已移植） |
+| `torch_extension/cann_ops_transformer/ops/__init__.py`（修改） | 导出 `pool_key_indexer` + `convert_pool_key_indexer` | 在末尾追加 import |
+
+**依赖的公共组件（无需新建，已存在）**：
+- `op_builder/builder.py`：`OpBuilder` 基类（JIT `load`、`register_schema`、`register_meta`、`include_paths`、`cxx_args`、`extra_ldflags`）
+- `common/inc/aclnn_common.h`：`ACLNN_CMD` 宏、`ConvertType`、`TensorWrapper`、`get_valid_tensor`、`DecodeDevice`、`ApplyDeterministicConfig`
+
+### 6.3 关键修改点
+
+#### 6.3.1 C++ 后端 `ops/csrc/pool_key_indexer.cpp`
+
+参考 `lightning_indexer.cpp` 的 `ConstructLightningIndexerOutputTensor` + `LightningIndexer` 结构，PKI 无需 metadata 函数，仅实现一个主函数。
+
+**输出 shape 推导**（注意 BSND/TND 差异，且 indices 与 values 末维不同）：
+
+```cpp
+std::tuple<at::Tensor, at::Tensor> ConstructPoolKeyIndexerOutput(
+    const at::Tensor &query, int64_t topk, int64_t poolSize,
+    const std::string &layoutQ, bool returnValue)
+{
+    int64_t indicesLen = topk + poolSize - 1;   // 展开后 token 数
+    int64_t valuesLen  = topk / poolSize;      // pool 级分数数（sparseCount）
+    at::SmallVector<int64_t, SIZE> shape;
+    if (layoutQ == "BSND") {
+        shape = {query.size(0), query.size(1), /*indicesLen 或 valuesLen*/};
+    } else {  // TND
+        shape = {query.size(0), /*indicesLen 或 valuesLen*/};
+    }
+    at::Tensor sparseIndices = at::empty(shapeWith(indicesLen), query.options().dtype(at::kInt));
+    at::Tensor sparseValues  = returnValue
+        ? at::empty(shapeWith(valuesLen), query.options().dtype(at::kFloat))
+        : at::empty({0}, query.options().dtype(at::kFloat));
+    return {sparseIndices, sparseValues};
+}
+```
+
+**主函数签名**（严格对齐 aclnn 两段式参数顺序：inputs → attrs → outputs）：
+
+```cpp
+std::tuple<at::Tensor, at::Tensor> PoolKeyIndexer(
+    const at::Tensor &query, const at::Tensor &poolKey, const at::Tensor &weights,
+    const at::Tensor &poolTailK,
+    const c10::optional<at::Tensor> &actualSeqQ,
+    const c10::optional<at::Tensor> &actualSeqK,
+    const c10::optional<at::Tensor> &blockTable,
+    const c10::optional<at::Tensor> &qDescale,
+    const c10::optional<at::Tensor> &kDescale,
+    c10::string_view layoutQ, c10::string_view layoutK,
+    int64_t topk, int64_t poolSize, int64_t maskMode, int64_t quantMode,
+    bool returnValue)
+{
+    TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
+    TORCH_CHECK(poolKey.numel() > 0, "Tensor poolKey is empty.");
+
+    std::string layoutQStr(layoutQ), layoutKStr(layoutK);
+    auto [sparseIndices, sparseValues] = ConstructPoolKeyIndexerOutput(
+        query, topk, poolSize, layoutQStr, returnValue);
+
+    auto device = query.device();
+    auto actualSeqQVal = get_valid_tensor(actualSeqQ, device);
+    auto actualSeqKVal = get_valid_tensor(actualSeqK, device);
+    auto blockTableVal = get_valid_tensor(blockTable, device);
+    auto qDescaleVal   = get_valid_tensor(qDescale, device);
+    auto kDescaleVal   = get_valid_tensor(kDescale, device);
+
+    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
+    char *layoutKPtr = const_cast<char *>(layoutKStr.c_str());
+
+    ACLNN_CMD(aclnnPoolKeyIndexer,
+              query, poolKey, weights, poolTailK,
+              actualSeqQVal, actualSeqKVal, blockTableVal,
+              qDescaleVal, kDescaleVal,
+              layoutQPtr, layoutKPtr,
+              topk, poolSize, maskMode, quantMode, returnValue,
+              sparseIndices, sparseValues);
+    return {sparseIndices, sparseValues};
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("pool_key_indexer", &PoolKeyIndexer, "pool_key_indexer");
+}
+```
+
+#### 6.3.2 FP8 量化 dtype 适配（依赖步骤4，可延后）
+
+参考 `quant_lightning_indexer.cpp` 的 `TensorWrapper` + `FixQLIV2AclDtypes` 模式。PKI 的 quant_mode 语义与 LIV2 不同（PKI: -1/0/1，LIV2: 0..5），需实现 PKI 专属的 dtype 修正：
+
+```cpp
+inline void FixPkiAclDtypes(int64_t quantMode,
+                            TensorWrapper &queryW, TensorWrapper &keyW,
+                            TensorWrapper &qScaleW, TensorWrapper &kScaleW)
+{
+    if (quantMode == 0) {
+        // FP8 per-token-head: query/key=FP8_E4M3FN, descale=FLOAT，aclnn 已自动识别
+    } else if (quantMode == 1) {
+        // mxFP8: descale=FLOAT8_E8M0，需显式设置 scale dtype
+        TORCH_CHECK(qScaleW.tensor_.scalar_type() == at::kFloat8_e8m0fnu,
+                    "quant_mode=1 requires q_descale dtype float8_e8m0fnu");
+        TORCH_CHECK(kScaleW.tensor_.scalar_type() == at::kFloat8_e8m0fnu,
+                    "quant_mode=1 requires k_descale dtype float8_e8m0fnu");
+        qScaleW.dtype = ACL_FLOAT8_E8M0;
+        kScaleW.dtype = ACL_FLOAT8_E8M0;
+    }
+    // quant_mode=-1: descale 必须为 None，不进入此函数
+}
+```
+
+**量化路径下 `ACLNN_CMD` 传参改用 `TensorWrapper`**（使修正后的 dtype 生效），非量化路径直接传 `at::Tensor`。
+
+#### 6.3.3 Python 前端 `ops/pool_key_indexer.py`
+
+参考 `lightning_indexer.py`，PKI 无 metadata 子算子，schema 仅一条：
+
+```python
+class PoolKeyIndexerOpBuilder(OpBuilder):
+    def __init__(self):
+        super().__init__("pool_key_indexer")
+
+    def sources(self):
+        return ["ops/csrc/pool_key_indexer.cpp"]
+
+    def schema(self) -> str:
+        # 必选 tensor + 必选 scalar 在前，optional tensor 在 '*' 后
+        return ("pool_key_indexer(Tensor query, Tensor pool_key, Tensor weights, "
+                "Tensor pool_tail_k, *, "
+                "Tensor? actual_seq_q=None, Tensor? actual_seq_k=None, "
+                "Tensor? block_table=None, Tensor? q_descale=None, Tensor? k_descale=None, "
+                'str layout_q="BSND", str layout_k="BSND", '
+                "int topk=128, int pool_size=1, int mask_mode=0, int quant_mode=-1, "
+                "bool return_value=False) -> (Tensor, Tensor)")
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def pool_key_indexer_meta(query, pool_key, weights, pool_tail_k, *,
+                                  actual_seq_q=None, actual_seq_k=None,
+                                  block_table=None, q_descale=None, k_descale=None,
+                                  layout_q="BSND", layout_k="BSND",
+                                  topk=128, pool_size=1, mask_mode=0,
+                                  quant_mode=-1, return_value=False):
+            indices_len = topk + pool_size - 1
+            values_len  = topk // pool_size
+            if layout_q == "BSND":
+                idx_shape = [query.shape[0], query.shape[1], indices_len]
+                val_shape = [query.shape[0], query.shape[1], values_len]
+            else:  # TND
+                idx_shape = [query.shape[0], indices_len]
+                val_shape = [query.shape[0], values_len]
+            sparse_indices = torch.empty(idx_shape, dtype=torch.int32, device="meta")
+            sparse_values  = (torch.empty(val_shape, dtype=torch.float, device="meta")
+                              if return_value else torch.empty([0], dtype=torch.float, device="meta"))
+            return (sparse_indices, sparse_values)
+
+pool_key_indexer_op_builder = PoolKeyIndexerOpBuilder()
+
+@impl(AS_LIBRARY, pool_key_indexer_op_builder.name, "PrivateUse1")
+def pool_key_indexer(query, pool_key, weights, pool_tail_k, *,
+                     actual_seq_q=None, actual_seq_k=None,
+                     block_table=None, q_descale=None, k_descale=None,
+                     layout_q="BSND", layout_k="BSND",
+                     topk=128, pool_size=1, mask_mode=0,
+                     quant_mode=-1, return_value=False):
+    op_module = pool_key_indexer_op_builder.load()
+    return op_module.pool_key_indexer(
+        query, pool_key, weights, pool_tail_k,
+        actual_seq_q, actual_seq_k, block_table, q_descale, k_descale,
+        layout_q, layout_k, topk, pool_size, mask_mode, quant_mode, return_value)
+```
+
+**与 LIV2 的差异**：
+- 无 `*_metadata` 算子（PKI aclnn 接口无 metadata 分离，不同于 LIV2 的 `lightning_indexer_metadata`）
+- 已添加 `@torch.library.register_fake("cann_ops_transformer::pool_key_indexer")` 支持 torch.compile FakeTensor 推导
+- 已添加 `graph_convert_pool_key_indexer.py`，注册真实可用的 GE converter（移植自旧 `torch_ops_extension`，不同于 LIV2 的 RuntimeError stub）
+
+#### 6.3.4 graph_convert Converter `ops/graph_convert/graph_convert_pool_key_indexer.py`
+
+参考 `graph_convert_lightning_indexer.py` 的结构，但 PKI 的 GE converter **实际可用**（移植自旧 `torch_ops_extension` 的 `torchair.ge.custom_op` 实现），而非 LIV2 的 `raise RuntimeError` stub：
+
+```python
+@register_fx_node_ge_converter(
+    torch.ops.cann_ops_transformer.pool_key_indexer.default
+)
+def convert_pool_key_indexer(query, pool_key, weights, pool_tail_k, *,
+                             actual_seq_q=None, actual_seq_k=None,
+                             block_table=None, q_descale=None, k_descale=None,
+                             layout_q="BSND", layout_k="BSND",
+                             topk=128, pool_size=1, mask_mode=0,
+                             quant_mode=-1, return_value=False,
+                             meta_outputs=None):
+    return torchair.ge.custom_op(
+        "PoolKeyIndexer",
+        inputs={...},  # 9 个输入 tensor
+        attrs={...},   # 7 个属性
+        outputs=["sparse_indices_out", "sparse_values_out"])
+```
+
+**与 LIV2 的差异**：LIV2 的 `graph_convert_lightning_indexer.py` 仅注册 metadata 子算子且 raise RuntimeError（主算子未注册 GE converter）。PKI 为主算子注册了**真实可用的** GE converter（`torchair.ge.custom_op`），直接映射到 GE 图的 `PoolKeyIndexer` 算子节点。
+
+#### 6.3.5 注册导出 `ops/__init__.py`
+
+在末尾追加：
+```python
+from .pool_key_indexer import pool_key_indexer
+from .graph_convert.graph_convert_pool_key_indexer import convert_pool_key_indexer
+```
+
+### 6.4 顶层调用方式
+
+适配完成后，模型侧调用方式：
+```python
+import cann_ops_transformer
+sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
+    query, pool_key, weights, pool_tail_k,
+    actual_seq_q=cu_seqlens_q, actual_seq_k=cu_seqlens_k,
+    block_table=block_table,           # PA 场景
+    q_descale=q_scale, k_descale=k_scale,  # 量化场景
+    layout_q="BSND", layout_k="BSND",
+    topk=2048, pool_size=16, mask_mode=3, quant_mode=-1, return_value=True)
+```
+
+### 6.5 与既有 `torch_ops_extension/` 的关系（已删除）
+
+算子目录下原有的 `torch_ops_extension/custom_ops/`（旧式 `torch.ops.custom.npu_pool_key_indexer`，基于 `NpuExtension` + `EXEC_NPU_CMD_V1`）已**整体删除**。原因：
+
+1. **功能完全覆盖**：`cann_ops_transformer` 路径已补全 graph_convert converter（移植自旧 `torch_ops_extension` 的 `torchair.ge.custom_op` 实现），eager + torch.compile + torchair 图模式三条路径均可用
+2. **命名违规**：旧封装使用 `npu_pool_key_indexer`（带 `npu_` 前缀），违反 `torch_extension_guidelines.md` §2.1「对外 api 接口及算子名一律不带 `npu_` 前缀」
+3. **重复维护**：两套封装底层调用同一个 `aclnnPoolKeyIndexer`，存在维护成本和一致性风险
+
+| 路径 | 入口 | 编译方式 | 适用场景 | 状态 |
+|------|------|---------|---------|------|
+| `cann_ops_transformer`（步骤5） | `cann_ops_transformer.pool_key_indexer` | `OpBuilder` JIT + `ACLNN_CMD` | eager + torch.compile + torchair 图模式 | ✅ 唯一路径 |
+| ~~`torch_ops_extension/`~~（已删除） | ~~`torch.ops.custom.npu_pool_key_indexer`~~ | ~~`NpuExtension` 预编译 + `EXEC_NPU_CMD_V1`~~ | ~~torchair 静态图~~ | ❌ 已删除 |
+
+### 6.6 验证方法
+
+1. **JIT 编译**：首次调用 `cann_ops_transformer.pool_key_indexer(...)` 触发 ninja JIT 编译，无报错
+2. **功能对齐**：eager 路径输出与 `tests/atk` pyaclnn 路径结果一致（相同输入、相同 rtol）
+3. **Meta 推导**：`torch.compile` 模式下 FakeTensor 推导出的 output shape 与实际一致
+4. **退化验证**：`pool_size=1, quant_mode=-1` 时输出维度 = `topk`（与步骤1 一致）
+5. **量化路径**（依赖步骤4）：`quant_mode=0/1`，FP8 输入经 `TensorWrapper` dtype 修正后正确下发
+6. **return_value**：True/False 两种模式，False 时 values shape 为 `{0}`
+
+### 6.7 风险点
+
+1. **schema 顺序**：`ACLNN_CMD` 的传参顺序必须与 `aclnnPoolKeyIndexerGetWorkspaceSize` 的 IR 声明严格一致（inputs → attrs → outputs），否则 `GetWorkspaceSize` 返回非 0
+2. **optional tensor 处理**：`get_valid_tensor` 将 None 转为空 int32 tensor，需确认 aclnn 侧对空 tensor 的容忍度（LIV2 已验证该模式可行）
+3. **layout 字符串生命周期**：`c10::string_view` → `std::string` → `const_cast<char*>` 需保证字符串在 `ACLNN_CMD` 执行期间存活（参考 LIV2 的局部变量做法）
+4. **FP8 dtype 修正时机**：`FixPkiAclDtypes` 依赖步骤4 的 kernel 反量化实现完成；步骤4 未完成前，步骤5 可先只支持 `quant_mode=-1`，FP8 路径留 TODO
+5. **输出 dtype 一致性**：`sparse_values` 必须为 FLOAT（规格要求），不能跟随 query dtype，C++ 构造时显式用 `at::kFloat`
+6. **与旧式封装共存**：避免 `cann_ops_transformer` 与 `custom` 命名空间算子重名导致 dispatcher 冲突（命名空间不同，无冲突）
+
+---
+
+## 七、步骤间依赖与里程碑
 
 ```
 步骤1 (退化适配)
@@ -466,11 +748,18 @@ Cube 核:
   ├── arch35 反量化逻辑
   ├── 不影响arch22
   └── 里程碑M4: 全功能完成 (规格全覆盖)
+
+步骤5 (torch_extension接口适配)
+  ├── 依赖M3（非量化路径可独立适配）
+  ├── 量化路径依赖M4
+  ├── C++ 后端 + Python 前端 (OpBuilder JIT)
+  ├── Meta 推导 + PrivateUse1 dispatch
+  └── 里程碑M5: torch.compile 可用，eager 输出与 ATK 对齐
 ```
 
 ---
 
-## 七、关键设计决策记录
+## 八、关键设计决策记录
 
 | 决策 | 理由 |
 |------|------|
@@ -481,10 +770,14 @@ Cube 核:
 | poolKey 与 key 一致 | 两者输入都是压缩/聚合后的，S2 是压缩空间长度，kernel 无需内部聚合 |
 | 步骤2 不展开索引 | 先验证 pool 级 TopK 正确性，再展开 |
 | 步骤4 仅 arch35 | A2/A3 不支持 FP8 |
+| 步骤5 适配 cann_ops_transformer 而非改造 torch_ops_extension | OpBuilder JIT 模式支持 torch.compile，与 LIV2 体系一致；旧式封装违反命名规范（npu_ 前缀），功能被 cann_ops_transformer 完全覆盖后整体删除 |
+| 步骤5 graph_convert 移植真实 GE converter | 旧 torch_ops_extension 的 `torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub） |
+| 步骤5 无独立 metadata 子算子 | PKI aclnn 接口无 metadata 分离（不同于 LIV2），单算子即可 |
+| 步骤5 输出 values dtype 固定 FLOAT | 规格要求，不跟随 query dtype，C++ 显式 `at::kFloat` |
 
 ---
 
-## 八、规格约束速查
+## 九、规格约束速查
 
 ### 输入约束
 

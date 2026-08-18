@@ -172,7 +172,8 @@ class PoolKeyIndexerGenerator(CaseGenerator):
             block_num = 0
         else:  # PA_BBND
             block_size = _gen_block_size()
-            max_block_num_per_seq = math.ceil(s2 * pool_size / block_size)
+            # blockSize is pools per block (key is pool-aggregated, S2 is pool count)
+            max_block_num_per_seq = math.ceil(s2 / block_size)
             block_num = b * max_block_num_per_seq
             key_shape = [block_num, block_size, N2, HEAD_DIM]
 

@@ -65,3 +65,5 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+from .pool_key_indexer import pool_key_indexer
+from .graph_convert.graph_convert_pool_key_indexer import convert_pool_key_indexer

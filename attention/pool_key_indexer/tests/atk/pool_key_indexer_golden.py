@@ -220,15 +220,17 @@ class PKIGoldenRef:
                 pos += block_size
         return bnsd
 
-    def _create_mask_right_down(self, m_shape, actualSeqLengthsQ, actualSeqLengthsK, batch, pool_size):
-        """因果掩码: validS2Len = (L_orig - S1 + i + 1) / pool_size"""
+    def _create_mask_right_down(self, m_shape, actualSeqLengthsQ, actualSeqLengthsK, batch,
+                                pool_size, pool_tail_k):
+        """因果掩码: validS2Len = (L_orig - S1 + i + 1) / pool_size, L_orig = S2*pool_size + tail_k"""
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         masks = []
         for i_batch in range(batch):
             S1 = actualSeqLengthsQ[i_batch] if len(actualSeqLengthsQ) > 0 else mask_s_q
             S2 = math.floor(actualSeqLengthsK[i_batch]) if len(actualSeqLengthsK) > 0 else mask_s_kv
-            L_orig = S2 * pool_size  # pool_tail_k handled separately
+            cur_tail_k = int(pool_tail_k[i_batch]) if pool_tail_k is not None else 0
+            L_orig = S2 * pool_size + cur_tail_k
             atten_mask = torch.zeros(mask_s_q, mask_s_kv, dtype=torch.uint8)
             tmp_pos_orig = L_orig - S1
             for i in range(S1):
@@ -265,7 +267,7 @@ class PKIGoldenRef:
             return tensor
 
     def _cal_atten_per_batch(self, cur_q, cur_k, cur_wt, cur_m, sparse_count, mask_mode,
-                             group_size, k_head_num, pool_size, pool_tail_k, need_topk=True):
+                             group_size, k_head_num, need_topk=True):
         compute_dtype = self.compute_dtype
         cur_q = _safe_to_dtype(cur_q, compute_dtype)
         cur_k = _safe_to_dtype(cur_k, compute_dtype)
@@ -367,6 +369,91 @@ class PKIGoldenRef:
 
         return token_indices, token_values
 
+    def _canonical_rows_pool(self, ext_token_indices, scores, sparse_count, pool_size,
+                              valid_s2_len, pool_tail_k, l_orig, s1, mask_mode, compute_dtype):
+        """归一化算子输出的 token 级索引: token→pool 转换 → gather scores → sort → cutoff → 重新展开.
+
+        Args:
+            ext_token_indices: [S1, topk+poolSize-1] 算子输出的 token 索引
+            scores: [S1, S2] pool 级分数
+            sparse_count: topk // pool_size
+            pool_size: pool 大小
+            valid_s2_len: [S1] 每个 query 位置的有效 pool 数
+            pool_tail_k: 尾部 token 数
+            l_orig: L_orig = S2 * pool_size + pool_tail_k
+            s1: S1 长度
+            mask_mode: 0 或 3
+
+        Returns:
+            token_indices: [S1, topk + pool_size - 1] INT32
+            token_values: [S1, sparse_count] compute_dtype
+        """
+        topk = sparse_count * pool_size
+        output_len = topk + pool_size - 1
+        s2_len = scores.shape[-1]
+
+        # 1. 提取 TopK 部分 (尾块部分不需要归一化, 重新生成)
+        ext_pool_part = ext_token_indices[:, :topk].long()  # [S1, topk]
+
+        # 2. token → pool 索引转换 (仅有效 token)
+        valid_mask = (ext_pool_part >= 0) & (ext_pool_part < s2_len * pool_size)
+        pool_idx = torch.where(valid_mask, ext_pool_part // pool_size,
+                               torch.zeros_like(ext_pool_part))
+
+        # 3. Gather pool 级 scores
+        gathered = torch.gather(scores, -1, pool_idx.clamp(0, s2_len - 1))
+        gathered = gathered.masked_fill(~valid_mask, float('-inf'))
+
+        # 4. Cutoff: 第 k 大的 score
+        k_eff = max(1, min(s2_len, sparse_count))
+        cutoff = scores.topk(k_eff, dim=-1).values[..., -1:]  # [S1, 1]
+
+        # 5. 标记低于 cutoff 的为 -1
+        at_or_below = valid_mask & (gathered <= cutoff)
+        out_pool = torch.where(at_or_below, torch.full_like(pool_idx, -1), pool_idx)
+
+        # 6. 按 (index, score) 排序: 先按 index 排序, 再按 score 降序稳定排序
+        order_by_idx = torch.argsort(out_pool.long(), dim=-1)
+        key = torch.gather(gathered, -1, order_by_idx)
+        order_by_score = torch.argsort(key, dim=-1, descending=True, stable=True)
+        final_order = torch.gather(order_by_idx, -1, order_by_score)
+        canon_pool = torch.gather(out_pool, -1, final_order).to(torch.int32)  # [S1, topk]
+        canon_scores = torch.gather(gathered, -1, final_order)                # [S1, topk]
+
+        # 7. 取前 sparse_count 个 pool
+        canon_pool = canon_pool[:, :sparse_count]    # [S1, sparse_count]
+        canon_scores = canon_scores[:, :sparse_count]  # [S1, sparse_count]
+
+        # 8. 重新展开 pool → token + 追加尾块
+        token_indices = torch.full((s1, output_len), -1, dtype=torch.int32)
+        token_values = torch.full((s1, sparse_count), float('-inf'), dtype=compute_dtype)
+
+        for i in range(s1):
+            v_len = int(valid_s2_len[i]) if hasattr(valid_s2_len, '__getitem__') else int(valid_s2_len)
+            out_off = 0
+            for k in range(sparse_count):
+                pidx = int(canon_pool[i, k].item())
+                if pidx >= 0 and k < v_len:
+                    base = pidx * pool_size
+                    for p in range(pool_size):
+                        if out_off + p < topk:
+                            token_indices[i, out_off + p] = base + p
+                    token_values[i, k] = canon_scores[i, k]
+                out_off += pool_size
+
+            # 尾块追加 (与 golden 路径一致)
+            if pool_tail_k > 0:
+                tail_pos = topk
+                if mask_mode == 0:
+                    visible_tail_k = pool_tail_k
+                else:
+                    global_pos_q = l_orig - s1 + i
+                    visible_tail_k = max(0, min(pool_tail_k, global_pos_q - topk + 1))
+                for t in range(visible_tail_k):
+                    token_indices[i, tail_pos + t] = l_orig - pool_tail_k + t
+
+        return token_indices, token_values
+
     def forward(self, query, key, weights, actual_seq_q, actual_seq_k,
                 block_table=None, pool_tail_k=None, ext_indices=None, ext_values=None):
         _saved_threads = torch.get_num_threads()
@@ -404,7 +491,8 @@ class PKIGoldenRef:
         m_tensor = []
         if mask_mode == 3:
             m_tensor = torch.from_numpy(
-                self._create_mask_right_down(m_shape, actual_seq_q, actual_seq_k, batch, pool_size)
+                self._create_mask_right_down(m_shape, actual_seq_q, actual_seq_k, batch,
+                                             pool_size, pool_tail_k)
             )
 
         # 输出 shape: BSND (B, S1, output_len) / TND (T1, output_len)
@@ -432,50 +520,59 @@ class PKIGoldenRef:
             if curr_q == 0:
                 continue
 
-            # 计算 scores
+            # 计算 scores (need_topk 取决于是否有 ext_indices)
             topk_pool_indices, scores = self._cal_atten_per_batch(
                 cur_q, cur_k, cur_wt, cur_m, sparse_count, mask_mode,
-                self.group_size, k_head_num, pool_size,
-                pool_tail_k[b_idx] if pool_tail_k is not None else 0,
+                self.group_size, k_head_num,
                 need_topk=ext_indices is None
             )
 
-            if ext_indices is not None:
-                if layout_query == "TND":
-                    t_start = int(sum(int(x) for x in actual_seq_q[:b_idx]))
-                    topk_pool_indices = ext_indices[t_start:t_start + curr_q].permute(1, 0, 2).unsqueeze(0)
-                else:
-                    topk_pool_indices = ext_indices[b_idx, :curr_q, :, :].permute(0, 2, 1, 3)
-
-            if topk_pool_indices.shape[-1] < sparse_count:
-                pad = torch.full(
-                    topk_pool_indices.shape[:-1] + (sparse_count - topk_pool_indices.shape[-1],),
-                    -1, dtype=torch.int32
-                )
-                topk_pool_indices = torch.cat([topk_pool_indices, pad], dim=-1)
+            # 统一取 scores 2D [S1, S2]
+            scores_2d = scores[0, 0]
 
             # 获取当前 batch 的参数
             cur_pool_tail_k = int(pool_tail_k[b_idx]) if pool_tail_k is not None else 0
             l_orig = curr_k * pool_size + cur_pool_tail_k
 
             # 计算 valid_s2_len
+            s1_actual = curr_q
             if mask_mode == 3:
-                scores_2d = scores[0, 0]  # [S1, S2]
-                s1_actual = curr_q
                 valid_s2_len = torch.zeros(s1_actual, dtype=torch.int32)
                 for i in range(s1_actual):
                     vu = (l_orig - s1_actual + i + 1) / pool_size
                     valid_s2_len[i] = max(0, min(curr_k, int(math.floor(vu))))
             else:
-                valid_s2_len = torch.full((curr_q,), curr_k, dtype=torch.int32)
+                valid_s2_len = torch.full((s1_actual,), curr_k, dtype=torch.int32)
 
-            # 展开 + 追加
-            pool_idx_2d = topk_pool_indices[0, 0]  # [S1, sparse_count]
-            token_idx, token_val = self._expand_and_append(
-                pool_idx_2d, scores_2d if mask_mode == 3 else scores[0, 0],
-                sparse_count, pool_size, valid_s2_len,
-                cur_pool_tail_k, l_orig, curr_q, mask_mode, self.compute_dtype
-            )
+            if ext_indices is not None:
+                # 算子归一化路径: 提取当前 batch 的 ext_token_indices [S1, topk+poolSize-1]
+                if layout_query == "BSND":
+                    ext_2d = ext_indices[b_idx, :curr_q, :]  # [S1, output_len]
+                else:
+                    t_start = int(sum(int(x) for x in actual_seq_q[:b_idx]))
+                    ext_2d = ext_indices[t_start:t_start + curr_q, :]
+
+                token_idx, token_val = self._canonical_rows_pool(
+                    ext_2d, scores_2d, sparse_count, pool_size,
+                    valid_s2_len, cur_pool_tail_k, l_orig,
+                    s1_actual, mask_mode, self.compute_dtype
+                )
+            else:
+                # Golden 标杆路径: pool 级 TopK → 展开 → 追加
+                pool_idx_2d = topk_pool_indices[0, 0]  # [S1, sparse_count]
+
+                if pool_idx_2d.shape[-1] < sparse_count:
+                    pad = torch.full(
+                        pool_idx_2d.shape[:-1] + (sparse_count - pool_idx_2d.shape[-1],),
+                        -1, dtype=torch.int32
+                    )
+                    pool_idx_2d = torch.cat([pool_idx_2d, pad], dim=-1)
+
+                token_idx, token_val = self._expand_and_append(
+                    pool_idx_2d, scores_2d, sparse_count, pool_size,
+                    valid_s2_len, cur_pool_tail_k, l_orig,
+                    s1_actual, mask_mode, self.compute_dtype
+                )
 
             if layout_query == "BSND":
                 y_indices[b_idx, :curr_q, :] = token_idx

@@ -32,6 +32,33 @@ from pool_key_indexer_golden import (
 
 LAYOUT_MAP = {0: "BSND", 1: "TND", 2: "PA_BBND"}
 
+
+def _recover_device(device_id):
+    """Reset and re-initialize an NPU device after an aicore exception."""
+    import acl
+    import os
+    import time
+
+    try:
+        torch.npu.empty_cache()
+    except Exception:
+        pass
+
+    try:
+        acl.rt.reset_device(device_id)
+        time.sleep(1)
+        acl.rt.set_device(device_id)
+    except Exception:
+        pass
+
+    try:
+        torch.npu.set_device(device_id)
+        torch.npu.empty_cache()
+        _ = torch.zeros(1, device=f"npu:{device_id}")
+        torch.npu.synchronize()
+    except Exception:
+        os._exit(1)
+
 _PARSE_TORCH_DTYPE = {
     "torch.int32": torch.int32,
     "torch.float32": torch.float32,
@@ -111,9 +138,22 @@ class PKIAclnnApi(AclnnBaseApi):
             torch.npu.set_device(device_id)
             torch.npu.synchronize()
         except RuntimeError:
-            pass
+            _recover_device(device_id)
 
-        PKIApi._rerandomize_data(input_data, self.task_result) if hasattr(PKIApi, '_rerandomize_data') else None
+        PKIApi._rerandomize_data(input_data, self.task_result)
+
+        # 复检模式: 删除 operator 输出目录
+        if getattr(self.task_result, 'disable_id_seed', False):
+            import os, shutil
+            try:
+                out_dir = self.task_result.get_output_path()
+                case_id = getattr(self.task_result.case_config, 'id', 0)
+                save_name = getattr(self.task_result.case_config, 'save_name', 'all_pool_key_indexer')
+                op_dir = os.path.join(out_dir, "pyaclnn_operator", save_name, str(case_id))
+                if os.path.exists(op_dir):
+                    shutil.rmtree(op_dir)
+            except Exception:
+                pass
 
         input_args = []
         output_packages = []
@@ -228,8 +268,13 @@ class PKIAclnnApi(AclnnBaseApi):
     def __call__(self, with_output: bool = False):
         _dev = getattr(self, '_saved_device_id', 0)
         torch.npu.set_device(_dev)
-        super().__call__()
-        torch.npu.synchronize()
+        try:
+            super().__call__()
+            torch.npu.synchronize()
+        except RuntimeError as exc:
+            if "507015" in str(exc) or "EZ9999" in str(exc) or "EE9999" in str(exc) or "aicore" in str(exc).lower():
+                _recover_device(_dev)
+            raise
 
         structs = self._saved_output_structs
         op_indices = structs[0].pytensor if len(structs) > 0 else None
@@ -337,5 +382,19 @@ class PKIAclnnApi(AclnnBaseApi):
             val_dev = structs[1].pytensor.device
             sanitized = PKIApi._sanitize_values(norm_values, compute_dtype)
             structs[1].pytensor = _safe_to_dtype(sanitized, torch.float32).to(val_dev)
+
+        # 复检模式: 手动保存 output .pt 文件
+        if getattr(self.task_result, 'disable_id_seed', False):
+            import os
+            try:
+                out_dir = self.task_result.get_output_path()
+                case_id = getattr(self.task_result.case_config, 'id', 0)
+                save_name = getattr(self.task_result.case_config, 'save_name', 'all_pool_key_indexer')
+                case_dir = os.path.join(out_dir, "pyaclnn_operator", save_name, str(case_id))
+                os.makedirs(case_dir, exist_ok=True)
+                torch.save(_safe_to_cpu(structs[0].pytensor), os.path.join(case_dir, "output_0.pt"))
+                torch.save(_safe_to_cpu(structs[1].pytensor), os.path.join(case_dir, "output_1.pt"))
+            except Exception:
+                pass
 
         return None
