@@ -147,6 +147,15 @@ public:
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
                      constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
 
+        if (constInfo.l2CacheOffFlag) {
+            // gSize*s1Size<=64单token场景: K/V数据量远超L2容量, 完全无法复用, 关闭L2 Cache避免无意义的缓存填充/驱逐开销。
+            // 注意: 仅对K/V生效, keyRope同样设置DISABLE会导致整体失效(实测+73us), 勿加。
+#ifndef ASCENDC_OOM
+            keyGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            valueGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+#endif
+        }
+
         // ROPE
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
                     actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
