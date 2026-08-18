@@ -340,7 +340,9 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
-        auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que_.template AllocTensor<fp8_e8m0_t>();
+        constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
+        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
+            stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
 
         float descaleQK = 1.0;
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -385,19 +387,15 @@ public:
         //-------------------------Data copy to l1-------------------------
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-        this->pScaleSubLoop0Que_.template EnQue(pScaleSubLoop0Tensor);
-        this->pScaleSubLoop0Que_.template DeQue<fp8_e8m0_t>();
         constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
-        constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < copyTimes; i++) {
+            for (uint16_t i = 0; i < 4; i++) {
                 // PScale s2方向block块大小为32，共8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
         }
-        this->pScaleSubLoop0Que_.template FreeTensor(pScaleSubLoop0Tensor);
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
@@ -566,7 +564,9 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
-        auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que_.template AllocTensor<fp8_e8m0_t>();
+        constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
+        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
+            stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
 
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
@@ -652,19 +652,18 @@ public:
         }
 
         // ===================DataCopy to L1 ====================
+        this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
+        this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
-        this->pScaleSubLoop0Que_.template EnQue(pScaleSubLoop0Tensor);
-        this->pScaleSubLoop0Que_.template DeQue<fp8_e8m0_t>();
         uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
         uint16_t copyCount = actVecMSizeAlign16 / 16;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
-        constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < copyTimes; i++) {
+            for (uint16_t i = 0; i < 4; i++) {
                 // PScale s2方向block块大小为32，共256/32=8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                          {copyCount, 1, 0, pScaleDstStride});
@@ -672,15 +671,12 @@ public:
                          {copyCount, 1, 0, pScaleDstStride});
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < copyTimes; i++) {
+            for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                          {copyCount, 1, 0, pScaleDstStride});
             }
         }
-        this->pScaleSubLoop0Que_.template FreeTensor(pScaleSubLoop0Tensor);
 
-        this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
-        this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm2AL1Tensor;
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
