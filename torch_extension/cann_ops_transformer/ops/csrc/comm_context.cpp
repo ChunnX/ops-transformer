@@ -220,7 +220,6 @@ public:
         }
         GetCommProtocol(hcclHandle, protocol);
 
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
@@ -264,6 +263,7 @@ public:
 
         if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
             GetRankSizePerServer(commHandle, rankNumPerUbDomain_);
+            TORCH_CHECK(false, "error rankNumPerUbDomain_ is %u ", rankNumPerUbDomain_);
             return;
         }
 
