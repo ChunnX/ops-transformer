@@ -289,25 +289,13 @@ __aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConf
 }
 
 // 按专家顺序推进紧凑 token 行偏移，并用当前专家的 token 数更新 M 维度。
-__aicore__ inline bool UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
+__aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
 {
-    if (expertIdx != 0U) {
+    if (expertIdx != state.expertIdx) {
         state.globalTokenStartIndex += Get<M_VALUE>(state.problemShape);
     }
+    state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
-    return expertTokenCount != 0U;
-}
-
-// 从当前 expert/block 的 count 槽读取 token 数后更新专家遍历状态。
-// 调用方须按 expertIdx 递增调用，并在调用前保证当前 count 已发布。
-__aicore__ inline bool UpdateExpertLoopStateFromWorkspace(const WorkspaceInfo &workspace,
-                                                          const BlockWorkspaceContext &countWorkspace,
-                                                          ExpertLoopState &state, uint32_t expertIdx)
-{
-    uint64_t countSlotIndex = static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum + countWorkspace.blockIdx;
-    __gm__ int32_t *expertTokenCountAddr =
-        reinterpret_cast<__gm__ int32_t *>(workspace.expertRevTokenNumsPtr) + countSlotIndex * INT32_PER_256B;
-    return UpdateExpertLoopState(state, expertIdx, AscendC::ReadGmByPassDCache(expertTokenCountAddr));
 }
 
 // 轮询 GM 中的 int32 ready flag，并在两次读取之间加入短暂退避。
@@ -321,11 +309,103 @@ __aicore__ inline void WaitUntilGmFlagIsNonZero(__gm__ int32_t *flagAddr)
     }
 }
 
+/*
+ * 等待 Dispatch 发布当前 expert/block 的 token 总数。这里只同步专家级元数据；每个 256-row group
+ * 的 Dispatch 数据就绪依赖由 WaitForGmm1InputReady 处理。
+ */
+__aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFlagWorkspace,
+                                                       const BlockWorkspaceContext &countWorkspace, uint32_t expertIdx)
+{
+    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
+                                          static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
+                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
+    WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+}
+
+// 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。
+__aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
+                                                            const BlockWorkspaceContext &countWorkspace,
+                                                            uint32_t expertIdx)
+{
+    uint64_t countSlotIndex = static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum + countWorkspace.blockIdx;
+    __gm__ int32_t *expertTokenCountAddr =
+        reinterpret_cast<__gm__ int32_t *>(expertTokenCountWorkspace) + countSlotIndex * INT32_PER_256B;
+    return static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
+}
+
 template <AscendC::HardEvent event, int32_t eventId>
 __aicore__ inline void SyncFuncStatic()
 {
     AscendC::SetFlag<event>(static_cast<event_t>(eventId));
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
+}
+
+// 诊断 trace 的通用定长事件写入器。正常 kernel 路径不创建 writer，不产生额外 GM 写入。
+struct CriticalPathTraceEventWriter {
+    __gm__ uint32_t *record = nullptr;
+    uint32_t *eventCount = nullptr;
+    uint32_t *truncated = nullptr;
+    uint32_t eventCapacity = 0U;
+    uint32_t recordHeaderWords = 0U;
+    uint32_t eventWords = 0U;
+
+    __aicore__ inline bool IsEnabled() const
+    {
+        return record != nullptr && eventCount != nullptr && truncated != nullptr && eventWords >= 9U;
+    }
+
+    __aicore__ inline void Record(uint32_t eventType, uint32_t iterationIndex, uint32_t logicalUnitIndex,
+                                  uint32_t unitStart, uint32_t unitCount, uint32_t workCount,
+                                  uint32_t parentEventType, uint32_t beginCycle, uint32_t endCycle)
+    {
+        if (!IsEnabled()) {
+            return;
+        }
+        if (*eventCount >= eventCapacity) {
+            *truncated = 1U;
+            return;
+        }
+        __gm__ uint32_t *dst = record + recordHeaderWords + static_cast<uint64_t>(*eventCount) * eventWords;
+        AscendC::WriteGmByPassDCache(dst + 0U, eventType);
+        AscendC::WriteGmByPassDCache(dst + 1U, iterationIndex);
+        AscendC::WriteGmByPassDCache(dst + 2U, logicalUnitIndex);
+        AscendC::WriteGmByPassDCache(dst + 3U, unitStart);
+        AscendC::WriteGmByPassDCache(dst + 4U, unitCount);
+        AscendC::WriteGmByPassDCache(dst + 5U, workCount);
+        AscendC::WriteGmByPassDCache(dst + 6U, parentEventType);
+        AscendC::WriteGmByPassDCache(dst + 7U, beginCycle);
+        AscendC::WriteGmByPassDCache(dst + 8U, endCycle);
+        ++(*eventCount);
+    }
+};
+
+// 一个 context 描述当前阶段所依赖的等待类型及逻辑范围；每次真实轮询形成一条独立区间事件。
+struct CriticalPathWaitTraceContext {
+    CriticalPathTraceEventWriter writer{};
+    uint32_t waitEventType = 0U;
+    uint32_t parentEventType = 0U;
+    uint32_t iterationIndex = 0U;
+    uint32_t logicalUnitIndex = 0U;
+    uint32_t unitStart = 0U;
+    uint32_t unitCount = 0U;
+    uint32_t workCount = 0U;
+};
+
+__aicore__ inline uint32_t BeginWaitInterval(CriticalPathWaitTraceContext *context)
+{
+    return context == nullptr || !context->writer.IsEnabled() ?
+               0U :
+               static_cast<uint32_t>(AscendC::GetSystemCycle());
+}
+
+__aicore__ inline void EndWaitInterval(CriticalPathWaitTraceContext *context, uint32_t beginCycle)
+{
+    if (context == nullptr || !context->writer.IsEnabled()) {
+        return;
+    }
+    context->writer.Record(context->waitEventType, context->iterationIndex, context->logicalUnitIndex,
+                           context->unitStart, context->unitCount, context->workCount, context->parentEventType,
+                           beginCycle, static_cast<uint32_t>(AscendC::GetSystemCycle()));
 }
 
 } // namespace MegaMoeImpl
