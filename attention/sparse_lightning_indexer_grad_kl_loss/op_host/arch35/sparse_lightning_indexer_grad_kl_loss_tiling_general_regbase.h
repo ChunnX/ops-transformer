@@ -32,7 +32,8 @@ namespace optiling {
 
 class SparseLightningIndexerGradKLLossTilingBaseRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseLightningIndexerGradKLLossTilingBaseRegbase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit SparseLightningIndexerGradKLLossTilingBaseRegbase(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
         Reset();
     }
@@ -45,7 +46,8 @@ public:
     }
 
 protected:
-    void Reset() {
+    void Reset()
+    {
         bSize = 0;
         gSizeQuery = 0;
         gSizeQueryIndex = 0;
@@ -96,19 +98,19 @@ protected:
     bool AnalyzeAttrs();
     bool CrossShapeVerify(const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShap);
     bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &queryIndexShape,
-                         const gert::Shape &topKShape, size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
+                          const gert::Shape &topKShape, size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-                            const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
+                              const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
     bool BalanceLoad(const std::vector<int64_t> &sparseValidArray,
                      std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, 
-                    const int64_t balanceNum);
+    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
+                       const int64_t balanceNum);
     bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
-                       int64_t maxCoreNum);
+                           int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum, uint32_t syKTotalSize, uint32_t pkTotalSize);
@@ -147,6 +149,7 @@ protected:
     platform_ascendc::SocVersion socVersion;
     bool deterministic;
     bool hasRope = false;
+    bool hasSink = false;
 
     const char *opName;
     const char *inputLayout;
@@ -159,5 +162,5 @@ protected:
     SLIGradKLLossMultiCoreParamsRegbase *sliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 
-} // optiling
+} // namespace optiling
 #endif
