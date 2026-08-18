@@ -28,33 +28,9 @@ import quant_flash_attn_golden as golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_inputs"}}
+__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
-
-
-def generate_qfa_inputs(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    dequant_scale_q: torch.Tensor,
-    dequant_scale_k: torch.Tensor,
-    dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
-    *,
-    quant_mode: int = 1,
-    **kwargs,
-):
-    if quant_mode == 7:
-        return generate_qfa_hif8_inputs(
-            q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
-            quant_mode=quant_mode, **kwargs,
-        )
-    return generate_qfa_mxfp8_inputs(
-        q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
-        quant_mode=quant_mode, **kwargs,
-    )
 
 
 def generate_qfa_mxfp8_inputs(
