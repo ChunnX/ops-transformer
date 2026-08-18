@@ -105,6 +105,28 @@ def _load_python_package(root):
 
 
 def _load_converter(root):
+    converter_dir = root / "custom_ops" / "converter"
+    package_name = "_stem_external_custom_ops_converter"
+    package_init = converter_dir / "__init__.py"
+    if not package_init.is_file():
+        return
+    try:
+        package_spec = importlib.util.spec_from_file_location(
+            package_name,
+            package_init,
+            submodule_search_locations=[str(converter_dir)],
+        )
+        if package_spec is None or package_spec.loader is None:
+            return
+        package = importlib.util.module_from_spec(package_spec)
+        sys.modules[package_name] = package
+        package_spec.loader.exec_module(package)
+    except (
+        Exception
+    ) as error:  # pragma: no cover - depends on local extension environment
+        _LOAD_ERRORS.append(f"{package_init}: {error}")
+        return
+
     converter_names = [
         "npu_stem_indexer.py",
         "npu_stem_indexer_metadata.py",
@@ -115,7 +137,7 @@ def _load_converter(root):
             continue
         try:
             spec = importlib.util.spec_from_file_location(
-                f"_stem_{converter_file.stem}_converter",
+                f"{package_name}.{converter_file.stem}",
                 converter_file,
             )
             if spec is None or spec.loader is None:

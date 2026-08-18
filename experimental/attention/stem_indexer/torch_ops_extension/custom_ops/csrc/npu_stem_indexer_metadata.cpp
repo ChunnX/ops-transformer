@@ -10,6 +10,7 @@
 
 #include <torch/library.h>
 #include "ops_common.h"
+#include "strict_attr_utils.h"
 
 namespace custom {
 using namespace at_npu::native;
@@ -33,25 +34,41 @@ static int64_t CalcStemIndexerMetadataOutputSize(int64_t batchSize, int64_t kvHe
            STEM_INDEXER_METADATA_ALIGN_SIZE;
 }
 
-at::Tensor npu_stem_indexer_metadata_npu(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens, int64_t qHeads,
-                                         int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
-                                         int64_t windowSize)
+at::Tensor npu_stem_indexer_metadata_npu(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens,
+                                         const at::Scalar &qHeads, const at::Scalar &kvHeads,
+                                         const at::Scalar &causal, const at::Scalar &stemBlockSize,
+                                         const at::Scalar &dimQkflat, const at::Scalar &windowSize)
 {
+    const int64_t qHeadsValue = ParseIntAttr(qHeads, "q_heads");
+    const int64_t kvHeadsValue = ParseIntAttr(kvHeads, "kv_heads");
+    const bool causalValue = ParseBoolAttr(causal, "causal");
+    const int64_t stemBlockSizeValue = ParseIntAttr(stemBlockSize, "stem_block_size");
+    const int64_t dimQkflatValue = ParseIntAttr(dimQkflat, "dim_qkflat");
+    const int64_t windowSizeValue = ParseIntAttr(windowSize, "window_size");
+
     at::Device outputDevice = qSeqLens.device();
-    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeads);
+    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeadsValue);
     at::Tensor output = torch::empty({metadataOutputSize}, torch::dtype(torch::kInt32).device(outputDevice));
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    EXEC_NPU_CMD_V1(aclnnStemIndexerMetadata, qSeqLens, kvSeqLens, qHeads, kvHeads, causal, stemBlockSize, dimQkflat,
-                    windowSize, output);
+    EXEC_NPU_CMD_V1(aclnnStemIndexerMetadata, qSeqLens, kvSeqLens, qHeadsValue, kvHeadsValue, causalValue,
+                    stemBlockSizeValue, dimQkflatValue, windowSizeValue, output);
     return output;
 }
 
-at::Tensor npu_stem_indexer_metadata_meta(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens, int64_t qHeads,
-                                          int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
-                                          int64_t windowSize)
+at::Tensor npu_stem_indexer_metadata_meta(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens,
+                                          const at::Scalar &qHeads, const at::Scalar &kvHeads,
+                                          const at::Scalar &causal, const at::Scalar &stemBlockSize,
+                                          const at::Scalar &dimQkflat, const at::Scalar &windowSize)
 {
-    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeads);
+    ParseIntAttr(qHeads, "q_heads");
+    const int64_t kvHeadsValue = ParseIntAttr(kvHeads, "kv_heads");
+    ParseBoolAttr(causal, "causal");
+    ParseIntAttr(stemBlockSize, "stem_block_size");
+    ParseIntAttr(dimQkflat, "dim_qkflat");
+    ParseIntAttr(windowSize, "window_size");
+
+    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeadsValue);
     return torch::empty({metadataOutputSize}, qSeqLens.options().dtype(torch::kInt32));
 }
 } // namespace custom

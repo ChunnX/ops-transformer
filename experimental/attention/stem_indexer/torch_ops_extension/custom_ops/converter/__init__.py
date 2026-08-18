@@ -6,4 +6,11 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+def check_exact_type(name, value, expected_type):
+    if type(value) is not expected_type:
+        raise TypeError(
+            f"{name} must be {expected_type.__name__}, but got {type(value).__name__}"
+        )
+
+
 __all__ = ["npu_stem_indexer", "npu_stem_indexer_metadata"]

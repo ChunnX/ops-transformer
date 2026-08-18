@@ -128,11 +128,15 @@ def make_float_tensor(shape, dtype, pattern, seed):
 
 def get_tensor_shapes(case):
     special = parse_special_setting(case.get("special_setting", ""))
-    batch_size = case["batch_size"]
-    q_heads = case["q_heads"]
-    kv_heads = case["kv_heads"]
-    stem_block_size = case["stem_block_size"]
-    stem_stride = case["stem_stride"]
+    batch_size = case["batch_size"] if type(case["batch_size"]) is int else 1
+    q_heads = case["q_heads"] if type(case["q_heads"]) is int else 32
+    kv_heads = case["kv_heads"] if type(case["kv_heads"]) is int else 8
+    stem_block_size = (
+        case["stem_block_size"]
+        if type(case["stem_block_size"]) is int
+        else 128
+    )
+    stem_stride = case["stem_stride"] if type(case["stem_stride"]) is int else 16
     flatten_dim = stem_stride * HEAD_DIM
     max_qb = ceil_div(max(case["q_seq_lens"]), stem_block_size)
     max_kb = ceil_div(max(case["kv_seq_lens"]), stem_block_size)
@@ -190,27 +194,39 @@ def build_case_inputs(case):
 
 
 def get_call_attrs(case):
+    # Preserve the original Python types so the Torch interface validates attrs.
     return {
-        "causal": bool(case["causal"]),
-        "stem_block_size": int(case["stem_block_size"]),
-        "stem_stride": int(case["stem_stride"]),
-        "alpha": float(case["alpha"]),
-        "initial_blocks": int(case["initial_blocks"]),
-        "window_size": int(case["window_size"]),
-        "k_block_num_rate_medium": K_BLOCK_NUM_RATE_MEDIUM,
-        "k_block_num_bias_medium": K_BLOCK_NUM_BIAS_MEDIUM,
-        "k_block_num_rate_large": K_BLOCK_NUM_RATE_LARGE,
-        "k_block_num_bias_large": K_BLOCK_NUM_BIAS_LARGE,
-        "topk_score_precision": get_topk_score_precision(case),
+        "causal": case["causal"],
+        "stem_block_size": case["stem_block_size"],
+        "stem_stride": case["stem_stride"],
+        "alpha": case["alpha"],
+        "initial_blocks": case["initial_blocks"],
+        "window_size": case["window_size"],
+        "k_block_num_rate_medium": case.get(
+            "k_block_num_rate_medium", K_BLOCK_NUM_RATE_MEDIUM
+        ),
+        "k_block_num_bias_medium": case.get(
+            "k_block_num_bias_medium", K_BLOCK_NUM_BIAS_MEDIUM
+        ),
+        "k_block_num_rate_large": case.get(
+            "k_block_num_rate_large", K_BLOCK_NUM_RATE_LARGE
+        ),
+        "k_block_num_bias_large": case.get(
+            "k_block_num_bias_large", K_BLOCK_NUM_BIAS_LARGE
+        ),
+        "topk_score_precision": case.get(
+            "topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION
+        ),
     }
 
 
 def get_metadata_attrs(case):
+    # Keep raw attr types here for the same reason as get_call_attrs.
     return {
-        "causal": bool(case["causal"]),
-        "stem_block_size": int(case["stem_block_size"]),
-        "dim_qkflat": int(case["stem_stride"]) * HEAD_DIM,
-        "window_size": int(case["window_size"]),
+        "causal": case["causal"],
+        "stem_block_size": case["stem_block_size"],
+        "dim_qkflat": case.get("dim_qkflat", case["stem_stride"] * HEAD_DIM),
+        "window_size": case["window_size"],
     }
 
 
@@ -220,21 +236,21 @@ def is_decode_case(q_len, kv_len, prompt_len):
 
 def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
     prompt_block_num = ceil_div(prompt_len, case["stem_block_size"])
+    rate_medium = case.get("k_block_num_rate_medium", K_BLOCK_NUM_RATE_MEDIUM)
+    bias_medium = case.get("k_block_num_bias_medium", K_BLOCK_NUM_BIAS_MEDIUM)
+    rate_large = case.get("k_block_num_rate_large", K_BLOCK_NUM_RATE_LARGE)
+    bias_large = case.get("k_block_num_bias_large", K_BLOCK_NUM_BIAS_LARGE)
     if prompt_block_num < K_SMALL_SEQ_MAX:
         k_start = prompt_block_num
     elif prompt_block_num < K_MEDIUM_SEQ_MAX:
         k_start = int(
-            to_float32(
-                to_float32(prompt_block_num) * to_float32(K_BLOCK_NUM_RATE_MEDIUM)
-            )
-            + to_float32(K_BLOCK_NUM_BIAS_MEDIUM)
+            to_float32(to_float32(prompt_block_num) * to_float32(rate_medium))
+            + to_float32(bias_medium)
         )
     else:
         k_start = int(
-            to_float32(
-                to_float32(prompt_block_num) * to_float32(K_BLOCK_NUM_RATE_LARGE)
-            )
-            + to_float32(K_BLOCK_NUM_BIAS_LARGE)
+            to_float32(to_float32(prompt_block_num) * to_float32(rate_large))
+            + to_float32(bias_large)
         )
 
     s1_pos = q_block_idx + kv_block_num - q_block_num
