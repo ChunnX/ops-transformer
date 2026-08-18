@@ -130,7 +130,8 @@ struct SLIGradKLLossRunInfo {
     uint32_t nIdxP;
     uint32_t nIdxSY;
     uint32_t nVecSize;
-    
+    float pScaler;
+
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
     int32_t s2RealSize;
@@ -184,6 +185,7 @@ constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_AIV_INNER_FLAG1 = 7;
 constexpr uint8_t SYNC_AIV_INNER_FLAG2 = 11;
+constexpr uint8_t SYNC_AIV_INNER_FLAG3 = 12;
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
 
@@ -222,7 +224,8 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
     X(LAYOUT_KT, SLILayout, SLILayout::TND)                                                                            \
     X(SPARSE_MODE, SLISparseMode, SLISparseMode::RightDown)                                                            \
     X(HAS_ROPE, bool, false)                                                                                           \
-    X(IS_DETER, bool, false)
+    X(IS_DETER, bool, false)                                                                                           \
+    X(HAS_SINK, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

@@ -170,7 +170,6 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     } else {
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, 0);
     }
-
     // init output global buffer
     dQueryIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dQueryIndex);
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
