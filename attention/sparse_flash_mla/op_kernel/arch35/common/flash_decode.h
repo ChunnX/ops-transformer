@@ -76,7 +76,7 @@ __aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe
 {
     tPipe->Reset();
     int64_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * FD_REDUCE_CHUNK_ROWS *
-        FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+                          FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t lseExpSize = FD_REDUCE_CHUNK_ROWS * FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * D_ALIGN * sizeof(T);
     int64_t partialOSize = FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
@@ -130,7 +130,7 @@ __aicore__ inline void StageBroadcastMaxSum(const S2SplitFdStagingLayout &layout
     int64_t maxSumBytes = layout.StagingMaxSumBytes();
     int64_t floatOffset = workspaceIdx * (maxSumBytes / sizeof(float)) + stagingMOffset * layout.broadcastElems;
     DataCopyExtParams copyParams{static_cast<uint16_t>(validRows),
-        static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
+                                 static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
     DataCopyPad(sumGm[floatOffset], sumBroadcastUb, copyParams);
@@ -262,7 +262,7 @@ __aicore__ inline void ReduceWithLse(const S2SplitFdStagingLayout &layout, __gm_
             inParams.dstStride = static_cast<uint16_t>((D_ALIGN - dValid) / outputElemsPerBlock);
             inParams.blockCount = dealRowCount;
             DataCopyPadExtParams<float> padParams{true, 0,
-                static_cast<uint8_t>((D_ALIGN - dValid) % outputElemsPerBlock), 0};
+                                                  static_cast<uint8_t>((D_ALIGN - dValid) % outputElemsPerBlock), 0};
             WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
@@ -453,7 +453,7 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
 
     GlobalTensor<float> previousPartialOGm;
     previousPartialOGm.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
-        workspaceIdx * layout.StagingAttenOutElems() * sizeof(float)));
+                                                        workspaceIdx * layout.StagingAttenOutElems() * sizeof(float)));
     int64_t partialOOffset = stagingMOffset * dValid;
     DataCopyExtParams inParams;
     inParams.blockLen = static_cast<uint32_t>(dValid * sizeof(float));
@@ -477,4 +477,4 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
 
 } // namespace AttentionCommon
 
-#endif  // SPARSE_FLASH_MLA_FLASH_DECODE_H
+#endif // SPARSE_FLASH_MLA_FLASH_DECODE_H
