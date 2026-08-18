@@ -674,10 +674,6 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
     }
     GetInOutDataType();
 
-    if (ge::GRAPH_SUCCESS != GetQuantMode()) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }

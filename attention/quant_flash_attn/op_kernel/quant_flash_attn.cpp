@@ -263,6 +263,5 @@ __global__ __aicore__ void quant_flash_attn(
             query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
             cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace, tiling);
     }
-    }
 #endif
 }
