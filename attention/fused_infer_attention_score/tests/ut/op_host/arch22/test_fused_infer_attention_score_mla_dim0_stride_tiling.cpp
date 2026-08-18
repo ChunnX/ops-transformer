@@ -28,8 +28,7 @@ void SetStride(gert::Stride &stride, std::initializer_list<int64_t> values)
     }
 }
 
-optiling::FiaTilingInfo MakeArch22MlaD512Info(int32_t keyDim = -1, int32_t valueDim = -1,
-                                              int32_t keyRopeDim = -1)
+optiling::FiaTilingInfo MakeArch22MlaD512Info(int32_t keyDim = -1, int32_t valueDim = -1, int32_t keyRopeDim = -1)
 {
     static const char layout[] = "TND";
     optiling::FiaTilingInfo fiaInfo;

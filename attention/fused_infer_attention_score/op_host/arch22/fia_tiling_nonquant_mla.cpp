@@ -44,10 +44,7 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-constexpr uint64_t RecursiveSum()
-{
-    return 0;
-}
+constexpr uint64_t RecursiveSum() { return 0; }
 
 template <typename T, typename... Args>
 constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
@@ -135,7 +132,7 @@ bool FiaTilingNonQuantMla::IsCapable()
 
     // 支持的input_layout范围
     std::string layout = fiaInfo_->opParamInfo.layOut;
-    const std::vector<std::string> layoutSupportList = {"BSH", "BSND", "BNSD", "TND",
+    const std::vector<std::string> layoutSupportList = {"BSH",      "BSND",      "BNSD",      "TND",
                                                         "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"};
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
         return false;

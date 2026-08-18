@@ -109,10 +109,15 @@ TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, bN2IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitNumOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitStartIdxOfCore)
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1SplitNumOfFdHead)        // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1LastPartSizeOfFdHead)    // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHead)      // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHeadSplit) // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM,
+                          gS1SplitNumOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
+TILING_DATA_FIELD_DEF_ARR(
+    uint32_t, FIA_MAX_AIC_CORE_NUM,
+    gS1LastPartSizeOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHead) // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHeadSplit) // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionFlashDecodeParamsOp, FusedInferAttentionFlashDecodeParams)
 
