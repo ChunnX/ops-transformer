@@ -51,8 +51,12 @@ def _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale):
     用完必须清空 slot, 否则会污染同进程后续 case。
     """
     golden_mod._REPLAY_QKV_OVERRIDE = {
-        "q": q, "k": k, "v": v,
-        "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale,
+        "q": q,
+        "k": k,
+        "v": v,
+        "q_descale": q_descale,
+        "k_descale": k_descale,
+        "v_descale": v_descale,
     }
 
 
@@ -130,7 +134,6 @@ def npu_qfa_mxfp4(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
@@ -221,7 +224,14 @@ def npu_qfa_mxfp4(
             _clear_replay_qkv()
     golden_mod._apply_csv_shape_override(
         data_dict,
-        {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+        {
+            "q": q,
+            "k": k,
+            "v": v,
+            "q_descale": q_descale,
+            "k_descale": k_descale,
+            "v_descale": v_descale,
+        },
     )
     logger.info(
         "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",

@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_golden_globals(attrs):
-
     for k, v in attrs.items():
         setattr(golden_mod, k, v)
 
@@ -42,7 +41,6 @@ def _to_npu(t):
 
 
 class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
-
     def __init__(
         self,
         q: torch.Tensor,
@@ -152,7 +150,9 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
                 "MAX_SEQLEN_KV": max_seqlen_kv,
                 "CU_SEQLENS_Q": list(cu_seqlens_q) if cu_seqlens_q else [],
                 "CU_SEQLENS_KV": list(cu_seqlens_kv) if cu_seqlens_kv else [],
-                "BLOCK_TABLE_SHAPE": list(block_table_shape) if block_table_shape else [],
+                "BLOCK_TABLE_SHAPE": list(block_table_shape)
+                if block_table_shape
+                else [],
                 "BLOCK_TABLE_DTYPE": block_table_dtype,
                 "P_SCALE_VALUE": p_scale_value,
                 "P_SCALE_SHAPE": list(p_scale_shape) if p_scale_shape else [],
@@ -294,7 +294,6 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
         )
 
     def forward(self):
-
         atten_out, lse_out = quant_flash_attn(
             self.q,
             self.k,

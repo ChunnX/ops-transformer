@@ -59,7 +59,6 @@ class QfaMxfp4Spec:
 
 
 class QfaMxfp4MetadataSpec:
-
     golden = golden_module.cpu_qfa_mxfp4
     customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
     compare = compare_module.compare
@@ -81,7 +80,6 @@ class QfaMxfp4MetadataSpec:
 
 
 class QfaMxfp4MainSpec:
-
     golden = golden_module.cpu_qfa_mxfp4
     customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
     compare = compare_module.compare

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software: you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -30,13 +30,11 @@ __input__ = {"e2e": {"qfa_mxfp4_wrapper.npu_qfa_mxfp4": "generate_qfa_mxfp4_inpu
 
 
 def _apply_golden_globals(attrs):
-
     for k, v in attrs.items():
         setattr(golden_mod, k, v)
 
 
 def _inplace_write(dst, src_torch, slot_name):
-
     if dst is None:
         raise ValueError(f"[INPUTS] {slot_name}: dst is None, CSV 未分配该张量槽位")
     if hasattr(dst, "numpy"):  # torch tensor
@@ -44,7 +42,9 @@ def _inplace_write(dst, src_torch, slot_name):
         if tuple(dst_t.shape) != tuple(src_torch.shape):
             logger.warning(
                 "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
-                slot_name, tuple(dst_t.shape), tuple(src_torch.shape),
+                slot_name,
+                tuple(dst_t.shape),
+                tuple(src_torch.shape),
             )
             adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
             if dst_t.dtype == adapted.dtype:
@@ -64,17 +64,31 @@ def _inplace_write(dst, src_torch, slot_name):
     if tuple(dst_np.shape) != tuple(src_torch.shape):
         logger.warning(
             "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
-            slot_name, tuple(dst_np.shape), tuple(src_torch.shape),
+            slot_name,
+            tuple(dst_np.shape),
+            tuple(src_torch.shape),
         )
         adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
-        src_np = adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        src_np = (
+            adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        )
         if src_np.dtype != dst_np.dtype:
-            src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
+            src_np = (
+                src_np.view(dst_np.dtype)
+                if src_np.dtype.itemsize == dst_np.dtype.itemsize
+                else src_np.astype(dst_np.dtype)
+            )
         dst_np[...] = src_np
         return
-    src_np = src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
+    src_np = (
+        src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
+    )
     if src_np.dtype != dst_np.dtype:
-        src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
+        src_np = (
+            src_np.view(dst_np.dtype)
+            if src_np.dtype.itemsize == dst_np.dtype.itemsize
+            else src_np.astype(dst_np.dtype)
+        )
     dst_np[...] = src_np
 
 
@@ -147,7 +161,6 @@ def generate_qfa_mxfp4_inputs(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-
     # 注入 golden 全局变量 (generate_data 读这些配置)
     _apply_golden_globals(
         {

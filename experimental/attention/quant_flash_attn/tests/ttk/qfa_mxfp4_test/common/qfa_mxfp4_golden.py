@@ -171,7 +171,9 @@ def _infer_physical_s_from_tensor(tensor, layout):
     return None
 
 
-def _resolve_s_with_effective(act_seq_lens, max_seqlen, physical_s_override, b_size, tag):
+def _resolve_s_with_effective(
+    act_seq_lens, max_seqlen, physical_s_override, b_size, tag
+):
     """解析物理 S 和有效长度, 并做校验.
 
     优先级:
@@ -257,7 +259,9 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
             continue
         logger.warning(
             "[GOLDEN] %s CSV shape %s != golden shape %s, 用 CSV shape 重构",
-            name, tuple(csv_t.shape), tuple(golden_t.shape),
+            name,
+            tuple(csv_t.shape),
+            tuple(golden_t.shape),
         )
         data_dict[name] = _adapt_tensor_to_shape(golden_t, csv_t.shape).contiguous()
 
@@ -437,7 +441,6 @@ def update_act_seq_lens_for_tnd(layout, b, act_seq_lens):
 
 
 def transpose_kscale(k_scale, layout):
-
     if k_scale is None:
         raise ValueError("k_scale cannot be None")
     if not isinstance(k_scale, torch.Tensor):
@@ -574,8 +577,8 @@ def _gen_opt_tensor(shape, dtype_str, datarange_str, seed):
         t = torch.randint(int(lo), int(hi) + 1, shape, dtype=torch_dtype)
     return t.contiguous()
 
-def generate_data():
 
+def generate_data():
     n2 = N_kv
     g = G
     num_heads = n2 * g
@@ -815,7 +818,11 @@ def cpu_mxfp4_golden(data_dict):
     if s1 is None:
         s1 = max(act_seq_q) if act_seq_q else (MAX_SEQLEN_Q if MAX_SEQLEN_Q >= 0 else 0)
     if s2 is None:
-        s2 = max(act_seq_kv) if act_seq_kv else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
+        s2 = (
+            max(act_seq_kv)
+            if act_seq_kv
+            else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
+        )
     if act_seq_q_eff is None:
         act_seq_q_eff = list(act_seq_q) if act_seq_q else [s1] * b
     if act_seq_kv_eff is None:

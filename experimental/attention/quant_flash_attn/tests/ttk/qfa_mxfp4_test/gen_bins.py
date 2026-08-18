@@ -79,7 +79,9 @@ def _torch_to_bin(tensor, path):
         raise ValueError(f"_torch_to_bin: tensor 为 None，无法保存到 {path}")
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     arr = tensor.detach().cpu().contiguous()
-    numpy_arr = arr.numpy() if arr.dtype != torch.bfloat16 else arr.view(torch.uint8).numpy()
+    numpy_arr = (
+        arr.numpy() if arr.dtype != torch.bfloat16 else arr.view(torch.uint8).numpy()
+    )
     numpy_arr.tofile(path)
 
 

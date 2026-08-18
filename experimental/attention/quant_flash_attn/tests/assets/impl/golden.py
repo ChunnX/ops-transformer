@@ -102,7 +102,6 @@ def cpu_qfa_mxfp4(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-
     _apply_golden_globals(
         {
             "B": B,
@@ -162,7 +161,6 @@ def cpu_qfa_mxfp4(
             "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
         }
     )
-
 
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:

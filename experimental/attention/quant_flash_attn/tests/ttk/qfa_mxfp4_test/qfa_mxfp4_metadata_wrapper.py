@@ -101,15 +101,12 @@ def run_metadata(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-
     torch_npu.npu.set_device(int(device_id))
 
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
         graph_path = int(env_graph_path)
-        logger.info(
-            "[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path
-        )
+        logger.info("[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path)
 
     _apply_golden_globals(
         {
@@ -182,7 +179,14 @@ def run_metadata(
         golden_mod._clear_physical_s_override()
     golden_mod._apply_csv_shape_override(
         data_dict,
-        {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+        {
+            "q": q,
+            "k": k,
+            "v": v,
+            "q_descale": q_descale,
+            "k_descale": k_descale,
+            "v_descale": v_descale,
+        },
     )
     logger.info(
         "[METADATA_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
@@ -196,7 +200,9 @@ def run_metadata(
     try:
         metadata_list = golden_mod.call_npu_metadata(data_dict)
     except Exception as e:
-        logger.error("[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e))
+        logger.error(
+            "[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e)
+        )
         raise
 
     return metadata_list

@@ -201,11 +201,11 @@ private:
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                      // 8K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);         // 0.5K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                     // 32K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T);        // 2K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                      // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
     static constexpr uint32_t L1_KV_BUFCNT = 4;
@@ -283,7 +283,9 @@ private:
 public:
     __aicore__ inline QuantFlashAttnBlockCubeDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                                 SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo),
+          qSeqLensTool(qSeqLensTool),
+          kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                      __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
@@ -304,9 +306,7 @@ public:
                          constInfo.dSize / MXFP_GROUP_SIZE, qSeqLensTool, queryScaleGm, dequantScaleQuery);
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
                          constInfo.dSize / MXFP_GROUP_SIZE, kvSeqLensTool, keyScaleGm, dequantScaleKey);
-        // v_scale per-batch stride 基于 maxSeqlenKv (= max(act_kv)) 而非物理 s2Size,
-        // 与 metadata 校验 (ceil(max(seqused_kv)/64)) 及 golden v_descale S 维对齐.
-        // maxSeqlenKv 未传入时回退为 s2Size (kernel_dn.h Init 中已处理).
+
         InitVScaleBuffer(constInfo.bSize,
                          static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
                          constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool,
@@ -488,7 +488,6 @@ public:
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
-        
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)

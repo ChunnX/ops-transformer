@@ -184,7 +184,14 @@ def run_main(
         golden_mod._clear_physical_s_override()
     golden_mod._apply_csv_shape_override(
         data_dict,
-        {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+        {
+            "q": q,
+            "k": k,
+            "v": v,
+            "q_descale": q_descale,
+            "k_descale": k_descale,
+            "v_descale": v_descale,
+        },
     )
     logger.info(
         "[MAIN_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",

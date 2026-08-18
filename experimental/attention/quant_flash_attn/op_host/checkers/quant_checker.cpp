@@ -47,7 +47,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
     OP_CHECK_IF(std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) ==
                     supportedQuantModes.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
-                    std::to_string(quantModeVal).c_str(), "The value of quant_mode must be in 1~10"),
+                                                      std::to_string(quantModeVal).c_str(), "The value of quant_mode must be in 1~10"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -64,7 +64,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QuantFlashAttnTiling
     const std::vector<ge::DataType> supportedDtypes = {ge::DT_FLOAT8_E8M0, ge::DT_FLOAT};
     OP_CHECK_IF(std::find(supportedDtypes.begin(), supportedDtypes.end(), desc->GetDataType()) == supportedDtypes.end(),
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, Q_DESCALE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -74,7 +74,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QuantFlashAttnTiling
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "4D/5D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -91,7 +91,7 @@ ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QuantFlashAttnTiling
     const std::vector<ge::DataType> supportedDtypes = {ge::DT_FLOAT8_E8M0, ge::DT_FLOAT};
     OP_CHECK_IF(std::find(supportedDtypes.begin(), supportedDtypes.end(), desc->GetDataType()) == supportedDtypes.end(),
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, K_DESCALE_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, K_DESCALE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -101,7 +101,7 @@ ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QuantFlashAttnTiling
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, K_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -118,7 +118,7 @@ ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QuantFlashAttnTiling
     const std::vector<ge::DataType> supportedDtypes = {ge::DT_FLOAT8_E8M0, ge::DT_FLOAT};
     OP_CHECK_IF(std::find(supportedDtypes.begin(), supportedDtypes.end(), desc->GetDataType()) == supportedDtypes.end(),
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, V_DESCALE_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0/FLOAT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, V_DESCALE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -128,7 +128,7 @@ ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QuantFlashAttnTiling
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, V_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -145,7 +145,7 @@ ge::graphStatus QuantChecker::CheckSingleParaPScale(const QuantFlashAttnTilingIn
 
     OP_CHECK_IF(desc->GetDataType() != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, P_SCALE_NAME.c_str(),
-                    DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT32"),
+                                          DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT32"),
                 return ge::GRAPH_FAILED);
     if (CheckFormatSupport(desc, P_SCALE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -154,7 +154,7 @@ ge::graphStatus QuantChecker::CheckSingleParaPScale(const QuantFlashAttnTilingIn
     uint32_t dimNum = tensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(dimNum != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, P_SCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "1D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
 
     int64_t dim0 = tensor->GetStorageShape().GetDim(0);
@@ -171,8 +171,8 @@ ge::graphStatus QuantChecker::CheckSingleParaLayoutQDescale(const QuantFlashAttn
     OP_CHECK_IF(std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) ==
                     supportedLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
-                    LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
-                    "The value of layout_q_descale must be in BNSD/BSND/TND"),
+                                                      LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
+                                                      "The value of layout_q_descale must be in BNSD/BSND/TND"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -217,7 +217,7 @@ struct QuantLayoutConstraintConfig {
 
 const std::map<int64_t, QuantLayoutConstraintConfig> QUANT_LAYOUT_CONSTRAINT_TABLE = {
     {QUANT_MODE_MXFP8, {FiaLayout::TND, {FiaLayout::TND, FiaLayout::BnNBsD, FiaLayout::NZ}, FiaLayout::TND}}, // MxFP8
-    {QUANT_MODE_MXFP4, {FiaLayout::BNSD, {FiaLayout::BNSD}, FiaLayout::BNSD}},                                 // MxFP4
+    {QUANT_MODE_MXFP4, {FiaLayout::BNSD, {FiaLayout::BNSD}, FiaLayout::BNSD}},                                // MxFP4
 };
 } // namespace
 
@@ -230,31 +230,31 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
     auto it = QUANT_LAYOUT_CONSTRAINT_TABLE.find(quantModeVal);
     OP_CHECK_IF(it == QUANT_LAYOUT_CONSTRAINT_TABLE.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
-                    std::to_string(quantModeVal).c_str(),
-                    "quant_mode is not supported in layout constraint table"),
+                                                      std::to_string(quantModeVal).c_str(),
+                                                      "quant_mode is not supported in layout constraint table"),
                 return ge::GRAPH_FAILED);
 
     const auto &config = it->second;
 
     OP_CHECK_IF(qfaInfo.layoutQ != config.supportedQLayout,
                 OP_LOGE(qfaInfo.opName,
-                    "When quant_mode is %ld, layout_q must be %s, but got %s",
-                    quantModeVal, LayoutToSerialStr(config.supportedQLayout).c_str(),
-                    LayoutToSerialStr(qfaInfo.layoutQ).c_str()),
+                        "When quant_mode is %ld, layout_q must be %s, but got %s",
+                        quantModeVal, LayoutToSerialStr(config.supportedQLayout).c_str(),
+                        LayoutToSerialStr(qfaInfo.layoutQ).c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(),
                           qfaInfo.layoutKV) == config.supportedKvLayouts.end(),
                 OP_LOGE(qfaInfo.opName,
-                    "When quant_mode is %ld, layout_kv must be in supported list, but got %s",
-                    quantModeVal, LayoutToSerialStr(qfaInfo.layoutKV).c_str()),
+                        "When quant_mode is %ld, layout_kv must be in supported list, but got %s",
+                        quantModeVal, LayoutToSerialStr(qfaInfo.layoutKV).c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qfaInfo.layoutOut != config.supportedOutLayout,
                 OP_LOGE(qfaInfo.opName,
-                    "When quant_mode is %ld, layout_out must be %s, but got %s",
-                    quantModeVal, LayoutToSerialStr(config.supportedOutLayout).c_str(),
-                    LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
+                        "When quant_mode is %ld, layout_out must be %s, but got %s",
+                        quantModeVal, LayoutToSerialStr(config.supportedOutLayout).c_str(),
+                        LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -363,7 +363,7 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
         return ge::GRAPH_SUCCESS;
     }
 
-// MxFP4: layout_q_descale 仅支持 BNSD
+    // MxFP4: layout_q_descale 仅支持 BNSD
     OP_CHECK_IF(qfaInfo.layoutQDescale != FiaLayout::BNSD,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
                                                       LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
@@ -373,24 +373,24 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
     // MxFP4: 仅支持 Q_N == KV_N (即 G=1)
     OP_CHECK_IF(
         qfaInfo.n1Size != qfaInfo.n2Size,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key",
-                    (ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-                     ToString(qfaInfo.opParamInfo.key.shape->GetStorageShape()))
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key",
+                                               (ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
+                                                ToString(qfaInfo.opParamInfo.key.shape->GetStorageShape()))
                                                    .c_str(),
-                    "MxFP4 only supports Q_N == KV_N (G=1, GQA is not supported)"),
-                return ge::GRAPH_FAILED);
+                                               "MxFP4 only supports Q_N == KV_N (G=1, GQA is not supported)"),
+        return ge::GRAPH_FAILED);
 
     // MxFP4: D 仅支持 128
     const std::vector<int64_t> supportedHeadDims = {128};
     OP_CHECK_IF(CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of query and key",
-                    std::to_string(qfaInfo.qkHeadDim).c_str(),
-                    "MxFP4 only supports D=128"),
+                                                      std::to_string(qfaInfo.qkHeadDim).c_str(),
+                                                      "MxFP4 only supports D=128"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckValueSupport(qfaInfo.vHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
-                    std::to_string(qfaInfo.vHeadDim).c_str(),
-                    "MxFP4 only supports D=128"),
+                                                      std::to_string(qfaInfo.vHeadDim).c_str(),
+                                                      "MxFP4 only supports D=128"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -414,8 +414,8 @@ ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, 
 {
     if (actual.GetStorageShape().GetDimNum() != expected.size()) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(opName, paraName.c_str(),
-            (std::to_string(actual.GetStorageShape().GetDimNum()) + "D").c_str(),
-            (std::to_string(expected.size()) + "D").c_str());
+                                     (std::to_string(actual.GetStorageShape().GetDimNum()) + "D").c_str(),
+                                     (std::to_string(expected.size()) + "D").c_str());
         return ge::GRAPH_FAILED;
     }
     for (size_t i = 0; i < expected.size(); i++) {
@@ -524,7 +524,7 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QuantFlashAttnTilingInfo &
         }
         OP_CHECK_IF(desc->GetDataType() != ge::DT_FLOAT8_E8M0,
                     OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, paraName.c_str(),
-                        DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0"),
+                                              DataTypeToSerialStr(desc->GetDataType()).c_str(), "FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };

@@ -19,7 +19,6 @@
  * \brief
  */
 
-
 #ifndef QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define QUANT_FLASH_ATTN_COMMON_DEF_H_
 
@@ -69,8 +68,8 @@ struct CommonConstInfo {
     uint32_t kvCuSeqLensSize = 0; /* 用户输入的cu_seqlens_kv的长度 */
     uint32_t qSeqUsedSize = 0;    /* 用户输入的seqused_q的长度 */
     uint32_t kvSeqUsedSize = 0;   /* 用户输入的seqused_kv的长度 */
-    uint64_t maxSeqlenQ = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s1Size 物理维) */
-    uint64_t maxSeqlenKv = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s2Size 物理维) */
+    uint64_t maxSeqlenQ = 0;      /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s1Size 物理维) */
+    uint64_t maxSeqlenKv = 0;     /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s2Size 物理维) */
 
     /* FA kernel meta */
     uint32_t bN2Start = 0;
@@ -129,7 +128,6 @@ struct RunInfo {
     uint32_t tileMaxIdx = 0;
     uint32_t pscaleNum = 0;
     bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
-
 
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
