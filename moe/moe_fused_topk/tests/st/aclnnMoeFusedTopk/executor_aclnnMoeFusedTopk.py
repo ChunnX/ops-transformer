@@ -8,18 +8,31 @@ from atk.configs.dataset_config import InputDataset
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 
-@register("ascend_moe_fused_topk")            
-class AclnnMoeFusedTopkApi(BaseApi):  
+
+@register("ascend_moe_fused_topk")
+class AclnnMoeFusedTopkApi(BaseApi):
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        
-        if self.device == 'cpu':
+        if self.device == "cpu":
             input_dic = input_data.kwargs
             y, indices = self.calc_golden(**input_dic)
 
             return y, indices
-    
 
-    def calc_golden(self, x, add_num, mapping_num, mapping_table, group_num, group_topk, top_n, top_k, activate_type, is_norm, scale, enable_expert_mapping):
+    def calc_golden(
+        self,
+        x,
+        add_num,
+        mapping_num,
+        mapping_table,
+        group_num,
+        group_topk,
+        top_n,
+        top_k,
+        activate_type,
+        is_norm,
+        scale,
+        enable_expert_mapping,
+    ):
         x = x.to(torch.float32)
         add_num = add_num.to(torch.float32)
         # sigmoid
@@ -34,9 +47,11 @@ class AclnnMoeFusedTopkApi(BaseApi):
         output = input0.clone()
         group_tensor = torch.topk(input0, top_n).values
         group_tensor = torch.sum(group_tensor, dim=-1)
-        sort_index = torch.from_numpy(np.argsort(-group_tensor.numpy(), kind='stable')) 
-        cols_to_use = torch.arange(group_topk, group_num, dtype=torch.long) 
-        row_indices = torch.arange(sort_index.shape[0]).repeat_interleave(cols_to_use.shape[0])
+        sort_index = torch.from_numpy(np.argsort(-group_tensor.numpy(), kind="stable"))
+        cols_to_use = torch.arange(group_topk, group_num, dtype=torch.long)
+        row_indices = torch.arange(sort_index.shape[0]).repeat_interleave(
+            cols_to_use.shape[0]
+        )
         col_indices = sort_index.index_select(1, cols_to_use).view(-1)
         output[row_indices, col_indices] = float(0)
         group_top_k_res = torch.reshape(output, (token_num, expert_num))
