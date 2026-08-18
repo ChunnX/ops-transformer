@@ -110,7 +110,7 @@ private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
-    __aicore__ inline void SendRankFlag(uint32_t dstRank);
+    __aicore__ inline void SendRankFlag(uint32_t dstRank, uint32_t channelIndex);
     template <auto const& config>
     __aicore__ inline void PrepareWrite(
         uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
@@ -140,6 +140,18 @@ private:
     __aicore__ inline uint64_t GetRankFlagOffset(uint32_t srcRank) const
     {
         return (static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ + srcRank) * WIN_ADDR_ALIGN;
+    }
+    __aicore__ inline uint32_t GetCompletionChannelCount(uint32_t dstRank) const
+    {
+        uint32_t activeAivNum = aivNum_;
+        uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
+        if (activeAivNum > maxChannelAivNum) {
+            activeAivNum = maxChannelAivNum;
+        }
+        if (activeAivNum < epWorldSize_) {
+            return 1U;
+        }
+        return activeAivNum / epWorldSize_ + (dstRank < activeAivNum % epWorldSize_ ? 1U : 0U);
     }
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
@@ -428,10 +440,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(uint32_t dstRank)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
+    uint32_t dstRank, uint32_t channelIndex)
 {
-    GM_ADDR flagAddr =
-        GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + GetRankFlagOffset(rankId_);
+    GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) +
+                       GetRankFlagOffset(rankId_) + channelIndex * STATE_OFFSET;
     if (dstRank == rankId_) {
         GlobalTensor<uint32_t> localFlag;
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagAddr));
@@ -440,7 +453,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
         return;
     }
     PrepareWrite<RANK_FLAG_WQE_CONFIG>(
-        GetCommHandle(dstRank, 0), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
+        GetCommHandle(dstRank, channelIndex), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -566,19 +579,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         FlushPreparedWrites();
     }
 
-    // Keep the version-8 payload path unchanged. Every AIV publishes its token/weight batches
-    // before AIV0 sends one completion flag to every destination rank.
+    // Keep the version-8 payload path unchanged. Each active channel publishes one sub-flag in
+    // the source rank's completion slot, so no channel can release the receiver prematurely.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
-    if (aivId_ == 0) {
+    if (aivId_ < activeAivNum) {
         Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint32_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
         DataCopy(flagWorkspace, statusTensor_, FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        for (uint32_t dstRank = 0; dstRank < epWorldSize_; ++dstRank) {
-            SendRankFlag(dstRank);
+        if (splitRankTokens) {
+            SendRankFlag(targetRank, channelIndex);
+        } else {
+            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                SendRankFlag(dstRank, 0U);
+            }
         }
     }
     FlushPreparedWrites();
@@ -637,15 +654,22 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
 
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
-    DataCopyExtParams params = {static_cast<uint16_t>(epWorldSize_), UB_ALIGN, WIN_ADDR_ALIGN - UB_ALIGN, 0, 0};
+    uint32_t completionChannelCount = GetCompletionChannelCount(rankId_);
+    uint32_t completionBlockBytes = completionChannelCount * STATE_OFFSET;
+    DataCopyExtParams params = {
+        static_cast<uint16_t>(epWorldSize_), completionBlockBytes,
+        WIN_ADDR_ALIGN - completionBlockBytes, 0, 0};
     DataCopyPadExtParams<uint32_t> padParams = {false, 0, 0, 0};
 
     DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     for (uint32_t srcRank = 0; srcRank < epWorldSize_; ++srcRank) {
-        if (stateTensor(srcRank * FLOAT_PER_UB_ALIGN) != 1U) {
-            return false;
+        for (uint32_t channelIndex = 0; channelIndex < completionChannelCount; ++channelIndex) {
+            uint32_t flagIndex = (srcRank * completionChannelCount + channelIndex) * FLOAT_PER_UB_ALIGN;
+            if (stateTensor(flagIndex) != 1U) {
+                return false;
+            }
         }
     }
     return true;
@@ -686,7 +710,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
 {
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    tpipe_->InitBuffer(stateBuf_, epWorldSize_ * STATE_OFFSET);
+    uint32_t completionChannelCount = GetCompletionChannelCount(rankId_);
+    ascendc_assert(
+        completionChannelCount * STATE_OFFSET <= WIN_ADDR_ALIGN,
+        "rank completion channels exceed flag slot, channelCount=%u", completionChannelCount);
+    tpipe_->InitBuffer(stateBuf_, epWorldSize_ * completionChannelCount * STATE_OFFSET);
 
     while (tPerCore_ != 0 && !WaitDispatch()) {
     }
