@@ -15,7 +15,7 @@
 #ifndef PSE_ATTEN_MASK_MULS_SIMPLE_SOFTMAX_
 #define PSE_ATTEN_MASK_MULS_SIMPLE_SOFTMAX_
 #include "../common.h"
-#include "../../../../../../../../attention/common/op_kernel/arch35/pse.h"
+#include "../../../../../../../../attention/common/op_kernel/arch35/pse_arch35.h"
 #include "../../../../../../../../attention/common/op_kernel/arch35/attenmask.h"
 #include "vf_muls_sel_simple_softmax.h"
 
