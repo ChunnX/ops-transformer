@@ -50,19 +50,16 @@ IMPL_OP_OPTILING(AlltoAllMatmul)
 // Register exception dump func
 inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    OP_LOGI("AlltoAllMatmul", "Start AlltoAllMatmulExceptionImplWrapper.");
     const char* socName = aclrtGetSocName();
     if(std::strstr(socName, "Ascend950") == nullptr){
         return;
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AlltoAllMatmul");
-    OP_LOGI("AlltoAllMatmul", "End AlltoAllMatmulExceptionImplWrapper.");
 }
 
 __attribute__((constructor)) void RegistAlltoAllMatmulExceptionFunc()
 {
-    OP_LOGI("AlltoAllMatmul", "Start RegistAlltoAllMatmulExceptionFunc.");
-    IMPL_OP(AllGatherMatmulV2)
+    IMPL_OP(AlltoAllMatmul)
         .ExceptionDumpParseFunc(AlltoAllMatmulExceptionImplWrapper);
 }
 
