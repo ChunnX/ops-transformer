@@ -579,9 +579,26 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         FlushPreparedWrites();
     }
 
-    // Token/weight batches and completion flags use separate submission phases. Every active
-    // channel reaches this barrier after publishing its payload batches, then sends one ODR 6 flag.
+    // Token/weight batches and completion flags use separate submission phases. Drain every
+    // remote channel first so its payload CQE confirms completion before the rank flag is posted.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncAll<true>();
+    if (aivId_ < activeAivNum) {
+        if (splitRankTokens) {
+            if (targetRank != rankId_) {
+                int32_t ret = hcomm_.Drain(GetCommHandle(targetRank, channelIndex));
+                ascendc_assert(ret == HCOMM_SUCCESS, "payload Drain failed, ret=%d", ret);
+            }
+        } else {
+            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
+                int32_t ret = hcomm_.Drain(GetCommHandle(dstRank, 0U));
+                ascendc_assert(ret == HCOMM_SUCCESS, "payload Drain failed, ret=%d", ret);
+            }
+        }
+    }
     SyncAll<true>();
     if (aivId_ < activeAivNum) {
         Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
@@ -599,6 +616,25 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    // Drain again to consume the completion CQE for the flag write itself. This also prevents
+    // outstanding flag WQEs/CQEs from accumulating across repeated kernel executions.
+    if (aivId_ < activeAivNum) {
+        if (splitRankTokens) {
+            if (targetRank != rankId_) {
+                int32_t ret = hcomm_.Drain(GetCommHandle(targetRank, channelIndex));
+                ascendc_assert(ret == HCOMM_SUCCESS, "flag Drain failed, ret=%d", ret);
+            }
+        } else {
+            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
+                int32_t ret = hcomm_.Drain(GetCommHandle(dstRank, 0U));
+                ascendc_assert(ret == HCOMM_SUCCESS, "flag Drain failed, ret=%d", ret);
+            }
+        }
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
