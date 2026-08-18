@@ -170,11 +170,11 @@ public:
     // Key change vs original: VPrime and AttnInter run back-to-back without CrossCore sync between them.
     // StateNew still waits for v_new_scaled (sync0x5), but overlaps with next chunk's AIV state_prep.
 
-    // CV pipeline AIV (FP32 path): 3-phase with overlap
-    //   Phase 1: state_prep → sync0x3 (notify AIC state ready)
-    //   Phase 2: wait sync0x2 (AIC VPrime+AttnInter done) → v_new_scale → sync0x5
-    //   Phase 3: wait sync0x4 (AIC StateNew done, = next chunk state ready)
-    // Sync reduced from 4 to 3; AIC StateNew overlaps with AIV next-chunk state_prep
+    // CV pipeline AIV (FP32 path): merged gCum read, no vInner GM round-trip
+    //   Phase 1: state_prep + CalGCumExpAndD (merged) → sync0x3
+    //   Phase 2: wait sync0x2 → write vNewScaledGm only (for CalStateNew) → sync0x5
+    //   Phase 3: wait sync0x4
+    // Eliminated: CastGmToGmDual (AIC reads vInner_ directly for Stage3 via accum)
     __aicore__ inline void ProcessAivFp32(int64_t nvId, int64_t cId, int64_t length)
     {
         if (GetSubBlockIdx() == 0) {
@@ -190,7 +190,8 @@ public:
             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-            CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
+            // CV: merged gCum read — state decay + d vector in one pass (eliminates duplicate gCum read)
+            CalGCumExpAndD(sTP_->gCum[nvId * Sp_ + length]);
             PipeBarrier<PIPE_MTE3>();
             auto fp32Local = outQueue_.AllocTensor<float>();
             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
@@ -200,9 +201,8 @@ public:
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
+            // CV: write vInnerBf16_ (unscaled, for Stage3) + vNewScaledGm_ (scaled, for CalStateNew)
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            CalD(sTP_->gCum[nvId * Sp_ + length]);
-            // CV fusion: single read → unscaled (vInnerBf16 for Stage3) + scaled (vNewScaledGm_ for CalStateNew)
             CastGmToGmDual<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
                                               vNewScaledGm_, curChunkSize_ * Dv_);
         }
@@ -210,21 +210,28 @@ public:
         CrossCoreWaitFlag(0x4);
     }
 
-    // CV pipeline AIV (BF16 path): 3-phase with overlap
+    // CV pipeline AIV (BF16 path): merged gCum read, vInner stays in GM for Stage3
+    //   Phase 1: state_prep + CalGCumExpAndD (merged) → sync0x3
+    //   Phase 2: wait sync0x2 → write vNewScaledGm_ only → sync0x5
+    //   Phase 3: wait sync0x4
+    // Eliminated: CopyAndScaleVInnerBf16 (vInner_ stays as-is for Stage3, AIC reads scaled vNewScaledGm_)
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
         auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
             CopyIn(curState, Dv_, Dk_);
-            CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
+            // CV: merged gCum read — state decay + d vector in one pass
+            CalGCumExpBf16AndD(sTP_->gCum[nvId * Sp_ + length]);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
-            CalD(sTP_->gCum[nvId * Sp_ + length]);
-            CopyAndScaleVInnerBf16(nvId, length);
+            // CV: write vNewScaledGm_ only (for CalStateNew), vInner_ stays unscaled for Stage3
+            uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+            CastGmToGmWithScale<bfloat16_t, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
+                                                         curChunkSize_ * Dv_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -265,6 +272,52 @@ public:
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
     }
 
+    // CV: merged gCum read — compute exp(g[-1]) for state decay AND d[j]=exp(g[-1]-g_cum[j]) in one pass
+    __aicore__ inline void CalGCumExpAndD(GlobalTensor<float> gCumGm)
+    {
+        if constexpr (gOptional) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                gCumGm[curChunkSize_ - 1]);
+            float gEnd = gCumGm.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, gEnd);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            float expGEnd = lastGCum_.GetValue(0);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+
+            // Read g_cum[0:curChunkSize] from GM (single read, shared by state decay and d)
+            DataCopyExtParams inParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> inPadParams{true, 0, 0, 0};
+            auto gLocal = inQueue_.AllocTensor<float>();
+            DataCopyPad(gLocal, gCumGm, inParams, inPadParams);
+            inQueue_.EnQue(gLocal);
+            gLocal = inQueue_.DeQue<float>();
+
+            // d = exp(gEnd - g_cum) = expGEnd * exp(-g_cum), but direct Sub+Exp is more numerically stable
+            Duplicate(dUb_, gEnd, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Sub(dUb_, dUb_, gLocal, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            inQueue_.FreeTensor(gLocal);
+            Exp<float, 0, true>(dUb_, dUb_, chunkSize_);
+            PipeBarrier<PIPE_V>();
+
+            // Apply state decay: state *= expGEnd
+            if constexpr (kIsFp32) {
+                Muls(stateFp32Ub_, stateFp32Ub_, expGEnd, Dv_ * curDk_);
+                PipeBarrier<PIPE_V>();
+            }
+        } else {
+            lastGCum_.SetValue(0, 1.0f);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Duplicate(dUb_, 1.0f, chunkSize_);
+            PipeBarrier<PIPE_V>();
+        }
+    }
+
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
     {
         if constexpr (!gOptional) {
@@ -281,6 +334,62 @@ public:
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
         Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
         PipeBarrier<PIPE_V>();
+    }
+
+    // CV: merged CalGCumExpBf16 + CalD — state decay + d vector in one gCum read
+    __aicore__ inline void CalGCumExpBf16AndD(GlobalTensor<float> gCum)
+    {
+        float expGEnd;
+        if constexpr (gOptional) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                gCum[curChunkSize_ - 1]);
+            float gEnd = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, gEnd);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            expGEnd = lastGCum_.GetValue(0);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        } else {
+            expGEnd = 1.0f;
+        }
+
+        // State decay: cast BF16→FP32, scale by expGEnd, cast back
+        auto stateIn = inQueue_.DeQue<bfloat16_t>();
+        auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
+        SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+        SetFlag<HardEvent::S_V>(S_V_EVENT);
+        WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        Muls(tmpBuffer1_, tmpBuffer1_, expGEnd, Dv_ * curDk_);
+        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
+        SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        outQueue_.EnQue(stateOut);
+        inQueue_.FreeTensor(stateIn);
+
+        // Compute d vector (reuses gCum read if gOptional)
+        if constexpr (gOptional) {
+            DataCopyExtParams inParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> inPadParams{true, 0, 0, 0};
+            auto gLocal = inQueue_.AllocTensor<float>();
+            DataCopyPad(gLocal, gCum, inParams, inPadParams);
+            inQueue_.EnQue(gLocal);
+            gLocal = inQueue_.DeQue<float>();
+            float gEnd = gCum.GetValue(curChunkSize_ - 1);
+            Duplicate(dUb_, gEnd, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Sub(dUb_, dUb_, gLocal, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            inQueue_.FreeTensor(gLocal);
+            Exp<float, 0, true>(dUb_, dUb_, chunkSize_);
+            PipeBarrier<PIPE_V>();
+        } else {
+            Duplicate(dUb_, 1.0f, chunkSize_);
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
@@ -453,17 +562,36 @@ public:
         inQueue_.EnQue(srcLocal);
         srcLocal = inQueue_.DeQue<srcType>();
         auto dstLocal = outQueue_.AllocTensor<dstType>();
-        if constexpr (gOptional) {
-            // v_new *= d[:,None]: broadcast d (C,1) → (C,Dv), Mul
-            uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
-            uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
-            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
-            PipeBarrier<PIPE_V>();
-            Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
-            PipeBarrier<PIPE_V>();
+        if constexpr (std::is_same_v<srcType, float> && std::is_same_v<dstType, bfloat16_t>) {
+            // FP32→BF16 with scale
+            if constexpr (gOptional) {
+                uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+                uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+                Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
+                PipeBarrier<PIPE_V>();
+                Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
+                PipeBarrier<PIPE_V>();
+            }
+            Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        } else if constexpr (std::is_same_v<srcType, bfloat16_t> && std::is_same_v<dstType, bfloat16_t>) {
+            // BF16→BF16 with scale: cast to FP32, scale, cast back
+            Cast(tmpBuffer1_, srcLocal, RoundMode::CAST_NONE, paddedCount);
+            inQueue_.FreeTensor(srcLocal);
+            if constexpr (gOptional) {
+                uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+                uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+                LocalTensor<float> dBroad = tmpBuff_.GetWithOffset<float>(
+                    static_cast<uint32_t>(rowCnt * colCnt), 0);
+                Broadcast<float, BROADCAST_AXIS, 1>(dBroad, dUb_, vShape, dShape);
+                PipeBarrier<PIPE_V>();
+                Mul(tmpBuffer1_, tmpBuffer1_, dBroad, rowCnt * colCnt);
+                PipeBarrier<PIPE_V>();
+            }
+            Cast(dstLocal, tmpBuffer1_, RoundMode::CAST_RINT, paddedCount);
+        } else {
+            Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+            inQueue_.FreeTensor(srcLocal);
         }
-        Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
-        inQueue_.FreeTensor(srcLocal);
         outQueue_.EnQue(dstLocal);
         dstLocal = outQueue_.DeQue<dstType>();
         DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(dstType)), 0,
