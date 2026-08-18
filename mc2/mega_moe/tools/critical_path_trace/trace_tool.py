@@ -270,30 +270,43 @@ def write_csv(trace: dict, path: Path) -> None:
 
 
 def write_svg(trace: dict, path: Path) -> None:
-    records = [record for record in trace["records"] if record["events"]]
+    role_order = {"AIC": 0, "AIV0": 1, "AIV1": 2}
+    records = sorted(
+        (record for record in trace["records"] if record["events"]),
+        key=lambda record: (record["core"], role_order.get(record["role"], len(role_order))),
+    )
     lanes = []
     for record in records:
-        last_event = max(
-            record["events"],
-            key=lambda event: (event["end_cycle"] - record["process_begin_cycle"]) & 0xFFFFFFFF,
-        )
         wait_events = [event for event in record["events"] if event["is_wait_event"]]
         wait_cycles = (
             sum(event["duration_cycles"] for event in wait_events)
             if wait_events
             else sum(event["wait_cycles"] or 0 for event in record["events"])
         )
-        lane_label = (
-            f'{record["role"]} {record["core"]} · P{record["process_duration_cycles"]} · W{wait_cycles} '
-            f'· L:{last_event["event"]}@{last_event["end_cycle"]}'
-        )
-        lanes.append((lane_label, sorted(record["events"], key=lambda event: event["is_wait_event"])))
+        lane_label = f'B{record["core"]} · {record["role"]}'
+        lane_tip = f'Process={record["process_duration_cycles"]} cycles, Wait={wait_cycles} cycles'
+        lanes.append((record["core"], lane_label, lane_tip,
+                      sorted(record["events"], key=lambda event: event["is_wait_event"])))
     width = 1880
-    left = 245
+    left = 105
     right = 30
     row_height = 24
+    block_gap = 7
     top = 55
-    height = top + max(1, len(lanes)) * row_height + 55
+    lane_rows = []
+    block_ranges = []
+    current_y = top
+    for row, lane in enumerate(lanes):
+        if row > 0 and lane[0] != lanes[row - 1][0]:
+            block_ranges[-1][2] = current_y
+            current_y += block_gap
+        if row == 0 or lane[0] != lanes[row - 1][0]:
+            block_ranges.append([lane[0], current_y, 0])
+        lane_rows.append(current_y)
+        current_y += row_height
+    if block_ranges:
+        block_ranges[-1][2] = current_y
+    height = current_y + 45
     begin_cycles = [event["begin_cycle"] for record in records for event in record["events"]]
     if not begin_cycles:
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100"/>\n')
@@ -308,11 +321,16 @@ def write_svg(trace: dict, path: Path) -> None:
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="#ffffff"/>',
         '<style>text{font-family:Arial,sans-serif;font-size:11px}.label{font-weight:600}.event{stroke:#ffffff;stroke-width:.5}</style>',
-        f'<text x="12" y="24" font-size="16" font-weight="700">A8W4 token-wave timeline (origin={origin})</text>',
+        f'<text x="12" y="24" font-size="16" font-weight="700">A8W4 wave timeline (origin={origin})</text>',
     ]
-    for row, (lane_name, lane_events) in enumerate(lanes):
-        y = top + row * row_height
-        lines.append(f'<text class="label" x="8" y="{y + 14}">{lane_name}</text>')
+    for block_idx, (_, block_begin, block_end) in enumerate(block_ranges):
+        fill = "#f8fafc" if block_idx % 2 == 0 else "#f1f5f9"
+        lines.append(
+            f'<rect x="4" y="{block_begin - 2}" width="{width - right - 4}" '
+            f'height="{block_end - block_begin + 4}" rx="5" fill="{fill}" stroke="#dbe2ea"/>'
+        )
+    for y, (_, lane_name, lane_tip, lane_events) in zip(lane_rows, lanes):
+        lines.append(f'<text class="label" x="10" y="{y + 14}">{lane_name}<title>{lane_tip}</title></text>')
         lines.append(f'<line x1="{left}" y1="{y + 18}" x2="{width - right}" y2="{y + 18}" stroke="#e5e7eb"/>')
         for event in lane_events:
             x = left + (((event["begin_cycle"] - origin) & 0xFFFFFFFF) * scale)
@@ -351,10 +369,10 @@ def write_html(trace: dict, path: Path) -> None:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MegaMoe A8W4 token-wave trace</title>
+<title>MegaMoe A8W4 wave trace</title>
 <style>
 :root {{ color-scheme: light; --bg:#f5f7fb; --panel:#fff; --line:#dbe2ea; --text:#172033; --muted:#667085;
-        --lane-label-width:200px; }}
+        --lane-label-width:126px; }}
 * {{ box-sizing:border-box; }}
 body {{ margin:0; background:var(--bg); color:var(--text); font:14px/1.5 Arial,"Microsoft YaHei",sans-serif; }}
 main {{ max-width:1800px; margin:0 auto; padding:24px; }}
@@ -366,18 +384,34 @@ h2 {{ margin:0 0 14px; font-size:17px; }}
 .card {{ padding:13px 15px; }} .card b {{ display:block; margin-top:3px; font-size:19px; }}
 .panel {{ padding:16px; margin:14px 0; overflow:hidden; }}
 .controls {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
-select {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }}
+select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text); }}
+button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; color:var(--muted); }}
 .legend i {{ display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:2px; }}
 #timeline {{ min-height:140px; overflow-x:auto; }}
-.axis {{ position:relative; height:24px; margin-left:210px; border-bottom:1px solid var(--line); min-width:900px; }}
+.axis {{ position:relative; height:24px; margin-left:142px; border-bottom:1px solid var(--line); min-width:900px; }}
 .tick {{ position:absolute; bottom:0; height:7px; border-left:1px solid #98a2b3; }}
 .tick span {{ position:absolute; top:-18px; left:3px; white-space:nowrap; font-size:10px; color:var(--muted); }}
 .lane-wrap {{ display:grid; grid-template-columns:var(--lane-label-width) minmax(900px,1fr); gap:10px;
-              align-items:center; margin-top:9px; }}
-.lane-name {{ font-weight:600; text-align:right; line-height:1.3; }}
+              align-items:center; margin-top:4px; }}
+.lane-name {{ display:flex; align-items:center; gap:5px; min-width:0; font-weight:600; text-align:left; line-height:1.3; }}
+.lane-name-text {{ min-width:0; }}
+.lane-wrap.lane-pinned .lane {{ border-color:#f59e0b; box-shadow:0 0 0 1px #f59e0b33; }}
 .lane-name small {{ display:block; margin-top:2px; overflow:hidden; color:var(--muted); font-size:10px;
                     font-weight:400; text-overflow:ellipsis; white-space:nowrap; }}
+.pin-button {{ flex:0 0 auto; width:24px; height:24px; padding:0; border-color:transparent; color:#98a2b3;
+               font-size:13px; line-height:22px; }}
+.pin-button.active {{ border-color:#f59e0b; background:#fffbeb; color:#b45309; }}
+.block-group {{ margin-top:9px; padding:6px 8px 8px; background:#f8fafc; border:1px solid var(--line);
+                border-radius:8px; }}
+.block-group:nth-of-type(even) {{ background:#f3f6fa; }}
+.block-group.pinned {{ border-color:#f59e0b; background:#fffbeb66; }}
+.block-header {{ display:flex; align-items:center; justify-content:space-between; min-height:25px; color:var(--muted);
+                 font-size:11px; font-weight:600; }}
+.pinned-section {{ margin:9px 0 13px; padding:8px; border:1px dashed #f59e0b; border-radius:8px; background:#fffbeb55; }}
+.pinned-title {{ margin-bottom:4px; color:#92400e; font-size:12px; font-weight:700; }}
+.pinned-lanes {{ display:grid; gap:5px; }}
+.pinned-lane {{ padding:4px 7px 7px; border:1px solid #fbbf24; border-radius:7px; background:#fff; }}
 .lane {{ position:relative; height:32px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
 .bar {{ position:absolute; top:5px; height:20px; min-width:2px; border-radius:3px; opacity:.9; cursor:pointer; }}
 .bar.wait-bar {{ top:5px; height:20px; border:1px solid #94a3b8; opacity:.95; z-index:2; }}
@@ -398,7 +432,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 </style>
 </head>
 <body><main>
-<h1>MegaMoe A8W4 token-wave trace</h1>
+<h1>MegaMoe A8W4 wave trace</h1>
 <div class="muted">同一份 rank trace 中的所有 lane 共用一个 SYS_CNT cycle 原点和刻度；跨 rank 报告不合并时间轴。
 在当前平台上，1000 cycles = 1 μs。</div>
 <section class="cards">
@@ -435,7 +469,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   </div>
   <div class="legend" id="legend"></div>
   <div class="muted">每个 role/core 只使用一条泳道。父阶段显示完整执行区间，等待按真实 begin/end cycle
-  作为窄色条覆盖在同一泳道底部；Active = Total - 这些真实等待区间。</div>
+  覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
 </section>
@@ -480,6 +514,8 @@ const waveSelect = document.getElementById('waveSelect');
 const waitFilter = document.getElementById('waitFilter');
 const laneSort = document.getElementById('laneSort');
 const laneLimit = document.getElementById('laneLimit');
+const pinnedBlocks = new Set();
+const pinnedLanes = new Set();
 coreSelect.add(new Option('全部','all'));
 for (let core=0; core<trace.header.logical_core_count; core++) coreSelect.add(new Option(String(core),String(core)));
 const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
@@ -558,20 +594,30 @@ function compareBlockGroups(a,b) {{
   const delta=laneSort.value==='block'?0:sorters[laneSort.value]();
   return delta||a.core-b.core;
 }}
-function selectedBlockGroups() {{
-  const core=coreSelect.value,wave=waveSelect.value;
+const laneKey=(core,role)=>`${{core}}|${{role}}`;
+const isGroupPinned=group=>pinnedBlocks.has(group.core)||group.records.some(r=>pinnedLanes.has(laneKey(r.core,r.role)));
+function allBlockGroupsForWave() {{
+  const wave=waveSelect.value;
   const records=trace.records
-    .filter(r=>core==='all'||r.core===Number(core))
     .map(r=>withLaneMetrics({{...r,events:r.events.filter(e=>wave==='all'||e.wave===Number(wave))}}))
-  const groups=[...new Set(records.map(r=>r.core))].map(block=>
+  return [...new Set(records.map(r=>r.core))].map(block=>
     withBlockMetrics(records.filter(r=>r.core===block).sort((a,b)=>roles.indexOf(a.role)-roles.indexOf(b.role))))
-    .filter(group=>group.records.some(r=>r.events.length))
+    .filter(group=>group.records.some(r=>r.events.length));
+}}
+function selectedBlockGroups() {{
+  const core=coreSelect.value;
+  const allGroups=allBlockGroupsForWave();
+  const pinnedGroups=allGroups.filter(isGroupPinned).sort((a,b)=>a.core-b.core);
+  const regularGroups=allGroups
+    .filter(group=>!isGroupPinned(group))
+    .filter(group=>core==='all'||group.core===Number(core))
     .filter(group=>waitFilter.value==='all'||
       (waitFilter.value==='with-wait'&&group.blockMetrics.waitCycles>0)||
       (waitFilter.value==='without-wait'&&group.blockMetrics.waitCycles===0)||
       (waitFilter.value==='truncated'&&group.blockMetrics.truncated))
     .sort(compareBlockGroups);
-  return laneLimit.value==='all'?groups:groups.slice(0,Number(laneLimit.value));
+  const limitedGroups=laneLimit.value==='all'?regularGroups:regularGroups.slice(0,Number(laneLimit.value));
+  return [...pinnedGroups,...limitedGroups];
 }}
 function esc(value) {{ return String(value).replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c])); }}
 function render() {{
@@ -579,9 +625,9 @@ function render() {{
   const records=blockGroups.flatMap(group=>group.records);
   const events=records.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
   document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件`;
-  renderTimeline(records,events); renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
+  renderTimeline(blockGroups,events); renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
 }}
-function renderTimeline(records,events) {{
+function renderTimeline(blockGroups,events) {{
   const root=document.getElementById('timeline');
   if (!events.length) {{ root.innerHTML='<div class="empty">当前筛选条件下没有事件</div>'; return; }}
   const visibleEvents=[];
@@ -591,14 +637,18 @@ function renderTimeline(records,events) {{
     out+=`<div class="tick" style="left:${{x}}%"><span>${{cycle.toLocaleString()}}<br>+${{offset.toLocaleString()}}</span></div>`;
   }}
   out+='</div>';
-  for(const record of records) {{
+
+  const renderLane=record=>{{
     const metrics=record.laneMetrics;
     const lastEvent=metrics.lastEvent;
+    const key=laneKey(record.core,record.role);
+    const lanePinned=pinnedLanes.has(key);
     const laneTip=`Process begin=${{record.process_begin_cycle}} end=${{record.process_end_cycle}} total=${{record.process_duration_cycles}} cycles | event span=${{metrics.eventSpanCycles}} | wait=${{metrics.waitCycles}} | last=${{lastEvent?lastEvent.event:'none'}}@${{lastEvent?lastEvent.end_cycle:'—'}} | tail=${{metrics.tailCycles}}`;
-    out+=`<div class="lane-wrap"><div class="lane-name" title="${{esc(laneTip)}}">Block ${{record.core}} · ${{record.role}}`
-      +`<small>P ${{(record.process_duration_cycles/1000).toFixed(3)}} μs · W ${{(metrics.waitCycles/1000).toFixed(3)}} μs</small>`
-      +`<small>Last ${{lastEvent?esc(lastEvent.event)+' @ '+lastEvent.end_cycle:'—'}}</small>`
-      +`</div><div class="lane">`;
+    let laneOut=`<div class="lane-wrap${{lanePinned?' lane-pinned':''}}"><div class="lane-name" title="${{esc(laneTip)}}">`
+      +`<button class="pin-button${{lanePinned?' active':''}}" data-pin-lane="${{key}}" title="${{lanePinned?'取消固定':'固定该泳道'}}">📌</button>`
+      +`<span class="lane-name-text">${{record.role}}`
+      +`<small>P ${{(record.process_duration_cycles/1000).toFixed(3)}} · W ${{(metrics.waitCycles/1000).toFixed(3)}} μs</small>`
+      +`</span></div><div class="lane">`;
     const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
     for(const e of laneEvents) {{
         const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
@@ -607,12 +657,42 @@ function renderTimeline(records,events) {{
         const parentText=e.parent_event?` | parent=${{e.parent_event}}`:'';
         const tip=`${{e.event}}${{parentText}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} total=${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs) | active=${{e.active_cycles}} cycles | wait=${{waitText}} | wave=${{e.wave}} expert=${{e.expert}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
         const eventIndex=visibleEvents.push({{event:e,record}})-1;
-        out+=`<div class="bar ${{e.is_wait_event?'wait-bar':''}}" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
+        laneOut+=`<div class="bar ${{e.is_wait_event?'wait-bar':''}}" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
     }}
-    out+='</div></div>';
+    return laneOut+'</div></div>';
+  }};
+  const renderBlockGroup=group=>{{
+    const blockPinned=pinnedBlocks.has(group.core);
+    return `<div class="block-group${{blockPinned?' pinned':''}}"><div class="block-header"><span>Block ${{group.core}}</span>`
+      +`<button class="pin-button${{blockPinned?' active':''}}" data-pin-block="${{group.core}}" title="${{blockPinned?'取消固定':'固定整个 Block'}}">📌</button></div>`
+      +group.records.map(renderLane).join('')+'</div>';
+  }};
+
+  const pinnedBlockGroups=blockGroups.filter(group=>pinnedBlocks.has(group.core));
+  const pinnedLaneRecords=blockGroups.flatMap(group=>group.records)
+    .filter(record=>pinnedLanes.has(laneKey(record.core,record.role))&&!pinnedBlocks.has(record.core));
+  if(pinnedBlockGroups.length||pinnedLaneRecords.length) {{
+    out+='<div class="pinned-section"><div class="pinned-title">固定对比</div>';
+    out+=pinnedBlockGroups.map(renderBlockGroup).join('');
+    if(pinnedLaneRecords.length) {{
+      out+='<div class="pinned-lanes">'+pinnedLaneRecords.map(record=>
+        `<div class="pinned-lane"><div class="block-header">Block ${{record.core}}</div>${{renderLane(record)}}</div>`).join('')+'</div>';
+    }}
+    out+='</div>';
   }}
+  out+=blockGroups.map(renderBlockGroup).join('');
   root.innerHTML=out;
   root.querySelectorAll('.bar').forEach(bar=>bar.addEventListener('click',()=>showEventDetail(visibleEvents[Number(bar.dataset.eventIndex)])));
+  root.querySelectorAll('[data-pin-block]').forEach(button=>button.addEventListener('click',()=>{{
+    const core=Number(button.dataset.pinBlock);
+    if(pinnedBlocks.has(core)) pinnedBlocks.delete(core); else pinnedBlocks.add(core);
+    render();
+  }}));
+  root.querySelectorAll('[data-pin-lane]').forEach(button=>button.addEventListener('click',()=>{{
+    const key=button.dataset.pinLane;
+    if(pinnedLanes.has(key)) pinnedLanes.delete(key); else pinnedLanes.add(key);
+    render();
+  }}));
 }}
 function showEventDetail(item) {{
   const e=item.event, r=item.record;

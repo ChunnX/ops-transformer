@@ -16,6 +16,14 @@
 #ifndef MEGA_MOE_WAVE_A8W4_H
 #define MEGA_MOE_WAVE_A8W4_H
 
+#ifndef MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE
+#define MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE 0
+#endif
+
+#if MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE != 0 && MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE != 1
+#error "MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE must be 0 or 1"
+#endif
+
 #include "common/mega_moe_utils.h"
 #include "mega_moe_arch35.h"
 #include "mega_moe_trace.h"
@@ -30,6 +38,8 @@ namespace MegaMoeImpl {
 
 // 每个逻辑 AIC 任务以两个 GMM1 scheduler tile 作为 Wave 目标负载。
 constexpr uint32_t A8W4_GMM1_TILES_PER_JOB_TARGET = 2U;
+// Wave 达到目标负载后仍合并唯一剩余专家，避免产生单专家尾 Wave。
+constexpr uint32_t MIN_EXPERTS_FOR_NEXT_A8W4_WAVE = 2U;
 
 // 标识 MoE 专家序列中的二维 token 位置。
 struct ExpertTokenPosition {
@@ -37,22 +47,30 @@ struct ExpertTokenPosition {
     uint32_t tokenIndexInExpert = 0U;
 };
 
-// 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
+// 按选定的 Wave 粒度推进专家 token 位置，返回本次推进覆盖的 token 数。
 template <uint32_t TileM>
 __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertTokenCount, uint32_t waveMGroupTarget,
                                                             uint32_t &waveMGroupCount, ExpertTokenPosition &position)
 {
     uint32_t expertRemainingTokenCount = expertTokenCount - position.tokenIndexInExpert;
-    uint32_t waveRemainingTokenCapacity = (waveMGroupTarget - waveMGroupCount) * TileM;
-    uint32_t sliceTokenCount =
-        expertRemainingTokenCount < waveRemainingTokenCapacity ? expertRemainingTokenCount : waveRemainingTokenCapacity;
-    waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
-    position.tokenIndexInExpert += sliceTokenCount;
-    if (position.tokenIndexInExpert >= expertTokenCount) {
+    if constexpr (MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE != 0) {
+        uint32_t waveRemainingTokenCapacity = (waveMGroupTarget - waveMGroupCount) * TileM;
+        uint32_t sliceTokenCount = expertRemainingTokenCount < waveRemainingTokenCapacity ?
+                                       expertRemainingTokenCount :
+                                       waveRemainingTokenCapacity;
+        waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
+        position.tokenIndexInExpert += sliceTokenCount;
+        if (position.tokenIndexInExpert >= expertTokenCount) {
+            ++position.expertIdx;
+            position.tokenIndexInExpert = 0U;
+        }
+        return sliceTokenCount;
+    } else {
+        waveMGroupCount += Ops::Base::CeilDiv(expertRemainingTokenCount, TileM);
         ++position.expertIdx;
         position.tokenIndexInExpert = 0U;
+        return expertRemainingTokenCount;
     }
-    return sliceTokenCount;
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
@@ -113,7 +131,13 @@ private:
 
     __aicore__ inline bool IsWaveComplete(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
-        return position.expertIdx >= commonConfig_.moeExpertPerRank || waveMGroupCount >= waveMGroupTarget_;
+        if constexpr (MEGA_MOE_ENABLE_A8W4_TOKEN_WAVE != 0) {
+            return position.expertIdx >= commonConfig_.moeExpertPerRank || waveMGroupCount >= waveMGroupTarget_;
+        } else {
+            return position.expertIdx >= commonConfig_.moeExpertPerRank ||
+                   (waveMGroupCount >= waveMGroupTarget_ &&
+                    commonConfig_.moeExpertPerRank - position.expertIdx >= MIN_EXPERTS_FOR_NEXT_A8W4_WAVE);
+        }
     }
 
     __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
