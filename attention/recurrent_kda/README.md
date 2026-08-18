@@ -1,84 +1,105 @@
+<!--
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+CANN Open Software License Agreement Version 2.0 (the "License").
+Please refer to the License for details. You may not use this file except in compliance with the License.
+THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+See LICENSE in the root of the software repository for the full text of the License.
+-->
+
 # RecurrentKda
 
-`RecurrentKda` 是 KDA 的 fused recurrent 前向算子。算子在一个 AICore kernel 内完成 recurrent state decay、delta 更新和输出计算；`raw gate -> log gate` 和 `beta sigmoid` 可以在 kernel 内完成，不依赖 `KdaGateCumsum` 或 GDN recurrent 的接口。
+## 产品支持情况
 
-完整接口和调用示例见 [API 文档](docs/api.md)，实现方案见 [设计文档](docs/design.md)，非连续 state
-的 stride 约束与数据流见 [专项设计](docs/non_contiguous_state_design.md)。Shape 符号统一引用
-[KDA 模型符号表](../README.md#model-shape-symbols)。
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×     |
+| <term>Atlas 推理系列产品</term>                          |    ×     |
+| <term>Atlas 训练系列产品</term>                          |    ×     |
 
-## Python 接口
+## 功能说明
 
-```python
-from fla_npu.ops.ascendc import recurrent_kda
+- 算子功能：完成 KDA（Kimi Delta Attention）的递归前向计算，面向 decode 和 MTP
+  （Multi-Token Prediction）短序列场景。算子支持 BSND/TND、变长序列、state pool 槽位索引、
+  V-first/K-first state、非连续 state view，以及可选的 q/k L2 normalize、raw gate 变换和
+  beta sigmoid。
 
-out, final_state = recurrent_kda(
-    q,
-    k,
-    v,
-    g,
-    beta,
-    initial_state=None,
-    *,
-    cu_seqlens,
-    ssm_state_indices=None,
-    A_log=None,
-    dt_bias=None,
-    num_accepted_tokens=None,
-    layout="BSND",
-    scale=None,
-    output_final_state=False,
-    use_qk_l2norm_in_kernel=False,
-    use_gate_in_kernel=False,
-    use_beta_sigmoid_in_kernel=False,
-    allow_neg_eigval=False,
-    safe_gate=False,
-    lower_bound=None,
-    state_v_first=True,
-)
-```
+- 计算公式：
 
-## 语义
+  对每个 token，令 $\bar q_t$ 为乘过 `scale` 的 query（可选先做 L2 normalize），
+  $\bar k_t$ 为 key（可选做 L2 normalize），$d_t$ 为 gate 对应的衰减系数，
+  $\bar\beta_t$ 为 beta 的有效值，则：
 
-- `layout="BSND"`：`q/k=[B,T,H,K]`，`v=[B,T,HV,V]`，`g=[B,T,HV,K]`，`beta=[B,T,HV]`。
-- `layout="TND"`：`q/k=[T,H,K]`，`v=[T,HV,V]`，`g=[T,HV,K]`，`beta=[T,HV]`。
-- `initial_state=None` 时，Python wrapper 会创建全零初始状态；显式传入时是 state pool。
-  `state_v_first=True` 对应 `[state_capacity,HV,V,K]`，`state_v_first=False` 对应
-  `[state_capacity,HV,K,V]`。支持 slot/head 维带间隔的非连续 view，但内部二维 state
-  矩阵必须稠密。
-- `scale=None` 时，Python wrapper 使用 `K ** -0.5`。
-- `use_qk_l2norm_in_kernel=True` 时，kernel 内对每个 token 的 `q/k` 做 L2 normalize，然后对 `q` 乘 `scale`。
-- `use_gate_in_kernel=False` 时，`g` 被视为已经预计算好的 step log gate，kernel 使用 `exp(g)` 做 state decay。
-- `use_gate_in_kernel=True` 时，`g` 是 raw gate，必须传 `A_log`；可选 `dt_bias`。
-  - `safe_gate=False`：`gate = -exp(A_log) * softplus(g + dt_bias)`。
-  - `safe_gate=True`：`gate = lower_bound * sigmoid(exp(A_log) * (g + dt_bias))`。
-- `use_beta_sigmoid_in_kernel=True` 时，kernel 使用 `sigmoid(beta)`；若 `allow_neg_eigval=True`，再乘 2。
-- Python/aclnn/legacy 入口支持非连续 `initial_state`。Python 主入口返回 `final_state` 时与输入保持相同
-  storage 和 stride；legacy Torch 入口只返回 `out`，最终状态通过 `initial_state` 原位更新。
-- `cu_seqlens` 是必传的同设备 INT32/INT64 tensor，shape 为 `[seq_num+1]`，使用与 fla-org 一致的
-  累积 offset 语义。首项必须为 0，末项等于有效 packed token 数且可小于图捕获的 token capacity，
-  相邻差值是各序列长度。host 不读取其值，兼容 ACLGraph capture/replay。
-- `ssm_state_indices` 支持 packed `[T]` 和 speculative `[seq_num,max_step]`。显式索引模式允许 `state_capacity > seq_num`，并仅更新命中的槽。
-- 空序列不读取索引或 state，适用于 packed batch 中的 padding sequence。
+  $$
+  \begin{aligned}
+  \bar S_t &= S_{t-1}\odot d_t \\
+  \Delta_t &= \bar\beta_t(v_t-\bar S_t\bar k_t) \\
+  S_t &= \bar S_t+\Delta_t\bar k_t^T \\
+  o_t &= S_t\bar q_t
+  \end{aligned}
+  $$
 
-每个 token 的 recurrent 更新为：
+  `useGateInKernel=false` 时，输入 gate 是 step log gate，$d_t=\exp(gate_t)$。
+  `useGateInKernel=true` 时，算子使用 `A_log` 和可选 `dt_bias` 在 kernel 内生成
+  step log gate。完整 raw gate、safe gate 和 beta sigmoid 公式见
+  [aclnnRecurrentKda](./docs/aclnnRecurrentKda.md)。
 
-```text
-S = exp(gate_t) * S
-delta = beta_t * (v_t - S @ k_t)
-S = S + outer(delta, k_t)
-o_t = S @ (q_t * scale)
-```
+## 参数说明
 
-## 当前限制
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 |
+| --- | --- | --- | --- | --- |
+| query | 输入 | BSND: `[B,T,H_k,128]`；TND: `[T,H_k,128]` | BFLOAT16 | ND |
+| key | 输入 | shape 与 query 相同 | BFLOAT16 | ND |
+| value | 输入 | BSND: `[B,T,H_v,V_dim]`；TND: `[T,H_v,V_dim]`，`V_dim` 为 128 或 256 | BFLOAT16 | ND |
+| gate | 输入 | step log gate 或 raw gate，shape 尾维为 128 | FLOAT/BFLOAT16/FLOAT16 | ND |
+| beta | 输入 | Delta 更新系数，BSND: `[B,T,H_v]`；TND: `[T,H_v]` | FLOAT/BFLOAT16/FLOAT16 | ND |
+| initialStateRef | 输入/输出 | state pool；V-first 为 `[state_capacity,H_v,V_dim,128]`，K-first 为 `[state_capacity,H_v,128,V_dim]` | BFLOAT16/FLOAT | ND |
+| cuSeqlensOptional | 可选输入 | 设备侧累计 offset tensor，shape 为 `[seq_num+1]` | INT32/INT64 | ND |
+| ssmStateIndicesOptional | 可选输入 | packed `[T_capacity]` 或 speculative `[seq_num,max_step]` state slot 索引 | INT32/INT64 | ND |
+| aLogOptional | 可选输入 | raw gate 参数，shape 为 `[H_v]` | FLOAT | ND |
+| dtBiasOptional | 可选输入 | raw gate 偏置，shape 为 `[H_v*128]` 或 `[H_v,128]` | FLOAT | ND |
+| numAcceptedTokensOptional | 可选输入 | 每条序列 accepted token 数，shape 为 `[seq_num]` | INT32/INT64 | ND |
+| attnOut | 输出 | shape 与 value 相同 | BFLOAT16 | ND |
+| finalState | 输出 | shape、dtype 与 initialStateRef 相同 | BFLOAT16/FLOAT | ND |
 
-- `q/k/v/out` 仅支持 `BF16`。
-- `g/beta` Python 入口支持 `FP32/BF16/FP16`，aclnn 预处理后以 `FP32` 输入 kernel。
-- `A_log/dt_bias` 支持 `FP32`。
-- `cu_seqlens` 为必传、与 q 同设备的 INT32/INT64 Tensor；offset 必须单调不减，末项不得超过输入
-  token capacity，各相邻差值必须不超过 8。末项小于 capacity 时，仅有效 token 对应的输出和 state
-  更新有定义，padding tail 输出不作保证。
-- 仅支持 `layout="BSND"` 和 `layout="TND"`。
-- 支持 V-first `[state_capacity,HV,V,K]` 和 K-first `[state_capacity,HV,K,V]`，state dtype 为
-  FP32/BF16。非连续 state 仅允许 slot/head 外层维存在间隔；最后两维必须为行主序稠密矩阵且各
-  slot/head 的地址区间不得重叠。底层 aclnn 接口要求显式传入 state。
-- `HV` 必须能被 `H` 整除；`H/HV <= 256`；`K/V` 仅支持 `K=128,V=128` 或 `K=128,V=256`。
+主要属性如下：
+
+| 属性名 | 默认值 | 说明 |
+| --- | :---: | --- |
+| layout | `"BSND"` | 支持 `"BSND"`、`"TND"` |
+| scale | 1.0 | 乘到 query 上，常用 `128^-0.5` |
+| outputFinalState | false | 是否返回有效 finalState |
+| inplaceFinalState | true | 是否原位更新 initialStateRef |
+| useQkL2normInKernel | false | 是否在 kernel 内对 q/k 做 L2 normalize |
+| useGateInKernel | false | 是否将 gate 解释为 raw gate |
+| useBetaSigmoidInKernel | false | 是否在 kernel 内计算 sigmoid(beta) |
+| allowNegEigval | false | beta sigmoid 后是否乘 2 |
+| safeGate | false | 是否启用 safe gate 分支 |
+| lowerBound | -5.0 | safe gate 下界，启用时范围为 `[-5,0)` |
+| stateVFirst | false | state 尾部布局是否为 `[V_dim,K_dim]` |
+
+## 约束说明
+
+- 输入 shape、dtype、可选参数依赖、状态写回组合和两段式 aclnn 调用详见
+  [aclnnRecurrentKda](./docs/aclnnRecurrentKda.md)。
+- `H_v` 必须能被 `H_k` 整除；K 维固定为 128，V 维支持 128、256。
+- 每条实际序列长度不超过 8。传 `cuSeqlensOptional` 时允许末 offset 小于 token capacity，
+  padding tail 输出不保证有效。
+- 未传 `ssmStateIndicesOptional` 时，state 第 0 维必须等于逻辑序列数；传入索引后可使用更大的
+  state pool，索引值必须落在有效槽位范围内。
+- `numAcceptedTokensOptional` 依赖 `ssmStateIndicesOptional`；
+  `ssmStateIndicesOptional` 可以单独传入。
+- 非连续 state 只允许 slot/head 外层维带间隔，内部二维 state 矩阵必须稠密且各地址区间不得重叠。
+- `useGateInKernel=true` 时必须传 `aLogOptional`；`dtBiasOptional` 可选。
+  `useGateInKernel=false` 时不能传 raw gate 相关可选 tensor，也不能启用 `safeGate`。
+
+## 调用说明
+
+| 调用方式 | 样例/文档 | 说明 |
+| --- | --- | --- |
+| aclnn 接口 | [aclnnRecurrentKda.md](./docs/aclnnRecurrentKda.md) | 两段式接口原型、参数说明和核心调用示例 |
+| PyTorch 测试 | [test_accuracy.py](./tests/pytest/test_accuracy.py) | BSND/TND、dtype、state 布局、非连续 state、MTP 和融合开关覆盖 |
