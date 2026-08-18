@@ -91,7 +91,7 @@ static void PrintTilingDataInfo(const char *nodeName, AttentionToFFNTilingData &
     OP_LOGD(nodeName, "expRankTableM is %u.", tilingData.attentionToFFNInfo.expRankTableM);
     OP_LOGD(nodeName, "microBatchNum is %u.", tilingData.attentionToFFNInfo.microBatchNum);
     OP_LOGD(nodeName, "attentionWorkerNum is %u.", tilingData.attentionToFFNInfo.attentionWorkerNum);
-    OP_LOGD(nodeName, "infoTableLastDimNum is %.", tilingData.attentionToFFNInfo.infoTableLastDimNum);
+    OP_LOGD(nodeName, "infoTableLastDimNum is %u.", tilingData.attentionToFFNInfo.infoTableLastDimNum);
     OP_LOGD(nodeName, "aivNum is %u.", tilingData.attentionToFFNInfo.aivNum);
     OP_LOGD(nodeName, "worldSize is %u.", tilingData.attentionToFFNInfo.worldSize);
     OP_LOGD(nodeName, "syncFlag is %u.", tilingData.attentionToFFNInfo.syncFlag);
@@ -193,8 +193,6 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
     auto syncFlagPtr = attrs->GetAttrPointer<int>(config.attrSyncFlagIndex);
     auto ffnStartRankIdPtr = attrs->GetAttrPointer<int>(config.attrFfnStartRankIdIndex);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int>(config.attrMoeExpertNumIndex);
-    uint32_t moeExpertNum = *moeExpertNumPtr;
-    uint32_t worldSize = *worldSizePtr;
 
     OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return false);
     OP_TILING_CHECK(worldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "worldSize"), return false);
@@ -204,6 +202,9 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
     OP_TILING_CHECK(syncFlagPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "syncFlag"), return false);
     OP_TILING_CHECK(ffnStartRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "ffnStartRankId"),
                     return false);
+
+    uint32_t moeExpertNum = *moeExpertNumPtr;
+    uint32_t worldSize = *worldSizePtr;
 
     OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
                     OP_LOGE_WITH_INVALID_ATTR(nodeName, "moe_expert_num",
@@ -769,10 +770,10 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     tilingData.attentionToFFNInfo.totalWinSize = maxWindowSize;
 
     OP_LOGD(ATTN_FFN_INNER_DEBUG,
-            "BS is %lu K is %lu HS is %u microBatchNum is %lu attentionWorkerNum is %lu infoTableLastDimNum is %lu.",
+            "BS is %lu K is %lu HS is %lu microBatchNum is %lu attentionWorkerNum is %lu infoTableLastDimNum is %lu.",
             BS, K, HS, microBatchNum, attentionWorkerNum, infoTableLastDimNum);
     OP_LOGD(ATTN_FFN_INNER_DEBUG,
-            "actualNeedWinSize is %lu tokenInfoNeedWinSize is %lu tokenDataNeedWinSize is %u neededSize is %lu.",
+            "actualNeedWinSize is %lu tokenInfoNeedWinSize is %lu tokenDataNeedWinSize is %lu neededSize is %lu.",
             actualNeedWinSize, tokenInfoNeedWinSize, tokenDataNeedWinSize, neededSize);
     return;
 }
