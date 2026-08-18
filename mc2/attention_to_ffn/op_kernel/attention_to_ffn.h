@@ -27,12 +27,23 @@
 #include "attention_to_ffn_tiling.h"
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
+#include "../common/attention_ffn_context.h"
 #include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/attention_ffn_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if __has_include("../moe_distribute_dispatch_v2/quantize_functions.h")
+#include "../moe_distribute_dispatch_v2/quantize_functions.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#endif
+#endif
+
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace AttentionToFFNImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多Buf
 constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
@@ -43,30 +54,67 @@ constexpr uint32_t REP_STRIDE = 8;               // 相邻迭代间的地址步�
 constexpr uint32_t STATUS_REP_STRIDE = 8;        // 32B / sizeof(int32) = 8
 constexpr uint32_t EXPERT_TABLE_REP_STRIDE = 16; // 64B / sizeof(int32) = 16
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
-constexpr uint32_t DYNAMIC_QUANT = 2;                   // 动态量化
+constexpr uint32_t DYNAMIC_QUANT = 2;                   // PERTOKEN + INT8 (legacy)
+constexpr uint32_t MX_QUANT = 3;                        // MX (output dtype from XOutType template param)
+constexpr uint32_t MX_CLIP_QUANT = 4;                   // MX_CLIP (output dtype from XOutType template param)
+
+__aicore__ constexpr bool IsMxQuant(uint32_t qm)
+{
+    return qm == MX_QUANT;
+}
+
+__aicore__ constexpr bool IsMxClipQuant(uint32_t qm)
+{
+    return qm == MX_CLIP_QUANT;
+}
+
+__aicore__ constexpr bool IsMxOrMxClipQuant(uint32_t qm)
+{
+    return qm == MX_QUANT || qm == MX_CLIP_QUANT;
+}
+
 constexpr uint32_t RANK_OFFSET_STRIDE = 2;              // RankTable第一个为rankCnt，后面两两组合
 constexpr uint32_t TOKEN_INFO_TABLE_RS = 2;             // tokenInfoTable前2位为flag和layer_id
 constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在DataCopy时每次搬运2个int32
 constexpr float INT8_MAX_VALUE = 127.0f;
+constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
+constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
+constexpr float HIFP8_MAX_VALUE = 32768.0f;
+constexpr uint32_t FP4_ELEMS_PER_BYTE = 2;
+constexpr uint32_t MX_BLOCK_SIZE = 32;
+constexpr uint32_t PERGROUP_BLOCK_SIZE = 128;
 
+enum class AttentionToFFNContextType : uint8_t {
+    HCCL_CONTEXT = 0,
+    MC2_CONTEXT = 1,
+};
 
-#define TemplateAttentionToFFNTypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
-#define TemplateAttentionToFFNTypeFunc XType, isQuant, isSync, isActiveMask
+#define TemplateAttentionToFFNTypeClass                                                                              \
+    typename XType, typename XOutType, uint32_t QuantMode, bool isSync, bool isActiveMask,                           \
+        AttentionToFFNContextType contextType
+#define TemplateAttentionToFFNTypeFunc XType, XOutType, QuantMode, isSync, isActiveMask, contextType
 
 using namespace AscendC;
 template <TemplateAttentionToFFNTypeClass>
 class AttentionToFFN {
 public:
+    using StorageXOutType = typename std::conditional<
+        (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) || (Std::IsSame<XOutType, fp4x2_e1m2_t>::value),
+        uint8_t, XOutType>::type;
+    using StorageXInType = typename std::conditional<
+        (Std::IsSame<XType, fp4x2_e2m1_t>::value) || (Std::IsSame<XType, fp4x2_e1m2_t>::value),
+        uint8_t, XType>::type;
     __aicore__ inline AttentionToFFN(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds,
-                                GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM,
-                                TPipe *pipe, const AttentionToFFNTilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
+                                GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
+                                GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFFNTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void ReduceMaxInplace(const LocalTensor<float> &srcLocal, uint32_t count);
     __aicore__ inline void QuantInit(GM_ADDR scales);
-    __aicore__ inline void InitByTinglingData(const AttentionToFFNTilingData *tilingData);
+    __aicore__ inline void InitByTinglingData(GM_ADDR context, const AttentionToFFNTilingData *tilingData);
+    __aicore__ inline GM_ADDR GetWindowAddrByRankId(int32_t rankId);
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
@@ -92,7 +140,7 @@ private:
     LocalTensor<XType> xInTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<float> scalesFp32Tensor_;
-    LocalTensor<int8_t> xOutTensor_;
+    LocalTensor<StorageXOutType> xOutTensor_;
     LocalTensor<int32_t> ffnStatusTensor_;
     LocalTensor<int32_t> syncStatusWorkspaceTensor_;
     LocalTensor<int32_t> ffnFlagTensor_;
@@ -142,6 +190,7 @@ private:
     uint32_t sendNum_{0};
     uint32_t quantMode_{0};
     uint32_t scaleParamPad_{0};
+    uint32_t hOutSizeAlign_{0};
     uint32_t ffnNum_{0};
     uint32_t ffnStartRankId_{0};
     uint64_t microBatchNum_{0};
@@ -161,17 +210,41 @@ private:
     uint32_t aivWorkspaceOffset_{0};
     uint8_t windowType_{0};
     uint8_t sharedExpertNum_{1};
-    __gm__ HcclOpResParam *winContext_{nullptr};
+    __gm__ HcclOpResParam *hcclContext_{nullptr};
+    __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 };
 
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantInit(GM_ADDR scales)
 {
-    scaleParamPad_ = SCALE_PARAM_PAD_SIZE; // 预留128B给量化参数
-    hCommuSize_ = axisH_ * sizeof(int8_t) + scaleParamPad_;
-    tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hSize_);       // 14K *2
-    tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hCommuSize_); // 7K *2 + 256B
-    if (isScales_) {                                         // 输入smoothScale参数
+    if constexpr (QuantMode == DYNAMIC_QUANT) {
+        scaleParamPad_ = SCALE_PARAM_PAD_SIZE; // 预留128B给量化参数
+        hCommuSize_ = axisH_ * sizeof(int8_t) + scaleParamPad_;
+        hOutSizeAlign_ = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hSize_);
+        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hCommuSize_);
+    } else if constexpr (IsMxOrMxClipQuant(QuantMode)) {
+        uint32_t outDataBytes;
+        if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
+            outDataBytes = Ceil(axisH_, FP4_ELEMS_PER_BYTE);
+        } else {
+            outDataBytes = axisH_ * sizeof(XOutType);
+        }
+        hOutSizeAlign_ = Ceil(outDataBytes, 256U) * 256U;
+        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        scaleParamPad_ = mxScaleNum; // fp8_e8m0_t is 1 byte each
+        hCommuSize_ = hOutSizeAlign_ + scaleParamPad_;
+        uint32_t hInSize = Ceil(axisH_, PERGROUP_BLOCK_SIZE) * PERGROUP_BLOCK_SIZE * sizeof(XType);
+        tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hInSize);
+        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hCommuSize_);
+    } else {
+        scaleParamPad_ = SCALE_PARAM_PAD_SIZE;
+        hCommuSize_ = axisH_ * sizeof(XOutType) + scaleParamPad_;
+        hOutSizeAlign_ = Ceil(axisH_ * sizeof(XOutType), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hSize_);
+        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hCommuSize_);
+    }
+    if (isScales_) { // 输入smoothScale参数
         scalesGMTensor_.SetGlobalBuffer((__gm__ float *)(scales));
     }
     uint32_t hFp32Size = axisH_ * sizeof(float);
@@ -181,12 +254,17 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantInit
 
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void
-AttentionToFFN<TemplateAttentionToFFNTypeFunc>::InitByTinglingData(const AttentionToFFNTilingData *tilingData)
+AttentionToFFN<TemplateAttentionToFFNTypeFunc>::InitByTinglingData(GM_ADDR context,
+                                                                   const AttentionToFFNTilingData *tilingData)
 {
     aivId_ = GetBlockIdx();
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_ = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    rankId_ = winContext_->localUsrRankId;
+    if constexpr (contextType == AttentionToFFNContextType::HCCL_CONTEXT) {
+        hcclContext_ = reinterpret_cast<__gm__ HcclOpResParam *>(context);
+        rankId_ = hcclContext_->localUsrRankId;
+    } else {
+        mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(context);
+        rankId_ = mc2Context_->epRankId;
+    }
     axisX_ = tilingData->attentionToFFNInfo.X;
     axisBS_ = tilingData->attentionToFFNInfo.BS;
     axisH_ = tilingData->attentionToFFNInfo.H;
@@ -218,11 +296,15 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::InitByTinglingData(const Attenti
 
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
-    GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
-    GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFFNTilingData *tilingData)
+    GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds,
+    GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe,
+    const AttentionToFFNTilingData *tilingData)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ ==3510)
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL,FLOAT_OVERFLOW_MODE_CTRL>(0);
+#endif
     tpipe_ = pipe;
-    InitByTinglingData(tilingData);
+    InitByTinglingData(context, tilingData);
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     sessionIdGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sessionId);
@@ -244,7 +326,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
     tpipe_->InitBuffer(ffnFlagBuf_, UB_ALIGN);                                            // 对齐32B
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
     ffnFlagTensor_ = ffnFlagBuf_.Get<int32_t>();
-    if constexpr (isQuant) {
+    if constexpr (QuantMode != 0) {
         QuantInit(scales);
         castTempBuf_ = receiveDataCastFloatBuf_;
         sumOutBuf_ = smoothScalesBuf_;
@@ -258,7 +340,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
     }
     if constexpr (isActiveMask) {
         tpipe_->InitBuffer(activeMaskBuf_, axisBsAlignSize_); // BS
-        if constexpr (!isQuant) {
+        if constexpr (QuantMode == 0) {
             uint32_t bsAlignHalf = Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN; // 约束32对齐
             tpipe_->InitBuffer(castTempBuf_, bsAlignHalf);                            // BS * 2
             tpipe_->InitBuffer(sumOutBuf_, bsAlignHalf);                              // BS * 2
@@ -319,6 +401,92 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::ReduceMaxInplace(const LocalTens
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProcess(uint32_t expertIndex)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if constexpr (QuantMode == DYNAMIC_QUANT) {
+        float dynamicScale = 0.0;
+        LocalTensor<float> floatLocalTemp;
+        floatLocalTemp = receiveDataCastFloatBuf_.Get<float>();
+        Cast(floatLocalTemp, xInTensor_, RoundMode::CAST_NONE, axisH_);
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
+
+        if (isScales_) {
+            smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
+            DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
+            DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
+            DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams,
+                        copyPadExtParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
+            PipeBarrier<PIPE_V>();
+        }
+
+        LocalTensor<float> floatLocalAbsTemp = smoothScalesBuf_.Get<float>();
+        Abs(floatLocalAbsTemp, floatLocalTemp, axisH_);
+        PipeBarrier<PIPE_V>();
+        ReduceMaxInplace(floatLocalAbsTemp, axisH_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        dynamicScale = float(INT8_MAX_VALUE) / floatLocalAbsTemp.GetValue(0);
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Muls(floatLocalTemp, floatLocalTemp, dynamicScale, axisH_);
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<half> halfLocalTemp = floatLocalTemp.ReinterpretCast<half>();
+        LocalTensor<int32_t> int32LocalTemp = floatLocalTemp.ReinterpretCast<int32_t>();
+        Cast(int32LocalTemp, floatLocalTemp, RoundMode::CAST_RINT, axisH_);
+        PipeBarrier<PIPE_V>();
+        SetDeqScale((half)1.000000e+00f);
+        PipeBarrier<PIPE_V>();
+        Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
+        PipeBarrier<PIPE_V>();
+        Cast(xOutTensor_, halfLocalTemp, RoundMode::CAST_TRUNC, axisH_);
+
+        floatLocalTemp = xOutTensor_.template ReinterpretCast<float>();
+        floatLocalTemp.SetValue(hOutSizeAlign_ / sizeof(float), float(1.0) / dynamicScale);
+    } else if constexpr (IsMxQuant(QuantMode)) {
+        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
+        __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
+        __ubuf__ uint16_t *halfScaleLocalAddr =
+            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+        __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *mxScaleLocalAddr;
+        if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
+            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[Ceil(axisH_, FP4_ELEMS_PER_BYTE) * 1U].GetPhyAddr();
+        } else {
+            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
+        }
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
+        Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
+            Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        } else {
+            Quant::ComputeFp4Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        }
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
+    } else if constexpr (IsMxClipQuant(QuantMode)) {
+        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
+        __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
+        __ubuf__ uint16_t *halfScaleLocalAddr =
+            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+        __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *mxScaleLocalAddr =
+            (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
+        Quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_);
+        Quant::ComputeScaleClip<XOutType, StorageXInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr,
+                                                           mxScaleNum);
+        Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                              AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
+    }
+#else
     float dynamicScale = 0.0;
     uint32_t hOutSizeAlign = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
     LocalTensor<float> floatLocalTemp;
@@ -363,6 +531,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
 
     floatLocalTemp = xOutTensor_.template ReinterpretCast<float>();
     floatLocalTemp.SetValue(hOutSizeAlign / sizeof(float), float(1.0) / dynamicScale); // int8->float32
+#endif
 }
 
 template <TemplateAttentionToFFNTypeClass>
@@ -415,15 +584,25 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetExpertAndRank(uint32_t tokenI
 }
 
 template <TemplateAttentionToFFNTypeClass>
+__aicore__ inline GM_ADDR AttentionToFFN<TemplateAttentionToFFNTypeFunc>::GetWindowAddrByRankId(int32_t rankId)
+{
+    if constexpr (contextType == AttentionToFFNContextType::MC2_CONTEXT) {
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
+    } else {
+        if (hcclContext_->userMemType == 0) {
+            return (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsIn);
+        } else {
+            return (GM_ADDR)(__gm__ uint8_t *)(hcclContext_->userMemRes[rankId].addr);
+        }
+    }
+}
+
+template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void
 AttentionToFFN<TemplateAttentionToFFNTypeFunc>::CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
                                                                        GlobalTensor<int32_t> &tokenInfoTableGMTensor)
 {
-    if (winContext_->userMemType == 0) {
-        toRankAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[toRankId].nextDevicePtr))->windowsIn);
-    } else {
-        toRankAddr = (GM_ADDR)(__gm__ uint8_t *)(winContext_->userMemRes[toRankId].addr);
-    }
+    toRankAddr = GetWindowAddrByRankId(toRankId);
     GM_ADDR tokenInfoTable = (__gm__ uint8_t *)(toRankAddr + winInfoTableOffset_);
     tokenInfoTableGMTensor.SetGlobalBuffer((__gm__ int32_t *)tokenInfoTable);
 
@@ -442,20 +621,20 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
     GM_ADDR toRankAddr;
     GlobalTensor<int32_t> tokenInfoTableGMTensor;
     DataCopyParams statusCopyParams = {1U, static_cast<uint16_t>(1 * sizeof(int32_t)), 0U, 0U};
-    DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyExtParams hCommuCopyOutParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
-    DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
+    DataCopyPadParams copyPadExtParams{false, 0U, 0U, 0U};
 
     uint32_t tokenOffset = aivId_ + (tokenIdx * aivNum_);         // 当前token在BS*(K+1)的偏移
     uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_); // 当前token在BS中的Id
     uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);  // 当前token的第几个topk
-    if constexpr (isQuant) {
-        GlobalTensor<int8_t> tokenDataGMTensor;
+    if constexpr (QuantMode != 0) {
+        GlobalTensor<uint8_t> tokenDataGMTensor;
         xInTensor_ = xInQueue_.AllocTensor<XType>();
         DataCopyPad(xInTensor_, xGMTensor_[tokenId * axisH_], xCopyParams, copyPadExtParams);
         xInQueue_.EnQue(xInTensor_);
         xInTensor_ = xInQueue_.DeQue<XType>();
-        xOutTensor_ = xOutQueue_.AllocTensor<int8_t>();
+        xOutTensor_ = xOutQueue_.AllocTensor<StorageXOutType>();
         SetExpertAndRank(tokenIdx, tokenId, topkId);
         QuantProcess(dstExpertId_);
         CheckFlagAndSetTableGM(toRankId_, toRankAddr, tokenInfoTableGMTensor);
@@ -463,12 +642,13 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
             (__gm__ uint8_t *)(toRankAddr + winOffset_[1] +
                                (winTokenDataOffset_ + (tokenId * (axisK_ + sharedExpertNum_) * axisHS_) +
                                 (topkId * axisHS_)) *
-                                   sizeof(int8_t));
-        tokenDataGMTensor.SetGlobalBuffer((__gm__ int8_t *)tokenData);
+                                   sizeof(XOutType));
+        tokenDataGMTensor.SetGlobalBuffer((__gm__ uint8_t *)tokenData);
         xOutQueue_.EnQue(xOutTensor_);
-        xOutTensor_ = xOutQueue_.DeQue<int8_t>();
-        DataCopyPad(tokenDataGMTensor, xOutTensor_, hCommuCopyOutParams);
-        xOutQueue_.FreeTensor<int8_t>(xOutTensor_);
+        xOutTensor_ = xOutQueue_.DeQue<StorageXOutType>();
+        auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
+        DataCopyPad(tokenDataGMTensor, xOutBytesTensor, hCommuCopyOutParams);
+        xOutQueue_.FreeTensor<StorageXOutType>(xOutTensor_);
     } else {
         GlobalTensor<XType> tokenDataGMTensor;
         xInTensor_ = xQueue_.AllocTensor<XType>();
@@ -580,12 +760,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetFlagTo
                 continue;
             }
         }
-        if (winContext_->userMemType == 0) {
-            toRankAddr =
-                (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[ffnIdx].nextDevicePtr))->windowsIn);
-        } else {
-            toRankAddr = (GM_ADDR)(winContext_->userMemRes[ffnIdx].addr);
-        }
+        toRankAddr = GetWindowAddrByRankId(static_cast<int32_t>(ffnIdx));
         GM_ADDR tableFlagGM = (__gm__ uint8_t *)(toRankAddr + winInfoTableOffset_);
         tableFlagGMTensor.SetGlobalBuffer((__gm__ int32_t *)tableFlagGM);
         if (ffnIdx == startFFNId) {
@@ -614,7 +789,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetFlagIn
     uint64_t sendMaskTokenCnt = curBsCnt_ * (axisK_ + sharedExpertNum_);
     uint64_t attnTokenInfoTableOffset =
         (microBatchId_ * axisBS_ * (axisK_ + sharedExpertNum_) + sendMaskTokenCnt) * sizeof(int32_t);
-    GM_ADDR selfRankAddr = (GM_ADDR)(winContext_->localWindowsIn);
+    GM_ADDR selfRankAddr = GetWindowAddrByRankId(static_cast<int32_t>(rankId_));
     GM_ADDR attnTokenInfoTableGM = (__gm__ uint8_t *)(selfRankAddr + attnTokenInfoTableOffset);
     GlobalTensor<int32_t> attnTableGMTensor;
     attnTableGMTensor.SetGlobalBuffer((__gm__ int32_t *)attnTokenInfoTableGM);
