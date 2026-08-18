@@ -110,7 +110,8 @@ public:
         const uint32_t validN = static_cast<uint32_t>(validNValue);
         // validN comes from valid_blocks at runtime. The host only provides
         // the capacity; choose cache/reload here for the concrete N.
-        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_;
+        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_ && \
+                               validNValue <= (MAX_PIPE_ID - qBufferNum_);
 
         for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
             ProcessWork(workStart + workOffset, validN, cacheAllV);
