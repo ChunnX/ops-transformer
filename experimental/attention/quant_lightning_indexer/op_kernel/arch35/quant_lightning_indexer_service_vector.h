@@ -20,9 +20,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "quant_lightning_indexer_common.h"
-#include "../arch35/vf/quant_lightning_indexer_vector1.h"
-#include "../arch35/vf/quant_lightning_indexer_topk.h"
+#include "quant_lightning_indexer_common_exp_qli.h"
+#include "../arch35/vf/quant_lightning_indexer_vector1_exp_qli.h"
+#include "../arch35/vf/quant_lightning_indexer_topk_exp_qli.h"
 
 namespace QLIKernel {
 using namespace QLICommon;

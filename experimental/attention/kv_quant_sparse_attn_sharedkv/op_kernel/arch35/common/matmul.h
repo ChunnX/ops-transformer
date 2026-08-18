@@ -14,7 +14,7 @@
  */
 #ifndef MATMUL_H
 #define MATMUL_H
-#include "buffers_policy.h"
+#include "buffers_policy_exp_kv_quant_sparse.h"
 using namespace AscendC;
 namespace fa_base_matmul {
 

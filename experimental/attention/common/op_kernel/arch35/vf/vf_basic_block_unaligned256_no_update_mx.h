@@ -15,8 +15,8 @@
 #ifndef VF_BASIC_BLOCK_UNALIGNED256_NO_UPDATE_MX_H
 #define VF_BASIC_BLOCK_UNALIGNED256_NO_UPDATE_MX_H
 
-#include "vf_basic_block_utils.h"
-#include "../pse.h"
+#include "vf_basic_block_utils_exp_attn_common.h"
+#include "../pse_exp_attn_common.h"
 
 using namespace regbaseutil;
 

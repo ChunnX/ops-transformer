@@ -17,7 +17,7 @@
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "fia_tiling_base.h"
+#include "fia_tiling_base_exp_attn_common.h"
 #include "fia_tiling_info.h"
 #include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
 #include "../op_kernel/arch35/fia_tiling_data_fullquant_mx.h"

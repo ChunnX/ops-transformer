@@ -17,7 +17,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_BLOCK_CUBE_FP8_H
  
 #include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/FixpipeOut_exp_attn_common.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 
 namespace FagBaseApi {

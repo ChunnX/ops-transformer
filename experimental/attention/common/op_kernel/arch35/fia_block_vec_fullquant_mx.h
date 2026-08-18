@@ -19,13 +19,13 @@
 
 #include "flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "vf/vf_flashupdate_new.h"
+#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_exp_attn_common.h"
+#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_exp_attn_common.h"
+#include "vf/vf_flashupdate_new_exp_attn_common.h"
 #include "vf/vf_div_cast.h"
 #include "vf/vf_flash_decode.h"
 #include "fia_public_define_arch35.h"
-#include "../vector_common.h"
+#include "../vector_common_exp_attn_common.h"
 #include "../memory_copy_arch35.h"
 #include "attenmask_gs1.h"
 

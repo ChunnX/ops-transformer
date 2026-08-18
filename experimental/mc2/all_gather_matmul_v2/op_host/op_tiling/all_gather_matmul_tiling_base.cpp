@@ -29,8 +29,8 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
-#include "all_gather_fit_balance_tiling.h"
-#include "all_gather_matmul_tiling_base.h"
+#include "all_gather_fit_balance_tiling_exp_agmm_v2.h"
+#include "all_gather_matmul_tiling_base_exp_agmm_v2.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 
 using namespace AscendC;

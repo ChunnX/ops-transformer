@@ -18,7 +18,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "kernel_data_copy_transpose.h"
+#include "kernel_data_copy_transpose_exp_blitz.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "blitz_sparse_attention_tiling_data.h"
 

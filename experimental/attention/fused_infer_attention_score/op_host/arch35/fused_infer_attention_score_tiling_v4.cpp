@@ -13,11 +13,11 @@
  * \brief
  */
 
-#include "fused_infer_attention_score_tiling_v4.h"
-#include "fused_infer_attention_score_tiling_impl.h"
-#include "../fused_infer_attention_score_tiling_info_parser.h"
-#include "../checkers/fia_checker.h"
-#include "../../../common/op_host/fia_tiling_templates_registry.h"
+#include "fused_infer_attention_score_tiling_v4_exp_fia.h"
+#include "fused_infer_attention_score_tiling_impl_exp_fia.h"
+#include "../fused_infer_attention_score_tiling_info_parser_exp_fia.h"
+#include "../checkers/fia_checker_exp_fia.h"
+#include "../../../common/op_host/fia_tiling_templates_registry_exp_attn_common.h"
 
 #include "log/log.h"
 #include "log/error_code.h"

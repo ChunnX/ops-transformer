@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "split_core.h"
+#include "split_core_exp_sals.h"
 #include <cstdio>
 #include <math.h>
 

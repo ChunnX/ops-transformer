@@ -11,7 +11,7 @@
 #ifndef MEMORY_COPY_ARCH35_H
 #define MEMORY_COPY_ARCH35_H
 
-#include "vector_common.h"
+#include "vector_common_exp_attn_common.h"
 #include "memory_copy_new.h"
 
 

@@ -17,8 +17,8 @@
 #include "util_regbase.h"
 #include "../offset_calculator.h"
 #include "../matmul.h"
-#include "../FixpipeOut.h"
-#include "../CopyInL1.h"
+#include "../FixpipeOut_exp_attn_common.h"
+#include "../CopyInL1_exp_attn_common.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"

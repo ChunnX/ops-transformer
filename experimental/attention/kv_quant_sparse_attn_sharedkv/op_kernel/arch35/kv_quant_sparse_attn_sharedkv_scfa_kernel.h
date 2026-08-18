@@ -22,8 +22,8 @@
 #include "kernel_operator.h"
 #include "../kv_quant_sparse_attn_sharedkv_metadata.h"
 #include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "common/FixpipeOut_exp_kv_quant_sparse.h"
+#include "common/CopyInL1_exp_kv_quant_sparse.h"
 
 #include "kernel_operator_list_tensor_intf.h"
 

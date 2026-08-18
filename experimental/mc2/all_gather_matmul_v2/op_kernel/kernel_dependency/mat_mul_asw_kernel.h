@@ -16,7 +16,7 @@
 #define MMV3_MATMUL_ASW_KERNEL_H
 
 #include "mat_mul_asw_block.h"
-#include "mat_mul_dasw_block.h"
+#include "mat_mul_dasw_block_exp_agmm_v2.h"
 
 namespace Mc2MatmulV3Advanced {
 

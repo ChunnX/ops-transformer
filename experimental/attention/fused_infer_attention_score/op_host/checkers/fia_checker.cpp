@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "fia_checker.h"
+#include "fia_checker_exp_fia.h"
 
 namespace optiling {
 using std::map;

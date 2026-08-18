@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "nsa_compress_attention_infer_tiling.h"
+#include "nsa_compress_attention_infer_tiling_exp_ncai.h"
 #include "nsa_compress_attention_infer_tiling_utils.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"

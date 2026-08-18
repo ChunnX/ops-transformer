@@ -20,8 +20,8 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../fia_tiling_templates_registry.h"
-#include "../split_core.h"
+#include "../fia_tiling_templates_registry_exp_attn_common.h"
+#include "../split_core_exp_attn_common.h"
 #include "tiling/tiling_api.h"
 
 using namespace ge;
