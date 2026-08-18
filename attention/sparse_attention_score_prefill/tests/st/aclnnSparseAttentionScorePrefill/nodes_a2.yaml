@@ -1,0 +1,10 @@
+nodes:
+  - backend: pyaclnn
+    name: npu_a2
+    task: ['accuracy']
+    devices: [7]
+    run_modes: []
+  - backend: cpu
+    name: cpu_reference
+    task: ['accuracy']
+    run_modes: []

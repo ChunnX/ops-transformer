@@ -8,7 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+
 import torch
 import torch_npu
-from . import ops
-from .ops import *
+
+# Targeted operator tests load one extension directly.  Avoid eagerly importing
+# every optional operator (and compiling their extensions) in that mode.
+if os.getenv("CANN_OPS_TRANSFORMER_LAZY_IMPORT", "0") != "1":
+    from . import ops
