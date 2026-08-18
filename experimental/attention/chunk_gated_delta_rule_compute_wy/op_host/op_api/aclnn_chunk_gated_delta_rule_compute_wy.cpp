@@ -95,7 +95,7 @@ aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
     CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize must not be nullptr.");
     CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");
 
-    ChunkGatedDeltaRuleComputeWyParams p{q,          k,          v,          g,          beta,      chunkSize,
+    ChunkGatedDeltaRuleComputeWyParams p{q, k, v, g, beta, chunkSize,
                                          qKernelOut, kKernelOut, wKernelOut, uKernelOut, gKernelOut};
 
     L2_DFX_PHASE_1(aclnnChunkGatedDeltaRuleComputeWy, DFX_IN(q, k, v, g, beta),
