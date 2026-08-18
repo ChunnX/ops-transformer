@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software: you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -43,12 +43,18 @@ def _inplace_write(dst, src_torch, slot_name):
             logger.warning(
                 "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
 <<<<<<< HEAD
+<<<<<<< HEAD
                 slot_name,
                 tuple(dst_t.shape),
                 tuple(src_torch.shape),
 =======
                 slot_name, tuple(dst_t.shape), tuple(src_torch.shape),
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
+=======
+                slot_name,
+                tuple(dst_t.shape),
+                tuple(src_torch.shape),
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
             )
             adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
             if dst_t.dtype == adapted.dtype:
@@ -68,6 +74,7 @@ def _inplace_write(dst, src_torch, slot_name):
     if tuple(dst_np.shape) != tuple(src_torch.shape):
         logger.warning(
             "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+<<<<<<< HEAD
 <<<<<<< HEAD
             slot_name,
             tuple(dst_np.shape),
@@ -90,15 +97,32 @@ def _inplace_write(dst, src_torch, slot_name):
     )
 =======
             slot_name, tuple(dst_np.shape), tuple(src_torch.shape),
+=======
+            slot_name,
+            tuple(dst_np.shape),
+            tuple(src_torch.shape),
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         )
         adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
-        src_np = adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        src_np = (
+            adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        )
         if src_np.dtype != dst_np.dtype:
-            src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
+            src_np = (
+                src_np.view(dst_np.dtype)
+                if src_np.dtype.itemsize == dst_np.dtype.itemsize
+                else src_np.astype(dst_np.dtype)
+            )
         dst_np[...] = src_np
         return
+<<<<<<< HEAD
     src_np = src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
+=======
+    src_np = (
+        src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
+    )
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     if src_np.dtype != dst_np.dtype:
         src_np = (
             src_np.view(dst_np.dtype)

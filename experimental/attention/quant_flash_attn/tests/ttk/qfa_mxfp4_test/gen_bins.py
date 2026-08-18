@@ -80,12 +80,18 @@ def _torch_to_bin(tensor, path):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     arr = tensor.detach().cpu().contiguous()
 <<<<<<< HEAD
+<<<<<<< HEAD
     numpy_arr = (
         arr.numpy() if arr.dtype != torch.bfloat16 else arr.view(torch.uint8).numpy()
     )
 =======
     numpy_arr = arr.numpy() if arr.dtype != torch.bfloat16 else arr.view(torch.uint8).numpy()
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
+=======
+    numpy_arr = (
+        arr.numpy() if arr.dtype != torch.bfloat16 else arr.view(torch.uint8).numpy()
+    )
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     numpy_arr.tofile(path)
 
 

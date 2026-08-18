@@ -189,6 +189,9 @@ def run_main(
     golden_mod._apply_csv_shape_override(
         data_dict,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         {
             "q": q,
             "k": k,
@@ -197,6 +200,7 @@ def run_main(
             "k_descale": k_descale,
             "v_descale": v_descale,
         },
+<<<<<<< HEAD
     )
 =======
     # data_dict 由 generate_data 重新生成 (确定性种子, 与 inputs.py 同源, 无跨用例缓存)
@@ -204,6 +208,8 @@ def run_main(
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
 =======
         {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     )
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     logger.info(

@@ -159,12 +159,18 @@ def _blockwise_quantize_p_eff(
     m_safe_new_s = m_safe_new_fp32.to(src_dtype)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     P_local_r = torch.exp(
         S_reshape * scale_s - m_block_safe.unsqueeze(-1)
     )  # [..., n_blk, 32]
 =======
     P_local_r = torch.exp(S_reshape * scale_s - m_block_safe.unsqueeze(-1))  # [..., n_blk, 32]
 >>>>>>> 4d685dec4... golden对齐
+=======
+    P_local_r = torch.exp(
+        S_reshape * scale_s - m_block_safe.unsqueeze(-1)
+    )  # [..., n_blk, 32]
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     # flatten 回 seqk 长度并 strip pad, 然后 move 回原 seqk_dim
     P_local_padded_moved = P_local_r.reshape(*other_shape, n_blk * mx_block_size)
     P_local_moved = P_local_padded_moved[..., :seqk_len]
@@ -575,6 +581,7 @@ def _flash_attn_single_batch_kernel(
                     m_safe_s = m_safe_fp32.to(s_torch_dtype)
                     if s_layout == "ND":
 <<<<<<< HEAD
+<<<<<<< HEAD
                         P_ij = torch.exp(
                             S_ij * scale_s - m_safe_s.unsqueeze(-1)
                         )  # s_dtype
@@ -587,6 +594,15 @@ def _flash_attn_single_batch_kernel(
                     else:
                         P_ij = torch.exp(S_ij * scale_s - m_safe_s.unsqueeze(0))  # s_dtype
 >>>>>>> 4d685dec4... golden对齐
+=======
+                        P_ij = torch.exp(
+                            S_ij * scale_s - m_safe_s.unsqueeze(-1)
+                        )  # s_dtype
+                    else:
+                        P_ij = torch.exp(
+                            S_ij * scale_s - m_safe_s.unsqueeze(0)
+                        )  # s_dtype
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
 
                     if quantize_p:
                         # qdq FP32 内部, round-trip 到 s_dtype

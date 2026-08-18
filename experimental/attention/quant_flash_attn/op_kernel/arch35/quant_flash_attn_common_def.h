@@ -68,8 +68,8 @@ struct CommonConstInfo {
     uint32_t kvCuSeqLensSize = 0; /* 用户输入的cu_seqlens_kv的长度 */
     uint32_t qSeqUsedSize = 0;    /* 用户输入的seqused_q的长度 */
     uint32_t kvSeqUsedSize = 0;   /* 用户输入的seqused_kv的长度 */
-    uint64_t maxSeqlenQ = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s1Size 物理维) */
-    uint64_t maxSeqlenKv = 0; /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s2Size 物理维) */
+    uint64_t maxSeqlenQ = 0;      /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s1Size 物理维) */
+    uint64_t maxSeqlenKv = 0;     /* seqUsed/cuSeq 为空时每个 batch 的实际序列长度 (区别于 s2Size 物理维) */
 
     /* FA kernel meta */
     uint32_t bN2Start = 0;

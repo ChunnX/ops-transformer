@@ -52,16 +52,22 @@ def _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale):
     """
     golden_mod._REPLAY_QKV_OVERRIDE = {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         "q": q,
         "k": k,
         "v": v,
         "q_descale": q_descale,
         "k_descale": k_descale,
         "v_descale": v_descale,
+<<<<<<< HEAD
 =======
         "q": q, "k": k, "v": v,
         "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale,
 >>>>>>> 13706ea7e... ttk优化
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     }
 
 
@@ -140,9 +146,12 @@ def npu_qfa_mxfp4(
     **kwargs,
 ):
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> 96487139d... 增加case间清理缓存
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
@@ -243,6 +252,7 @@ def npu_qfa_mxfp4(
             "k_descale": k_descale,
             "v_descale": v_descale,
         },
+<<<<<<< HEAD
     )
 =======
 =======
@@ -264,6 +274,8 @@ def npu_qfa_mxfp4(
     golden_mod._apply_csv_shape_override(
         data_dict,
         {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     )
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     logger.info(
@@ -299,4 +311,7 @@ def npu_qfa_mxfp4(
     torch.npu.empty_cache()
 
     return atten_out, lse_out
+<<<<<<< HEAD
 >>>>>>> 96487139d... 增加case间清理缓存
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则

@@ -547,9 +547,12 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         info.isLastSecondS2Loop = (s2Cur + 2 == curS2End) || (curS2End == 1);
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         info.isUpdatePScale = (info.isLastS2Loop || ((info.curS2LoopIdx + 1) % TILE_N == 0));
         info.isC2Sync = (info.curS2LoopIdx % TILE_N == 0);
         if (info.isFirstS2Loop) {

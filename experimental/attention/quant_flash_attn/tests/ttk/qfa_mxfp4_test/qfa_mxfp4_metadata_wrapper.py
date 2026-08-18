@@ -102,14 +102,18 @@ def run_metadata(
     **kwargs,
 ):
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     torch_npu.npu.set_device(int(device_id))
 
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
         graph_path = int(env_graph_path)
+<<<<<<< HEAD
 <<<<<<< HEAD
         logger.info("[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path)
 =======
@@ -117,6 +121,9 @@ def run_metadata(
             "[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path
         )
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
+=======
+        logger.info("[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path)
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
 
     _apply_golden_globals(
         {
@@ -194,6 +201,9 @@ def run_metadata(
     golden_mod._apply_csv_shape_override(
         data_dict,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         {
             "q": q,
             "k": k,
@@ -202,6 +212,7 @@ def run_metadata(
             "k_descale": k_descale,
             "v_descale": v_descale,
         },
+<<<<<<< HEAD
     )
 =======
     # data_dict 由 generate_data 重新生成 (确定性种子, 与 inputs.py 同源, 无跨用例缓存)
@@ -209,6 +220,8 @@ def run_metadata(
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
 =======
         {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     )
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     logger.info(
@@ -224,12 +237,18 @@ def run_metadata(
         metadata_list = golden_mod.call_npu_metadata(data_dict)
     except Exception as e:
 <<<<<<< HEAD
+<<<<<<< HEAD
         logger.error(
             "[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e)
         )
 =======
         logger.error("[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e))
 >>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
+=======
+        logger.error(
+            "[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e)
+        )
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         raise
 
     return metadata_list

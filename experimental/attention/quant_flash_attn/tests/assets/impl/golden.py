@@ -163,9 +163,12 @@ def cpu_qfa_mxfp4(
     )
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> 993fe1b8b... golden: 注入物理 S override, 与 NPU/inputs 路径对齐
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:
         try:

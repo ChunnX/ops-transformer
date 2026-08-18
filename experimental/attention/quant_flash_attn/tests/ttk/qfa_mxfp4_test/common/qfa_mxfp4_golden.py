@@ -176,12 +176,18 @@ def _infer_physical_s_from_tensor(tensor, layout):
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 def _resolve_s_with_effective(
     act_seq_lens, max_seqlen, physical_s_override, b_size, tag
 ):
 =======
 def _resolve_s_with_effective(act_seq_lens, max_seqlen, physical_s_override, b_size, tag):
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
+=======
+def _resolve_s_with_effective(
+    act_seq_lens, max_seqlen, physical_s_override, b_size, tag
+):
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     """解析物理 S 和有效长度, 并做校验.
 
     优先级:
@@ -268,6 +274,7 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
         logger.warning(
             "[GOLDEN] %s CSV shape %s != golden shape %s, 用 CSV shape 重构",
 <<<<<<< HEAD
+<<<<<<< HEAD
             name,
             tuple(csv_t.shape),
             tuple(golden_t.shape),
@@ -278,6 +285,11 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
 >>>>>>> 13706ea7e... ttk优化
 =======
             name, tuple(csv_t.shape), tuple(golden_t.shape),
+=======
+            name,
+            tuple(csv_t.shape),
+            tuple(golden_t.shape),
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         )
         data_dict[name] = _adapt_tensor_to_shape(golden_t, csv_t.shape).contiguous()
 
@@ -918,14 +930,20 @@ def cpu_mxfp4_golden(data_dict):
         s1 = max(act_seq_q) if act_seq_q else (MAX_SEQLEN_Q if MAX_SEQLEN_Q >= 0 else 0)
     if s2 is None:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
         s2 = (
             max(act_seq_kv)
             if act_seq_kv
             else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
         )
+<<<<<<< HEAD
 =======
         s2 = max(act_seq_kv) if act_seq_kv else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
+=======
+>>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
     if act_seq_q_eff is None:
         act_seq_q_eff = list(act_seq_q) if act_seq_q else [s1] * b
     if act_seq_kv_eff is None:
