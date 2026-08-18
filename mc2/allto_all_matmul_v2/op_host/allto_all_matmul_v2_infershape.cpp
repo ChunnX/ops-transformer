@@ -72,14 +72,6 @@ bool ValidateInferScaleShapes(gert::InferShapeContext *context, const char *node
     if (m == DIM_MINUS_ONE || ka == DIM_MINUS_ONE || n == DIM_MINUS_ONE) {
         return true;
     }
-    int64_t ceilDivKa = CeilDiv(ka, MX_SCALE_BLOCK_SIZE);
-    if (ceilDivKa % 2 != 0) {
-        std::string scaleBlock = std::to_string(MX_SCALE_BLOCK_SIZE);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, ("CeilDiv(Ka, " + scaleBlock + ")").c_str(), std::to_string(ceilDivKa).c_str(),
-            ("CeilDiv(Ka, " + scaleBlock + ") must be even").c_str());
-        return false;
-    }
 
     auto x1ScaleShape = context->GetOptionalInputShape(INDEX_IN_X1_SCALE);
     auto x2ScaleShape = context->GetOptionalInputShape(INDEX_IN_X2_SCALE);

@@ -448,13 +448,6 @@ protected:
                 ("The K dimension must be divisible by " + std::to_string(MX_SCALE_ALIGN) + ".").c_str());
             return false;
         }
-        if ((x1K / MX_SCALE_ALIGN) % 2 != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_k",
-                ("Ka=" + std::to_string(x1K)).c_str(),
-                ("CeilDiv(Ka, " + std::to_string(MX_SCALE_ALIGN) + ") must be even.").c_str());
-            return false;
-        }
         if (x2K != x1K * worldSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName, "x2_k",
