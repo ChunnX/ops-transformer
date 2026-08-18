@@ -305,7 +305,6 @@ Metadata字段布局：
     import cann_ops_transformer
     from torchair.configs.compiler_config import CompilerConfig
 
-
     class SparseFlashMlaSoftmaxL1NormModel(torch.nn.Module):
         def __init__(self):
             super(SparseFlashMlaSoftmaxL1NormModel, self).__init__()
@@ -322,7 +321,6 @@ Metadata字段布局：
                 **npu_inputs
             )
 
-
     def sparse_flash_mla_softmax_l1_norm_acl_graph(m_inputs, npu_inputs):
         npu_mode = SparseFlashMlaSoftmaxL1NormModel().npu()
         config = CompilerConfig()
@@ -331,7 +329,6 @@ Metadata字段布局：
         torch._dynamo.reset()
         npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=True)
         return npu_mode(m_inputs, npu_inputs)
-
 
     torch_npu.npu.set_device(0)
 
