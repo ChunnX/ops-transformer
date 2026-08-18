@@ -81,10 +81,10 @@ public:
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
-            Mxfp4VF::ProcessUpdateCallVF<false>(oUBTensor, oTmpUBTensor, dm,
+            Mxfp4VF::ProcessUpdateOCallVF<false>(oUBTensor, oTmpUBTensor, dm,
                                           globalRowSumUBTensor, localRowSumUBTensor);
         } else {
-            Mxfp4VF::ProcessUpdateCallVF<true>(oUBTensor, oTmpUBTensor, dm,
+            Mxfp4VF::ProcessUpdateOCallVF<true>(oUBTensor, oTmpUBTensor, dm,
                                          globalRowSumUBTensor, localRowSumUBTensor);
         }
 
