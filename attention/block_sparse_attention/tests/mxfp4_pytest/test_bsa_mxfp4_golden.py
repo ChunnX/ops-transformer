@@ -1807,7 +1807,7 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=16, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
 
-    # [已知 kernel bug, 注释] fp16 输出: processOutVF(vf_attenOut_dn_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
+    # [已知 kernel bug, 注释] fp16 输出: transposeAttnOutVF(vf_attn_out_transpose_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
     #   不随 ElementO 模板变 -> OF16(fp16 输出)路径 fp32->bf16 cast 后以 fp16 布局拷贝(bit 错位)-> 输出垃圾。
     #   kernel 修法: processOutVF 的 Cast/CreateMask/RegTensor 按 ElementO 模板化。待 kernel 修后启用。
 #     @SkipIfNotGteCANNVersion("9.0.0")
@@ -1838,7 +1838,7 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
                   block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BSND')
 
-    # [已知 kernel bug, 注释] fp16 输出: processOutVF(vf_attenOut_dn_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
+    # [已知 kernel bug, 注释] fp16 输出: transposeAttnOutVF(vf_attn_out_transpose_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
     #   不随 ElementO 模板变 -> OF16(fp16 输出)路径 fp32->bf16 cast 后以 fp16 布局拷贝(bit 错位)-> 输出垃圾。
     #   kernel 修法: processOutVF 的 Cast/CreateMask/RegTensor 按 ElementO 模板化。待 kernel 修后启用。
 #     @SkipIfNotGteCANNVersion("9.0.0")
