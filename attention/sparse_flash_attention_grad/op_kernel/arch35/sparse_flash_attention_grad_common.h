@@ -19,6 +19,7 @@
 #include "common.h"
 #include "../../../common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;
+using namespace commondef;
 
 constexpr uint8_t SYNC_C3_TO_V0_FLAG[2] = {7, 9};
 constexpr uint8_t SYNC_V0_TO_C1_FLAG[2] = {0, 1};

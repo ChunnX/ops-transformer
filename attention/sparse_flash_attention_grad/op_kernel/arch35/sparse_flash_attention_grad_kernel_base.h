@@ -279,8 +279,13 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
-    pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    if (constInfo.isHeadNLe64) {
+        dSL1Buf.Init(l1BufferManager, SFAG_L1_DS_P_EACH);
+        pL1Buf.Init(l1BufferManager, SFAG_L1_DS_P_EACH);
+    } else {
+        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+        pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    }
  
     pipe->InitBuffer(mm1ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm1ResBuf[1], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
@@ -302,6 +307,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.n2Size = tilingData->baseParams.n2;
     constInfo.selectedBlockCount = tilingData->baseParams.selectedBlockCount;
     constInfo.commonConstInfo.gSize = tilingData->baseParams.g;
+    constInfo.isHeadNLe64 = constInfo.commonConstInfo.gSize <= SFAG_HEAD_N_L1_RESIDENT;
     constInfo.commonConstInfo.s1Size = tilingData->baseParams.s1;
     constInfo.commonConstInfo.s2Size = tilingData->baseParams.s2;
     constInfo.commonConstInfo.dSize = IS_ROPE ? tilingData->baseParams.d - ROPE_D_64 : tilingData->baseParams.d;
@@ -403,7 +409,11 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         curS1 = constInfo.commonConstInfo.s1Size;
         curS2 = constInfo.commonConstInfo.s2Size;
     }
-    constInfo.selectedCountOffset = CUBE_BASEM / constInfo.selectedBlockSize;
+    int64_t gatherS2 = constInfo.isHeadNLe64 ? SFAG_GATHER_S2_HEAD_N : CUBE_BASEM;
+    constInfo.selectedCountOffset = gatherS2 / constInfo.selectedBlockSize;
+    if (constInfo.selectedCountOffset < 1) {
+        constInfo.selectedCountOffset = 1;
+    }
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
