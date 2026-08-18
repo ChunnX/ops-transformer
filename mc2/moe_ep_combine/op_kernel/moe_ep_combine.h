@@ -84,8 +84,8 @@ public:
     __aicore__ inline MoeEpCombine(){};
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace, GM_ADDR tilingGM,
-                                TPipe *pipe, const MoeEpCombineInfo *tilingData);
+                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR tilingGM, TPipe *pipe,
+                                const MoeEpCombineInfo *tilingData);
 
     __aicore__ inline void Process();
 
@@ -110,10 +110,6 @@ private:
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
 
-    __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
-    {
-        return combineSendDataWorkspaceAddr_ + sendDataWorkspaceSizePerRank_ * rankId;
-    }
     __aicore__ inline uint32_t ReduceSumWorkNeedSize(int32_t count, int32_t typeSize)
     {
         int32_t elementsPerBlock = UB_ALIGN / typeSize;
@@ -144,7 +140,6 @@ private:
     uint64_t actualA_{0};
     uint32_t aivNum_{0};
     uint32_t localmoeNum_{0};
-    uint64_t sendDataWorkspaceSizePerRank_{0};
 
     uint32_t aivId_{0};
 
@@ -167,20 +162,18 @@ private:
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
-    GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
 };
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx,
                                                                         GM_ADDR recvSrcMetadata,
                                                                         GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
-                                                                        GM_ADDR workspace, GM_ADDR tilingGM,
-                                                                        TPipe *pipe, const MoeEpCombineInfo *tilingData)
+                                                                        GM_ADDR tilingGM, TPipe *pipe,
+                                                                        const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
-    combineSendDataWorkspaceAddr_ = workspace;
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     numTokens_ = tilingData_->cfg.numTokens;
@@ -189,7 +182,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
-    sendDataWorkspaceSizePerRank_ = tilingData->sendDataWorkspaceSizePerRank;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN;
 
