@@ -32,15 +32,9 @@ namespace optiling {
 namespace flash_attn {
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
-void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
-{
-    faInfo_ = static_cast<FaTilingInfo *>(tilingInfo);
-}
+void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo) { faInfo_ = static_cast<FaTilingInfo *>(tilingInfo); }
 
-bool FlashAttnTilingImpl::IsCapable()
-{
-    return true;
-}
+bool FlashAttnTilingImpl::IsCapable() { return true; }
 
 void FlashAttnTilingImpl::CalcScheduleMode()
 {
@@ -127,8 +121,7 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (winRight == -1) {
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
@@ -142,7 +135,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     //   config=1: D=64,  sOuter=32,  sInner=256
     //   config=2: D=128, sOuter=64,  sInner=128
     //   config=3: D=128, sOuter=32,  sInner=256
-    //   config=4: D=256, sOuter=32,  sInner=256
+    //   config=4: D=256, sOuter=64,  sInner=128
     if (faInfo_->qkHeadDim == 64) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
     } else if (faInfo_->qkHeadDim == 128) {
@@ -309,8 +302,10 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize =
+        faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
+        faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
