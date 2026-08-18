@@ -25,9 +25,10 @@ namespace ChunkGatedDeltaRule {
 
 using namespace at;
 
-std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor> chunk_gated_delta_rule_compute_wy(
-    const Tensor &q, const Tensor &k, const Tensor &v, const Tensor &g, const Tensor &beta,
-    int64_t chunkSize = 64)
+std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor> chunk_gated_delta_rule_compute_wy(const Tensor &q, const Tensor &k,
+                                                                                     const Tensor &v, const Tensor &g,
+                                                                                     const Tensor &beta,
+                                                                                     int64_t chunkSize = 64)
 {
     TORCH_CHECK(q.defined() && k.defined() && v.defined() && g.defined() && beta.defined(),
                 "Inputs must be defined tensors");
@@ -45,15 +46,16 @@ std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor> chunk_gated_delta_rule_comput
     Tensor uKernel = at::empty({B, Nv, D, D}, v.options());
     Tensor gKernel = at::empty({B, Nv, D}, g.options());
 
-    ACLNN_CMD(aclnnChunkGatedDeltaRuleComputeWy, q, k, v, g, beta, chunkSize, qKernel, kKernel, wKernel,
-              uKernel, gKernel);
+    ACLNN_CMD(aclnnChunkGatedDeltaRuleComputeWy, q, k, v, g, beta, chunkSize, qKernel, kKernel, wKernel, uKernel,
+              gKernel);
 
     return std::make_tuple(qKernel, kKernel, wKernel, uKernel, gKernel);
 }
 
 TORCH_LIBRARY(ascend_ops, m)
 {
-    m.def(R"(chunk_gated_delta_rule_compute_wy(Tensor q, Tensor k, Tensor v, Tensor g, Tensor beta, int chunkSize=64) -> (Tensor, Tensor, Tensor, Tensor, Tensor))");
+    m.def(
+        R"(chunk_gated_delta_rule_compute_wy(Tensor q, Tensor k, Tensor v, Tensor g, Tensor beta, int chunkSize=64) -> (Tensor, Tensor, Tensor, Tensor, Tensor))");
 }
 
 TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
