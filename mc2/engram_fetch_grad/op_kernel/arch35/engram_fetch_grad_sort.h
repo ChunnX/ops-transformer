@@ -78,6 +78,19 @@ public:
 
     __aicore__ inline void Process(uint32_t actualCount, AscendC::TPipe &pipe);
 
+    uint64_t sortApplyOffsetCycle_{0};
+    uint64_t sortRestoreOffsetCycle_{0};
+    uint64_t sortCopyTempCycle_{0};
+    uint64_t sortRoundHistCycle_[4]{0};
+    uint64_t sortRoundPrefixCycle_[4]{0};
+    uint64_t sortRoundScatterCycle_[4]{0};
+    uint64_t sortHistMte2Cycle_[4]{0};
+    uint64_t sortHistComputeCycle_[4]{0};
+    uint64_t sortHistMte3Cycle_[4]{0};
+    uint64_t sortScatterMte2Cycle_[4]{0};
+    uint64_t sortScatterKeyCycle_[4]{0};
+    uint64_t sortScatterWriteCycle_[4]{0};
+
 private:
     __aicore__ inline void ApplyValueOffset(AscendC::TPipe &pipe);
 
@@ -476,10 +489,15 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(
     event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
     event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
 
+    uint64_t mte2Total = 0;
+    uint64_t computeTotal = 0;
+    uint64_t mte3Total = 0;
+
     for (uint32_t batch = 0; batch < batchCount; batch++) {
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = AscendC::GetBlockIdx();
+        uint64_t t2 = 0;
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
             uint32_t offset = tileId * tileElements_;
@@ -493,9 +511,12 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(
 
             uint32_t valBytes = tileLen * sizeof(int32_t);
             AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+            uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             AscendC::DataCopyPad(valueLocal, (*srcValueGm)[offset], valParam, valPad);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+            uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            mte2Total += t1 - t0;
 
             AscendC::Duplicate(exclusiveLocal, (uint32_t)0, HISTOGRAM_BINS);
 
@@ -511,13 +532,20 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            computeTotal += t2 - t1;
 
             AscendC::DataCopyParams histOutParam{1U, static_cast<uint16_t>(HISTOGRAM_BINS * sizeof(int32_t)), 0U, 0U};
             AscendC::DataCopyPad(histGm[tileId * HISTOGRAM_BINS], histWide, histOutParam);
         }
         WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+        uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        mte3Total += t3 - t2;
         AscendC::SyncAll<true>();
     }
+    sortHistMte2Cycle_[byteRound] += mte2Total;
+    sortHistComputeCycle_[byteRound] += computeTotal;
+    sortHistMte3Cycle_[byteRound] += mte3Total;
 }
 
 __aicore__ inline void EngramFetchGradSort::ScatterOneKey(
@@ -557,10 +585,15 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
     event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
 
+    uint64_t mte2Total = 0;
+    uint64_t keyTotal = 0;
+    uint64_t writeTotal = 0;
+
     for (uint32_t batch = 0; batch < batchCount; batch++) {
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = AscendC::GetBlockIdx();
+        uint64_t t2 = 0;
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
             uint32_t offset = tileId * tileElements_;
@@ -582,6 +615,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             uint32_t valBytes = tileLen * sizeof(int32_t);
             AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
+            uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             AscendC::DataCopyPad(valueLocal, (*srcValueGm)[offset], valParam, valPad);
             AscendC::DataCopyPad(indexLocal, (*srcIdx)[offset], valParam, valPad);
             AscendC::DataCopyPad(prefixLocal, prefixGm, histParam, valPad);
@@ -591,6 +625,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
+            uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            mte2Total += t1 - t0;
 
             uint32_t shiftBits = byteRound * BITS_PER_BYTE;
             __VEC_SCOPE__
@@ -626,6 +662,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+            t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            keyTotal += t2 - t1;
 
             AscendC::LocalTensor<int32_t> gatheredBuf = sortTempBuffer_.Get<int32_t>();
 
@@ -645,8 +683,13 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             }
         }
         WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+        uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        writeTotal += t3 - t2;
         AscendC::SyncAll<true>();
     }
+    sortScatterMte2Cycle_[byteRound] += mte2Total;
+    sortScatterKeyCycle_[byteRound] += keyTotal;
+    sortScatterWriteCycle_[byteRound] += writeTotal;
 }
 
 __aicore__ inline void EngramFetchGradSort::CopyTempToOutput(
@@ -700,16 +743,24 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
     uint32_t batchCount = CeilDiv(tileCount_, coreCount_);
     AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
 
+    uint64_t h0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     ProcessHist(byteRound, batchCount, srcValueGm, histGm, pipe);
+    uint64_t h1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     if (AscendC::GetBlockIdx() == 0) {
         ComputePrefixAndOffsets(tileCount_, prefixGm, tileOffsetsGm, histGm, pipe);
     }
     AscendC::SyncAll<true>();
+    uint64_t p1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ProcessScatter(byteRound, batchCount, srcValueGm, indexGm, outputValueGm,
                    outputIndexGm, tempValueGm, tempIndexGm, histGm, prefixGm,
                    tileOffsetsGm, pipe);
+    uint64_t s1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    sortRoundHistCycle_[byteRound] += h1 - h0;
+    sortRoundPrefixCycle_[byteRound] += p1 - h1;
+    sortRoundScatterCycle_[byteRound] += s1 - p1;
 }
 
 __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, AscendC::TPipe &pipe)
@@ -721,7 +772,10 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     }
     tileCount_ = CeilDiv(elementCount_, tileElements_);
 
+    uint64_t off0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     ApplyValueOffset(pipe);
+    uint64_t off1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+    sortApplyOffsetCycle_ = off1 - off0;
 
     for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
         ProcessOneByteRound(byteRound, valueGm_, indexGm_, valueGm_, indexGm_,
@@ -729,10 +783,27 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     }
 
     if (byteRounds_ % 2 == 1) {
+        uint64_t cp0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
+        uint64_t cp1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        sortCopyTempCycle_ = cp1 - cp0;
     }
 
+    uint64_t rest0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     RestoreValueOffset(pipe);
+    uint64_t rest1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+    sortRestoreOffsetCycle_ = rest1 - rest0;
+
+    AscendC::printf("SORT Detail applyOff=%lluu copy=%lluu restOff=%lluu\n",
+                    sortApplyOffsetCycle_ / 1000U,
+                    sortCopyTempCycle_ / 1000U, sortRestoreOffsetCycle_ / 1000U);
+    for (uint32_t r = 0; r < byteRounds_; r++) {
+        AscendC::printf("SORT r%u hist[m2=%lluu v=%lluu m3=%lluu] pre=%lluu sca[m2=%lluu keySort=%lluu wr=%lluu]\n",
+                        r,
+                        sortHistMte2Cycle_[r] / 1000U, sortHistComputeCycle_[r] / 1000U, sortHistMte3Cycle_[r] / 1000U,
+                        sortRoundPrefixCycle_[r] / 1000U,
+                        sortScatterMte2Cycle_[r] / 1000U, sortScatterKeyCycle_[r] / 1000U, sortScatterWriteCycle_[r] / 1000U);
+    }
 }
 
 } // namespace EngramFetchGradSort
