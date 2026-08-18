@@ -4,7 +4,7 @@ version: v3
 name: torch.block_sparse_attention_v3
 aclnn_name: aclnnBlockSparseAttentionV3
 expected_error_msg: null
-dtype_numbers: 1
+dtype_numbers: 3000
 extra_numbers: 0
 generate: generate_block_sparse_attention_mxfp4
 standard:

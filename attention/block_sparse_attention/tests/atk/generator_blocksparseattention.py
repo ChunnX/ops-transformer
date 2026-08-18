@@ -14,11 +14,21 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         super().__init__(config)
         self.input_layout_range = ["BNSD", "BSND", "TND"]
         self.headDim_range = [64, 128]
-        self.block_shape_x_range = [64, 128]
-        self.block_shape_y_range = [128, 256]
+        self.block_shape_range = [[128, 128], [64, 128], [128, 256]]
         self.attention_out_dtype_range = ["bf16", "fp16"]
         self.quant_mode_range = [2, 3]
+        self.mask_kind_range = ["dense", "sparse", "gap_sparse"]
         self.E8M0_BIAS = 127
+
+        # 泛化 S1/S2 覆盖: 对齐值 + 32*k-1 边界 + decode(s1=1) + 大序列
+        self.s1_range = [1, 63, 64, 127, 128, 256, 384, 512, 768, 1024]
+        self.s2_range = [31, 95, 128, 159, 223, 255, 256, 479, 511, 512, 768, 799, 1024, 4096]
+        # batch 覆盖
+        self.batch_range = [1, 1, 1, 2, 2, 3, 4, 5, 8, 16]
+        # GQA group 覆盖
+        self.g_range = [1, 1, 1, 2, 2, 3, 4, 4, 8]
+        # N2(kv_heads) 覆盖
+        self.n2_range = [1, 1, 2, 2, 2, 3, 4, 4, 8]
 
     def param_generator(self):
         self.B = 0
@@ -41,29 +51,33 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         self.block_shape_x = 128
         self.block_shape_y = 128
 
-        self.block_shape_x = random.choice(self.block_shape_x_range)
-        self.block_shape_y = random.choice(self.block_shape_y_range)
+        block_shape_choice = random.choice(self.block_shape_range)
+        self.block_shape_x = block_shape_choice[0]
+        self.block_shape_y = block_shape_choice[1]
         self.block_shape_list = [self.block_shape_x, self.block_shape_y]
 
         self.D = random.choice(self.headDim_range)
 
-        self.B = random.randint(1, 8)
-        self.S1_ceil = random.choice([128, 256, 512, 1024])
-        self.S2_ceil = random.choice([128, 256, 512, 1024, 4096])
-        self.N2 = random.randint(1, 4)
-        self.G = random.randint(1, 4)
+        self.B = random.choice(self.batch_range)
+        self.S1_ceil = random.choice(self.s1_range)
+        self.S2_ceil = random.choice(self.s2_range)
+
+        self.N2 = random.choice(self.n2_range)
+        self.G = random.choice(self.g_range)
         self.N1 = self.N2 * self.G
+
         self.q_input_layout = random.choice(self.input_layout_range)
         self.kv_input_layout = self.q_input_layout
         self.is_varied_len = random.choice([0, 1]) if self.q_input_layout == "TND" else 0
 
         self.quant_mode = random.choice(self.quant_mode_range)
         if self.quant_mode == 3:
-            self.dst_type_max = random.choice([0.0, 6.0, 8.0, 10.0])
+            self.dst_type_max = random.choice([0.0, 6.0, 8.0, 9.9, 10.0, 12.0])
         else:
             self.dst_type_max = 0.0
 
         self.attention_out_dtype = random.choice(self.attention_out_dtype_range)
+        self.mask_kind = random.choice(self.mask_kind_range)
 
         for b in range(self.B):
             S1_cur = self.S1_ceil
@@ -127,7 +141,6 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         quantMode = inputs_map.get('quantMode')
         dstTypeMax = inputs_map.get('dstTypeMax')
 
-        # MXFP4: QKV packed as uint8 (FP4 nibble-packed, last_dim = D//2)
         query.dtype = "uint8"
         key.dtype = "uint8"
         value.dtype = "uint8"
