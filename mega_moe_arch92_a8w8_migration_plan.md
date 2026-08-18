@@ -1026,15 +1026,20 @@ arch92使用独立的精简 `mega_moe_tiling_key.h`：
 
 ### 16.2 OpDef
 
-在 `mega_moe_def.cpp` 为 `${A6_SOC}` 增加AICore配置：
+A6 的正式 SoC 字符串已确认为 `ascend910_96`。首版已在 `mc2/mega_moe/op_host/mega_moe_def.cpp` 中增加：
 
-- 以现有 `ascend950` 配置为基础复用A8W8输入输出定义。
-- `opFile.value`仍为 `mega_moe_apt`。
-- 保留ACLLN、dynamic shape、multi-kernel等现有配置。
-- SoC能力列表只暴露A6实际支持的A8W8 dtype/format组合，避免Host认为FP4可用。
-- 共享专家输入、weight scale和输出定义与A5 A8W8保持一致。
+```cpp
+this->AICore().AddConfig("ascend910_96", aicore_config);
+```
 
-`${A6_SOC}` 是占位符，正式实现前需由平台侧确认产品字符串，不能直接把 `arch92` 当作SoC名称。
+当前 `ascend910_96` 复用 `ascend950` 的 `aicore_config`，因此：
+
+- `opFile.value` 仍为 `mega_moe_apt`。
+- 保留 ACLNN、dynamic shape、multi-kernel 等现有配置。
+- 共享专家输入、weight scale 和输出定义与 A5 A8W8 保持一致。
+- 该修改只负责 OpDef 能力注册，不负责将 `ascend910_96` 映射到 `arch92`。
+
+当前全局输入定义还包含 A5 的 FP4/A8W4 格式，A6 Host Tiling 会拒绝这些不支持组合。正式版若要使 SoC 能力元数据也严格收窄到 A8W8，应再新建 `aicore_config_arch92`，只声明 E5M2/E4M3FN 及对应 ND/NZ 组合。
 
 ### 16.3 InferShape/InferDataType
 
@@ -1047,7 +1052,7 @@ arch92使用独立的精简 `mega_moe_tiling_key.h`：
 
 ## 17. CMake、SoC映射和打包
 
-正式接入 `${A6_SOC}` 时至少检查：
+正式接入 `ascend910_96` 时至少检查：
 
 1. 根目录 `CMakeLists.txt`
    - `ASCEND_ALL_COMPUTE_UNIT`
@@ -1259,3 +1264,182 @@ Workspace、Win区、flag数量和Combine Job数必须由共享策略计算。�
 1. arch92 Generic A8W8 BlockMmad和Activation epilogue指令兼容性。
 2. `KERNEL_TYPE_MIX_AIC_1_1` 下 `GetBlockIdx/GetTaskRation/SyncAll` 的实际语义。
 3. 跨arch35公共头文件的构建、生成源码和安装包依赖是否完整。
+
+## 24. ascend910_96黄区编译适配复盘
+
+### 24.1 已确认的编译环境事实
+
+黄区实际编译链路为：
+
+```text
+ascend910_96
+    -> Ascend910_9691
+    -> dav-920r1
+    -> __NPU_ARCH__ = 9201
+```
+
+参考编译命令：
+
+```bash
+source /home/y00879306/0817/ascend/set_env.sh
+bash build.sh --pkg --soc=ascend910_96 --ops=mega_moe
+```
+
+因此不能继续以 `__DAV_C310_CUBE__` 或 `__DAV_C310_VEC__` 是否定义作为arch92 Kernel代码可见性的唯一判断。arch92设备代码应以 `defined(__NPU_ARCH__)` 或由它统一派生的本地平台宏识别Kernel编译。
+
+### 24.2 编译修改评审结论
+
+以下修改均已经在A6黄区编译过程中验证能够解决对应问题。本节不再判断它们是否“能工作”，只评审复盘文本是否一致、当前写法是否便于长期维护，以及是否存在等价但更集中的组织方式。
+
+| 分类 | 结论 | 正式处理方式 |
+|---|---|---|
+| A1 Host tiling头路径 | 已验证正确，黄区写法也是最直接方案 | 最终代码只在黄区维护时直接使用 `tiling_base/tiling_base.h` 最简洁；只有同一份Host源码还要回灌蓝区时才值得增加 `__has_include`。 |
+| A2 ACLNN matmul util路径 | 已验证正确，黄区写法也是最直接方案 | 最终黄区源码直接使用 `common/op_host/op_api/matmul_util.h`；跨仓共用单份源码时再增加双路径兼容。 |
+| B1 Kernel `-I` 路径 | 已验证正确 | 三条路径共同构成黄区实际编译闭包。即使v3没有出现在MegaMoe直接include中，也可能来自生成源码或传递依赖，不能仅凭源码文本删除。长期可优化为CMake target依赖集中传播include目录。 |
+| C1 `quantize_functions.h` fallback | 已验证正确，但复盘描述自相矛盾 | fallback本身是最稳妥的源码树/生成binary双形态兼容。需要明确它究竟修改了arch35公共头，还是arch92本地副本；前者不能再写“arch35所有文件零修改”。 |
+| D1-D4 Kernel宏扩展 | 已验证正确，可做维护性合并 | `defined(__NPU_ARCH__)` 是A6真正生效条件，额外 `__DAV_*` 分支保留其他环境兼容。最优组织是统一定义 `MEGA_MOE_IS_KERNEL_COMPILE`，但不应为了整理宏改变已验证行为。 |
+| E1 Hcomm模板适配 | 已验证正确，当前是低侵入兼容方案 | 使用A6双模板参数Hcomm让共享 `Params` 结构继续可解析，且不改变任何可达MTE路径。删除死字段更纯粹，但会扩大types和URMA条件代码改动，不是首版必须优化项。 |
+| F1-F11 arch92本地include | 已验证正确且必要 | 本地副本形成同一套arch92 types/utils/GMM common/epilogue闭包，避免混用arch35定义。这也是当前最清晰的依赖方向。 |
+| G1 `Quant`命名空间别名 | 已验证正确，需校正文档中的可见性描述 | 别名必须在第一个解析 `Quant::` 的头文件之前可见。若实际代码已经编译通过，说明实际include顺序满足该条件；复盘中“约第49行、stage include之后”的描述需要按真实位置修正。 |
+| H1 arch92 GMM common裁剪A8W4 | 已验证正确且最优 | arch92只支持A8W8，直接删除无法解析且永不实例化的A8W4类型，比继续制造占位声明更整洁。 |
+
+总体结论：所有列出的修改都接受其已验证正确性。需要处理的不是功能回退，而是C1的“arch35零修改”表述冲突、G1的别名可见性描述，以及D类宏和构建include未来是否集中管理。
+
+#### 24.2.1 复盘文本中的一致性问题
+
+1. C1明确修改 `arch35/common/mega_moe_mxfp8_utils.h`，但“未修改的文件”又写“arch35所有文件零修改”。两者必须二选一。若实际修改发生在arch35，应将结论改为“除一处跨构建形态的公共include兼容修复外，arch35计算逻辑零修改”。
+2. G1写明别名位于 `mega_moe.h` 约第49行，而当前include结构中stage头通常在此之前被解析。命名空间别名只有在首次出现 `Quant::` 之前声明才有效。既然修改已经编译验证，应以黄区真实include顺序重写该条，不能只记录近似行号。
+3. B1的原因把 `mc2_kernel_utils.h` 与三条新增路径并列，但该头通常由已有 `mc2/common/op_kernel` include路径提供，不是新增三条路径之一。应区分“原有include闭包”和“本次新增include闭包”。
+4. GMM/Blaze部分写“修改已逐项验证”，同时又写“整体尚未完成”，二者并不冲突，但需要表述为：每一步已验证消除对应编译错误，完整A8W8 BlockMmad链路仍在继续补齐。
+
+### 24.3 Host和构建侧正式方案
+
+黄区Host源码采用黄区现有公共头名称：
+
+```cpp
+#include "tiling_base/tiling_base.h"
+#include "common/op_host/op_api/matmul_util.h"
+```
+
+当前最终编译仓是黄区，因此直接include是最优方案。只有同一份源码需要同时回灌蓝区时，才改为：
+
+```cpp
+#if __has_include("tiling_base/tiling_base.h")
+#include "tiling_base/tiling_base.h"
+#else
+#include "op_host/tiling_base.h"
+#endif
+```
+
+`matmul_util.h` 使用相同的双路径策略。
+
+Kernel include目录保留已经验证的完整编译闭包：
+
+```cmake
+OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v2/op_kernel
+OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v3/op_kernel
+OPTIONS -I$ENV{ASCEND_OPP_PATH}/built-in/op_impl/ai_core/tbe/impl/ops_nn/ascendc/common
+```
+
+后续可通过CMake target依赖传播替代手工 `-I`，但优化前必须确认生成源码和传递依赖仍然得到完全相同的路径。include路径只解决头文件可见性，不能代替 `mega_moe_apt_depends` 对安装包和生成binary依赖的声明。
+
+### 24.4 arch92本地头文件闭包
+
+arch92本地复制并修改以下类别后，引用关系必须在arch92内部闭合：
+
+```text
+arch92/mega_moe.h
+    -> arch92/common/mega_moe_types.h
+    -> arch92/common/mega_moe_utils.h
+    -> arch92/common/mega_moe_workspace.h
+    -> arch92/common/mega_moe_gmm_common.h
+    -> arch92/blaze/epilogue/block_epilogue_activation_mx_quant.h
+```
+
+GMM1、GMM2、workspace reset和token dispatch的arch92副本应优先include上述本地文件。仍然引用arch35的文件只允许是经过确认不包含架构宏、Hcomm签名、Workspace类型或A8W4符号差异的稳定公共实现。
+
+`mega_moe_mxfp8_utils.h` 的 `<quantize_functions.h>` fallback已经验证有效。正式记录必须与实际文件位置一致：如果保留在arch35，它是一处公共include可移植性修复；如果迁到arch92副本，才可以继续保持arch35文件零差异。两种方式都不改变计算逻辑。
+
+### 24.5 Hcomm兼容处理
+
+A6首版明确不支持URMA和Layered，但共享 `Params` 类型仍包含Hcomm指针。已经验证的低侵入方案是保留字段并适配A6模板签名：
+
+```cpp
+Hcomm<CommEngine::AIV, CommProtocol::ROCE> *hcomm;
+```
+
+该字段只负责让类型声明成立；A6所有可达MTE路径都不初始化、不解引用它，也不能据此宣称A6已经支持ROCE/URMA Combine。
+
+后续完成arch92 URMA死代码整体裁剪时，可以再将结构收敛为：
+
+```cpp
+struct CombineCommParams {
+    uint32_t rankId;
+    __gm__ Mc2MoeContext *mc2Context;
+};
+```
+
+但这属于代码整洁度优化，不应混入已经验证的首版编译适配。
+
+### 24.6 arch92 GMM common裁剪原则
+
+arch92 `mega_moe_gmm_common.h` 只保留A8W8类型系统：
+
+```cpp
+using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+using BlockPrologue = void;
+```
+
+同时删除：
+
+- `block_mmad_mx_fp8fp4.h` include；
+- `block_prologue_mx_fp8fp4.h` include；
+- `MatmulMxFp8Fp4DynamicKL1TailResplit`；
+- A8W4 `BlockMmadSelector`；
+- A8W4 `DefaultL1Params` 和动态tiling分支。
+
+这不是功能裁减风险，因为arch92 Host tiling和Kernel入口已经共同拒绝A8W4/A4W4，相关模板不应在A6编译单元中存在。
+
+### 24.7 A8W8 BlockMmad处理结论
+
+以下修改均是有效的递进式编译修复：
+
+1. 从A5 CANN整份复制 `block_mmad_qbmm_mx.h`、`block_mmad.h` 和arch35 tile工具；
+2. 直接把 `__NPU_ARCH__ == 3510` 放宽为同时接受9201；
+3. 持续补齐 `PadMxKAL1/PadMxKBL1` 等A5内部依赖。
+
+它们逐步证明了原始失败不仅是一个架构宏问题，还包含A5 CANN内部tile工具在A6环境不可见的问题。复盘中“仍在处理中”表示完整依赖链尚未闭合，不代表前面各步修改无效。
+
+从最终维护成本看，持续复制完整A5 CANN实现会带入较大的内部依赖闭包。更集中的方案是在仓内提供MegaMoe专用、接口最小化的arch92实现：
+
+```text
+arch92/blaze/gemm/block/mega_moe_block_mmad_mx_fp8.h
+```
+
+该文件只特化MegaMoe当前使用的：
+
+```cpp
+BlockMmad<MatmulWithScaleMx<>, ...>
+```
+
+并自行完成：
+
+- FP8 A/B的GM到L1搬运；
+- E8M0 ScaleA/ScaleB的独立双缓冲和 `scaleKL1` 复用；
+- A/B/Scale的L1到L0搬运；
+- `MmadTraitMX` Cube计算；
+- L0C到GM或UB输出。
+
+它继续依赖A6公开的底层AscendC能力，但不再依赖A5 CANN的完整 `BlockMmad<MatmulWithScaleMx>` 特化及其私有tile工具。若A6编译继续失败，错误应收敛到 `L0ScaleA/L0ScaleB`、`CopyL12L0ScaleA/B` 或 `MmadTraitMX` 等具体底层能力。
+
+### 24.8 编译适配验证清单
+
+完成上述调整后，至少检查：
+
+1. 生成binary中的arch92文件不再include A8W4 prologue/MMAD头。
+2. arch92本地文件不再意外回退到同名arch35 types/utils/common。
+3. `__NPU_ARCH__=9201` 下Kernel实现可见，Host编译不解析设备专属代码。
+4. `Quant::` 最终只映射到一个有效命名空间，不出现别名冲突。
+5. A6 MTE路径可以解析Hcomm占位类型，但不初始化、不解引用、不调用Hcomm对象。
+6. `BlockMmad<MatmulWithScaleMx<>>` 命中arch92本地特化，不再落入主模板 `static_assert`。
+7. arch35工作区保持零差异；若接受公共include fallback例外，需要单独记录并执行A5回归编译。
