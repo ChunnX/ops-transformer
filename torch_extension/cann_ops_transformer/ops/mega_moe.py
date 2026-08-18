@@ -345,6 +345,39 @@ class SymmBuffer:
 
         self.mask_buffer[rank] = int(masked)
 
+    def clean_mask_buffer(self) -> None:
+        """Set every rank mask entry to zero on the current NPU stream."""
+        self._check_mask_buffer_supported()
+        if self.mask_buffer is None:
+            self.mask_buffer = self._create_mask_buffer(self.ep_world_size)
+            return
+        self.mask_buffer.zero_()
+
+    def get_local_buffer_tensor(
+        self,
+        dtype: torch.dtype,
+        size: Optional[torch.Size] = None,
+        offset: int = 0,
+    ) -> torch.Tensor:
+        """Return a zero-copy tensor view of the local CCL buffer."""
+        self._check_mask_buffer_supported()
+        if not isinstance(dtype, torch.dtype):
+            raise TypeError(f"dtype must be torch.dtype, got {type(dtype)}.")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError(f"offset must be a non-negative int, got {offset}.")
+
+        tensor = self._ctx_manager.get_local_buffer_tensor(dtype, offset)
+        if size is None:
+            return tensor
+        if not isinstance(size, torch.Size):
+            raise TypeError(f"size must be torch.Size or None, got {type(size)}.")
+        if tensor.numel() < size.numel():
+            raise ValueError(
+                f"requested size contains {size.numel()} elements, but only "
+                f"{tensor.numel()} elements remain after offset {offset}."
+            )
+        return tensor[: size.numel()].view(size)
+
     def update_group(self, group) -> None:
         """Destroy the old links after a replacement context has been created."""
         self._check_mask_buffer_supported()
