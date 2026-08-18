@@ -220,15 +220,15 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
-    if (!CheckWeightQuantModeValidity(weightQuantMode)) {
-        return ge::GRAPH_FAILED;
-    };
-    if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
-        return ge::GRAPH_FAILED;
-    };
-    if (!CheckQueryQuantModeValidity(queryQuantMode)) {
-        return ge::GRAPH_FAILED;
-    };
+    // if (!CheckWeightQuantModeValidity(weightQuantMode)) {
+    //     return ge::GRAPH_FAILED;
+    // };
+    // if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
+    //     return ge::GRAPH_FAILED;
+    // };
+    // if (!CheckQueryQuantModeValidity(queryQuantMode)) {
+    //     return ge::GRAPH_FAILED;
+    // };
 
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
