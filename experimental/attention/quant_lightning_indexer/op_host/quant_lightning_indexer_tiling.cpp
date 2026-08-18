@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "quant_lightning_indexer_tiling.h"
+#include "quant_lightning_indexer_tiling_exp_qli.h"
 
 #include "../op_kernel/quant_lightning_indexer_template_tiling_key.h"
 

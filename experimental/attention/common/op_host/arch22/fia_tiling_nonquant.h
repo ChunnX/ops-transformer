@@ -17,10 +17,10 @@
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "../fia_tiling_base.h"
+#include "../fia_tiling_base_exp_attn_common.h"
 #include "../fia_tiling_info.h"
-#include "../split_core.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
+#include "../split_core_exp_attn_common.h"
+#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_exp_fia.h"
 
 namespace optiling {
 

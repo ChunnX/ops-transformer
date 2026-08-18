@@ -13,14 +13,14 @@
  * \brief
  */
 
-#include "fused_infer_attention_score_tiling_impl.h"
+#include "fused_infer_attention_score_tiling_impl_exp_fia.h"
 
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
-#include "../fused_infer_attention_score_tiling_utils.h"
+#include "../fused_infer_attention_score_tiling_utils_exp_fia.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
 
 using namespace ge;

@@ -20,9 +20,9 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "fia_tiling_templates_registry.h"
+#include "fia_tiling_templates_registry_exp_attn_common.h"
 #include "split_core_v2.h"
-#include "../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
+#include "../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils_exp_fia.h"
 #include "../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
 #include "../../fused_infer_attention_score/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
 

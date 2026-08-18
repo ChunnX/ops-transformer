@@ -22,7 +22,7 @@
 // ifa must include before pfa
 #define FIA_ENABLE_MLA
 #include "fused_infer_attention_score_template_tiling_key.h"
-#include "arch35/prompt_flash_attention_entry_regbase.h"
+#include "arch35/prompt_flash_attention_entry_regbase_exp_fia.h"
 // #include "../prompt_flash_attention/prompt_flash_attention.cpp"
 #include "fused_infer_attention_score_tilingkey.h"
 

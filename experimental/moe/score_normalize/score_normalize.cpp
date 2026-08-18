@@ -27,7 +27,7 @@ namespace npu_ops_transformer_ext
         #include "kernel_operator.h"
         #include "tiling/platform/platform_ascendc.h"
         #include "rotary/moe_routing.h"
-        #include "rotary/dtype_convert.h"
+        #include "rotary/dtype_convert_exp_score_normalize.h"
         using namespace AscendC;
 
         constexpr int BUFFER_NUM = 2;

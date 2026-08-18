@@ -21,8 +21,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "gm_layout.h"
-#include "offset_calculator_v2.h"
+#include "gm_layout_exp_attn_common.h"
+#include "offset_calculator_v2_exp_attn_common.h"
 
 using AscendC::GlobalTensor;
 

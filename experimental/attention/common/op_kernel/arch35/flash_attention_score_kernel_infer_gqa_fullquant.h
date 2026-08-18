@@ -18,8 +18,8 @@
 #include "./flash_attention_score_kernel_base_fullquant.h"
 #include "./vf/vf_flash_decode.h"
 #include "./infer_flash_attention_comm.h"
-#include "./infer_flash_attention_kvcache.h"
-#include "./infer_flash_attention_sparse.h"
+#include "infer_flash_attention_kvcache_exp_attn_common.h"
+#include "infer_flash_attention_sparse_exp_attn_common.h"
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>

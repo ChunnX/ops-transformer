@@ -16,8 +16,8 @@
 #define KV_QUANT_SPARSE_ATTN_SHAREDKV_SCFA_BLOCK_CUBE_H
 #include "common/offset_calculator.h"
 #include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "common/FixpipeOut_exp_kv_quant_sparse.h"
+#include "common/CopyInL1_exp_kv_quant_sparse.h"
 #include "kernel_operator_list_tensor_intf.h"
 
 #include "util_regbase.h"

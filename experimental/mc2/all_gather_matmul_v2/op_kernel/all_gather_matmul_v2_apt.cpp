@@ -16,7 +16,7 @@
 #include "lib/matmul_intf.h"
 #include "common.h"
 #include "all_gather_matmul_v2_apt_tiling_key.h"
-#include "all_gather_matmul_fp16_bf16.h"
+#include "all_gather_matmul_fp16_bf16_exp_agmm_v2.h"
 
 using namespace Mc2Tiling;
 using namespace AllGatherMatmulImpl;

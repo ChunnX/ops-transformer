@@ -20,7 +20,7 @@
 #include <graph/utils/type_utils.h>
 #include "err/ops_err.h"
 #include "fia_tiling_nonquant_mla.h"
-#include "../fia_tiling_templates_registry.h"
+#include "../fia_tiling_templates_registry_exp_attn_common.h"
 #include "tiling/tiling_api.h"
 
 using namespace ge;

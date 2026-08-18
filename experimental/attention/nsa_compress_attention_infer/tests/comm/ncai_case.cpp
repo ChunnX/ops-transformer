@@ -13,7 +13,7 @@
  * \brief NativeSelectedAttention / NativeSelectedAttentionGrad 测试用例.
  */
 
-#include "ncai_case.h"
+#include "ncai_case_exp_ncai.h"
 #include <utility>
 #include <tikicpulib.h>
 #include <graph/utils/type_utils.h>
