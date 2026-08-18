@@ -12,6 +12,7 @@ import struct
 from pathlib import Path
 
 MAGIC = 0x41575452
+WAIT_CYCLES_UNAVAILABLE = 0xFFFFFFFF
 HEADER_WORDS = 24
 RECORD_HEADER_WORDS = 4
 ROLE_NAMES = ("AIC", "AIV0", "AIV1")
@@ -23,6 +24,10 @@ EVENT_NAMES = {
     5: "GMM2",
     6: "GMM2 prologue",
     7: "Combine",
+    8: "Wait Dispatch",
+    9: "Wait GMM1",
+    10: "Wait Activation",
+    11: "Wait GMM2",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -32,7 +37,13 @@ EVENT_COLORS = {
     5: "#ef4444",
     6: "#c084fc",
     7: "#f97316",
+    8: "#eab308",
+    9: "#ca8a04",
+    10: "#a16207",
+    11: "#854d0e",
 }
+WAIT_EVENT_IDS = frozenset((8, 9, 10, 11))
+WAIT_INSTRUMENTED_PARENT_IDS = frozenset((2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
         "ProcessMoeExpertStages：调用 DispatchMoeExpert 前",
@@ -62,7 +73,54 @@ EVENT_TRACE_POINTS = {
         "ProcessMoeExpertStages：调用 RunGmm2CombineForExpert 前",
         "RunGmm2CombineForExpert 返回后的 Combine 完成边界",
     ),
+    8: (
+        "GMM1 AIC：进入 WaitForGmm1InputReady 前",
+        "Dispatch 输入 ready 后",
+    ),
+    9: (
+        "Activation AIV1：开始轮询 GMM1 tile 前",
+        "GMM1 tile ready 后",
+    ),
+    10: (
+        "GMM2 AIC：进入 WaitForGmm2InputReady 前",
+        "Activation 输入 ready 后",
+    ),
+    11: (
+        "Combine AIV1：开始轮询 GMM2 completion 前",
+        "GMM2 输出 ready 后",
+    ),
 }
+
+
+def interval_is_within(child: dict, parent: dict) -> bool:
+    child_begin_offset = (child["begin_cycle"] - parent["begin_cycle"]) & 0xFFFFFFFF
+    child_end_offset = (child["end_cycle"] - parent["begin_cycle"]) & 0xFFFFFFFF
+    return child_begin_offset <= parent["duration_cycles"] and child_end_offset <= parent["duration_cycles"]
+
+
+def attach_wait_intervals(events: list[dict]) -> None:
+    wait_events = [event for event in events if event["is_wait_event"]]
+    for event in events:
+        if event["is_wait_event"]:
+            event["wait_cycles"] = event["duration_cycles"]
+            event["active_cycles"] = 0
+            event["wait_event_count"] = 1
+            continue
+        if event["event_id"] not in WAIT_INSTRUMENTED_PARENT_IDS:
+            continue
+        matching_waits = [
+            wait_event
+            for wait_event in wait_events
+            if wait_event["parent_event_id"] == event["event_id"]
+            and wait_event["wave"] == event["wave"]
+            and wait_event["expert"] == event["expert"]
+            and wait_event["token_start_in_expert"] == event["token_start_in_expert"]
+            and wait_event["token_count"] == event["token_count"]
+            and interval_is_within(wait_event, event)
+        ]
+        event["wait_event_count"] = len(matching_waits)
+        event["wait_cycles"] = sum(wait_event["duration_cycles"] for wait_event in matching_waits)
+        event["active_cycles"] = max(0, event["duration_cycles"] - event["wait_cycles"])
 
 
 def read_words(path: Path) -> tuple[int, ...]:
@@ -97,8 +155,14 @@ def parse_trace(words: tuple[int, ...]) -> dict:
     }
     if header["header_words"] != HEADER_WORDS:
         raise ValueError(f"unsupported header size: {header['header_words']}")
-    if header["event_words"] != 8:
-        raise ValueError(f"unsupported event size: {header['event_words']}")
+    expected_event_words = {1: 8, 2: 9, 3: 9}
+    if header["version"] not in expected_event_words:
+        raise ValueError(f"unsupported trace version: {header['version']}")
+    if header["event_words"] != expected_event_words[header["version"]]:
+        raise ValueError(
+            f"version {header['version']} requires {expected_event_words[header['version']]} event words, "
+            f"got {header['event_words']}"
+        )
     expected_record_count = len(ROLE_NAMES) * header["logical_core_count"]
     if header["record_count"] != expected_record_count:
         raise ValueError(
@@ -119,13 +183,30 @@ def parse_trace(words: tuple[int, ...]) -> dict:
         events = []
         for event_index in range(event_count):
             base = record_base + RECORD_HEADER_WORDS + event_index * header["event_words"]
-            event_type, wave_index, expert_index, token_start, token_count, m_group_count, begin, end = words[
-                base : base + 8
-            ]
+            event_words = words[base : base + header["event_words"]]
+            event_type, wave_index, expert_index, token_start, token_count, m_group_count = event_words[:6]
+            parent_event_id = 0
+            is_wait_event = False
+            wait_event_count = None
+            if header["version"] == 3:
+                parent_event_id, begin, end = event_words[6:9]
+                is_wait_event = event_type in WAIT_EVENT_IDS
+                wait_cycles = None
+            elif header["version"] == 2:
+                wait_cycles, begin, end = event_words[6:9]
+                wait_cycles = None if wait_cycles == WAIT_CYCLES_UNAVAILABLE else wait_cycles
+            else:
+                wait_cycles = None
+                begin, end = event_words[6:8]
+            duration_cycles = (end - begin) & 0xFFFFFFFF
+            active_cycles = duration_cycles if wait_cycles is None else max(0, duration_cycles - wait_cycles)
             events.append(
                 {
                     "event": EVENT_NAMES.get(event_type, f"unknown({event_type})"),
                     "event_id": event_type,
+                    "is_wait_event": is_wait_event,
+                    "parent_event": EVENT_NAMES.get(parent_event_id) if parent_event_id else None,
+                    "parent_event_id": parent_event_id,
                     "wave": wave_index,
                     "expert": expert_index,
                     "token_start_in_expert": token_start,
@@ -133,11 +214,16 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "m_group_count": m_group_count,
                     "begin_cycle": begin,
                     "end_cycle": end,
-                    "duration_cycles": (end - begin) & 0xFFFFFFFF,
+                    "duration_cycles": duration_cycles,
+                    "wait_cycles": wait_cycles,
+                    "active_cycles": active_cycles,
+                    "wait_event_count": wait_event_count,
                     "begin_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[0],
                     "end_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[1],
                 }
             )
+        if header["version"] == 3:
+            attach_wait_intervals(events)
         records.append(
             {
                 "role": ROLE_NAMES[role_index],
@@ -158,6 +244,9 @@ def write_csv(trace: dict, path: Path) -> None:
         "core",
         "event",
         "event_id",
+        "is_wait_event",
+        "parent_event",
+        "parent_event_id",
         "wave",
         "expert",
         "token_start_in_expert",
@@ -166,6 +255,9 @@ def write_csv(trace: dict, path: Path) -> None:
         "begin_cycle",
         "end_cycle",
         "duration_cycles",
+        "active_cycles",
+        "wait_cycles",
+        "wait_event_count",
         "begin_trace_point",
         "end_trace_point",
     ]
@@ -179,12 +271,20 @@ def write_csv(trace: dict, path: Path) -> None:
 
 def write_svg(trace: dict, path: Path) -> None:
     records = [record for record in trace["records"] if record["events"]]
+    lanes = []
+    for record in records:
+        stage_events = [event for event in record["events"] if not event["is_wait_event"]]
+        wait_events = [event for event in record["events"] if event["is_wait_event"]]
+        if stage_events:
+            lanes.append((f'{record["role"]} core {record["core"]}', stage_events))
+        if wait_events:
+            lanes.append((f'{record["role"]} core {record["core"]} wait', wait_events))
     width = 1800
     left = 150
     right = 30
     row_height = 24
     top = 55
-    height = top + max(1, len(records)) * row_height + 55
+    height = top + max(1, len(lanes)) * row_height + 55
     begin_cycles = [event["begin_cycle"] for record in records for event in record["events"]]
     if not begin_cycles:
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100"/>\n')
@@ -201,11 +301,11 @@ def write_svg(trace: dict, path: Path) -> None:
         '<style>text{font-family:Arial,sans-serif;font-size:11px}.label{font-weight:600}.event{stroke:#ffffff;stroke-width:.5}</style>',
         f'<text x="12" y="24" font-size="16" font-weight="700">A8W4 token-wave timeline (origin={origin})</text>',
     ]
-    for row, record in enumerate(records):
+    for row, (lane_name, lane_events) in enumerate(lanes):
         y = top + row * row_height
-        lines.append(f'<text class="label" x="8" y="{y + 14}">{record["role"]} core {record["core"]}</text>')
+        lines.append(f'<text class="label" x="8" y="{y + 14}">{lane_name}</text>')
         lines.append(f'<line x1="{left}" y1="{y + 18}" x2="{width - right}" y2="{y + 18}" stroke="#e5e7eb"/>')
-        for event in record["events"]:
+        for event in lane_events:
             x = left + (((event["begin_cycle"] - origin) & 0xFFFFFFFF) * scale)
             event_width = max(1.0, event["duration_cycles"] * scale)
             color = EVENT_COLORS.get(event["event_id"], "#64748b")
@@ -215,6 +315,7 @@ def write_svg(trace: dict, path: Path) -> None:
                 f'{event["token_start_in_expert"] + event["token_count"]}) '
                 f'begin={event["begin_cycle"]} end={event["end_cycle"]} '
                 f'duration={event["duration_cycles"]} '
+                f'parent={event["parent_event"] or "none"} '
                 f'begin-point={event["begin_trace_point"]} end-point={event["end_trace_point"]}'
             )
             lines.append(
@@ -265,6 +366,7 @@ select {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; backgrou
 .lane-wrap {{ display:grid; grid-template-columns:150px minmax(900px,1fr); gap:10px; align-items:center; margin-top:9px; }}
 .lane-name {{ font-weight:600; text-align:right; }}
 .lane {{ position:relative; height:32px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
+.lane.wait-lane {{ background:#fffbeb; }}
 .bar {{ position:absolute; top:5px; height:20px; min-width:2px; border-radius:3px; opacity:.9; cursor:pointer; }}
 .bar:hover {{ opacity:1; outline:2px solid #11182755; z-index:2; }}
 .event-detail {{ min-height:54px; margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb;
@@ -299,13 +401,16 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
     <span id="selectionSummary" class="muted"></span>
   </div>
   <div class="legend" id="legend"></div>
+  <div class="muted">每个角色的 wait 子泳道直接绘制轮询等待的实际 begin/end cycle。父阶段仍覆盖完整执行区间，
+  因此阶段块与其等待块会在时间轴上重叠；Active = Total - 这些真实等待区间。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
 </section>
 <section class="panel">
   <h2>Wave 汇总</h2>
   <div class="table-scroll"><table id="waveTable"><thead><tr>
-    <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>M group</th><th>总 cycles</th><th>最长事件</th>
+    <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>M group</th>
+    <th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th><th>最长事件</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
@@ -316,14 +421,15 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <section class="panel">
   <h2>事件明细</h2>
   <div class="table-scroll"><table id="eventTable"><thead><tr>
-    <th>AI Block</th><th>角色</th><th>阶段</th><th>Wave</th><th>Expert</th><th>Token 范围</th><th>M group</th>
-    <th>Begin cycle</th><th>End cycle</th><th>Cycles</th><th>耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
+    <th>AI Block</th><th>角色</th><th>事件</th><th>父阶段</th><th>Wave</th><th>Expert</th><th>Token 范围</th><th>M group</th>
+    <th>Begin cycle</th><th>End cycle</th><th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th>
+    <th>总耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <script id="traceData" type="application/json">{payload}</script>
 <script>
 const trace = JSON.parse(document.getElementById('traceData').textContent);
-const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316'}};
+const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Wait Dispatch':'#eab308','Wait GMM1':'#ca8a04','Wait Activation':'#a16207','Wait GMM2':'#854d0e'}};
 const roles = ['AIC','AIV0','AIV1'];
 const coreSelect = document.getElementById('coreSelect');
 const waveSelect = document.getElementById('waveSelect');
@@ -368,38 +474,67 @@ function renderTimeline(records,events) {{
   }}
   out+='</div>';
   for(const record of records) {{
-    out+=`<div class="lane-wrap"><div class="lane-name">Block ${{record.core}} · ${{record.role}}</div><div class="lane">`;
-    for(const e of record.events) {{
-      const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
-      const tip=`${{e.event}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} duration=${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs) | wave=${{e.wave}} expert=${{e.expert}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
-      const eventIndex=visibleEvents.push({{event:e,record}})-1;
-      out+=`<div class="bar" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
+    const laneGroups=[
+      {{name:`Block ${{record.core}} · ${{record.role}}`,isWait:false,events:record.events.filter(e=>!e.is_wait_event)}},
+      {{name:`Block ${{record.core}} · ${{record.role}} · wait`,isWait:true,events:record.events.filter(e=>e.is_wait_event)}},
+    ].filter(group=>group.events.length);
+    for(const group of laneGroups) {{
+      out+=`<div class="lane-wrap"><div class="lane-name">${{group.name}}</div><div class="lane ${{group.isWait?'wait-lane':''}}">`;
+      for(const e of group.events) {{
+        const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
+        const waitKnown=e.wait_cycles!==null;
+        const waitText=waitKnown?`${{e.wait_cycles}} cycles (${{(e.wait_cycles/1000).toFixed(3)}} μs)`:'未拆分';
+        const parentText=e.parent_event?` | parent=${{e.parent_event}}`:'';
+        const tip=`${{e.event}}${{parentText}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} total=${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs) | active=${{e.active_cycles}} cycles | wait=${{waitText}} | wave=${{e.wave}} expert=${{e.expert}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
+        const eventIndex=visibleEvents.push({{event:e,record}})-1;
+        out+=`<div class="bar" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
+      }}
+      out+='</div></div>';
     }}
-    out+='</div></div>';
   }}
   root.innerHTML=out;
   root.querySelectorAll('.bar').forEach(bar=>bar.addEventListener('click',()=>showEventDetail(visibleEvents[Number(bar.dataset.eventIndex)])));
 }}
 function showEventDetail(item) {{
   const e=item.event, r=item.record;
+  const waitKnown=e.wait_cycles!==null;
+  const waitText=waitKnown?`${{e.wait_cycles}} cycles (${{(e.wait_cycles/1000).toFixed(3)}} μs)`:'未拆分';
+  const waitPercent=waitKnown&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
+  const parentText=e.parent_event?`　父阶段：<b>${{esc(e.parent_event)}}</b>`:'';
+  const intervalText=e.is_wait_event?'这是由 kernel 直接记录的真实轮询等待区间。':
+    `包含 <b>${{e.wait_event_count===null?'—':e.wait_event_count}}</b> 个独立等待区间。`;
   document.getElementById('eventDetail').innerHTML=`<b>Block ${{r.core}} · ${{r.role}} · ${{esc(e.event)}}</b>　`
-    +`Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})<br>`
-    +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Duration: <b>${{e.duration_cycles}} cycles (${{(e.duration_cycles/1000).toFixed(3)}} μs)</b><br>`
+    +`Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})${{parentText}}<br>`
+    +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Total: <b>${{e.duration_cycles}} cycles</b><br>`
+    +`Active: <b>${{e.active_cycles}} cycles</b>　Wait: <b>${{waitText}}</b>　Wait 占比: <b>${{waitPercent}}</b><br>`
+    +`${{intervalText}}<br>`
     +`Begin 打点：${{esc(e.begin_trace_point)}}<br>End 打点：${{esc(e.end_trace_point)}}`;
 }}
 function renderWaveTable(events) {{
   const groups=new Map();
   for(const e of events) {{
     const key=`${{e.core}}|${{e.wave}}|${{e.role}}|${{e.event}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,max:0}};
-    g.count++; g.tokens+=e.token_count; g.mGroups+=e.m_group_count; g.cycles+=e.duration_cycles; g.max=Math.max(g.max,e.duration_cycles); groups.set(key,g);
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}};
+    g.count++;
+    if(e.is_wait_event) {{ g.tokens=Math.max(g.tokens,e.token_count); g.mGroups=Math.max(g.mGroups,e.m_group_count); }}
+    else {{ g.tokens+=e.token_count; g.mGroups+=e.m_group_count; }}
+    g.cycles+=e.duration_cycles; g.active+=e.active_cycles;
+    if(e.wait_cycles===null) g.waitKnown=false; else g.wait+=e.wait_cycles;
+    g.max=Math.max(g.max,e.duration_cycles); groups.set(key,g);
   }}
   const rows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
-  document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>`<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.max.toLocaleString()}}</td></tr>`).join('');
+  document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
+    const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+  }}).join('');
 }}
 function renderEventTable(events) {{
   const rows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
-  document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>`<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`).join('');
+  document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>{{
+    const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
+    const waitPercent=e.wait_cycles!==null&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
+  }}).join('');
 }}
 coreSelect.addEventListener('change',render); waveSelect.addEventListener('change',render); render();
 </script>
