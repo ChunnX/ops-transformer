@@ -223,12 +223,6 @@ public:
             // the q base tile index within the corrsponding xBlock of cur task
             uint32_t qSTileIdxCurXBlock = qSTileIdx - xBlockIdx * qSTileNumPerFullXBlock;
             // corresponding head index of cur task
-            // corresponding blockSparseMask gm offset of cur task
-            // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
-            int64_t sparseMaskBOffset = curBatch * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
-            int64_t sparseMaskNOffset = qHeadIdx * xBlockNumAligned_ * yBlockNumAligned_;
-            int64_t sparseMaskXOffset = xBlockIdx * yBlockNumAligned_;
-            int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
             // corresponding Q/K/V/O/Lse gm offset of cur task
             int64_t gmOffsetQ = 0;
             int64_t gmOffsetK = 0;
@@ -298,38 +292,6 @@ public:
             uint32_t rowNumRound = RoundUp(rowNum, 16);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
             uint32_t kvSTileSizeAct = kvBaseTile_;
-#ifdef __DAV_CUBE__
-            if constexpr (RESCALE_ON_CUBE) {
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIC] core=%u task=%u batch=%u qHead=%u kvHead=%u qTile=%u xBlock=%u\n",
-                    coreIdx, taskIdx, curBatch, qHeadIdx, kvHeadIdx, qSTileIdx, xBlockIdx);
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIC] Q=%u K=%u V=%u qSOffset=%u actualQSeq=%u actualKvSeq=%u\n",
-                    static_cast<uint32_t>(gmOffsetQ), static_cast<uint32_t>(gmOffsetK),
-                    static_cast<uint32_t>(gmOffsetV), static_cast<uint32_t>(qSOffset),
-                    static_cast<uint32_t>(qSeqlen), static_cast<uint32_t>(kvSeqlen));
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIC] sparseMask=%u sparseCount=%u sparseIdx=%u lastSparseIdx=%u\n",
-                    static_cast<uint32_t>(gmOffsetSparseMask), gmOffsetSparseCount,
-                    gmOffsetSparseIdx, lastIdxOffset);
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIC] actualQSeq=%u actualKvSeq=%u qScale=%u sparseCountWsByteBase=%u\n",
-                    curBatch, curBatch,
-                    curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx,
-                    static_cast<uint32_t>(sparseIdxSize_));
-            }
-#endif
-#ifdef __DAV_VEC__
-            if constexpr (RESCALE_ON_CUBE) {
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIV] core=%u sub=%u task=%u batch=%u qHead=%u kvHead=%u\n",
-                    coreIdx, AscendC::GetSubBlockIdx(), taskIdx, curBatch, qHeadIdx, kvHeadIdx);
-                AscendC::printf(
-                    "[BSA_GM_OFFSET][AIV] O=%u sparseMask=%u sparseCount=%u sparseIdx=%u\n",
-                    static_cast<uint32_t>(gmOffsetO),
-                    static_cast<uint32_t>(gmOffsetSparseMask), gmOffsetSparseCount, gmOffsetSparseIdx);
-            }
-#endif
 #ifdef __DAV_CUBE__
             uint32_t qShapeCol = 0;
             uint32_t qShapeRow = 0;
@@ -445,16 +407,6 @@ public:
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
                     float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
-                    if constexpr (RESCALE_ON_CUBE) {
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][QK] core=%u task=%u kvTile=%u sparseIdxRead=%u yBlock=%u\n",
-                            coreIdx, taskIdx, gatheredKvSTileIdx,
-                            gmOffsetSparseIdx + yBlockIndexOffset, yBlockIndex);
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][QK] qScale=%u kScale=%u\n",
-                            qDequantScaleOffset, kvDequantScaleOffset);
-                    }
-                    AscendC::printf("tkd mmad qk\n");
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
@@ -479,13 +431,6 @@ public:
                         uint32_t kvDequantScaleOffsetSm =
                             curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexSm;
                         float vDequantScaleValueSm = gVDequantScale.GetValue(kvDequantScaleOffsetSm);
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][SM] core=%u sub=%u task=%u kvTile=%u sparseIdxRead=%u\n",
-                            coreIdx, AscendC::GetSubBlockIdx(), taskIdx, gatheredKvSTileIdx,
-                            gmOffsetSparseIdx + yBlockIndexOffsetSm);
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][SM] yBlock=%u vScale=%u\n",
-                            yBlockIndexSm, kvDequantScaleOffsetSm);
                         // vScalePrev（比值记账）：上一 tile（t-1）的 deqscaleV。
                         // ★ 索引裁决：用 SM 侧 gatheredKvSTileIdx（软 max 的 t），与 vScaleCurr 同侧——
                         // diag 块按 softmax 自身 tile 索引落 L1 缓冲（l1PBufId = t % 3），被同 tile 的
@@ -502,15 +447,7 @@ public:
                                 curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ +
                                 yBlockIndexSmPrev;
                             vDequantScaleValueSmPrev = gVDequantScale.GetValue(kvDequantScaleOffsetSmPrev);
-                            AscendC::printf(
-                                "[BSA_GM_OFFSET][SM_PREV] core=%u sub=%u task=%u kvTile=%u sparseIdxRead=%u\n",
-                                coreIdx, AscendC::GetSubBlockIdx(), taskIdx, gatheredKvSTileIdx,
-                                gmOffsetSparseIdx + yBlockIndexOffsetSmPrev);
-                            AscendC::printf(
-                                "[BSA_GM_OFFSET][SM_PREV] yBlock=%u vScale=%u\n",
-                                yBlockIndexSmPrev, kvDequantScaleOffsetSmPrev);
                         }
-                        AscendC::printf("tkd online softmax rescael on cube\n");
                         epilogueOnlineSoftmax(
                             l1PTensorTla,
                             actualBlockShapeQK,
@@ -568,15 +505,6 @@ public:
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
                     if constexpr (RESCALE_ON_CUBE) {
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][PV] core=%u task=%u kvTile=%u sparseIdxRead=%u yBlock=%u\n",
-                            coreIdx, taskIdx, gatheredKvSTileIdxDe,
-                            gmOffsetSparseIdx + yBlockIndexOffsetDe, yBlockIndexDe);
-                        AscendC::printf(
-                            "[BSA_GM_OFFSET][PV] vScale=%u O=%u\n",
-                            kvDequantScaleOffsetDe, static_cast<uint32_t>(gmOffsetO));
-                    }
-                    if constexpr (RESCALE_ON_CUBE) {
                         // go 的 UB TLA：NZ2DN 输出为 ColumnMajor（DN）布局（仅末块实际使用，供 CopyL0CToDst<TensorC> 匹配特化）
                         // 半区固定 64（与 S 的 sShapeCol=64 一致）：FixPipe 的 nSize 需 16 倍数，
                         // 尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
@@ -591,7 +519,6 @@ public:
                         auto l1GoTensorTla = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionL1{});
                         // 写侧 C1 视图（DataCopy CO1→C1 要求 C1 位置标签；与 A1 视图同一物理 L1，零拷贝双视图）
                         auto l1GoTensorTlaC1 = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionC1{});
-                        AscendC::printf("tkd mmad pv rescael on cube\n");
                         blockMmadPV(gmVTensorTla, ubGoTensorTla, l1GoTensorTla, l1GoTensorTlaC1,
                                     gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
                                     gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
@@ -612,7 +539,6 @@ public:
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
                     if constexpr (RESCALE_ON_CUBE) {
                         // rescale O：仅末块（中间块的 rescale 已在 CUBE 完成）
-                        AscendC::printf("tkd rescale o on cube\n");
                         if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
                             epilogueRescaleO(
                                 gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
@@ -746,10 +672,13 @@ public:
         if constexpr (RESCALE_ON_CUBE) {
             // rescaleOnCube on cube：OTmp(lo) 不再驻留 UB（偏移传 0）；
             // diag 块中转 [qS/2, qS/2] fp32 仅 1 份；L1 diag 仍为 3 份轮转
+            // diag 按 8 个 datablock 分段存放，相邻段间预留 1 个 32B datablock 以避免 bank conflict；
+            // 共 7 个间隔，因此 UB 物理空间需在 64 x 64 fp32 有效数据之外额外预留 224B。
+            constexpr uint32_t DIAG_UB_PADDING_SIZE = 224;
             loStartOffset = 0;
             diagStartOffset = pStartOffset + pTotalSize;
             goStartOffset = diagStartOffset +
-                qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float);
+                qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float) + DIAG_UB_PADDING_SIZE;
         } else {
             // 旧路径：lo 2 份轮转、dm 3 份轮转（偏移与 HEAD 一致）
             loStartOffset = pStartOffset + pTotalSize;

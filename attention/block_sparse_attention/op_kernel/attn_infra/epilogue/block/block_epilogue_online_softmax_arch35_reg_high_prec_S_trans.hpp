@@ -174,17 +174,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        // AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
-        // AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 64);
-        // AscendC::printf("tkd lmUbTensor\n");
-        // AscendC::DumpTensor(lmUbTensor, 0, 16);
-        // AscendC::printf("tkd dmUbTensor[l1PBufId]\n");
-        // AscendC::DumpTensor(dmUbTensor[l1PBufId], 0, 16);
-        // AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
-        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 64);  
-        // AscendC::printf("tkd llUbTensor\n");
-        // AscendC::DumpTensor(llUbTensor, 0, 16);
-
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId],
             ubPLayoutTla, Arch::PositionUB{});

@@ -347,7 +347,7 @@ struct CopyL0CToUBTla<
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::COLUMN_MAJOR> intriParams;
 
 
-        AscendC::printf("tkd mmadpv l0ctoub nd2dn\n");
+        // AscendC::printf("tkd mmadpv l0ctoub nd2dn\n");
         // Fixpipe layout information
         intriParams.nSize = tla::get<1>(dstTensor.shape());
         intriParams.mSize = tla::get<0>(dstTensor.shape());
