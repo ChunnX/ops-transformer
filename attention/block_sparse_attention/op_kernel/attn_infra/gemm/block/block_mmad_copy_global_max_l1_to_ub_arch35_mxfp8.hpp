@@ -22,6 +22,10 @@
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_arch35_utils.hpp"
+#ifdef __DAV_CUBE__
+#include "c_api/cube_datamove/cube_datamove.h"
+#endif
 
 namespace NpuArch::Gemm::Block {
 
@@ -58,6 +62,11 @@ public:
         for (uint32_t i = 0; i < MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_CNT; i++) {
             localGlobalMaxL1[i] = resource.l1Buf.template GetBufferByByte<ElementLocalGlobalMax>(MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
+        // QFA cube 用 TPosition::VECCALC 绝对偏移建 peer UB，copy_cbuf_to_ubuf 才能写到两个 AIV。
+        peerGlobalMaxUB = AscendC::LocalTensor<ElementLocalGlobalMax>(
+            AscendC::TPosition::VECCALC,
+            NpuArch::Epilogue::Block::MXFP8::UB_PEER_GLOBAL_MAX_BUF_OFFSET,
+            L1_SINGLE_GLOBAL_MAX_SIZE * NpuArch::Epilogue::Block::MXFP8::UB_PEER_GLOBAL_MAX_CNT);
     }
     __aicore__ inline ~BlockMmadTla() {}
 
@@ -77,22 +86,31 @@ public:
         // AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(7);
         // AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(7);
 
+        (void)gMaxUbTensor;
+        (void)blockCount;
+        (void)blockLenPerSubVec;
+#ifdef __DAV_CUBE__
         AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax0 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx];
         AscendC::LocalTensor<ElementLocalGlobalMax> localGlobalMax1 = localGlobalMaxL1[delay3TileInfo.tileMaxIdx][L1_SINGLE_GLOBAL_MAX_SIZE];
-        AscendC::LocalTensor<ElementLocalGlobalMax> peerGlobalMax = gMaxUbTensor.data();
+        AscendC::LocalTensor<ElementLocalGlobalMax> peerGlobalMax =
+            peerGlobalMaxUB[delay3TileInfo.tileMaxIdx * L1_SINGLE_GLOBAL_MAX_SIZE];
 
-        AscendC::DataCopyParams intriParams;
-        intriParams.blockCount = static_cast<uint16_t>(blockCount); // 连续数据块个数为1
-        intriParams.blockLen = static_cast<uint16_t>(blockLenPerSubVec); // 连续数据块长度，单位为DataBlock，此处长度为128个half元素
-        intriParams.srcGap = 0; // 源操作数做连续搬运
-        intriParams.dstGap = 0; // 目的操作数连续排布
-        AscendC::DataCopyL1ToUB<ElementLocalGlobalMax, VEC0>(peerGlobalMax, localGlobalMax0, intriParams);
-        AscendC::DataCopyL1ToUB<ElementLocalGlobalMax, VEC1>(peerGlobalMax, localGlobalMax1, intriParams);
+        // AIC 上 GetSubBlockIdx 恒 0，普通 DataCopy 只写一面且写不到两个 AIV 的 UB。
+        // QFA：L1 row0 → AIV0，row1 → AIV1（UB→L1 写 coord(1-sub)，即交换 peer）。
+        constexpr uint16_t burstLen = static_cast<uint16_t>(
+            L1_SINGLE_GLOBAL_MAX_SIZE * sizeof(ElementLocalGlobalMax) / BLOCK_SIZE); // 128 half = 8 * 32B
+        __ubuf__ void *dst = (__ubuf__ void *)peerGlobalMax.GetPhyAddr();
+        __cbuf__ void *src0 = (__cbuf__ void *)localGlobalMax0.GetPhyAddr();
+        __cbuf__ void *src1 = (__cbuf__ void *)localGlobalMax1.GetPhyAddr();
+        asc_copy_l12ub_sync(dst, src0, false, 1, burstLen, 0, 0); // VEC0
+        asc_copy_l12ub_sync(dst, src1, true, 1, burstLen, 0, 0);  // VEC1
+#endif
     }
 
 protected:
     // MXFP8 专用：E8M0 scale 的 L1 buffer（V-scale 4 份，P-scale 20 份）+ MX 版 L1->L0 拷贝器
     AscendC::LocalTensor<half> localGlobalMaxL1[MXFP8::L1_LOCAL_GLOBAL_MAX_BUF_CNT];
+    AscendC::LocalTensor<half> peerGlobalMaxUB;
 
 };
 

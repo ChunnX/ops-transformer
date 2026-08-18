@@ -128,11 +128,19 @@ public:
         const uint32_t actKvsTile = actualBlockShape.m();
         const uint32_t actQsTile = actualBlockShape.n();
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
-        //     AscendC::PRINTF("mm1Res \n");
-        // AscendC::DumpTensor(sUBTensor[spBuffIdx][0], 127, 128);
-        // AscendC::DumpTensor(sUBTensor[spBuffIdx][256], 127, 128);
-        //         AscendC::DumpTensor(sUBTensor[spBuffIdx][512], 127, 128);
-        // AscendC::DumpTensor(sUBTensor[spBuffIdx][768], 127, 128);
+#ifndef BSA_MXFP8_DUMP
+#define BSA_MXFP8_DUMP 0
+#endif
+#if BSA_MXFP8_DUMP
+        if (tileInfo.curKvsTileLoopIdx < 2) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DumpTensor(sUBTensor[spBuffIdx], 201, 32);
+            AscendC::printf("[MXFP8-DUMP] S-epilogue desc=201 s0=%f blk=%u sub=%u loop=%u tile=%u actKvs=%u actQs=%u gmaxIdx=%u\n",
+                static_cast<float>(sUBTensor[spBuffIdx].GetValue(0)),
+                AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(),
+                tileInfo.loop, tileInfo.curKvsTileLoopIdx, actKvsTile, actQsTile, groupMaxIdx);
+        }
+#endif
 
         // if (tileInfo.isFirstKvsTile) {
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
@@ -208,6 +216,20 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
+#if BSA_MXFP8_DUMP
+        if (tileInfo.curKvsTileLoopIdx < 2) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DumpTensor(pUBTensor[spBuffIdx], 210, 32);
+            AscendC::DumpTensor(localGroupMaxUBTensor[groupMaxIdx], 211, 32);
+            AscendC::DumpTensor(localGlobalMaxUBTensor[tileInfo.tileMaxIdx], 213, 32);
+            AscendC::printf("[MXFP8-DUMP] P desc=210 p0=%u grpMax0=%f gmax0=%f blk=%u sub=%u loop=%u tile=%u gmaxIdx=%u tileMax=%u\n",
+                static_cast<uint32_t>(pUBTensor[spBuffIdx].GetValue(0)),
+                static_cast<float>(localGroupMaxUBTensor[groupMaxIdx].GetValue(0)),
+                static_cast<float>(localGlobalMaxUBTensor[tileInfo.tileMaxIdx].GetValue(0)),
+                AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(),
+                tileInfo.loop, tileInfo.curKvsTileLoopIdx, groupMaxIdx, tileInfo.tileMaxIdx);
+        }
+#endif
 
         // DataCopy UB -> L1：NZ 物理视图按整基块 16KB 固定（M=64×N=512，half-N 拷 16KB）
         // kvs128 时不能再用 KVS/4(=32)，否则只搬 8KB。
@@ -226,24 +248,18 @@ public:
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        if (tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
-            // qs=128, kvs=128 整基块搬运
+        if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
+            // L1 按 128 行 NZ；kvs<128 也搬满 64 个 TLA 行，LoadP srcStride=8 只读前 kvs 行。
             AscendC::DataCopyParams repeatParams;
-            if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行
-            } else {
-                repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize / 2); // UB的物理P一整行256B, 包含P的逻辑视图4行
-            }
+            repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize);
             repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
             repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
             repeatParams.dstStride = 0;
 
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
-
             AscendC::DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], repeatParams);
-            
-        } else {
+        } else if (tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
             // 消去高位 低位中间的间隙搬运
             // 低位搬运
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
@@ -313,7 +329,8 @@ public:
 
     __aicore__ inline uint32_t GetLocalGroupMaxBufIdx(uint32_t loop)
     {
-        return loop / 2 * 2 % MXFP8::UB_LOCAL_GROUP_MAX_CNT;
+        // kvs128：每基块 4 个 group-max = 1KB，连续占槽（不再 2KB 双槽）
+        return loop / 2 % MXFP8::UB_LOCAL_GROUP_MAX_CNT;
     }
 
 private:

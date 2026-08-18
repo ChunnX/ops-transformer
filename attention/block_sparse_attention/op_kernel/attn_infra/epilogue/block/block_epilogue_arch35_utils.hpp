@@ -116,22 +116,25 @@ namespace MXFP8 {
     static constexpr uint32_t UB_GLOBAL_ROW_SUM_BUF_SIZE = 256;
     static constexpr uint32_t UB_GLOBAL_ROW_SUM_BUF_OFFSET = 96 * KB_BYTE + 256;
 
-    // P：2 槽各整基块 16KB（128×128×1B）
+    // P：逻辑 16KB/槽；ping-pong 按 256B 交错，物理跨度 32KB（64×512）
     static constexpr uint32_t UB_P_BUF_CNT = 2;
     static constexpr uint32_t UB_P_INNER_BUF_OFFSET = 256;
     static constexpr uint32_t UB_P_INNER_BUF_ELEMENT_OFFSET = 256;
     static constexpr uint32_t UB_P_BUF_SIZE = 16 * KB_BYTE;
     static constexpr uint32_t UB_P_BUF_OFFSET = 96 * KB_BYTE + 512;
+    static constexpr uint32_t UB_P_PHYSICAL_SPAN = 32 * KB_BYTE;
 
     static constexpr uint32_t UB_O_TRANS_BUF_SIZE = 18 * KB_BYTE;
     static constexpr uint32_t UB_O_TRANS_BUF_OFFSET = 96 * KB_BYTE + 512;
 
+    // pScale 从 114.5KB 挪走：原位置落在 P 的 32KB 物理窗口内，会被 CopyPUBToPL1 后半段当 P 读走
     static constexpr uint32_t UB_P_SCALE_CNT = 12;
     static constexpr uint32_t UB_P_SCALE_BUF_SIZE = 768;
-    static constexpr uint32_t UB_P_SCALE_BUF_OFFSET = 114 * KB_BYTE + 512;
+    static constexpr uint32_t UB_P_SCALE_BUF_OFFSET = 176 * KB_BYTE;
 
+    // O 紧挨 P 物理窗口末尾（128.5KB），避免最后 512B 写穿
     static constexpr uint32_t UB_O_BUF_SIZE = 32 * KB_BYTE;
-    static constexpr uint32_t UB_O_BUF_OFFSET = 128 * KB_BYTE;
+    static constexpr uint32_t UB_O_BUF_OFFSET = 128 * KB_BYTE + 512;
 
     static constexpr uint32_t UB_PEER_GLOBAL_MAX_CNT = 4;
     static constexpr uint32_t UB_PEER_GLOBAL_MAX_BUF_SIZE = 256;
@@ -167,6 +170,14 @@ namespace MXFP8 {
 
     static_assert(UB_INDEX_BUF_OFFSET + UB_INDEX_BUF_SIZE <= 256 * KB_BYTE,
                   "MXFP8 UB exceeds 256KB");
+    static_assert(UB_P_BUF_OFFSET + UB_P_PHYSICAL_SPAN == UB_O_BUF_OFFSET,
+                  "P 32KB physical window must abut O");
+    static_assert(UB_O_BUF_OFFSET + UB_O_BUF_SIZE == UB_PEER_GLOBAL_MAX_BUF_OFFSET,
+                  "O must abut peerGlobalMax");
+    static_assert(UB_P_SCALE_BUF_OFFSET >= UB_INDEX_BUF_OFFSET + UB_INDEX_BUF_SIZE,
+                  "pScale must sit after index (outside P 32KB window)");
+    static_assert(UB_P_SCALE_BUF_OFFSET + UB_P_SCALE_CNT * UB_P_SCALE_BUF_SIZE <= 256 * KB_BYTE,
+                  "pScale exceeds 256KB");
 }  // namespace MXFP8
 
 }  // namespace NpuArch::Epilogue::Block

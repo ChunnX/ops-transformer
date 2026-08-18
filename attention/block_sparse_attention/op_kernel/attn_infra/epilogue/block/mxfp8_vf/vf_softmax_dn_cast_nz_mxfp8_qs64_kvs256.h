@@ -28,7 +28,7 @@ using namespace MicroAPI;
 
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
-          uint16_t KvsBase = 256, uint16_t QsBase = 128>
+          uint16_t KvsBase = 128, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
                                                   __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale,
                                                   const T NEG_LOG2_CX)
@@ -147,30 +147,26 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
 
-            // 4bit 量化压缩
+            // e4m3 两路打包（qs=64，每 2 行 128B）
             Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_VL64_16bit);
             Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
-
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitZero>(quant_0, src_bf16_0, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitOne>(quant_1, src_bf16_1, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitTwo>(quant_2, src_bf16_2, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_VL64_16bit);
-
-            // 数据合并
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_0, src_bf16_0, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_1, src_bf16_1, preg_VL64_16bit);
             Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
                preg_all_8bit);
+            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
+                       preg_vl128);
+
+            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
+            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_2, src_bf16_2, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_3, src_bf16_3, preg_VL64_16bit);
             Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
                preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-
-            // 写入内存（偶数块：无+128偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128  // 低128字节掩码
-            );
+            Gather((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, idx_nd2nz);
+            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_2,
+                       preg_vl128);
 
             // StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
             //            preg_vl128_not  // 高128字节掩码
@@ -213,28 +209,25 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
 
-            // 4bit 量化压缩
+            // e4m3 两路打包（qs=64）
             Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_VL64_16bit);
             Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
-
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitZero>(quant_0, src_bf16_0, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitOne>(quant_1, src_bf16_1, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitTwo>(quant_2, src_bf16_2, preg_VL64_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_VL64_16bit);
-
-            // 数据合并
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_0, src_bf16_0, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_1, src_bf16_1, preg_VL64_16bit);
             Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
                preg_all_8bit);
+            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 256, (RegTensor<uint8_t> &)quant_0,
+                       preg_vl128);
+
+            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_VL64_16bit);
+            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintZero>(quant_2, src_bf16_2, preg_VL64_16bit);
+            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitRintOne>(quant_3, src_bf16_3, preg_VL64_16bit);
             Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
                preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-
-            // 奇数块：低128字节写入（基础地址 +128 偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_0,
+            Gather((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, idx_nd2nz);
+            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 384, (RegTensor<uint8_t> &)quant_2,
                        preg_vl128);
 
             // 奇数块：高128字节写入（远端地址）
@@ -270,7 +263,7 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
-          uint16_t KvsBase = 256, uint16_t QsBase = 128>
+          uint16_t KvsBase = 128, uint16_t QsBase = 128>
 __aicore__ inline void SoftmaxWithGroupMaxQs64Kvs256CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
                                                   const LocalTensor<T> &local_group_max,
                                                   const LocalTensor<T> &global_max,

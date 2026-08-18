@@ -78,8 +78,24 @@ public:
     { 
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementDm> dm = dmUBTensor[tileInfo.updateScaleIdx];
+#ifndef BSA_MXFP8_DUMP
+#define BSA_MXFP8_DUMP 0
+#endif
+#if BSA_MXFP8_DUMP
+        if (AscendC::GetBlockIdx() == 0 && tileInfo.isLastKvsTile) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DumpTensor(oTmpUBTensor, 221, 32);
+            AscendC::DumpTensor(localRowSumUBTensor, 230, 32);
+            AscendC::DumpTensor(globalRowSumUBTensor, 231, 32);
+            AscendC::printf("[MXFP8-DUMP] rescale desc=221/230/231 otmp0=%f lsum0=%f gsum0=%f last=%d\n",
+                static_cast<float>(oTmpUBTensor.GetValue(0)),
+                static_cast<float>(localRowSumUBTensor.GetValue(0)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(0)),
+                static_cast<int>(tileInfo.isLastKvsTile));
+        }
+#endif
 
-        if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
+        if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_ATTN_BUF_FLAG);
             Mxfp8VF::processUpdate<false>(oUBTensor, oTmpUBTensor, dm,
                                           globalRowSumUBTensor, localRowSumUBTensor);
@@ -102,6 +118,14 @@ public:
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
                 Mxfp8VF::processOut<MXFP8::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
+#if BSA_MXFP8_DUMP
+                if (AscendC::GetBlockIdx() == 0) {
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::DumpTensor(outTensorFp32Ub, 300, 32);
+                    AscendC::printf("[MXFP8-DUMP] O desc=300 o0=%f\n",
+                        static_cast<float>(outTensorFp32Ub.GetValue(0)));
+                }
+#endif
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
                 // embding size actualOriShape.m()

@@ -86,7 +86,7 @@ public:
 
         // 如果当前s2只有一个softmax，就另外一个核不用做pscale操作
         if (tileInfo.kvsFirstTileStartVecCore != subBlockIdx && tileInfo.isTileGoupFirstTile) {
-            if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
+            if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
                 Mxfp8VF::computeOnlyScale<true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm, static_cast<uint16_t>(subBlockIdx));
             } else {
@@ -104,8 +104,13 @@ public:
         uint16_t firstLoopStart = 0;
         uint16_t secondLoopStart = 0;
         GetPScaleParams(tileInfo, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
-//         AscendC::PRINTF("firstLoopStart = %u, firstLoop = %u\n", firstLoopStart, firstLoop);
-// AscendC::PRINTF("secondLoopStart = %u, secondLoop = %u\n", secondLoopStart, secondLoop);
+#ifndef BSA_MXFP8_DUMP
+#define BSA_MXFP8_DUMP 0
+#endif
+        if (firstLoop == 0 && secondLoop == 0) {
+            AscendC::PipeBarrier<PIPE_V>();
+            return;
+        }
 
         AscendC::LocalTensor<ElementPScale> pscale1 = pscaleUBTensor[0];
         AscendC::LocalTensor<ElementPScale> pscale2 = pscaleUBTensor[firstLoop];
@@ -115,7 +120,18 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
 
-        if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
+#if BSA_MXFP8_DUMP
+        if (tileInfo.isLastKvsTile && tileInfo.curKvsTileLoopIdx < 4) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::printf("[MXFP8-DUMP] pscale-pre localGmax=%f peerGmax=%f grpMax=%f sub=%u tileMax=%u\n",
+                static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(peerGlobalMax.GetValue(0)),
+                static_cast<float>(localGroupMax1.GetValue(0)),
+                subBlockIdx, tileInfo.tileMaxIdx);
+        }
+#endif
+
+        if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
@@ -158,9 +174,29 @@ public:
         //  AscendC::printf("softmaxMaxOld: \n");
         // for (int i =0; i < 1; i++) {
         //     AscendC::DumpTensor(softmaxMaxOld[128*i], 128, 128);
-        // }
+        //         }
 
 
+
+#ifndef BSA_MXFP8_DUMP
+#define BSA_MXFP8_DUMP 0
+#endif
+#if BSA_MXFP8_DUMP
+        if (tileInfo.isLastKvsTile && tileInfo.curKvsTileLoopIdx < 4) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DumpTensor(pscale1, 212, 32);
+            AscendC::DumpTensor(localGlobalMax, 214, 32);
+            AscendC::DumpTensor(peerGlobalMax, 215, 32);
+            AscendC::printf("[MXFP8-DUMP] pscale desc=212 p0=%u firstLoop=%u firstStart=%u secondLoop=%u "
+                "sub=%u kvsFirst=%u loop=%u curS2=%u localGmax=%f peerGmax=%f grpMax=%f\n",
+                static_cast<uint32_t>(pscale1.GetValue(0)), firstLoop, firstLoopStart, secondLoop,
+                subBlockIdx, tileInfo.kvsFirstTileStartVecCore,
+                static_cast<uint32_t>(tileInfo.loop), tileInfo.curKvsTileLoopIdx,
+                static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(peerGlobalMax.GetValue(0)),
+                static_cast<float>(localGroupMax1.GetValue(0)));
+        }
+#endif
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
@@ -252,20 +288,27 @@ private:
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == tileInfo.kvsFirstTileStartVecCore);
         uint32_t loop = tileInfo.loop;
         uint32_t curS2LoopIdx = tileInfo.curKvsTileLoopIdx;
-        // 求单核目前为止，计算对应的第几个softmax(即第几个groupmax 8*128)（跨batch）
-        // 等价groupMaxEndLoop = (loop % 2 == 0) ? ((subBlockIdx == 0) ? (loop / 2) : ((loop / 2) - 1)) : (loop / 2);
+        // 对照 mxfp4：单核目前为止第几个 softmax（跨 batch）
         uint32_t groupMaxEndLoop = (loop >> 1) - (subBlockIdx != 0 && loop % 2 == 0);
-        // 这一轮pscale的任务loop在groupMax空间下发的groupMaxEndIdx，*2的原因是因为groupmax一片空间承载4*128
-        uint32_t groupMaxEndIdx = groupMaxEndLoop * 2 % GROUP_MAX_SPACE_LEN + 1;
+        // kvs128：1 基块 = 1 槽。mxfp4 是 *2+1（2 槽/基块的末槽）；这里末槽就是 groupMaxEndLoop。
+        uint32_t groupMaxEndIdx = groupMaxEndLoop % GROUP_MAX_SPACE_LEN;
 
-        // toProcessGroupMaxLoopLen 求当前FD切核对应的Tile(16个softmax是一个tile)在每个核上有占用几片groupmax(4*128)空间
-        uint16_t toProcessGroupMaxLoopLen =
-            (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
-        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
-        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen :
-                                                                                   WHOLE_PROCESS_LOOP;
-        firstLoop = (toProcessGroupMaxLoopLen / 2 + 1) / 2 * 2;
-        secondLoop = toProcessGroupMaxLoopLen - firstLoop;
+        // 对照 mxfp4：两个 AIV 交替 softmax，每核只处理自己做过的 softmax。
+        // mxfp4 用 isLoopFirst + 偶对齐 + /2 把「2 槽单位」折成 softmax 数；
+        // kvs128 一槽一 softmax，直接 ceil/floor(组内 tile 数 / 2)。
+        uint16_t tilesInGroup = static_cast<uint16_t>(
+            (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP);
+        if (tilesInGroup == 0) {
+            tilesInGroup = WHOLE_PROCESS_LOOP;
+        }
+        uint16_t toProcessGroupMaxLoopLen = isLoopFirstTaskVecCore
+            ? static_cast<uint16_t>((tilesInGroup + 1) / 2)
+            : static_cast<uint16_t>(tilesInGroup / 2);
+        if (toProcessGroupMaxLoopLen > WHOLE_PROCESS_LOOP) {
+            toProcessGroupMaxLoopLen = WHOLE_PROCESS_LOOP;
+        }
+        firstLoop = toProcessGroupMaxLoopLen;
+        secondLoop = 0;
         int32_t firstLoopStartNotU = static_cast<int32_t>(groupMaxEndIdx) - static_cast<int32_t>(toProcessGroupMaxLoopLen) + 1;
         if (firstLoopStartNotU < 0) {
             firstLoopStart = static_cast<uint16_t>(firstLoopStartNotU + GROUP_MAX_SPACE_LEN);
@@ -276,14 +319,11 @@ private:
             firstLoopStart = static_cast<uint16_t>(firstLoopStartNotU);
             secondLoopStart = static_cast<uint16_t>(firstLoopStart + firstLoop);
         }
-        // 两片groupmax空间对应其中的一个softmax任务
-        firstLoop /= 2;
-        secondLoop /= 2;
     }
 
 private:
-    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 20;
-    static constexpr uint32_t WHOLE_PROCESS_LOOP = 16;
+    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 12; // UB_LOCAL_GROUP_MAX_CNT
+    static constexpr uint32_t WHOLE_PROCESS_LOOP = 8;   // TILE_GROUP_N
 
     AscendC::LocalTensor<ElementPScale>   pscaleUBTensor[MXFP8::UB_P_SCALE_CNT]; // pScale(复用P)
     AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP8::UB_PEER_GLOBAL_MAX_CNT]; // peerGlobalMax

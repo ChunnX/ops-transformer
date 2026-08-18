@@ -45,7 +45,7 @@ __simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__
     RegTensor<half> vreg_gmax, vreg_max1, vreg_max2, vreg_rs16, vreg_gmax_old;
     RegTensor<float> vreg_rs1, vreg_rs2;
 
-    constexpr uint16_t ulmaxLoopRow = m * 8;
+    constexpr uint16_t ulmaxLoopRow = m * 4; // kvs128: 4 group-max / tile
 
     if constexpr (clear_gmax) {
         LoadAlign(vreg_max1, umax1);
@@ -97,19 +97,12 @@ __simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__
         LoadAlign(vreg_scale2, ulmax1 + (i * ulmaxLoopRow + 1 * m));
         LoadAlign(vreg_scale3, ulmax1 + (i * ulmaxLoopRow + 2 * m));
         LoadAlign(vreg_scale4, ulmax1 + (i * ulmaxLoopRow + 3 * m));
-        LoadAlign(vreg_scale5, ulmax1 + (i * ulmaxLoopRow + 4 * m));
-        LoadAlign(vreg_scale6, ulmax1 + (i * ulmaxLoopRow + 5 * m));
-        LoadAlign(vreg_scale7, ulmax1 + (i * ulmaxLoopRow + 6 * m));
-        LoadAlign(vreg_scale8, ulmax1 + (i * ulmaxLoopRow + 7 * m));
+
 
         Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_VL64_16);
 
         // SAT Mode, if < 0, then = 0
         RegTensor<uint8_t> vreg_mxscale1, vreg_mxscale2, vreg_mxscale3, vreg_mxscale4, vreg_mxscale5, vreg_mxscale6,
@@ -118,27 +111,21 @@ __simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__
         Cast<uint8_t, T, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_VL64_16);
         Cast<uint8_t, T, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_VL64_16);
         Cast<uint8_t, T, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_VL64_16);
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_VL64_16);
-        Cast<uint8_t, T, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_VL64_16);
-        Cast<uint8_t, T, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_VL64_16);
 
         Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_VL128_8);
         Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_VL128_8);
         Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_VL128_8);
         Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 0, vreg_mxscale1, 5,
+        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 3 * 8 + 32 * 0, vreg_mxscale1, 3,
                                                            preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 1, vreg_mxscale3, 5,
+        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 3 * 8 + 32 * 1, vreg_mxscale3, 3,
                                                            preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 2, vreg_mxscale5, 5,
-                                                           preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale1 + i * 32 * 5 * 8 + 32 * 3, vreg_mxscale7, 5,
-                                                           preg_VL128_8);
+
+
     }
 
     for (uint16_t i = 0; i < secondLoop; i++) {
@@ -148,19 +135,12 @@ __simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__
         LoadAlign(vreg_scale2, ulmax2 + (i * ulmaxLoopRow + 1 * m));
         LoadAlign(vreg_scale3, ulmax2 + (i * ulmaxLoopRow + m * 2));
         LoadAlign(vreg_scale4, ulmax2 + (i * ulmaxLoopRow + m * 3));
-        LoadAlign(vreg_scale5, ulmax2 + (i * ulmaxLoopRow + m * 4));
-        LoadAlign(vreg_scale6, ulmax2 + (i * ulmaxLoopRow + m * 5));
-        LoadAlign(vreg_scale7, ulmax2 + (i * ulmaxLoopRow + m * 6));
-        LoadAlign(vreg_scale8, ulmax2 + (i * ulmaxLoopRow + m * 7));
+
 
         Sub(vreg_scale1, vreg_scale1, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale2, vreg_scale2, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale3, vreg_scale3, vreg_gmax, preg_VL64_16);
         Sub(vreg_scale4, vreg_scale4, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale5, vreg_scale5, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale6, vreg_scale6, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale7, vreg_scale7, vreg_gmax, preg_VL64_16);
-        Sub(vreg_scale8, vreg_scale8, vreg_gmax, preg_VL64_16);
 
         // SAT Mode, if < 0, then = 0
         RegTensor<uint8_t> vreg_mxscale1, vreg_mxscale2, vreg_mxscale3, vreg_mxscale4, vreg_mxscale5, vreg_mxscale6,
@@ -169,27 +149,21 @@ __simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__
         Cast<uint8_t, half, castTraitOne>(vreg_mxscale2, vreg_scale2, preg_VL64_16);
         Cast<uint8_t, half, castTraitZero>(vreg_mxscale3, vreg_scale3, preg_VL64_16);
         Cast<uint8_t, half, castTraitOne>(vreg_mxscale4, vreg_scale4, preg_VL64_16);
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale5, vreg_scale5, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale6, vreg_scale6, preg_VL64_16);
-        Cast<uint8_t, half, castTraitZero>(vreg_mxscale7, vreg_scale7, preg_VL64_16);
-        Cast<uint8_t, half, castTraitOne>(vreg_mxscale8, vreg_scale8, preg_VL64_16);
 
         Or(vreg_mxscale1, vreg_mxscale1, vreg_mxscale2, preg_VL128_8);
         Or(vreg_mxscale3, vreg_mxscale3, vreg_mxscale4, preg_VL128_8);
         Or(vreg_mxscale5, vreg_mxscale5, vreg_mxscale6, preg_VL128_8);
         Or(vreg_mxscale7, vreg_mxscale7, vreg_mxscale8, preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 0, vreg_mxscale1, 5,
+        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 3 * 8 + 32 * 0, vreg_mxscale1, 3,
                                                            preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 1, vreg_mxscale3, 5,
+        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 3 * 8 + 32 * 1, vreg_mxscale3, 3,
                                                            preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 2, vreg_mxscale5, 5,
-                                                           preg_VL128_8);
 
-        StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY>(mxscale2 + i * 32 * 5 * 8 + 32 * 3, vreg_mxscale7, 5,
-                                                           preg_VL128_8);
+
+
     }
 }
 

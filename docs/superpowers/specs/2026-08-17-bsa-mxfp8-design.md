@@ -183,8 +183,10 @@ C0：`FP8_C0_ELEMS = 32`。
 | --- | --- | --- |
 | 1 | 常量 + tiling：`kvBaseTile=128`、G=8、Dpv=12、三张内存表 | **已完成** |
 | 2 | Cube：QK 64×128×2、PV 单次 k=128、L0 推荐布局 | **已完成** |
-| 3 | Vec + 流水：整块 softmax/P、group-max、delay 12/3 | **已完成**（VF NZ 密度待板上确认） |
-| 4 | 收尾：尾块、精度、性能与是否启用 Q 切 D | **待做** |
+| 3 | Vec + 流水：整块 softmax/P、group-max、delay 12/3 | **已完成** |
+| 4 | VF e4m3 打包 + pScale 环/分形与 kvs128 对齐 | **已完成（待 golden）** |
+| 5 | 调用链：aclnn/Torch `quantMode=4` | **已完成** |
+| 6 | 板上：尾块 / 精度 / 性能、可选 Q 切 D | **待做** |
 
 ## 13. 与 0814 / MXFP4 对照摘要
 
@@ -225,8 +227,30 @@ C0：`FP8_C0_ELEMS = 32`。
 | `.../block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp8.hpp` | 注释改为 kvs=128；UB→L1 NZ 布局按 **整基块 16KB**（`UB_P_NZ_M=64`，不再用 `KVS/4`） |
 | `op_host/block_sparse_attention_tiling.cpp` | `CalcBaseTileTilingParams950`：MXFP8 强制 `kvBaseTile_=128`；`CheckBlockShapeQuantConstraint`：MXFP8 的 `blockShapeY` 改为 **128 倍数** |
 
-### 14.4 未改 / 待板上确认
+### 14.4 期4 代码收尾（相对 14.1–14.3）
 
-- Softmax VF 本体（`mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs128_kvs256.h` 等）仍复用脚手架；模板 `KvsBase` 已随 `KVS_BASE_SIZE=128` 实例化，**e4m3 NZ 打包密度**需 golden 验证。  
-- Kernel 内 `delay8*` 命名、`pscaleNum_ % 8` 同步打包逻辑未改语义（仍可用）。  
-- 期 4：尾块 / 精度 / 性能、可选 Q 切 D 退路。
+| 文件 | 改动 |
+| --- | --- |
+| `block_sparse_attention_kernel_arch35_mxfp8_full_quant.h` | `delay8*` → **`delay12*`**；`pscaleNum_` 环 **`% 12 / 6`**，初值 11 |
+| `block_mmad_pv_arch35_mxfp8.hpp` | 形参 `delay8*` → `delay12*` |
+| `block_epilogue_compute_pscale_arch35_mxfp8.hpp` | `GROUP_MAX_SPACE_LEN=12`，`WHOLE_PROCESS_LOOP=8`；每基块 1 槽（不再 ×2） |
+| `block_epilogue_online_softmax_..._mxfp8.hpp` | `GetLocalGroupMaxBufIdx`：`loop/2 % 12`（1KB/tile） |
+| `vf_computeScale_dn_mxfp8.h` / `_qs64` | P-scale **yStep=3**、stride **768**、每 tile **4** 个 group-max |
+| `vf_nd2nz_indexes_dn_mxfp8.h` | gather 索引步长 **×2**（两路 e4m3） |
+| `mxfp8_vf/vf_softmax_*` | 四路 fp4 Or → **两路 ZERO/ONE**；qs128 写间距 4096/512 |
+| `copy_l1_to_l0_mx_fp8_a5.hpp` | V srcStride 满段判断 **128**（不再 256） |
+
+### 14.5 待板上确认
+
+- Golden：kvs 64 / 128 / 尾块、qs 128 / 64、短序列 drain。  
+- e4m3 NZ 打包与 P-scale 768B 分形。  
+- 性能 vs MXFP4；Q L0B 单缓冲若成瓶颈再开 Q 切 D。
+
+### 14.6 调用链（quantMode=4）
+
+| 文件 | 改动 |
+| --- | --- |
+| `op_host/op_api/aclnn_block_sparse_attention_v3.cpp` | `MXFP8_OCP_QUANT=4`：QKV=`e4m3fn`、scale=`e8m0`；scale 维同 mxfp4；innerPrecise=4 / 无 LSE |
+| `torch_extension/.../ops/block_sparse_attention.py` | `_QUANT_MODE` 含 4；e4m3 输入 + e8m0 descale；out ∈ {fp16, bf16} |
+| `torch_extension/.../ops/csrc/block_sparse_attention.cpp` | QKV 原样传递；descale wrap `ACL_FLOAT8_E8M0`；attentionOut 形状不翻倍 |
+| `torch_extension/.../ops/__init__.py` | 导出 `block_sparse_attention_v3` |

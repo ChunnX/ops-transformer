@@ -15,8 +15,8 @@
  * \brief
  */
 
-#ifndef VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_H
-#define VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_H
+#ifndef VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_MXFP8_H
+#define VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_MXFP8_H
 // #include "kernel_tensor.h"
 
 #include "vf_common_def.h"

@@ -43,9 +43,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
     RegTensor<half> min_val_reg;
     RegTensor<uint8_t> idx_nd2nz;
 
-    // 量化专用寄存器
-    RegTensor<bfloat16_t> src_bf16_0, src_bf16_1, src_bf16_2, src_bf16_3;
-    RegTensor<fp8_e4m3fn_t> quant_0, quant_1, quant_2, quant_3;
+    // 量化专用寄存器（FIA 四路 float→e4m3）
+    RegTensor<float> src_f0, src_f1, src_f2, src_f3, src_f4, src_f5, src_f6, src_f7;
 
     // ====================== 分块常量 ======================
     const uint16_t ROWS_PER_GROUP = 32;
@@ -58,10 +57,10 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
     // ====================== 掩码定义 ======================
     MaskReg preg_all_16bit = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_all_8bit = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_all_fp32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_vl128 = CreateMask<uint8_t, MaskPattern::VL128>();
     MaskReg preg_vl128_not;
     MaskNot(preg_vl128_not, preg_vl128, preg_all_8bit);
-
     MaskReg preg_invalid_max;
 
     // ====================== 全局最大值初始化 ======================
@@ -145,34 +144,16 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
             Exp(src_c2, src_c2, preg_all_16bit);
             Exp(src_c3, src_c3, preg_all_16bit);
 
-            // 4bit 量化压缩
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_all_16bit);
-
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitZero>(quant_0, src_bf16_0, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitOne>(quant_1, src_bf16_1, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitTwo>(quant_2, src_bf16_2, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_all_16bit);
-
-            // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-
-            // 写入内存（偶数块：无+128偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128  // 低128字节掩码
-            );
-
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128_not  // 高128字节掩码
-            );
+            // FIA：连续 64 qs 再四路 e4m3 RINT
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f1, src_f5, src_c1, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f2, src_f6, src_c2, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f3, src_f7, src_c3, preg_all_16bit);
+            uint32_t pOff = i * 2048 + j * 256;
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff, pOff + 8064, src_f0, src_f1, src_f2, src_f3,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 16384, pOff + 24448, src_f4, src_f5, src_f6, src_f7,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
         }
 
         // ========== 第二个内循环：处理奇数子块 j+1 = 1,3,5,7 ==========
@@ -211,33 +192,16 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
             Exp(src_c2, src_c2, preg_all_16bit);
             Exp(src_c3, src_c3, preg_all_16bit);
 
-            // 4bit 量化压缩
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_0, src_c0, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_1, src_c1, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_2, src_c2, preg_all_16bit);
-            Cast<bfloat16_t, T, castTraitZero>(src_bf16_3, src_c3, preg_all_16bit);
-
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitZero>(quant_0, src_bf16_0, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitOne>(quant_1, src_bf16_1, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitTwo>(quant_2, src_bf16_2, preg_all_16bit);
-            Cast<fp8_e4m3fn_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_all_16bit);
-
-            // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
-
-            // 奇数块：低128字节写入（基础地址 +128 偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128);
-
-            // 奇数块：高128字节写入（远端地址）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16384, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128_not);
+            // FIA：连续 64 qs 再四路 e4m3 RINT
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f1, src_f5, src_c1, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f2, src_f6, src_c2, preg_all_16bit);
+            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f3, src_f7, src_c3, preg_all_16bit);
+            uint32_t pOff = i * 2048 + j * 256;
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 128, pOff + 8192, src_f0, src_f1, src_f2, src_f3,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
+            BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 16384 + 128, pOff + 24576, src_f4, src_f5, src_f6, src_f7,
+                idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
         }
 
         // ====================== 全局/局部最大值更新 ======================
@@ -266,9 +230,10 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
         Muls(curr_group_max, next_group_max, LN2, preg_valid_max);
     }
 
-    // padding group_max 到 KvsBaseAlign64 (multi -inf), 使对应的 pscale = 0
+    // pscale 固定读 4 组；ALIGN_64 不够，要把剩余组也 pad 成 MIN
     Duplicate(min_val_reg, MIN_VALUE);
-    for (uint16_t i = GROUP_COUNT; i < GROUP_COUNT_ALIGN_64; ++i) {
+    constexpr uint16_t PSCALE_GROUP_CNT = 4;
+    for (uint16_t i = GROUP_COUNT; i < PSCALE_GROUP_CNT; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + i * QsBase, min_val_reg, preg_all_16bit);
     }
 }

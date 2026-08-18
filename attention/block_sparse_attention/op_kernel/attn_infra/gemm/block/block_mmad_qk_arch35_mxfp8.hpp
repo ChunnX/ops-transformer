@@ -273,7 +273,7 @@ public:
                                       uint32_t kStart)
     {
         copyL1ToL0BMxQk(
-            l0BTensor[qkL0abBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
+            l0BTensor[qkL0abBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
             l1BTensor[qBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
             l1BScaleTensor[qBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
             qsActBaseTileAlign16, kCur, qsActBaseTileAlign16L0, scaleMAlign16, scaleK, kStart);
@@ -290,7 +290,7 @@ public:
                                       uint32_t kStart)
     {
         copyL1ToL0AMxQk(
-            l0ATensor[qkL0abBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
+            l0ATensor[qkL0abBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
             l1ATensor[kBufId].template ReinterpretCast<fp8_e4m3fn_t>(),
             l1AScaleTensor[kBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
             nSubRowStart, nCur, kCur, kvsActBaseTileAlign16, scaleK, kStart);
@@ -305,10 +305,16 @@ public:
                                     uint32_t qkL0cBufId,
                                     bool initC)
     {
-        auto l0ALayout = tla::MakeLayout<ElementB, LayoutTagL0A>(n, kCur);
-        auto l0ATensorTla = tla::MakeTensor(l0ATensor[qkL0aBufId], l0ALayout, Arch::PositionL0A{});
-        auto l0BLayout = tla::MakeLayout<ElementA, LayoutTagL0B>(kCur, qsActBaseTileAlign16);
-        auto l0BTensorTla = tla::MakeTensor(l0BTensor[qkL0bBufId], l0BLayout, Arch::PositionL0B{});
+        // FIA MatmulFullMX: Mmad 操作数必须是 mx_fp8_e4m3_t（与 LoadData L0 dest 一致），
+        // 否则 cube 按普通 e4m3 乘加，S 在 fp16 fixpipe 溢出成 inf。
+        auto l0ALayout = tla::MakeLayout<AscendC::mx_fp8_e4m3_t, LayoutTagL0A>(n, kCur);
+        auto l0ATensorTla = tla::MakeTensor(
+            l0ATensor[qkL0aBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
+            l0ALayout, Arch::PositionL0A{});
+        auto l0BLayout = tla::MakeLayout<AscendC::mx_fp8_e4m3_t, LayoutTagL0B>(kCur, qsActBaseTileAlign16);
+        auto l0BTensorTla = tla::MakeTensor(
+            l0BTensor[qkL0bBufId].template ReinterpretCast<AscendC::mx_fp8_e4m3_t>(),
+            l0BLayout, Arch::PositionL0B{});
         auto l0CLayout = tla::MakeLayoutL0C(n, qsActBaseTileAlign16);
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[qkL0cBufId], l0CLayout, Arch::PositionL0C{});
         tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, n, qsActBaseTileAlign16, kCur, initC);
@@ -440,8 +446,8 @@ protected:
     AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP8::L1_KV_BUF_CNT];
     AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP8::L1_Q_BUF_CNT];
 
-    Tile::CopyL1ToL0AMxQKA5 copyL1ToL0AMxQk;
-    Tile::CopyL1ToL0BMxQKA5 copyL1ToL0BMxQk;
+    Tile::CopyL1ToL0AMxFp8QKA5 copyL1ToL0AMxQk;
+    Tile::CopyL1ToL0BMxFp8QKA5 copyL1ToL0BMxQk;
     TileMmad tileMmad;
     Tile::CopyGmToL1MxScaleDn2NzA5 copyGmToL1MxScaleDn2Nz;
 
