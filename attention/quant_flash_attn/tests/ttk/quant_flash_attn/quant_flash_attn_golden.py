@@ -1493,7 +1493,7 @@ def _call_npu_fa_op(
     metadata = quant_flash_attn_metadata(
         num_heads_q=q_n,
         num_heads_kv=kv_n,
-        head_dim=q.shape[-1],
+        head_dim=D,
         quant_mode=1,
         cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
@@ -1584,7 +1584,7 @@ class Network(nn.Module):
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
             num_heads_kv=kv_n,
-            head_dim=q.shape[-1],
+            head_dim=D,
             quant_mode=1,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
@@ -1670,18 +1670,25 @@ def prepare_npu_inputs(
 
     q_runtime_layout, _ = resolve_q_scale_layout()
 
-    q_npu = q_fp8.contiguous().view(FP8_DTYPE).npu()
-    deq_q_npu = dequant_scale_q.npu()
-    p_scale_npu = p_scale.npu()
+    Q_DTYPE = q_fp8.dtype
+    DQ_DTYPE = dequant_scale_q.dtype
+    P_SCALE_DTYPE = p_scale.dtype
+    q_npu = q_fp8.contiguous().view(Q_DTYPE).npu()
+    deq_q_npu = dequant_scale_q.view(DQ_DTYPE).npu()
+    p_scale_npu = p_scale.view(P_SCALE_DTYPE).npu()
 
     out_dtype = torch.float16
     mask_arg = _build_causal_mask()
 
     if ENABLE_PA:
-        k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-        v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
-        deq_k_npu = dequant_scale_k.npu()
-        deq_v_npu = dequant_scale_v.npu()
+        K_DTYPE = k_fp8.dtype
+        V_DTYPE = v_fp8.dtype
+        DK_DTYPE = dequant_scale_k.dtype
+        DV_DTYPE = dequant_scale_v.dtype
+        k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
+        v_npu = v_fp8.contiguous().view(V_DTYPE).npu()
+        deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
+        deq_v_npu = dequant_scale_v.view(DV_DTYPE).npu()
 
         if not IS_CONTIGUOUS:
             kv_cache = torch.stack([k_fp8, v_fp8], dim=2)
@@ -1749,10 +1756,14 @@ def prepare_npu_inputs(
         )
 
     # 非 PA 模式
-    k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-    v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
-    deq_k_npu = dequant_scale_k.npu()
-    deq_v_npu = dequant_scale_v.npu()
+    K_DTYPE = k_fp8.dtype
+    V_DTYPE = v_fp8.dtype
+    DK_DTYPE = dequant_scale_k.dtype
+    DV_DTYPE = dequant_scale_v.dtype
+    k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
+    v_npu = v_fp8.contiguous().view(V_DTYPE).npu()
+    deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
+    deq_v_npu = dequant_scale_v.view(DV_DTYPE).npu()
     logger.info("[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape)
     logger.info("[NPU TND] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
 
