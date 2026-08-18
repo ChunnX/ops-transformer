@@ -314,63 +314,130 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 // =================================================================================
-// AIV 侧: per-tile WaitFlag + AllToAll PUT + reduceSum
+// AIV 侧: per-tile WaitFlag + AllToAll PUT + reduceSum (流水掩盖)
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // AllToAll: block 0 单核通信 (totalJobs=1)
-    // reduceSum: 所有 block 并行 (ReduceSumForAlltoAll 自动分配)
+    // 点4: V 核流水优化 — AllToAll(t) 与 ReduceSum(t-1) 掩盖执行
+    //   block 0: AllToAll(t) 期间, block 1-27 执行 ReduceSum(t-1)
+    //   SyncAll 后 block 0 补做 ReduceSum(t-1)
+
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
     uint32_t nSize = static_cast<uint32_t>(baseParams_.axisN);
-    uint32_t elemBytes = sizeof(CType);
-    uint32_t rowBytes = nSize * elemBytes;
+    uint32_t rowBytes = nSize * sizeof(CType);
     uint32_t usedCoreNum = tilingData_->mmTilingData.usedCoreNum;
+    uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
+    uint64_t stride = static_cast<uint64_t>(baseParams_.chunkM) * nSize;
 
-    for (uint32_t t = 0; t < commTurn; ++t) {
-        // 1. 等待 AIC 完成本 tile 的 matmul
+    if (commTurn <= 1) {
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();
-
-        // 2. AllToAll PUT 通信 (仅 block 0)
-        if (GetBlockIdx() == 0) {
+        if (blockIdx == 0) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         }
         SyncAll<true>();
-
-        // 3. 计算 tile 参数
-        uint32_t tileM;
-        uint64_t tileMOffset;
-        if (t < baseParams_.headTileCnt) {
-            tileM = static_cast<uint32_t>(baseParams_.headMSize);
-            tileMOffset = static_cast<uint64_t>(t) * baseParams_.headMSize;
-        } else {
-            tileM = static_cast<uint32_t>(baseParams_.tailMSize);
-            tileMOffset = static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+        // ReduceSum tile 0
+        {
+            uint32_t tileM = static_cast<uint32_t>(baseParams_.headMSize);
+            uint64_t tileMOffset = 0;
+            uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
+            GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
+            GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
+            GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
+            reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                            usedCoreNum, srcAddr, selfAddr, dstAddr);
+            reduceSum_.ExecuteReduceSum(tileM, nSize);
         }
-        if (tileM == 0) { continue; }
-
-        // 4. reduceSum (所有 block 并行, 手动 UB 管理)
-        //    srcAddr = win 区 + tile 偏移 (received 数据)
-        //    selfAddr = workspace + tile 偏移 (self 数据, workspace 也是 rank-major)
-        //    stride = chunkM * N (rank 间偏移, 元素单位)
-        //    outputSize = tileM * N (本 tile 的元素数)
-        uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
-        uint64_t stride = static_cast<uint64_t>(baseParams_.chunkM) * nSize;
-        GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
-        GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
-        GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
-
-        reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
-                        usedCoreNum, srcAddr, selfAddr, dstAddr);
-        reduceSum_.ExecuteReduceSum(tileM, nSize);
+        if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
+        return;
     }
 
-    if (GetBlockIdx() == 0) {
-        allToAllC_.template Finalize<BARRIER_NONE>();
+    // 多 tile: 流水掩盖
+    // Tile 0: AllToAll only (通信尽早启动)
+    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+    SyncAll<true>();
+    if (blockIdx == 0) {
+        allToAllC_.template Commit<BARRIER_NONE>();
+        allToAllC_.template Wait<BARRIER_DEVICE>();
     }
+    SyncAll<true>();
+
+    // Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 掩盖
+    for (uint32_t t = 1; t < commTurn; ++t) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+        SyncAll<true>();
+
+        // Phase 1: block 0 做 AllToAll(t), block 1-27 做 ReduceSum(t-1)
+        if (blockIdx == 0) {
+            allToAllC_.template Commit<BARRIER_NONE>();
+            allToAllC_.template Wait<BARRIER_DEVICE>();
+        } else {
+            // ReduceSum(t-1)
+            uint32_t rsT = t - 1;
+            uint32_t rsTileM = (rsT < baseParams_.headTileCnt)
+                             ? static_cast<uint32_t>(baseParams_.headMSize)
+                             : static_cast<uint32_t>(baseParams_.tailMSize);
+            uint64_t rsTileMOffset = (rsT < baseParams_.headTileCnt)
+                ? static_cast<uint64_t>(rsT) * baseParams_.headMSize
+                : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+            if (rsTileM > 0) {
+                uint64_t outputSize = static_cast<uint64_t>(rsTileM) * nSize;
+                GM_ADDR srcAddr = baseParams_.selfWinAddr + rsTileMOffset * rowBytes;
+                GM_ADDR selfAddr = baseParams_.workspaceGm + rsTileMOffset * rowBytes;
+                GM_ADDR dstAddr = baseParams_.cGm + rsTileMOffset * rowBytes;
+                reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                                usedCoreNum, srcAddr, selfAddr, dstAddr);
+                reduceSum_.ExecuteReduceSum(rsTileM, nSize);
+            }
+        }
+        SyncAll<true>();
+
+        // Phase 2: block 0 补做 ReduceSum(t-1)
+        if (blockIdx == 0) {
+            uint32_t rsT = t - 1;
+            uint32_t rsTileM = (rsT < baseParams_.headTileCnt)
+                             ? static_cast<uint32_t>(baseParams_.headMSize)
+                             : static_cast<uint32_t>(baseParams_.tailMSize);
+            uint64_t rsTileMOffset = (rsT < baseParams_.headTileCnt)
+                ? static_cast<uint64_t>(rsT) * baseParams_.headMSize
+                : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+            if (rsTileM > 0) {
+                uint64_t outputSize = static_cast<uint64_t>(rsTileM) * nSize;
+                GM_ADDR srcAddr = baseParams_.selfWinAddr + rsTileMOffset * rowBytes;
+                GM_ADDR selfAddr = baseParams_.workspaceGm + rsTileMOffset * rowBytes;
+                GM_ADDR dstAddr = baseParams_.cGm + rsTileMOffset * rowBytes;
+                reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                                usedCoreNum, srcAddr, selfAddr, dstAddr);
+                reduceSum_.ExecuteReduceSum(rsTileM, nSize);
+            }
+        }
+    }
+
+    // Final: 所有 block 做 ReduceSum(last tile)
+    SyncAll<true>();
+    {
+        uint32_t lastT = commTurn - 1;
+        uint32_t lastTileM = (lastT < baseParams_.headTileCnt)
+                           ? static_cast<uint32_t>(baseParams_.headMSize)
+                           : static_cast<uint32_t>(baseParams_.tailMSize);
+        uint64_t lastTileMOffset = (lastT < baseParams_.headTileCnt)
+            ? static_cast<uint64_t>(lastT) * baseParams_.headMSize
+            : static_cast<uint64_t>(baseParams_.headTileCnt) * baseParams_.headMSize;
+        if (lastTileM > 0) {
+            uint64_t outputSize = static_cast<uint64_t>(lastTileM) * nSize;
+            GM_ADDR srcAddr = baseParams_.selfWinAddr + lastTileMOffset * rowBytes;
+            GM_ADDR selfAddr = baseParams_.workspaceGm + lastTileMOffset * rowBytes;
+            GM_ADDR dstAddr = baseParams_.cGm + lastTileMOffset * rowBytes;
+            reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                            usedCoreNum, srcAddr, selfAddr, dstAddr);
+            reduceSum_.ExecuteReduceSum(lastTileM, nSize);
+        }
+    }
+
+    if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
 }
 
 } // namespace Apace

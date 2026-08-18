@@ -143,11 +143,16 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     // PUT 模式: AIC 写 workspace, AIV 从 workspace 推送到其他 rank win 区
     // win 区布局 = C_i 连续 [m,n] = rank-major chunks (与 workspace 一致)
     uint32_t headMSize = static_cast<uint32_t>(headMSizeArg);
-    // headMSize 不超过 chunkM（单 tile 场景）
     if (headMSize > chunkM || headMSize == 0) { headMSize = chunkM; }
-    // headMSize 按 16 对齐（Blaze baseM 最小对齐要求）
     headMSize = (headMSize / 16) * 16;
     if (headMSize == 0) { headMSize = 16; }
+
+    // 点5: 压缩第 0 轮数据量, 通信尽早启动
+    // 当 headMSize > 128 且 chunkM 可被 128 整除时, 降到 128 (更多更小的 tile)
+    if (headMSize > 128U && chunkM > 128U && (chunkM % 128U) == 0U) {
+        INFO_LOG("[Opt] Compress tile size: %u -> 128 for early communication", headMSize);
+        headMSize = 128U;
+    }
 
     uint32_t headTileCnt = chunkM / headMSize;
     uint32_t tailMSize = chunkM % headMSize;
