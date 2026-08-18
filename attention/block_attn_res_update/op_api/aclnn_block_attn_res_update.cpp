@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_block_attn_res_update.h"
@@ -21,6 +22,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -28,6 +30,7 @@ namespace {
 constexpr size_t MATRIX_RANK = 2UL;
 constexpr size_t VECTOR_RANK = 1UL;
 constexpr int64_t MAX_D_SIZE = 8192L;
+constexpr const char *ACLNN_API_NAME = "aclnnBlockAttnResUpdateGetWorkspaceSize";
 
 struct BlockAttnResUpdateParams {
     aclTensor *partialBlock{nullptr};
@@ -45,30 +48,71 @@ static const std::initializer_list<op::DataType> BF16_DTYPE_SUPPORT_LIST = {Data
 
 static bool CheckNotNull(const BlockAttnResUpdateParams &params)
 {
-    OP_CHECK_NULL(params.partialBlock, return false);
-    OP_CHECK_NULL(params.delta, return false);
-    OP_CHECK_NULL(params.pseudoQuery, return false);
-    OP_CHECK_NULL(params.numerator, return false);
-    OP_CHECK_NULL(params.logitMax, return false);
-    OP_CHECK_NULL(params.expSum, return false);
-    OP_CHECK_NULL(params.h, return false);
+    OP_CHECK(params.partialBlock != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "partialBlock", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.delta != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "delta", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.pseudoQuery != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "pseudoQuery", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.numerator != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "numerator", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.logitMax != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "logitMax", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.expSum != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "expSum", "tensor can not be null"),
+             return false);
+    OP_CHECK(params.h != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "h", "tensor can not be null"), return false);
     return true;
 }
 
 static bool CheckDtypeValid(const BlockAttnResUpdateParams &params)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.partialBlock, FLOAT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.pseudoQuery, FLOAT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.numerator, FLOAT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.logitMax, FLOAT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.expSum, FLOAT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.delta, BF16_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.h, BF16_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK(CheckType(params.partialBlock->GetDataType(), FLOAT_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "partialBlock",
+                                       op::ToString(params.partialBlock->GetDataType()).GetString(),
+                                       op::ToString(FLOAT_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.pseudoQuery->GetDataType(), FLOAT_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "pseudoQuery",
+                                       op::ToString(params.pseudoQuery->GetDataType()).GetString(),
+                                       op::ToString(FLOAT_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.numerator->GetDataType(), FLOAT_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "numerator",
+                                       op::ToString(params.numerator->GetDataType()).GetString(),
+                                       op::ToString(FLOAT_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.logitMax->GetDataType(), FLOAT_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "logitMax",
+                                       op::ToString(params.logitMax->GetDataType()).GetString(),
+                                       op::ToString(FLOAT_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.expSum->GetDataType(), FLOAT_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "expSum",
+                                       op::ToString(params.expSum->GetDataType()).GetString(),
+                                       op::ToString(FLOAT_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.delta->GetDataType(), BF16_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "delta",
+                                       op::ToString(params.delta->GetDataType()).GetString(),
+                                       op::ToString(BF16_DTYPE_SUPPORT_LIST).GetString()), return false);
+    OP_CHECK(CheckType(params.h->GetDataType(), BF16_DTYPE_SUPPORT_LIST),
+             OP_LOGE_FOR_INVALID_DTYPE(ACLNN_API_NAME, "h",
+                                       op::ToString(params.h->GetDataType()).GetString(),
+                                       op::ToString(BF16_DTYPE_SUPPORT_LIST).GetString()), return false);
     return true;
 }
 
 static bool CheckFormat(const BlockAttnResUpdateParams &params)
 {
+    const std::string formats = std::string(op::ToString(params.partialBlock->GetStorageFormat()).GetString()) +
+                                ", " + op::ToString(params.delta->GetStorageFormat()).GetString() + ", " +
+                                op::ToString(params.pseudoQuery->GetStorageFormat()).GetString() + ", " +
+                                op::ToString(params.numerator->GetStorageFormat()).GetString() + ", " +
+                                op::ToString(params.logitMax->GetStorageFormat()).GetString() + ", " +
+                                op::ToString(params.expSum->GetStorageFormat()).GetString() + ", " +
+                                op::ToString(params.h->GetStorageFormat()).GetString();
     OP_CHECK(params.partialBlock->GetStorageFormat() == Format::FORMAT_ND &&
                  params.delta->GetStorageFormat() == Format::FORMAT_ND &&
                  params.pseudoQuery->GetStorageFormat() == Format::FORMAT_ND &&
@@ -76,7 +120,9 @@ static bool CheckFormat(const BlockAttnResUpdateParams &params)
                  params.logitMax->GetStorageFormat() == Format::FORMAT_ND &&
                  params.expSum->GetStorageFormat() == Format::FORMAT_ND &&
                  params.h->GetStorageFormat() == Format::FORMAT_ND,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate only supports ND format."), return false);
+             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+                 ACLNN_API_NAME, "partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, h", formats.c_str(),
+                 "all tensor formats must be ND"), return false);
     return true;
 }
 
@@ -90,59 +136,110 @@ static bool CheckShape(const BlockAttnResUpdateParams &params)
     const auto &expSumShape = params.expSum->GetViewShape();
     const auto &hShape = params.h->GetViewShape();
 
+    const std::string matrixDims = std::to_string(partialBlockShape.GetDimNum()) + "D, " +
+                                   std::to_string(deltaShape.GetDimNum()) + "D, " +
+                                   std::to_string(numeratorShape.GetDimNum()) + "D, " +
+                                   std::to_string(hShape.GetDimNum()) + "D";
     OP_CHECK(partialBlockShape.GetDimNum() == MATRIX_RANK && deltaShape.GetDimNum() == MATRIX_RANK &&
                  numeratorShape.GetDimNum() == MATRIX_RANK && hShape.GetDimNum() == MATRIX_RANK,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "partialBlock, delta, numerator and h must all be rank-2 tensors."),
+             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_API_NAME, "partialBlock, delta, numerator, h",
+                                                       matrixDims.c_str(), "all listed tensors must be 2D"),
              return false);
+    const std::string vectorDims = std::to_string(pseudoQueryShape.GetDimNum()) + "D, " +
+                                   std::to_string(logitMaxShape.GetDimNum()) + "D, " +
+                                   std::to_string(expSumShape.GetDimNum()) + "D";
     OP_CHECK(pseudoQueryShape.GetDimNum() == VECTOR_RANK && logitMaxShape.GetDimNum() == VECTOR_RANK &&
                  expSumShape.GetDimNum() == VECTOR_RANK,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "pseudoQuery, logitMax and expSum must all be rank-1 tensors."),
+             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_API_NAME, "pseudoQuery, logitMax, expSum",
+                                                       vectorDims.c_str(), "all listed tensors must be 1D"),
              return false);
 
+    const std::string matrixShapes = std::string(op::ToString(partialBlockShape).GetString()) + ", " +
+                                     op::ToString(deltaShape).GetString() + ", " +
+                                     op::ToString(numeratorShape).GetString() + ", " +
+                                     op::ToString(hShape).GetString();
     OP_CHECK(deltaShape == partialBlockShape && numeratorShape == partialBlockShape && hShape == partialBlockShape,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "partialBlock, delta, numerator and h must have the same [T, D] shape."),
+             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_API_NAME, "partialBlock, delta, numerator, h",
+                                                    matrixShapes.c_str(),
+                                                    "all listed tensors must have the same [T, D] shape"),
              return false);
 
     const int64_t tSize = partialBlockShape.GetDim(0);
     const int64_t dSize = partialBlockShape.GetDim(1);
-    OP_CHECK(tSize > 0, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "T must be greater than 0, but got %ld.", tSize),
-             return false);
-    OP_CHECK(dSize >= 1 && dSize <= MAX_D_SIZE,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "D must be in [1, 8192], but got %ld.", dSize), return false);
-    OP_CHECK(tSize <= std::numeric_limits<int64_t>::max() / dSize,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "T * D exceeds the signed 64-bit tensor range."), return false);
+    const std::string statsShapes = std::string(op::ToString(logitMaxShape).GetString()) + ", " +
+                                    op::ToString(expSumShape).GetString() + ", " +
+                                    op::ToString(partialBlockShape).GetString();
     OP_CHECK(logitMaxShape.GetDim(0) == tSize && expSumShape.GetDim(0) == tSize,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logitMax and expSum must have shape [T]."), return false);
+             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                 ACLNN_API_NAME, "logitMax, expSum, partialBlock", statsShapes.c_str(),
+                 "logitMax and expSum must have shape [T], where T is the first dimension of partialBlock"),
+             return false);
+    const std::string queryShapes = std::string(op::ToString(pseudoQueryShape).GetString()) + ", " +
+                                    op::ToString(partialBlockShape).GetString();
     OP_CHECK(pseudoQueryShape.GetDim(0) == dSize,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pseudoQuery must have shape [D]."), return false);
+             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                 ACLNN_API_NAME, "pseudoQuery, partialBlock", queryShapes.c_str(),
+                 "pseudoQuery must have shape [D], where D is the second dimension of partialBlock"), return false);
+
+    OP_CHECK(tSize >= 0,
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_API_NAME, "T", std::to_string(tSize),
+                                                   "the T dimension must be greater than or equal to 0"), return false);
+    OP_CHECK(dSize >= 0 && dSize <= MAX_D_SIZE,
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_API_NAME, "D", std::to_string(dSize),
+                                                   "the D dimension must be in range [0, 8192]"), return false);
+
+    // An empty [T, D] workload has no elements to update. All rank and shape relations above still apply;
+    // only InferShape, tiling and kernel launch are skipped by the L0 operator.
+    if (tSize == 0 || dSize == 0) {
+        return true;
+    }
+
+    const std::string tdValues = std::to_string(tSize) + ", " + std::to_string(dSize);
+    OP_CHECK(tSize <= std::numeric_limits<int64_t>::max() / dSize,
+             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_API_NAME, "T, D", tdValues.c_str(),
+                                                    "the product T * D must be less than or equal to INT64_MAX"),
+             return false);
     return true;
 }
 
 static bool CheckContiguous(const BlockAttnResUpdateParams &params)
 {
     OP_CHECK(IsContiguous(params.partialBlock),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "partialBlock must be contiguous."), return false);
-    OP_CHECK(IsContiguous(params.delta), OP_LOGE(ACLNN_ERR_PARAM_INVALID, "delta must be contiguous."), return false);
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "partialBlock",
+                                        op::ToString(params.partialBlock->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
+    OP_CHECK(IsContiguous(params.delta),
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "delta",
+                                        op::ToString(params.delta->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
     OP_CHECK(IsContiguous(params.pseudoQuery),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pseudoQuery must be contiguous."), return false);
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "pseudoQuery",
+                                        op::ToString(params.pseudoQuery->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
     OP_CHECK(IsContiguous(params.numerator),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "numerator must be contiguous."), return false);
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "numerator",
+                                        op::ToString(params.numerator->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
     OP_CHECK(IsContiguous(params.logitMax),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logitMax must be contiguous."), return false);
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "logitMax",
+                                        op::ToString(params.logitMax->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
     OP_CHECK(IsContiguous(params.expSum),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expSum must be contiguous."), return false);
-    OP_CHECK(IsContiguous(params.h), OP_LOGE(ACLNN_ERR_PARAM_INVALID, "h must be contiguous."), return false);
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "expSum",
+                                        op::ToString(params.expSum->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
+    OP_CHECK(IsContiguous(params.h),
+             OP_LOGE_FOR_INVALID_STRIDE(ACLNN_API_NAME, "h",
+                                        op::ToString(params.h->GetViewStrides()).GetString(),
+                                        "contiguous strides"), return false);
     return true;
 }
 
 static bool CheckEps(float eps)
 {
     OP_CHECK(std::isfinite(eps) && eps > 0.0F,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "eps must be finite and greater than 0, but got %f.", eps),
-             return false);
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_API_NAME, "eps", std::to_string(eps),
+                                                   "eps must be finite and greater than 0"), return false);
     return true;
 }
 
@@ -176,8 +273,12 @@ extern "C" aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
     const aclTensor *logitMax, const aclTensor *expSum, float eps, aclTensor *h, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize is nullptr.");
-    CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor is nullptr.");
+    OP_CHECK(workspaceSize != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "workspaceSize", "pointer can not be null"),
+             return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK(executor != nullptr,
+             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(ACLNN_API_NAME, "executor", "pointer can not be null"),
+             return ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnBlockAttnResUpdate,
                    DFX_IN(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps),
                    DFX_OUT(partialBlock, h));
