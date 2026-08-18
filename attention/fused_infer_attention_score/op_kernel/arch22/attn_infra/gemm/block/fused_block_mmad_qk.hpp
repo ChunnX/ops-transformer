@@ -175,6 +175,8 @@ public:
             if constexpr (std::is_same_v<LayoutB, layout::nZ>) {
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
                 kOffset = blockTableId * keyBnStride + startOffset * ELE_NUM_PER_C0;
+            } else if constexpr (BNBD_FLAG) {
+                kOffset = blockTableId * keyBnStride + startOffset * embed;
             } else {
                 kOffset = blockTableId * keyBnStride + startOffset * strideKV;
             }
@@ -183,9 +185,6 @@ public:
                 constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
                 kOffset = blockTableId * blockSize * strideKV + startOffset * ELE_NUM_PER_C0;
             } else if constexpr (BNBD_FLAG) {
-                // BNBD layout: (numBlocks, kvHeads, blockSize, D)
-                // Block stride = kvHeads * blockSize * D = blockSize * strideKV
-                // Row stride within a block = D = embed
                 kOffset = blockTableId * blockSize * strideKV + startOffset * embed;
             } else {
                     kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
