@@ -1,0 +1,68 @@
+============================================================
+quantMatmulReduceScatter msprof 性能数据 (5 case)
+============================================================
+采集工具: msprof --aic-mode=task-based --aic-metrics=PipeUtilization
+采集日期: 2026-08-18
+平台: Ascend 950PR (dav-3510), CANN 9.2.0
+稳态取值: 10 次 kernel launch, 丢弃前 5 次 warmup, 取后 5 次稳态
+跨 rank 取 max: MC² 木桶效应, 整体性能由最慢 rank 决定
+
+============================================================
+Case 1: M=2048 K=3584 N=4096 R=2 H=512
+============================================================
+msprof 未正确采集 kernel 数据 (只有 PLACE_HOLDER 行)
+wallclock perf 模式结果 (含 launch overhead):
+  [Rank 0] PUT mode | per-iter ms: avg=0.682 min=0.677 max=0.686 (excl warmup)
+  [Rank 1] PUT mode | per-iter ms: avg=0.693 min=0.679 max=0.776 (excl warmup)
+  -> cross_rank_max ≈ 0.693 ms
+
+============================================================
+Case 2: M=2048 K=3584 N=4096 R=4 H=512
+============================================================
+msprof 未正确采集 kernel 数据 (只有 PLACE_HOLDER 行)
+wallclock perf 模式结果 (含 launch overhead):
+  [Rank 0] PUT mode | per-iter ms: avg=0.408 min=0.401 max=0.416 (excl warmup)
+  [Rank 1] PUT mode | per-iter ms: avg=0.417 min=0.406 max=0.486 (excl warmup)
+  [Rank 2] PUT mode | per-iter ms: avg=0.411 min=0.404 max=0.436 (excl warmup)
+  [Rank 3] PUT mode | per-iter ms: avg=0.411 min=0.402 max=0.435 (excl warmup)
+  -> cross_rank_max ≈ 0.417 ms
+
+============================================================
+Case 3: M=4096 K=3584 N=4096 R=2 H=512
+============================================================
+msprof Task Duration (稳态):
+  dev 0: 10 launches, steady_max=1380.9 us
+  dev 1: 10 launches, steady_max=1372.2 us
+  -> cross_rank_max = 1380.9 us (1.381 ms)
+
+============================================================
+Case 4: M=1024 K=3584 N=4096 R=2 H=512
+============================================================
+msprof Task Duration (稳态):
+  dev 0: 10 launches, steady_max=362.3 us
+  dev 1: 10 launches, steady_max=362.2 us
+  -> cross_rank_max = 362.3 us (0.362 ms)
+
+============================================================
+Case 5: M=4096 K=3584 N=4096 R=4 H=512
+============================================================
+msprof Task Duration (稳态):
+  dev 0: 10 launches, steady_max=736.1 us
+  dev 1: 10 launches, steady_max=731.5 us
+  dev 2: 10 launches, steady_max=720.5 us
+  dev 3: 10 launches, steady_max=721.4 us
+  -> cross_rank_max = 736.1 us (0.736 ms)
+
+============================================================
+汇总
+============================================================
+Case          M     K     N    R  H    cross_rank_max
+-----------------------------------------------------
+1          2048  3584  4096  2  512     ~680 us (wallclock, msprof未采集到)
+2          2048  3584  4096  4  512     ~417 us (wallclock, msprof未采集到)
+3          4096  3584  4096  2  512    1381 us (msprof Task Duration)
+4          1024  3584  4096  2  512     362 us (msprof Task Duration)
+5          4096  3584  4096  4  512     736 us (msprof Task Duration)
+
+注: Case 1/2 的 msprof 采集只有 PLACE_HOLDER 行 (2 launches), 无 MIX_AIC kernel 记录。
+可能是首次采集时 msprof 未完成设备初始化。Case 3/4/5 数据正常 (10 launches)。
