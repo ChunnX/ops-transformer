@@ -555,30 +555,28 @@ public:
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset =
                         taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
-                                                                             mOffset, actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseTNDtoNTNoGS1Merge<T>(softmaxLseGm_, maxLseUb, bN2Offset,
+                        mOffset, actualGSplitSize, constInfo_.gSize, constInfo_.t1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo_.gSize * constInfo_.n2Size + taskInfo_.n2Idx * constInfo_.gSize;
-                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                               actualGSplitSize, constInfo_, s1Size);
+                    DataCopySoftmaxLseNTD<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                            actualGSplitSize, s1Size, constInfo_.gSize, constInfo_.n2Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    uint64_t s1LeftPaddingSize = 0;
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, s1LeftPaddingSize);
+                    DataCopySoftmaxLseBSND<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                        actualGSplitSize, constInfo_.s1Size, constInfo_.gSize);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t s1LeftPaddingSize = 0;
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, qActSeqLens,
-                                                                s1LeftPaddingSize);
+                    DataCopySoftmaxLseBNSD<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                        actualGSplitSize, qActSeqLens, constInfo_.s1Size);
                 }
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
