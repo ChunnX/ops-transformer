@@ -1,0 +1,722 @@
+[
+  {
+    "id": 0,
+    "name": "sparse_attention_score_prefill_lse",
+    "aclnn_name": "SparseAttentionScorePrefill",
+    "api_type": "ascend_sparse_attention_score_prefill",
+    "aclnn_api_type": "ascend_sparse_attention_score_prefill_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "high_precision"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "query",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          16,
+          8,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "key",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "value",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockTable",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1,
+          1
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qRowPtr",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          2
+        ],
+        "range_values": [
+          0,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qQIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          15
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qSlotIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengths",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          16,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengthsKv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          128,
+          128
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "numKeyValueHeads",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 2,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "scaleValue",
+        "type": "attr",
+        "required": true,
+        "dtype": "double",
+        "shape": null,
+        "range_values": 0.08838834764831843,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockSize",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 128,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "topK",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 1,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "innerPrecise",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 0,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "softmaxLseFlag",
+        "type": "attr",
+        "required": true,
+        "dtype": "bool",
+        "shape": null,
+        "range_values": true,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      }
+    ],
+    "is_boundary": true
+  },
+  {
+    "id": 1,
+    "name": "sparse_attention_score_prefill_lse",
+    "aclnn_name": "SparseAttentionScorePrefill",
+    "api_type": "ascend_sparse_attention_score_prefill",
+    "aclnn_api_type": "ascend_sparse_attention_score_prefill_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "high_precision"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "query",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          16,
+          8,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "key",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "value",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockTable",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1,
+          1
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qRowPtr",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          2
+        ],
+        "range_values": [
+          0,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qQIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          15
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qSlotIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengths",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          16,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengthsKv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          128,
+          128
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "numKeyValueHeads",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 2,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "scaleValue",
+        "type": "attr",
+        "required": true,
+        "dtype": "double",
+        "shape": null,
+        "range_values": 0.08838834764831843,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockSize",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 128,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "topK",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 1,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "innerPrecise",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 1,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "softmaxLseFlag",
+        "type": "attr",
+        "required": true,
+        "dtype": "bool",
+        "shape": null,
+        "range_values": true,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      }
+    ],
+    "is_boundary": true
+  },
+  {
+    "id": 2,
+    "name": "sparse_attention_score_prefill_lse",
+    "aclnn_name": "SparseAttentionScorePrefill",
+    "api_type": "ascend_sparse_attention_score_prefill",
+    "aclnn_api_type": "ascend_sparse_attention_score_prefill_npu",
+    "standard": {
+      "acc": {
+        "single_bm": {
+          "type": "high_precision"
+        }
+      },
+      "perf": "not_key"
+    },
+    "inputs": [
+      {
+        "name": "query",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          16,
+          8,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "key",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "value",
+        "type": "tensor",
+        "required": true,
+        "dtype": "bf16",
+        "shape": [
+          1,
+          128,
+          2,
+          128
+        ],
+        "range_values": [
+          -0.5,
+          0.5
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockTable",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1,
+          1
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qRowPtr",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          2
+        ],
+        "range_values": [
+          0,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qQIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          15
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "k2qSlotIndices",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          2,
+          16
+        ],
+        "range_values": [
+          0,
+          0
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengths",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          16,
+          16
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "actualSeqLengthsKv",
+        "type": "tensor",
+        "required": true,
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "range_values": [
+          128,
+          128
+        ],
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "numKeyValueHeads",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 2,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "scaleValue",
+        "type": "attr",
+        "required": true,
+        "dtype": "double",
+        "shape": null,
+        "range_values": 0.08838834764831843,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "blockSize",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 128,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "topK",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 1,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "innerPrecise",
+        "type": "attr",
+        "required": true,
+        "dtype": "int",
+        "shape": null,
+        "range_values": 4,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      },
+      {
+        "name": "softmaxLseFlag",
+        "type": "attr",
+        "required": true,
+        "dtype": "bool",
+        "shape": null,
+        "range_values": true,
+        "backward": false,
+        "align_32B": null,
+        "outlier_values": null
+      }
+    ],
+    "is_boundary": true
+  }
+]
