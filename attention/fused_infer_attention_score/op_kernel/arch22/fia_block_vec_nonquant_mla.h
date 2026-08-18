@@ -839,17 +839,29 @@ FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(const AttentionCommon::
         uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
         uint64_t bN2Offset =
             static_cast<uint64_t>(prefixBS1) * constInfo.qHeadNum + static_cast<uint64_t>(info.n2Idx) * constInfo.gSize;
-        DataCopySoftmaxLseTND<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
+        DataCopySoftmaxLseTND<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                                 constInfo.gSize, constInfo.kvHeadNum);
     } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
-                                          qActSeqLensParser, info.bIdx);
+        uint64_t s1LeftPaddingSize = 0;
+        if (constInfo.isQHasLeftPadding) {
+            s1LeftPaddingSize =
+                constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+        }
+        DataCopySoftmaxLseBSND<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                                  constInfo.qSeqSize, constInfo.gSize, s1LeftPaddingSize);
     } else {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
-                                          qActSeqLensParser, info.bIdx);
+        uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(bIdx);
+        uint64_t s1LeftPaddingSize = 0;
+        if (constInfo.isQHasLeftPadding) {
+            s1LeftPaddingSize =
+                constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
+        }
+        DataCopySoftmaxLseBNSD<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                                  qActSeqLens, constInfo.qSeqSize, s1LeftPaddingSize);
     }
 }
 

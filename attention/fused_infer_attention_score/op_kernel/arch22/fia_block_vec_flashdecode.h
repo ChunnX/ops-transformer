@@ -896,25 +896,37 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
                     uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
                     uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTND<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                    DataCopySoftmaxLseTND<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                        constInfo.gSize, constInfo.kvHeadNum);
                 } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
                     uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
                     uint32_t s1Size = taskInfo.bIdx == 0U ? actualSeqLengthsGmQ.GetValue(0U) :
                                                             actualSeqLengthsGmQ.GetValue(taskInfo.bIdx) -
                                                                 actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1U);
                     uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTD<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
-                                             s1Size);
+                    DataCopySoftmaxLseNTD<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                             s1Size, constInfo.gSize, constInfo.kvHeadNum);
                 } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                      constInfo, qActSeqLensParser, taskInfo.bIdx);
+                    uint64_t s1LeftPaddingSize = 0;
+                    if (constInfo.isQHasLeftPadding) {
+                        s1LeftPaddingSize =
+                            constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+                    }
+                    DataCopySoftmaxLseBSND<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                      constInfo.qSeqSize, constInfo.gSize, s1LeftPaddingSize);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                      constInfo, qActSeqLensParser, taskInfo.bIdx);
+                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(bIdx);
+                    uint64_t s1LeftPaddingSize = 0;
+                    if (constInfo.isQHasLeftPadding) {
+                        s1LeftPaddingSize =
+                            constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
+                    }
+                    DataCopySoftmaxLseBNSD<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                      qActSeqLens, constInfo.qSeqSize, s1LeftPaddingSize);
                 }
                 SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }

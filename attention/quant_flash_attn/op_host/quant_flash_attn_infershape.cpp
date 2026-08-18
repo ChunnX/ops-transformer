@@ -186,7 +186,7 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
         if (returnSoftmaxLse) {
             if (isTND) {
                 // LSE 输出改为 N-major 排布: (N, T), N 在外, T 在内
-                // 与 kernel 的 DataCopySoftmaxLseTNDtoNTArch35* 写入顺序对齐
+                // 与 kernel 的 DataCopySoftmaxLseTNDtoNT* 写入顺序对齐
                 lseShape->SetDimNum(2);
                 lseShape->SetDim(0, numHeadsQ);
                 lseShape->SetDim(1, seqLenQ);
