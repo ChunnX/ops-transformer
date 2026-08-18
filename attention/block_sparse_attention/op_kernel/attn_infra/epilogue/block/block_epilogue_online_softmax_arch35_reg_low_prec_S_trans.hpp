@@ -267,7 +267,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
 
                 AscendC::printf("tkd diag dm\n");
-                AscendC::DumpTensor(diagUbTensor, 1, 32);
+                AscendC::DumpTensor(diagUbTensor, 1, 128);
                 // TLA 封装（与 P 的 P→L1 搬移同风格：表达布局意图，DataCopy 用裸地址 + DataCopyParams）
                 auto ubDiagDmLayoutTla = tla::MakeLayout<float, LayoutOutput>(diagDmRound, diagDmRound);
                 auto ubDiagDmTensorTla = tla::MakeTensor(diagUbTensor, ubDiagDmLayoutTla, Arch::PositionUB{});
