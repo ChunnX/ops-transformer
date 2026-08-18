@@ -289,7 +289,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>gradHPost（aclTensor*）</td>
             <td>输入</td>
             <td>正向输出hPost对应的梯度。</td>
-            <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, N)、(T, N)。其中，B与`x`的B保持一致；S与`x`的S保持一致；T=B*S；N与`x`的N保持一致。</li></ul></td>
+            <td><ul><li>不支持空Tensor。</li><li>shape为(B,S,N)、(T,N)。其中，B与`x`的B保持一致；S与`x`的S保持一致；T=B*S；N与`x`的N保持一致。</li></ul></td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>2-3</td>
@@ -545,7 +545,6 @@ aclnnStatus aclnnMhcPreBackward(
 - 规格约束
   <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
-
     <table style="undefined;table-layout: fixed; width: 600px"><colgroup>
         <col style="width: 100px">
         <col style="width: 500px">

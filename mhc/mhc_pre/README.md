@@ -28,15 +28,18 @@
   \end{cases}\\
   hMix &= xGamma @ phi^{T}\\
   w &= hMix \odot invRms\\
-  [pPre, pPost, pRes] &= \begin{cases}
-      split(w, [n, n, n^{2}]), & alpha.shape=[3] \\
-      [split(w, [n, n]), 0], & alpha.shape=[2]
+  (pPre, pPost, pRes) &= \begin{cases}
+      split(w, (n, n, n^{2})), & alpha.shape=(3) \\
+      (split(w, (n, n)), 0), & alpha.shape=(2)
   \end{cases}\\
   hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
-  hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+  hPost &= \begin{cases}
+      2\sigma(pPost \odot alpha1 + bias1), & alpha.shape=(3) \\
+      2\sigma(pPost \odot alpha1 + bias1) + hcEps, & alpha.shape=(2)
+  \end{cases}\\
   hRes &= \begin{cases}
-      pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
-      0, & alpha.shape=[2]
+      pRes \odot alpha2 + bias2, & alpha.shape=(3) \\
+      0, & alpha.shape=(2)
   \end{cases}\\
   hIn_{d} &= \sum_{i=0}^{n-1} hPre_{i} x_{i,d}
   \end{aligned}
@@ -107,7 +110,7 @@
       <tr>
         <td>hc_eps</td>
         <td>可选输入</td>
-        <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
+        <td>h_pre的sigmoid后的eps参数，以及当alpha.shape=(2)时h_post的sigmoid后的eps参数，对应公式中的hcEps。</td>
         <td>FLOAT</td>
         <td>-</td>
       </tr>
