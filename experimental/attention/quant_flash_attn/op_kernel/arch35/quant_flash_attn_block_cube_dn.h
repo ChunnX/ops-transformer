@@ -201,11 +201,11 @@ private:
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                      // 8K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);         // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                     // 32K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T);        // 2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                      // 16K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
     static constexpr uint32_t L1_KV_BUFCNT = 4;
@@ -308,10 +308,14 @@ public:
                          constInfo.dSize / MXFP_GROUP_SIZE, kvSeqLensTool, keyScaleGm, dequantScaleKey);
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
 
         InitVScaleBuffer(
             constInfo.bSize, static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
             constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool, valueScaleGm, dequantScaleValue);
+<<<<<<< HEAD
 =======
         // v_scale per-batch stride 基于 maxSeqlenKv (= max(act_kv)) 而非物理 s2Size,
         // 与 metadata 校验 (ceil(max(seqused_kv)/64)) 及 golden v_descale S 维对齐.
@@ -324,6 +328,8 @@ public:
                          constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool,
                          valueScaleGm, dequantScaleValue);
 >>>>>>> 624988a3d... kernel: v_scale stride 基于 maxSeqlenKv, 与 metadata/golden 对齐
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     }
 
     __aicore__ inline void InitTensors()

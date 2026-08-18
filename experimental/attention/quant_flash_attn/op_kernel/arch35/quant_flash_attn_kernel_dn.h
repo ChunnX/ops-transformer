@@ -392,10 +392,14 @@ public:
                 if ASCEND_IS_AIC {
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                               runInfo3.tileMaxIdx / 2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                               runInfo3.tileMaxIdx / 2 + 16);
+<<<<<<< HEAD
                     CopyGMaxL1ToUb(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
                                                              runInfo3.tileMaxIdx / 2);
@@ -419,11 +423,19 @@ public:
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(
                         CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
 >>>>>>> 68a2959f3... cleancode清理
+=======
+                    CopyGMaxL1ToUb(runInfo3);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                             runInfo3.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                             runInfo3.tileMaxIdx / 2 + 16);
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
                     if (runInfo3.tileMaxIdx == 3) {
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1 + 16);
                     }
                 } else {
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
@@ -435,6 +447,10 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(
                         CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
 >>>>>>> 68a2959f3... cleancode清理
+=======
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
+                                                           runInfo3.tileMaxIdx / 2);
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
                     UpdatePScale(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo3.pscaleNum);
                 }
@@ -461,6 +477,7 @@ public:
                     CopyGMaxUbToL1(runInfo0);
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                              runInfo0.tileMaxIdx / 2);
 =======
@@ -470,6 +487,10 @@ public:
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(
                         CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
 >>>>>>> 68a2959f3... cleancode清理
+=======
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
+                                                             runInfo0.tileMaxIdx / 2);
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
                 }
             }
         }

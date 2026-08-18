@@ -45,12 +45,16 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
     };
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
                                               std::to_string(quantModeVal).c_str(),
                                               "The value of quant_mode must be in 1~10"),
         return ge::GRAPH_FAILED);
+<<<<<<< HEAD
 =======
     OP_CHECK_IF(std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) ==
                     supportedQuantModes.end(),
@@ -58,6 +62,8 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
                                                       std::to_string(quantModeVal).c_str(), "The value of quant_mode must be in 1~10"),
                 return ge::GRAPH_FAILED);
 >>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     return ge::GRAPH_SUCCESS;
 }
 
@@ -178,12 +184,16 @@ ge::graphStatus QuantChecker::CheckSingleParaLayoutQDescale(const QuantFlashAttn
     // FiaLayout 枚举未引入 N2TGD, parser 仅解析 BSND/BNSD/TND, checker 对齐 parser 实际值。
     const std::vector<FiaLayout> supportedLayouts = {FiaLayout::BNSD, FiaLayout::BSND, FiaLayout::TND};
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     OP_CHECK_IF(
         std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) == supportedLayouts.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
                                               LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
                                               "The value of layout_q_descale must be in BNSD/BSND/TND"),
         return ge::GRAPH_FAILED);
+<<<<<<< HEAD
 =======
     OP_CHECK_IF(std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) ==
                     supportedLayouts.end(),
@@ -192,6 +202,8 @@ ge::graphStatus QuantChecker::CheckSingleParaLayoutQDescale(const QuantFlashAttn
                                                       "The value of layout_q_descale must be in BNSD/BSND/TND"),
                 return ge::GRAPH_FAILED);
 >>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     return ge::GRAPH_SUCCESS;
 }
 
@@ -255,6 +267,7 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
 
     OP_CHECK_IF(qfaInfo.layoutQ != config.supportedQLayout,
 <<<<<<< HEAD
+<<<<<<< HEAD
                 OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_q must be %s, but got %s", quantModeVal,
                         LayoutToSerialStr(config.supportedQLayout).c_str(), LayoutToSerialStr(qfaInfo.layoutQ).c_str()),
                 return ge::GRAPH_FAILED);
@@ -275,15 +288,19 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
                         "When quant_mode is %ld, layout_q must be %s, but got %s",
                         quantModeVal, LayoutToSerialStr(config.supportedQLayout).c_str(),
                         LayoutToSerialStr(qfaInfo.layoutQ).c_str()),
+=======
+                OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_q must be %s, but got %s", quantModeVal,
+                        LayoutToSerialStr(config.supportedQLayout).c_str(), LayoutToSerialStr(qfaInfo.layoutQ).c_str()),
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(),
-                          qfaInfo.layoutKV) == config.supportedKvLayouts.end(),
-                OP_LOGE(qfaInfo.opName,
-                        "When quant_mode is %ld, layout_kv must be in supported list, but got %s",
+    OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), qfaInfo.layoutKV) ==
+                    config.supportedKvLayouts.end(),
+                OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_kv must be in supported list, but got %s",
                         quantModeVal, LayoutToSerialStr(qfaInfo.layoutKV).c_str()),
                 return ge::GRAPH_FAILED);
 
+<<<<<<< HEAD
     OP_CHECK_IF(qfaInfo.layoutOut != config.supportedOutLayout,
                 OP_LOGE(qfaInfo.opName,
                         "When quant_mode is %ld, layout_out must be %s, but got %s",
@@ -291,6 +308,13 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
                         LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
                 return ge::GRAPH_FAILED);
 >>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
+=======
+    OP_CHECK_IF(
+        qfaInfo.layoutOut != config.supportedOutLayout,
+        OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_out must be %s, but got %s", quantModeVal,
+                LayoutToSerialStr(config.supportedOutLayout).c_str(), LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
+        return ge::GRAPH_FAILED);
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
 
     return ge::GRAPH_SUCCESS;
 }
@@ -417,6 +441,9 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
     // MxFP4: D 仅支持 128
     const std::vector<int64_t> supportedHeadDims = {128};
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     OP_CHECK_IF(
         CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of query and key",
@@ -427,6 +454,7 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
                                               std::to_string(qfaInfo.vHeadDim).c_str(), "MxFP4 only supports D=128"),
         return ge::GRAPH_FAILED);
+<<<<<<< HEAD
 =======
     OP_CHECK_IF(CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of query and key",
@@ -439,6 +467,8 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
                                                       "MxFP4 only supports D=128"),
                 return ge::GRAPH_FAILED);
 >>>>>>> ed08c5a6e... 应用 pre-commit 钩子格式化规则
+=======
+>>>>>>> 4cde8060c... 对齐 CI clang-format 格式化结果
     return ge::GRAPH_SUCCESS;
 }
 
