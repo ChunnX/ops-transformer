@@ -1006,7 +1006,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
         cmpResidualKVSize_ = opParamInfo_.cmpResidualKv.tensor->GetShapeSize();
         if (opParamInfo_.cmpResidualKv.tensor->GetShapeSize() != bSize_) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                opName_, "cmp_residual_kv", std::to_string(opParamInfo_.sequsedCmpKv.tensor->GetShapeSize()),
+                opName_, "cmp_residual_kv", std::to_string(opParamInfo_.cmpResidualKv.tensor->GetShapeSize()),
                 "Cmp_residual_kv's dimension should be equal to " + std::to_string(bSize_));
             return ge::GRAPH_FAILED;
         }
@@ -1984,14 +1984,18 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
             opName_, "q", ToStringRaw(opParamInfo_.q.shape->GetStorageShape()).c_str(),
             "The head num of q only support " + std::to_string(DIM_LIMIT) + ", but got " + std::to_string(qHeadDim_)),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(oriKvHeadDim_ != DIM_LIMIT,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
-                    "The head num of ori_kv only support " + std::to_string(DIM_LIMIT) + ", but got " +
-                        std::to_string(oriKvHeadDim_)),
-                return ge::GRAPH_FAILED);
+
+    if (opParamInfo_.oriKv.tensor != nullptr) {
+        OP_CHECK_IF(oriKvHeadDim_ != DIM_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                        "The head num of ori_kv only support " + std::to_string(DIM_LIMIT) + ", but got " +
+                            std::to_string(oriKvHeadDim_)),
+                    return ge::GRAPH_FAILED);
+    }
     if (!(smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE ||
-          smlaInfo_.perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE)) {
+          smlaInfo_.perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) &&
+        (opParamInfo_.cmpKv.tensor != nullptr)) {
         OP_CHECK_IF(cmpKvHeadDim_ != DIM_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "cmp_kv", ToStringRaw(opParamInfo_.cmpKv.tensor->GetStorageShape()).c_str(),
@@ -2453,7 +2457,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     uint32_t qLayout = static_cast<uint32_t>(tilingInfo->qLayout);
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
 
-    uint32_t tilingKey;
+    uint64_t tilingKey;
     uint32_t splitG = 0U;
     uint32_t headRatioOne =
         static_cast<uint32_t>(tilingInfo->npuArch == NpuArch::DAV_2201 &&
