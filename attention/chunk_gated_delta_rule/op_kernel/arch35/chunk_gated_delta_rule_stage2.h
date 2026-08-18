@@ -160,6 +160,21 @@ public:
         }
     }
 
+    // CV pipeline: fuse AIC VPrime+AttnInter (remove mid-sync), keep state overlap.
+    // Sync reduced from 4 CrossCore round-trips to 3.
+    //
+    // Phase layout:
+    //   AIV: state_prep → setFlag(0x3) → waitFlag(0x2) → v_new_scale → setFlag(0x5) → waitFlag(0x4)
+    //   AIC:              waitFlag(0x3) → VPrime+AttnInter(fused) → setFlag(0x2) → waitFlag(0x5) → StateNew → setFlag(0x4)
+    //
+    // Key change vs original: VPrime and AttnInter run back-to-back without CrossCore sync between them.
+    // StateNew still waits for v_new_scaled (sync0x5), but overlaps with next chunk's AIV state_prep.
+
+    // CV pipeline AIV (FP32 path): 3-phase with overlap
+    //   Phase 1: state_prep → sync0x3 (notify AIC state ready)
+    //   Phase 2: wait sync0x2 (AIC VPrime+AttnInter done) → v_new_scale → sync0x5
+    //   Phase 3: wait sync0x4 (AIC StateNew done, = next chunk state ready)
+    // Sync reduced from 4 to 3; AIC StateNew overlaps with AIV next-chunk state_prep
     __aicore__ inline void ProcessAivFp32(int64_t nvId, int64_t cId, int64_t length)
     {
         if (GetSubBlockIdx() == 0) {
@@ -185,18 +200,17 @@ public:
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
-            PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
             CalD(sTP_->gCum[nvId * Sp_ + length]);
-            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
-                                          curChunkSize_ * Dv_);
-            CastGmToGmWithScale<float, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
-                                                   curChunkSize_ * Dv_);
+            // CV fusion: single read → unscaled (vInnerBf16 for Stage3) + scaled (vNewScaledGm_ for CalStateNew)
+            CastGmToGmDual<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
+                                              vNewScaledGm_, curChunkSize_ * Dv_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
     }
 
+    // CV pipeline AIV (BF16 path): 3-phase with overlap
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
         auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
@@ -205,6 +219,7 @@ public:
             CopyIn(curState, Dv_, Dk_);
             CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
         }
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
@@ -215,6 +230,10 @@ public:
         CrossCoreWaitFlag(0x4);
     }
 
+    // CV pipeline AIC: VPrime+AttnInter fused (no mid-wait), StateNew after v_new ready
+    //   Phase 1: wait sync0x3 (AIV state ready) → VPrime + AttnInter → sync0x2
+    //   Phase 2: wait sync0x5 (AIV v_new_scaled ready) → StateNew → sync0x4
+    //   StateNew overlaps with next chunk's AIV Phase 1 (state_prep)
     __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
     {
         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
@@ -227,6 +246,7 @@ public:
         } else {
             stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
+        // CV: VPrime + AttnInter fused — no sync between them
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
@@ -451,6 +471,60 @@ public:
         DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
         DataCopyPad(dstGm, dstLocal, outParams);
         outQueue_.FreeTensor(dstLocal);
+    }
+
+    // CV fusion: single GM→UB read, produce both unscaled (for Stage3) and scaled (for CalStateNew)
+    //   Replaces CastGmToGm + CastGmToGmWithScale (saves 1 GM→UB round-trip)
+    template <typename srcType, typename dstType>
+    __aicore__ inline void CastGmToGmDual(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstUnscaledGm,
+                                          GlobalTensor<dstType> dstScaledGm, int32_t count)
+    {
+        int32_t rowCnt = curChunkSize_;
+        int32_t colCnt = Dv_;
+        int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
+        int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
+        int32_t srcPadded = Ceil(count, srcAlign) * srcAlign;
+        int32_t padding = srcPadded - count;
+        auto srcLocal = inQueue_.AllocTensor<srcType>();
+        if (paddedCount > srcPadded) {
+            Duplicate<srcType>(srcLocal, static_cast<srcType>(0), paddedCount);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+        }
+        DataCopyExtParams inParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(srcType)),
+                                   0, 0, 0};
+        DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
+        DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
+        inQueue_.EnQue(srcLocal);
+        srcLocal = inQueue_.DeQue<srcType>();
+
+        // Write unscaled copy (for Stage3)
+        auto dstUnscaled = outQueue_.AllocTensor<dstType>();
+        Cast(dstUnscaled, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        outQueue_.EnQue(dstUnscaled);
+        dstUnscaled = outQueue_.DeQue<dstType>();
+        DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(dstType)), 0,
+                                    0, 0};
+        DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
+        DataCopyPad(dstUnscaledGm, dstUnscaled, outParams);
+        outQueue_.FreeTensor(dstUnscaled);
+
+        // Write scaled copy (for CalStateNew) — reuse same srcLocal
+        if constexpr (gOptional) {
+            uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+            uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
+            PipeBarrier<PIPE_V>();
+            Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
+            PipeBarrier<PIPE_V>();
+        }
+        auto dstScaled = outQueue_.AllocTensor<dstType>();
+        Cast(dstScaled, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        inQueue_.FreeTensor(srcLocal);
+        outQueue_.EnQue(dstScaled);
+        dstScaled = outQueue_.DeQue<dstType>();
+        DataCopyPad(dstScaledGm, dstScaled, outParams);
+        outQueue_.FreeTensor(dstScaled);
     }
 
     // Copy vInner to vNewScaledGm_ with d row scaling (BF16 path, vInner stays unscaled for Stage3)
