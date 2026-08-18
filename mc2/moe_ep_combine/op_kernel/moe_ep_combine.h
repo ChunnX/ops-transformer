@@ -472,8 +472,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         return;
     }
     uint32_t activeAivNum = aivNum_;
-    if (activeAivNum > epWorldSize_) {
-        activeAivNum = epWorldSize_;
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
+    if (activeAivNum > maxChannelAivNum) {
+        activeAivNum = maxChannelAivNum;
     }
 
     activeBatchHandle_ = {};
@@ -562,23 +563,22 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
+        FlushPreparedWrites();
     }
 
-    // Prepare one single-round completion flag after all local payload writes have been issued.
+    // Keep the version-8 payload path unchanged. Every AIV publishes its token/weight batches
+    // before AIV0 sends one completion flag to every destination rank.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    if (aivId_ < activeAivNum) {
+    SyncAll<true>();
+    if (aivId_ == 0) {
         Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint32_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
         DataCopy(flagWorkspace, statusTensor_, FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        if (splitRankTokens) {
-            SendRankFlag(targetRank);
-        } else {
-            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
-                SendRankFlag(dstRank);
-            }
+        for (uint32_t dstRank = 0; dstRank < epWorldSize_; ++dstRank) {
+            SendRankFlag(dstRank);
         }
     }
     FlushPreparedWrites();
