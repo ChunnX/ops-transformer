@@ -30,7 +30,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 | `L1-bnbd` / `L1-bnbd-int8` | PA BNBD | `[NP, N2, P, D]` |
 | `L1-tnd-unaligned` / `L1-tnd-int8` / `L0-tnd-tiny` | TND packed | 无 block_table，klen 前缀和 |
 
-默认跑完整用例矩阵（含 TND / BNBD）。
+默认跑完整用例矩阵（含 TND / BNBD）。key 布局由 `layout_key`（aclnn：`layoutKeyOptional`）指定，不再从 shape 推断。
 
 ## 3. Python 参考
 

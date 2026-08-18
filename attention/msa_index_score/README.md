@@ -55,6 +55,7 @@
 | actual_seq_qlen | 可选输入       | 每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$ | INT32                        | ND       |
 | actual_seq_klen   | 可选输入       | 每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$ | INT32                        | ND       |
 | start_loc                | 输入           | 当前 query 所在逻辑 block 索引（非 token 前缀），用于生成 $local\_mask$；shape 为 $[B]$ | INT32                        | ND       |
+| layout_key               | 属性           | key 布局。`"TND"` / `"BBND"` / `"BNBD"`。aclnn 参数名为 `layoutKeyOptional`，不传时默认 `"BBND"` | STRING                       | -        |
 | sparse_mode              | 属性           | sparse 模式。0：defaultMask（`atten_mask` 传空）；3：rightDownCausal（须传入 $[2048, 2048]$ 的 `atten_mask`） | INT64                        | -        |
 | init_blocks              | 属性           | $local\_mask$ 强制选中的头部 block 数。对逻辑 block $[0, init\_blocks)$ 写入高分 $1\mathrm{e}30$。可选，默认 $0$ | INT64                        | -        |
 | local_blocks             | 属性           | $local\_mask$ 强制选中的局部窗口长度。窗口为 $[max(0, start\_loc+1-local\_blocks), start\_loc]$，写入高分 $1\mathrm{e}29$（覆盖同位置的 `init_blocks`）。可选，默认 $1$（对齐 MiniMax HF）；与 Triton raw score 对齐时置 $0$ | INT64                        | -        |
@@ -63,7 +64,8 @@
 ## 约束说明
 
 - 当前 $block\_size$ 仅支持 128。
-- PageAttention 场景下，`block_table` 必须传入；TND key 场景不得传入 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和。
+- `layout_key` 必须显式指定：`"BBND"` / `"BNBD"` / `"TND"`，与 `key` 实际 shape 一致。
+- PageAttention（`layout_key` 为 `"BBND"` / `"BNBD"`）场景下，`block_table` 必须传入；TND key 场景不得传入 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和。
 - 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scale` 必须为空；量化场景下仅支持 INT8，`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 - `sparse_mode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
@@ -90,7 +92,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 
 > **实现备注（A2/A3）**
 >
-> - key 支持 PageAttention **BBND** / **BNBD**，以及 packed **TND**（无 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）。
+> - key 布局由属性 `layout_key`（aclnn：`layoutKeyOptional`）指定，支持 PageAttention **BBND** / **BNBD**，以及 packed **TND**（无 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）。默认 `"BBND"`。
 > - `sparse_mode=3` 的 `atten_mask[2048,2048]` 在 host 校验必选；device 侧按 rightDownCausal
 >   解析可见窗口（与 LightningIndexer 一致），不逐元素加载模板。
 > - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）
