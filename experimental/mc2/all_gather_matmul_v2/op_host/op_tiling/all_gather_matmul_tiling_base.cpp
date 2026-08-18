@@ -24,7 +24,7 @@
 #include <cstdint>
 
 #include "mc2_hcom_topo_info.h"
-#include "mc2_log_exp_mc2_common.h"
+#include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
