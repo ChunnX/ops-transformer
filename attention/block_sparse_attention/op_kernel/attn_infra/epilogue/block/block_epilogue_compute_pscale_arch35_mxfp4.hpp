@@ -20,9 +20,9 @@
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
 #include "block_epilogue_arch35_utils.hpp"
-#include "mxfp4_vf/vf_compute_pscale_dn_mxfp4.h"
-#include "mxfp4_vf/vf_only_update_pscale_dn_mxfp4.h"
-#include "mxfp4_vf/vf_compute_pscale_dn_mxfp4_qs64.h"
+#include "mxfp4_vf/vf_compute_pscale_dm_mxfp4.h"
+#include "mxfp4_vf/vf_only_compute_pscale_mxfp4.h"
+#include "mxfp4_vf/vf_compute_pscale_dm_mxfp4_qs64.h"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -87,10 +87,10 @@ public:
         // 如果当前s2只有一个softmax，就另外一个核不用做pscale操作
         if (tileInfo.kvsFirstTileStartVecCore != subBlockIdx && tileInfo.isTileGoupFirstTile) {
             if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
-                Mxfp4VF::ComputeOnlyScaleCallVF<true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputeOnlyPscaleCallVF<true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm, static_cast<uint16_t>(subBlockIdx));
             } else {
-                Mxfp4VF::ComputeOnlyScaleCallVF<false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputeOnlyPscaleCallVF<false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm, static_cast<uint16_t>(subBlockIdx));
             }
             AscendC::PipeBarrier<PIPE_V>();
@@ -114,24 +114,24 @@ public:
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
-                Mxfp4VF::ComputePscaleCallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputePscaleAndDmCallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
-                Mxfp4VF::ComputePscaleQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputePscaleAndDmQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         } else {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
-                Mxfp4VF::ComputePscaleCallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputePscaleAndDmCallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
-                Mxfp4VF::ComputePscaleQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                Mxfp4VF::ComputePscaleAndDmQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                     pscale1, pscale2, localGroupMax1, localGroupMax2,
                     localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
