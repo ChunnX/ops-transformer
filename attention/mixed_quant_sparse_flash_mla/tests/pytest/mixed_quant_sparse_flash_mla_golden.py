@@ -2622,9 +2622,9 @@ def generate_and_save_testdata(
 
     # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
     # cu_seqlens still passed for TND kv layout (needed for data addressing in kernel)
-    # no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
-    # op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
-    # op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
+    no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
+    op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
+    op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
     op_cu_seqlens_ori_kv = cu_seqlens_ori_kv if layout_kv == "TND" else None
     op_cu_seqlens_cmp_kv = cu_seqlens_cmp_kv if layout_kv == "TND" else None
 
