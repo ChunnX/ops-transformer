@@ -47,21 +47,18 @@ def _normalize_activation_params(
                 f"allowed keys: {sorted(allowed)}."
             )
 
+    # aclnn cannot register a zero-length ListFloat because its data pointer is null. Materialize
+    # every default here while the named Torch arguments can still be encoded without ambiguity.
     if activation in ("swiglu", "swiglustep"):
-        if activation_clamp is None:
-            return []
-        return [float(activation_clamp)]
+        clamp = _CLAMP_DEFAULT if activation_clamp is None else float(activation_clamp)
+        return [clamp]
 
     if activation == "swigluoai":
-        if activation_clamp is None and not activation_params:
-            return []
         clamp = _CLAMP_DEFAULT if activation_clamp is None else float(activation_clamp)
         alpha = float(activation_params.get("alpha", _ALPHA_DEFAULT))
         beta = float(activation_params.get("beta", _BETA_DEFAULT))
         return [clamp, alpha, beta]
 
-    if not activation_params:
-        return []
     beta = float(activation_params.get("beta", _BETA_DEFAULT))
     values = [beta]
     if "linear_beta" in activation_params:
@@ -356,7 +353,6 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
-    use_ccl_buffer: bool = True,
     topk_weights_type: int = 0,
 ) -> SymmBuffer:
     return SymmBuffer(

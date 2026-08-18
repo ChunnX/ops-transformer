@@ -17,6 +17,7 @@ Compares 5 tensors: cmp_kv, kv_state_update, score_state_update,
 kv_state_origin, score_state_origin.
 """
 
+import gc
 import numpy as np
 import torch
 import importlib.util
@@ -40,9 +41,12 @@ _OUTPUT_NAMES = [
     "score_state_update",
     "kv_state_origin",
     "score_state_origin",
+    "softmax_score",
+    "kv",
 ]
 
 _BATCH_CONSISTENCY_CACHE = {}
+
 
 def _load_pytest_golden_module():
     global _PYTEST_GOLDEN_MODULE
@@ -62,11 +66,13 @@ def _load_pytest_golden_module():
     _PYTEST_GOLDEN_MODULE = module
     return _PYTEST_GOLDEN_MODULE
 
+
 _pytest_golden = _load_pytest_golden_module()
 display_output_np_isclose = _pytest_golden.display_output_np_isclose
 display_error_output = _pytest_golden.display_error_output
 cal_relative_diff_np_isclose = _pytest_golden.cal_relative_diff_np_isclose
 print_log = _pytest_golden.print_log
+
 
 def as_numpy(value):
     if hasattr(value, "detach"):
@@ -74,10 +80,31 @@ def as_numpy(value):
     return np.asarray(value)
 
 
+def _to_torch(value):
+    if value is None:
+        return None
+    if torch.is_tensor(value):
+        return value
+    arr = np.asarray(value)
+    dtype_str = str(arr.dtype)
+    if dtype_str == "bfloat16":
+        return torch.from_numpy(arr.view(np.uint16)).view(torch.bfloat16)
+    if arr.dtype == np.float16:
+        return torch.from_numpy(arr)
+    if arr.dtype == np.float32:
+        return torch.from_numpy(arr)
+    if arr.dtype == np.uint16:
+        return torch.from_numpy(arr.view(np.int16)).view(torch.bfloat16)
+    if arr.dtype == np.uint8:
+        return torch.from_numpy(arr)
+    return torch.from_numpy(np.ascontiguousarray(arr))
+
+
 def _get_thresholds(dtype_str):
     if dtype_str == "bfloat16":
         return _BF16_RTOL, _BF16_ATOL, _PCT_THD
     return _FP16_RTOL, _FP16_ATOL, _PCT_THD
+
 
 def _tensor_compare(npu_out, golden_out, name):
     npu = as_numpy(npu_out)
@@ -119,7 +146,7 @@ def _tensor_compare(npu_out, golden_out, name):
     if (
         name == _OUTPUT_NAMES[3]
         or name == _OUTPUT_NAMES[4]
-        or name == "batch_consisteny"
+        or name == "batch_consistency"
     ):
         rtol = 0
         atol = 0
@@ -185,11 +212,14 @@ def _tensor_compare(npu_out, golden_out, name):
             f"{name} compare failed: fulfill_percent={fulfill_percent:.4f}%, "
             f"max_rel_err={max_rel_err:.4f}, err_count={int(err_idx.size)}"
         )
-
+    err_count = int(err_idx.size)
+    diff_indices = err_idx[:1000].tolist() if len(err_idx) > 0 else []
+    del real_data, data_compe, diff_result, err_idx, diff_abs
+    gc.collect()
     return {
         "pass": is_pass,
         "precision": fulfill_percent,
-        "diff_indices": err_idx[:1000].tolist() if len(err_idx) > 0 else [],
+        "diff_indices": diff_indices,
         "error_info": error_info,
         "metrics": {
             "standard": "check_result",
@@ -200,7 +230,7 @@ def _tensor_compare(npu_out, golden_out, name):
             "pct_rlt": fulfill_percent,
             "max_rel_err": max_rel_err,
             "max_diff_hd": _MAX_DIFF_HD,
-            "err_count": int(err_idx.size),
+            "err_count": err_count,
         },
     }
 
@@ -274,9 +304,11 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                         else:
                             bidx = slices[0][slice_idx][0]
                             slice_idx += 1
-                        headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
+                        headSize = (
+                            cmp_ratio - (start + start_pos_list[bidx]) % cmp_ratio
+                        )
                         compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
-                        cache_len = cmp_ratio - start_pos_list[0] % cmp_ratio
+                        cache_len = cmp_ratio - start_pos_list[bidx] % cmp_ratio
                         start_idx = (
                             (start - cache_len) // cmp_ratio + 1
                             if headSize == cmp_ratio
@@ -297,7 +329,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                 else:
                     cached = _BATCH_CONSISTENCY_CACHE[dl]
                     compare_result = _tensor_compare(
-                        cached["base"], slice_output, "batch_consisteny"
+                        cached["base"], slice_output, "batch_consistency"
                     )
                     result.append(compare_result)
                     status = "Pass" if compare_result["pass"] else "Failed"
@@ -332,6 +364,7 @@ def compare(*outputs, **kwargs):
                 npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
             )
         ]
+        gc.collect()
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
             results.append(
@@ -341,6 +374,9 @@ def compare(*outputs, **kwargs):
                     "error_info": f"{name}: NPU state_cache not captured",
                 }
             )
+        result_consistency = _batch_consistency_check(npu_outputs[0], kwargs)
+        if result_consistency is not None:
+            results.append(result_consistency)
         return results
 
     npu_cmp_kv = npu_outputs[0]
@@ -354,31 +390,46 @@ def compare(*outputs, **kwargs):
     npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
     golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
-    )
+    if update_kv is not None and update_score is not None:
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
-    )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+        )
+    else:
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
+        npu_sub_outputs.append(None)
+        npu_sub_outputs.append(None)
+
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :]
+        )
+        golden_sub_outputs.append(None)
+        golden_sub_outputs.append(None)
 
     results = []
     for idx in range(len(golden_sub_outputs)):
@@ -399,8 +450,11 @@ def compare(*outputs, **kwargs):
     result_consistency = _batch_consistency_check(npu_outputs[0], kwargs)
     if result_consistency is not None:
         results.append(result_consistency)
-
+    del npu_cmp_kv, npu_state_cache, cpu_cmp_kv, cpu_state_cache
+    del npu_sub_outputs, golden_sub_outputs
+    gc.collect()
     return results
+
 
 def compare_aclnn(*outputs, **kwargs):
     if len(outputs) < 2:
@@ -410,18 +464,22 @@ def compare_aclnn(*outputs, **kwargs):
             "error_info": "compare expects NPU outputs followed by golden outputs",
         }
 
-    GOLDEN_OUTPUT_COUNT = 2
-    golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
-    npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
+    GOLDEN_OUTPUT_COUNT = 4
+    golden_outputs = [_to_torch(g) for g in outputs[-GOLDEN_OUTPUT_COUNT:]]
+    npu_outputs = [_to_torch(o) for o in outputs[:-GOLDEN_OUTPUT_COUNT]]
     cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
-
+    mid_result_mask = kwargs.get("mid_result_mask", None)
+    gradEnabled = kwargs.get("gradEnabled", None)
     # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
-                npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "cmp_kv"
+                npu_outputs[0][cmp_kv_mask].to(torch.float32),
+                golden_outputs[0][cmp_kv_mask].to(torch.float32),
+                "cmp_kv",
             )
         ]
+        gc.collect()
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
             results.append(
@@ -431,12 +489,17 @@ def compare_aclnn(*outputs, **kwargs):
                     "error_info": f"{name}: NPU state_cache not captured",
                 }
             )
+        result_consistency = _batch_consistency_check(
+            npu_outputs[0].to(torch.float32), kwargs
+        )
+        if result_consistency is not None:
+            results.append(result_consistency)
         return results
 
     npu_cmp_kv = npu_outputs[0].to(torch.float32)
-    npu_state_cache = npu_outputs[1].to(torch.float32)
+    npu_state_cache = npu_outputs[3].to(torch.float32)
     cpu_cmp_kv = golden_outputs[0].to(torch.float32)
-    cpu_state_cache = golden_outputs[1].to(torch.float32)
+    cpu_state_cache = golden_outputs[3].to(torch.float32)
 
     update_kv = kwargs.get("update_kv", None)
     update_score = kwargs.get("update_score", None)
@@ -444,31 +507,56 @@ def compare_aclnn(*outputs, **kwargs):
     npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
     golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
-    )
+    if update_kv is not None and update_score is not None:
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
-    )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+        )
+    else:
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
+        npu_sub_outputs.append(None)
+        npu_sub_outputs.append(None)
+
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :]
+        )
+        golden_sub_outputs.append(None)
+        golden_sub_outputs.append(None)
+
+    if gradEnabled:
+        npu_softmax_out = npu_outputs[1][mid_result_mask].to(torch.float32)
+        npu_kv_out = npu_outputs[2][mid_result_mask].to(torch.float32)
+        cpu_softmax_out = golden_outputs[1][mid_result_mask].to(torch.float32)
+        cpu_kv_out = golden_outputs[2][mid_result_mask].to(torch.float32)
+        npu_sub_outputs.append(npu_softmax_out)
+        npu_sub_outputs.append(npu_kv_out)
+        golden_sub_outputs.append(cpu_softmax_out)
+        golden_sub_outputs.append(cpu_kv_out)
 
     results = []
     for idx in range(len(golden_sub_outputs)):
@@ -485,9 +573,13 @@ def compare_aclnn(*outputs, **kwargs):
             )
         else:
             results.append(_tensor_compare(npu_out, golden_out, name))
-            
-    result_consistency = _batch_consistency_check(npu_outputs[0].to(torch.float32), kwargs)
+
+    result_consistency = _batch_consistency_check(
+        npu_outputs[0].to(torch.float32), kwargs
+    )
     if result_consistency is not None:
         results.append(result_consistency)
-
+    del npu_cmp_kv, npu_state_cache, cpu_cmp_kv, cpu_state_cache
+    del npu_sub_outputs, golden_sub_outputs
+    gc.collect()
     return results

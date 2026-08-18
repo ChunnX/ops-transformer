@@ -15,6 +15,18 @@
 
 namespace MegaMoeImpl {
 
+enum class MegaMoeActMode : uint8_t {
+    SWIGLU = 0U,
+    SITU = 1U,
+    SWIGLU_STEP = 2U,
+    SWIGLU_OAI = 3U,
+};
+
+enum class MegaMoeActSubMode : uint8_t {
+    DEFAULT = 0U,
+    LINEAR = 1U,
+};
+
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
@@ -65,7 +77,7 @@ constexpr uint32_t L1_TILE_M_256 = 256U;
 constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
-constexpr uint32_t SWIGLU_N_HALF = 2U;
+constexpr uint32_t ACTIVATION_N_HALF = 2U;
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_CONSTANTS_H

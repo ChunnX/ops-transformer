@@ -42,7 +42,10 @@ class CompressorSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, **kwargs):
+    def compare(*outputs, compare_context=None, **kwargs):
+        golden_module.rebuild_golden_context_from_compare_context(
+            compare_context, api_kind="e2e"
+        )
         ctx = golden_module.get_golden_context()
         kwargs["cmp_kv_mask"] = ctx.get("cmp_kv_mask")
         kwargs["update_kv"] = ctx.get("update_kv")
@@ -63,7 +66,10 @@ class AclnnCompressorSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, **kwargs):
+    def compare(*outputs, compare_context=None, **kwargs):
+        golden_module.rebuild_golden_context_from_compare_context(
+            compare_context, api_kind="aclnn"
+        )
         ctx = golden_module.get_golden_context()
         kwargs["cmp_kv_mask"] = ctx.get("cmp_kv_mask")
         kwargs["update_kv"] = ctx.get("update_kv")
@@ -73,6 +79,8 @@ class AclnnCompressorSpec:
         kwargs["cu_seqlens_list"] = ctx.get("cu_seqlens_list")
         kwargs["cmp_ratio"] = ctx.get("cmp_ratio")
         kwargs["is_th"] = ctx.get("is_th")
+        kwargs["gradEnabled"] = ctx.get("gradEnabled")
+        kwargs["mid_result_mask"] = ctx.get("mid_result_mask")
         return compare_module.compare_aclnn(*outputs, **kwargs)
 
 
