@@ -14,6 +14,7 @@
  */
 #include "allto_all_fp_matmul_tiling_base.h"
 
+#include <algorithm>
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -147,6 +148,10 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoMMTiling()
     Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch_, priorities};
 
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, contextInfo_.args_, opName_);
+    // SEP_BIAS: bias 由独立 add_bias 节点处理, matmul 不再接收 bias (biasGM=nullptr)
+    if (contextInfo_.args_.isBias) {
+        mmV3Args_.hasBias = false;
+    }
 
     //  tile  tiling
     mmV3Args_.mValue = inferredInfo_.tileM;
@@ -244,10 +249,64 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
-            NON_QUANT_MODE, x2TransposeFlag, biasDType, commMode, tilingKey);
+    // 非量化+有bias: 按M/N规模选择分核策略; 否则关闭
+    uint8_t addBiasSplitMode = contextInfo_.args_.isBias ? ChooseAddBiasSplitMode() : ADDBIAS_OFF;
+        const uint64_t tilingKey =
+        GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, false, addBiasSplitMode);
+    OP_LOGD(opName_,
+            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,ADDBIASSPLITMODE is: [%d,%d,%d,0,%d,%d], "
+            "and tilingKey is [%lu].",
+            NON_QUANT_MODE, x2TransposeFlag, biasDType, commMode, addBiasSplitMode, tilingKey);
     return tilingKey;
+}
+
+/**
+ * @brief 非量化+有bias时, 选择 add_bias 节点的分核策略
+ *   核利用率优先: MN_SPLIT(跨N-tile最少) > N_SPLIT > M_SPLIT
+ *   O(1) 复杂度, 基于 matmul 输出 [rankM, rankN] 的 tile 分块数与核数比较
+ *   add_bias 在 AIV 执行, TILE_M/TILE_N 由 mc2_vec_add_bias 节点定义 (half:128/256)
+ * @return ADDBIAS_OFF / ADDBIAS_M_SPLIT / ADDBIAS_N_SPLIT / ADDBIAS_MN_SPLIT
+ */
+uint8_t AllToAllFpMatmulTilingBase::ChooseAddBiasSplitMode() const
+{
+    // add_bias 节点的 tile 大小 (与 mc2_vec_add_bias.h 中 TILE_M/TILE_N 一致)
+    // half/bf16: TILE_M=128, float: TILE_M=64; TILE_N=256
+    constexpr uint32_t ADD_BIAS_TILE_M = 128;
+    constexpr uint32_t ADD_BIAS_TILE_N = 256;
+    // AIV 核数 = AIC 核数 × 2 (CV 1:2)
+    const uint32_t aivCoreNum = contextInfo_.args_.aicCoreNum * 2;
+
+    const uint32_t M = contextInfo_.args_.orgMValue;
+    const uint32_t N = contextInfo_.args_.nValue;
+    const uint32_t tileMCnt = (M + ADD_BIAS_TILE_M - 1) / ADD_BIAS_TILE_M;
+    const uint32_t tileNCnt = (N + ADD_BIAS_TILE_N - 1) / ADD_BIAS_TILE_N;
+    const uint32_t totalTiles = tileMCnt * tileNCnt;
+
+    // 边界: 单子块或无法分核
+    if (totalTiles <= 1) {
+        return ADDBIAS_M_SPLIT;
+    }
+    if (tileNCnt == 1) {
+        return ADDBIAS_M_SPLIT;  // N 不够分, 只能 M 分核
+    }
+    if (tileMCnt == 1) {
+        return ADDBIAS_N_SPLIT;  // M 不够分, 只能 N 分核
+    }
+
+    // 三种策略的可用核数
+    const uint32_t usedM = std::min(aivCoreNum, tileMCnt);
+    const uint32_t usedN = std::min(aivCoreNum, tileNCnt);
+    const uint32_t usedMN = std::min(aivCoreNum, totalTiles);
+
+    // 核利用率优先, MN 偏好 (跨 N-tile 最少 → bias 读取最少)
+    const uint32_t maxUtil = std::max({usedM, usedN, usedMN});
+    if (usedMN == maxUtil) {
+        return ADDBIAS_MN_SPLIT;
+    }
+    if (usedN == maxUtil) {
+        return ADDBIAS_N_SPLIT;
+    }
+    return ADDBIAS_M_SPLIT;
 }
 
 /**
