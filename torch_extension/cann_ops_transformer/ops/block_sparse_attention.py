@@ -431,7 +431,7 @@ _op_module = _op_builder.load()      # JIT-compiles + loads block_sparse_attenti
 
 
 @impl(AS_LIBRARY, _op_builder.name, "PrivateUse1")
-def block_sparse_attention_v3(query,
+def block_sparse_attention(query,
 						key,
 						value,
 						block_sparse_mask,
