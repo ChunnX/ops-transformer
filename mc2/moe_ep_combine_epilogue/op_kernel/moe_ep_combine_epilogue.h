@@ -196,9 +196,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         tpipe_->InitBuffer(ubWeightedBuf_, UB_ALIGN);
         ubWeighted_ = ubWeightedBuf_.Get<float>();
     }
+    uint32_t ubFp32Bytes = Ceil(axisH_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubXBuf_, ubXBytes_);
-    tpipe_->InitBuffer(ubAccFp32Buf_, axisH_ * sizeof(float));
-    tpipe_->InitBuffer(ubTmpFp32Buf_, axisH_ * sizeof(float));
+    tpipe_->InitBuffer(ubAccFp32Buf_, ubFp32Bytes);
+    tpipe_->InitBuffer(ubTmpFp32Buf_, ubFp32Bytes);
 
     ubX_ = ubXBuf_.Get<XType>();
     ubAccFp32_ = ubAccFp32Buf_.Get<float>();
@@ -265,6 +266,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::RecvPhaseReduce()
 {
+    if (tPerCore_ == 0) {
+        return;
+    }
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
