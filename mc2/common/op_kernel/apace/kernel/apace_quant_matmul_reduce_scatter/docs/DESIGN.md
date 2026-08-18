@@ -77,7 +77,7 @@ quantMatmulReduceScatter 实现如下计算流程：
     │
     ▼
 ┌─────────────────────┐
-│  reduceSum          │  AIV: float32 累加, self 从 workspace 读, received 从 win 读
+│  reduceSum          │  AIV: BF16 直接累加, self 从 workspace 读, received 从 win 读
 └─────────────────────┘
     │
     ▼
@@ -138,7 +138,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 | 核类型 | 职责 | 说明 |
 |-------|------|------|
 | AIC（Cube） | FragmentTensor 量化 MatMul | 每卡独立执行完整的 `A × B` 计算，通过 FragmentTensor 打包各 rank 段地址消除 R 循环，无 L0C 原子累加 |
-| AIV（Vector） | AlltoAll PUT 通信 + reduceSum 求和 | 通过 `CollectiveComm` 框架执行 AlltoAll PUT 分发，收齐后对多份结果执行逐元素 reduceSum 求和（float32 累加） |
+| AIV（Vector） | AlltoAll PUT 通信 + reduceSum 求和 | 通过 `CollectiveComm` 框架执行 AlltoAll PUT 分发，收齐后对多份结果执行逐元素 reduceSum 求和（BF16 直接累加） |
 
 ### 3.3 模块划分
 
@@ -149,7 +149,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 | FragmentTensor Kernel | `qmm_mx_kernel_rs_frag.h` | FragmentTensor 版量化 MatMul 内核，参考 allgather `QmmMxKernelAgUdma`，消除 R 循环 |
 | 通信框架 | `apace/block/aiv_comm/` | `CollectiveComm` 统一通信 API、AllToAll PUT 实现 |
 | 算子编排 | `apace_quant_matmul_reduce_scatter_udma_impl.h` | 本算子的 Init/Run 编排逻辑 |
-| reduceSum | `reduce_sum.h` | 参考 `ReadRemoteDataAdd` 实现，手动 UB 管理（无 TPipe），多行 block + float32 累加 |
+| reduceSum | `reduce_sum.h` | 参考 `ReadRemoteDataAdd` 实现，Te::MakeTensor 手动 UB 管理（无 TPipe），多行 block + BF16 直接累加 + pingpong 双 buffer |
 
 ---
 
@@ -215,7 +215,7 @@ win 区布局 (接收方):
     AIV: for t = 0..commTurn:
            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0)
            AlltoAll PUT: 推送 tile t 到其他 rank
-           reduceSum: float32 累加 → output
+           reduceSum: BF16 直接累加 → output
 
 阶段 3: 输出
     AIV: reduceSum 结果直接写入 output GM [m/rankSize, n]
@@ -236,14 +236,13 @@ struct ApaceQuantMatmulReduceScatterTilingData {
 };
 ```
 
-### 5.2 SWAT + baseM 减半优化
+### 5.2 SWAT + baseM 减半 + 自适应 headMSize
 
 1. **全量 tiling**：`GetTilingData(m, n, k)` 生成 mmTilingData（baseM=256）
-2. **子问题 tiling**：`GetTilingData(headMSize, n, k)` 生成 subMmTilingData
-3. **baseM 减半**：若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除，手动减半为 128
-   - 产生更多 tiles（32→64），每核 tiles/core 从 1.14 提升到 2.29
-   - L1 安全：baseM 减半 → A buffer 减半，stepK/scaleKL1/nBufferNum 不变
-4. **统一选择**：T>1 head tile 用 subMmTilingData（baseM=128），T>1 tail tile 用 tailMmTilingData（m=rankSize×tailMSize），T=1 用 mmTilingData
+2. **自适应 headMSize**：R<=2 保持 headMSize=512, R>=4 压缩到 128 (流水掩盖效果好)
+3. **子问题 tiling**：`GetTilingData(headMSize, n, k)` 生成 subMmTilingData
+4. **baseM 减半**：若 SWAT 生成 baseM=256 且 headMSize 可被 128 整除，手动减半为 128
+5. **统一选择**：T>1 head tile 用 subMmTilingData（baseM=128），T>1 tail tile 用 tailMmTilingData（m=rankSize×tailMSize），T=1 用 mmTilingData
 
 ### 5.3 调度器
 
@@ -265,7 +264,7 @@ AIV: AlltoAll → win 区 (各 rank 的 C 分片)
           │
           ▼
      reduceSum: self 从 workspace 读, received 从 win 读
-          │ float32 累加
+          │ BF16 直接累加
           ▼
      output [m/rankSize, n] (bfloat16)
 ```
@@ -291,7 +290,9 @@ AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1]   WaitFlag [co
 ```
 
 - **per-tile WaitFlag**：CrossCore flag 是计数式，T 次 Set 对应 T 次 Wait
-- **reduceSum float32 累加**：BF16 → Cast float32 → Add float32 → Cast 回 BF16 输出
+- **reduceSum BF16 直接累加**：BF16 直接 Add (950 硬件级精度), 无 Cast, pingpong 双 buffer
+- **V 核流水掩盖**：AllToAll(t) 与 ReduceSum(t-1) 并行, block 0 通信 + block 1-27 reduceSum
+- **自适应 headMSize**：R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好)
 - **仅 block 0 通信**：`totalJobs=1`，避免多核并发写同一 output
 
 ### 6.4 同步机制
@@ -333,7 +334,7 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 
 - **workspace**：`m × n × sizeof(CType)` 字节（Host 侧申请传入，存放 AIC 计算的 C_i）
 - **win 区**：`rankSize × chunkM × n × sizeof(CType)` 字节（AllToAll PUT 接收缓冲区）
-- **reduceSum UB 缓冲区**：手动 UB 偏移管理（无 TPipe），4 个区域：`[sumF32 | localBF16 | localF32 | outBF16]`，多行 block 处理（rowsPerBlock 行/block，UB 容量自适应）
+- **reduceSum UB 缓冲区**：手动 UB 偏移管理（无 TPipe），3 个区域：`[sum(float-sized, BF16 view) | inputA(BF16) | inputB(BF16)]`，pingpong 双 buffer 交替，多行 block 处理（UB 容量自适应）
 
 ---
 
@@ -403,7 +404,7 @@ for (t = 0..commTurn) {
     SyncAll<true>();
     // reduceSum: 所有 block 并行, 手动 UB 管理 (无 TPipe)
     //   self 从 workspace 读, received 从 win 区读
-    //   多行 block: rowsPerBlock 行/block, float32 累加
+    //   多行 block: rowsPerBlock 行/block, BF16 直接累加
     reduceSum_.Init(outputSize, stride, rankSize, rankId, usedCoreNum,
                     srcAddr, selfAddr, dstAddr);
     reduceSum_.ExecuteReduceSum(tileM, nSize);
@@ -447,22 +448,32 @@ allToAllC_.Finalize();
 - 统一为 `for t = 0..commTurn` 单一循环路径，T=1 时循环执行 1 次自然退化
 - 无 if/else 分支，代码更简洁
 
-### 9.4 为什么 reduceSum 用 float32 累加
+### 9.4 为什么 reduceSum 用 BF16 直接累加 (950 硬件级精度)
 
-- BF16 直接 Add 在 K=8192 时 4-rank 精度超标（rel_err=1.09e-2 > 1e-2）
-- float32 累加：BF16 → Cast float32 → Add → Cast 回 BF16
-- 修复后 max rel_err 降至 6.21e-3
+- 950 硬件支持 BF16 Add，直接累加无需 Cast float32 中间步骤
+- V 指令数从 3 条/rank (Cast+Add+PipeBarrier) 减少到 1 条/rank (Add)
+- 精度验证通过：5/5 代表用例 ALL PASS（max rel_err < 8e-3）
 
 ### 9.5 为什么 reduceSum 用手动 UB 管理（无 TPipe）
 
 参考 ops-transformer 仓的 `ReadRemoteDataAdd` 实现：
-- **手动 UB 偏移**：直接用 `LocalTensor` + 字节偏移管理 buffer 布局 `[sumF32 | localBF16 | localF32 | outBF16]`
+- **Te::MakeTensor + 手动 UB 偏移**：用 `Te::MakeTensor(MakeMemPtr<UB,T>(off), FrameLayoutFormat<...>{})` 创建 tensor，字节偏移管理 buffer 布局 `[sum(float-sized, BF16 view) | inputA | inputB]`
+- **pingpong 双 buffer**：`pingPongCount_ & 1` 交替使用 input A/B 两份 buffer
 - **多行 block**：一次处理 `rowsPerBlock` 行（UB 容量自适应），减少 GM↔UB 同步次数
-- **所有 block 参与**：28 个 AIV block 全部参与 reduceSum（旧实现仅前 rankSize 个）
-- **性能**：相比旧实现平均 2.0x 加速（msprof Task Duration）
+- **所有 block 参与**：28 个 AIV block 全部参与 reduceSum
+- **性能**：相比旧实现平均 2.01x 加速（msprof Task Duration）
 - **无 TPipe 依赖**：不需要 `pipe_.Reset()` 清理，per-tile 调用无状态冲突
 
-### 9.6 AIC / AIV 的 per-tile 流水重叠
+### 9.6 V 核流水掩盖 + 自适应 headMSize
+
+**V 核流水掩盖**：AllToAll(t) 与 ReduceSum(t-1) 并行执行
+- block 0 做 AllToAll(t)，block 1-27 做 ReduceSum(t-1)
+- SyncAll 后 block 0 补做 ReduceSum(t-1)
+- 每 tile 2 次 SyncAll 保证跨核数据可见性
+
+**自适应 headMSize**：
+- R<=2: headMSize=512（大 tile, 少 SyncAll, 通信效率高）
+- R>=4: headMSize=128（小 tile, 多 commTurn, 流水掩盖效果好）
 
 ```
 AIC: [tile0 frag mm] SetFlag [tile1 frag mm] SetFlag ...
@@ -503,8 +514,8 @@ AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算�
 
 ---
 
-> **文档状态**：已更新至多行 block reduceSum 版本（无 TPipe，参考 ReadRemoteDataAdd）
+> **文档状态**：已更新至 BF16 直接累加 + pingpong + V核流水掩盖 + 自适应 headMSize 版本
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：qmm_mx_kernel_rs_frag.h + FragmentTensor + reduce_sum.h (手动 UB, 多行 block)
-> **精度验证**：34/34 case ALL PASS
-> **性能**：msprof Task Duration, 平均 2.0x 加速 (vs 旧实现)
+> **代码版本**：qmm_mx_kernel_rs_frag.h + FragmentTensor + reduce_sum.h (Te::MakeTensor, BF16 Add, pingpong)
+> **精度验证**：5/5 代表用例 ALL PASS
+> **性能**：msprof Task Duration, 相比旧实现平均 2.01x 加速 (自适应 headMSize)

@@ -1,8 +1,8 @@
 # 设计文档 vs 代码实现 一致性审查报告
 
-> **审查日期**: 2026-08-17 (更新至 R9 FragmentTensor 版本)
-> **设计文档**: `docs/DESIGN.md` (quantMatmulReduceScatter 设计文档 R9 版)
-> **代码版本**: R9 (FragmentTensor 消除 R 循环 + per-tile 流水 + if/else 归一化 + float32 累加)
+> **审查日期**: 2026-08-18 (更新至 BF16 直接累加 + pingpong + V核流水掩盖 + 自适应 headMSize)
+> **设计文档**: `docs/DESIGN.md` (quantMatmulReduceScatter 设计文档)
+> **代码版本**: BF16 直接累加 + pingpong 双 buffer + Te::MakeTensor + V核流水掩盖 + 自适应 headMSize
 > **审查范围**: kernel/apace_quant_matmul_reduce_scatter_udma_impl.h, kernel/qmm_mx_kernel_rs_frag.h, kernel/apace_quant_matmul_reduce_scatter_tiling_data.h, kernel/reduce_sum.h, src/kernel_launcher.h, src/main.cpp
 
 ---
@@ -141,17 +141,20 @@
 
 ## 七、reduceSum 精度策略（§6.3 + §9.4）
 
-**设计文档**：float32 累加（BF16 → Cast float32 → Add → Cast BF16）
+**设计文档**：BF16 直接累加（950 硬件级精度, 无 Cast）
 
 **代码实现**：
-- `reduce_sum.h` — `Duplicate` 初始化 accumF32=0, 逐 rank `Cast` BF16→float32, `Add` float32, 最终 `Cast` float32→BF16
-- float repeatTime 限制处理: 分批调用（每次 ≤ 16320 元素）
+- `reduce_sum.h` — `Te::Transform<Inst::MulScalar>` 清零 sum (float 视图), 逐 rank `Te::Transform<Inst::Add>` BF16 直接累加, `Te::Copy` 输出 BF16
+- pingpong 双 buffer: `pingPongCount_ & 1` 交替使用 input A/B
+- Te::MakeTensor + Te::Copy + Te::Transform (不用 LocalTensor/VECIN)
 
 | 项 | 设计 | 代码 | 差异 |
 |----|------|------|------|
-| float32 累加 | ✅ | ✅ | 一致 |
-| BF16→float32 Cast | ✅ | ✅ | 一致 |
-| 分批处理 repeatTime | 未详细描述 | ✅ MAX_FLOAT_ELEMS_PER_CALL=16320 | 设计可补充 |
+| BF16 直接累加 | ✅ | ✅ | 一致 |
+| pingpong 双 buffer | ✅ | ✅ | 一致 |
+| Te::MakeTensor | ✅ | ✅ | 一致 |
+| V核流水掩盖 | ✅ | ✅ | 一致 |
+| 自适应 headMSize | ✅ | ✅ | 一致 |
 
 ---
 

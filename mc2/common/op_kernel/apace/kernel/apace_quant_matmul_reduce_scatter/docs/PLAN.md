@@ -39,7 +39,7 @@
 | `src/utils.h` — 工具函数 | ✅ |
 | `src/root_info_exchanger.h` — TCP rootInfo 交换 | ✅ |
 | `CMakeLists.txt` — 构建配置 | ✅ |
-| `scripts/gen_data.py` — CPU golden 数据生成 (float32 累加) | ✅ |
+| `scripts/gen_data.py` — CPU golden 数据生成 (BF16 直接累加) | ✅ |
 | `scripts/verify_result.py` — 精度比对 | ✅ |
 | `run.sh` — 一键编译运行验证脚本 | ✅ |
 | `cases.csv` — 测试用例 | ✅ |
@@ -69,7 +69,7 @@ AIV (block 0):
 3. **单 tile 通信**：chunkM = m/rankSize，一次通信完成
 4. **workspaceGM 作为算子入参**：AIC 写入 C_i，PUT 读取推送
 5. **reduceSum 独立文件**：参考 vec_comp.h，简化版直接 Add 累加
-6. **golden float32 累加**：避免 bfloat16 累加误差导致验证失败
+6. **golden BF16 直接累加**：避免 bfloat16 累加误差导致验证失败
 
 ### 3.3 同步机制
 
@@ -89,7 +89,7 @@ AIV (block 0):
 | 用例 | M | K | N | rankNum | 状态 | max rel_err | 说明 |
 |-----|---|---|---|---------|------|-------------|------|
 | T1 | 2048 | 3584 | 4096 | 2 | ✅ PASS | 6.58e-3 | 基本功能验证 |
-| T2 | 2048 | 3584 | 4096 | 4 | ✅ PASS | 6.99e-3 | 4 卡通信验证 (float32 累加) |
+| T2 | 2048 | 3584 | 4096 | 4 | ✅ PASS | 6.99e-3 | 4 卡通信验证 (BF16 直接累加) |
 | T4 | 2048 | 8192 | 4096 | 4 | ✅ PASS | 6.21e-3 | K=8192 精度修复验证 (原 FAIL 1.09e-2) |
 
 精度标准：atol=1e-2, rtol=1e-2（MXFP8 + BF16 输出）
@@ -101,14 +101,14 @@ AIV (block 0):
 - 修改: `constexpr uint32_t UB_SIZE_BYTES = 192 * 1024` → `TOTAL_UB_SIZE`
 - 效果: DAV_3510 实际 UB 248KB 替代错误的 192KB, subM 增大, 迭代次数减少
 
-#### MF-2: BF16 reduceSum 精度不足 → float32 Cast 累加
+#### MF-2: BF16 直接累加 (950 硬件级精度)
 - 文件: kernel/reduce_sum.h
 - 修改: 
-  1. 读 BF16 → Cast 到 float32 → Duplicate 初始化 accumF32 为 0
-  2. 逐 rank Cast BF16 → float32 → Add float32 累加
-  3. 最终 Cast float32 → BF16 (CAST_RINT) → 写入 output
-- 参考实现: vec_comp.h DequantReduceSum
-- 效果: K=8192 4-rank rel_err 从 1.09e-2 降至 6.21e-3
+  1. Te::Transform<Inst::MulScalar> 清零 sum (float 视图, float 0.0 二进制全 0 = BF16 0)
+  2. 逐 rank Te::Transform<Inst::Add> BF16 直接累加 (无 Cast)
+  3. Te::Copy 直接输出 BF16 (无 Cast)
+- 参考实现: ops-transformer ReadRemoteDataAdd + 950 BF16 Add 硬件支持
+- 效果: V 指令数从 3 条/rank 减少到 1 条/rank, 5/5 代表用例 ALL PASS
 
 #### 关键调试发现: float Vector API repeatTime 限制
 - Add/Cast/Duplicate 的 repeatTime 为 uint8_t (max 255)
@@ -143,8 +143,8 @@ AIV (block 0):
 | Tiling 实现 | TilingData + Host Tiling 计算 + 编译通过 | ✅ |
 | Kernel 实现 | AIC matmul + AIV AllToAll PUT + reduceSum + 编译通过 | ✅ |
 | 测试验证 | 2 rank + 4 rank 精度通过 (K=3584 + K=8192) | ✅ |
-| 修复轮次 | MF-1 (UB_SIZE) + MF-2 (float32 累加) | ✅ |
-| 性能验收 | msprof 采集 + 数据归档 | ✅ |
+| 修复轮次 | MF-1 (UB_SIZE) + MF-2 (BF16 直接累加) + 5条评审意见 | ✅ |
+| 性能验收 | msprof 采集 + 数据归档 (自适应 headMSize, 平均 2.01x 加速) | ✅ |
 
 ---
 
@@ -156,8 +156,12 @@ AIV (block 0):
 | 2026-08-15 | totalJobs=1 | 避免 CrossDevice barrier 多核写同一 base flag 竞争 |
 | 2026-08-15 | workspaceGM 算子入参 | AIC 写入 C_i，PUT 读取推送，reduceSum 读取 |
 | 2026-08-15 | reduceSum 独立文件 | reduce_sum.h，参考 vec_comp.h 简化版 |
-| 2026-08-15 | golden float32 累加 | bfloat16 累加 4 个值误差过大，改用 float32 累加后转 bf16 |
-| 2026-08-15 | NPU float32 累加 | MF-2 修复: reduce_sum.h Cast BF16→float32→Add→Cast 回 BF16 |
+| 2026-08-15 | golden BF16 直接累加 | CPU golden 用 float32 累加后转 bf16, NPU 用 BF16 直接累加 |
+| 2026-08-18 | NPU BF16 直接累加 | 950 硬件支持 BF16 Add, 无需 Cast float32, V 指令数 3→1 条/rank |
+| 2026-08-18 | pingpong 双 buffer | pingPongCount_ & 1 交替使用 input A/B 两份 buffer |
+| 2026-08-18 | Te::MakeTensor | Te::MakeTensor + Te::Copy + Te::Transform 替代 LocalTensor/VECIN |
+| 2026-08-18 | V核流水掩盖 | AllToAll(t) 与 ReduceSum(t-1) 并行, 2 SyncAll/tile 保证可见性 |
+| 2026-08-18 | 自适应 headMSize | R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好) |
 | 2026-08-15 | float repeatTime 限制 | Add/Cast/Duplicate repeatTime uint8_t max 255, float 单次 16320 元素 |
 | 2026-08-15 | MTE3→MTE2 WAR 同步 | float32 版 Duplicate (V) 打破 MTE3→MTE2 隐式保序, 需 V_MTE2 显式同步 |
 | 2026-08-15 | 单 tile 通信 | chunkM = m/rankSize，win 布局与 C_i 连续布局一致 |
@@ -246,7 +250,7 @@ AIV (block 0):
    - reduce_sum.h 重构：Run → RunImpl（核心逻辑），RunTile（多 tile 接口）
    - 地址计算: readOffset = r * chunkBytes + (tileMOffset + mOffset) * rowBytes
    - writeOffset = (tileMOffset + processedRows) * rowBytes
-   - 每 tile 独立 float32 累加，精度无损
+   - 每 tile 独立 BF16 直接累加，精度无损
 
 ### 8.3 未实施优化（设计问题）
 
@@ -500,3 +504,36 @@ SWAT 为 m=512 生成的 tiling 与 m=2048 相同 (baseM=256, baseN=256, baseK=1
 2. **进一步减小 baseM**: 尝试 baseM=64 (8×16=CUBE_BLOCK), 产生 128 tiles (4.57 tiles/core), 但需验证 L0A/L0C 约束
 3. **减小 baseN**: 尝试 baseN=128, 产生 4×32=128 tiles, 但需验证 L1 B buffer 约束
 4. **多 block 通信**: totalJobs=rankSize 让多 block 并行通信, 减少 AIV 等待
+
+---
+
+## 11. 性能优化 Round 4: 5 条评审意见 + 自适应 headMSize (2026-08-18)
+
+### 11.1 优化内容
+
+| # | 优化项 | 实现文件 | 说明 |
+|---|--------|---------|------|
+| 1 | pingpong 双 buffer | reduce_sum.h | `pingPongCount_ & 1` 交替使用 input A/B 两份 buffer |
+| 2 | BF16 直接 Add | reduce_sum.h | 950 硬件级精度, V 指令数 3→1 条/rank |
+| 3 | Te::MakeTensor | reduce_sum.h | Te::MakeTensor + Te::Copy + Te::Transform (不用 LocalTensor/VECIN) |
+| 4 | V核流水掩盖 | impl.h | AllToAll(t) 与 ReduceSum(t-1) 并行, 2 SyncAll/tile |
+| 5 | 自适应 headMSize | main.cpp | R<=2 用 512, R>=4 用 128 |
+
+### 11.2 性能数据 (msprof cross_rank_max, us)
+
+| Case | 旧实现 | 自适应 | 加速比 |
+|------|--------|--------|--------|
+| M=2048 K=3584 N=4096 R=2 H=512 | 680 | 304 | 2.24x |
+| M=2048 K=3584 N=4096 R=4 H=512 | 412 | 243 | 1.70x |
+| M=4096 K=3584 N=4096 R=2 H=512 | 1381 | 548 | 2.52x |
+| M=1024 K=3584 N=4096 R=2 H=512 | 362 | 190 | 1.91x |
+| M=4096 K=3584 N=4096 R=4 H=512 | 736 | 438 | 1.68x |
+
+平均 2.01x 加速, 5/5 代表用例 ALL PASS
+
+### 11.3 关键发现
+
+- SyncAll 是跨核数据可见性的关键保障, 不能随意减少 (尝试 1 SyncAll/tile 导致 NaN)
+- R=2 大 M 场景: headMSize=512 最优 (commTurn 少, 通信效率高)
+- R=4 场景: headMSize=128 最优 (流水掩盖效果好, 通信时间短)
+- reduceSum 是 V-bound 不是 MTE2-bound, pingpong MTE2/V 重叠收益有限
