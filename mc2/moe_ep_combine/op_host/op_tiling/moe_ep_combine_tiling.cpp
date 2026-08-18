@@ -57,6 +57,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t COMM_ALIGN = 512UL;
+constexpr uint64_t MASK_ALIGN = 256UL;
 constexpr uint64_t NOTIFY_CNT_ALIGN = 15000UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
@@ -99,7 +100,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     return ge::GRAPH_FAILED);
     const int64_t recvxDim0 = recvxShape->GetStorageShape().GetDim(0);
     const int64_t recvxDim1 = recvxShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(recvxDim0 < 0, OP_LOGE(nodeName, "x dim0(A) must be positive, but got %ld.", recvxDim0),
+    // 允许本 rank 收到的 token 数为 0（所有专家均无 token 的情况）：dim0(A) 可为 0，但不能为负。
+    OP_TILING_CHECK(recvxDim0 < 0, OP_LOGE(nodeName, "x dim0(A) must be non-negative, but got %ld.", recvxDim0),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (recvxDim1 < H_MIN) || (recvxDim1 > H_MAX),
@@ -255,8 +257,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(requestedNetworkModePtr == nullptr,
-                    OP_LOGE(nodeName, "requestedNetworkModePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(requestedNetworkModePtr == nullptr, OP_LOGE(nodeName, "requestedNetworkModePtr is null."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
                     return ge::GRAPH_FAILED);
 
@@ -303,9 +305,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     serverNum = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
-    networkMode = (requestedNetworkMode == NETWORK_HYBRID && serverNum > 1U) ?
-                      NETWORK_HYBRID :
-                      NETWORK_DIRECT;
+    networkMode = (requestedNetworkMode == NETWORK_HYBRID && serverNum > 1U) ? NETWORK_HYBRID : NETWORK_DIRECT;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -313,8 +313,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
 static uint64_t AlignUpWin(const uint64_t data) { return (data + COMM_ALIGN - 1) / COMM_ALIGN * COMM_ALIGN; }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpCombineInfo &info,
-                                                 uint32_t networkMode, uint32_t serverNum,
-                                                 const char *nodeName)
+                                                 uint32_t networkMode, uint32_t serverNum, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
@@ -341,8 +340,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t combineDataWinOffset;
     uint64_t winNeedTotal;
     if (networkMode == NETWORK_HYBRID) {
-        uint64_t scaleoutRecvDataSize =
-            superNodeCount * nmt * scaleoutReservedPerSlotBytes;
+        uint64_t scaleoutRecvDataSize = superNodeCount * nmt * scaleoutReservedPerSlotBytes;
         uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * COMM_ALIGN);
         uint64_t scaleoutRecvDataOffset = dispatchWinStateSize + combineWinStateSize;
@@ -398,21 +396,25 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     info.cfg.perSlotBytes = static_cast<uint32_t>(((hAlign32 + UB_ALIGN + COMM_ALIGN - 1UL) / COMM_ALIGN) * COMM_ALIGN);
 
-    OP_TILING_CHECK(BuildAndCheckWindowLayout(context, info, networkMode, serverNum, nodeName) !=
-                        ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(BuildAndCheckWindowLayout(context, info, networkMode, serverNum, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
+
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    workSpaces[0] =
-        SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank;
+    uint64_t maskCalcWorkspaceSize = aivNum * (((static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) + aivNum - 1UL) /
+                                                    aivNum * static_cast<uint64_t>(info.cfg.topK) +
+                                                MASK_ALIGN - 1UL) /
+                                               MASK_ALIGN * MASK_ALIGN);
+    uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes + maskCalcWorkspaceSize;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
