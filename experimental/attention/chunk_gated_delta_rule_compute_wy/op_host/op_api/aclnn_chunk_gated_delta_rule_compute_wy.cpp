@@ -88,25 +88,15 @@ static aclnnStatus MakeInputsContiguous(ChunkGatedDeltaRuleComputeWyParams &p, a
 }
 
 aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *g,
-    const aclTensor *beta,
-    int64_t chunkSize,
-    const aclTensor *qKernelOut,
-    const aclTensor *kKernelOut,
-    const aclTensor *wKernelOut,
-    const aclTensor *uKernelOut,
-    const aclTensor *gKernelOut,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *g, const aclTensor *beta,
+    int64_t chunkSize, const aclTensor *qKernelOut, const aclTensor *kKernelOut, const aclTensor *wKernelOut,
+    const aclTensor *uKernelOut, const aclTensor *gKernelOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize must not be nullptr.");
     CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");
 
-    ChunkGatedDeltaRuleComputeWyParams p{q, k, v, g, beta, chunkSize, qKernelOut, kKernelOut, wKernelOut, uKernelOut,
-                                         gKernelOut};
+    ChunkGatedDeltaRuleComputeWyParams p{q,          k,          v,          g,          beta,      chunkSize,
+                                         qKernelOut, kKernelOut, wKernelOut, uKernelOut, gKernelOut};
 
     L2_DFX_PHASE_1(aclnnChunkGatedDeltaRuleComputeWy, DFX_IN(q, k, v, g, beta),
                    DFX_OUT(qKernelOut, kKernelOut, wKernelOut, uKernelOut, gKernelOut));
@@ -119,8 +109,9 @@ aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
     CHECK_COND(MakeInputsContiguous(p, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "MakeInputsContiguous failed.");
 
-    auto result = l0op::ChunkGatedDeltaRuleComputeWy(p.q, p.k, p.v, p.g, p.beta, p.chunkSize, p.qKernelOut, p.kKernelOut,
-                                                     p.wKernelOut, p.uKernelOut, p.gKernelOut, executorPtr);
+    auto result =
+        l0op::ChunkGatedDeltaRuleComputeWy(p.q, p.k, p.v, p.g, p.beta, p.chunkSize, p.qKernelOut, p.kKernelOut,
+                                           p.wKernelOut, p.uKernelOut, p.gKernelOut, executorPtr);
     CHECK_RET(result[0] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(l0op::ViewCopy(result[0], p.qKernelOut, executorPtr) != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -134,11 +125,8 @@ aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnChunkGatedDeltaRuleComputeWy(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream)
+aclnnStatus aclnnChunkGatedDeltaRuleComputeWy(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                              aclrtStream stream)
 {
     CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");
     CHECK_COND(stream != nullptr, ACLNN_ERR_PARAM_NULLPTR, "stream must not be nullptr.");

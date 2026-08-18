@@ -38,7 +38,10 @@ constexpr uint32_t DOUBLING_ROUNDS = 6; // log2(64)
 constexpr float FP32_FS_ROW_SUM_THRESHOLD = 0.75f;
 
 __aicore__ inline uint32_t AlignUp(uint32_t value, uint32_t align) { return (value + align - 1) / align * align; }
-__aicore__ inline uint16_t BytesToBlocks(uint32_t bytes) { return static_cast<uint16_t>(AlignUp(bytes, BLOCK_BYTES) / BLOCK_BYTES); }
+__aicore__ inline uint16_t BytesToBlocks(uint32_t bytes)
+{
+    return static_cast<uint16_t>(AlignUp(bytes, BLOCK_BYTES) / BLOCK_BYTES);
+}
 
 template <HardEvent event>
 __aicore__ inline void SyncEvent(HardEvent evt)
@@ -210,8 +213,8 @@ private:
         const uint64_t base = BthdOffset(b, tokenStart, headIdx, 0, numHeads, headDim);
         const uint16_t dstStrideBlocks =
             (alignDim > headDim) ? BytesToBlocks(dstRowStrideBytes - rowBytes) : static_cast<uint16_t>(0);
-        DataCopyParams copyParams{FIXED_CHUNK_SIZE, BytesToBlocks(rowBytes), BytesToBlocks(srcRowStrideBytes - rowBytes),
-                                  dstStrideBlocks};
+        DataCopyParams copyParams{FIXED_CHUNK_SIZE, BytesToBlocks(rowBytes),
+                                  BytesToBlocks(srcRowStrideBytes - rowBytes), dstStrideBlocks};
         DataCopy(dstLocal, srcGm[base], copyParams);
         if (alignDim > headDim) {
             SyncEvent<HardEvent::MTE2_V>(HardEvent::MTE2_V);
@@ -243,8 +246,8 @@ private:
             DataCopyParams copyParams{1, BytesToBlocks(span * sizeof(float)), 0, 0};
             DataCopy(scratch, srcGm[chunkBase], copyParams);
             SyncEvent<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-            Gather(dstLocal, scratch, gOffBuf_.Get<uint32_t>(),
-                   headIdx * static_cast<uint32_t>(sizeof(float)), FIXED_CHUNK_SIZE);
+            Gather(dstLocal, scratch, gOffBuf_.Get<uint32_t>(), headIdx * static_cast<uint32_t>(sizeof(float)),
+                   FIXED_CHUNK_SIZE);
             // Vector wrote dstLocal; the cumsum below reads it on the scalar unit.
             SyncEvent<HardEvent::V_S>(HardEvent::V_S);
         } else {
@@ -265,8 +268,8 @@ private:
             DataCopy(scratch, betaGm_[chunkBase], copyParams);
             SyncEvent<HardEvent::MTE2_V>(HardEvent::MTE2_V);
             LocalTensor<half> betaHalf = betaHalfBuf_.Get<half>();
-            Gather(betaHalf, scratch, betaOffBuf_.Get<uint32_t>(),
-                   vHeadIdx * static_cast<uint32_t>(sizeof(half)), FIXED_CHUNK_SIZE);
+            Gather(betaHalf, scratch, betaOffBuf_.Get<uint32_t>(), vHeadIdx * static_cast<uint32_t>(sizeof(half)),
+                   FIXED_CHUNK_SIZE);
             PipeBarrier<PIPE_V>();
             Cast(dstLocal, betaHalf, RoundMode::CAST_NONE, FIXED_CHUNK_SIZE);
         } else {
@@ -298,9 +301,10 @@ private:
         StoreBhtdChunk(kKernelGm_, qHalf, b, kHeadIdx, tokenStart, kNumHead_, kHeadDim_, alignK_);
         SyncEvent<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     }
-    __aicore__ inline void BuildCumulativeG(uint32_t b, uint32_t vHeadIdx, uint32_t tokenStart, LocalTensor<float> gLocal,
-                                            LocalTensor<float> expGLocal, LocalTensor<float> gRaw,
-                                            LocalTensor<float> loadScratch, uint32_t loadScratchElems)
+    __aicore__ inline void BuildCumulativeG(uint32_t b, uint32_t vHeadIdx, uint32_t tokenStart,
+                                            LocalTensor<float> gLocal, LocalTensor<float> expGLocal,
+                                            LocalTensor<float> gRaw, LocalTensor<float> loadScratch,
+                                            uint32_t loadScratchElems)
     {
         LoadHeadScalarChunk(gGm_, gRaw, loadScratch, loadScratchElems, b, tokenStart, vHeadIdx, vNumHead_);
         float running = 0.0f;
@@ -373,8 +377,7 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline bool NeedsFp32ForwardSubstitution(const LocalTensor<float> a,
-                                                        LocalTensor<float> absScratch,
+    __aicore__ inline bool NeedsFp32ForwardSubstitution(const LocalTensor<float> a, LocalTensor<float> absScratch,
                                                         LocalTensor<float> rowSums,
                                                         LocalTensor<float> reduceScratch) const
     {

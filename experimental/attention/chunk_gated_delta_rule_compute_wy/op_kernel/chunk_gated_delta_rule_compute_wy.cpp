@@ -21,10 +21,11 @@
 
 using namespace AscendC;
 
-extern "C" __global__ __aicore__ void chunk_gated_delta_rule_compute_wy(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR g, GM_ADDR beta,
-    GM_ADDR q_kernel, GM_ADDR k_kernel, GM_ADDR w_kernel, GM_ADDR u_kernel, GM_ADDR g_kernel,
-    GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void chunk_gated_delta_rule_compute_wy(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR g,
+                                                                        GM_ADDR beta, GM_ADDR q_kernel,
+                                                                        GM_ADDR k_kernel, GM_ADDR w_kernel,
+                                                                        GM_ADDR u_kernel, GM_ADDR g_kernel,
+                                                                        GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(ChunkGatedDeltaRuleComputeWyTilingData);
     GET_TILING_DATA_WITH_STRUCT(ChunkGatedDeltaRuleComputeWyTilingData, tilingData, tiling);

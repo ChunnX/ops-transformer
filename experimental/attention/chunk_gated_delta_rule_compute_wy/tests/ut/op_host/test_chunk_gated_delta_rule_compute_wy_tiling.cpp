@@ -15,8 +15,8 @@
 #include "tiling_context_faker.h"
 
 namespace {
-gert::TilingContextPara CreateTilingContext(int64_t batch, int64_t tokens, int64_t qHeads, int64_t vHeads,
-                                            int64_t kDim, int64_t vDim, int64_t chunkSize)
+gert::TilingContextPara CreateTilingContext(int64_t batch, int64_t tokens, int64_t qHeads, int64_t vHeads, int64_t kDim,
+                                            int64_t vDim, int64_t chunkSize)
 {
     static optiling::ChunkGatedDeltaRuleComputeWyCompileInfo compileInfo = {};
     return gert::TilingContextPara(
