@@ -147,21 +147,22 @@ public:
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
                      constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
 
-        if (constInfo.l2CacheOffFlag) {
-            // gSize*s1Size<=64单token场景: K/V数据量远超L2容量, 完全无法复用, 关闭L2 Cache避免无意义的缓存填充/驱逐开销。
-            // 注意: 仅对K/V生效, keyRope同样设置DISABLE会导致整体失效(实测+73us), 勿加。
-#ifndef ASCENDC_OOM
-            keyGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-            valueGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-#endif
-        }
-
         // ROPE
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
                     actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope,
                      constInfo.kRopeStrides.bnStride, constInfo.kRopeStrides.n2Stride);
+
+        if (constInfo.l2CacheOffFlag) {
+            // gSize*s1Size<=64单token场景: K/V数据量远超L2容量, 完全无法复用, 关闭L2 Cache避免无意义的缓存填充/驱逐开销
+            // 注意: 必须等全部GM buffer(含keyRope) SetGlobalBuffer完成后再统一设置hint
+#ifndef ASCENDC_OOM
+            keyGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            valueGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            keyRopeGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+#endif
+        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
