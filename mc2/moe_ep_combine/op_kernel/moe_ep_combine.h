@@ -141,11 +141,6 @@ private:
     {
         return (static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ + srcRank) * WIN_ADDR_ALIGN;
     }
-    __aicore__ inline uint64_t GetEpochCounterOffset() const
-    {
-        return GetRankFlagOffset(epWorldSize_);
-    }
-
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
         return combineSendDataWorkspaceAddr_ + sendDataWorkspaceSizePerRank_ * rankId;
@@ -186,8 +181,6 @@ private:
     uint32_t tEnd_{0};
     uint32_t tPerCore_{0};
     uint32_t ubXBytes_{0};
-    uint32_t expectedEpoch_{0};
-
     uint32_t mask_tokenNum_{0};
     uint32_t bsKCastCnt_{0};
     uint32_t activeMaskAlignSize_{0};
@@ -496,28 +489,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
 
-    // Keep the persistent epoch counter separate from the per-source completion flags. In
-    // particular, the self-rank flag must not become visible until all local payload writes finish.
-    GM_ADDR localEpochAddr =
-        GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + GetEpochCounterOffset();
-    GlobalTensor<uint32_t> localEpoch;
-    localEpoch.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(localEpochAddr));
-    DataCopyParams epochCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
-    DataCopyPadParams epochPadParams = {false, 0U, 0U, 0U};
-    if (aivId_ == 0) {
-        DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint32_t nextEpoch = statusTensor_(0) + 1U;
-        statusTensor_(0) = nextEpoch == 0U ? 1U : nextEpoch;
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(localEpoch, statusTensor_, epochCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
-    SyncAll<true>();
-    DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    expectedEpoch_ = statusTensor_(0);
-
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
     if (sendsTokens) {
         // 区间分片: splitRankTokens=true 时，同组 groupSize 个核各扫 1/groupSize 区间
@@ -593,15 +564,14 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // The owner appends the rank flag to its final payload batch on the same channel. ODR 6 makes
-    // the flag visible only after all preceding token/weight writes from this owner complete.
+    // Prepare one single-round completion flag after all local payload writes have been issued.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     if (aivId_ < activeAivNum) {
-        DataCopyPad(statusTensor_, localEpoch, epochCopyParams, epochPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint32_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
-        DataCopyPad(flagWorkspace, statusTensor_, epochCopyParams);
+        DataCopy(flagWorkspace, statusTensor_, FLOAT_PER_UB_ALIGN);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         if (splitRankTokens) {
             SendRankFlag(targetRank);
@@ -612,7 +582,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
-    SyncAll<true>();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
@@ -674,11 +643,8 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    if (expectedEpoch_ == 0U) {
-        return false;
-    }
     for (uint32_t srcRank = 0; srcRank < epWorldSize_; ++srcRank) {
-        if (stateTensor(srcRank * FLOAT_PER_UB_ALIGN) != expectedEpoch_) {
+        if (stateTensor(srcRank * FLOAT_PER_UB_ALIGN) != 1U) {
             return false;
         }
     }
