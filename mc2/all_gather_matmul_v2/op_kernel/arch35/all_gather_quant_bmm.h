@@ -198,6 +198,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         uint64_t scaleStride = mxfpScalesCount;
         handleList_[SCALE1_HANDLE_IDX] = hcclAllgather_.template AllGather<true>(
             dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_, scaleStride, repeat);
+            dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_, scaleStride, repeat, rankId_);
     }
 
     // 对于mxfp4场景，实际传输数据量需要做减半处理，已在前面代码中进行处理
@@ -213,7 +214,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     for (uint32_t i = 0U; i < tailCnt; i++) {
         handleList_[tileCnt + i] =
             hcclAllgather_.template AllGather<true>(aGM, gatherOut, tailSendCount, dataType_, stride, repeat);
-        aGM += tailSendCount * sizeof(AType);
         gatherOut += tailSendCount * sizeof(AType);
     }
 }

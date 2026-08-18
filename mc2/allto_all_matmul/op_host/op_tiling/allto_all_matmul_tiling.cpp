@@ -16,6 +16,7 @@
 #include <register/op_impl_registry.h>
 
 #include "allto_all_matmul_tiling_base.h"
+#include "mc2_exception_dump.h"
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
@@ -45,4 +46,21 @@ struct AlltoAllMatmulCompileInfo {};
 IMPL_OP_OPTILING(AlltoAllMatmul)
     .Tiling(AlltoAllMatmulTilingFunc)
     .TilingParse<AlltoAllMatmulCompileInfo>(TilingParseForAlltoAllMatmul);
+
+// Register exception dump func
+inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    const char* socName = aclrtGetSocName();
+    if(std::strstr(socName, "Ascend950") == nullptr){
+        return;
+    }
+    Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AlltoAllMatmul");
+}
+
+__attribute__((constructor)) void RegistAlltoAllMatmulExceptionFunc()
+{
+    IMPL_OP(AlltoAllMatmul)
+        .ExceptionDumpParseFunc(AlltoAllMatmulExceptionImplWrapper);
+}
+
 } // namespace MC2Tiling

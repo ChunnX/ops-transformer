@@ -190,7 +190,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.communicationContext->strideCount =
         static_cast<uint64_t>(mc2Tiling_.rankM) * rankForComm_ / mc2Tiling_.rankDim;
     pipeLineContext_.communicationContext->hcclDataType = x1HcclDataType_;
-
+    
     // 转置相关地址和偏移
     pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
     pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
