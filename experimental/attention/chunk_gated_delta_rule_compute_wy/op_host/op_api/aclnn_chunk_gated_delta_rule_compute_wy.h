@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef OP_API_INC_ACLNN_CHUNK_GATED_DELTA_RULE_COMPUTE_WY_H
+#define OP_API_INC_ACLNN_CHUNK_GATED_DELTA_RULE_COMPUTE_WY_H
+
+#include "aclnn/aclnn_base.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+__attribute__((visibility("default"))) aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *g, const aclTensor *beta,
+    int64_t chunkSize, const aclTensor *qKernelOut, const aclTensor *kKernelOut, const aclTensor *wKernelOut,
+    const aclTensor *uKernelOut, const aclTensor *gKernelOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+__attribute__((visibility("default"))) aclnnStatus aclnnChunkGatedDeltaRuleComputeWy(void *workspace,
+                                                                                     uint64_t workspaceSize,
+                                                                                     aclOpExecutor *executor,
+                                                                                     aclrtStream stream);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
