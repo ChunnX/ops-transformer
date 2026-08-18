@@ -191,6 +191,8 @@ public:
         const auto &fiaWorkspaceParams = this->tilingData_->fiaWorkspaceParams;
         const auto &fiaS1OuterSplitCoreParams = this->tilingData_->fiaS1OuterSplitCoreParams;
         const auto &fiaEmptyTensorParams = this->tilingData_->fiaEmptyTensorParams;
+        // 清零开关: 短kv/空kv/短q 等整行无任务写回场景由 host 置1, vecFaBlock_.ClearOutput() 消费
+        constInfo_.needInit = fiaEmptyTensorParams.needInit;
 
         constInfo_.bSize = fiaBaseParams.bSize;
         constInfo_.t1Size = fiaBaseParams.t1Size;
