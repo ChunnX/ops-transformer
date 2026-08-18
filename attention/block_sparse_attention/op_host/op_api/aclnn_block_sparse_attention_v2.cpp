@@ -296,7 +296,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV2Ge
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
     // v2: query.dtype=fp8 且 descale 非空 -> quantMode=1 (fp8), 否则 quantMode=0 (no quant)
-    int64_t quantMode = (query->GetDataType() == aclDataType::ACL_FLOAT8_E4M3FN &&
+    int64_t quantMode = (query->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
                          qDequantScaleOptional != nullptr) ? 1 : 0;
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
