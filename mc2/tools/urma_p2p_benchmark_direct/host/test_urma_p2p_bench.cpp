@@ -670,19 +670,14 @@ int Sample(void *arg)
         double lastWaitNs     = (double)timingHost[6] * NS_PER_CYCLE;
         double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
 
-        // 带宽计算:
-        //   benchMode=0: totalData=loopCount*sqeBytes, totalNs=slot[3](不除), bw=totalData/totalNs
-        //   benchMode=1: perIterData=sqeBytes, avgTotalNs=slot[3]/loopCount, bw=sqeBytes/avgTotalNs
-        double avgData, lastData;
-        if (args->benchMode == 0) {
-            avgData = (double)args->loopCount * args->sqeBytes;
-            lastData = avgData;
-        } else {
-            avgData = (double)args->sqeBytes;
-            lastData = (double)args->sqeBytes;
-        }
-        double avgBwGBs = avgData / avgTotalNs;
-        double lastBwGBs = lastData / lastTotalNs;
+        // 带宽计算: 统一用总量数据 / 总量时间 (不除 loopCount)
+        //   totalData = loopCount * sqeBytes
+        //   totalNs = slot[3] (不除, 原始累计值)
+        double totalData = (double)args->loopCount * args->sqeBytes;
+        double avgTotalNsRaw = (double)timingHost[3] * NS_PER_CYCLE;
+        double lastTotalNsRaw = (double)timingHost[7] * NS_PER_CYCLE;
+        double avgBwGBs = totalData / avgTotalNsRaw;
+        double lastBwGBs = totalData / lastTotalNsRaw;
 
         // benchMode=0: issue=commit, wait=drain (assemble/commit/drain/total)
         // benchMode=1: issue=issue(=assemble), wait=drain (assemble/issue/drain/total)

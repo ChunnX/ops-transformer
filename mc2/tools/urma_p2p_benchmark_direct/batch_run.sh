@@ -25,12 +25,14 @@ set -euo pipefail
 # bench_mode 支持: batch_write (=0), write_drain_loop (=1)
 #
 # 输出 CSV 格式 (含表头):
-#   case_id,sqe_mode,bench_mode,sqe_bytes,loop_count,assemble(us),commit/issue(us),drain(us),total(us),bw(GB/s),verify
+#   case_id,sqe_mode,bench_mode,sqe_bytes,loop_count,write(us),commit(us),drain(us),total(us),bw(GB/s),verify
+#   batch_write: write=assemble, commit=commit, drain=drain
+#   write_drain_loop: write=write_and_commit(=assemble+commit), commit=空, drain=drain
 # ============================================================================
 
 CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)
 CASES_DIR="${CURRENT_DIR}/cases"
-INPUT_CSV="${CASES_DIR}/input_cases.csv"
+INPUT_CSV="${CASES_DIR}/input_batch_write.csv"
 OUTPUT_CSV="${CASES_DIR}/output_results.csv"
 DEV_COUNT=2
 DEV_IDS=""
@@ -57,7 +59,7 @@ BIN="${CURRENT_DIR}/out/bin/test_urma_p2p_bench"
 
 # 批跑前自动编译
 echo "[INFO] Building..."
-bash "${CURRENT_DIR}/run.sh" -c ON
+bash "${CURRENT_DIR}/run.sh" -c ON || true
 if [ ! -f "$BIN" ]; then
     echo "[ERROR] Build failed."
     exit 1
@@ -108,16 +110,18 @@ run_case() {
     OUTPUT=$("$BIN" $RUN_ARGS 2>&1) || true
 
     # 从 Case Summary 提取数据 (取 avg 行)
-    local ASSEMBLE ISSUE DRAIN TOTAL_TIME BW VERIFY
-    ASSEMBLE=$(echo "$OUTPUT" | grep "assemble:" | head -1 | sed 's/.*assemble: *//;s/ *us.*//')
-    ISSUE=$(echo "$OUTPUT" | grep -E " (commit|issue):" | head -1 | sed 's/.*: *//;s/ *us.*//')
-    DRAIN=$(echo "$OUTPUT" | grep "drain:" | head -1 | sed 's/.*drain: *//;s/ *us.*//')
+    # batch_write: assemble→write, commit/issue→commit, drain→drain
+    # write_drain_loop: assemble→write_and_commit, drain→drain, commit=N/A
+    local WRITE_VAL ISSUE_VAL DRAIN_VAL TOTAL_TIME BW VERIFY
+    WRITE_VAL=$(echo "$OUTPUT" | grep "assemble:" | head -1 | sed 's/.*assemble: *//;s/ *us.*//')
+    ISSUE_VAL=$(echo "$OUTPUT" | grep -E " (commit|issue):" | head -1 | sed 's/.*: *//;s/ *us.*//')
+    DRAIN_VAL=$(echo "$OUTPUT" | grep "drain:" | head -1 | sed 's/.*drain: *//;s/ *us.*//')
     TOTAL_TIME=$(echo "$OUTPUT" | grep "total:" | head -1 | sed 's/.*total: *//;s/ *us.*//')
     BW=$(echo "$OUTPUT" | grep "bw:" | head -1 | sed 's/.*bw: *//;s/ *GB\/s.*//')
     VERIFY=$(echo "$OUTPUT" | grep "verify:" | head -1 | sed 's/.*verify: *//')
 
     # 解析不到数据 = 出错, 打印日志, 跳过此 case
-    if [ -z "$ASSEMBLE" ]; then
+    if [ -z "$WRITE_VAL" ]; then
         echo "  [ERROR] failed to parse result, last 30 lines:"
         echo "$OUTPUT" | tail -30
         echo "----------------------------------------"
@@ -126,11 +130,22 @@ run_case() {
         return 0
     fi
 
-    echo "  result: assemble=${ASSEMBLE}us commit/issue=${ISSUE}us drain=${DRAIN}us total=${TOTAL_TIME}us bw=${BW}GB/s verify=${VERIFY}"
+    # batch_write: write=assemble, commit=issue_val
+    # write_drain_loop: write=assemble(含commit), commit=N/A
+    local WRITE_COL COMMIT_COL
+    if [ "$BENCH_MODE_NUM" == "0" ]; then
+        WRITE_COL="$WRITE_VAL"
+        COMMIT_COL="$ISSUE_VAL"
+    else
+        WRITE_COL="$WRITE_VAL"
+        COMMIT_COL="N/A"
+    fi
+
+    echo "  result: write=${WRITE_COL}us commit=${COMMIT_COL}us drain=${DRAIN_VAL}us total=${TOTAL_TIME}us bw=${BW}GB/s verify=${VERIFY}"
     echo "----------------------------------------"
     echo ""
 
-    echo "${CASE_ID},${SQE_MODE},${BENCH_MODE},${SQE_BYTES},${LOOP_COUNT},${ASSEMBLE},${ISSUE},${DRAIN},${TOTAL_TIME},${BW},${VERIFY}" >> "$OUTPUT_CSV"
+    echo "${CASE_ID},${SQE_MODE},${BENCH_MODE},${SQE_BYTES},${LOOP_COUNT},${WRITE_COL},${COMMIT_COL},${DRAIN_VAL},${TOTAL_TIME},${BW},${VERIFY}" >> "$OUTPUT_CSV"
 }
 
 # 判断 case_id 是否在过滤列表中
@@ -139,11 +154,12 @@ should_run_case() {
     if [ -z "$CASE_IDS" ]; then
         return 0  # 无过滤, 跑全部
     fi
-    echo ",$CASE_IDS," | grep -q ",$id,"
+    echo ",$CASE_IDS," | grep -q ",$id," || return 1
+    return 0
 }
 
 # 统计要跑的用例数
-TOTAL_CASES=$(awk -F',' 'NR>1 {print $1}' "$INPUT_CSV" | while read id; do should_run_case "$id" && echo x; done | wc -l | tr -d ' ')
+TOTAL_CASES=$(awk -F',' 'NR>1 {print $1}' "$INPUT_CSV" | while read id; do should_run_case "$id" && echo x; done | wc -l | tr -d ' ' || true)
 
 echo "[INFO] Input:  $INPUT_CSV"
 echo "[INFO] Output: $OUTPUT_CSV"
@@ -155,8 +171,8 @@ fi
 echo ""
 
 # 写表头
-echo "case_id,sqe_mode,bench_mode,sqe_bytes,loop_count,assemble(us),commit/issue(us),drain(us),total(us),bw(GB/s),verify" > "$OUTPUT_CSV"
-echo "(sqe_mode: mc2_native/hcomm, bench_mode: batch_write/write_drain_loop)" >> "$OUTPUT_CSV"
+echo "case_id,sqe_mode,bench_mode,sqe_bytes,loop_count,write(us),commit(us),drain(us),total(us),bw(GB/s),verify" > "$OUTPUT_CSV"
+echo "(batch_write: write/commit/drain; write_drain_loop: write=write_and_commit, commit=N/A)" >> "$OUTPUT_CSV"
 
 # 读取 CSV, 跳过表头
 IDX=0
@@ -168,7 +184,6 @@ while IFS=',' read -r CASE_ID SQE_MODE BENCH_MODE SQE_BYTES LOOP_COUNT; do
     if ! should_run_case "$CASE_ID"; then
         continue
     fi
-
     IDX=$((IDX+1))
     echo ""
     echo "[INFO] Progress: $IDX/$TOTAL_CASES"

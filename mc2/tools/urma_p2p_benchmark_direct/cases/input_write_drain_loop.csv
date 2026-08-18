@@ -1,0 +1,17 @@
+case_id,sqe_mode,bench_mode,sqe_bytes,loop_count
+1,mc2_native,write_drain_loop,32,1
+2,mc2_native,write_drain_loop,32,10
+3,mc2_native,write_drain_loop,32,100
+4,mc2_native,write_drain_loop,32,500
+5,mc2_native,write_drain_loop,65535,1
+6,mc2_native,write_drain_loop,65535,10
+7,mc2_native,write_drain_loop,65535,100
+8,mc2_native,write_drain_loop,65535,500
+9,hcomm,write_drain_loop,32,1
+10,hcomm,write_drain_loop,32,10
+11,hcomm,write_drain_loop,32,100
+12,hcomm,write_drain_loop,32,500
+13,hcomm,write_drain_loop,65535,1
+14,hcomm,write_drain_loop,65535,10
+15,hcomm,write_drain_loop,65535,100
+16,hcomm,write_drain_loop,65535,500
