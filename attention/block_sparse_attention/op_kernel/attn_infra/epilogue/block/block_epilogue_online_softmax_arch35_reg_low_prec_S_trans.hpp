@@ -251,6 +251,13 @@ public:
                 if (diagDmTileNum == 2) {
                     diagDmFirstTile = diagDmAlignedTile;
                 }
+
+                AscendC::printf("tkd n: %u\n", n);
+                AscendC::printf("tkd diagDmRound: %u\n", diagDmRound);
+                AscendC::printf("tkd diagDmAlignedTile: %u\n", diagDmAlignedTile);
+                AscendC::printf("tkd diagDmFirstTile: %u\n", diagDmFirstTile);
+                AscendC::printf("tkd diagDmTileNum: %u\n", diagDmTileNum);
+
                 __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
                 if (diagDmTileNum == 0) {
                     SetDiagonalDeltaMax<MAlignedTileNum::Zero>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
