@@ -59,8 +59,6 @@ public:
     static constexpr uint32_t C2_DELAY = 2U;
     static constexpr uint32_t V2_DELAY = 3U;
     static constexpr uint32_t PIPELINE_TASK_CACHE_SIZE = V2_DELAY + 1U;
-    // 仅改变 AIV Scalar 的 runInfo 准备位置，关闭后编译期恢复为 Prepare(i) -> Execute(i) 顺序，便于 A/B。
-    static constexpr bool ENABLE_AIV_RUNINFO_LOOKAHEAD = true;
 
     __aicore__ inline QuantBlockSparseAttnMxKernel() = default;
 
@@ -348,38 +346,17 @@ private:
         return false;
     }
 
-    // 当前 task 的前半段：AIC 发射 C1，AIV 消费三轮前的 V2。
-    // AIV 的 V2 完成后会释放 (loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE 槽；该槽恰好也是下一 task 的
-    // (loop + 1) % PIPELINE_TASK_CACHE_SIZE 槽，因此稳态下可以在 Front/Back 之间安全准备下一份 runInfo。
-    __aicore__ inline void ExecuteTaskFront(uint64_t loop, MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE])
     {
         MxRunInfo &runInfoCur = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
         if ASCEND_IS_AIC {
-            // AIC 先生产当前 C1。
+            // AIC 先生产当前 C1；随后消费两轮前的 P，生产 C2 留给下一轮 V2。
             if (likely(runInfoCur.isValid)) {
                 const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
                     cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
                 }
             }
-        } else {
-            // AIV 先消费上一轮已经就绪的 C2，并释放下一份 runInfo 将复用的环形槽。
-            if (likely(loop >= V2_DELAY)) {
-                MxRunInfo &runInfoV2 =
-                    taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
-                if (likely(runInfoV2.isValid)) {
-                    vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoV2, constInfo);
-                    runInfoV2.isValid = false;
-                }
-            }
-        }
-    }
-
-    // 当前 task 的后半段：AIC 生产两轮前的 C2，AIV 发射当前 V1。
-    __aicore__ inline void ExecuteTaskBack(uint64_t loop, MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE])
-    {
-        MxRunInfo &runInfoCur = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
-        if ASCEND_IS_AIC {
             if (likely(loop >= C2_DELAY)) {
                 MxRunInfo &runInfoC2 =
                     taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
@@ -389,6 +366,15 @@ private:
                 }
             }
         } else {
+            // AIV 先消费上一轮已经就绪的 C2，以有效 V2 工作覆盖当前 C1 的生产时间。
+            if (likely(loop >= V2_DELAY)) {
+                MxRunInfo &runInfoV2 =
+                    taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                if (likely(runInfoV2.isValid)) {
+                    vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoV2, constInfo);
+                    runInfoV2.isValid = false;
+                }
+            }
             if (likely(runInfoCur.isValid)) {
                 Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &pBuf = l1PBuffers.GetVec();
                 // ProcessMainLoop已过滤全无效section；有效task固定先跑subLoop0。
@@ -400,21 +386,11 @@ private:
         }
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE])
-    {
-        ExecuteTaskFront(loop, taskRunInfo);
-        ExecuteTaskBack(loop, taskRunInfo);
-    }
-
     __aicore__ inline void ProcessMainLoop()
     {
         // 四槽任务状态同时覆盖 current、C2(i-2) 和 V2(i-3)。
         MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE] = {};
-        // prepareLoop 统计已准备的有效 task，executeLoop 统计已经发射 C1/V1 的 task。
-        // 稳态下两者相差 1：下一份 runInfo 在当前 V2 与 V1 之间完成构造。
-        uint64_t prepareLoop = 0U;
-        uint64_t executeLoop = 0U;
-        bool hasPreparedTask = false;
+        uint64_t loop = 0U;
         uint32_t mLoop = 0U;
         // S2_BASE=512, kvSparseBlockSize=64/128(host 侧已拦截), 结果必为 8 或 4。
         const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
@@ -459,53 +435,17 @@ private:
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
-                        // AIV 稳态先发射 V2(i-3)。它释放的槽正是 prepareLoop 将写入的槽，
-                        // 随后的 FillRunInfo/排序可与 V2 的 Vector 工作重叠。AIC及AIV前3轮
-                        // 保持原 ExecuteTask 顺序，避免没有 V2 覆盖时延迟当前 V1。
-                        bool splitPreparedTask = false;
-                        if (hasPreparedTask) {
-                            if ASCEND_IS_AIV {
-                                if constexpr (ENABLE_AIV_RUNINFO_LOOKAHEAD) {
-                                    if (likely(executeLoop >= V2_DELAY)) {
-                                        ExecuteTaskFront(executeLoop, taskRunInfo);
-                                        splitPreparedTask = true;
-                                    } else {
-                                        ExecuteTask(executeLoop, taskRunInfo);
-                                        ++executeLoop;
-                                        hasPreparedTask = false;
-                                    }
-                                } else {
-                                    ExecuteTask(executeLoop, taskRunInfo);
-                                    ++executeLoop;
-                                    hasPreparedTask = false;
-                                }
-                            } else {
-                                ExecuteTask(executeLoop, taskRunInfo);
-                                ++executeLoop;
-                                hasPreparedTask = false;
-                            }
-                        }
-
-                        MxRunInfo &runInfo = taskRunInfo[prepareLoop % PIPELINE_TASK_CACHE_SIZE];
+                        MxRunInfo &runInfo = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
                         const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                         const uint32_t sparseBlockCount =
                             remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
-                        FillRunInfo(runInfo, prepareLoop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
+                        FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
                                     actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);
-                        const bool nextTaskValid =
-                            likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U);
-
-                        if (splitPreparedTask) {
-                            ExecuteTaskBack(executeLoop, taskRunInfo);
-                            ++executeLoop;
-                            hasPreparedTask = false;
-                        }
-
-                        if (nextTaskValid) {
+                        if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
+                            ExecuteTask(loop, taskRunInfo);
                             hasValidS2Task = true;
-                            ++prepareLoop;
-                            hasPreparedTask = true;
+                            ++loop;
                         } else {
                             runInfo.isValid = false;
                         }
@@ -514,15 +454,10 @@ private:
                 }
             }
         }
-        // 最后一份预准备 task 没有下一 task 提供 lookahead 窗口，按原顺序发射。
-        if (hasPreparedTask) {
-            ExecuteTask(executeLoop, taskRunInfo);
-            ++executeLoop;
-        }
         // 排空尚未执行 C2/V2 的尾部 task。
         while (HasValidTask(taskRunInfo)) {
-            ExecuteTask(executeLoop, taskRunInfo);
-            ++executeLoop;
+            ExecuteTask(loop, taskRunInfo);
+            ++loop;
         }
     }
 
