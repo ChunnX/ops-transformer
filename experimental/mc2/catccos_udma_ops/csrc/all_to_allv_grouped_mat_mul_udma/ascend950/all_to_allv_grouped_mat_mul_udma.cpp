@@ -1,0 +1,502 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#include <ATen/ATen.h>
+#include <c10/core/DeviceGuard.h>
+#include <torch/library.h>
+
+#include "torch_npu/csrc/core/npu/NPUStream.h"
+#include "torch_npu/csrc/framework/OpCommand.h"
+
+#include "all_to_allv_grouped_mat_mul_udma_device.h"
+#include "udma_runtime.h"
+
+#include "catccos/dgemm/device/kernel_adapter.hpp"
+#include "platform/platform_ascendc.h"
+
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <tuple>
+
+namespace OpsTransformer::CatccosUdma {
+namespace {
+
+constexpr uint32_t kMaxLocalExperts = 64;
+constexpr uint64_t kIpcBufferBytes = 1000UL * 1024 * 1024;
+constexpr uint32_t kMaxBlockCount = 2;
+constexpr uint32_t kMaxK0 = 256;
+
+enum class KernelVariant {
+    kM0_128,
+    kM0_256,
+};
+
+template <class T>
+struct TypeTag {
+    using type = T;
+};
+
+struct TilingProfile {
+    KernelVariant kernelVariant;
+    uint32_t m0;
+    uint32_t n0;
+    uint32_t k0;
+    uint32_t commInterval;
+    uint32_t commTileM;
+    uint32_t commBlockM;
+    // These two values are retained from the tuning record. The migrated
+    // CatCCOS UDMA kernel ABI does not consume either legacy host field.
+    uint32_t commNpuSplit;
+    uint32_t commDataSplit;
+};
+
+constexpr TilingProfile kDefaultTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
+constexpr TilingProfile kM131072K2048N1024NonExportTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4};
+constexpr TilingProfile kM131072K2048N1024ExportTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8};
+constexpr TilingProfile kM131072K2048N512NonExportTiling{
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4};
+constexpr TilingProfile kM131072K2048N512ExportTiling{
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20};
+
+const TilingProfile &SelectTiling(
+    uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,
+    bool outputAllToAllV)
+{
+    // Every rank participating in one collective launch must select the same
+    // communication geometry. In an imbalanced route, received_rows is local
+    // to a rank and may differ, so it must not participate in tiling selection.
+    // This operator requires the input M/K/N and the export mode to be
+    // rank-invariant; those values are therefore safe selection keys.
+    const bool isEightRank256ExpertCase =
+        worldSize == 8 && expertNum == 256;
+    if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024) {
+        return outputAllToAllV
+            ? kM131072K2048N1024ExportTiling
+            : kM131072K2048N1024NonExportTiling;
+    }
+    if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 512) {
+        return outputAllToAllV
+            ? kM131072K2048N512ExportTiling
+            : kM131072K2048N512NonExportTiling;
+    }
+    return kDefaultTiling;
+}
+
+uint32_t RoundUp(uint32_t value, uint32_t alignment)
+{
+    return (value + alignment - 1) / alignment * alignment;
+}
+
+void CheckNpuTensor(const at::Tensor &tensor, const char *name, at::ScalarType dtype)
+{
+    TORCH_CHECK(tensor.defined(), name, " must be defined");
+    TORCH_CHECK(tensor.device().type() == c10::DeviceType::PrivateUse1, name, " must be an NPU tensor");
+    TORCH_CHECK(tensor.scalar_type() == dtype, name, " has an unsupported dtype");
+    TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
+}
+
+void ConfigureUdma(const at::Tensor &deviceAnchor, int64_t rank, int64_t worldSize,
+                   const std::string &initMethod, int64_t heapSize)
+{
+    CheckNpuTensor(deviceAnchor, "device_anchor", at::kByte);
+    TORCH_CHECK(worldSize > 0 && worldSize <= 8, "world_size must be in [1, 8]");
+    TORCH_CHECK(rank >= 0 && rank < worldSize, "rank must be in [0, world_size)");
+    TORCH_CHECK(heapSize > 0, "heap_size must be positive");
+    TORCH_CHECK(worldSize <= std::numeric_limits<int32_t>::max() &&
+                rank <= std::numeric_limits<int32_t>::max(), "rank topology exceeds int32 range");
+    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
+    UdmaRuntime::Instance().Initialize(
+        static_cast<int32_t>(rank), static_cast<int32_t>(worldSize), initMethod, static_cast<uint64_t>(heapSize));
+}
+
+void FinalizeUdma(const at::Tensor &deviceAnchor)
+{
+    CheckNpuTensor(deviceAnchor, "device_anchor", at::kByte);
+    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    UdmaRuntime::Instance().Finalize(stream);
+}
+
+template <class Kernel, class Params>
+void LaunchAllToAllVGroupedMatMulUdma(const Params &params, uint32_t blockDim,
+                                      aclrtStream stream, uint64_t fftsAddress)
+{
+    // Match CatCCOS DeviceDGemm::Run: zero selects the adapter overload that
+    // does not configure an explicit FFTS synchronization base address.
+    if (fftsAddress == 0) {
+        Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(params, nullptr);
+    } else {
+        Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(
+            params, fftsAddress, nullptr);
+    }
+}
+
+template <class Config>
+void InitializeAndLaunch(
+    const TilingProfile &tiling,
+    const Catlass::GemmCoord &shape,
+    uint32_t rank,
+    uint32_t worldSize,
+    uint32_t epSize,
+    uint32_t expertNum,
+    uint32_t outputRows,
+    uint8_t *x,
+    uint8_t *weight,
+    uint8_t *output,
+    uint8_t *localTokensPerExpert,
+    uint8_t *globalTokensPerLocalExpert,
+    uint8_t *workspace,
+    uint8_t *allToAllVOutput,
+    uint32_t blockDim,
+    aclrtStream stream,
+    uint64_t fftsAddress)
+{
+    using DeviceOp = typename Config::Device;
+    using Kernel = typename Config::Kernel;
+    Catlass::MatrixCoord commBlockShape{tiling.commBlockM, RoundUp(shape.k(), tiling.k0)};
+    Catlass::MatrixCoord commTileShape{tiling.commTileM / 2, tiling.k0};
+    typename DeviceOp::Arguments arguments{
+        shape,
+        rank,
+        worldSize,
+        tiling.commInterval,
+        epSize,
+        expertNum,
+        outputRows,
+        x,
+        weight,
+        output,
+        localTokensPerExpert,
+        globalTokensPerLocalExpert,
+        workspace,
+        commBlockShape,
+        commTileShape,
+        allToAllVOutput,
+    };
+
+    DeviceOp deviceOp;
+    const Catlass::Status initializeStatus = deviceOp.Initialize(arguments);
+    TORCH_CHECK(initializeStatus == Catlass::Status::kSuccess,
+                "failed to initialize the CatCCOS device operator");
+    const typename DeviceOp::Params params = deviceOp.params();
+    auto launch = [=]() -> int {
+        LaunchAllToAllVGroupedMatMulUdma<Kernel>(
+            params, blockDim, stream, fftsAddress);
+        return 0;
+    };
+    at_npu::native::OpCommand::RunOpApi("AllToAllVGroupedMatMulUdma", launch);
+}
+
+at::Tensor AllToAllVGroupedMatMulUdmaImpl(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows64,
+    const c10::optional<at::Tensor> &outputOptional,
+    const c10::optional<at::Tensor> &allToAllVOutputOptional)
+{
+    const c10::OptionalDeviceGuard guard(x.device());
+    CheckNpuTensor(x, "x", at::kBFloat16);
+    CheckNpuTensor(weight, "weight", at::kBFloat16);
+    CheckNpuTensor(localTokensPerExpert, "local_tokens_per_expert", at::kLong);
+    CheckNpuTensor(globalTokensPerLocalExpert, "global_tokens_per_local_expert", at::kLong);
+    TORCH_CHECK(weight.device() == x.device(), "weight and x must be on the same NPU");
+    TORCH_CHECK(localTokensPerExpert.device() == x.device() && globalTokensPerLocalExpert.device() == x.device(),
+                "routing tables and x must be on the same NPU");
+    TORCH_CHECK(x.dim() == 2, "x must have shape [m, k]");
+    TORCH_CHECK(weight.dim() == 3, "weight must have shape [local_expert_num, k, n]");
+
+    UdmaRuntime &runtime = UdmaRuntime::Instance();
+    runtime.EnsureInitialized();
+    const int64_t worldSize = runtime.WorldSize();
+    TORCH_CHECK(epSize == worldSize, "TP=1 is required: ep_size must equal UDMA world_size");
+    TORCH_CHECK(expertNum > 0 && expertNum % epSize == 0,
+                "expert_num must be positive and divisible by ep_size");
+    const int64_t localExpertNum = expertNum / epSize;
+    TORCH_CHECK(runtime.Rank() < epSize, "UDMA rank must be smaller than ep_size");
+    TORCH_CHECK(localExpertNum <= kMaxLocalExperts, "local expert count exceeds ", kMaxLocalExperts);
+
+    const int64_t m64 = x.size(0);
+    const int64_t k64 = x.size(1);
+    const int64_t n64 = weight.size(2);
+    TORCH_CHECK(m64 > 0 && k64 > 0 && n64 > 0, "m, k and n must be positive");
+    TORCH_CHECK(m64 <= std::numeric_limits<uint32_t>::max() &&
+                k64 <= std::numeric_limits<uint32_t>::max() - (kMaxK0 - 1) &&
+                n64 <= std::numeric_limits<uint32_t>::max(), "shape exceeds the kernel's uint32 range");
+    TORCH_CHECK(weight.size(0) == localExpertNum && weight.size(1) == k64,
+                "weight must have shape [expert_num / ep_size, k, n]");
+    TORCH_CHECK(localTokensPerExpert.numel() == expertNum,
+                "local_tokens_per_expert must contain expert_num elements");
+    TORCH_CHECK(globalTokensPerLocalExpert.numel() == worldSize * localExpertNum,
+                "global_tokens_per_local_expert must contain world_size * local_expert_num elements");
+    TORCH_CHECK(receivedRows64 >= 0 && receivedRows64 <= worldSize * m64,
+                "received_rows must be in [0, world_size * m]");
+    TORCH_CHECK(receivedRows64 <= std::numeric_limits<uint32_t>::max(),
+                "received_rows exceeds the kernel's uint32 range");
+
+    const uint32_t m = static_cast<uint32_t>(m64);
+    const uint32_t k = static_cast<uint32_t>(k64);
+    const uint32_t n = static_cast<uint32_t>(n64);
+    const uint32_t receivedRows = static_cast<uint32_t>(receivedRows64);
+    const TilingProfile &tiling = SelectTiling(
+        m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
+        allToAllVOutputOptional.has_value());
+    const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
+    const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
+    TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <
+                    maxPeerElements,
+                "shape exceeds the CatCCOS UDMA peer-memory constraint");
+
+    at::Tensor output = outputOptional.has_value()
+        ? outputOptional.value()
+        : at::empty({receivedRows64, n64}, x.options());
+    CheckNpuTensor(output, "out", at::kBFloat16);
+    TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows64 && output.size(1) == n64,
+                "out must have shape [received_rows, n]");
+    TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
+                "out must not alias x or weight");
+
+    at::Tensor allToAllVOutput;
+    if (allToAllVOutputOptional.has_value()) {
+        allToAllVOutput = allToAllVOutputOptional.value();
+        CheckNpuTensor(allToAllVOutput, "all_to_allv_out", at::kBFloat16);
+        TORCH_CHECK(allToAllVOutput.device() == x.device(),
+                    "all_to_allv_out and x must be on the same NPU");
+        TORCH_CHECK(allToAllVOutput.dim() == 2 &&
+                        allToAllVOutput.size(0) == receivedRows64 &&
+                        allToAllVOutput.size(1) == k64,
+                    "all_to_allv_out must have shape [received_rows, k]");
+        TORCH_CHECK(allToAllVOutput.data_ptr() != x.data_ptr() &&
+                        allToAllVOutput.data_ptr() != weight.data_ptr() &&
+                        (allToAllVOutput.numel() == 0 || output.numel() == 0 ||
+                         allToAllVOutput.data_ptr() != output.data_ptr()),
+                    "all_to_allv_out must not alias x, weight, or out");
+    }
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    runtime.RecordStream(stream);
+
+    Catlass::GemmCoord shape{m, n, k};
+    const uint32_t blockDim =
+        platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
+    TORCH_CHECK(blockDim > 0, "failed to query Ascend AI-core count");
+    const uint64_t fftsAddress = runtime.FftsAddress();
+    auto launchWithConfig = [&](auto configTag) {
+        using SelectedConfig = typename decltype(configTag)::type;
+        InitializeAndLaunch<SelectedConfig>(
+            tiling, shape,
+            static_cast<uint32_t>(runtime.Rank()),
+            static_cast<uint32_t>(worldSize),
+            static_cast<uint32_t>(epSize),
+            static_cast<uint32_t>(expertNum),
+            receivedRows,
+            // UDMA PUT reads its local source directly from ordinary NPU GM.
+            reinterpret_cast<uint8_t *>(x.data_ptr()),
+            reinterpret_cast<uint8_t *>(weight.data_ptr()),
+            reinterpret_cast<uint8_t *>(output.data_ptr()),
+            reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
+            reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
+            runtime.Workspace(),
+            allToAllVOutputOptional.has_value()
+                ? reinterpret_cast<uint8_t *>(allToAllVOutput.data_ptr())
+                : nullptr,
+            blockDim, stream, fftsAddress);
+    };
+    if (tiling.kernelVariant == KernelVariant::kM0_256 && allToAllVOutputOptional.has_value()) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>{});
+    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>{});
+    } else if (allToAllVOutputOptional.has_value()) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultExportConfig>{});
+    } else {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultConfig>{});
+    }
+    return output;
+}
+
+at::Tensor AllToAllVGroupedMatMulUdmaNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows)
+{
+    return AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, receivedRows, c10::nullopt, c10::nullopt);
+}
+
+at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &output)
+{
+    return AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, receivedRows, output, c10::nullopt);
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &allToAllVOutput)
+{
+    at::Tensor output = AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, receivedRows, c10::nullopt, allToAllVOutput);
+    return {output, allToAllVOutput};
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &output,
+    const at::Tensor &allToAllVOutput)
+{
+    AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, receivedRows, output, allToAllVOutput);
+    return {output, allToAllVOutput};
+}
+
+at::Tensor AllToAllVGroupedMatMulUdmaMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows)
+{
+    TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
+    TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    return at::empty({receivedRows, weight.size(2)}, x.options());
+}
+
+at::Tensor AllToAllVGroupedMatMulUdmaOutMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &output)
+{
+    TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
+    TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows &&
+                output.size(1) == weight.size(2), "invalid out shape");
+    return output;
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &allToAllVOutput)
+{
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(0) == receivedRows &&
+                allToAllVOutput.size(1) == x.size(1),
+                "invalid all_to_allv_out shape");
+    return {at::empty({receivedRows, weight.size(2)}, x.options()), allToAllVOutput};
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    int64_t receivedRows,
+    const at::Tensor &output,
+    const at::Tensor &allToAllVOutput)
+{
+    TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
+    TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
+    TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows &&
+                output.size(1) == weight.size(2), "invalid out shape");
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(0) == receivedRows &&
+                allToAllVOutput.size(1) == x.size(1),
+                "invalid all_to_allv_out shape");
+    return {output, allToAllVOutput};
+}
+
+} // namespace
+
+TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
+{
+    m.def("_configure_udma(Tensor device_anchor, int rank, int world_size, str init_method, int heap_size) -> ()");
+    m.def("_finalize_udma(Tensor device_anchor) -> ()");
+    m.def("all_to_allv_grouped_mat_mul_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows) -> Tensor");
+    m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
+          "Tensor(a!) out) -> Tensor(a!)");
+    m.def("all_to_allv_grouped_mat_mul_udma_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
+          "Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
+    m.def("all_to_allv_grouped_mat_mul_udma_out_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
+          "Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
+}
+
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
+{
+    m.impl("_configure_udma", ConfigureUdma);
+    m.impl("_finalize_udma", FinalizeUdma);
+    m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaNpu);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutNpu);
+    m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportNpu);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out_export", AllToAllVGroupedMatMulUdmaOutExportNpu);
+}
+
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
+{
+    m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaMeta);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutMeta);
+    m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportMeta);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out_export", AllToAllVGroupedMatMulUdmaOutExportMeta);
+}
+
+} // namespace OpsTransformer::CatccosUdma
