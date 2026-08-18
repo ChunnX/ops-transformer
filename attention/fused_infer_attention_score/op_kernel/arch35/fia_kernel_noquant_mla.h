@@ -41,7 +41,7 @@ public:
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 3; // C1 C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
