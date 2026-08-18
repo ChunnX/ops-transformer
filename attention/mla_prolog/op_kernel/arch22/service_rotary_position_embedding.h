@@ -104,8 +104,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
             AscendC::PipeBarrier<PIPE_V>();
         } else {
             RotaryPosEmb(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal,
-                         ropeShareUB.template ReinterpretCast<uint8_t>(),
-                         ropeParams.row, ropeParams.col, 0);
+                         ropeShareUB.template ReinterpretCast<uint8_t>(), ropeParams.row, ropeParams.col, 0);
             AscendC::PipeBarrier<PIPE_V>();
             Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, cnt);
             AscendC::PipeBarrier<PIPE_V>();

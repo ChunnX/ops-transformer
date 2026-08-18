@@ -111,13 +111,9 @@ struct ParamInfo {
             format != other.format) {
             return false;
         }
-        return (isValid == other.isValid && dtype == other.dtype &&
-                dimNum == other.dimNum && shape == other.shape);
+        return (isValid == other.isValid && dtype == other.dtype && dimNum == other.dimNum && shape == other.shape);
     }
-    bool operator!=(const ParamInfo &other) const
-    {
-        return !(*this == other);
-    }
+    bool operator!=(const ParamInfo &other) const { return !(*this == other); }
 
     bool isValid{};
     ge::DataType dtype{ge::DT_MAX};
@@ -158,8 +154,7 @@ private:
     ge::graphStatus CheckDtileSize() const;
     // ==================================单参数校验==================================
     bool IsSingleParamValid(const BaseParaInfo &param, const std::string &paramName,
-                            const std::set<ge::DataType> &expectedDtype,
-                            const std::set<ge::Format> &expectedFormat,
+                            const std::set<ge::DataType> &expectedDtype, const std::set<ge::Format> &expectedFormat,
                             const std::set<size_t> &expectedDimNum) const;
     bool CheckTokenX() const;
     bool CheckWDq() const;

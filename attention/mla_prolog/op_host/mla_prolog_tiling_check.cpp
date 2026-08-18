@@ -22,7 +22,8 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 template <typename E>
 std::string ElemToString(const E &elem)
@@ -30,10 +31,7 @@ std::string ElemToString(const E &elem)
     return std::to_string(elem);
 }
 
-std::string FormatToString(const ge::Format format)
-{
-    return std::string(ge::GetFormatName(format));
-}
+std::string FormatToString(const ge::Format format) { return std::string(ge::GetFormatName(format)); }
 
 template <typename C, typename Func = std::string (*)(const typename C::value_type &)>
 std::string ConvertContainerToString(const C &container, Func func = ElemToString<typename C::value_type>)
@@ -297,12 +295,12 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
             static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR),
             static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE),
             static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE)};
-        OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) ==
-                        supportedQuantModes.end(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        context_.opName, "quantMode", std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)),
-                        "On DAV3510, quantMode allows only " + ConvertContainerToStringV3(supportedQuantModes)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_.opName, "quantMode", std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)),
+                "On DAV3510, quantMode allows only " + ConvertContainerToStringV3(supportedQuantModes)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -353,10 +351,10 @@ ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
         }
         if (baseShapeInfo_.dtileSize != supportedDtileSize) {
             if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
-                    "when kvQuantMode is pertoken-pergroup, dtileSize allows only " +
-                        std::to_string(supportedDtileSize));
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "dtileSize",
+                                                      std::to_string(baseShapeInfo_.dtileSize),
+                                                      "when kvQuantMode is pertoken-pergroup, dtileSize allows only " +
+                                                          std::to_string(supportedDtileSize));
             } else {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
@@ -493,9 +491,9 @@ void MlaPrologTilingCheck::FillCacheShapes()
         expectedParamInfo_.emplace(
             KR_CACHE_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.nkvSize, baseShapeInfo_.drSize});
     } else if (scenarioInfo_.cacheMode_ == CACHE_MODE::BSND) {
-        expectedParamInfo_.emplace(KV_CACHE_NAME,
-                                   std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size,
-                                                         baseShapeInfo_.nkvSize, baseShapeInfo_.dtileSize});
+        expectedParamInfo_.emplace(
+            KV_CACHE_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size, baseShapeInfo_.nkvSize,
+                                                 baseShapeInfo_.dtileSize});
         expectedParamInfo_.emplace(KR_CACHE_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size,
                                                                         baseShapeInfo_.nkvSize, baseShapeInfo_.drSize});
     } else {
@@ -808,25 +806,13 @@ void MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo()
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
 }
 
-void MlaPrologTilingCheck::FillFP8FullQuantParamInfo()
-{
-    FillFullQuantParamInfo();
-}
+void MlaPrologTilingCheck::FillFP8FullQuantParamInfo() { FillFullQuantParamInfo(); }
 
-void MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo()
-{
-    FillFullKVQuantParamInfo();
-}
+void MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo() { FillFullKVQuantParamInfo(); }
 
-void MlaPrologTilingCheck::FillHIF8FullQuantParamInfo()
-{
-    FillFullQuantParamInfo();
-}
+void MlaPrologTilingCheck::FillHIF8FullQuantParamInfo() { FillFullQuantParamInfo(); }
 
-void MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo()
-{
-    FillFullKVQuantParamInfo();
-}
+void MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo() { FillFullKVQuantParamInfo(); }
 
 void MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo()
 {
@@ -972,10 +958,10 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
                         " under current configuration");
             }
             if (expectedParam.shape != it.second.shape) {
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    context_.opName, it.first, ConvertShapeToString(it.second.shape),
-                    "this parameter requires shape " + ConvertContainerToString(expectedParam.shape) +
-                        " under current configuration");
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_.opName, it.first, ConvertShapeToString(it.second.shape),
+                                                      "this parameter requires shape " +
+                                                          ConvertContainerToString(expectedParam.shape) +
+                                                          " under current configuration");
             }
         }
     }
@@ -1160,10 +1146,7 @@ bool MlaPrologTilingCheck::CheckRopeCos() const
     return IsSingleParamValid(context_.ropeCos, ROPE_COS_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
 }
 
-bool MlaPrologTilingCheck::IsRopeDisabled() const
-{
-    return context_.doRope != nullptr && !(*(context_.doRope));
-}
+bool MlaPrologTilingCheck::IsRopeDisabled() const { return context_.doRope != nullptr && !(*(context_.doRope)); }
 
 bool MlaPrologTilingCheck::IsEmptyTensor(const BaseParaInfo &param) const
 {
@@ -1228,38 +1211,38 @@ bool MlaPrologTilingCheck::CheckActSeqLen() const
 bool MlaPrologTilingCheck::CheckCacheModeParamShape() const
 {
     if (std::strncmp(context_.cacheMode, CACHE_MODE_TND, CACHE_MODE_LEN) == 0) {
-        OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_2,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        context_.opName, "tokenX",
-                        std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
-                        "When cacheMode is TND, tokenX dim must be 2"),
-                    return false);
-        OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        context_.opName, "kvCache",
-                        std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
-                        "When cacheMode is TND, kvCache dim must be 3"),
-                    return false);
+        OP_CHECK_IF(
+            context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_2,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_.opName, "tokenX", std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is TND, tokenX dim must be 2"),
+            return false);
+        OP_CHECK_IF(
+            context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_.opName, "kvCache", std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is TND, kvCache dim must be 3"),
+            return false);
     } else if (std::strncmp(context_.cacheMode, CACHE_MODE_BSND, CACHE_MODE_LEN) == 0) {
-        OP_CHECK_IF(context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        context_.opName, "tokenX",
-                        std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
-                        "When cacheMode is BSND, tokenX dim must be 3"),
-                    return false);
-        OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        context_.opName, "kvCache",
-                        std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
-                        "When cacheMode is BSND, kvCache dim must be 4"),
-                    return false);
+        OP_CHECK_IF(
+            context_.tokenX.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_3,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_.opName, "tokenX", std::to_string(context_.tokenX.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is BSND, tokenX dim must be 3"),
+            return false);
+        OP_CHECK_IF(
+            context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_.opName, "kvCache", std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode is BSND, kvCache dim must be 4"),
+            return false);
     } else {
-        OP_CHECK_IF(context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        context_.opName, "kvCache",
-                        std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
-                        "When cacheMode in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4"),
-                    return false);
+        OP_CHECK_IF(
+            context_.kvCache.shape->GetStorageShape().GetDimNum() != MLA_PROLOG_DIM_NUM_4,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_.opName, "kvCache", std::to_string(context_.kvCache.shape->GetStorageShape().GetDimNum()) + "D",
+                "When cacheMode in {PA_BSND, PA_NZ, PA_BLK_BSND, PA_BLK_NZ}, kvCache dim must be 4"),
+            return false);
     }
     return true;
 }

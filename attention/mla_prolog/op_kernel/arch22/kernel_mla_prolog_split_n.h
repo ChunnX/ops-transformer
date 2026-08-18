@@ -1597,16 +1597,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
             ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
         // input为int32_t需在rope中做反量化, intput为float根据模板参数判断是否做反量化
         RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType, true, MLAPT::enableRope>(
-            outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf,
-            ropeParams, dequantScaleWDkvKrLocal_[baseParams_->headSizeCkv], dequantScaleXLocal);
+            outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf, ropeParams,
+            dequantScaleWDkvKrLocal_[baseParams_->headSizeCkv], dequantScaleXLocal);
     } else if constexpr (std::is_same<krCacheType, int8_t>::value) {
         LocalTensor<uint8_t> sharedBuf =
             ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
         LocalTensor<ropeSinCosType> inputLocal = ropeShareTmpUb.ReinterpretCast<ropeSinCosType>();
         RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, ropeSinCosType,
                               !std::is_same<mmCkvKrOutputType, bfloat16_t>::value, MLAPT::enableRope>(
-            inputLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf,
-            ropeParams);
+            inputLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf, ropeParams);
         RopePostQuantPerChannel(outputKrLocal, inputLocal, quantScaleCkrLocal_, sharedBuf,
                                 baseParams_->dimHeadRope * vectorRow_);
     } else {
@@ -1678,9 +1677,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormRopeScatterCkvKr(int64
     LocalTensor<uint8_t> shareTmpUb =
         sinLocalCkvKr[curVecToken * baseParams_->dimHeadRope].template ReinterpretCast<uint8_t>();
     if constexpr (MLAPT::enableDequantOpt && MLAPT::enableRope) {
-        GatherSinCos<ropeSinCosType, ropeComputType>(cosLocalCkvKr, sinLocalCkvKr, ropeCosGm_,
-                                                     ropeSinGm_, tokenIndex, curVecToken, shareTmpUb,
-                                                     vectorRow_, baseParams_->dimHeadRope);
+        GatherSinCos<ropeSinCosType, ropeComputType>(cosLocalCkvKr, sinLocalCkvKr, ropeCosGm_, ropeSinGm_, tokenIndex,
+                                                     curVecToken, shareTmpUb, vectorRow_, baseParams_->dimHeadRope);
     }
     if constexpr (MLAPT::emptyMode == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
         return;
@@ -1762,8 +1760,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
         } else {
             RotaryPosEmbPerTensor<mmQcQrOutputType, ropeComputType, ropeOutputType, false, MLAPT::enableRope>(
                 outputLocal, mmQcQrResGm_[ropeQrOffset], cosLocal_[baseParams_->dimHeadRope * curVecTokenIdx],
-                sinLocal_[baseParams_->dimHeadRope * curVecTokenIdx], ropeShareTmpUb,
-                ropeParams);
+                sinLocal_[baseParams_->dimHeadRope * curVecTokenIdx], ropeShareTmpUb, ropeParams);
         }
 
         AscendC::SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -1821,16 +1818,16 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitNGroupCase(int64_t
         // sharetmp共用，待V算完再执行MTE2搬运规避风险
         if constexpr (MLAPT::enableRope) {
             GatherSinCos<ropeSinCosType, ropeComputType>(cosLocal_, sinLocal_, ropeCosGm_, ropeSinGm_,
-                                                         curVecTokenIdx * baseParams_->dimHeadRope, 1,
-                                                         ropeShareTmpUb, vectorRow_, baseParams_->dimHeadRope);
+                                                         curVecTokenIdx * baseParams_->dimHeadRope, 1, ropeShareTmpUb,
+                                                         vectorRow_, baseParams_->dimHeadRope);
         }
 
         AscendC::SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
         AscendC::WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
 
         RotaryPosEmbPerTensor<mmQcQrOutputType, ropeComputType, ropeOutputType, false, MLAPT::enableRope>(
-            outputLocal, mmQcQrResGm_[ropeQrOffset], cosLocal_, sinLocal_, ropeShareTmpUb,
-            ropeParams, channelDeqScaleLocal, dequantTool_.dequantScaleCqLocal_);
+            outputLocal, mmQcQrResGm_[ropeQrOffset], cosLocal_, sinLocal_, ropeShareTmpUb, ropeParams,
+            channelDeqScaleLocal, dequantTool_.dequantScaleCqLocal_);
 
         AscendC::SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);

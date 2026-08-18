@@ -16,87 +16,32 @@
 
 using namespace std;
 
-#define PARAM_LIST_DEF __gm__ uint8_t *tokenX, \
-                       __gm__ uint8_t *weightDq, \
-                       __gm__ uint8_t *weightUqQr, \
-                       __gm__ uint8_t *weightUk, \
-                       __gm__ uint8_t *weightDkvKr, \
-                       __gm__ uint8_t *rmsnormGammaCq, \
-                       __gm__ uint8_t *rmsnormGammaCkv, \
-                       __gm__ uint8_t *ropeSin, \
-                       __gm__ uint8_t *ropeCos, \
-                       __gm__ uint8_t *cacheIndex, \
-                       __gm__ uint8_t *kvCache, \
-                       __gm__ uint8_t *krCache, \
-                       __gm__ uint8_t *dequantScaleX, \
-                       __gm__ uint8_t *dequantScaleWDq, \
-                       __gm__ uint8_t *dequantScaleWUqQr, \
-                       __gm__ uint8_t *dequantScaleWDkvKr, \
-                       __gm__ uint8_t *quantScaleCkv, \
-                       __gm__ uint8_t *quantScaleCkr, \
-                       __gm__ uint8_t *smoothScalesCq, \
-                       __gm__ uint8_t *queryOut, \
-                       __gm__ uint8_t *queryRopeOut, \
-                       __gm__ uint8_t *kvCacheOut, \
-                       __gm__ uint8_t *krCacheOut, \
-                       __gm__ uint8_t *dequantScaleQNopeOut, \
-                       __gm__ uint8_t *workspace, \
-                       __gm__ uint8_t *tiling
+#define PARAM_LIST_DEF \
+    __gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk, \
+        __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv, \
+        __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *cacheIndex, __gm__ uint8_t *kvCache, \
+        __gm__ uint8_t *krCache, __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq, \
+        __gm__ uint8_t *dequantScaleWUqQr, __gm__ uint8_t *dequantScaleWDkvKr, __gm__ uint8_t *quantScaleCkv, \
+        __gm__ uint8_t *quantScaleCkr, __gm__ uint8_t *smoothScalesCq, __gm__ uint8_t *queryOut, \
+        __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *kvCacheOut, __gm__ uint8_t *krCacheOut, \
+        __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling
 
-#define PARAM_LIST tokenX, \
-                   weightDq, \
-                   weightUqQr, \
-                   weightUk, \
-                   weightDkvKr, \
-                   rmsnormGammaCq, \
-                   rmsnormGammaCkv, \
-                   ropeSin, \
-                   ropeCos, \
-                   cacheIndex, \
-                   kvCache, \
-                   krCache, \
-                   dequantScaleX, \
-                   dequantScaleWDq, \
-                   dequantScaleWUqQr, \
-                   dequantScaleWDkvKr, \
-                   quantScaleCkv, \
-                   quantScaleCkr, \
-                   smoothScalesCq, \
-                   queryOut, \
-                   queryRopeOut, \
-                   kvCacheOut, \
-                   krCacheOut, \
-                   dequantScaleQNopeOut, \
-                   workspace, \
-                   tiling
+#define PARAM_LIST \
+    tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, \
+        cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, \
+        quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, kvCacheOut, krCacheOut, \
+        dequantScaleQNopeOut, workspace, tiling
 
 class MlaPrologV2Kernel : public testing::Test {
 protected:
-    static void FreeAllGmMemory(
-        uint8_t *tokenX,
-        uint8_t *weightDq,
-        uint8_t *weightUqQr,
-        uint8_t *weightUk,
-        uint8_t *weightDkvKr,
-        uint8_t *rmsnormGammaCq,
-        uint8_t *rmsnormGammaCkv,
-        uint8_t *ropeSin,
-        uint8_t *ropeCos,
-        uint8_t *cacheIndex,
-        uint8_t *kvCache,
-        uint8_t *krCache,
-        uint8_t *dequantScaleX,
-        uint8_t *dequantScaleWDq,
-        uint8_t *dequantScaleWUqQr,
-        uint8_t *dequantScaleWDkvKr,
-        uint8_t *quantScaleCkv,
-        uint8_t *quantScaleCkr,
-        uint8_t *smoothScalesCq,
-        uint8_t *queryOut,
-        uint8_t *queryRopeOut,
-        uint8_t *dequantScaleQNopeOut,
-        uint8_t *workspace,
-        uint8_t *tiling)
+    static void FreeAllGmMemory(uint8_t *tokenX, uint8_t *weightDq, uint8_t *weightUqQr, uint8_t *weightUk,
+                                uint8_t *weightDkvKr, uint8_t *rmsnormGammaCq, uint8_t *rmsnormGammaCkv,
+                                uint8_t *ropeSin, uint8_t *ropeCos, uint8_t *cacheIndex, uint8_t *kvCache,
+                                uint8_t *krCache, uint8_t *dequantScaleX, uint8_t *dequantScaleWDq,
+                                uint8_t *dequantScaleWUqQr, uint8_t *dequantScaleWDkvKr, uint8_t *quantScaleCkv,
+                                uint8_t *quantScaleCkr, uint8_t *smoothScalesCq, uint8_t *queryOut,
+                                uint8_t *queryRopeOut, uint8_t *dequantScaleQNopeOut, uint8_t *workspace,
+                                uint8_t *tiling)
     {
         // 逐个释放非空指针，避免空指针访问
         if (tokenX != nullptr)
@@ -146,16 +91,8 @@ protected:
         if (tiling != nullptr)
             AscendC::GmFree(tiling);
     }
-    static void SetUpTestCase()
-    {
-        std::cout << "MlaPrologV2Kernel SetUp\n"
-                  << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "MlaPrologV2Kernel TearDown\n"
-                  << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MlaPrologV2Kernel SetUp\n" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MlaPrologV2Kernel TearDown\n" << std::endl; }
 };
 
 // 半量化kv非量化场景
@@ -179,17 +116,19 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVNoQuant)
     uint32_t Hcq = 1536;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v2<1, // CACHE_MODE
-                                                                                         1, // SCENARIO
-                                                                                         1, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         1, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         1, // ENABLE_ROPE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v2<1, // CACHE_MODE
+                             1, // SCENARIO
+                             1, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             1, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             1, // ENABLE_ROPE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -244,11 +183,13 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVNoQuant)
     baseParams_->headSizeQr = baseParams_->headSizeKr * baseParams_->numHeadSize;
     baseParams_->mm1SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
-    baseParams_->mm3BlockNum = CeilDiv(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
+    baseParams_->mm3BlockNum = CeilDiv(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
     baseParams_->mm4BlockNum = CeilDiv(baseParams_->numHeadSize, baseParams_->mm4SingleCoreBatch);
     baseParams_->vectorBlockNum = std::min(std::min(128U, baseParams_->tokenSize), aivNum_);
     baseParams_->reciprocalCq = 1.0f / baseParams_->headSizeCq;
@@ -263,23 +204,20 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVNoQuant)
     baseParams_->tileSize = baseParams_->batchSize * baseParams_->stepBatchSize;
     baseParams_->qcQrScale = 1U;
     baseParams_->kcScale = 1U;
-    baseParams_->isQcQrScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
-    baseParams_->isKcScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isQcQrScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isKcScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
-                ropeCos, cacheIndex, kvCache, krCache, dequantScaleX,
-                dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr,
-                smoothScalesCq, queryOut, queryRopeOut,
-                nullptr, nullptr, dequantScaleQNopeOut,
-                workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, nullptr,
+                nullptr, dequantScaleQNopeOut, workspace, tiling);
 
     MlaPrologV2Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCache,
-        krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-        queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+        cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr,
+        quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
 }
 
 // 半量化kv量化场景
@@ -303,17 +241,19 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVQuant)
     uint32_t Hcq = 1536;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v2<1, // CACHE_MODE
-                                                                                         2, // SCENARIO
-                                                                                         2, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         0, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         1, // ENABLE_ROPE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v2<1, // CACHE_MODE
+                             2, // SCENARIO
+                             2, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             0, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             1, // ENABLE_ROPE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -368,11 +308,13 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVQuant)
     baseParams_->headSizeQr = baseParams_->headSizeKr * baseParams_->numHeadSize;
     baseParams_->mm1SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
-    baseParams_->mm3BlockNum = CeilDiv(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
+    baseParams_->mm3BlockNum = CeilDiv(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
     baseParams_->mm4BlockNum = CeilDiv(baseParams_->numHeadSize, baseParams_->mm4SingleCoreBatch);
     baseParams_->vectorBlockNum = std::min(std::min(128U, baseParams_->tokenSize), aivNum_);
     baseParams_->reciprocalCq = 1.0f / baseParams_->headSizeCq;
@@ -387,23 +329,20 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_semiQuantKVQuant)
     baseParams_->tileSize = baseParams_->batchSize * baseParams_->stepBatchSize;
     baseParams_->qcQrScale = 1U;
     baseParams_->kcScale = 1U;
-    baseParams_->isQcQrScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
-    baseParams_->isKcScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isQcQrScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isKcScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
-                ropeCos, cacheIndex, kvCache, krCache, dequantScaleX,
-                dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr,
-                smoothScalesCq, queryOut, queryRopeOut,
-                nullptr, nullptr, dequantScaleQNopeOut,
-                workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, nullptr,
+                nullptr, dequantScaleQNopeOut, workspace, tiling);
 
     MlaPrologV2Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCache,
-        krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-        queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+        cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr,
+        quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
 }
 
 // 全量化kv非量化场景
@@ -427,17 +366,19 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVNoQuant)
     uint32_t Hcq = 1536;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v2<1, // CACHE_MODE
-                                                                                         2, // SCENARIO
-                                                                                         3, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         1, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         1, // ENABLE_ROPE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v2<1, // CACHE_MODE
+                             2, // SCENARIO
+                             3, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             1, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             1, // ENABLE_ROPE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -492,11 +433,13 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVNoQuant)
     baseParams_->headSizeQr = baseParams_->headSizeKr * baseParams_->numHeadSize;
     baseParams_->mm1SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
-    baseParams_->mm3BlockNum = CeilDiv(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
+    baseParams_->mm3BlockNum = CeilDiv(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
     baseParams_->mm4BlockNum = CeilDiv(baseParams_->numHeadSize, baseParams_->mm4SingleCoreBatch);
     baseParams_->vectorBlockNum = std::min(std::min(128U, baseParams_->tokenSize), aivNum_);
     baseParams_->reciprocalCq = 1.0f / baseParams_->headSizeCq;
@@ -511,23 +454,20 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVNoQuant)
     baseParams_->tileSize = baseParams_->batchSize * baseParams_->stepBatchSize;
     baseParams_->qcQrScale = 1.0f;
     baseParams_->kcScale = 1.0f;
-    baseParams_->isQcQrScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
-    baseParams_->isKcScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isQcQrScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isKcScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
-                ropeCos, cacheIndex, kvCache, krCache, dequantScaleX,
-                dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr,
-                smoothScalesCq, queryOut, queryRopeOut,
-                nullptr, nullptr, dequantScaleQNopeOut,
-                workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, nullptr,
+                nullptr, dequantScaleQNopeOut, workspace, tiling);
 
     MlaPrologV2Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCache,
-        krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-        queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+        cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr,
+        quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
 }
 
 // 全量化kv量化场景
@@ -551,17 +491,19 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVQuant)
     uint32_t Hcq = 1536;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) { return mla_prolog_v2<1, // CACHE_MODE
-                                                                                         2, // SCENARIO
-                                                                                         4, // QUANT_MODE
-                                                                                         0, // ENABLE_DEQUANT_OPTIONAL
-                                                                                         1, // ENABLE_GROUP_COMPUTE_OPTIONAL
-                                                                                         0, // EMPTY_TENSOR_MODE
-                                                                                         0, // ACTUAL_SEQ_LEN_MODE
-                                                                                         0, // SPLIT_M_MODE
-                                                                                         1, // ENABLE_ROPE
-                                                                                         7  // CV_MODE
-                                                                                         >(PARAM_LIST); };
+    std::function<void(PARAM_LIST_DEF)> func = [](PARAM_LIST_DEF) {
+        return mla_prolog_v2<1, // CACHE_MODE
+                             2, // SCENARIO
+                             4, // QUANT_MODE
+                             0, // ENABLE_DEQUANT_OPTIONAL
+                             1, // ENABLE_GROUP_COMPUTE_OPTIONAL
+                             0, // EMPTY_TENSOR_MODE
+                             0, // ACTUAL_SEQ_LEN_MODE
+                             0, // SPLIT_M_MODE
+                             1, // ENABLE_ROPE
+                             7  // CV_MODE
+                             >(PARAM_LIST);
+    };
     // 输入变量
     uint8_t *tokenX = (uint8_t *)AscendC::GmAlloc(B * S1 * He * sizeof(half));
     uint8_t *weightDq = (uint8_t *)AscendC::GmAlloc(He * Hcq * sizeof(half));
@@ -616,11 +558,13 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVQuant)
     baseParams_->headSizeQr = baseParams_->headSizeKr * baseParams_->numHeadSize;
     baseParams_->mm1SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->headSizeCq, aicNum_, Block_Size / 1);
     baseParams_->mm2SingleCoreN = 64U;
-    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
+    baseParams_->mm3SingleCoreN = optiling::CalcSingleCoreNV2(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), aicNum_, D + Dr);
     baseParams_->mm4SingleCoreBatch = CeilDiv(baseParams_->numHeadSize, aicNum_);
     baseParams_->mm1BlockNum = CeilDiv(baseParams_->headSizeCq, baseParams_->mm1SingleCoreN);
     baseParams_->mm2BlockNum = (baseParams_->headSizeCkv + baseParams_->dimHeadRope) / baseParams_->mm2SingleCoreN;
-    baseParams_->mm3BlockNum = CeilDiv(baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
+    baseParams_->mm3BlockNum = CeilDiv(
+        baseParams_->numHeadSize * (baseParams_->headSizeKr + baseParams_->dimHeadSizeQc), baseParams_->mm3SingleCoreN);
     baseParams_->mm4BlockNum = CeilDiv(baseParams_->numHeadSize, baseParams_->mm4SingleCoreBatch);
     baseParams_->vectorBlockNum = std::min(std::min(128U, baseParams_->tokenSize), aivNum_);
     baseParams_->reciprocalCq = 1.0f / baseParams_->headSizeCq;
@@ -635,21 +579,18 @@ TEST_F(MlaPrologV2Kernel, test_case_v2_QuantKVQuant)
     baseParams_->tileSize = baseParams_->batchSize * baseParams_->stepBatchSize;
     baseParams_->qcQrScale = 1U;
     baseParams_->kcScale = 1U;
-    baseParams_->isQcQrScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
-    baseParams_->isKcScaleEnable = static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isQcQrScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->qcQrScale - 1.0f) >= std::numeric_limits<float>::epsilon());
+    baseParams_->isKcScaleEnable =
+        static_cast<uint16_t>(std::abs(baseParams_->kcScale - 1.0f) >= std::numeric_limits<float>::epsilon());
 
-    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr,
-                weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
-                ropeCos, cacheIndex, kvCache, krCache, dequantScaleX,
-                dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr,
-                smoothScalesCq, queryOut, queryRopeOut,
-                nullptr, nullptr, dequantScaleQNopeOut,
-                workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,
+                ropeSin, ropeCos, cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
+                dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, nullptr,
+                nullptr, dequantScaleQNopeOut, workspace, tiling);
 
     MlaPrologV2Kernel::FreeAllGmMemory(
-        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr,
-        rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCache,
-        krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
-        dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq,
-        queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
+        tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
+        cacheIndex, kvCache, krCache, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr,
+        quantScaleCkv, quantScaleCkr, smoothScalesCq, queryOut, queryRopeOut, dequantScaleQNopeOut, workspace, tiling);
 }

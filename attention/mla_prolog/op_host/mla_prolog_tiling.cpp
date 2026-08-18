@@ -26,7 +26,8 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 const std::unordered_map<ge::DataType, matmul_tiling::DataType> GE_TO_MM_DTYPE{
     {ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16},
@@ -268,14 +269,14 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
     if (context_->doRope != nullptr && !(*(context_->doRope))) {
         // do_rope=false 时 ropeSin/ropeCos 为空 tensor，dr 由 weightDkvKr 的 (Hckv+Dr) 与 weightUk 的 Hckv 推导
         const auto &weightDkvKrShape = context_->weightDkvKr.shape->GetStorageShape();
-        uint32_t hckvPlusDr = (weightDkvKrShape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) ? weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_0) *
-                                                                                           weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_3) :
-                                                                                       weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
-        baseShapeInfo_.drSize =
-            hckvPlusDr - context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_2);
+        uint32_t hckvPlusDr =
+            (weightDkvKrShape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) ?
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_0) * weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_3) :
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
+        baseShapeInfo_.drSize = hckvPlusDr - context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_2);
     } else {
-        baseShapeInfo_.drSize =
-            context_->ropeCos.shape->GetStorageShape().GetDim(context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+        baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
+            context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
     }
     baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
@@ -745,7 +746,7 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
     std::vector<StatusFunction> optionalTilingFuncs{
         std::bind(&MlaPrologTiling::FillMatmul1Tiling, this), std::bind(&MlaPrologTiling::FillMatmul2Tiling, this),
         std::bind(&MlaPrologTiling::FillMatmul3Tiling, this), std::bind(&MlaPrologTiling::FillMatmul4Tiling, this),
-        std::bind(&MlaPrologTiling::FillTiling, this), std::bind(&MlaPrologTiling::CalcWorkSpace, this),
+        std::bind(&MlaPrologTiling::FillTiling, this),        std::bind(&MlaPrologTiling::CalcWorkSpace, this),
         std::bind(&MlaPrologTiling::GenTilingKey, this)};
     for (const auto &func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {

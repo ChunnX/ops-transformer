@@ -35,38 +35,16 @@ using namespace MlaProlog;
 
 template <uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode, bool EnableDequantOpt, bool EnableGroupComputeOpt,
           uint8_t EmptyTensorMode, uint8_t ActualSeqLenMode, uint8_t SplitMMode, bool EnableRope, uint8_t CvMode>
-__global__ __aicore__ void
-mla_prolog_v3(
-    __gm__ uint8_t *tokenX,
-    __gm__ uint8_t *weightDq,
-    __gm__ uint8_t *weightUqQr,
-    __gm__ uint8_t *weightUk,
-    __gm__ uint8_t *weightDkvKr,
-    __gm__ uint8_t *rmsnormGammaCq,
-    __gm__ uint8_t *rmsnormGammaCkv,
-    __gm__ uint8_t *ropeSin,
-    __gm__ uint8_t *ropeCos,
-    __gm__ uint8_t *kvCache,
-    __gm__ uint8_t *krCache,
-    __gm__ uint8_t *cacheIndex,
-    __gm__ uint8_t *dequantScaleX,
-    __gm__ uint8_t *dequantScaleWDq,
-    __gm__ uint8_t *dequantScaleWUqQr,
-    __gm__ uint8_t *dequantScaleWDkvKr,
-    __gm__ uint8_t *quantScaleCkv,
-    __gm__ uint8_t *quantScaleCkr,
-    __gm__ uint8_t *smoothScalesCq,
-    __gm__ uint8_t *actualSeqLen,
-    __gm__ uint8_t *kNopeClipAlpha,
-    __gm__ uint8_t *queryOut,
-    __gm__ uint8_t *queryRopeOut,
-    __gm__ uint8_t *kvCacheOut,
-    __gm__ uint8_t *krCacheOut,
-    __gm__ uint8_t *dequantScaleQNopeOut,
-    __gm__ uint8_t *queryNormOut,
-    __gm__ uint8_t *dequantScaleQNormOut,
-    __gm__ uint8_t *workspace,
-    __gm__ uint8_t *tiling)
+__global__ __aicore__ void mla_prolog_v3(
+    __gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *weightUqQr, __gm__ uint8_t *weightUk,
+    __gm__ uint8_t *weightDkvKr, __gm__ uint8_t *rmsnormGammaCq, __gm__ uint8_t *rmsnormGammaCkv,
+    __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *kvCache, __gm__ uint8_t *krCache,
+    __gm__ uint8_t *cacheIndex, __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
+    __gm__ uint8_t *dequantScaleWUqQr, __gm__ uint8_t *dequantScaleWDkvKr, __gm__ uint8_t *quantScaleCkv,
+    __gm__ uint8_t *quantScaleCkr, __gm__ uint8_t *smoothScalesCq, __gm__ uint8_t *actualSeqLen,
+    __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *kvCacheOut,
+    __gm__ uint8_t *krCacheOut, __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
+    __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
 #if (__NPU_ARCH__ == 3510)
     int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
@@ -133,7 +111,8 @@ mla_prolog_v3(
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                                     emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -152,7 +131,8 @@ mla_prolog_v3(
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_QUANT_PERTILE) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, true, cvRatio, EnableRope>>
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                                     emptyMode, actualSeqLenMode, true, cvRatio, EnableRope>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -174,7 +154,8 @@ mla_prolog_v3(
             op.Process();
         } else {
             MlaPrologVecS1CubS2<
-                MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
+                MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                         emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
                 op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -195,7 +176,8 @@ mla_prolog_v3(
             op.Process();
         } else {
             MlaPrologVecS1CubS2<
-                MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
+                MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                         emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
                 op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -246,7 +228,8 @@ mla_prolog_v3(
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, bfloat16_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
+        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, bfloat16_t, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                                     emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -255,7 +238,8 @@ mla_prolog_v3(
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
-        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, HIF8, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
+        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, HIF8, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                                     emptyMode, actualSeqLenMode, false, cvRatio, EnableRope>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -274,7 +258,8 @@ mla_prolog_v3(
         op.Process();
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE) {
-        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, HIF8, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt, emptyMode, actualSeqLenMode, true, cvRatio, EnableRope>>
+        MlaPrologVecS1CubS2<MLAPType<HIF8, HIF8, HIF8, float, cacheMode, EnableDequantOpt, EnableGroupComputeOpt,
+                                     emptyMode, actualSeqLenMode, true, cvRatio, EnableRope>>
             op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
                 cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,

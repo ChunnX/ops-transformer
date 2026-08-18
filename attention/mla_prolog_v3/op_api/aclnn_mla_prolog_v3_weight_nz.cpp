@@ -92,10 +92,7 @@ public:
         return true;
     }
 
-    bool IsTensorNotNull() const
-    {
-        return inner_ == nullptr;
-    }
+    bool IsTensorNotNull() const { return inner_ == nullptr; }
 
 private:
     const aclTensor *inner_;
@@ -140,12 +137,8 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     std::map<int64_t, std::set<int64_t>> supportedKvQuantMode;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         supportedKvQuantMode = {
-            {0LL, {0LL}},
-            {1LL, {0LL, 2LL, 3LL}},
-            {2LL, {0LL, 1LL, 3LL}},
-            {3LL, {0LL, 1LL, 3LL}},
-            {4LL, {0LL, 1LL, 3LL}},
-            {5LL, {0LL, 1LL, 3LL}},
+            {0LL, {0LL}},           {1LL, {0LL, 2LL, 3LL}}, {2LL, {0LL, 1LL, 3LL}},
+            {3LL, {0LL, 1LL, 3LL}}, {4LL, {0LL, 1LL, 3LL}}, {5LL, {0LL, 1LL, 3LL}},
         };
     } else {
         supportedKvQuantMode = {
@@ -178,9 +171,9 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV3", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
-                                              "When weightQuantMode==" + std::to_string(weightQuantMode) +
-                                                  ", must be within " + supportedStr);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "MlaPrologV3", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
+            "When weightQuantMode==" + std::to_string(weightQuantMode) + ", must be within " + supportedStr);
         return false;
     }
     return true;
