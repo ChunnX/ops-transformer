@@ -40,8 +40,11 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> curStateBf16; // (Nv, Dv, Dk) BF16 state for AIC
     GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
-    GlobalTensor<bfloat16_t> kg;
+    GlobalTensor<bfloat16_t> kg;           // R7: unused, kept for compat
+    GlobalTensor<bfloat16_t> keyGm;        // R7: original K (T, Nk, Dk) for CalStateNew strided read
+    GlobalTensor<bfloat16_t> vNewScaledGm; // per-core (C×Dv) scaled v_new for CalStateNew (vInner stays unscaled for Stage3)
     GlobalTensor<bfloat16_t> out;
+    int64_t cgStartPos;                    // R7: chunk group start position in T
     GM_ADDR ws;
     StageTwoMT *mm1Bf16;
     StageTwoMTFp32C *mm1Fp32;
@@ -79,6 +82,11 @@ public:
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         isFirstGroup_ = sTP_->isFirstGroup;
+        coreId_ = GetBlockIdx();
+        if ASCEND_IS_AIV {
+            coreId_ /= AIC_AIV_1_1;
+        }
+        vNewScaledGm_ = sTP_->vNewScaledGm[coreId_ * chunkSize_ * Dv_];
         InitLocalBuffers();
     }
 
@@ -94,23 +102,29 @@ public:
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, vInnerCastInSize));
             uint64_t outSize = Std::max(inSize, vInnerCastOutSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
-            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
+            // R7: extra chunkSize for dUb_ (exp(g[-1]-g_cum) row scale vector)
+            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM + chunkSize_) * sizeof(float));
             uint32_t buffOffset = 0;
             stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+            buffOffset += Ceil(NUM_ONE * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            dUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_), buffOffset);
         } else {
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE,
                               Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
             uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                              (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) *
-                                            sizeof(float));
+            // R7: extra chunkSize for dUb_
+            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM +
+                                          chunkSize_) * sizeof(float));
             uint32_t buffOffset = 0;
             tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+            buffOffset += Ceil(NUM_ONE * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            dUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_), buffOffset);
         }
     }
 
@@ -173,7 +187,11 @@ public:
         if (GetSubBlockIdx() == 0) {
             PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1], curChunkSize_ * Dv_);
+            CalD(sTP_->gCum[nvId * Sp_ + length]);
+            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
+                                          curChunkSize_ * Dv_);
+            CastGmToGmWithScale<float, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
+                                                   curChunkSize_ * Dv_);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -190,6 +208,8 @@ public:
         CrossCoreWaitFlag(0x2);
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
+            CalD(sTP_->gCum[nvId * Sp_ + length]);
+            CopyAndScaleVInnerBf16(nvId, length);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
         CrossCoreWaitFlag(0x4);
@@ -211,10 +231,14 @@ public:
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
         CrossCoreWaitFlag(0x5);
+        int64_t kStart = sTP_->cgStartPos + length;
+        uint64_t kOffset = static_cast<uint64_t>(kStart) * Nk_ * Dk_ +
+                           static_cast<uint64_t>(nvId) * (Nk_ / Nv_) * Dk_;
+        uint64_t kStride = static_cast<uint64_t>(Nk_) * Dk_;
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
         } else {
-            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
@@ -310,14 +334,18 @@ public:
         }
     }
 
+    // CalStateNew: state += v_new_scaled^T @ K, where v_new_scaled = v_new * d[:,None]
+    //   d[j] = exp(g[-1]-g_cum[j]) is applied in AIV (CastGmToGmWithScale/CopyAndScaleVInnerBf16 → vNewScaledGm_)
     template <typename stateOutType>
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<stateOutType> state)
+    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> keyStridedGm,
+                                       GlobalTensor<stateOutType> state, uint64_t kStride)
     {
         if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Fp32, vInner, true, keyStridedGm, false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Bf16, vInner, true, keyStridedGm, false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         }
     }
 
@@ -350,6 +378,115 @@ public:
         DataCopyExtParams outParams{1, static_cast<uint32_t>(count * sizeof(dstType)), 0, 0, 0};
         DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
         DataCopyPad(dstGm, dstLocal, outParams);
+        outQueue_.FreeTensor(dstLocal);
+    }
+
+    // R7: Compute d = exp(g[-1] - g_cum[0:curChunkSize]) from gCum_ GM
+    __aicore__ inline void CalD(GlobalTensor<float> gCumGm)
+    {
+        if constexpr (!gOptional) {
+            Duplicate(dUb_, 1.0f, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            return;
+        }
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            gCumGm[curChunkSize_ - 1]);
+        float gEnd = gCumGm.GetValue(curChunkSize_ - 1);
+        // Read g_cum[0:curChunkSize] from GM
+        DataCopyExtParams inParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> inPadParams{true, 0, 0, 0};
+        auto gLocal = inQueue_.AllocTensor<float>();
+        DataCopyPad(gLocal, gCumGm, inParams, inPadParams);
+        inQueue_.EnQue(gLocal);
+        gLocal = inQueue_.DeQue<float>();
+        // d = gEnd - g_cum (scalar - vector)
+        Duplicate(dUb_, gEnd, chunkSize_);
+        PipeBarrier<PIPE_V>();
+        Sub(dUb_, dUb_, gLocal, chunkSize_);
+        PipeBarrier<PIPE_V>();
+        inQueue_.FreeTensor(gLocal);
+        Exp<float, 0, true>(dUb_, dUb_, chunkSize_);
+        PipeBarrier<PIPE_V>();
+    }
+
+    // R7: CastGmToGm with d row scaling (FP32→BF16, vInner *= d[:,None])
+    template <typename srcType, typename dstType>
+    __aicore__ inline void CastGmToGmWithScale(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
+                                               int32_t count)
+    {
+        int32_t rowCnt = curChunkSize_;
+        int32_t colCnt = Dv_;
+        int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
+        int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
+        int32_t srcPadded = Ceil(count, srcAlign) * srcAlign;
+        int32_t padding = srcPadded - count;
+        auto srcLocal = inQueue_.AllocTensor<srcType>();
+        if (paddedCount > srcPadded) {
+            Duplicate<srcType>(srcLocal, static_cast<srcType>(0), paddedCount);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+        }
+        DataCopyExtParams inParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(srcType)),
+                                   0, 0, 0};
+        DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
+        DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
+        inQueue_.EnQue(srcLocal);
+        srcLocal = inQueue_.DeQue<srcType>();
+        auto dstLocal = outQueue_.AllocTensor<dstType>();
+        if constexpr (gOptional) {
+            // v_new *= d[:,None]: broadcast d (C,1) → (C,Dv), Mul
+            uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+            uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
+            PipeBarrier<PIPE_V>();
+            Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
+            PipeBarrier<PIPE_V>();
+        }
+        Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        inQueue_.FreeTensor(srcLocal);
+        outQueue_.EnQue(dstLocal);
+        dstLocal = outQueue_.DeQue<dstType>();
+        DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(dstType)), 0,
+                                    0, 0};
+        DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
+        DataCopyPad(dstGm, dstLocal, outParams);
+        outQueue_.FreeTensor(dstLocal);
+    }
+
+    // Copy vInner to vNewScaledGm_ with d row scaling (BF16 path, vInner stays unscaled for Stage3)
+    __aicore__ inline void CopyAndScaleVInnerBf16(int64_t nvId, int64_t length)
+    {
+        uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+        int32_t rowCnt = curChunkSize_;
+        int32_t colCnt = Dv_;
+        int32_t count = rowCnt * colCnt;
+        int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
+        auto srcLocal = inQueue_.AllocTensor<bfloat16_t>();
+        DataCopyExtParams inParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(bfloat16_t)),
+                                   0, 0, 0};
+        DataCopyPadExtParams<bfloat16_t> inPadParams{false, 0, 0, 0};
+        DataCopyPad(srcLocal, sTP_->vInner[mm_offset1], inParams, inPadParams);
+        inQueue_.EnQue(srcLocal);
+        srcLocal = inQueue_.DeQue<bfloat16_t>();
+        auto dstLocal = outQueue_.AllocTensor<bfloat16_t>();
+        Cast(tmpBuffer1_, srcLocal, RoundMode::CAST_NONE, paddedCount);
+        inQueue_.FreeTensor(srcLocal);
+        if constexpr (gOptional) {
+            uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+            uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+            LocalTensor<float> dBroad = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(rowCnt * colCnt), 0);
+            Broadcast<float, BROADCAST_AXIS, 1>(dBroad, dUb_, vShape, dShape);
+            PipeBarrier<PIPE_V>();
+            Mul(tmpBuffer1_, tmpBuffer1_, dBroad, rowCnt * colCnt);
+            PipeBarrier<PIPE_V>();
+        }
+        Cast(dstLocal, tmpBuffer1_, RoundMode::CAST_RINT, paddedCount);
+        outQueue_.EnQue(dstLocal);
+        dstLocal = outQueue_.DeQue<bfloat16_t>();
+        DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(bfloat16_t)),
+                                    0, 0, 0};
+        DataCopyPadExtParams<bfloat16_t> outPadParams{false, 0, 0, 0};
+        DataCopyPad(vNewScaledGm_, dstLocal, outParams);
         outQueue_.FreeTensor(dstLocal);
     }
 
@@ -424,6 +561,9 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
+    LocalTensor<float> dUb_; // R7: d = exp(g[-1]-g_cum) for v_new row scaling
+    GlobalTensor<bfloat16_t> vNewScaledGm_; // per-core (C×Dv) scaled v_new for CalStateNew
+    int64_t coreId_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;
