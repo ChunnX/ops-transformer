@@ -68,8 +68,7 @@ __aicore__ inline void GetSingleCoreParam(
                 actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
             }
         } else {
-            actualS2CmpSize =
-                (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
+            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -132,8 +131,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                int64_t gs1LoopStartIdx =
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+                int64_t gs1LoopStartIdx = skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
                 if (gs1LoopStartIdx > gS1StartIdx) {
                     runParam.gs1LoopStartIdx = gs1LoopStartIdx;
                 }
@@ -263,8 +261,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                if (runParam.s1oIdx <
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+                if (runParam.s1oIdx < skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
                     return true;
                 }
             }
@@ -345,7 +342,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         runParam.s2LineStartIdx = 0;
-        runParam.s2LineOriEndIdx = runParam.oriSparseBlockCount;
+        runParam.s2LineOriEndIdx = Min(runParam.actualS2OriSize, runParam.oriSparseBlockCount);
     } else {
         runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2OriSize);
@@ -378,7 +375,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     } else {
         runParam.s2CmpLineStartIdx = 0;
-        runParam.s2CmpLineEndIdx = runParam.cmpSparseBlockCount;
+        runParam.s2CmpLineEndIdx = Min(runParam.actualS2CmpSize, runParam.cmpSparseBlockCount);
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     }
 
