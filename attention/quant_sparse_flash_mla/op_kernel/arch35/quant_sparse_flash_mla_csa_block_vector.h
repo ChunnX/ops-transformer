@@ -1151,35 +1151,50 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
         if constexpr (IS_BATCH_CONSISTENCY) {
-            if (runInfo.isLastBase) {
+            if (!runInfo.isLastBase) {
+                if (unlikely(runInfo.isFirstReduce)) {
+                    FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb,
+                        runInfo.vec2MRealSize, dTemplateAlign64, vDescale, vDescalePre);
+                } else {
+                    FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb,
+                        runInfo.vec2MRealSize, dTemplateAlign64, vDescale, 1.0);
+                }
+            } else {
                 LocalTensor<float> sumUb = this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize,
-                    dTemplateAlign64, vDescale, 1.0);
-            } else {
-                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb,
-                    runInfo.vec2MRealSize, dTemplateAlign64, vDescale, 1.0);
-            }
-        } else if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            if (unlikely(runInfo.s2LoopCount == 1)) {
-                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
-                    vDescalePre);
-            } else {
-                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale, 1.0);
+                if (unlikely(runInfo.isFirstReduce)) {
+                    FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize,
+                        dTemplateAlign64, vDescale, vDescalePre);
+                } else {
+                    FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize,
+                        dTemplateAlign64, vDescale, 1.0);
+                }
             }
         } else {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            if (unlikely(runInfo.s2LoopCount == 1)) {
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
-                    vDescalePre);
+            if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+                if (unlikely(runInfo.isFirstReduce)) {
+                    FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
+                        vDescalePre);
+                } else {
+                    FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
+                        1.0);
+                }
             } else {
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, vDescale,
-                    1.0);
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                if (unlikely(runInfo.isFirstReduce)) {
+                    FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, true, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize,
+                        dTemplateAlign64, vDescale, vDescalePre);
+                } else {
+                    FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize,
+                        dTemplateAlign64, vDescale, 1.0);
+                }
             }
         }
     }
