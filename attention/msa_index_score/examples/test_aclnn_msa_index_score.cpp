@@ -44,6 +44,19 @@ enum class KeyLayout {
     TND = 2,
 };
 
+const char *LayoutKeyName(KeyLayout layout)
+{
+    switch (layout) {
+        case KeyLayout::TND:
+            return "TND";
+        case KeyLayout::BNBD:
+            return "BNBD";
+        case KeyLayout::BBND:
+        default:
+            return "BBND";
+    }
+}
+
 struct TestCase {
     const char *name;
     int64_t numQHeads;
@@ -494,7 +507,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
     int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT, actualSeqKlenT,
-                                                 startLocT, tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize,
+                                                 startLocT, const_cast<char *>(LayoutKeyName(tc.keyLayout)),
+                                                 tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize,
                                                  &executor);
     if (ret != ACL_SUCCESS) {
         (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);

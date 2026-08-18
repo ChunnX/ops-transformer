@@ -17,6 +17,8 @@
 #include <register/op_impl_registry.h>
 #include "err/ops_err.h"
 
+#include <cstring>
+
 using namespace ge;
 
 namespace ops {
@@ -28,6 +30,7 @@ constexpr uint32_t MSA_ACTUAL_SEQ_KLEN_INDEX = 6;
 constexpr uint32_t MSA_QUERY_DIM_NUM = 3;
 constexpr uint32_t MSA_KEY_TND_DIM_NUM = 3;
 constexpr uint32_t MSA_BLOCK_TABLE_DIM_NUM = 2;
+constexpr uint32_t MSA_ATTR_LAYOUT_KEY = 0;
 constexpr int64_t MSA_SCORE_STRIDE_ALIGN = 16;
 constexpr int64_t MSA_BLOCK_SIZE = 128;
 
@@ -55,18 +58,28 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
                 OP_LOGE(context, "query must be TND with 3 dims, but got %zu.", queryShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
 
+    auto attrs = context->GetAttrs();
+    const char *layoutKeyPtr = (attrs != nullptr) ? attrs->GetStr(MSA_ATTR_LAYOUT_KEY) : nullptr;
+    const char *layoutKey = (layoutKeyPtr == nullptr || layoutKeyPtr[0] == '\0') ? "BBND" : layoutKeyPtr;
+    OP_CHECK_IF(std::strcmp(layoutKey, "TND") != 0 && std::strcmp(layoutKey, "BBND") != 0 &&
+                    std::strcmp(layoutKey, "BNBD") != 0,
+                OP_LOGE(context, "layout_key must be TND, BBND or BNBD, got %s.", layoutKey),
+                return ge::GRAPH_FAILED);
+    const bool isTnd = (std::strcmp(layoutKey, "TND") == 0);
+
     const int64_t totalQ = queryShape->GetDim(0);
     const int64_t numQHeads = queryShape->GetDim(1);
     int64_t maxBlocks = 0;
-    if (blockTableShape != nullptr) {
+    if (!isTnd) {
+        OP_CHECK_IF(blockTableShape == nullptr,
+                    OP_LOGE(context, "layout_key=BBND/BNBD requires block_table."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(blockTableShape->GetDimNum() != MSA_BLOCK_TABLE_DIM_NUM,
                     OP_LOGE(context, "block_table must have 2 dims, but got %zu.", blockTableShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
         maxBlocks = blockTableShape->GetDim(1);
     } else {
         OP_CHECK_IF(keyShape->GetDimNum() != MSA_KEY_TND_DIM_NUM,
-                    OP_LOGE(context, "without block_table, key must be TND (3 dims)."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context, "layout_key=TND requires key rank 3."), return ge::GRAPH_FAILED);
         const gert::Shape *klenShape = context->GetOptionalInputShape(MSA_ACTUAL_SEQ_KLEN_INDEX);
         const gert::Tensor *klenTensor = context->GetOptionalInputTensor(MSA_ACTUAL_SEQ_KLEN_INDEX);
         const int32_t *klenData =

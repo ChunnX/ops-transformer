@@ -83,6 +83,8 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
+        // key 布局：TND / BBND / BNBD。aclnn 参数名为 layoutKeyOptional。
+        this->Attr("layout_key").AttrType(OPTIONAL).String("BBND");
         // 0: defaultMask；3: rightDownCausal
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);
         // local_mask：强制选中 block 数（对齐 Triton prepare / HF；对比 raw score 时可置 0）

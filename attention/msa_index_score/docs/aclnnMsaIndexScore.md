@@ -59,6 +59,7 @@ aclnnStatus aclnnMsaIndexScoreGetWorkspaceSize(
     const aclTensor *actualSeqQlenOptional,
     const aclTensor *actualSeqKlenOptional,
     const aclTensor *startLoc,
+    char            *layoutKeyOptional,
     int64_t          sparseMode,
     int64_t          initBlocks,
     int64_t          localBlocks,
@@ -86,6 +87,7 @@ aclnnStatus aclnnMsaIndexScore(
 | actualSeqQlenOptional | 输入      | 每个Batch中，Query的有效token数                   | 当传入TND时，该入参必须传入，单调不减（前缀和）              | INT32                        | ND       | 1（$[B+1]$）                                                 |
 | actualSeqKlenOptional   | 输入      | 每个Batch中，Key的有效token数                     | key 为 TND 时必须传入，单调不减（前缀和，$[B+1]$）；PageAttention 场景下为各请求可见 $S2$（$[B]$） | INT32                        | ND       | 1（$[B]$ 或 $[B+1]$）                                        |
 | startLoc                      | 输入      | 当前 query 所在逻辑 block 索引（非 token 前缀） | 与 `initBlocks` / `localBlocks` 一起生成 $local\_mask$ | INT32                        | ND       | 1（$[B]$）                                                   |
+| layoutKeyOptional             | 输入      | key 的数据排布                                | 取值 `"TND"` / `"BBND"` / `"BNBD"`。不传或空串时默认 `"BBND"`。必须与 `key` 实际 shape 一致，不可仅凭维度推断 | CHAR*                        | -        | -                                                            |
 | sparseMode                    | 输入      | 表示sparse的模式                                  | 为0时，代表defaultMask模式；为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。 | INT64                        | -        | -                                                            |
 | initBlocks                    | 输入      | $local\_mask$ 强制选中的头部 block 数             | 对逻辑 block $[0, initBlocks)$ 写入高分 $1\mathrm{e}30$。可选，默认 $0$；须 $\ge 0$ 且 $\le maxBlockNumPerSeq$ | INT64                        | -        | -                                                            |
 | localBlocks                   | 输入      | $local\_mask$ 强制选中的局部窗口长度              | 窗口为 $[max(0, startLoc+1-localBlocks), startLoc]$，写入高分 $1\mathrm{e}29$（覆盖同位置 init）。可选，默认 $1$（对齐 MiniMax HF）；与 Triton raw score 对齐时置 $0$ | INT64                        | -        | -                                                            |
@@ -122,7 +124,8 @@ aclnnStatus aclnnMsaIndexScore(
 ## 约束说明
 
 - 当前 $block\_size$ 值使用128。
-- PageAttention 场景下，`blockTableOptional` 必须传入；TND key 场景不得传入 `blockTableOptional`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。
+- `layoutKeyOptional` 必须显式指定 key 布局：`"BBND"`（$[block\_num, block\_size, N2, D]$）、`"BNBD"`（$[block\_num, N2, block\_size, D]$）或 `"TND"`（$[T2, N2, D]$）。不传时默认 `"BBND"`。
+- PageAttention（`layoutKey` 为 `"BBND"` / `"BNBD"`）场景下，`blockTableOptional` 必须传入；TND key 场景不得传入 `blockTableOptional`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。
 - 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scaleOptional` 必须为 `nullptr`；量化场景下仅支持 INT8，`scaleOptional` 必选，dtype 为 FLOAT：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 - `sparseMode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`attenMaskOptional` 传入 `nullptr`；
@@ -132,7 +135,7 @@ aclnnStatus aclnnMsaIndexScore(
 
 ## 调用示例
 
-示例代码如下（BBND PageAttention）。TND：`key` 为 $[T2, N2, D]$，`blockTableOptional` 传 `nullptr`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。BNBD：`key` 为 $[block\_num, N2, block\_size, D]$。含 TND/BNBD 的精度自验证见 [test_aclnn_msa_index_score.cpp](../examples/test_aclnn_msa_index_score.cpp)。
+示例代码如下（BBND PageAttention）。TND：`layoutKeyOptional="TND"`，`key` 为 $[T2, N2, D]$，`blockTableOptional` 传 `nullptr`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。BNBD：`layoutKeyOptional="BNBD"`，`key` 为 $[block\_num, N2, block\_size, D]$。含 TND/BNBD 的精度自验证见 [test_aclnn_msa_index_score.cpp](../examples/test_aclnn_msa_index_score.cpp)。
 
 ```Cpp
 #include <iostream>
@@ -310,6 +313,7 @@ int ExecuteMsaIndexScore(TensorResources& resources, aclrtStream stream,
   int64_t sparseMode = 3;
   int64_t initBlocks = 0;
   int64_t localBlocks = 1;
+  char layoutKey[] = "BBND";
   aclOpExecutor* executor = nullptr;
 
   // 非量化：scaleOptional 传 nullptr
@@ -322,6 +326,7 @@ int ExecuteMsaIndexScore(TensorResources& resources, aclrtStream stream,
       resources.actualSeqQlenTensor,
       resources.actualSeqKlenTensor,
       resources.startLocTensor,
+      layoutKey,
       sparseMode,
       initBlocks,
       localBlocks,
@@ -477,10 +482,12 @@ int main() {
 TND / BNBD 与上面 BBND 示例的差异如下（完整精度用例见 [test_aclnn_msa_index_score.cpp](../examples/test_aclnn_msa_index_score.cpp) 中的 `L1-bnbd*`、`L1-tnd*`、`L0-tnd-tiny`）。
 
 ```Cpp
-// BNBD PageAttention：key 为 [block_num, N2, block_size, D]，blockTable / actualSeqKlen 与 BBND 相同
+// BNBD PageAttention：layoutKey="BNBD"，key 为 [block_num, N2, block_size, D]
+char layoutKeyBnbd[] = "BNBD";
 std::vector<int64_t> keyShapeBnbd = {blockNum, N2, blockSize, D};
 
-// TND packed key：不传 blockTableOptional，actualSeqKlenOptional 为 [B+1] 前缀和
+// TND packed key：layoutKey="TND"，不传 blockTableOptional，actualSeqKlenOptional 为 [B+1] 前缀和
+char layoutKeyTnd[] = "TND";
 constexpr int64_t T2 = 256;
 std::vector<int64_t> keyShapeTnd = {T2, N2, D};
 std::vector<int64_t> actualSeqKlenShapeTnd = {B + 1};  // 例如 {0, T2}

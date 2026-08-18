@@ -14,6 +14,7 @@
  *        Atlas A2/A3；key 支持 PA BBND/BNBD 与 TND packed。不支持 Ascend 950 / FP8。
  */
 
+#include <string>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -44,8 +45,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
                            const c10::optional<at::Tensor> &atten_mask,
                            const c10::optional<at::Tensor> &actual_seq_qlen,
                            const c10::optional<at::Tensor> &actual_seq_klen,
-                           const at::Tensor &start_loc, int64_t sparse_mode,
-                           int64_t init_blocks, int64_t local_blocks)
+                           const at::Tensor &start_loc, c10::string_view layout_key,
+                           int64_t sparse_mode, int64_t init_blocks, int64_t local_blocks)
 {
     TORCH_CHECK(query.defined() && query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.defined() && key.numel() > 0, "Tensor key is empty.");
@@ -55,19 +56,28 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     TORCH_CHECK(actual_seq_klen.has_value() && actual_seq_klen.value().defined(),
                 "actual_seq_klen is required.");
 
+    std::string layoutKeyStr = std::string(layout_key);
+    if (layoutKeyStr.empty()) {
+        layoutKeyStr = "BBND";
+    }
+    TORCH_CHECK(layoutKeyStr == "TND" || layoutKeyStr == "BBND" || layoutKeyStr == "BNBD",
+                "layout_key must be TND, BBND or BNBD, got ", layoutKeyStr);
+
     const at::Tensor &cu_q = actual_seq_qlen.value();
     const at::Tensor &kv_len = actual_seq_klen.value();
-    const bool is_tnd = (key.dim() == KEY_TND_DIM);
+    const bool is_tnd = (layoutKeyStr == "TND");
     TORCH_CHECK(query.dim() == QUERY_DIM, "query must be 3D [T, Hq, D], but got dim=", query.dim());
-    TORCH_CHECK(is_tnd || key.dim() == KEY_PA_DIM,
-                "key must be TND [T2,N2,D] or PA 4D BBND/BNBD, but got dim=", key.dim());
     if (is_tnd) {
+        TORCH_CHECK(key.dim() == KEY_TND_DIM, "layout_key=TND requires key [T2,N2,D], but got dim=",
+                    key.dim());
         TORCH_CHECK(!block_table.has_value() || !block_table.value().defined(),
-                    "TND key must not pass block_table.");
+                    "layout_key=TND must not pass block_table.");
     } else {
+        TORCH_CHECK(key.dim() == KEY_PA_DIM, "layout_key=", layoutKeyStr,
+                    " requires key rank 4, but got dim=", key.dim());
         TORCH_CHECK(block_table.has_value() && block_table.value().defined() &&
                         block_table.value().numel() > 0,
-                    "PageAttention requires block_table.");
+                    "PageAttention (BBND/BNBD) requires block_table.");
     }
     TORCH_CHECK(cu_q.dim() == SEQ_LEN_Q_DIM, "actual_seq_qlen must be 1D [B+1], but got dim=",
                 cu_q.dim());
@@ -139,11 +149,15 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
         const at::Tensor &bt = block_table.value();
         TORCH_CHECK(bt.dim() == BLOCK_TABLE_DIM, "block_table must be 2D [B, MB], but got dim=", bt.dim());
         TORCH_CHECK(bt.scalar_type() == at::kInt, "block_table dtype must be int32.");
-        const bool is_bbnd = (key.size(1) == SUPPORTED_BLOCK_SIZE);
-        const bool is_bnbd = (key.size(2) == SUPPORTED_BLOCK_SIZE);
-        TORCH_CHECK(is_bbnd || is_bnbd, "PA key must be BBND[NP,P,N2,D] or BNBD[NP,N2,P,D] with P=",
-                    SUPPORTED_BLOCK_SIZE);
-        num_kv_heads = is_bbnd ? key.size(2) : key.size(1);
+        if (layoutKeyStr == "BBND") {
+            TORCH_CHECK(key.size(1) == SUPPORTED_BLOCK_SIZE,
+                        "layout_key=BBND requires key [NP,P,N2,D] with P=", SUPPORTED_BLOCK_SIZE);
+            num_kv_heads = key.size(2);
+        } else {
+            TORCH_CHECK(key.size(2) == SUPPORTED_BLOCK_SIZE,
+                        "layout_key=BNBD requires key [NP,N2,P,D] with P=", SUPPORTED_BLOCK_SIZE);
+            num_kv_heads = key.size(1);
+        }
         key_head_dim = key.size(3);
         TORCH_CHECK(cu_q.size(0) == kv_len.size(0) + 1, "actual_seq_qlen size must be batch+1.");
         TORCH_CHECK(start_loc.size(0) == kv_len.size(0), "start_loc size must equal batch.");
@@ -169,8 +183,9 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
         score = at::empty({num_q_heads, total_q, score_stride}, query.options().dtype(at::kFloat));
     }
 
+    char *layoutKeyPtr = const_cast<char *>(layoutKeyStr.c_str());
     ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_qlen,
-              actual_seq_klen, start_loc, sparse_mode, init_blocks, local_blocks, score);
+              actual_seq_klen, start_loc, layoutKeyPtr, sparse_mode, init_blocks, local_blocks, score);
     return score;
 }
 
