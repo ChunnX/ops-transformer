@@ -25,6 +25,8 @@
 
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;
+const static uint64_t MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY = 10005;
+const static uint64_t MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY = 10010;
 const static int64_t TILINGKEY_INT32_INT64_SUFFIX = 1;
 const static int64_t TILINGKEY_INT32_INT32_SUFFIX = 2;
 const static int64_t TILINGKEY_INT64_INT64_SUFFIX = 3;
@@ -47,6 +49,7 @@ const static size_t OUT_OUTPUT_DIMS = 2;
 const static int64_t MAX_EXPERT_COUNT = 2048;
 const static int64_t MAX_K_FOR_HASH = 64;
 
+
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
 const static int64_t INPUT_IDS_INPUT_INDEX = 2;
@@ -65,6 +68,9 @@ const static int64_t OUT_FLAG_ATTR_INDEX = 6;
 const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 7;
 const static int64_t EPS_ATTR_INDEX = 8;
 const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1024); // 预留16M空间
+const static int64_t DEFAULT_BATCH_ROWS = 4;
+const static int64_t MAX_BATCH_ROWS = 16;
+const static int64_t MAX_SINGLE_EXPERT_BATCH_ROWS = 4096;
 
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -647,6 +653,25 @@ void MoeGatingTopKTilingRegbase::SplitRows()
         }
     }
     moeGatingTopKTilingData_.set_vmsCount(vmsCount);
+
+    int64_t expertCountAlign = Ops::Base::CeilAlign(expertCount_, 32L);
+    int64_t batchRows = DEFAULT_BATCH_ROWS;
+    if (expertCount_ == 1) {
+        // expertCount==1: no alignment, per-row UB = (xIn + yOut + expertIdx + out) * depth(2)
+        // xIn: sizeof(T), yOut: sizeof(T), expertIdx: sizeof(int32_t), out: sizeof(float)
+        int64_t perRowUbSize = (inputDtypeSize_ + inputDtypeSize_ + sizeof(int32_t) + sizeof(float)) * 2;
+        int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / perRowUbSize;
+        // reserve 20% UB for pipe/event overhead
+        maxBatchByUb = maxBatchByUb * 4 / 5;
+        batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
+    } else {
+        int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
+        if (perRowUbSize > 0) {
+            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
+            batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+        }
+    }
+    moeGatingTopKTilingData_.set_batchRows(batchRows);
 }
 
 ge::graphStatus MoeGatingTopKTilingRegbase::DoOpTiling()
@@ -697,6 +722,15 @@ ge::graphStatus MoeGatingTopKTilingRegbase::PostTiling()
 uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 {
     if (!hashFlag_) {
+        if (expertCount_ == 256 && groupCount_ == 8 && kGroup_ == 4 && k_ <= 32 && addBias_ &&
+            groupSelectMode_ == GROUP_SELECT_MODE_SUM && renorm_ == RENORM_NO && normType_ == NORM_TYPE_SIGMOID &&
+            outFlag_ == OUT_FLAG_FALSE) {
+            return MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY;
+        }
+        bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+        if (isSimplifiedPath && groupCount_ == 1 && k_ == 1) {
+            return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
+        }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
     }
 
