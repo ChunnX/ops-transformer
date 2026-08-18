@@ -6,27 +6,30 @@
 
 Inputs:
 
-- `block_residual`: FP32 ND tensor `[T, N, D]`.
-- `effective_query`: FP32 ND tensor `[S, D]`.
+- `block_res`: FP32 ND tensor `[T, N, D]`.
 - `valid_blocks`: INT32 ND tensor `[1]`; values below zero are clipped to zero, zero produces the empty
   online-softmax state, and values above `N` are clipped to `N`.
-- `epsilon`: optional FP32 attribute, default `1e-6`, and must be greater than zero.
+- `pseudo_query`: FP32 ND tensor `[S, D]`.
 
 Outputs:
 
-- `softmax_max`: FP32 `[S, T]`.
-- `weighted_output`: FP32 `[S, T, D]`.
-- `softmax_sum`: FP32 `[S, T]`.
+- `numerator`: FP32 `[S, T, D]`.
+- `logit_max`: FP32 `[S, T]`.
+- `exp_sum`: FP32 `[S, T]`.
+
+Attribute:
+
+- `eps`: optional FP32 attribute, default `1e-6`, and must be greater than zero.
 
 ## ACLNN and PyTorch interfaces
 
 The ACLNN two-stage interface is `aclnnBlockAttnResPrepareGetWorkspaceSize` and
 `aclnnBlockAttnResPrepare`; it is available only on Ascend 950 and validates the required tensor ranks, dtypes,
-output shapes, and positive finite `epsilon` before dispatch.
+output shapes, and positive finite `eps` before dispatch.
 
 PyTorch users can import `block_attn_res_prepare` from `cann_ops_transformer`.  The wrapper registers
 `cann_ops_transformer::block_attn_res_prepare` and returns
-`(softmax_max, weighted_output, softmax_sum)` in the same order as the ACLNN/operator interface.
+`(numerator, logit_max, exp_sum)` in the same order as the ACLNN/operator interface.
 
 Vector arithmetic is implemented with Ascend 950 VF programming, while tensor creation and GM/UB movement use
 AscendC Tensor APIs. UB is assigned directly from tiling-derived byte offsets; the kernel does not create `TPipe`,
@@ -38,7 +41,7 @@ Host tiling expands `(T,S)` into independent AIV work units and selects `baseD` 
 `qBufferNum`, `vBufferNum`, and `oBufferNum` fields are calculated from the actual loop counts: Q/O use one buffer
 when `dTileNum == 1`, and V uses one buffer only when its complete static loop count is one. The released UB is used
 to increase `vCacheRows`; the kernel caches all V rows only when runtime `valid_blocks[0] <= vCacheRows`, otherwise
-it reloads V for the weighted-output stage.
+it reloads V for the numerator stage.
 
 The current single-VReg softmax implementation supports physical `N <= 64`. Network performance coverage is
 `N=8`, `D=7168`, `S in {18,24}`, and `T in {1,2,4,32,254}`.
@@ -51,7 +54,7 @@ back to the Vector key when the shape or queried L1/L0/UB resources cannot satis
 workspace starts after the platform system-workspace reservation. It keeps compact MM1 dot and aligned E tiles
 separate so the two AIV peers can process disjoint S rows without a read/write overlap; E includes the padded N tail
 consumed by MM2. MM2 Fixpipe first writes a contiguous per-core ND tile, then the AIV peers scatter their row slices
-to the `T*D`-strided `weighted_output` slice.
+to the `T*D`-strided `numerator` slice.
 Cube tiling independently searches
 `baseS` (full S first, then smaller M tiles) and `baseD`, and carries separate AIC/AIV counts, L1 buffer depths, and
 aligned element counts. MMAD parameters are built by the kernel from the same

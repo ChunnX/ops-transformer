@@ -28,10 +28,10 @@ namespace optiling {
 namespace {
 
 constexpr const char *OP_NAME = "BlockAttnResPrepare";
-constexpr size_t BLOCK_RESIDUAL_INDEX = 0;
-constexpr size_t EFFECTIVE_QUERY_INDEX = 1;
-constexpr size_t VALID_BLOCKS_INDEX = 2;
-constexpr size_t EPSILON_ATTR_INDEX = 0;
+constexpr size_t BLOCK_RES_INDEX = 0;
+constexpr size_t VALID_BLOCKS_INDEX = 1;
+constexpr size_t PSEUDO_QUERY_INDEX = 2;
+constexpr size_t EPS_ATTR_INDEX = 0;
 
 constexpr uint64_t FP32_BYTES = sizeof(float);
 constexpr uint64_t UB_RESERVED_BYTES = 8UL * 1024UL;
@@ -44,7 +44,7 @@ constexpr uint32_t CUBE_MIN_T = 32U;
 constexpr uint32_t CUBE_MIN_S = 16U;
 constexpr uint32_t CUBE_MIN_D = 256U;
 constexpr uint64_t MAX_HEAD_DIM = 8192UL;
-constexpr uint32_t SOFTMAX_MAX_N = FP32_REG_ELEMS;
+constexpr uint32_t MAX_BLOCK_NUM = FP32_REG_ELEMS;
 constexpr uint32_t STAT_VECTOR_COUNT = 2U;
 constexpr uint32_t SCALAR_BLOCK_ELEMS = 8U;
 constexpr uint32_t STAT_UB_ELEMS = STAT_VECTOR_COUNT * FP32_REG_ELEMS + 2U * SCALAR_BLOCK_ELEMS;
@@ -120,37 +120,37 @@ ge::graphStatus BlockAttnResPrepareTiling::GetPlatformInfo()
 
 ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
 {
-    const auto *vStorageShape = context_->GetInputShape(BLOCK_RESIDUAL_INDEX);
-    const auto *qStorageShape = context_->GetInputShape(EFFECTIVE_QUERY_INDEX);
+    const auto *blockResStorageShape = context_->GetInputShape(BLOCK_RES_INDEX);
     const auto *validStorageShape = context_->GetInputShape(VALID_BLOCKS_INDEX);
-    OP_CHECK_IF(vStorageShape == nullptr || qStorageShape == nullptr || validStorageShape == nullptr,
+    const auto *pseudoQueryStorageShape = context_->GetInputShape(PSEUDO_QUERY_INDEX);
+    OP_CHECK_IF(blockResStorageShape == nullptr || validStorageShape == nullptr || pseudoQueryStorageShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input shape is null"), return ge::GRAPH_FAILED);
 
-    const gert::Shape &vShape = vStorageShape->GetOriginShape();
-    const gert::Shape &qShape = qStorageShape->GetOriginShape();
+    const gert::Shape &blockResShape = blockResStorageShape->GetOriginShape();
     const gert::Shape &validShape = validStorageShape->GetOriginShape();
-    OP_CHECK_IF(vShape.GetDimNum() != 3, OP_LOGE(context_->GetNodeName(), "block_residual must be [T,N,D]"),
+    const gert::Shape &pseudoQueryShape = pseudoQueryStorageShape->GetOriginShape();
+    OP_CHECK_IF(blockResShape.GetDimNum() != 3, OP_LOGE(context_->GetNodeName(), "block_res must be [T,N,D]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qShape.GetDimNum() != 2, OP_LOGE(context_->GetNodeName(), "effective_query must be [S,D]"),
+    OP_CHECK_IF(pseudoQueryShape.GetDimNum() != 2, OP_LOGE(context_->GetNodeName(), "pseudo_query must be [S,D]"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(validShape.GetDimNum() != 1 || validShape.GetDim(0) != 1,
                 OP_LOGE(context_->GetNodeName(), "valid_blocks must have shape [1]"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsPositiveShape(vShape) || !IsPositiveShape(qShape),
+    OP_CHECK_IF(!IsPositiveShape(blockResShape) || !IsPositiveShape(pseudoQueryShape),
                 OP_LOGE(context_->GetNodeName(), "all input dimensions must be positive"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(vShape.GetDim(2) != qShape.GetDim(1),
-                OP_LOGE(context_->GetNodeName(), "block_residual.D and effective_query.D must be equal"),
+    OP_CHECK_IF(blockResShape.GetDim(2) != pseudoQueryShape.GetDim(1),
+                OP_LOGE(context_->GetNodeName(), "block_res.D and pseudo_query.D must be equal"),
                 return ge::GRAPH_FAILED);
 
-    totalT_ = static_cast<uint64_t>(vShape.GetDim(0));
-    totalN_ = static_cast<uint64_t>(vShape.GetDim(1));
-    totalD_ = static_cast<uint64_t>(vShape.GetDim(2));
-    totalS_ = static_cast<uint64_t>(qShape.GetDim(0));
+    totalT_ = static_cast<uint64_t>(blockResShape.GetDim(0));
+    totalN_ = static_cast<uint64_t>(blockResShape.GetDim(1));
+    totalD_ = static_cast<uint64_t>(blockResShape.GetDim(2));
+    totalS_ = static_cast<uint64_t>(pseudoQueryShape.GetDim(0));
     OP_CHECK_IF(totalT_ > std::numeric_limits<uint32_t>::max() || totalN_ > std::numeric_limits<uint32_t>::max() ||
                     totalS_ > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "T/N/S exceed uint32 tiling range"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(totalN_ > SOFTMAX_MAX_N,
+    OP_CHECK_IF(totalN_ > MAX_BLOCK_NUM,
                 OP_LOGE(context_->GetNodeName(), "N=%lu exceeds the current single-VReg softmax limit %u", totalN_,
-                        SOFTMAX_MAX_N),
+                        MAX_BLOCK_NUM),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalD_ > MAX_HEAD_DIM,
                 OP_LOGE(context_->GetNodeName(), "D=%lu exceeds the interface limit %lu", totalD_, MAX_HEAD_DIM),
@@ -165,13 +165,13 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
 
 ge::graphStatus BlockAttnResPrepareTiling::CheckInputDtypes() const
 {
-    const auto *vDesc = context_->GetInputDesc(BLOCK_RESIDUAL_INDEX);
-    const auto *qDesc = context_->GetInputDesc(EFFECTIVE_QUERY_INDEX);
+    const auto *blockResDesc = context_->GetInputDesc(BLOCK_RES_INDEX);
     const auto *validDesc = context_->GetInputDesc(VALID_BLOCKS_INDEX);
-    OP_CHECK_IF(vDesc == nullptr || qDesc == nullptr || validDesc == nullptr,
+    const auto *pseudoQueryDesc = context_->GetInputDesc(PSEUDO_QUERY_INDEX);
+    OP_CHECK_IF(blockResDesc == nullptr || validDesc == nullptr || pseudoQueryDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input descriptor is null"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(vDesc->GetDataType() != ge::DT_FLOAT || qDesc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "block_residual and effective_query must be FP32"),
+    OP_CHECK_IF(blockResDesc->GetDataType() != ge::DT_FLOAT || pseudoQueryDesc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "block_res and pseudo_query must be FP32"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(validDesc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(context_->GetNodeName(), "valid_blocks must be INT32"), return ge::GRAPH_FAILED);
@@ -187,11 +187,11 @@ ge::graphStatus BlockAttnResPrepareTiling::GetShapeAttrsInfo()
 
     const auto *attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
-    const float *epsilon = attrs->GetFloat(EPSILON_ATTR_INDEX);
-    OP_CHECK_IF(epsilon == nullptr || !std::isfinite(*epsilon) || *epsilon <= 0.0F,
-                OP_LOGE(context_->GetNodeName(), "epsilon must be finite and greater than zero"),
+    const float *eps = attrs->GetFloat(EPS_ATTR_INDEX);
+    OP_CHECK_IF(eps == nullptr || !std::isfinite(*eps) || *eps <= 0.0F,
+                OP_LOGE(context_->GetNodeName(), "eps must be finite and greater than zero"),
                 return ge::GRAPH_FAILED);
-    epsilon_ = *epsilon;
+    eps_ = *eps;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -279,7 +279,7 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
     tilingData_.oBufferNum = static_cast<uint8_t>(oBufferNum_);
     tilingData_.statUbElems = STAT_UB_ELEMS;
     tilingData_.workUbElems = 0U;
-    tilingData_.epsilon = epsilon_;
+    tilingData_.eps = eps_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -500,7 +500,7 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.reduceUbElems = reduceUbElems_;
     tilingData_.softmaxUbElems = softmaxUbElems_;
     tilingData_.workspacePerCoreElems = workspacePerCoreElems_;
-    tilingData_.epsilon = epsilon_;
+    tilingData_.eps = eps_;
     return ge::GRAPH_SUCCESS;
 }
 

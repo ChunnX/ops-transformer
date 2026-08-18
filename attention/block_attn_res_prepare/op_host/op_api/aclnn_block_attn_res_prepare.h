@@ -21,20 +21,20 @@ extern "C" {
 /**
  * @brief Calculates the workspace needed by BlockAttnResPrepare.
  *
- * @param blockResidual [IN] FP32 ND tensor with shape [T, N, D].
- * @param effectiveQuery [IN] FP32 ND tensor with shape [S, D].
+ * @param blockRes [IN] FP32 ND tensor with shape [T, N, D].
  * @param validBlocks [IN] INT32 ND tensor with shape [1].
- * @param epsilon [IN] Positive FP32 numerical-stability constant.
- * @param softmaxMax [OUT] FP32 ND tensor with shape [S, T].
- * @param weightedOutput [OUT] FP32 ND tensor with shape [S, T, D].
- * @param softmaxSum [OUT] FP32 ND tensor with shape [S, T].
+ * @param pseudoQuery [IN] FP32 ND tensor with shape [S, D].
+ * @param numerator [OUT] FP32 ND tensor with shape [S, T, D].
+ * @param logitMax [OUT] FP32 ND tensor with shape [S, T].
+ * @param expSum [OUT] FP32 ND tensor with shape [S, T].
+ * @param eps [IN] Positive FP32 numerical-stability constant.
  * @param workspaceSize [OUT] Required device workspace size in bytes.
  * @param executor [OUT] Executor consumed by the second-stage API.
  * @return ACLNN_SUCCESS on success.
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
-    const aclTensor *blockResidual, const aclTensor *effectiveQuery, const aclTensor *validBlocks, float epsilon,
-    aclTensor *softmaxMax, aclTensor *weightedOutput, aclTensor *softmaxSum, uint64_t *workspaceSize,
+    const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery, aclTensor *numerator,
+    aclTensor *logitMax, aclTensor *expSum, float eps, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**
