@@ -41,7 +41,11 @@ fi
 if [ -f /home/jenkins/Ascend/cann/bin/setenv.bash ]; then
     source /home/jenkins/Ascend/cann/bin/setenv.bash
 fi
-
+LOG_INFO() {
+    local assert_msg=${1}
+    date_time=$(date +%Y%m%d-%H%M%S)
+    echo -e "[INFO] ${date_time} ${assert_msg}"
+}
 LOG_HEAD()
 {
     echo "========================================"
