@@ -222,22 +222,22 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     ScopeGuard argsGuard([&] { DestroyArgs(context); });
     aclnnStatus ret;
 
-    context.numHeadsQ = 64;
+    context.numHeadsQ = 64U;
     context.numHeadsKv = 1;
-    context.headDim = 512;
+    context.headDim = 512U;
     context.quantMode = 1;
     ret = CreateTensor(aclDataType::ACL_INT32, {MQSMLA_METADATA_TOTAL_SIZE}, context.metadata); // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
     context.oriTopk = 0;
     context.cmpTopk = 0;
-    context.ropeHeadDim = 64;
-    context.cmpRatio = 128;
-    context.oriMaskMode = 4;
-    context.cmpMaskMode = 3;
-    context.oriWinLeft = 127;
+    context.ropeHeadDim = 64U;
+    context.cmpRatio = 128U;
+    context.oriMaskMode = 4U;
+    context.cmpMaskMode = 3U;
+    context.oriWinLeft = 127U;
     context.oriWinRight = 0;
-    context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
-    context.layoutKvOptional = (char *)malloc(sizeof(char) * 16);
+    context.layoutQOptional = (char *)malloc(sizeof(char) * 16U);
+    context.layoutKvOptional = (char *)malloc(sizeof(char) * 16U);
     CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
     CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");  // BSND,TND
@@ -245,10 +245,10 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.hasOriKv = true;
     context.hasCmpKv = true;
 
-    context.batchSize = 4;
-    context.maxSeqlenOriKv = 1024;
-    context.maxSeqlenCmpKv = 1024;
-    context.maxSeqlenQ = 1024;
+    context.batchSize = 4U;
+    context.maxSeqlenOriKv = 1024U;
+    context.maxSeqlenCmpKv = 1024U;
+    context.maxSeqlenQ = 1024U;
 
     if (scenario.hasCuSeq) {
         // (B+1,), first element is always 0
@@ -270,7 +270,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedCmpKvOptional failed. Error: %d", ret);
     }
 
-    if (context.hasCmpKv && context.cmpRatio != 1 && context.cmpMaskMode == 3) {
+    if (context.hasCmpKv && context.cmpRatio != 1 && context.cmpMaskMode == 3U) {
         // (B,)
         ret = CreateTensor(aclDataType::ACL_INT32, {context.batchSize}, context.cmpResidualKvOptional);
         CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cmpResidualKvOptional failed. Error: %d", ret);
