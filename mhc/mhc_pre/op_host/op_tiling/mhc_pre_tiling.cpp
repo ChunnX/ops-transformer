@@ -127,19 +127,6 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     nn_fac = Factorial(hcMult_) + 2 * hcMult_;
     nn_pow = hcMult_ * hcMult_ + 2 * hcMult_;
 
-    auto shapePhi = context_->GetInputShape(1);
-    hcMix_ = shapePhi->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow && hcMix_ != 2 * hcMult_,
-                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac,
-                        nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
-                OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
-                        d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
-                return ge::GRAPH_FAILED);
-    if (hcMix_ == nn_fac) {
-        isFac = true;
-    }
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 2 && scaleFirstDim != 3,
@@ -147,17 +134,40 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
                 return ge::GRAPH_FAILED);
     hasResi = (scaleFirstDim == 3);
 
+    auto shapePhi = context_->GetInputShape(1);
+    hcMix_ = shapePhi->GetStorageShape().GetDim(0);
+
     auto shapeBias = context_->GetInputShape(3);
-    int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
+    int64_t biasFirstDim = shapeBias->GetStorageShape().GetDim(0);
     int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
-    OP_CHECK_IF((!hasResi && hcMix_ != 2 * hcMult_) || (hasResi && hcMix_ == 2 * hcMult_),
-                OP_LOGE(context_->GetNodeName(), "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
-                        hcMix_, hasResi ? 3 : 2, hasResi ? 3 : 2),
+    
+    // 
+    if (hasResi) {
+        OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow,
+                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac,
+                        nn_pow, hcMix_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(hasResi && hcMix_ == 2 * hcMult_,
-                OP_LOGE(context_->GetNodeName(),
-                        "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld", hcMix_),
+        if (hcMix_ == nn_fac) {
+            isFac = true;
+        } else {
+            isFac = false;
+        }
+        
+    } else {
+        OP_CHECK_IF(hcMix_ != 2 * hcMult_,
+                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld, but is %ld", 2 * hcMult_, hcMix_),
                 return ge::GRAPH_FAILED);
+        isFac = false;
+    }
+
+    OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
+                OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
+                        d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(biasFirstDim != expectedBias,
+                OP_LOGE(context_->GetNodeName(), "Bias dim 0 should be equal with %ld, but is %ld", expectedBias, biasFirstDim),
+                return ge::GRAPH_FAILED);
+
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
     if (gammaExist == 1) {

@@ -309,7 +309,6 @@ public:
         if constexpr (hasResi) {
             hResGm.SetGlobalBuffer((__gm__ float *)hRes);
         }
-        workspaceGm.SetGlobalBuffer((__gm__ float *)workspace);
 
         if (needGrad_) {
             hPreGm.SetGlobalBuffer((__gm__ float *)hPre);
@@ -331,7 +330,6 @@ public:
 
         pipe->InitBuffer(yQue, NUM_TWO, stage2RowFactor * RoundUp<T>(dFactor) * sizeof(T));
         pipe->InitBuffer(postQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
-        pipe->InitBuffer(reduceQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
         // TBuf
         pipe->InitBuffer(hcBaseBuf0, hcMultAlign * sizeof(float));
         pipe->InitBuffer(hcBaseBuf1, hcMultAlign * sizeof(float));
@@ -345,7 +343,6 @@ public:
         if constexpr (hasResi) {
             pipe->InitBuffer(mixesQue2, NUM_TWO, stage2RowFactor * hcMult * hcMultAlign * sizeof(float));
             pipe->InitBuffer(combFragQue, NUM_TWO, stage2RowFactor * resSize * sizeof(float));
-            pipe->InitBuffer(combFragBuf, stage2RowFactor * resSize * NUM_TWO * sizeof(float));
             pipe->InitBuffer(hcBaseBuf2, resSize * sizeof(float));
             pipe->InitBuffer(mxies02ReduceBuf, stage2RowFactor * resSize * sizeof(float));
         }
@@ -361,7 +358,6 @@ public:
         if constexpr (hasResi) {
             hcBase2Local = hcBaseBuf2.Get<float>();
             mxies02ReduceLocal = mxies02ReduceBuf.Get<float>();
-            combFragBufLocal = combFragBuf.Get<float>();
         }
     }
 
@@ -555,11 +551,8 @@ public:
 private:
     TPipe *pipe;
     const MhcPreMembaseTilingData *tilingData;
-    GlobalTensor<float> mixesGm;
-    GlobalTensor<float> rsqrtGm;
     GlobalTensor<float> hcScaleGm;
     GlobalTensor<float> hcBaseGm;
-    GlobalTensor<float> workspaceGm;
     GlobalTensor<T> xGm;
     GlobalTensor<T> yGm;
     GlobalTensor<float> postGm;
@@ -579,7 +572,6 @@ private:
     TQue<QuePosition::VECOUT, 1> postQue;
     TQue<QuePosition::VECOUT, 1> combFragQue;
 
-    TQue<QuePosition::VECOUT, 1> reduceQue;
     TQue<QuePosition::VECIN, 1> squareSumQue;
 
     TBuf<QuePosition::VECCALC> hcBaseBuf0;
@@ -590,14 +582,11 @@ private:
     TBuf<QuePosition::VECCALC> hcBrcbBuf1;
     TBuf<QuePosition::VECCALC> reduceBuf;
 
-    TBuf<QuePosition::VECCALC> squareReduceBuf;
     TBuf<QuePosition::VECCALC> mxies01ReduceBuf;
     TBuf<QuePosition::VECCALC> mxies02ReduceBuf;
 
     TBuf<QuePosition::VECCALC> xCastBuf;
     TBuf<QuePosition::VECCALC> yCastBuf;
-    TBuf<QuePosition::VECCALC> maskPatternBuf;
-    TBuf<QuePosition::VECCALC> combFragBuf;
 
     LocalTensor<float> mxies01Local;
     LocalTensor<float> mixes2Local;
@@ -611,16 +600,11 @@ private:
     LocalTensor<float> rowBrcbLocal0;
     LocalTensor<float> hcBrcbLocal1;
     LocalTensor<float> reduceLocal;
-    LocalTensor<float> squareReduceLocal;
     LocalTensor<float> mxies01ReduceLocal;
     LocalTensor<float> mxies02ReduceLocal;
     LocalTensor<float> xCastLocal;
     LocalTensor<float> yCastLocal;
     LocalTensor<float> squareSumOutLocal;
-    LocalTensor<uint32_t> maskPatternLocal;
-
-    LocalTensor<float> reduceLocal2;
-    LocalTensor<float> combFragBufLocal;
 
     int64_t resSize = 0;
     int64_t hcMult = 0;
