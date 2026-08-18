@@ -43,12 +43,8 @@ public:
     static constexpr uint32_t vec1ScmBlockFp8 = s1BaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = s1BaseSize + 1; // 无subblock再分块，vec1算完整的S1基本块，+1错开bank
-    // NZ排布，S2方向按32B一个block切分形。P的元素类型是INPUT_T，vf里int8经Pack后每行s2BaseSize字节，
-    // 其余按half每行s2BaseSize*2字节，故int8的分形数只有一半
-    static constexpr uint32_t vec1NzFractalNum =
-        (IsSameType<INPUT_T, int8_t>::value ? s2BaseSize : s2BaseSize * 2) / 32;
     // 每个分形vec1Srcstride行、每行一个32B block
-    static constexpr uint32_t stage1OutQueSize = vec1NzFractalNum * vec1Srcstride * 32;
+    static constexpr uint32_t stage1OutQueSize = vec1Srcstride * (s2BaseSize / (BLOCK_BYTE / sizeof(INPUT_T))) * BLOCK_BYTE;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
@@ -388,11 +384,13 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
 
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-    this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
+    stage1CastTensor = this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
     DataCopy(mm2AL1Tensor, stage1CastTensor,
-             {(uint16_t)vec1NzFractalNum, (uint16_t)(runInfo.s1RealSize),
-              (uint16_t)(vec1Srcstride - runInfo.s1RealSize), (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
+             {(uint16_t)(s2BaseSize / (BLOCK_BYTE / sizeof(INPUT_T))),
+              (uint16_t)(runInfo.s1RealSize),
+              (uint16_t)(vec1Srcstride - runInfo.s1RealSize),
+              (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
     SetFlag<HardEvent::MTE3_MTE1>(SYNC_V1_C2_FLAG[runInfo.taskIdMod3]);
     // ======================================================
