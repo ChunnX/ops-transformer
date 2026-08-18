@@ -162,8 +162,8 @@ public:
         coreIdx = AscendC::GetBlockIdx();
 
         uint32_t kvBufId = 0;
-        uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
-        BlockMmadQK blockMmadQK(resource, kvBufId, deqScalar);
+        uint64_t softmaxScale = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
+        BlockMmadQK blockMmadQK(resource, kvBufId, softmaxScale);
         BlockMmadPV blockMmadPV(resource, kvBufId);
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
