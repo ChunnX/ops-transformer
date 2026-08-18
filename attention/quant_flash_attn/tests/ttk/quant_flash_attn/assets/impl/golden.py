@@ -27,12 +27,7 @@ import quant_flash_attn_golden as golden_mod
 
 logger = logging.getLogger(__name__)
 
-__golden__ = {
-    "e2e": {
-        "qfa_mxfp8_wrapper.npu_qfa_mxfp8": "cpu_qfa_mxfp8",
-        "qfa_mxfp8_wrapper.npu_qfa_hif8": "cpu_qfa_hif8",
-    }
-}
+__golden__ = {"e2e": {"qfa_wrapper.npu_qfa": "cpu_qfa"}}
 
 
 # ==============================================================================
@@ -304,6 +299,30 @@ def _cu_seqlens_to_actual(cu_seqlens):
     if cu_seqlens is None or len(cu_seqlens) < 2:
         return []
     return [cu_seqlens[i + 1] - cu_seqlens[i] for i in range(len(cu_seqlens) - 1)]
+
+
+def cpu_qfa(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    dequant_scale_q: torch.Tensor,
+    dequant_scale_k: torch.Tensor,
+    dequant_scale_v: torch.Tensor,
+    p_scale: torch.Tensor,
+    block_table: torch.Tensor,
+    *,
+    quant_mode: int = 1,
+    **kwargs,
+):
+    if quant_mode == 7:
+        return cpu_qfa_hif8(
+            q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+            quant_mode=quant_mode, **kwargs,
+        )
+    return cpu_qfa_mxfp8(
+        q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+        quant_mode=quant_mode, **kwargs,
+    )
 
 
 def cpu_qfa_mxfp8(
