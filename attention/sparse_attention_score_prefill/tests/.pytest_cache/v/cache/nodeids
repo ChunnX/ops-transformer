@@ -1,0 +1,12 @@
+[
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_combine_is_required_for_topk_partials",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_gqa_large_group",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_long_prefill",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_multi_batch",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_multi_batch_uneven",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_partial_last_block",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_reverse_index_contains_non_contiguous_q_tokens",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_single_batch_medium",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_single_batch_small",
+  "test_sparse_attention_score_prefill_golden.py::TestSparseAttentionScorePrefillGolden::test_top_k_1"
+]
