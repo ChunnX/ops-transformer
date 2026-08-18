@@ -90,8 +90,6 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                       uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                     uint32_t channelIndex, uint32_t weight);
@@ -247,24 +245,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(xQueue_, SEND_DOUBLE_BUFFER_NUM, XTypeAlign32Size_);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
-}
-
-template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum)
-{
-    sendTokenNum = curSendCnt / curUseAivNum;
-    uint32_t remainderTokenNum = curSendCnt % curUseAivNum;
-    uint32_t newAivId = aivId_;
-
-    startTokenId = sendTokenNum * newAivId;
-    if (newAivId < remainderTokenNum) {
-        sendTokenNum += 1;
-        startTokenId += newAivId;
-    } else {
-        startTokenId += remainderTokenNum;
-    }
-    endTokenId = startTokenId + sendTokenNum;
 }
 
 template <TemplateMoeEpCombineTypeClass>
