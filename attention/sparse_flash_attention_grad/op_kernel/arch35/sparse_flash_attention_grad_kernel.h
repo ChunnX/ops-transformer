@@ -278,17 +278,20 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
     }
 
-    // 【新增】dSink 第2步：补偿段之后、循环外，单 writer 跨核 reduce（仅 IS_DETER，ReduceDSink 内 constexpr 守护）
+    // 【新增】dSink 第2步：补偿段之后、循环外，单 writer 跨核 reduce（仅 IS_SINKS，ReduceDSink 内再 constexpr 守护 IS_DETER）
     // 全核 barrier（AIC+AIV 都到达）保证各 AIV 的 dSinkAcc slot 写（FinalizeDSinkAcc 的 MTE3 写 GM）
-    // 全部完成并可见，之后才允许单 writer（cBlockIdx==0&&vSubBlockIdx==0）读取归约。
+    // 全部完成并可见，之后才允许单 writer（cBlockIdx==usedCoreNum-1&&vSubBlockIdx==0）读取归约。
     // 不能依赖 CrossCore flag(11-14)：David 上非全核 barrier / set-wait 计数错配，
     // 单 writer 会提前读到未写完的 slot（d_sinks 竞态、值离散跳变 10x）。
     // SyncAll<false> 已在 entry（opPre/op 后）复用且验证可靠，此处复用同一硬 barrier。
-    this->SyncALLCores();
-    if ASCEND_IS_AIV {
-        LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
-        LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
-        this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
+    // 性能隔离：无 sink 时无 dSink 归约，整块（含全核 barrier）编译期消除
+    if constexpr (IS_SINKS) {
+        this->SyncALLCores();
+        if ASCEND_IS_AIV {
+            LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
+            LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
+            this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
+        }
     }
     this->FreeEventID();
 }
