@@ -1644,10 +1644,14 @@ __aicore__ inline uint32_t EngramFetchTrainArch35::GatherBatchToTemp(uint32_t ow
                   batchCount);
     EngramFetchTrainSyncFunc<HardEvent::V_S>();
 
-    for (uint32_t i = 0; i < batchCount; i++) {
-        uint32_t origPos = positions.GetValue(i);
-        positions.SetValue(i, indicesLocal.GetValue(origPos));
-    }
+    LocalTensor<uint32_t> offsetBuf = divisorBuf_.Get<uint32_t>();
+    Muls<int32_t>(offsetBuf.ReinterpretCast<int32_t>(), positions,
+                  static_cast<int32_t>(sizeof(int32_t)), batchCompareCnt);
+    EngramFetchTrainSyncFunc<HardEvent::V_S>();
+
+    LocalTensor<int32_t> sortedLocal = positionsBuf_.Get<int32_t>();
+    Gather<int32_t>(sortedLocal, indicesLocal, offsetBuf, 0U, batchCount);
+    EngramFetchTrainSyncFunc<HardEvent::V_S>();
 
     GM_ADDR sortedTempBase = sortedIndicesTempGM_ + static_cast<uint64_t>(aivId_) * perCoreTempSize_;
     GM_ADDR permTempBase = permOutTempGM_ + static_cast<uint64_t>(aivId_) * perCoreTempSize_;
@@ -1657,7 +1661,7 @@ __aicore__ inline uint32_t EngramFetchTrainArch35::GatherBatchToTemp(uint32_t ow
     GlobalTensor<int32_t> sortedTempGM;
     sortedTempGM.SetGlobalBuffer((__gm__ int32_t *)(sortedTempBase + writeByteOffset));
     DataCopyParams sortedParams = {1U, static_cast<uint16_t>(batchCount * sizeof(int32_t)), 0U, 0U};
-    DataCopyPad(sortedTempGM, positions, sortedParams);
+    DataCopyPad(sortedTempGM, sortedLocal, sortedParams);
 
     GlobalTensor<uint32_t> permTempGM;
     permTempGM.SetGlobalBuffer((__gm__ uint32_t *)(permTempBase + writeByteOffset));
