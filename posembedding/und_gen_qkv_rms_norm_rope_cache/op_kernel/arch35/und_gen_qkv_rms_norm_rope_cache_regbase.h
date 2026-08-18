@@ -127,12 +127,15 @@ public:
         // axisLut 与 token 无关，每核只建一次
         BuildMropeGatherIndex();
 
-        // 三段式软件流水，每轮同时经手三个 tile：
+        // 三段式软件流水，稳态下每轮同时经手三个 tile。行序即循环体内的执行顺序，
+        // "序幕"是循环之前那次 CopyIn —— 它先把 T0 搬起来，i=0 轮进来才有东西可算：
         //
-        //   轮次       i=0    i=1    i=2    收尾
-        //   Compute    T0     T1     T2     --     先发 VF，发完就走，VF 自己跑
-        //   CopyIn     T1     T2     --     --     预取下一个，被 MTE2 队列反压时与 VF 并行
-        //   CopyOut    --     T0     T1     T2     写上一拍的，其 VF 早已完成，DeQue 不阻塞
+        //   轮次       序幕   i=0    i=1    i=2    收尾
+        //   Compute    --     T0     T1     T2     --     发 VF，发完就走，VF 自己跑
+        //   CopyIn     T0     T1     T2     --     --     预取下一个，被 MTE2 队列反压时与 VF 并行
+        //   CopyOut    --     --     T0     T1     T2     写上一拍的，其 VF 早已完成，DeQue 不阻塞
+        //
+        // 于是 CopyIn 比 Compute 早一拍、CopyOut 比 Compute 晚一拍，三个 tile 错位并行。
         //
         // 三者的先后不可调换，各有 cannsim 指令级 trace 的实测依据：
         //   Compute 提到最前 —— CopyIn 一个 tile 要发 num*4 条 DataCopy，远超 MTE2 硬件指令
