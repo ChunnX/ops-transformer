@@ -85,7 +85,7 @@ extern "C" __global__ __aicore__ void block_attn_res_prepare(
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
         const auto params = MakeBlockAttnResPrepareParams(blockRes, validBlocks, pseudoQuery, numerator,
                                                           logitMax, expSum, userWorkspace, cubeTilingData);
-        Blaze::Gemm::Kernel::KernelBlockAttnResPrepare<> kernel;
+        Blaze::Gemm::Kernel::KernelBlockAttnResPrepare kernel;
         kernel(params);
     }
 }
