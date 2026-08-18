@@ -298,41 +298,6 @@ def apply_init_tensors(input_data, device="cpu"):
 
     return actual_q, actual_kv
 
-
-def _fill_simulated_metadata(input_data, device="cpu"):
-    """Always write local simulated metadataOptional (overwrite apply_init fill)."""
-    query = safe_to_tensor(input_data.kwargs["query"])
-    sparse_block_idx = safe_to_tensor(input_data.kwargs["sparseBlockIdx"])
-    block_table = safe_to_tensor(input_data.kwargs["blockTableOptional"])
-
-    decoded = decode_cu_and_seqused(
-        input_data.kwargs.get("cuSeqLengthsQOptional"),
-        input_data.kwargs.get("cuSeqLengthsKvOptional"),
-        seqused_q=input_data.kwargs.get("sequsedQOptional"),
-        seqused_kv=input_data.kwargs.get("sequsedKvOptional"),
-        total_q=int(query.shape[0]) if query is not None else None,
-    )
-    if decoded is not None:
-        q_seqlens, _kv, _storage_q, _storage_kv = decoded
-    else:
-        q_seqlens, _kv = recover_batch_seqlens(query, sparse_block_idx, block_table)
-
-    num_heads = int(query.shape[1])
-    kv_heads = int(sparse_block_idx.shape[0])
-    is_packed_gqa = int(input_data.kwargs.get("isPackedGQA", 1))
-    metadata = simulate_aicpu_metadata(
-        q_seqlens,
-        num_heads,
-        kv_heads,
-        is_packed_gqa=is_packed_gqa,
-    )
-    if metadata.numel() != METADATA_TOTAL_SIZE:
-        raise RuntimeError(f"simulated metadata size must be {METADATA_TOTAL_SIZE}")
-    if device in ("pyaclnn", "npu"):
-        metadata = metadata.npu()
-    input_data.kwargs["metadataOptional"] = metadata
-
-
 SIMULATE_SM_EXP = True
 
 
@@ -664,7 +629,6 @@ class GenericBlockSparseAttentionQuantInputProcess(AclnnBaseApi):
         np.random.seed(10)
         torch.npu.synchronize()
         apply_init_tensors(input_data, device="npu")
-        _fill_simulated_metadata(input_data, device="npu")
 
         input_args = []
         name_to_idx = {}
@@ -773,7 +737,6 @@ class GenericBlockSparseAttentionQuantApi(BaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         np.random.seed(10)
         apply_init_tensors(input_data, device=self.device)
-        _fill_simulated_metadata(input_data, device=self.device)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         query = input_data.kwargs["query"]

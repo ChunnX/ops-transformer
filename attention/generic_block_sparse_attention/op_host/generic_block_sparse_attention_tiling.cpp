@@ -20,9 +20,6 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 
-using namespace ge;
-using namespace std;
-
 constexpr int QUERY_INDEX = 0;
 constexpr int KEY_INDEX = 1;
 constexpr int VALUE_INDEX = 2;
@@ -148,16 +145,6 @@ ge::graphStatus GSATiling::ParseAttrs(gert::TilingContext *context)
         returnSoftmaxlse_ = (*lseFlagPtr == 1);
     }
 
-    OP_LOGD(context->GetNodeName(),
-            "[GSA_TILING_DBG] ParseAttrs: layoutQPtr=%s layoutKvPtr=%s "
-            "layoutQ='%s' layoutKv='%s' blockShape=[%u,%u] maskType=%ld quantType=%ld "
-            "scale=%f softmaxPrecision=%u returnSoftmaxlse=%d",
-            layoutQPtr == nullptr ? "NULL" : layoutQPtr,
-            layoutKvPtr == nullptr ? "NULL" : layoutKvPtr,
-            layoutQ_.c_str(), layoutKv_.c_str(),
-            blockShapeX_, blockShapeY_, maskType_, quantType_,
-            scaleValue_, softmaxPrecision_, static_cast<int>(returnSoftmaxlse_));
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -177,16 +164,11 @@ ge::graphStatus GSATiling::CheckAttentionOutDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-namespace {
-// PAGED_BBND: only dim0 (physical page axis) may be non-contiguous; dims 1..3 must match
-// row-major contiguous strides.
-ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *context, int inputIndex,
-                                                   const gert::Shape &shape, const char *tensorName)
+// FIA PR 6399: GetDynamicInputStride (TensorList). GBSA key/value are REQUIRED.
+static ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *context, uint64_t inputIndex,
+                                                          const gert::Shape &shape, const char *tensorName)
 {
-    if (!context->InputIsView(inputIndex)) {
-        return ge::GRAPH_SUCCESS;
-    }
-    auto *stride = context->GetInputStride(inputIndex);
+    auto *stride = context->GetRequiredInputStride(inputIndex);
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
         return ge::GRAPH_SUCCESS;
     }
@@ -211,23 +193,6 @@ ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t ReadInputStride0OrFallback(gert::TilingContext *context, int inputIndex, uint64_t fallback)
-{
-    if (!context->InputIsView(inputIndex)) {
-        return fallback;
-    }
-    auto *stride = context->GetInputStride(inputIndex);
-    if (stride == nullptr || stride->GetDimNum() == 0) {
-        return fallback;
-    }
-    const int64_t stride0 = stride->GetStride(0);
-    if (stride0 <= 0) {
-        return fallback;
-    }
-    return static_cast<uint64_t>(stride0);
-}
-}  // namespace
-
 ge::graphStatus GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
 {
     const uint64_t pageElems =
@@ -241,17 +206,21 @@ ge::graphStatus GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
             "key/value shape is nullptr when parsing KV stride0."),
         return ge::GRAPH_FAILED);
 
-    if (ValidatePagedBbndDim0OnlyNonContig(context, KEY_INDEX, keyShape->GetStorageShape(), "key") !=
+    if (ValidatePagedBbndDim0OnlyNonContig(context, KEY_INDEX, keyShape->GetOriginShape(), "key") !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidatePagedBbndDim0OnlyNonContig(context, VALUE_INDEX, valueShape->GetStorageShape(), "value") !=
+    if (ValidatePagedBbndDim0OnlyNonContig(context, VALUE_INDEX, valueShape->GetOriginShape(), "value") !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    kStride0_ = ReadInputStride0OrFallback(context, KEY_INDEX, pageElems);
-    vStride0_ = ReadInputStride0OrFallback(context, VALUE_INDEX, pageElems);
+    auto *keyStrides = context->GetRequiredInputStride(KEY_INDEX);
+    kStride0_ = (keyStrides != nullptr && keyStrides->GetDimNum() > 0 && keyStrides->GetStride(0) > 0) ?
+        static_cast<uint64_t>(keyStrides->GetStride(0)) : pageElems;
+    auto *valueStrides = context->GetRequiredInputStride(VALUE_INDEX);
+    vStride0_ = (valueStrides != nullptr && valueStrides->GetDimNum() > 0 && valueStrides->GetStride(0) > 0) ?
+        static_cast<uint64_t>(valueStrides->GetStride(0)) : pageElems;
 
     const uint64_t rowElems =
         static_cast<uint64_t>(kvHeads_) * static_cast<uint64_t>(embeddingSize_);
@@ -273,12 +242,6 @@ ge::graphStatus GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
                 static_cast<unsigned long long>(rowElems));
         return ge::GRAPH_FAILED;
     }
-
-    OP_LOGD(context->GetNodeName(),
-            "[GSA_TILING_DBG] ParseKvCacheStride0: kStride0=%llu vStride0=%llu pageElems=%llu",
-            static_cast<unsigned long long>(kStride0_),
-            static_cast<unsigned long long>(vStride0_),
-            static_cast<unsigned long long>(pageElems));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -296,11 +259,10 @@ ge::graphStatus GSATiling::ParseInputTensors(gert::TilingContext *context)
     OP_CHECK_IF(keyShape == nullptr, OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
         "Key shape is nullptr."), return ge::GRAPH_FAILED);
 
-    if (kvHeads_ == 0) {
-        kvHeads_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
-    }
-    // PAGED_BBND: [numBlocks, blockSize, numKeyValueHeads, headDim]
-    blockSize_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_BLOCK_SIZE));
+    // ND PA cache: origin [blockNum, blockSize, Nkv, D]. Do not use storage shape
+    // (dim0-strided view can collapse storage, same as scatter_pa / mla_preprocess).
+    const gert::Shape &keyOrigin = keyShape->GetOriginShape();
+    blockSize_ = static_cast<uint32_t>(keyOrigin.GetDim(BLOCKED_KV_DIM_BLOCK_SIZE));
 
     // TND + isPackedGQA=1: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
     const gert::StorageShape *sparseIdxShape = context->GetInputShape(SPARSE_BLOCK_IDX_INDEX);
@@ -363,27 +325,13 @@ ge::graphStatus GSATiling::ParseInputTensors(gert::TilingContext *context)
         scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
     }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (CheckAttentionOutDtype(context) != GRAPH_SUCCESS) {
+        if (CheckAttentionOutDtype(context) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
 
     // maxQSeqlen: upper bound from totalQBlocks (packed across batch)
     maxQSeqlen_ = qBlockNum_ * blockShapeX_;
-
-    OP_LOGD(context->GetNodeName(),
-            "[GSA_TILING_DBG] ParseInput: q=[%u,%u,%u] keyBlocks=%ld blockSize=%u kvHeads(key)=%ld "
-            "sparseIdxDims=%zu sparse=[%u,%u,%u] sparseCountDims=%zu bt=[%u,%u] "
-            "dtype=%d scale=%f maxQSeqlen=%u",
-            totalQTokens_, numHeads_, embeddingSize_,
-            keyShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_BLOCK_NUM),
-            blockSize_,
-            keyShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD),
-            sparseIdxShape->GetStorageShape().GetDimNum(),
-            kvHeads_, qBlockNum_, topK_,
-            sparseCountShape->GetStorageShape().GetDimNum(),
-            batch_, maxBlocksPerBatch_,
-            static_cast<int32_t>(dataType_), scaleValue_, maxQSeqlen_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -599,24 +547,6 @@ ge::graphStatus GSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_pL1BufNum(3);  // PRE_LAUNCH + 1
     tilingData_->set_kStride0(kStride0_);
     tilingData_->set_vStride0(vStride0_);
-
-    OP_LOGD(context->GetNodeName(),
-            "[GSA_TILING_DBG] FillTiling: tilingKey=%llu socVer=%u dtype=%d "
-            "layoutQ='%s' layoutKv='%s' maskType=%ld quantType=%ld "
-            "B=%u N=%u Nkv=%u D=%u group=%u T=%u qBlockNum=%u topK=%u "
-            "blockShape=[%u,%u] blockSize=%u maxBlocks=%u blockDim=%u "
-            "kStride0=%llu vStride0=%llu "
-            "scale=%f softmaxPrec=%u workspace=%llu",
-            static_cast<unsigned long long>(tilingKey), socVer_, static_cast<int32_t>(dataType_),
-            layoutQ_.c_str(), layoutKv_.c_str(), maskType_, quantType_,
-            batch_, numHeads_, kvHeads_, embeddingSize_, groupSize,
-            totalQTokens_, qBlockNum_, topK_,
-            blockShapeX_, blockShapeY_, blockSize_, maxBlocksPerBatch_,
-            blockDim_,
-            static_cast<unsigned long long>(kStride0_),
-            static_cast<unsigned long long>(vStride0_),
-            scaleValue_, softmaxPrecision_,
-            static_cast<unsigned long long>(workSpaceSize_));
 
     return ge::GRAPH_SUCCESS;
 }

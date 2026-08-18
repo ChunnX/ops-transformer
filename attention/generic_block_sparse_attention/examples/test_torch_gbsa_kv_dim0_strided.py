@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# Contiguous vs PAGED_BBND dim0-strided KV smoke for GBSA.
+# Contiguous vs fused PAGED_BBND KV cache (k0 v0 k1 v1 ...) for GBSA.
 
 from __future__ import annotations
 
@@ -28,22 +28,32 @@ from test_torch_generic_block_sparse_attention import (  # noqa: E402
 )
 
 
-def make_dim0_strided_kv(contig_kv: torch.Tensor, pad_elems_per_page: int = 128) -> torch.Tensor:
-    """Logical shape unchanged; only dim0 stride grows (page-axis holes)."""
-    p, bs, n, d = contig_kv.shape
+def make_interleaved_kv_cache(key_c: torch.Tensor, value_c: torch.Tensor):
+    """Fused page cache: k0 v0 k1 v1 ...  K/V views share storage, dim0 stride = 2 pages.
+
+    Logical shape stays [P, Bs, N, D]. Page interior is contiguous; consecutive K (or V)
+    pages skip the other tensor's page, so only dim0 is non-contiguous.
+    """
+    assert key_c.shape == value_c.shape
+    p, bs, n, d = key_c.shape
     page = bs * n * d
-    stride0 = page + pad_elems_per_page
-    assert stride0 % (n * d) == 0
-    storage = torch.zeros(p * stride0, dtype=contig_kv.dtype, device=contig_kv.device)
-    flat = contig_kv.reshape(p, page)
+    stride0 = 2 * page
+    storage = torch.empty(p * stride0, dtype=key_c.dtype, device=key_c.device)
+    k_flat = key_c.reshape(p, page)
+    v_flat = value_c.reshape(p, page)
     for i in range(p):
-        storage[i * stride0 : i * stride0 + page].copy_(flat[i])
-    view = storage.as_strided(size=(p, bs, n, d), stride=(stride0, n * d, d, 1))
-    assert not view.is_contiguous()
-    assert view.stride() == (stride0, n * d, d, 1)
-    # Values at logical indices match contiguous source.
-    assert torch.equal(view, contig_kv)
-    return view
+        storage[i * stride0 : i * stride0 + page].copy_(k_flat[i])
+        storage[i * stride0 + page : i * stride0 + 2 * page].copy_(v_flat[i])
+
+    inner = (n * d, d, 1)
+    key_v = storage.as_strided(size=(p, bs, n, d), stride=(stride0,) + inner)
+    value_v = storage[page:].as_strided(size=(p, bs, n, d), stride=(stride0,) + inner)
+    assert not key_v.is_contiguous() and not value_v.is_contiguous()
+    assert key_v.stride() == (stride0,) + inner
+    assert value_v.stride() == (stride0,) + inner
+    assert torch.equal(key_v, key_c)
+    assert torch.equal(value_v, value_c)
+    return key_v, value_v
 
 
 def run_once(inputs: dict, key: torch.Tensor, value: torch.Tensor, metadata: torch.Tensor):
@@ -108,16 +118,15 @@ def main():
     out_c, lse_c = run_once(inputs, key_c, value_c, metadata)
     print(f"[contig] out_mean={out_c.float().mean().item():.6f}")
 
-    key_s = make_dim0_strided_kv(key_c, pad_elems_per_page=128)
-    value_s = make_dim0_strided_kv(value_c, pad_elems_per_page=256)
-    print(f"[strided] key.stride={key_s.stride()} value.stride={value_s.stride()}")
+    key_s, value_s = make_interleaved_kv_cache(key_c, value_c)
+    print(f"[interleaved k0v0k1v1] key.stride={key_s.stride()} value.stride={value_s.stride()}")
 
     out_s, lse_s = run_once(inputs, key_s, value_s, metadata)
-    print(f"[strided] out_mean={out_s.float().mean().item():.6f}")
+    print(f"[interleaved] out_mean={out_s.float().mean().item():.6f}")
 
     torch.testing.assert_close(out_s, out_c, atol=1e-3, rtol=1e-3)
     torch.testing.assert_close(lse_s, lse_c, atol=1e-3, rtol=1e-3)
-    print("PASS: dim0-strided KV matches contiguous KV.")
+    print("PASS: interleaved fused KV cache matches contiguous K/V.")
 
 
 if __name__ == "__main__":

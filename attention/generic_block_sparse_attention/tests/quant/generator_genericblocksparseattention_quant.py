@@ -124,7 +124,7 @@ class GenericBlockSparseAttentionQuantGenerator(CaseGenerator):
         case_config.inputs[4].shape = [kv_heads, total_q_blocks]
         case_config.inputs[4].dtype = "int32"
 
-        # Real AICPU metadata protocol buffer (filled in apply_init_tensors / _fill_simulated_metadata).
+        # Real AICPU metadata protocol buffer (filled in apply_init_tensors).
         case_config.inputs[5].shape = [METADATA_TOTAL_SIZE]
         case_config.inputs[5].dtype = "int32"
         case_config.inputs[6].shape = [1, 1]

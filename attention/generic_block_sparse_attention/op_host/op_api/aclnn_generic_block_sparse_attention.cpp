@@ -20,6 +20,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include <acl/acl.h>
+#include <algorithm>
 #include <string>
 
 using namespace op;
@@ -133,6 +134,68 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     return ACLNN_SUCCESS;
 }
 
+// If ATK/aclTensor reports storage==view while dim0 stride has holes, GE will
+// rewrite storage to a degenerate shape (e.g. dim0=stride0, dim1=0). Expand dim0
+// so storage covers the last viewed element and keeps BBND inner dims.
+static op::Shape MakeKvStorageShape(const op::Shape &viewShape, const op::Shape &storageShape,
+                                    int64_t viewOffset, const int64_t *strides, size_t strideN)
+{
+    const size_t dimNum = viewShape.GetDimNum();
+    op::Shape out = storageShape;
+    if (dimNum == 0 || strides == nullptr || strideN < dimNum) {
+        return out;
+    }
+
+    int64_t minElems = viewOffset;
+    int64_t inner = 1;
+    for (size_t i = 0; i < dimNum; ++i) {
+        const int64_t dim = viewShape.GetDim(i);
+        if (dim > 0) {
+            minElems += (dim - 1) * strides[i];
+        }
+        if (i >= 1) {
+            inner *= std::max(dim, static_cast<int64_t>(1));
+        }
+    }
+    minElems += 1;
+    if (inner <= 0) {
+        return out;
+    }
+
+    int64_t storageElems = 1;
+    bool storageOk = storageShape.GetDimNum() == dimNum;
+    for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
+        const int64_t d = storageShape.GetDim(i);
+        if (d <= 0) {
+            storageOk = false;
+            break;
+        }
+        storageElems *= d;
+    }
+    if (storageOk && storageElems >= minElems) {
+        return out;
+    }
+
+    out = viewShape;
+    const int64_t storage0 = std::max((minElems + inner - 1) / inner, viewShape.GetDim(0));
+    out.SetDim(0, storage0);
+    return out;
+}
+
+// Expose KV view shape/stride to GE tiling (TensorV2) for PAGED_BBND dim0-strided caches.
+static const aclTensor *CreateKvView(const aclTensor *tensor, aclOpExecutor *executor)
+{
+    const auto &viewShape = tensor->GetViewShape();
+    const auto &storageShape = tensor->GetStorageShape();
+    const auto &viewStrides = tensor->GetViewStrides();
+    const int64_t viewOffset = tensor->GetViewOffset();
+    const size_t strideN = viewStrides.size();
+    const int64_t *stridePtr = (strideN > 0) ? &viewStrides[0] : nullptr;
+    const op::Shape storageForView =
+        MakeKvStorageShape(viewShape, storageShape, viewOffset, stridePtr, strideN);
+    return executor->CreateView(tensor, viewShape, storageForView, viewStrides, viewOffset);
+}
+
 }  // namespace
 
 __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
@@ -218,8 +281,13 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     std::string layoutQStr = ConvertLayoutString(layoutQ);
     std::string layoutKvStr = ConvertLayoutString(layoutKv);
 
+    const aclTensor *keyFinal = CreateKvView(key, executorImpl);
+    CHECK_RET(keyFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const aclTensor *valueFinal = CreateKvView(value, executorImpl);
+    CHECK_RET(valueFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     auto outputs = l0op::GenericBlockSparseAttention(
-        query, key, value, sparseBlockIdx, sparseBlockCount,
+        query, keyFinal, valueFinal, sparseBlockIdx, sparseBlockCount,
         metadataOptional, attenMaskOptional,
         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
         pQuantScaleOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
