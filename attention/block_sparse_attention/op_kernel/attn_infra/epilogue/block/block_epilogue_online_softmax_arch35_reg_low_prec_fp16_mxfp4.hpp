@@ -20,7 +20,7 @@
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
 #include "block_epilogue_arch35_utils.hpp"
-#include "mxfp4_vf/vf_nd2nz_indexes_dn_mxfp4.h"
+#include "mxfp4_vf/vf_init_nd2nz_indexes_duplicate_mxfp4.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs128_kvs256.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs64_kvs256.h"
 #include "mxfp4_vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"

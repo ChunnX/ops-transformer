@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_nd2nz_indexes_dn_mxfp4.h
+ * \file vf_init_nd2nz_indexes_duplicate_mxfp4.h
  * \brief
  */
 
-#ifndef ND2NZ_INDEXES_DN_MXFP4_H_
-#define ND2NZ_INDEXES_DN_MXFP4_H_
+#ifndef VF_INIT_ND2NZ_INDEXES_DUPLICATE_MXFP4_H_
+#define VF_INIT_ND2NZ_INDEXES_DUPLICATE_MXFP4_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -25,7 +25,7 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T>
-__simd_vf__ void  inline  vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2xz, __ubuf__ T *dup_dest)
+__simd_vf__ void  inline  init_indexs_and_duplicate_vf(__ubuf__ uint8_t *index_nd2xz, __ubuf__ T *dup_dest)
 {
     // Index
     RegTensor<uint8_t> index_reg, index_reg_1, index_reg_2;
@@ -57,8 +57,8 @@ __aicore__ inline void InitIndexesAndDuplicateCallVF(LocalTensor<uint8_t> &nd2nz
 
     __ubuf__ T *local_global_max_buf = (__ubuf__ T*) localGlobalMaxUB.GetPhyAddr();
 
-    vf_init_indexs_and_duplicate<T>(index_nd2xz, local_global_max_buf);
+    init_indexs_and_duplicate_vf<T>(index_nd2xz, local_global_max_buf);
 }
 
 }
-#endif  // ND2NZ_INDEXES_DN_MXFP4_H_
+#endif  // VF_INIT_ND2NZ_INDEXES_DUPLICATE_MXFP4_H_
