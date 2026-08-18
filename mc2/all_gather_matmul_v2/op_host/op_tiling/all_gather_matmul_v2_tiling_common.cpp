@@ -39,18 +39,15 @@ IMPL_OP_OPTILING(AllGatherMatmulV2)
 // Register exception dump func
 inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    OP_LOGI("AllGatherMatmulV2", "Start AllGatherMatmulV2ExceptionImplWrapper.");
     const char* socName = aclrtGetSocName();
     if(std::strstr(socName, "Ascend950") == nullptr){
         return;
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
-    OP_LOGI("AllGatherMatmulV2", "End AllGatherMatmulV2ExceptionImplWrapper.");
 }
 
 __attribute__((constructor)) void RegistAllGatherMatmulV2ExceptionFunc()
 {
-    OP_LOGI("AllGatherMatmulV2", "Start RegistAllGatherMatmulV2ExceptionFunc.");
     IMPL_OP(AllGatherMatmulV2)
         .ExceptionDumpParseFunc(AllGatherMatmulV2ExceptionImplWrapper);
 }

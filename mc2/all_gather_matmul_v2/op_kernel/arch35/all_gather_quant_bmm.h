@@ -198,7 +198,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         uint64_t scaleStride = mxfpScalesCount;
         handleList_[SCALE1_HANDLE_IDX] = hcclAllgather_.template AllGather<true>(
             dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_, scaleStride, repeat);
-        AscendC::PRINTF("===Address AllGather dequantGM1_[%d], gatherDequantGM1_[%d], mxfpScalesCount[%d], dataType_[%d], scaleStride[%d], repeat[%d], rankID[%d]===", 
             dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_, scaleStride, repeat, rankId_);
     }
 
@@ -206,7 +205,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     for (uint32_t i = 0U; i < tileCnt; i++) {
         handleList_[i] =
             hcclAllgather_.template AllGather<true>(aGM, gatherOut, tileSendCount, dataType_, stride, repeat);
-        AscendC::PRINTF("===Address AllGather aGM[%d], gatherOut[%d], tileSendCount[%d], dataType_[%d], stride[%d], repeat[%d], rankID[%d]===", 
             aGM, gatherOut, tileSendCount, dataType_, stride, repeat, rankId_);
         // 刷新aGM和目的地址
         aGM += tileSendCount * sizeof(AType);
@@ -217,7 +215,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     for (uint32_t i = 0U; i < tailCnt; i++) {
         handleList_[tileCnt + i] =
             hcclAllgather_.template AllGather<true>(aGM, gatherOut, tailSendCount, dataType_, stride, repeat);
-        AscendC::PRINTF("===Address AllGather aGM[%d], gatherOut[%d], tailSendCount[%d], dataType_[%d], stride[%d], repeat[%d], rankID[%d]===", 
             aGM, gatherOut, tailSendCount, dataType_, stride, repeat, rankId_);
         aGM += tailSendCount * sizeof(AType);
         gatherOut += tailSendCount * sizeof(AType);

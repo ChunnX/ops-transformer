@@ -153,9 +153,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         static_cast<uint64_t>(mc2Tiling_.rankM) / mc2Tiling_.rankDim * rankKdivByGroupSize;
     pipeLineContext_.communicationContext->strideCount = pipeLineContext_.communicationContext->sendCount;
     pipeLineContext_.communicationContext->hcclDataType = mxScaleHcclDataType_;
-    AscendC::PRINTF("===Address AlltoAll Scale sendBuffer[%d], recvBuffer[%d], sendCount[%d], strideCount[%d], hcclDataType[%d]===", pipeLineContext_.communicationContext->sendBuffer, 
-        pipeLineContext_.communicationContext->recvBuffer, pipeLineContext_.communicationContext->sendCount, pipeLineContext_.communicationContext->strideCount, 
-        pipeLineContext_.communicationContext->hcclDataType);
+
     // x1Scale转置相关地址和偏移
     pipeLineContext_.scaleTransposeContext->transposeSrcAddr = commX1ScaleGM1_;
     pipeLineContext_.scaleTransposeContext->transposeDstAddr = transX1ScaleGM1_;
@@ -192,9 +190,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.communicationContext->strideCount =
         static_cast<uint64_t>(mc2Tiling_.rankM) * rankForComm_ / mc2Tiling_.rankDim;
     pipeLineContext_.communicationContext->hcclDataType = x1HcclDataType_;
-    AscendC::PRINTF("===Address AlltoAll Tile sendBuffer[%d], recvBuffer[%d], sendCount[%d], strideCount[%d], hcclDataType[%d]===", pipeLineContext_.communicationContext->sendBuffer, 
-        pipeLineContext_.communicationContext->recvBuffer, pipeLineContext_.communicationContext->sendCount, pipeLineContext_.communicationContext->strideCount, 
-        pipeLineContext_.communicationContext->hcclDataType);
+    
     // 转置相关地址和偏移
     pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
     pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_;
