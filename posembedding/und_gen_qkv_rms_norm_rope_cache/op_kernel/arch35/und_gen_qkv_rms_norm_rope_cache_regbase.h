@@ -149,6 +149,14 @@ public:
         while (tileStart < coreEnd_) {
             const int64_t nextStart = tileStart + tokenNum;
             const int64_t nextTokenNum = (nextStart < coreEnd_) ? TileTokenNum(nextStart) : 0;
+            // Compute 必须排在 CopyIn 之前：CopyIn 一个 tile 要发 tokenNum*4 条 DataCopy，
+            // 远超 MTE2 的硬件指令队列深度，标量核会被队列满反压住走走停停（cannsim trace
+            // 实测单次停顿 0.19~0.51us，期间 MTE2 只放行 1 条指令）。若 VF 排在它后面，
+            // 向量单元就得干等标量核脱身，MTE2 与 VEC 的重叠始终上不去（实测仅 0.117）。
+            // 先把 VF 发出去，它自己跑 2.4us，标量核再去发搬运，反压期间两者并行。
+            // 缓冲安全：Compute DeQue 并释放的是本轮 buffer，CopyIn 取到的是上一轮释放的
+            // 另一块，VF 正在读的那块不会被覆写。
+            Compute(tokenNum, slot);
             if (nextTokenNum > 0) {
                 // anchor 取"最早一个还要读索引的 tile"：CopyOut 读的是 pend tile 的 slot，
                 // 换窗时必须把它连同当前 tile 一起留在窗口里
@@ -156,7 +164,6 @@ public:
                 EnsureIndexWindow(anchor, nextStart + nextTokenNum);
                 CopyIn(nextStart, nextTokenNum, slot ^ 1);
             }
-            Compute(tokenNum, slot);
             if (pendStart >= 0) {
                 CopyOut(pendStart, pendTokenNum);
             }
