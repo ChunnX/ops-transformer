@@ -117,6 +117,7 @@ public:
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
     int64_t perGroupBOffset_ = 0;
+    uint32_t curBaseM_ = 0;
     BlockMmad mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUb_;
@@ -212,6 +213,13 @@ public:
         }
     }
 
+    __aicore__ inline void BaseMBalance(BlockSchedulerOp &bs, int64_t m, uint32_t baseM)
+    {
+        const int64_t mTileCount = CeilDiv(m, static_cast<int64_t>(baseM));
+        curBaseM_ = Align16(CeilDiv(m, mTileCount));
+        bs.UpdateBaseM(curBaseM_);
+    }
+
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, uint8_t groupListType)
     {
         int32_t splitValue = 0;
@@ -290,6 +298,7 @@ public:
 
     __aicore__ inline void InitParamsAndTensor(const Params &params)
     {
+        curBaseM_ = params.gmmParams.baseM;
         Get<MNK_M>(problemShape_) = params.gmmParams.m;
         Get<MNK_N>(problemShape_) = params.gmmParams.n;
         Get<MNK_K>(problemShape_) = params.gmmParams.k;
@@ -312,14 +321,14 @@ public:
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        CoordClass coord(m, n, k, curBaseM_, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         if (!bs.GetTileIdx(tileIdx)) {
             return;
         }
         UpdateOffset(groupIdx);
         UpdateGlobalBuffer(params);
-        SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
+        SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_));
         do {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
@@ -336,7 +345,7 @@ public:
             Get<IDX_C_OFFSET>(blockOffset_) = Get<IDX_C_OFFSET>(quantOffset);
 
             int64_t mOffset =
-                Get<IDX_M_TILEIDX>(tileIdx) * params.gmmParams.baseM + Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape);
+                Get<IDX_M_TILEIDX>(tileIdx) * curBaseM_ + Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape);
             int64_t nOffset =
                 Get<IDX_N_TILEIDX>(tileIdx) * params.gmmParams.baseN + Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape);
             Get<IDX_C_SCALE_OFFSET>(blockOffset_) = mOffset * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
@@ -398,6 +407,7 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
+            BaseMBalance(bs, Get<MNK_M>(problemShape_), params.gmmParams.baseM);
             TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_)};
             bs.UpdateNextProblem(resProblemShape);
             epilogueOp_.UpdateNextProblem(resProblemShape);
