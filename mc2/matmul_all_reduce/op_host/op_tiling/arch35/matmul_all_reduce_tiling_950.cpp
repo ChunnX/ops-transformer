@@ -31,11 +31,11 @@ bool MatmulAllReduceTilingA5::IsCapable()
 
 ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char *groupName, const uint32_t reduceType)
 {
-    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) ==
-                        mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    OP_LOGE_FOR_INVALID_DTYPE(opName_, "y", Ops::Base::ToString(args_.geCType).c_str(),
-                                              "FLOAT16, BF16, FLOAT or INT8"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y", Ops::Base::ToString(args_.geCType).c_str(),
+                                  "FLOAT16, BF16, FLOAT or INT8"),
+        return ge::GRAPH_FAILED);
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"),
@@ -140,7 +140,7 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
         return tilingKey;
     }
     bool matmulWithAdd = true;
-    if (!matmulAllReduce910TilingData_.param.isAdd) {
+    if (!matmulAllReduce910TilingData_.param.isAdd && !args_.isBias) {
         matmulWithAdd = false;
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
@@ -245,6 +245,7 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
                     OP_LOGE(opName_, "Get mmv3 priority policy failed."), return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
+    mmV3Args_.hasBias = false;
 
     // 获取tileTiling
     mmV3Args_.mValue = tileMValue_;
@@ -258,6 +259,53 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
                                                           reinterpret_cast<const void *>(&mmV3Args_));
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
+    }
+    matmulAllReduce910TilingData_.extTiling.isVecBias = args_.isBias ? 1U : 0U;
+    if (args_.isBias) {
+        // bias 在 vec 侧累加路径的 UB 容量规划：
+        //   - biasBufNum 为该路径所需的 UB buffer 数目：bias+x3 路径需 7 份(mmOut/bias/out 各双缓冲 + add 双缓冲)，
+        //     bias-only 路径需 5 份(去掉 add 双缓冲)。
+        //   - biasUbFactor = biasBufNum * alignedN * dtypeSize，即"一行 bias 对应的 UB 占用字节数"。
+        //   - 正常情况(整行能放入 UB)：biasUbRows = ubSize / biasUbFactor，biasTileN 置 0，kernel 走整行路径。
+        //   - 降级情况(biasUbFactor > ubSize，大 N 场景)：按 N 维切出 biasTileN(32B 对齐)分块搬运，biasUbRows
+        //   基于分块后
+        //     的 biasUbFactor 重新计算，kernel 走 ProcessChunked 分块路径。
+        constexpr uint32_t alignDataSize = 32U; // UB 32 字节对齐基准，仅用于 N 维(元素数)对齐
+        uint32_t dtypeSize = static_cast<uint32_t>(D_MTYPE_SIZE_MAP.at(args_.cType));
+        uint32_t alignedN = mc2tiling::AlignUp(static_cast<uint32_t>(args_.orgNValue), alignDataSize / dtypeSize);
+        constexpr uint32_t biasAddUbBufFactor = 7U;  // bias+x3 路径 UB buffer 数
+        constexpr uint32_t biasOnlyUbBufFactor = 5U; // bias-only 路径 UB buffer 数
+        uint32_t biasBufNum =
+            (matmulAllReduce910TilingData_.param.isAdd != 0U) ? biasAddUbBufFactor : biasOnlyUbBufFactor;
+        uint32_t biasUbFactor = biasBufNum * alignedN * dtypeSize;
+        uint32_t biasUbRows = 0U;
+        uint32_t biasTileN = 0U;
+        if (biasUbFactor == 0U) {
+            biasUbRows = 1U;
+        } else if (biasUbFactor <= static_cast<uint32_t>(aicoreParams_.ubSize)) {
+            // biasUbRows 为行数（非字节），无需对齐；UB buffer 的 32B 对齐已由 alignedN（N 维按 32B
+            // 对齐的元素数）保证。
+            biasUbRows = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
+            if (biasUbRows == 0U) {
+                biasUbRows = 1U;
+            }
+        } else {
+            uint32_t maxTileN = static_cast<uint32_t>(aicoreParams_.ubSize) / (biasBufNum * dtypeSize);
+            biasTileN = mc2tiling::AlignDown(maxTileN, alignDataSize / dtypeSize);
+            if (biasTileN == 0U) {
+                OP_LOGE(opName_, "biasUbFactor %u exceeds ubSize %llu, cannot fit bias path.", biasUbFactor,
+                        aicoreParams_.ubSize);
+                return ge::GRAPH_FAILED;
+            }
+            biasUbFactor = biasBufNum * biasTileN * dtypeSize;
+            // 同上，biasUbRows 为行数无需对齐。
+            biasUbRows = static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor;
+            if (biasUbRows == 0U) {
+                biasUbRows = 1U;
+            }
+        }
+        matmulAllReduce910TilingData_.extTiling.biasUbRows = biasUbRows;
+        matmulAllReduce910TilingData_.extTiling.biasTileN = biasTileN;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -276,10 +324,7 @@ ge::graphStatus MatmulAllReduceTilingA5::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2Ma
     return ge::GRAPH_SUCCESS;
 }
 
-Mc2Tiling::RCSTiling &MatmulAllReduceTilingA5::MutableRCSTilingData()
-{
-    return matmulAllReduce910TilingData_.param;
-}
+Mc2Tiling::RCSTiling &MatmulAllReduceTilingA5::MutableRCSTilingData() { return matmulAllReduce910TilingData_.param; }
 
 ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
 {
@@ -306,11 +351,11 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
 {
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x2",
-                                                             (std::to_string(x2DimNum) + "D").c_str(),
-                                                             "The shape dim of x2 must be 2"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        x2DimNum != DIM_NUM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "x2", (std::to_string(x2DimNum) + "D").c_str(), "The shape dim of x2 must be 2"),
+        return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     //  x1 为fp16 或者bf16
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
@@ -354,12 +399,12 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
         for (size_t i = 0U; i < outputDimNum; i++) {
             auto outputDimValue = mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i);
             auto x3DimValue = mmrCtxInfo_.x3_shape->GetStorageShape().GetDim(i);
-            OP_TILING_CHECK(outputDimValue != x3DimValue,
-                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                context_->GetNodeName(), "x3",
-                                Ops::Base::ToString(mmrCtxInfo_.x3_shape->GetStorageShape()).c_str(),
-                                "The shape dim of x3 must be the same as that of output"),
-                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(
+                outputDimValue != x3DimValue,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_->GetNodeName(), "x3", Ops::Base::ToString(mmrCtxInfo_.x3_shape->GetStorageShape()).c_str(),
+                    "The shape dim of x3 must be the same as that of output"),
+                return ge::GRAPH_FAILED);
         }
     }
 
@@ -367,15 +412,15 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
 }
 
 MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(gert::TilingContext *context)
-    : MatmulAllReduceTilingBase(context), matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
-{
-}
+    : MatmulAllReduceTilingBase(context),
+      matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
+{}
 
 MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                                                  MatmulAllReduce910TilingDataA5 *out)
-    : MatmulAllReduceTilingBase(context, mmrCtxInfo), matmulAllReduce910TilingData_(*out)
-{
-}
+    : MatmulAllReduceTilingBase(context, mmrCtxInfo),
+      matmulAllReduce910TilingData_(*out)
+{}
 
 CutResult MatmulAllReduceTilingA5::GetTilingResult()
 {
