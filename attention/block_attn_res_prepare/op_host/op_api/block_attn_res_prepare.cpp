@@ -25,22 +25,22 @@ namespace l0op {
 
 OP_TYPE_REGISTER(BlockAttnResPrepare);
 
-const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockResidual,
-                                                           const aclTensor *effectiveQuery,
-                                                           const aclTensor *validBlocks, float epsilon,
+const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes,
+                                                           const aclTensor *validBlocks,
+                                                           const aclTensor *pseudoQuery, float eps,
                                                            aclOpExecutor *executor)
 {
-    L0_DFX(BlockAttnResPrepare, blockResidual, effectiveQuery, validBlocks, epsilon);
+    L0_DFX(BlockAttnResPrepare, blockRes, validBlocks, pseudoQuery, eps);
 
     // valid_blocks is a device-side control tensor, so the L0 API must not
     // dereference it.  The kernel normalizes values below zero to the empty
     // online-softmax state and clamps values above N to N at run time.
-    auto softmaxMax = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    auto weightedOutput = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    auto softmaxSum = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto numerator = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto logitMax = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    auto expSum = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare,
-                                        OP_INPUT(blockResidual, effectiveQuery, validBlocks),
-                                        OP_OUTPUT(softmaxMax, weightedOutput, softmaxSum), OP_ATTR(epsilon));
+                                        OP_INPUT(blockRes, validBlocks, pseudoQuery),
+                                        OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare infer shape failed.");
         return {nullptr, nullptr, nullptr};
@@ -48,13 +48,13 @@ const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *bloc
 
     // T == 0 or S == 0 produces correctly shaped empty outputs.  Do not add
     // an AICore launch for that case: all output elements are already empty.
-    if (blockResidual->IsEmpty() || effectiveQuery->IsEmpty()) {
-        return {softmaxMax, weightedOutput, softmaxSum};
+    if (blockRes->IsEmpty() || pseudoQuery->IsEmpty()) {
+        return {numerator, logitMax, expSum};
     }
 
-    ADD_TO_LAUNCHER_LIST_AICORE(BlockAttnResPrepare, OP_INPUT(blockResidual, effectiveQuery, validBlocks),
-                                OP_OUTPUT(softmaxMax, weightedOutput, softmaxSum), OP_ATTR(epsilon));
-    return {softmaxMax, weightedOutput, softmaxSum};
+    ADD_TO_LAUNCHER_LIST_AICORE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
+                                OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
+    return {numerator, logitMax, expSum};
 }
 
 } // namespace l0op

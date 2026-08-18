@@ -44,8 +44,8 @@ public:
         }
     }
 
-    __aicore__ inline bool Init(GM_ADDR blockResidual, GM_ADDR effectiveQuery, GM_ADDR validBlocks,
-                                GM_ADDR softmaxMax, GM_ADDR weightedOutput, GM_ADDR softmaxSum)
+    __aicore__ inline bool Init(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
+                                GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum)
     {
         initialized_ = false;
         const uint64_t dAlign = (tilingData_->totalD / FP32_32B_ALIGN_ELEMS) * FP32_32B_ALIGN_ELEMS +
@@ -72,12 +72,12 @@ public:
         qBufferNum_ = tilingData_->qBufferNum;
         vBufferNum_ = tilingData_->vBufferNum;
 
-        blockResidualAddr_ = reinterpret_cast<__gm__ float *>(blockResidual);
-        effectiveQueryAddr_ = reinterpret_cast<__gm__ float *>(effectiveQuery);
+        blockResAddr_ = reinterpret_cast<__gm__ float *>(blockRes);
         validBlocksAddr_ = reinterpret_cast<__gm__ int32_t *>(validBlocks);
-        softmaxMaxAddr_ = reinterpret_cast<__gm__ float *>(softmaxMax);
-        weightedOutputAddr_ = reinterpret_cast<__gm__ float *>(weightedOutput);
-        softmaxSumAddr_ = reinterpret_cast<__gm__ float *>(softmaxSum);
+        pseudoQueryAddr_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
+        numeratorAddr_ = reinterpret_cast<__gm__ float *>(numerator);
+        logitMaxAddr_ = reinterpret_cast<__gm__ float *>(logitMax);
+        expSumAddr_ = reinterpret_cast<__gm__ float *>(expSum);
 
         BuildUbLayout();
         initialized_ = true;
@@ -218,7 +218,7 @@ private:
         const uint32_t bufferIndex = dLoop % tilingData_->qBufferNum;
         const uint64_t byteOffset = qUbOffset_ +
                                     static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
-        CopyGmToUb(byteOffset, effectiveQueryAddr_ + qOffset, validD, baseDAlign_);
+        CopyGmToUb(byteOffset, pseudoQueryAddr_ + qOffset, validD, baseDAlign_);
         WaitMte2ToVector(GetEvent(bufferIndex));
         return GetUbAddr<float>(byteOffset);
     }
@@ -228,7 +228,7 @@ private:
         const uint32_t bufferIndex = static_cast<uint32_t>(vLoop_ % tilingData_->vBufferNum);
         const uint64_t byteOffset = vUbOffset_ +
                                     static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
-        CopyGmToUb(byteOffset, blockResidualAddr_ + vOffset, validD, baseDAlign_);
+        CopyGmToUb(byteOffset, blockResAddr_ + vOffset, validD, baseDAlign_);
         WaitMte2ToVector(GetEvent(bufferIndex));
         return GetUbAddr<float>(byteOffset);
     }
@@ -237,7 +237,7 @@ private:
                                                    uint32_t bufferIndex)
     {
         const uint64_t byteOffset = vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES;
-        CopyGmToUb(byteOffset, blockResidualAddr_ + vOffset, validD, dAlign_);
+        CopyGmToUb(byteOffset, blockResAddr_ + vOffset, validD, dAlign_);
         WaitMte2ToVector(GetEvent(bufferIndex));
         return GetUbAddr<float>(byteOffset);
     }
@@ -246,9 +246,9 @@ private:
     {
         const event_t eventId = static_cast<event_t>(EVENT_ID0);
         WaitVectorToMte3(eventId);
-        CopyUbToGm(softmaxMaxAddr_ + statOutputOffset,
+        CopyUbToGm(logitMaxAddr_ + statOutputOffset,
                    statUbOffset_ + static_cast<uint64_t>(BlockAttnResPrepareVF::MAX_OFFSET) * FP32_BYTES, 1, 8);
-        CopyUbToGm(softmaxSumAddr_ + statOutputOffset,
+        CopyUbToGm(expSumAddr_ + statOutputOffset,
                    statUbOffset_ + static_cast<uint64_t>(BlockAttnResPrepareVF::SUM_OFFSET) * FP32_BYTES, 1, 8);
     }
 
@@ -259,7 +259,7 @@ private:
                                     static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
         const event_t eventId = GetEvent(bufferIndex);
         WaitVectorToMte3(eventId);
-        CopyUbToGm(weightedOutputAddr_ + outputOffset, byteOffset, validD, baseDAlign_);
+        CopyUbToGm(numeratorAddr_ + outputOffset, byteOffset, validD, baseDAlign_);
     }
 
     __aicore__ inline void AccumulateStats(__ubuf__ float *qAddr, __ubuf__ float *vAddr,
@@ -290,9 +290,9 @@ private:
     {
         const float reciprocalD = 1.0F / static_cast<float>(tilingData_->totalD);
         if (validN == 1U) {
-            BlockAttnResPrepareVF::FinalizeSingleBlock(statAddr, reciprocalD, tilingData_->epsilon);
+            BlockAttnResPrepareVF::FinalizeSingleBlock(statAddr, reciprocalD, tilingData_->eps);
         } else {
-            BlockAttnResPrepareVF::FinalizeSoftmax(statAddr, validN, reciprocalD, tilingData_->epsilon);
+            BlockAttnResPrepareVF::FinalizeSoftmax(statAddr, validN, reciprocalD, tilingData_->eps);
         }
     }
 
@@ -416,12 +416,12 @@ private:
     uint8_t qBufferNum_ = 1;
     uint8_t vBufferNum_ = 1;
 
-    __gm__ float *blockResidualAddr_ = nullptr;
-    __gm__ float *effectiveQueryAddr_ = nullptr;
+    __gm__ float *blockResAddr_ = nullptr;
     __gm__ int32_t *validBlocksAddr_ = nullptr;
-    __gm__ float *softmaxMaxAddr_ = nullptr;
-    __gm__ float *weightedOutputAddr_ = nullptr;
-    __gm__ float *softmaxSumAddr_ = nullptr;
+    __gm__ float *pseudoQueryAddr_ = nullptr;
+    __gm__ float *numeratorAddr_ = nullptr;
+    __gm__ float *logitMaxAddr_ = nullptr;
+    __gm__ float *expSumAddr_ = nullptr;
 };
 
 } // namespace BlockAttnResPrepare

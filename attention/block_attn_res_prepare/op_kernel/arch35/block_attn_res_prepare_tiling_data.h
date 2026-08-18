@@ -57,7 +57,7 @@ struct BlockAttnResPrepareTilingData {
     // the Q/V/O single-buffer element count from totalD/baseD.
     uint32_t statUbElems;
     uint32_t workUbElems;
-    float epsilon;
+    float eps;
 };
 
 // Cube has an independent data layout because its AIC/AIV work mapping and its L1/UB
@@ -102,7 +102,7 @@ struct BlockAttnResPrepareCubeTilingData {
     uint64_t reduceUbElems;
     uint64_t softmaxUbElems;
     uint64_t workspacePerCoreElems;
-    float epsilon;
+    float eps;
 };
 
 } // namespace optiling
