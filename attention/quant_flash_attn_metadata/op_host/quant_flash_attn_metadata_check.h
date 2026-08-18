@@ -152,6 +152,12 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     CHECK_COND(layoutOutSet.count(layoutOut) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
 
+    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_out 仅支持 TND
+    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+                 strcmp(layoutOut, "TND") != 0),
+               ACLNN_ERR_RUNTIME_ERROR,
+               "When quantMode is %ld (MxFP8), layoutOut only supports TND, but got %s", quantMode, layoutOut);
+
     return ACLNN_SUCCESS;
 }
 

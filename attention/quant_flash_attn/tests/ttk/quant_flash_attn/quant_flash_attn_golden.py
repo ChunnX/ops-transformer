@@ -115,6 +115,14 @@ INPUT_LAYOUT = None
 Q_SCALE_LAYOUT = None
 P_SCALE = None
 
+# 算子 layout 透传 (由 qfa_wrapper / inputs.py 从 CSV 注入)
+# layout_q/layout_q_descale/layout_kv/layout_out 直接透传给 aclnn 算子,
+# 与数据生成使用的 INPUT_LAYOUT/Q_SCALE_LAYOUT/KV_CACHE_LAYOUT 相互独立。
+LAYOUT_Q = "TND"
+LAYOUT_Q_DESCALE = "TND"
+LAYOUT_KV = "TND"
+LAYOUT_OUT = "TND"
+
 SOFTMAX_SCALE = None
 
 # PA KV Cache Layout
@@ -1708,6 +1716,9 @@ def prepare_npu_inputs(
         _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "BnBsND": "PA_BBND", "PA_NZ": "PA_NZ"}
         pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
 
+        # layout_kv 优先用 CSV 透传值 (LAYOUT_KV); 若未注入则回退到 kv_cache_layout 推导
+        op_layout_kv = LAYOUT_KV if LAYOUT_KV else pa_layout_kv
+
         logger.info("[NPU] prepare PA inputs done.")
         return dict(
             q=q_npu,
@@ -1728,10 +1739,10 @@ def prepare_npu_inputs(
             q_n=N_q,
             kv_n=N_kv,
             softmax_scale=softmax_scale,
-            layout_q="TND",
-            layout_q_descale=q_runtime_layout,
-            layout_kv=pa_layout_kv,
-            layout_out="TND",
+            layout_q=LAYOUT_Q,
+            layout_q_descale=LAYOUT_Q_DESCALE,
+            layout_kv=op_layout_kv,
+            layout_out=LAYOUT_OUT,
             block_size=BLOCK_SIZE,
             sparse_mode=SPARSE_MODE,
             out_dtype=out_dtype,
@@ -1765,10 +1776,10 @@ def prepare_npu_inputs(
         q_n=N_q,
         kv_n=N_kv,
         softmax_scale=softmax_scale,
-        layout_q="TND",
-        layout_q_descale=q_runtime_layout,
-        layout_kv="TND",
-        layout_out="TND",
+        layout_q=LAYOUT_Q,
+        layout_q_descale=LAYOUT_Q_DESCALE,
+        layout_kv=LAYOUT_KV,
+        layout_out=LAYOUT_OUT,
         block_size=0,
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
