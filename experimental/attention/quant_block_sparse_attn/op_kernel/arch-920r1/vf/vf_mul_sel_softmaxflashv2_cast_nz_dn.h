@@ -42,34 +42,77 @@ __simd_vf__ inline void RescaleRound0VF(
 
     RegTensor<fp8_e4m3fn_t> pFp8Reg;
     RegTensor<float> pFp32Reg;
-    RegTensor<float> alphaReg;
+    RegTensor<float> alphaAllReg;
+    RegTensor<float> alphaPair0Reg;
+    RegTensor<float> alphaPair1Reg;
+    RegTensor<float> alphaInterleave0Reg;
+    RegTensor<float> alphaInterleave1Reg;
+    RegTensor<float> alphaDiscardReg;
     RegTensor<float> combinedAlphaReg;
     MaskReg fp32Mask = CreateMask<float, MaskPattern::VL32>();
     MaskReg fp32AllMask = CreateMask<float, MaskPattern::ALL>();
 
+    LoadAlign(alphaAllReg, alphaTensor);
+    // Build [alpha0..31, alpha0..31] and [alpha32..63, alpha32..63] once for two-column processing.
+    Interleave(alphaInterleave0Reg, alphaInterleave1Reg, alphaAllReg, alphaAllReg);
+    DeInterleave(alphaPair0Reg, alphaDiscardReg, alphaInterleave0Reg, alphaInterleave0Reg);
+    DeInterleave(alphaPair1Reg, alphaDiscardReg, alphaInterleave1Reg, alphaInterleave1Reg);
+
     for (uint32_t group = 0U; group < repeat; ++group) {
         uint32_t validColumns = realK - group * 64U;
         validColumns = validColumns > 64U ? 64U : validColumns;
-        for (uint32_t form = 0U; form < 2U; ++form) {
-            LoadAlign(alphaReg, alphaTensor + form * BLOCK_ELEMS);
-            const uint32_t formBase =
-                (group * GROUP_STRIDE_BLOCKS + form * FORM_STRIDE_BLOCKS) * BLOCK_ELEMS;
-            for (uint32_t column = 0U; column < validColumns; ++column) {
-                __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + formBase + column * BLOCK_ELEMS;
-                LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
-                    (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
-                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32Mask);
-                Mul(pFp32Reg, pFp32Reg, alphaReg, fp32Mask);
-                Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32Mask);
-                StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
-                    (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32Mask);
-            }
+        const uint32_t pairedColumns = validColumns & ~1U;
+        const bool hasTail = pairedColumns != validColumns;
+        const uint32_t groupBase = group * GROUP_STRIDE_BLOCKS * BLOCK_ELEMS;
+
+        // Form 0: process two adjacent 32-byte S1 blocks with the duplicated alpha[0..31].
+        for (uint32_t column = 0U; column < pairedColumns; column += 2U) {
+            __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + groupBase + column * BLOCK_ELEMS;
+            LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
+                (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
+            Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32AllMask);
+            Mul(pFp32Reg, pFp32Reg, alphaPair0Reg, fp32AllMask);
+            Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32AllMask);
+            StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
+                (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32AllMask);
+        }
+        if (hasTail) {
+            __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + groupBase + pairedColumns * BLOCK_ELEMS;
+            LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
+                (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
+            Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32Mask);
+            Mul(pFp32Reg, pFp32Reg, alphaPair0Reg, fp32Mask);
+            Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32Mask);
+            StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
+                (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32Mask);
+        }
+
+        // Form 1 starts after 64 data blocks and one padding block.
+        const uint32_t form1Base = groupBase + FORM_STRIDE_BLOCKS * BLOCK_ELEMS;
+        for (uint32_t column = 0U; column < pairedColumns; column += 2U) {
+            __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + form1Base + column * BLOCK_ELEMS;
+            LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
+                (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
+            Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32AllMask);
+            Mul(pFp32Reg, pFp32Reg, alphaPair1Reg, fp32AllMask);
+            Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32AllMask);
+            StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
+                (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32AllMask);
+        }
+        if (hasTail) {
+            __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + form1Base + pairedColumns * BLOCK_ELEMS;
+            LoadAlign<uint8_t, LoadDist::DIST_UNPACK4_B8>(
+                (RegTensor<uint8_t> &)pFp8Reg, (__ubuf__ uint8_t *)pBlock);
+            Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Reg, pFp8Reg, fp32Mask);
+            Mul(pFp32Reg, pFp32Reg, alphaPair1Reg, fp32Mask);
+            Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Reg, fp32Mask);
+            StoreAlign<uint8_t, StoreDist::DIST_PACK4_B32>(
+                (__ubuf__ uint8_t *)pBlock, (RegTensor<uint8_t> &)pFp8Reg, fp32Mask);
         }
     }
 
-    LoadAlign(alphaReg, alphaTensor);
     LoadAlign(combinedAlphaReg, combinedAlphaTensor);
-    Mul(combinedAlphaReg, combinedAlphaReg, alphaReg, fp32AllMask);
+    Mul(combinedAlphaReg, combinedAlphaReg, alphaAllReg, fp32AllMask);
     StoreAlign<float>(combinedAlphaTensor, combinedAlphaReg, fp32AllMask);
 }
 
