@@ -141,6 +141,17 @@ ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QfaTilingInf
         OP_CHECK_IF(!attnMaskExists, OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, ATTN_MASK_NAME.c_str()),
                     return ge::GRAPH_FAILED);
     }
+
+    // 文档约束(一致性校验): mask_mode=3(CAUSAL) 时 win_left/win_right 必须为 -1
+    if (qfaInfo.maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        OP_CHECK_IF(qfaInfo.winLeft != -1 || qfaInfo.winRight != -1,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        qfaInfo.opName, MASK_MODE_NAME.c_str(), std::to_string(qfaInfo.maskMode).c_str(),
+                        ("When mask_mode is 3 (CAUSAL), win_left and win_right must be -1, but got win_left=" +
+                         std::to_string(qfaInfo.winLeft) + ", win_right=" + std::to_string(qfaInfo.winRight))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

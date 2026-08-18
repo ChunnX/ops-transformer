@@ -168,6 +168,49 @@ QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_
     CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or at least 0, but got %ld", winLeft);
     CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
 
+    // 文档约束: maskMode=3(CAUSAL) 时 winLeft/winRight 必须为 -1
+    if (maskMode == CAUSAL_MASK) {
+        CHECK_COND(winLeft == -1 && winRight == -1, ACLNN_ERR_RUNTIME_ERROR,
+                   "When maskMode is 3 (CAUSAL), winLeft and winRight must be -1, but got winLeft=%ld, winRight=%ld",
+                   winLeft, winRight);
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus
+QuantFlashAttnMetadataCheck::CheckVDescale(int64_t quantMode, const aclTensor *vDescaleOptional,
+                                           const char *layoutKv)
+{
+    constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
+    constexpr int64_t QUANT_MODE_GQA_FP8_FULLQUANT = 6;
+
+    if (quantMode == QUANT_MODE_GQA_FP8_FULLQUANT) {
+        // GQA_FP8_FULLQUANT(6): metadata 不应传入 v_descale
+        CHECK_COND(!IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 6, vDescale should not be provided, but got non-null");
+        return ACLNN_SUCCESS;
+    }
+
+    if (quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        // MxFP8(1): v_descale 必传
+        CHECK_COND(IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 1 (MxFP8), vDescale must be provided, but got null");
+        // 维度校验: TND -> 4D, PA_BNBD -> 5D, PA_NZ -> 6D
+        auto dimNum = vDescaleOptional->GetViewShape().GetDimNum();
+        if (strcmp(layoutKv, "TND") == 0) {
+            CHECK_COND(dimNum == 4, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is TND, vDescale must be 4D, but got %ldD", dimNum);
+        } else if (strcmp(layoutKv, "PA_BNBD") == 0) {
+            CHECK_COND(dimNum == 5, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is PA_BNBD, vDescale must be 5D, but got %ldD", dimNum);
+        } else if (strcmp(layoutKv, "PA_NZ") == 0) {
+            CHECK_COND(dimNum == 6, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is PA_NZ, vDescale must be 6D, but got %ldD", dimNum);
+        }
+        return ACLNN_SUCCESS;
+    }
+
     return ACLNN_SUCCESS;
 }
 
