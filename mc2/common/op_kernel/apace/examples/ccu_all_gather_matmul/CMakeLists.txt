@@ -22,7 +22,7 @@ if(NOT DEFINED ASCEND_CANN_PACKAGE_PATH)
     endif()
 endif()
 
-# ---- 第二阶段新增：ops-tensor 路径（用户已拉取到 ~/code/ops-tensor）----
+# ---- ops-tensor 路径（TODO: 硬编码路径，跨环境需手动修改）----
 # 注意：tensor_api 是 ops-tensor 的 submodule，首次构建前需在 ops-tensor 目录执行：
 #   git submodule update --init --recursive
 set(OPS_TENSOR_ROOT "$ENV{HOME}/code/ops-tensor")
@@ -103,6 +103,7 @@ target_link_libraries(ccu_all_gather_matmul PRIVATE
     acl_rt
     ascendc_runtime
     pthread
+    dl
     # ---- 第二阶段新增：Blaze 链接库 ----
     platform
     tiling_api

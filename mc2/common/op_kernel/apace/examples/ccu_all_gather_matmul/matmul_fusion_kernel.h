@@ -77,10 +77,10 @@ struct MmTilingConfig {
 // AIC 分支：MatmulProcess（Blaze matmul + CrossCoreWaitFlag）
 // 严格参照 mat_mul_basic.cpp L284-312 的类型链与 Params 组装方式
 // ============================================================================
-__aicore__ inline void MatmulProcess(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, MatmulTilingData tilingData)
+__aicore__ inline void MatmulProcess(__gm__ void *aGM, __gm__ void *bGM, __gm__ void *cGM, MatmulTilingData tilingData)
 {
     // ---- 等待 AIV 唤醒：AIV 在 SyncBridgeProcess 末尾 CrossCoreSetFlag<0x2, PIPE_MTE3> ----
-    AscendC::CrossCoreWaitFlag<0x2, AscendC::HardEvent::PIPE_MTE2>(0);
+    AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
 
     // ---- 组装 Blaze matmul 类型链（参照 mat_mul_basic.cpp L293-297）----
     using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<>;
@@ -90,12 +90,19 @@ __aicore__ inline void MatmulProcess(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, Matm
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerMatmulBasic<MmProblemShape>;
     using MatmulKernel = Blaze::Gemm::Kernel::GemmUniversal<MmProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
 
+    // ---- __gm__ void* → GM_ADDR（Blaze BlockMmadParams 字段类型为 GM_ADDR）----
+    // 参照 apace all_gather_mx_matmul_udma_impl.h L235: reinterpret_cast<GM_ADDR>(addrVal)
+    // __gm__ void* 先转 uint64_t（阶段一 comm_sync 已验证），再转 GM_ADDR
+    GM_ADDR aGmAddr = reinterpret_cast<GM_ADDR>(reinterpret_cast<uint64_t>(aGM));
+    GM_ADDR bGmAddr = reinterpret_cast<GM_ADDR>(reinterpret_cast<uint64_t>(bGM));
+    GM_ADDR cGmAddr = reinterpret_cast<GM_ADDR>(reinterpret_cast<uint64_t>(cGM));
+
     // ---- 从 tilingData 解包参数构造 Params（参照 mat_mul_basic.cpp L299-308）----
     using Params = typename MatmulKernel::Params;
     Params params = {
         {static_cast<int64_t>(tilingData.m), static_cast<int64_t>(tilingData.n),
          static_cast<int64_t>(tilingData.k), 1},                                    // ProblemShape
-        {aGM, bGM, cGM, nullptr, nullptr, nullptr,                                  // BlockMmadParams
+        {aGmAddr, bGmAddr, cGmAddr, nullptr, nullptr, nullptr,                     // BlockMmadParams
          static_cast<uint64_t>(tilingData.mL1), static_cast<uint64_t>(tilingData.nL1),
          static_cast<uint64_t>(tilingData.kL1),
          tilingData.baseM, tilingData.baseN, tilingData.baseK,
@@ -169,5 +176,5 @@ __aicore__ inline void SyncBridgeProcess(__gm__ void *src, __gm__ void *recvBuf,
 
     // ============ 第二阶段新增：唤醒 AIC 核执行 matmul ============
     // 参照 apace UDMA all_gather_mx_matmul_udma_impl.h L248：CrossCoreSetFlag<0x2, PIPE_MTE3>
-    AscendC::CrossCoreSetFlag<0x2, AscendC::HardEvent::PIPE_MTE3>(0);
+    AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 }

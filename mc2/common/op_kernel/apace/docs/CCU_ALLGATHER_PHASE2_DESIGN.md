@@ -437,3 +437,82 @@ apace/examples/ccu_all_gather_matmul/
 | BF16 Host 侧读回 | uint16_t 承载 + Python 转换 | 已规划方案（§6.3） | ✅ 已规划 |
 | .asc 编译 Blaze kernel | 编译报错 | 若不行拆分 .cpp | ⏳ 待验证 |
 | ops-tensor FetchContent 网络 | 拉取失败 | 备选手动 clone + cp | ⏳ 待验证 |
+
+---
+
+## 10. 编译与运行问题记录（实测修复）
+
+> 阶段二在多环境编译验证过程中遇到的问题及修复，按发现顺序记录。修复 commit：`2a8aad5ab`。
+
+### 10.1 `unknown type name 'CcuMappedAddrs'`
+
+**根因**：文件拆分后 include 顺序导致前向引用。`CcuMappedAddrs` 结构体定义在 `.asc` L185，但 `matmul_fusion_kernel.h`（L37 include）的 `SyncBridgeProcess` 和 `host_launcher.h`（L670 include）的 `AllGatherMatmulContext` 都引用了它——include 发生在定义之前。
+
+**修复**：把 `CcuMappedAddrs` 及其依赖常量（`HCOMM_HOST_TASK_ARG_NUM`、`CKE_NUM`）前移到 `#include "matmul_fusion_kernel.h"` 之前（L39-43），删除原 L107/L109 和 L191-194 的重复定义。
+
+**文件**：`ccu_all_gather_matmul_kernel.asc`
+
+### 10.2 `no matching function for call to MatmulProcess`
+
+**根因**：类型不匹配。kernel 入参 `__gm__ void *recvBuf`（继承阶段一 `comm_sync` 风格），但 `MatmulProcess` 签名用 `GM_ADDR`（Blaze `BlockMmadParams` 字段类型）。`__gm__ void *` 不能隐式转换为 `GM_ADDR`。
+
+参考代码 `mat_mul_basic.cpp` 的 kernel 入参直接用 `GM_ADDR`，不存在此问题。但我们的 kernel 入参继承了阶段一的 `__gm__ void *`（`SyncBridgeProcess` 需要它做 `reinterpret_cast<uint64_t>` 取地址值写 Variable）。
+
+**修复**：`MatmulProcess` 参数从 `GM_ADDR` 改为 `__gm__ void *`（与 kernel 入参一致），函数内部两步 cast 供 Blaze Params 使用：
+
+```cpp
+// __gm__ void* → uint64_t（阶段一 comm_sync 已验证）→ GM_ADDR（apace L235 先例）
+GM_ADDR aGmAddr = reinterpret_cast<GM_ADDR>(reinterpret_cast<uint64_t>(aGM));
+```
+
+**文件**：`matmul_fusion_kernel.h`
+
+### 10.3 `CrossCoreWaitFlag/CrossCoreSetFlag` 编译错误
+
+**根因**：原代码使用 `AscendC::HardEvent::PIPE_MTE2` / `AscendC::HardEvent::PIPE_MTE3`，编译器未识别 `AscendC::HardEvent` 命名空间。
+
+**修复**：简化为 `PIPE_MTE2` / `PIPE_MTE3`（宏已在 `kernel_operator.h` 中定义）。
+
+**文件**：`matmul_fusion_kernel.h`
+
+### 10.4 `aclrtFinalize` 未定义
+
+**根因**：`aclrtFinalize` API 不存在，正确的 API 是 `aclFinalize`。
+
+**修复**：`aclrtFinalize()` → `aclFinalize()`。
+
+**文件**：`sample_main.cpp`
+
+### 10.5 `ld.ldd: error: undefined symbol: dlopen`
+
+**根因**：`dlopen`/`dlsym`/`dlclose` 在 `libdl` 中。CANN 的 `ascendcl` / `acl_rt` 等库内部调用 `dlopen` 动态加载 HCCL 插件，但不传递依赖，可执行文件需显式链接 `dl`。
+
+**修复**：CMakeLists.txt `target_link_libraries` 新增 `dl`。
+
+**文件**：`CMakeLists.txt`
+
+### 10.6 `ops-tensor not found at /root/code/ops-tensor/include/blaze`
+
+**根因**：CMakeLists.txt 中 `OPS_TENSOR_ROOT` 硬编码为 `$ENV{HOME}/code/ops-tensor`。换环境（root 用户，HOME=/root）时路径变为 `/root/code/ops-tensor`，但 ops-tensor 不在此处。
+
+**修复**：暂保持硬编码 `$ENV{HOME}/code/ops-tensor`，跨环境时手动修改 `OPS_TENSOR_ROOT`。
+
+**待解决**：后续考虑改为环境变量 `OPS_TENSOR_ROOT` 覆盖或自动查找。曾尝试多候选路径查找方案（环境变量 > ~/code/ops-tensor > /root/code/ops-tensor），但用户认为未真正解决问题，已回退。
+
+**文件**：`CMakeLists.txt`
+
+### 10.7 `tensor_api submodule` 初始化失败
+
+**根因**：部分 WSL 环境下 `.git` 目录虽然显示正确属主和权限（`drwxr-xr-x wuhua:wuhua`），但实际无法写入（`touch` 测试失败）。`git submodule update --init` 因无法写 `.git/config` 和 `.git/objects` 而失败。
+
+**修复**：需 `sudo` 执行或修复 `.git` 目录权限（`sudo chown -R $(whoami) .git/`）。
+
+**文件**：`~/code/ops-tensor`（非本仓库）
+
+### 10.8 运行报错 `return err retcode 1`
+
+**根因**：新环境未设置 `HCCL_OP_EXPANSION_MODE=CCU_SCHED` 环境变量。CCU 相关 API（`AcquireCcuChannels`、`CreateCcuInsWithEnabledDies` 等）在非 CCU_SCHED 模式下返回 `HCCL_E_PARA=1`。
+
+**修复**：`run.sh` 已包含 `export HCCL_OP_EXPANSION_MODE=CCU_SCHED`。手动运行编译产物时需自行 export。同时在 `sample_main.cpp` 的 `main()` 中新增环境变量检查日志，启动时打印 CCU_SCHED 状态。
+
+**文件**：`sample_main.cpp`

@@ -192,6 +192,15 @@ int main()
     ACLCHECK(aclrtGetDeviceCount(&devCount));
     std::cout << "Found " << devCount << " NPU device(s) available" << std::endl;
 
+    // 环境检查：CCU_SCHED 模式必须设置
+    const char *schedMode = getenv("HCCL_OP_EXPANSION_MODE");
+    if (schedMode == nullptr || std::string(schedMode) != "CCU_SCHED") {
+        std::cout << "WARNING: HCCL_OP_EXPANSION_MODE=" << (schedMode ? schedMode : "(unset)")
+                  << " (expected CCU_SCHED), CCU operations may fail!" << std::endl;
+    } else {
+        std::cout << "HCCL_OP_EXPANSION_MODE=" << schedMode << " OK" << std::endl;
+    }
+
     int32_t rootRank = 0;
     ACLCHECK(aclrtSetDevice(rootRank));
     // 生成 Root 节点信息，各线程使用同一份 RootInfo
@@ -215,6 +224,6 @@ int main()
 
     // 释放资源
     ACLCHECK(aclrtFreeHost(rootInfoBuf));  // 释放 Host 内存
-    ACLCHECK(aclrtFinalize());               // 设备去初始化
+    ACLCHECK(aclFinalize());               // 设备去初始化
     return 0;
 }
