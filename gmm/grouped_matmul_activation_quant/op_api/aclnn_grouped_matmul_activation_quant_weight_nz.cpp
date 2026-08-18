@@ -49,6 +49,8 @@ constexpr int64_t SCALE_ALG_OCP = 0L;
 constexpr int64_t SCALE_ALG_CUBLAS = 1L;
 constexpr int64_t SCALE_ALG_DYNAMIC_DTYPE_RANGE = 2L;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
+constexpr float FP4_E2M1_DST_TYPE_MAX_MIN = 6.0F;
+constexpr float FP4_E2M1_DST_TYPE_MAX_MAX = 12.0F;
 constexpr float FLOAT_EPS = 1e-6F;
 
 #define GMMAQ_CHECK_WITH_LOG(cond, retCode, logExpr) \
@@ -558,9 +560,21 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
                          ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "scaleAlg", std::to_string(scaleAlg),
                                                                "scaleAlg 2 only supports FLOAT4_E2M1 output"));
-    GMMAQ_CHECK_WITH_LOG(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS, ACLNN_ERR_PARAM_INVALID,
-                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "dstTypeMax", std::to_string(dstTypeMax),
-                                                               "when the quantization mode is mx, dstTypeMax must be 0.0"));
+    const bool isDefaultDstTypeMax = std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS;
+    if (scaleAlg == SCALE_ALG_DYNAMIC_DTYPE_RANGE) {
+        const bool isValidDstTypeMax = std::isfinite(dstTypeMax) &&
+                                       (isDefaultDstTypeMax ||
+                                        (dstTypeMax >= FP4_E2M1_DST_TYPE_MAX_MIN && dstTypeMax <= FP4_E2M1_DST_TYPE_MAX_MAX));
+        GMMAQ_CHECK_WITH_LOG(isValidDstTypeMax, ACLNN_ERR_PARAM_INVALID,
+                             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                 OP_NAME, "dstTypeMax", std::to_string(dstTypeMax),
+                                 "when scaleAlg is 2, dstTypeMax must be 0.0 or within [6.0, 12.0]"));
+    } else {
+        GMMAQ_CHECK_WITH_LOG(isDefaultDstTypeMax, ACLNN_ERR_PARAM_INVALID,
+                             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                 OP_NAME, "dstTypeMax", std::to_string(dstTypeMax),
+                                 "when scaleAlg is not 2, dstTypeMax must be 0.0"));
+    }
     GMMAQ_CHECK_WITH_LOG(IsEmptyTensorList(bias), ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(OP_NAME, "bias",
                                                                     FormatString("bias=%zu", bias == nullptr ? 0UL : bias->Size()),
