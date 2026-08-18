@@ -104,7 +104,6 @@ private:
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
-    uint32_t numMaxTokensPerRank_{0};
     uint32_t numTokens_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
@@ -112,7 +111,6 @@ private:
     uint64_t combineStateWinOffset_{0};
     uint64_t combineDataWinOffset_{0};
 
-    uint32_t hWeightAlignSize_{0};
     uint32_t ubXBytes_{0};
     uint32_t aivNum_{0};
     uint32_t aivId_{0};
@@ -150,13 +148,11 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
     epWorldSize_ = tilingData_->cfg.epWorldSize;
-    numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     numTokens_ = tilingData_->cfg.numTokens;
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
     aivNum_ = tilingData->aivNum;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
-    hWeightAlignSize_ = hAlignSize_ + UB_ALIGN;
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
