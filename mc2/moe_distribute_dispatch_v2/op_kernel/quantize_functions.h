@@ -56,10 +56,7 @@ constexpr uint32_t EPS_1E_4_FP32 = 0x38D1B717; // 1e-4 的 FP32 bit pattern，�
 
 using namespace AscendC;
 
-__aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch()
-{
-    return 32U;
-}
+__aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch() { return 32U; }
 
 __aicore__ inline constexpr uint32_t GetVRegSizeDispatch()
 {
@@ -686,8 +683,8 @@ __aicore__ inline void ComputePerTileGroupMax(__ubuf__ T *srcAddr, __ubuf__ floa
             MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, dataMask1);
             MicroAPI::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
             if constexpr (HasSmooth) {
-                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                    vSmooth0, vSmooth1, smoothLocalAddr + i * vlB32 * DIGIT_TWO);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1,
+                                                                               smoothLocalAddr + i * vlB32 * DIGIT_TWO);
                 MicroAPI::Mul(vInFP32Zero, vInFP32Zero, vSmooth0, maskAll);
                 MicroAPI::Mul(vInFP32One, vInFP32One, vSmooth1, maskAll);
             }
@@ -704,8 +701,8 @@ __aicore__ inline void ComputePerTileGroupMax(__ubuf__ T *srcAddr, __ubuf__ floa
 }
 
 template <typename U>
-__aicore__ inline void ComputePerTileGroupScale(__ubuf__ float *groupScaleLocalAddr,
-                                                __ubuf__ float *scaleOutLocalAddr, uint16_t groupNum)
+__aicore__ inline void ComputePerTileGroupScale(__ubuf__ float *groupScaleLocalAddr, __ubuf__ float *scaleOutLocalAddr,
+                                                uint16_t groupNum)
 {
     uint32_t groupNumPerLoop = GetVRegSizeDispatch() / sizeof(float);
     uint16_t loopNum = Ceil(static_cast<uint32_t>(groupNum), groupNumPerLoop);
@@ -743,14 +740,13 @@ __aicore__ inline void ComputePerTileGroupScale(__ubuf__ float *groupScaleLocalA
         for (uint16_t i = 0; i < loopNum; i++) {
             groupMask = MicroAPI::UpdateMask<float>(remainingGroupNum);
             uint32_t groupOffset = i * groupNumPerLoop;
-            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(vTileMax,
-                                                                     groupScaleLocalAddr + groupOffset);
+            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(vTileMax, groupScaleLocalAddr + groupOffset);
             MicroAPI::Div<float, &divMode>(vDynScale, vMaxVal, vTileMax, groupMask);
             MicroAPI::Mul(vOutputScale, vTileMax, vInvMaxVal, groupMask);
-            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM_B32>(groupScaleLocalAddr + groupOffset,
-                                                                          vDynScale, groupMask);
-            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM_B32>(scaleOutLocalAddr + groupOffset,
-                                                                          vOutputScale, groupMask);
+            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM_B32>(groupScaleLocalAddr + groupOffset, vDynScale,
+                                                                          groupMask);
+            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_NORM_B32>(scaleOutLocalAddr + groupOffset, vOutputScale,
+                                                                          groupMask);
         }
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
@@ -758,8 +754,8 @@ __aicore__ inline void ComputePerTileGroupScale(__ubuf__ float *groupScaleLocalA
 
 template <typename T, typename U, RoundMode RMode, bool HasSmooth>
 __aicore__ inline void QuantizePerTileWithGroupScale(__ubuf__ T *srcAddr, __ubuf__ float *smoothLocalAddr,
-                                                     __ubuf__ float *groupScaleLocalAddr,
-                                                     __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB)
+                                                     __ubuf__ float *groupScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
+                                                     uint32_t totalCountInUB)
 {
     uint32_t vlB16 = GetVRegSizeDispatch() / sizeof(T);
     uint32_t vlB32 = GetVRegSizeDispatch() / sizeof(float);
@@ -802,8 +798,8 @@ __aicore__ inline void QuantizePerTileWithGroupScale(__ubuf__ T *srcAddr, __ubuf
             MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, dataMask1);
             MicroAPI::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
             if constexpr (HasSmooth) {
-                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                    vSmooth0, vSmooth1, smoothLocalAddr + i * vlB32 * DIGIT_TWO);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1,
+                                                                               smoothLocalAddr + i * vlB32 * DIGIT_TWO);
                 MicroAPI::Mul(vInFP32Zero, vInFP32Zero, vSmooth0, maskAll);
                 MicroAPI::Mul(vInFP32One, vInFP32One, vSmooth1, maskAll);
             }
@@ -835,14 +831,14 @@ __aicore__ inline void QuantizePerTileWithGroupScale(__ubuf__ T *srcAddr, __ubuf
 template <typename T, typename U, RoundMode RMode, bool HasSmooth>
 __aicore__ inline void ComputePerTileDynamicBatchScale(__ubuf__ T *srcAddr, __ubuf__ float *smoothLocalAddr,
                                                        __ubuf__ float *groupScaleLocalAddr,
-                                                       __ubuf__ float *scaleOutLocalAddr,
-                                                       __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB)
+                                                       __ubuf__ float *scaleOutLocalAddr, __ubuf__ int8_t *outLocalAddr,
+                                                       uint32_t totalCountInUB)
 {
     uint16_t groupNum = static_cast<uint16_t>(Ceil(totalCountInUB, GetVRegSizeDispatch() / sizeof(T)));
     ComputePerTileGroupMax<T, HasSmooth>(srcAddr, smoothLocalAddr, groupScaleLocalAddr, totalCountInUB);
     ComputePerTileGroupScale<U>(groupScaleLocalAddr, scaleOutLocalAddr, groupNum);
     QuantizePerTileWithGroupScale<T, U, RMode, HasSmooth>(srcAddr, smoothLocalAddr, groupScaleLocalAddr, outLocalAddr,
-                                                         totalCountInUB);
+                                                          totalCountInUB);
 }
 
 } // namespace Quant
