@@ -235,7 +235,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitParams(const Con
     this->tools_ = tools;
     coff_ = static_cast<uint32_t>(COMP::coff);
     cmpRatio_ = constInfo.cmpRatio;
-    useSingleCore_ = cmpRatio_ <= 4;
+    useSingleCore_ =
+        cmpRatio_ <= 4 && (coff_ * constInfo_.sSize * constInfo.headDim * sizeof(T)) <= BUFFER_SIZE_BYTE_16K;
 }
 
 template <typename COMP>
@@ -1153,6 +1154,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
             splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
         }
     }
+    splitInfo.dBaseSize =
+        min(splitInfo.dBaseSize,
+            static_cast<uint32_t>(FloorPow2(BUFFER_SIZE_BYTE_16K / (coff_ * constInfo_.sSize * sizeof(T)))));
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), constInfo_.batchSize);
 }
