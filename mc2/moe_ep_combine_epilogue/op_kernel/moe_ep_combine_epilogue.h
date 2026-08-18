@@ -50,10 +50,6 @@
 #include "moe_ep_combine_epilogue_tiling_key.h"
 #include "moe_ep_combine_epilogue_tiling.h"
 
-#ifndef ALIGN_UP
-#define ALIGN_UP(x, align) (((x) + (align) - 1) & ~((align) - 1))
-#endif
-
 namespace MoeEpCombineEpilogueImpl {
 
 #if defined(ENABLE_MOE_EP_COMBINE_EPILOGUE_KERNEL)

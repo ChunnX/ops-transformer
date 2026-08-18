@@ -54,10 +54,6 @@
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
 
-#ifndef ALIGN_UP
-#define ALIGN_UP(x, align) (((x) + (align) - 1) & ~((align) - 1))
-#endif
-
 namespace MoeEpCombineImpl {
 
 #if defined(ENABLE_MOE_EP_COMBINE_KERNEL)
