@@ -135,7 +135,9 @@ public:
         //     代码里不出现 buffer 下标；depth 改大不额外占 UB。
         //   undMask_ —— 手工乒乓，靠 Tile::maskSlot 选份，因为它是普通标量数组不走 TQue。
         //   索引 idxBuf_ —— 跨 tile 滑窗，一个窗口横跨十几个 tile，见 EnsureIndexWindow。
-        Tile cur = FirstTile();
+        Tile cur;
+        cur.start = coreStart_;
+        cur.num = TileTokenNum(coreStart_);
         Tile pend;  // 已算完、待写出的那个 tile；pend.Valid() 为假表示还没有
 
         EnsureIndexWindow(cur.start, cur.start + cur.num);
@@ -324,11 +326,10 @@ private:
         WaitFlag<HardEvent::S_V>(EVT_S_TO_V_INDEX_READY);
     }
 
-    // 本 tile 的 token 数：尾块不足 ubFactor 时按实际数量
     /*
     一个 tile 的身份，Process 的三段流水按它传递
     start：本 tile 第一个 token 在本核区间内的绝对下标（out_t 口径）
-    num：本 tile 的 token 数，取 ubFactor 或核尾剩余；num == 0 表示该 tile 不存在
+    num：本 tile 的 token 数，num == 0 表示该 tile 不存在
     maskSlot：本 tile 的 und/gen 位图存放在 undMask_ 的哪一份，取值 0/1
     */
     struct Tile {
@@ -350,20 +351,6 @@ private:
     {
         const int64_t rest = coreEnd_ - tileStart;
         return rest > ubFactor_ ? ubFactor_ : rest;
-    }
-
-    /*
-    构造本核的第一个 tile
-    返回 start = coreStart_、num 由 TileTokenNum 定、maskSlot = 0 的 Tile；
-    本核无 token 时 num 为 0
-    */
-    __aicore__ inline Tile FirstTile()
-    {
-        Tile t;
-        t.start = coreStart_;
-        t.num = TileTokenNum(coreStart_);
-        t.maskSlot = 0;
-        return t;
     }
 
     /*
