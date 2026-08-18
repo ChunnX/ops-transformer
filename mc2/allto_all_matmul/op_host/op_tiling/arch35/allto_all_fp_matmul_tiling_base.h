@@ -48,8 +48,10 @@ protected:
     ge::graphStatus DoMMTiling();
     ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
                                      Mc2MatMulV3TilingData &tilingData);
-    ge::graphStatus SetHcclTiling();
+        ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
+    // 非量化+有bias时, 选择 add_bias 节点的分核策略
+    uint8_t ChooseAddBiasSplitMode() const;
 
 private:
     void PrintAlltoAllMatmulTilingData(AlltoAllMatmulTilingData &alltoAllMatmulTilingData);
