@@ -30,12 +30,6 @@ namespace MegaMoeImpl {
 // 每个逻辑 AIC 任务以两个 GMM1 scheduler tile 作为 Wave 目标负载。
 constexpr uint32_t A8W4_GMM1_TILES_PER_JOB_TARGET = 2U;
 
-// 标识 MoE 专家序列中的二维 token 位置。
-struct ExpertTokenPosition {
-    uint32_t expertIdx = 0U;
-    uint32_t tokenIndexInExpert = 0U;
-};
-
 // 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
 template <uint32_t TileM>
 __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertTokenCount, uint32_t waveMGroupTarget,
@@ -107,9 +101,9 @@ private:
     using MegaMoeBase::tokenUnpermuteScratch_;
     uint32_t waveMGroupTarget_ = 0U;
 
-    __aicore__ inline bool IsWaveComplete(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
+    __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
-        return position.expertIdx >= commonConfig_.moeExpertPerRank || waveMGroupCount >= waveMGroupTarget_;
+        return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < waveMGroupTarget_;
     }
 
     __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
@@ -216,7 +210,6 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     // A8W4 GMM1 与 GMM2 按相同的跨 Wave tile 顺序执行，因此共用分核起点。
     uint32_t startBlockIdx = 0U;
 
-    const uint32_t expertCount = commonConfig_.moeExpertPerRank;
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
     // Wave 以完整 M group 为切分单位；一个 M group 会产生 gmm1TilesPerMGroup 个 scheduler tile。
@@ -229,7 +222,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
             uint32_t dispatchedWaveMGroupCount = 0U;
-            while (!IsWaveComplete(dispatchPosition, dispatchedWaveMGroupCount)) {
+            while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
                 uint32_t expertTokenCount =
                     dispatchPosition.tokenIndexInExpert == 0U ?
                         DispatchMoeExpert(dispatchPosition.expertIdx) :
@@ -242,7 +235,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     }
 
     ExpertTokenPosition gmm1Position{};
-    while (gmm1Position.expertIdx < expertCount) {
+    while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
         ExpertTokenPosition waveBeginPosition = gmm1Position;
         ExpertTokenPosition waveEndPosition = gmm1Position;
         uint32_t currentWaveMGroupCount = 0U;
@@ -252,7 +245,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         bool nextWaveNeedsDispatch = false;
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                nextWaveNeedsDispatch = !IsWaveComplete(dispatchPosition, nextDispatchWaveMGroupCount);
+                nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
             }
         }
 
@@ -267,7 +260,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                                                              countWorkspace_, dispatchPosition.expertIdx);
                     AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, waveMGroupTarget_,
                                                                   nextDispatchWaveMGroupCount, dispatchPosition);
-                    nextWaveNeedsDispatch = !IsWaveComplete(dispatchPosition, nextDispatchWaveMGroupCount);
+                    nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
                 }
             }
 
@@ -284,7 +277,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                                                sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
                 }
                 waveEndPosition = gmm1Position;
-                currentWaveNeedsGmm1 = !IsWaveComplete(gmm1Position, currentWaveMGroupCount);
+                currentWaveNeedsGmm1 = IsPositionWithinWave(gmm1Position, currentWaveMGroupCount);
             }
         }
         // 当前 Wave 完成后立即消费，使其 GMM2/Combine 与下一 Wave 的输入预取重叠。
@@ -294,7 +287,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         for (uint32_t expertIdx = waveBeginPosition.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
             uint32_t sliceTokenStartIndexInExpert =
                 expertIdx == waveBeginPosition.expertIdx ? waveBeginPosition.tokenIndexInExpert : 0U;
-            // Wave 从专家中间开始时，复用上一 Wave 已准备的 GMM2 专家状态。
+            // Wave 从专家起点开始时，准备该专家的 GMM2 状态。
             if (sliceTokenStartIndexInExpert == 0U) {
                 PrepareGmmExpertState<false>(gmm2State, expertIdx);
             }
