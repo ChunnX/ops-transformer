@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import gc
 import logging
 import math
 import os
@@ -995,6 +996,8 @@ def _call_npu_fa_op(data_dict):
     )
     main_kwargs.update(_get_npu_fa_kwargs())
     npu_attn_out, npu_lse = quant_flash_attn(**main_kwargs)
+    gc.collect()
+    torch.npu.empty_cache()
     torch.npu.synchronize()
     return npu_attn_out, npu_lse
 

@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import gc
 import logging
 import os
 import sys
@@ -130,8 +131,6 @@ def npu_qfa_mxfp4(
     **kwargs,
 ):
 
-    torch_npu.npu.set_device(int(device_id))
-
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
@@ -170,7 +169,7 @@ def npu_qfa_mxfp4(
             "ENABLE_MASK": enable_mask,
             "ENABLE_LSE": enable_lse,
             "INNER_PRECISE": inner_precise,
-            "DEVICE_ID": device_id,
+            "DEVICE_ID": torch.npu.current_device(),
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,
             "DATA_RANGE_Q": data_range_q,
@@ -238,6 +237,12 @@ def npu_qfa_mxfp4(
         atten_out, lse_out = golden_mod.npu_mxfp4_fa(data_dict)
     except Exception as e:
         logger.error("[WRAPPER] NPU 调用失败: %s", str(e))
+        torch.npu.synchronize()
+        gc.collect()
+        torch.npu.empty_cache()
         raise
+
+    gc.collect()
+    torch.npu.empty_cache()
 
     return atten_out, lse_out
