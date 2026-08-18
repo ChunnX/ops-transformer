@@ -42,23 +42,23 @@
   $$
 
   $$
-  score[t] = \frac{\sum_{d=0}^{D-1}p[t,d] \times effectiveQuery[d]}{r[t]}
+  score[t] = \frac{\sum_{d=0}^{D-1}p[t,d] \times pseudoQuery[d]}{r[t]}
   $$
 
   $$
-  m[t] = \max(interMax[t], score[t])
+  m[t] = \max(logitMax[t], score[t])
   $$
 
   $$
-  alpha[t] = \exp(interMax[t] - m[t]), \qquad beta[t] = \exp(score[t] - m[t])
+  alpha[t] = \exp(logitMax[t] - m[t]), \qquad beta[t] = \exp(score[t] - m[t])
   $$
 
   $$
-  ell[t] = interExpSum[t] \times alpha[t] + beta[t]
+  ell[t] = expSum[t] \times alpha[t] + beta[t]
   $$
 
   $$
-  numerator[t,d] = interNumerator[t,d] \times alpha[t] + p[t,d] \times beta[t]
+  updatedNumerator[t,d] = numerator[t,d] \times alpha[t] + p[t,d] \times beta[t]
   $$
 
   $$
@@ -66,7 +66,7 @@
   $$
 
   $$
-  h[t,d] = \operatorname{BF16}\left(\frac{numerator[t,d]}{ell[t]}\right)
+  h[t,d] = \operatorname{BF16}\left(\frac{updatedNumerator[t,d]}{ell[t]}\right)
   $$
 
 ## 函数原型
@@ -79,10 +79,10 @@
 aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
     aclTensor       *partialBlock,
     const aclTensor *delta,
-    const aclTensor *interNumerator,
-    const aclTensor *interMax,
-    const aclTensor *interExpSum,
-    const aclTensor *effectiveQuery,
+    const aclTensor *pseudoQuery,
+    const aclTensor *numerator,
+    const aclTensor *logitMax,
+    const aclTensor *expSum,
     float            eps,
     aclTensor       *h,
     uint64_t        *workspaceSize,
@@ -105,10 +105,10 @@ aclnnStatus aclnnBlockAttnResUpdate(
   | --- | --- | --- | --- | --- | --- | --- |
   | `partialBlock`（`aclTensor *`） | 输入/输出 | 当前已累计的 partial block。计算结果原地写回该 Tensor。必须连续，`D` 必须在 `[1, 8192]` 内。 | FLOAT | ND | `[T, D]` | × |
   | `delta`（`const aclTensor *`） | 输入 | 本次需要累加的 partial 增量。必须连续，shape 必须与 `partialBlock` 一致。 | BFLOAT16 | ND | `[T, D]` | × |
-  | `interNumerator`（`const aclTensor *`） | 输入 | Phase 1 输出的历史 online softmax 加权和。必须连续，shape 必须与 `partialBlock` 一致。 | FLOAT | ND | `[T, D]` | × |
-  | `interMax`（`const aclTensor *`） | 输入 | Phase 1 输出的历史最大 logit。必须连续，长度必须等于 `T`。 | FLOAT | ND | `[T]` | × |
-  | `interExpSum`（`const aclTensor *`） | 输入 | Phase 1 输出的历史 softmax 分母累积值。必须连续，长度必须等于 `T`。 | FLOAT | ND | `[T]` | × |
-  | `effectiveQuery`（`const aclTensor *`） | 输入 | 算子外部预计算的有效 query。必须连续，长度必须等于 `D`。 | FLOAT | ND | `[D]` | × |
+  | `pseudoQuery`（`const aclTensor *`） | 输入 | 算子外部预计算的伪 query。必须连续，长度必须等于 `D`。 | FLOAT | ND | `[D]` | × |
+  | `numerator`（`const aclTensor *`） | 输入 | Phase 1 输出的历史 online softmax 加权和。必须连续，shape 必须与 `partialBlock` 一致。 | FLOAT | ND | `[T, D]` | × |
+  | `logitMax`（`const aclTensor *`） | 输入 | Phase 1 输出的历史最大 logit。必须连续，长度必须等于 `T`。 | FLOAT | ND | `[T]` | × |
+  | `expSum`（`const aclTensor *`） | 输入 | Phase 1 输出的历史 softmax 分母累积值。必须连续，长度必须等于 `T`。 | FLOAT | ND | `[T]` | × |
   | `eps`（`float`） | 输入 | RMSNorm 数值稳定项。C++ 类型为 `float`（FP32），必须为有限正数。 | - | - | - | - |
   | `h`（`aclTensor *`） | 输出 | 当前层 BlockAttnRes 输出。必须连续，shape 必须与 `partialBlock` 一致。 | BFLOAT16 | ND | `[T, D]` | × |
   | `workspaceSize`（`uint64_t *`） | 输出 | 返回 Device 侧需要申请的 workspace 大小。 | - | - | - | - |
@@ -129,7 +129,7 @@ aclnnStatus aclnnBlockAttnResUpdate(
 
   | 返回码 | 错误码 | 描述 |
   | --- | --- | --- |
-  | ACLNN_ERR_PARAM_NULLPTR | 161001 | `partialBlock`、`delta`、`interNumerator`、`interMax`、`interExpSum`、`effectiveQuery`、`h`、`workspaceSize` 或 `executor` 为空。 |
+  | ACLNN_ERR_PARAM_NULLPTR | 161001 | `partialBlock`、`delta`、`pseudoQuery`、`numerator`、`logitMax`、`expSum`、`h`、`workspaceSize` 或 `executor` 为空。 |
   | ACLNN_ERR_PARAM_INVALID | 161002 | 输入或输出的 dtype、ND format、rank 或 shape 关系不满足约束。 |
   | ACLNN_ERR_PARAM_INVALID | 161002 | `T <= 0`，或者 `D` 不在 `[1, 8192]` 范围内。 |
   | ACLNN_ERR_PARAM_INVALID | 161002 | 任一 Tensor 输入或输出为非连续 Tensor。 |
@@ -155,10 +155,10 @@ aclnnStatus aclnnBlockAttnResUpdate(
 
 - 仅支持 ND 数据格式。
 - 所有 Tensor 输入和输出必须连续。
-- `partialBlock`、`delta`、`interNumerator` 和 `h` 的 shape 必须均为 `[T, D]`。
-- `interMax` 和 `interExpSum` 的 shape 必须为 `[T]`；`effectiveQuery` 的 shape 必须为 `[D]`。
+- `partialBlock`、`delta`、`numerator` 和 `h` 的 shape 必须均为 `[T, D]`。
+- `logitMax` 和 `expSum` 的 shape 必须为 `[T]`；`pseudoQuery` 的 shape 必须为 `[D]`。
 - `T > 0`，`1 <= D <= 8192`，不支持空 Tensor。
-- `partialBlock`、`interNumerator`、`interMax`、`interExpSum`、`effectiveQuery` 为 FLOAT；`delta` 和 `h` 为 BFLOAT16。
+- `partialBlock`、`pseudoQuery`、`numerator`、`logitMax`、`expSum` 为 FLOAT；`delta` 和 `h` 为 BFLOAT16。
 - `eps` 必须为有限正数。图原型的默认值为 `1e-6F`，ACLNN C 接口仍要求调用方显式传入。
 - `partialBlock` 为原地更新参数。执行过程中输入槽和第一个输出槽使用相同的 Tensor/GM 地址。
 
