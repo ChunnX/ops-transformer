@@ -22,15 +22,27 @@ const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor>
+FlashAttnGrad(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
+              const at::Tensor &doTensor, const at::Tensor &attnOut, const at::Tensor &softmaxLse,
+              const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
+              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
+              const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &attnMask,
+              const c10::optional<at::Tensor> &metadata,
+              double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
+              int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+              std::string layoutQ, std::string layoutKv, std::string layoutOut);
+
 at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
                              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
                              int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize,
                              int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode, int64_t winLeft,
                              int64_t winRight, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                             const at::Tensor &output)
+                             bool isGradEnabled, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnFlashAttnMetadata, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, output);
+              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, isGradEnabled,
+              output);
     return output;
 }
 
@@ -102,5 +114,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("flash_attn", &FlashAttn, "flash_attn");
     m.def("flash_attn_metadata", &FlashAttnMetadata, "flash_attn_metadata");
+    m.def("flash_attn_grad", &op_api::FlashAttnGrad, "flash_attn_grad");
 }
 } // namespace op_api
