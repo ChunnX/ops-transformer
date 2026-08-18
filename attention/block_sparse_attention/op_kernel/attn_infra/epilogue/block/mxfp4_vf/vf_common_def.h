@@ -11,7 +11,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_mxfp4_attenout_dn.h
+ * \file vf_common_def.h
  * \brief
  */
 

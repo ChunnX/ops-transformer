@@ -20,9 +20,9 @@
 #include "../../../tla/tensor.hpp"
 #include "../../../tla/layout.hpp"
 #include "block_epilogue_arch35_utils.hpp"
-#include "mxfp4_vf/vf_computeScale_dn_mxfp4.h"
-#include "mxfp4_vf/vf_onlyUpdateScale_dn_mxfp4.h"
-#include "mxfp4_vf/vf_computeScale_dn_mxfp4_qs64.h"
+#include "mxfp4_vf/vf_compute_pscale_dn_mxfp4.h"
+#include "mxfp4_vf/vf_only_update_pscale_dn_mxfp4.h"
+#include "mxfp4_vf/vf_compute_pscale_dn_mxfp4_qs64.h"
 
 namespace NpuArch::Epilogue::Block {
 

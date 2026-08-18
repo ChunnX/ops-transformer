@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_mxfp4_attenout_dn.h
+ * \file vf_rescale_o_dn_mxfp4.h
  * \brief
  */
 
-#ifndef UPDATESCALE_DN_MXFP4_H_
-#define UPDATESCALE_DN_MXFP4_H_
+#ifndef VF_RESCALE_O_DN_MXFP4_H_
+#define VF_RESCALE_O_DN_MXFP4_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -105,4 +105,4 @@ __aicore__ inline void ProcessUpdateCallVF(const LocalTensor<float> &updateResUb
 }
 
 }  // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif  // UPDATESCALE_DN_MXFP4_H_
+#endif  // VF_RESCALE_O_DN_MXFP4_H_
