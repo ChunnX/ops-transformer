@@ -17,8 +17,8 @@
 
 #include "util_regbase.h"
 #include "kv_quant_sparse_attn_sharedkv_common_arch35.h"
-#include "common/buffers_policy.h"
-#include "common/buffer_manager.h"
+#include "common/buffers_policy_exp_kv_quant_sparse.h"
+#include "common/buffer_manager_exp_kv_quant_sparse.h"
 #include "common/buffer.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"

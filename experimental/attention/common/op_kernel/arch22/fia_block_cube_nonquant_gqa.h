@@ -18,7 +18,7 @@
 #include "../array.h"
 #include "../axis.h"
 #include "../fia_public_define.h"
-#include "../vector_common.h"
+#include "../vector_common_exp_attn_common.h"
 #include "../memory_copy.h"
 
 /**

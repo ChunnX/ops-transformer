@@ -27,10 +27,10 @@
 
 // 线上编包
 #include "../matmul.h"
-#include "../FixpipeOut.h"
-#include "../CopyInL1.h"
+#include "../FixpipeOut_exp_attn_common.h"
+#include "../CopyInL1_exp_attn_common.h"
 
-#include "pse.h"
+#include "pse_exp_attn_common.h"
 #include "infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"

@@ -16,7 +16,7 @@
 #include <cstring>
 #include "kernel_operator.h"
 #include "./kernel/quant_all_reduce_tiling_data.h"
-#include "./kernel/quant_all_reduce_mte_one_shot.h"
+#include "kernel/quant_all_reduce_mte_one_shot_exp_qar.h"
 
 using namespace AscendC;
 using namespace QuantAllReduceImpl;

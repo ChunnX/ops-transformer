@@ -18,16 +18,16 @@
 #ifndef MEMMORY_COPY_NEW_H
 #define MEMMORY_COPY_NEW_H
 #include "fia_public_define.h"
-#include "memcopy/gm_layout.h"
-#include "memcopy/parser.h"
-#include "memcopy/offset_calculator_v2.h"
+#include "memcopy/gm_layout_exp_attn_common.h"
+#include "memcopy/parser_exp_attn_common.h"
+#include "memcopy/offset_calculator_v2_exp_attn_common.h"
 #include "memcopy/fa_gm_tensor.h"
 #include "memcopy/fa_l1_tensor.h"
 #include "memcopy/fa_ub_tensor.h"
 #include "memcopy/gm_coord.h"
-#include "memcopy/copy_gm_to_l1.h"
-#include "memcopy/copy_gm_to_ub.h"
-#include "memcopy/copy_ub_to_gm.h"
+#include "memcopy/copy_gm_to_l1_exp_attn_common.h"
+#include "memcopy/copy_gm_to_ub_exp_attn_common.h"
+#include "memcopy/copy_ub_to_gm_exp_attn_common.h"
 
 template <FIA_LAYOUT LAYOUT_T>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode() {

@@ -17,8 +17,8 @@
 #include "torch_npu/csrc/framework/OpCommand.h"
 
 #include "tiling/platform/platform_ascendc.h"
-#include "op_kernel/CustVec.h"
-#include "op_kernel/CustCube.h"
+#include "op_kernel/CustVec_mamba2_chunk_state_passing.h"
+#include "op_kernel/CustCube_mamba2_chunk_state_passing.h"
 #include "kernel_operator.h"
 
 namespace npu_ops_transformer_ext {

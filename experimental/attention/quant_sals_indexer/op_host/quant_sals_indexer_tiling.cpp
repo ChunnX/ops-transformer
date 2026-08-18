@@ -15,7 +15,7 @@
 
 #include "quant_sals_indexer_tiling.h"
 #include "../op_kernel/quant_sals_indexer_template_tiling_key.h"
-#include "split_core.h"
+#include "split_core_exp_sals.h"
 
 using namespace ge;
 using namespace AscendC;

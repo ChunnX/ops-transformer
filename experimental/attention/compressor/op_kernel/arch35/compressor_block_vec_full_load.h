@@ -21,7 +21,7 @@
 #include "vf/vf_softmax.h"
 #include "vf/vf_add.h"
 #include "vf/vf_mul.h"
-#include "vf/vf_rms_norm.h"
+#include "vf/vf_rms_norm_exp_compressor.h"
 #include "vf/vf_rope.h"
 #include <cstdint>
 
