@@ -662,6 +662,30 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         uint32_t waveEndTokenIndexInExpert = GetWaveEndRowOffsetInExpert(
             expertRowCount, gmm1Position.tokenIndexInExpert, remainingMGroupCount, GMM1_TILE_M);
         uint32_t waveRowCount = waveEndTokenIndexInExpert - gmm1Position.tokenIndexInExpert;
+        uint32_t problemMGroupCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
+        bool ownsGmm1Tile = true;
+        if constexpr (g_coreType == AIC) {
+            uint32_t problemTileCount = problemMGroupCount * gmm1TilesPerMGroup_;
+            // tile 数量足以覆盖所有 AIC 时，每个核必然有任务，保持原执行路径。
+            if (problemTileCount < blockNum_) {
+                uint32_t firstOwnedTile = (blockIdx_ < runtimeState.startBlockIdx ? blockIdx_ + blockNum_ : blockIdx_) -
+                                          runtimeState.startBlockIdx;
+                ownsGmm1Tile = firstOwnedTile < problemTileCount;
+                if (!ownsGmm1Tile) {
+                    // 与底层 no-owner 分支保持相同 rolling 推进，但跳过 problem/address/scheduler 构造。
+                    runtimeState.startBlockIdx = (runtimeState.startBlockIdx + problemTileCount) % blockNum_;
+                }
+            }
+        }
+        if (!ownsGmm1Tile) {
+            processedMGroupCount += problemMGroupCount;
+            gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
+            if (gmm1Position.tokenIndexInExpert >= expertRowCount) {
+                ++gmm1Position.expertIdx;
+                gmm1Position.tokenIndexInExpert = 0U;
+            }
+            continue;
+        }
         ProblemShape gmm1WaveProblemShape = gmm1ExpertState.problemShape;
         Get<M_VALUE>(gmm1WaveProblemShape) = waveEndTokenIndexInExpert - gmm1Position.tokenIndexInExpert;
         UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType, QuantScaleOutType,
@@ -682,7 +706,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
             gmmExecutionConfig_, params_, epilogueOp_, gmm1AddrInfo, gmm1WaveProblemShape, waveTokenStartIndex,
             runtimeState, gmm1Position.expertIdx, nullptr, isWholeExpert);
 
-        processedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
+        processedMGroupCount += problemMGroupCount;
         gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         if (gmm1Position.tokenIndexInExpert >= expertRowCount) {
             ++gmm1Position.expertIdx;
