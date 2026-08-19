@@ -17,10 +17,10 @@
 #define VF_TOP_K_H
 
 #include "kernel_operator.h"
-#if __has_include("../../../lightning_indexer_v2/arch35/common/li_v2_topk_gather_b32_common.h")
-#include "../../../lightning_indexer_v2/arch35/common/li_v2_topk_gather_b32_common.h"
+#if __has_include("../../../lightning_indexer_v2/arch35/vf/common/li_v2_topk_gather_b32_common.h")
+#include "../../../lightning_indexer_v2/arch35/vf/common/li_v2_topk_gather_b32_common.h"
 #else
-#include "../../../../lightning_indexer_v2/op_kernel/arch35/common/li_v2_topk_gather_b32_common.h"
+#include "../../../../lightning_indexer_v2/op_kernel/arch35/vf/common/li_v2_topk_gather_b32_common.h"
 #endif
 
 namespace topkb32 {

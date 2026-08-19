@@ -17,7 +17,7 @@
 #define VF_TOPK_GATHER_V2_H
 
 #include "kernel_operator.h"
-#include "../common/li_v2_topk_gather_b32_common.h"
+#include "common/li_v2_topk_gather_b32_common.h"
 
 namespace liV2Topkb32gather {
 using liTopkB32GatherCommon::FindKthVFImpl;
