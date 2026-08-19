@@ -128,7 +128,8 @@ def _build_fallback_data_dict(
     # 可选 tensor: 透传 block_table; 按 golden 全局变量生成 p_scale/sinks/attn_mask
     # 这样 CSV 配的异常 shape (如 p_scale_shape=[2,3]) 也能传到算子被 checker 拦截
     block_table_t = block_table if block_table is not None else golden_mod._gen_opt_tensor(
-        golden_mod.BLOCK_TABLE_SHAPE, golden_mod.BLOCK_TABLE_DTYPE or "int32", None, seed=100
+        golden_mod.BLOCK_TABLE_SHAPE, golden_mod.BLOCK_TABLE_DTYPE or "int32",
+        golden_mod.BLOCK_TABLE_DATARANGE, seed=100,
     )
     if golden_mod.P_SCALE_VALUE is not None:
         p_scale_dt = golden_mod.get_dtype(golden_mod.P_SCALE_DTYPE) or torch.float32
@@ -339,6 +340,7 @@ def npu_qfa_mxfp4(
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     if _SKIP_GENERATE:
         _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
 <<<<<<< HEAD
@@ -387,6 +389,12 @@ def npu_qfa_mxfp4(
             "[WRAPPER] generate_data 失败: %s, 回退到 CSV tensor 透传给 NPU 让 op_host 拦截",
             str(e),
 =======
+=======
+    # 表格全量透传列 (CSV attrs 里的 extra keys 走 kwargs) 注入 golden,
+    # QFA_PASS_THROUGH=1 时按表格值构造算子入参
+    golden_mod._apply_kwargs_globals(kwargs)
+
+>>>>>>> 9c3ed3514... 表格全量列透传: gen_csv 读取全部表头列, PASS_THROUGH 按表格构造算子入参
     # 数据准备分三种模式:
     #   1) QFA_PASS_THROUGH=1: 完全跳过 generate_data, CSV tensor 原样透传给 NPU,
     #      由 op_host 拦截非法输入. 用于异常用例 (s=0 / kv shape 不一致 / D 不支持 /
