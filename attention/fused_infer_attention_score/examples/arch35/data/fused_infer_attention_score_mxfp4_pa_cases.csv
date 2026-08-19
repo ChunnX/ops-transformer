@@ -86,3 +86,8 @@ bbh_fp16_symmetric_single_page_b1n1,bbh,fp16,0,1,1,1,128,128,3,127,2
 nz_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,nz,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine
 bnbd_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,bnbd,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine
 bbh_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,bbh,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine
+# Exact reproduction of the failing real-NPU PTA MHA case.  These three rows
+# differ only in physical KV/parameter layout.
+nz_d256_bf16_asym_mha_qh4_kvh4_s1x1_pta_affine,nz,bf16,1,2,4,1,256,128,10,257;129,9;2;5;1;8;3,32749,4,pta_affine
+bnbd_d256_bf16_asym_mha_qh4_kvh4_s1x1_pta_affine,bnbd,bf16,1,2,4,1,256,128,10,257;129,9;2;5;1;8;3,32749,4,pta_affine
+bbh_d256_bf16_asym_mha_qh4_kvh4_s1x1_pta_affine,bbh,bf16,1,2,4,1,256,128,10,257;129,9;2;5;1;8;3,32749,4,pta_affine

@@ -228,6 +228,7 @@ protected:
     GlobalTensor<KEY_SCALE_GM_T> keyAntiqScaleGm;
     GlobalTensor<VALUE_ANTIQ_PARAMS_T> valueAntiquantOffsetGm;
     GlobalTensor<VALUE_SCALE_GM_T> valueAntiqScaleGm;
+    GlobalTensor<Q_T> antiquantDebugGm;
     bool antiqOffsetExistFlag;
     bool isBeforeHalf;
     AntiquantTaskParamBaseAPI taskParam;
@@ -288,6 +289,16 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitVecBloc
         this->valueSharedPrefixGm.SetGlobalBuffer((__gm__ KV_T *)valueSharedPrefix);
     }
     this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+#ifdef ENABLE_FIA_ANTIQUANT_DIRECT_DUMP
+    // The debug example over-allocates attentionOut by two [B,N,D/16,S2,16]
+    // tensors.  Keep the public tensor shape unchanged and address the extra
+    // storage immediately after the normal output payload.
+    const uint64_t normalOutputElements =
+        static_cast<uint64_t>(this->tilingData->inputParamsRegbase.bSize) * constInfo.n2G * constInfo.s1Size *
+        constInfo.dSizeV;
+    antiquantDebugGm.SetGlobalBuffer(
+        (__gm__ Q_T *)(attentionOut + normalOutputElements * sizeof(OUTPUT_T)));
+#endif
     if constexpr (POST_QUANT) {
         this->attentionOutInitGm.SetGlobalBuffer((__gm__ half *)attentionOut);
     }
@@ -603,8 +614,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     }
     keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm, keyAntiquantOffsetGm, blockTableGm,
                                          kvInputQue, kvOutputQue, keyAntiqScaleInputQue, keyAntiqOffsetInputQue,
-                                         kvAntiqMxScaleRes, kvOffsetBuf, taskParam, subTaskId, isBeforeHalf,
-                                         runInfo.s2RealSize);
+                                         kvAntiqMxScaleRes, kvOffsetBuf, antiquantDebugGm, 0, taskParam, subTaskId,
+                                         isBeforeHalf, runInfo.s2RealSize);
 }
 
 
@@ -956,8 +967,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     }
     valueAntiquantProcessor.ProcessBaseAPI(outBufAntiValue, tempValueGm, valueAntiqScaleGm, valueAntiquantOffsetGm,
                                            blockTableGm, kvInputQue, kvOutputQue, valueAntiqScaleInputQue,
-                                           valueAntiqOffsetInputQue, kvAntiqMxScaleRes, kvOffsetBuf, taskParam,
-                                           subTaskId, isBeforeHalf, runInfo.s2RealSize);
+                                           valueAntiqOffsetInputQue, kvAntiqMxScaleRes, kvOffsetBuf, antiquantDebugGm,
+                                           static_cast<uint64_t>(taskParam.batchSize) * taskParam.kvHeadNum *
+                                               taskParam.seqSize * taskParam.headDimAlignBlock,
+                                           taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT

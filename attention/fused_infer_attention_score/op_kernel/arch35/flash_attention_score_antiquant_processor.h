@@ -20,6 +20,11 @@
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h"
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w8.h"
 
+// DEBUG ONLY: writes the post-antiquant K/V tiles into storage appended after
+// attentionOut.  The matching numerical example deliberately over-allocates
+// attentionOut and decodes the dump.  Never ship a kernel with this enabled.
+#define ENABLE_FIA_ANTIQUANT_DIRECT_DUMP 1
+
 using namespace AscendC;
 using namespace fa_base_matmul;
 
@@ -124,7 +129,7 @@ public:
                    GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
                    TQue<QuePosition::VECOUT, 1> &kvOutputQue, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
                    TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
-                   TBuf<> kvOffsetBuf,
+                   TBuf<> kvOffsetBuf, GlobalTensor<Q_T> &antiquantDebugGm, uint64_t antiquantDebugBase,
                    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
 
     __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm, uint64_t offset,
@@ -174,7 +179,14 @@ public:
                                             TQue<QuePosition::VECOUT, 1> &kvOutputQue, LocalTensor<Q_T> outScm,
                                             GlobalTensor<KV_T> &kvGm, GlobalTensor<int32_t> &blockTableGm,
                                             uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam,
-                                            int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
+                                            int32_t taskId, bool isBeforeHalf, int32_t s2RealSize,
+                                            GlobalTensor<Q_T> &antiquantDebugGm, uint64_t antiquantDebugBase);
+#ifdef ENABLE_FIA_ANTIQUANT_DIRECT_DUMP
+    __aicore__ inline void DumpAntiquantResult(GlobalTensor<Q_T> &antiquantDebugGm,
+                                               LocalTensor<Q_T> &antiquantResUb, uint32_t copyLoopIdx,
+                                               uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam,
+                                               uint64_t antiquantDebugBase);
+#endif
     __aicore__ inline void CopyKV(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
                                   uint32_t rowCnt, uint32_t headDim, uint32_t kvHeadNum, uint32_t paKvShapeType);
     __aicore__ inline void CopyKVPaNz(LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset,
@@ -214,8 +226,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm, GlobalTensor<int32_t> &blockTableGm,
     TQue<QuePosition::VECIN, 1> &kvInputQue, TQue<QuePosition::VECOUT, 1> &kvOutputQue,
     TQue<QuePosition::VECIN, 1> &antiqScaleInputQue, TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
-    TBuf<> kvAntiqMxScaleRes, TBuf<> kvOffsetBuf, const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId,
-    bool isBeforeHalf, int32_t s2RealSize)
+    TBuf<> kvAntiqMxScaleRes, TBuf<> kvOffsetBuf, GlobalTensor<Q_T> &antiquantDebugGm, uint64_t antiquantDebugBase,
+    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize)
 {
     if (taskParam.isLoadAntiqParam) {
         if constexpr (KVFP4) {
@@ -253,7 +265,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
             actCopyS = tailCopyS;
         }
         AntiquantBaseAPI(i, kvInputQue, kvOutputQue, scmTensor, kvGm, blockTableGm, actCopyS, taskParam, taskId,
-                         isBeforeHalf, s2RealSize);
+                         isBeforeHalf, s2RealSize, antiquantDebugGm, antiquantDebugBase);
     }
     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(VC_L1_EVENT[taskId % 2]);
     if (taskParam.isFreeAntiqParam) {
@@ -821,7 +833,8 @@ template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::AntiquantBaseAPI(
     uint32_t copyLoopIdx, TQue<QuePosition::VECIN, 1> &kvInputQue, TQue<QuePosition::VECOUT, 1> &kvOutputQue,
     LocalTensor<Q_T> outScm, GlobalTensor<KV_T> &kvGm, GlobalTensor<int32_t> &blockTableGm, uint32_t dealRowCount,
-    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize)
+    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize,
+    GlobalTensor<Q_T> &antiquantDebugGm, uint64_t antiquantDebugBase)
 {
     LocalTensor<KV_T> tmpUb = kvInputQue.template AllocTensor<KV_T>();
 
@@ -842,9 +855,42 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
     kvOutputQue.template EnQue(outUb);
     kvOutputQue.DeQue<Q_T>();
+#ifdef ENABLE_FIA_ANTIQUANT_DIRECT_DUMP
+    if constexpr (KVFP4 && PAGE_ATTENTION) {
+        DumpAntiquantResult(antiquantDebugGm, outUb, copyLoopIdx, dealRowCount, taskParam, antiquantDebugBase);
+    }
+#endif
     CopyAntiquantResToL1BaseAPI(outScm, outUb, copyLoopIdx, dealRowCount, taskParam, taskId, isBeforeHalf, s2RealSize);
     kvOutputQue.FreeTensor(outUb);
 }
+
+#ifdef ENABLE_FIA_ANTIQUANT_DIRECT_DUMP
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::DumpAntiquantResult(
+    GlobalTensor<Q_T> &antiquantDebugGm, LocalTensor<Q_T> &antiquantResUb, uint32_t copyLoopIdx,
+    uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam, uint64_t antiquantDebugBase)
+{
+    // Store every route in one canonical NZ-style debug layout:
+    // [B, N, D/16, S2, 16].  DataCopy blockLen/srcStride use 32-byte block
+    // units, so one S2 token contributes one 16-element Q_T block.
+    constexpr uint32_t debugD0 = 16U;
+    const uint32_t dBlockCount = taskParam.headDimAlignBlock / debugD0;
+    const uint64_t bnIndex = taskParam.bIdx * taskParam.kvHeadNum + taskParam.n2Idx;
+    const uint64_t sequenceStart =
+        taskParam.s2BatchOffset + static_cast<uint64_t>(copyLoopIdx) * taskParam.copySplitS;
+    const uint64_t tensorStride =
+        static_cast<uint64_t>(dBlockCount) * taskParam.seqSize * debugD0;
+    const uint64_t dstOffset = antiquantDebugBase + bnIndex * tensorStride + sequenceStart * debugD0;
+
+    DataCopyParams dumpParams;
+    dumpParams.blockCount = dBlockCount;
+    dumpParams.blockLen = dealRowCount;
+    dumpParams.srcStride = taskParam.isKvCacheNz ? 0 : 1;
+    dumpParams.dstStride = taskParam.seqSize - dealRowCount;
+    DataCopy(antiquantDebugGm[dstOffset], antiquantResUb, dumpParams);
+}
+#endif
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void

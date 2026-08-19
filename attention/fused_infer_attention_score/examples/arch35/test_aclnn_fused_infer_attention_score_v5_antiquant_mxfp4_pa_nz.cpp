@@ -807,6 +807,13 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
     }
     std::vector<uint16_t> output(static_cast<size_t>(ShapeSize(queryShape)), EncodeQ(0.0F, config.qType));
     std::vector<uint16_t> expectedOutput(output.size(), EncodeQ(0.0F, config.qType));
+    // The debug kernel writes K and V immediately after the normal output.
+    // Each dump uses the common [B,N,D/16,S2,16] layout, where S2 is the
+    // logical block-table capacity rather than the number of physical pages.
+    const int64_t debugS2 = blocksPerBatch * config.blockSize;
+    const int64_t debugTensorElements = config.b * config.n * debugS2 * config.d;
+    std::vector<uint16_t> outputStorage(
+        output.size() + static_cast<size_t>(2 * debugTensorElements), static_cast<uint16_t>(0xA55A));
     std::vector<uint8_t> canonicalKey(static_cast<size_t>(config.totalBlockNum * config.n * config.blockSize * config.d));
     std::vector<uint8_t> canonicalValue(canonicalKey.size());
     std::vector<uint8_t> key(static_cast<size_t>(ShapeSize(kvShape) / 2), 0);
@@ -959,7 +966,9 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
                                                                       &valueOffsetDevice, &valueOffsetTensor);
     if (ret == ACL_SUCCESS) ret = CreateBlockTableTensor(config.blockTable, blockTableShape, &blockTableDevice,
                                                           &blockTableTensor);
-    if (ret == ACL_SUCCESS) ret = CreateTensor(output, queryShape, ToAclType(config.qType), &outputDevice, &outputTensor);
+    if (ret == ACL_SUCCESS) {
+        ret = CreateTensor(outputStorage, queryShape, ToAclType(config.qType), &outputDevice, &outputTensor);
+    }
     if (ret != ACL_SUCCESS) {
         std::printf("[MXFP4_PA][%s] create input tensor failed: %d\n", config.name.c_str(), ret);
         cleanup();
@@ -1014,13 +1023,83 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
         cleanup();
         return false;
     }
-    ret = aclrtMemcpy(output.data(), output.size() * sizeof(uint16_t), outputDevice,
-                      output.size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(outputStorage.data(), outputStorage.size() * sizeof(uint16_t), outputDevice,
+                      outputStorage.size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         std::printf("[MXFP4_PA][%s] output D2H copy failed: %d\n", config.name.c_str(), ret);
         cleanup();
         return false;
     }
+    std::copy_n(outputStorage.begin(), output.size(), output.begin());
+
+    const auto compareAntiquantDump = [&](const char *tensorName, bool isValue) {
+        int64_t mismatch = 0;
+        int64_t compared = 0;
+        int64_t firstB = -1;
+        int64_t firstN = -1;
+        int64_t firstS2 = -1;
+        int64_t firstD = -1;
+        uint16_t firstActual = 0;
+        uint16_t firstExpected = 0;
+        const size_t normalOutputElements = output.size();
+        const size_t tensorBase = normalOutputElements +
+            static_cast<size_t>(isValue ? debugTensorElements : 0);
+        for (int64_t b = 0; b < config.b; ++b) {
+            const int64_t validS2 = config.actualKvLens[static_cast<size_t>(b)];
+            for (int64_t n = 0; n < config.n; ++n) {
+                for (int64_t s2 = 0; s2 < validS2; ++s2) {
+                    const int64_t physicalPage =
+                        config.blockTable[static_cast<size_t>(b * blocksPerBatch + s2 / config.blockSize)];
+                    const int64_t token = s2 % config.blockSize;
+                    for (int64_t d = 0; d < config.d; ++d) {
+                        const int64_t canonicalIndex = CanonicalIndex(config, physicalPage, n, token, d);
+                        const int64_t paramIndex = ParamIndex(config, physicalPage, n, d / GROUP_SIZE, token);
+                        const uint8_t fp4Code = isValue
+                            ? canonicalValue[static_cast<size_t>(canonicalIndex)]
+                            : canonicalKey[static_cast<size_t>(canonicalIndex)];
+                        const uint8_t scaleCode = isValue
+                            ? valueScale[static_cast<size_t>(paramIndex)]
+                            : keyScale[static_cast<size_t>(paramIndex)];
+                        const uint16_t offsetBits = isValue
+                            ? valueOffset[static_cast<size_t>(paramIndex)]
+                            : keyOffset[static_cast<size_t>(paramIndex)];
+                        const uint16_t expectedBits = EncodeQ(
+                            DequantizeReference(fp4Code, scaleCode, offsetBits, config.withOffset, config.qType),
+                            config.qType);
+                        const int64_t dBlock = d / D0;
+                        const int64_t dInner = d % D0;
+                        const size_t debugIndex = tensorBase + static_cast<size_t>(
+                            (((b * config.n + n) * (config.d / D0) + dBlock) * debugS2 + s2) * D0 + dInner);
+                        const uint16_t actualBits = outputStorage[debugIndex];
+                        ++compared;
+                        if (actualBits != expectedBits) {
+                            ++mismatch;
+                            if (firstB < 0) {
+                                firstB = b;
+                                firstN = n;
+                                firstS2 = s2;
+                                firstD = d;
+                                firstActual = actualBits;
+                                firstExpected = expectedBits;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        std::printf("[MXFP4_DIRECT_DUMP][%s] tensor=%s compared=%ld mismatch=%ld result=%s\n",
+                    config.name.c_str(), tensorName, compared, mismatch, mismatch == 0 ? "EXACT_MATCH" : "DIFFERENT");
+        if (mismatch != 0) {
+            std::printf("[MXFP4_DIRECT_DUMP][%s] tensor=%s first_mismatch b=%ld n=%ld s2=%ld d=%ld "
+                        "device=0x%04x expected=0x%04x device_value=%f expected_value=%f\n",
+                        config.name.c_str(), tensorName, firstB, firstN, firstS2, firstD, firstActual, firstExpected,
+                        DecodeQ(firstActual, config.qType), DecodeQ(firstExpected, config.qType));
+        }
+        return mismatch == 0;
+    };
+    const bool keyDumpOk = compareAntiquantDump("key", false);
+    const bool valueDumpOk = compareAntiquantDump("value", true);
+    const bool antiquantDumpOk = keyDumpOk && valueDumpOk;
 
     float maxError = 0.0F;
     float maxReferenceOutputCastDelta = 0.0F;
@@ -1156,7 +1235,7 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
         }
     }
     cleanup();
-    return runPrecisionPeers ? peersOk : maxError <= strictAbsoluteTolerance;
+    return antiquantDumpOk && (runPrecisionPeers ? peersOk : maxError <= strictAbsoluteTolerance);
 }
 
 } // namespace
