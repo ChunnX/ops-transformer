@@ -172,4 +172,199 @@ public:
     }
 };
 
+// ----------------------------------------------Copy LSE UB To Gm --------------------------------
+enum class SoftmaxLseFormat {
+    BSND, // [B, N2, S1, G]: bN2Offset 起点后, 以 (gIdx * s1Size + s1Idx) 步进, dstStride=(s1Size-1)*sizeof(float)
+    BNSD, // [B, N2, S1, 1]: 以 qActSeqLens 为单元连续拷贝, 越过 g 边界时按 s1Size 跳步
+    TND,  // [T=N2*G*S1, 1]: 以 (s1Idx * n2Size * gSize + gIdx) 步进, dstStride=0
+    TNDtoNT, // TND 输入 -> N-major 输出 [N2*G, T]: 以 (gIdx * t1Size + s1Idx) 步进, dstStride=(t1Size-1)*sizeof(float)
+    NTD, // [B*N2*G, S1, 1]: 以 (s1Idx * n2Size * gSize + gIdx) 步进, dstStride=(gSize*n2Size-1)*sizeof(float)
+};
+
+struct SoftmaxLseDims {
+    uint64_t s1Size = 0;            // BSND / BNSD / NTD: S1 维度大小
+    uint64_t gSize = 0;             // BSND / TND / TNDtoNT / NTD: G 维度大小
+    uint64_t n2Size = 0;            // TND / NTD: N2 维度大小
+    uint64_t t1Size = 0;            // TNDtoNT: 每条 N2*G 行的 T 总长度
+    uint64_t qActSeqLens = 0;       // BNSD: 当前 batch 实际 S1 长度
+    uint64_t s1LeftPaddingSize = 0; // BSND / BNSD: S1 左 padding
+};
+
+// 统一对外接口: 依据 SoftmaxLseFormat 模板参数在内部按 layout 分派拷贝逻辑
+// 参考 CopyAttenOutUbToGm 的模板参数 + if constexpr 分派方式
+template <typename T, SoftmaxLseFormat FORMAT>
+class SoftmaxLseDataImpl {
+public:
+    __aicore__ inline void operator()(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                      uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        if constexpr (FORMAT == SoftmaxLseFormat::BSND) {
+            CopyBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+        } else if constexpr (FORMAT == SoftmaxLseFormat::BNSD) {
+            CopyBNSD(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+        } else if constexpr (FORMAT == SoftmaxLseFormat::TND) {
+            CopyTND(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+        } else if constexpr (FORMAT == SoftmaxLseFormat::TNDtoNT) {
+            CopyTNDtoNT(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+        } else if constexpr (FORMAT == SoftmaxLseFormat::NTD) {
+            CopyNTD(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+        }
+    }
+
+private:
+    // [B, N2, S1, G]: gIdx 外层, s1Idx 内层
+    __aicore__ inline void CopyBSND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                    uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        uint64_t s1Size = dims.s1Size;
+        uint64_t gSize = dims.gSize;
+        uint32_t startS1Idx = mOffset / gSize;
+        uint32_t startGIdx = mOffset % gSize;
+        uint32_t endS1Idx = (mOffset + dealCount - 1) / gSize;
+        uint32_t endGIdx = (mOffset + dealCount - 1) % gSize;
+        uint64_t ubOffset = 0;
+
+        for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+            uint64_t outOffset = bN2Offset + startGIdx * s1Size + s1Idx + dims.s1LeftPaddingSize;
+            uint32_t curDealRowCount = (s1Idx != endS1Idx) ? (gSize - startGIdx) : (endGIdx + 1 - startGIdx);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = curDealRowCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = (s1Size - 1) * sizeof(float);
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+            startGIdx = 0;
+            ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        }
+    }
+
+    // [B, N2, S1, 1]: 以 qActSeqLens 为单元连续拷贝, 越过 g 边界时按 s1Size 跳步
+    __aicore__ inline void CopyBNSD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                    uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        uint64_t qActSeqLens = dims.qActSeqLens;
+        uint64_t s1Size = dims.s1Size;
+        uint64_t gOffset = mOffset / qActSeqLens * s1Size;
+        uint64_t seqOffset = mOffset % qActSeqLens;
+        uint64_t outOffset = bN2Offset + gOffset + seqOffset + dims.s1LeftPaddingSize;
+        uint64_t ubOffset = 0;
+
+        if ((qActSeqLens - seqOffset) >= dealCount) {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = dealCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+            return;
+        }
+        // dealCount > 当前actQs剩余部分，分块搬运: 首块 + 中间块 + 尾块
+        uint64_t headActSeq = qActSeqLens - seqOffset;
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = headActSeq;
+        dataCopyParams.blockLen = sizeof(float);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+        outOffset += s1Size - qActSeqLens + headActSeq;
+        ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        uint64_t pendingCount = dealCount - headActSeq;
+        while (pendingCount > qActSeqLens) {
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], {qActSeqLens, sizeof(float), 0, 0, 0});
+            outOffset += s1Size;
+            ubOffset += qActSeqLens * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+            pendingCount -= qActSeqLens;
+        }
+        if (pendingCount > 0) {
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], {pendingCount, sizeof(float), 0, 0, 0});
+        }
+    }
+
+    // [T=N2*G*S1, 1]: s1Idx 外层, gIdx 内层, dstStride=0
+    __aicore__ inline void CopyTND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                   uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        uint64_t gSize = dims.gSize;
+        uint64_t n2Size = dims.n2Size;
+        uint32_t startS1Idx = mOffset / gSize;
+        uint32_t startGIdx = mOffset % gSize;
+        uint32_t endS1Idx = (mOffset + dealCount - 1) / gSize;
+        uint32_t endGIdx = (mOffset + dealCount - 1) % gSize;
+        uint64_t ubOffset = 0;
+
+        for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+            uint64_t outOffset = bN2Offset + s1Idx * n2Size * gSize + startGIdx;
+            uint32_t curDealRowCount = (s1Idx != endS1Idx) ? (gSize - startGIdx) : (endGIdx + 1 - startGIdx);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = curDealRowCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+            startGIdx = 0;
+            ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        }
+    }
+
+    // TND 输入 -> N-major 输出 [N2*G, T]: gIdx 外层, s1Idx 内层, dstStride=(t1Size-1)*sizeof(float)
+    __aicore__ inline void CopyTNDtoNT(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                       uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        uint64_t gSize = dims.gSize;
+        uint64_t t1Size = dims.t1Size;
+        uint32_t startS1Idx = mOffset / gSize;
+        uint32_t startGIdx = mOffset % gSize;
+        uint32_t endS1Idx = (mOffset + dealCount - 1) / gSize;
+        uint32_t endGIdx = (mOffset + dealCount - 1) % gSize;
+        uint64_t ubOffset = 0;
+
+        for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+            uint64_t outOffset = bN2Offset + startGIdx * t1Size + s1Idx;
+            uint32_t curDealRowCount = (s1Idx != endS1Idx) ? (gSize - startGIdx) : (endGIdx + 1 - startGIdx);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = curDealRowCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = (t1Size - 1) * sizeof(float);
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+            startGIdx = 0;
+            ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        }
+    }
+
+    // [B*N2*G, S1, 1]: s1Idx 内层, gIdx 外层, dstStride=(gSize*n2Size-1)*sizeof(float)
+    __aicore__ inline void CopyNTD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                   uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+    {
+        uint64_t s1Size = dims.s1Size;
+        uint64_t gSize = dims.gSize;
+        uint64_t n2Size = dims.n2Size;
+        uint32_t startS1Idx = mOffset % s1Size;
+        uint32_t startGIdx = mOffset / s1Size;
+        uint32_t endS1Idx = (mOffset + dealCount - 1) % s1Size;
+        uint32_t endGIdx = (mOffset + dealCount - 1) / s1Size;
+        uint64_t ubOffset = 0;
+
+        for (uint32_t gIdx = startGIdx; gIdx <= endGIdx; gIdx++) {
+            uint64_t outOffset = bN2Offset + startS1Idx * n2Size * gSize + gIdx;
+            uint32_t curDealRowCount = (gIdx != endGIdx) ? (s1Size - startS1Idx) : (endS1Idx + 1 - startS1Idx);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = curDealRowCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = (gSize * n2Size - 1) * sizeof(float);
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+            startS1Idx = 0;
+            ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        }
+    }
+};
+
+template <typename T, SoftmaxLseFormat FORMAT>
+__aicore__ inline void DataCopySoftmaxLse(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, uint64_t bN2Offset,
+                                          uint32_t mOffset, uint32_t dealCount, const SoftmaxLseDims &dims)
+{
+    SoftmaxLseDataImpl<T, FORMAT>()(softmaxLseGm, lseSrc, bN2Offset, mOffset, dealCount, dims);
+}
+
 #endif
