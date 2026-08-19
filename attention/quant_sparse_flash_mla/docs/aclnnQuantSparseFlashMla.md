@@ -734,8 +734,8 @@ aclnnStatus aclnnQuantSparseFlashMla(
 #### 公共参数组
 
 - 入参为空的场景处理：
-    - 空tensor指必选输入、某调用场景下必传输入和输出的shape size为0，即有任意轴为0。
-    - 触发空tensor的用例将全部拦截报错。
+  - 空tensor指必选输入、某调用场景下必传输入和输出的shape size为0，即有任意轴为0。
+  - 触发空tensor的用例将全部拦截报错。
 
 - q、oriKvOptional、cmpKvOptional、qDescaleOptional、oriKvDescaleOptional、cmpKvDescaleOptional、attnOutOut校验
 
