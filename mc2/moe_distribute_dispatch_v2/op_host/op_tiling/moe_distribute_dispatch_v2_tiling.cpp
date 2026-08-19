@@ -871,7 +871,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::GetAttrAndSetTilingData(
     std::string &groupEp, std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config)
 {
     OP_TILING_CHECK(CheckAttrPtrNullptr(context, nodeName, groupEp, config) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckCommAttrParams(context, nodeName, groupTp, isSetFullMeshV2, isLayered, config) != ge::GRAPH_SUCCESS,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "params shape"), return ge::GRAPH_FAILED);
@@ -1125,8 +1125,9 @@ static ge::graphStatus CheckXAndExpertIdsTensorShape(const gert::TilingContext *
     OP_TILING_CHECK(
         (expertIdsDim1 <= 0) || (expertIdsDim1 > K_MAX) ||
             (expertIdsDim1 > moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum),
-        OP_LOGE_WITHOUT_REPORT(nodeName, "expertIdShape's dim1(k) should be in ",
-                               "(0, min(%ld, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum = %ld)], "
+        OP_LOGE_WITHOUT_REPORT(nodeName,
+                               "expertIdShape's dim1(k) should be in (0, min(%ld, "
+                               "moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum = %ld)], "
                                "but got expertIdShape's dim1=%ld.",
                                K_MAX, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum, expertIdsDim1),
         return ge::GRAPH_FAILED);
@@ -1137,7 +1138,7 @@ static ge::graphStatus CheckXAndExpertIdsTensorShape(const gert::TilingContext *
         OP_TILING_CHECK((expertScalesDim0 != expertIdsDim0) || (expertScalesDim1 != expertIdsDim1),
                         OP_LOGE_WITHOUT_REPORT(nodeName,
                                                "expertScaleShape's dim not equal to expertIdShape's dim, "
-                                               "expertScaleShape's dim0 is %ld, expertIdShape's dim0 is %ld. ",
+                                               "expertScaleShape's dim0 is %ld, expertIdShape's dim0 is %ld, "
                                                "expertScaleShape's dim1 is %ld, expertIdShape's dim1 is %ld.",
                                                expertScalesDim0, expertIdsDim0, expertScalesDim1, expertIdsDim1),
                         return ge::GRAPH_FAILED);
@@ -1286,7 +1287,7 @@ static ge::graphStatus CheckExpandXAndDynamicScalesTensorShape(const gert::Tilin
     OP_TILING_CHECK(expandXDim0 < static_cast<int64_t>(A),
                     OP_LOGE_WITHOUT_REPORT(nodeName,
                                            "expandX's dim0 not greater than or equal to A, "
-                                           "expandX's dim0 is %ld, A is %ld.",
+                                           "expandX's dim0 is %ld, A is %u.",
                                            expandXDim0, A),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xDim1 != expandXDim1,
@@ -1304,8 +1305,10 @@ static ge::graphStatus CheckExpandXAndDynamicScalesTensorShape(const gert::Tilin
         const gert::StorageShape *dynamicScalesStorageShape = context->GetOutputShape(OUTPUT_DYNAMIC_SCALES_INDEX);
         const int64_t dynamicScalesDim0 = dynamicScalesStorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(dynamicScalesDim0 < static_cast<int64_t>(A),
-                        OP_LOGE_WITHOUT_REPORT(nodeName, "dynamicScales's dim0 should be equal to or greater than ",
-                                               "A, dynamicScales's dim0=%ld, A=%ld.", dynamicScalesDim0, A),
+                        OP_LOGE_WITHOUT_REPORT(nodeName,
+                                               "dynamicScales's dim0 should be equal to or greater than A, "
+                                               "dynamicScales's dim0=%ld, A=%u.",
+                                               dynamicScalesDim0, A),
                         return ge::GRAPH_FAILED);
         // Dim1, only for pergroup and mx
         if (quantMode != static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
@@ -1403,16 +1406,18 @@ static ge::graphStatus CheckRecvCountTensorShape(const gert::TilingContext *cont
         OP_TILING_CHECK(
             epRecvCountDim0 < epRecvCount,
             OP_LOGE_WITHOUT_REPORT(
-                nodeName, "dimension 0 of epRecvCount should be greater than or equal to ",
-                "epWorldSize * localMoeExpertNum + globalBs * 2 * k * epWorldSize / 8, ",
+                nodeName,
+                "dimension 0 of epRecvCount should be greater than or equal to epWorldSize * localMoeExpertNum + "
+                "globalBs * 2 * k * epWorldSize / 8, "
                 "but dimension 0 of epRecvCount is %ld, epWorldSize is %ld, localMoeExpertNum is %ld, k is %ld.",
                 epRecvCountDim0, epWorldSize, localMoeExpertNum, expertIdsDim1),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(epRecvCountDim0 < epRecvCount,
                         OP_LOGE_WITHOUT_REPORT(
-                            nodeName, "dimension 0 of epRecvCount should be greater than or equal ",
-                            "to epWorldSize * localMoeExpertNum, ",
+                            nodeName,
+                            "dimension 0 of epRecvCount should be greater than or equal to epWorldSize * "
+                            "localMoeExpertNum, "
                             "but dimension 0 of epRecvCount is %ld, epWorldSize is %ld, localMoeExpertNum is %ld.",
                             epRecvCountDim0, epWorldSize, localMoeExpertNum),
                         return ge::GRAPH_FAILED);
@@ -1570,7 +1575,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::TilingCheckMoeDistributeD
 {
     OP_TILING_CHECK(!CheckTensorPtrNullptr(context, nodeName, isScales, quantMode, isActiveMask, hasElasticInfo,
                                            isPerformance, config),
-                    OP_LOGE_WITHOUT_REPORT(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode, isActiveMask, hasElasticInfo, isPerformance,
                                     isLayered, config),
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "params shape"), return ge::GRAPH_FAILED);

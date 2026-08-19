@@ -109,7 +109,7 @@ static void PrintTilingDataInfo(AttentionToFFNTilingData &tilingData)
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "expRankTableM is %u.", tilingData.attentionToFFNInfo.expRankTableM);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "microBatchNum is %u.", tilingData.attentionToFFNInfo.microBatchNum);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "attentionWorkerNum is %u.", tilingData.attentionToFFNInfo.attentionWorkerNum);
-    OP_LOGD(ATTN_FFN_INNER_DEBUG, "infoTableLastDimNum is %.", tilingData.attentionToFFNInfo.infoTableLastDimNum);
+    OP_LOGD(ATTN_FFN_INNER_DEBUG, "infoTableLastDimNum is %u", tilingData.attentionToFFNInfo.infoTableLastDimNum);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "aivNum is %u.", tilingData.attentionToFFNInfo.aivNum);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "worldSize is %u.", tilingData.attentionToFFNInfo.worldSize);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "syncFlag is %u.", tilingData.attentionToFFNInfo.syncFlag);

@@ -151,7 +151,7 @@ extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *
     aclnnStatus ret =
         aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, const_cast<char *>(group), const_cast<char *>(reduceOp),
                                                      yDtype, worldSize, output, workspaceSize, executor);
-    OP_LOGD("QuantReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("QuantReduceScatter, aclnnGetWorkspaceSize ret %d.", ret);
     return ret;
 }
 
