@@ -215,7 +215,12 @@ public:
 
     __aicore__ inline void BaseMBalance(BlockSchedulerOp &bs, int64_t m, uint32_t baseM)
     {
-        const int64_t mTileCount = CeilDiv(m, static_cast<int64_t>(baseM));
+        if (m <= 0) {
+            return;
+        }
+        const int64_t safeBaseM =
+            baseM > 0 ? static_cast<int64_t>(baseM) : static_cast<int64_t>(AscendC::BLOCK_CUBE);
+        const int64_t mTileCount = CeilDiv(m, safeBaseM);
         curBaseM_ = Align16(CeilDiv(m, mTileCount));
         bs.UpdateBaseM(curBaseM_);
     }
