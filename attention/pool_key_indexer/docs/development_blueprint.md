@@ -186,7 +186,7 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 - 无需修改（poolKey 与 LIV2 的 key 语义一致，S2 维度是压缩/pool 数，Cube matmul 直接使用）
 
 **service_vector.h**：
-- `trunkLen` / `topkCount_` 已使用 `sparseCount`（= topk/pool_size），退化时等价
+- `trunkLen` / `topkCount_` 已使用 `constInfo_.sparseCount`（在 tiling.cpp:175 计算 `= topk/poolSize`，kernel 仅读取 tilingData），退化时等价
 - TopK 在 S2 空间操作，输出 sparseCount 个 pool 索引
 - **不展开为 token 索引**（步骤3 才做）
 
@@ -635,6 +635,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 }
 ```
 
+> **注**：本样例未含 `c10::OptionalDeviceGuard`，与 LIV2/QLI/flash_attn 等 lightning 家族算子保持一致（依赖 `query.options()` 携带设备信息分配输出张量）。开发规范 §3.1 建议加 DeviceGuard，但当前算子家族约定不使用。
+
 #### 6.3.2 FP8 量化 dtype 适配（依赖步骤4，可延后）
 
 参考 `quant_lightning_indexer.cpp` 的 `TensorWrapper` + `FixQLIV2AclDtypes` 模式。PKI 的 quant_mode 语义与 LIV2 不同（PKI: -1/0/1，LIV2: 0..5），需实现 PKI 专属的 dtype 修正：
@@ -853,7 +855,8 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 |------|------|
 | 输出类型 float（非 K_T） | 规格要求 sparseValuesOut 为 FLOAT |
 | INVALID_VAL = 0xFF800000 (uint32) | 适配 float -inf |
-| splitMFlag/isLDOpen 恢复为运行时 | 与 LI 一致，退化场景下正确触发 |
+| splitMFlag 恢复为运行时 | 与 LI 一致，退化场景下正确触发 |
+| isLDOpen 恒 false（未启用） | 与 LI v1/LIV2/QLI 一致。arch22 用 isSparseCountOver2K+ProcessLD 做跨核归约，arch35 用 isLDOpen 门控 S2 切分（恒 false，未启用）。arch22/arch35 不一致是与 LI v1 一致的设计模式 |
 | preTokens/nextTokens 删除 | PKI 不支持，arch22 删除引用 |
 | poolKey 与 key 一致 | 两者输入都是压缩/聚合后的，S2 是压缩空间长度，kernel 无需内部聚合 |
 | 步骤2 不展开索引 | 先验证 pool 级 TopK 正确性，再展开 |
