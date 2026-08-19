@@ -176,7 +176,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>不支持空Tensor。N1/N2仅支持2、4、8、16、32、64、128范围内的2的幂；D仅支持512。</td>
+      <td>不支持空Tensor。qN支持1-128；D仅支持512。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -561,8 +561,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
     </tr>
   </tbody>
   </table>
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：qN/kvN支持2、4、8、16、32、64、128，不支持1。
 
 - **常见字段释义**
 
