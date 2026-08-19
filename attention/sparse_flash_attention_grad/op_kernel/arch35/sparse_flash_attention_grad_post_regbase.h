@@ -33,7 +33,6 @@ public:
     uint32_t REGBASE_POST_BASE = 128 * 128;
     uint32_t ROPE_DIM = 64;
     uint32_t VALUE_DIM = 512;
-    uint32_t POST_S_BASE = 18;
     TPipe *pipe;
     const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict tilingData;
     TQue<QuePosition::VECIN, 1> inQueuePing;
@@ -79,16 +78,17 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         dqkvWorkspace[2].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
     }
 
-    if constexpr (IS_ROPE) {
-        REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
-    } else {
-        REGBASE_POST_BASE = tilingData->postTilingData.qPostBaseNum;
+    REGBASE_POST_BASE = tilingData->postTilingData.qPostBaseNum;
+    uint32_t bufElems = REGBASE_POST_BASE;
+    if constexpr (!KV_MERGE) {
+        uint32_t vPostBaseNum = tilingData->postTilingData.vPostBaseNum;
+        bufElems = bufElems > vPostBaseNum ? bufElems : vPostBaseNum;
     }
 
-    pipe->InitBuffer(inQueuePing, 1, REGBASE_POST_BASE * sizeof(T2));
-    pipe->InitBuffer(outQueuePing, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
-    pipe->InitBuffer(inQueuePong, 1, REGBASE_POST_BASE * sizeof(T2));
-    pipe->InitBuffer(outQueuePong, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
+    pipe->InitBuffer(inQueuePing, 1, bufElems * sizeof(T2));
+    pipe->InitBuffer(outQueuePing, 1, bufElems * sizeof(OUTDTYPE));
+    pipe->InitBuffer(inQueuePong, 1, bufElems * sizeof(T2));
+    pipe->InitBuffer(outQueuePong, 1, bufElems * sizeof(OUTDTYPE));
 }
 
 template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND, const bool KV_MERGE>
@@ -98,39 +98,43 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         return;
     }
     constexpr int QKV_NUM = KV_MERGE ? 2 : 3;
+    constexpr uint32_t packedDim = 64 + 512; // ROPE_DIM + VALUE_DIM
     for (int qkvIdx = 0; qkvIdx < QKV_NUM; qkvIdx++) {
-        if (qkvIdx == 1) {
+        if (qkvIdx == 0) {
+            REGBASE_POST_BASE = tilingData->postTilingData.qPostBaseNum;
+        } else if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.kPostBlockTotal;
             qPostTailNum = tilingData->postTilingData.kPostTailNum;
+            REGBASE_POST_BASE = tilingData->postTilingData.kPostBaseNum;
         } else if (qkvIdx == 2) {
             loop = tilingData->postTilingData.vPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.vPostBlockTotal;
             qPostTailNum = tilingData->postTilingData.vPostTailNum;
             REGBASE_POST_BASE = tilingData->postTilingData.vPostBaseNum;
         }
-        uint64_t blockCore = loop * REGBASE_POST_BASE;
-        uint64_t begin = vBlockIdx * blockCore;
+        uint64_t blockCore = static_cast<uint64_t>(loop) * REGBASE_POST_BASE;
+        uint64_t begin = static_cast<uint64_t>(vBlockIdx) * blockCore;
         uint64_t end = begin + blockCore;
-        uint32_t s1BaseTailSize = tilingData->baseParams.s1 % POST_S_BASE;   // 128
-        uint32_t s2BaseTailSize = tilingData->baseParams.s2 % POST_S_BASE;   // 128
 
         if (end > inputTotalSize) {
             end = inputTotalSize;
         }
 
-        uint64_t dqPingGmOffset = vBlockIdx * loop * POST_S_BASE * VALUE_DIM;
-        for (uint64_t pingIdx = begin; pingIdx < end; pingIdx = pingIdx + (REGBASE_POST_BASE << 1)) {
+        uint32_t tokensPerBase = IS_ROPE ? (REGBASE_POST_BASE / packedDim) : 0;
+        uint64_t dqPingGmOffset = static_cast<uint64_t>(vBlockIdx) * loop * tokensPerBase * VALUE_DIM;
+        for (uint64_t pingIdx = begin; pingIdx < end; pingIdx = pingIdx + (static_cast<uint64_t>(REGBASE_POST_BASE) << 1)) {
             LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
             uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
             uint32_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
-            uint64_t dqPongGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE; // 18*512
-            uint32_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
+            uint64_t dqPongGmOffset = dqPingGmOffset + static_cast<uint64_t>(tokensPerBase) * VALUE_DIM;
+            uint32_t seqPingSize = pingSize / packedDim;
             DataCopy(vecInPing, dqkvWorkspace[qkvIdx][pingIdx], (pingSize + 7) >> 3 << 3);
             inQueuePing.EnQue(vecInPing);
             inQueuePing.DeQue<float>();
             if (qkvIdx < 1) {
                 Muls(vecInPing, vecInPing, (float)tilingData->baseParams.scaleValue, pingSize);
+                PipeBarrier<PIPE_V>();
             }
             LocalTensor<OUTDTYPE> vecOutPing = outQueuePing.AllocTensor<OUTDTYPE>();
             Cast(vecOutPing, vecInPing, RoundMode::CAST_ROUND, pingSize);
@@ -141,7 +145,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
             if (neeedPong) {
                 vecInPong = inQueuePong.AllocTensor<float>();
                 pongSize = pongIdx + REGBASE_POST_BASE < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
-                seqPongSize = pongSize / (ROPE_DIM + VALUE_DIM);
+                seqPongSize = pongSize / packedDim;
                 DataCopy(vecInPong, dqkvWorkspace[qkvIdx][pongIdx], (pongSize + 7) >> 3 << 3);
             }
             outQueuePing.EnQue(vecOutPing);
@@ -151,7 +155,6 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                 if (qkvIdx == 2) {
                     DataCopy(dqkv[qkvIdx][pingIdx], vecOutPing, pingSize);
                 }  else {
-                    // 18 * (512 + 64)基本块
                     DataCopyParams dataCopyParams;
                     dataCopyParams.blockCount = seqPingSize;
                     // 512 * sizeof(OUTDTYPE) / 32B
@@ -164,7 +167,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                     dataCopyParams.srcStride = 16 * sizeof(OUTDTYPE);
                     DataCopy(dqkRope[qkvIdx][dqPingGmOffset / 8], vecOutPing[VALUE_DIM], dataCopyParams);
                 }
-                dqPingGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE;
+                dqPingGmOffset = dqPingGmOffset + static_cast<uint64_t>(seqPingSize) * VALUE_DIM;
             } else {
                 DataCopy(dqkv[qkvIdx][pingIdx], vecOutPing, (pingSize + 15) >> 4 << 4);
             }
@@ -176,6 +179,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                 inQueuePong.DeQue<float>();
                 if (qkvIdx < 1) {
                     Muls(vecInPong, vecInPong, (float)tilingData->baseParams.scaleValue, pongSize);
+                    PipeBarrier<PIPE_V>();
                 }
                 Cast(vecOutPong, vecInPong, RoundMode::CAST_ROUND, pongSize);
                 outQueuePong.EnQue(vecOutPong);
@@ -185,20 +189,17 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                     if (qkvIdx == 2) {
                         DataCopy(dqkv[qkvIdx][pongIdx], vecOutPong, pongSize);
                     }  else {
-                        // 96 * (128 + 64)基本块
                         DataCopyParams dataCopyParams;
                         dataCopyParams.blockCount = seqPongSize;
-                        // 128 * sizeof(OUTDTYPE) / 32B
                         dataCopyParams.blockLen = 16 * sizeof(OUTDTYPE);
-                        // 64 * sizeof(OUTDTYPE) / 32B
                         dataCopyParams.srcStride = 2 * sizeof(OUTDTYPE);
                         DataCopy(dqkv[qkvIdx][dqPongGmOffset], vecOutPong, dataCopyParams);
-    
+
                         dataCopyParams.blockLen = 2 * sizeof(OUTDTYPE);
                         dataCopyParams.srcStride = 16 * sizeof(OUTDTYPE);
                         DataCopy(dqkRope[qkvIdx][dqPongGmOffset / 8], vecOutPong[VALUE_DIM], dataCopyParams);
                     }
-                    dqPingGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE;
+                    dqPingGmOffset = dqPingGmOffset + static_cast<uint64_t>(seqPongSize) * VALUE_DIM;
                 } else {
                     DataCopy(dqkv[qkvIdx][pongIdx], vecOutPong, (pongSize + 15) >> 4 << 4);
                 }
