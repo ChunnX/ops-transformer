@@ -167,7 +167,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr += std::to_string(mode);
             idx++;
         }
-        if (!supportedStr.empty()) {
+        if (supportedStr.length() >= 2) {
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
@@ -220,15 +220,15 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
-    // if (!CheckWeightQuantModeValidity(weightQuantMode)) {
-    //     return ge::GRAPH_FAILED;
-    // };
-    // if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
-    //     return ge::GRAPH_FAILED;
-    // };
-    // if (!CheckQueryQuantModeValidity(queryQuantMode)) {
-    //     return ge::GRAPH_FAILED;
-    // };
+    if (!CheckWeightQuantModeValidity(weightQuantMode)) {
+        return ge::GRAPH_FAILED;
+    };
+    if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
+        return ge::GRAPH_FAILED;
+    };
+    if (!CheckQueryQuantModeValidity(queryQuantMode)) {
+        return ge::GRAPH_FAILED;
+    };
 
     std::printf("*********op_api 233********\n");
 

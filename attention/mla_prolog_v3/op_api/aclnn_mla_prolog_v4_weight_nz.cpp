@@ -123,7 +123,7 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             supportedStr += std::to_string(mode);
             idx++;
         }
-        if (!supportedStr.empty()) {
+        if (supportedStr.length() >= 2) {
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
