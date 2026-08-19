@@ -1268,6 +1268,18 @@ def liv2_output_single(
         else:
             max_seqlen_k = k_seq
 
+    if layout_query == "BSND":
+        if seqused_q is not None:
+            max_seqlen_q_meta = max(seqused_q).item()
+        else:
+            max_seqlen_q_meta = q_seq
+    else:
+        if seqused_q is not None:
+            max_seqlen_q_meta = max(seqused_q).item()
+        else:
+            seqlen_q = [cu_seqlens_q[b_idx + 1] - cu_seqlens_q[b_idx] for b_idx in range(batch_size)]
+            max_seqlen_q_meta = max(seqlen_q).item()
+
     if is_batch:
         query = query.to(qk_dtype)
         key = key.to(qk_dtype)
@@ -1290,7 +1302,7 @@ def liv2_output_single(
             "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
             "block_table": block_table,
             "cpu_block_table": cpu_block_table,
-            "max_seqlen_q_meta": max_seqlen_q,
+            "max_seqlen_q_meta": max_seqlen_q_meta,
             "max_seqlen_k_meta": max_seqlen_k,
             "layout_query": layout_query,
             "layout_key": layout_key,
@@ -1316,7 +1328,7 @@ def liv2_output_single(
             seqused_k=seqused_k.npu() if seqused_k is not None else None,
             cmp_residual_k=cmp_residual_k.npu() if cmp_residual_k is not None else None,
             batch_size=batch_size,
-            max_seqlen_q=max_seqlen_q,
+            max_seqlen_q=max_seqlen_q_meta,
             max_seqlen_k=max_seqlen_k,
             layout_q=layout_query,
             layout_k=layout_key,

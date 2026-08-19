@@ -1000,10 +1000,10 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                             return ge::GRAPH_FAILED);
             }
             if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
-                OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != bSize_),
+                OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
                             OP_LOGE(opName_,
-                                    "TND case batch and output_idx_offset dim 0 are %u, %ld respectively, "
-                                    "they must be same.", bSize_,
+                                    "TND case input query and output_idx_offset dim 0 are %u, %ld "
+                                    "respectively, they must be same.", qTsize,
                                     opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0)),
                             return ge::GRAPH_FAILED);
             }
