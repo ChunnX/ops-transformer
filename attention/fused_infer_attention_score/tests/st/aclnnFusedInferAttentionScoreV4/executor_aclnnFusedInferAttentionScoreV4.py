@@ -253,16 +253,33 @@ def trans_np_hifuint8_tensor_to_float32(in_tensor):
     out_tensor = out_tensor.reshape(shape_tensor).astype(np.float32)
     return out_tensor
 
+
 # IFA
 def _create_mask(m_shape, pre_tokens, next_tokens):
-    next_masks = np.triu(np.ones(m_shape, dtype='uint8'), k=1 + int(next_tokens))  # 生成下三角全是0的矩阵
-    pre_mask = np.tril(np.ones(m_shape, dtype='uint8'), k=-1 - int(pre_tokens))  # 生成上三角全是0的矩阵
+    next_masks = np.triu(
+        np.ones(m_shape, dtype="uint8"), k=1 + int(next_tokens)
+    )  # 生成下三角全是0的矩阵
+    pre_mask = np.tril(
+        np.ones(m_shape, dtype="uint8"), k=-1 - int(pre_tokens)
+    )  # 生成上三角全是0的矩阵
     atten_masks = pre_mask + next_masks
 
     return atten_masks
 
-def _create_mask_band(m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV, actualprefixKV,
-                      prefix_kvs, batch, numheads, kvs_list, m_dtype):
+
+def _create_mask_band(
+    m_shape,
+    pre_tokens,
+    next_tokens,
+    actualSeqLengths,
+    actualSeqLengthsKV,
+    actualprefixKV,
+    prefix_kvs,
+    batch,
+    numheads,
+    kvs_list,
+    m_dtype,
+):
     mask_s_q = m_shape[0]
     mask_s_kv = m_shape[1]
 
@@ -538,30 +555,36 @@ def quant_pc(x, qscale, qoffset):
             for h in range(x.shape[2]):
                 for w in range(x.shape[3]):
                     s8_res_cal[n, c, h, w] = s8_saturation(
-                        np.round(s9_saturation(np.half(x[n, c, h, w]) * np.half(qscale[0, c, 0, w])) + np.half(
-                            qoffset[0, c, 0, w])))
+                        np.round(
+                            s9_saturation(
+                                np.half(x[n, c, h, w]) * np.half(qscale[0, c, 0, w])
+                            )
+                            + np.half(qoffset[0, c, 0, w])
+                        )
+                    )
     return s8_res_cal
 
 
 def ieee_754_conversion(sign, exponent_raw, mantissa, exp_len=8, mant_len=7):
-    """ Convert binary data into the floating point value """
+    """Convert binary data into the floating point value"""
     sign_mult = -1 if sign == 1 else 1
     exponent = exponent_raw - (2 ** (exp_len - 1) - 1)
     mant_mult = 1
     for b in range(mant_len - 1, -1, -1):
-        if mantissa & (2 ** b):
+        if mantissa & (2**b):
             mant_mult += 1 / (2 ** (mant_len - b))
 
-    return sign_mult * (2 ** exponent) * mant_mult
+    return sign_mult * (2**exponent) * mant_mult
 
 
 def trans_tensor_fp8_e8m0_to_bf16(tensor):
     # import pdb;pdb.set_trace()
     from ml_dtypes import bfloat16
+
     # 创建一个与输入tensor形状相同的新tensor
     new_tensor = np.zeros_like(tensor).astype(bfloat16)
     # 使用nditer遍历tensor中的每个元素
-    with np.nditer(tensor, flags=['multi_index'], op_flags=['readwrite']) as it:
+    with np.nditer(tensor, flags=["multi_index"], op_flags=["readwrite"]) as it:
         for x in it:
             # 将元素传递给trans函数进行处理
             # new_value = new_value.astype(bfloat16)
@@ -1020,45 +1043,45 @@ def kv_split_antiquant(
             print(f"[ERROR]Invalid input kv dtype: {kv_dtype}")
             exit(1)
 
-    if k_anti_mode in ['1', '4']:
+    if k_anti_mode in ["1", "4"]:
         scale1 = k_scale[0:1, :, :]  # 11S
         offset1 = k_offset[0:1, :, :]
         for nIdx in range(N):
-            key_cur = key[:, nIdx:(nIdx + 1), :, :]
+            key_cur = key[:, nIdx : (nIdx + 1), :, :]
             # scale: 11s -> 11s1
             scale1_cur = np.expand_dims(scale1, axis=-1)
             offset1_cur = np.expand_dims(offset1, axis=-1)
             key_cur = np.add(key_cur, offset1_cur)
             key_cur = np.multiply(key_cur, scale1_cur)
-            key[:, nIdx:(nIdx + 1), :, :] = key_cur
-    elif k_anti_mode in ['0', '2']:
+            key[:, nIdx : (nIdx + 1), :, :] = key_cur
+    elif k_anti_mode in ["0", "2"]:
         # 2,n,1,d -> 1,n,1,d
         scale1 = k_scale[0:1, :, :, :]
         offset1 = k_offset[0:1, :, :, :]
         for nIdx in range(N):
             for sIdx in range(S):
-                key_cur = key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :]
-                key_cur = key_cur + offset1[:, nIdx:(nIdx + 1), :, :]
-                key_cur = key_cur * scale1[:, nIdx:(nIdx + 1), :, :]
-                key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :] = key_cur
-    elif k_anti_mode in ['3', '5']:
+                key_cur = key[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :]
+                key_cur = key_cur + offset1[:, nIdx : (nIdx + 1), :, :]
+                key_cur = key_cur * scale1[:, nIdx : (nIdx + 1), :, :]
+                key[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :] = key_cur
+    elif k_anti_mode in ["3", "5"]:
         # 计算, scale为1NS, key为1nsd
         scale1 = k_scale[0:1, :, :]
         offset1 = k_offset[0:1, :, :]
         for nIdx in range(N):
             # key_cur：11sd
-            key_cur = key[:, nIdx:(nIdx + 1), :, :]
+            key_cur = key[:, nIdx : (nIdx + 1), :, :]
             # scale/offset：11s
-            scale1_cur = scale1[:, nIdx:(nIdx + 1), :]
-            offset1_cur = offset1[:, nIdx:(nIdx + 1), :]
+            scale1_cur = scale1[:, nIdx : (nIdx + 1), :]
+            offset1_cur = offset1[:, nIdx : (nIdx + 1), :]
             # scale/offset：11s1
             scale1_cur = np.expand_dims(scale1_cur, axis=-1)
             offset1_cur = np.expand_dims(offset1_cur, axis=-1)
             # (11sd + 11s1) * 11s1
             key_cur = np.add(key_cur, offset1_cur)
             key_cur = np.multiply(key_cur, scale1_cur)
-            key[:, nIdx:(nIdx + 1), :, :] = key_cur
-    elif k_anti_mode == '6':
+            key[:, nIdx : (nIdx + 1), :, :] = key_cur
+    elif k_anti_mode == "6":
         g = k_scale.shape[4]
         k_scale = k_scale[0]
         grp_size = 32
@@ -1066,53 +1089,64 @@ def kv_split_antiquant(
             for sIdx in range(S):
                 for gIdx in range(g):
                     # copy from
-                    key_cur = key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx * grp_size:(gIdx + 1) * grp_size]
+                    key_cur = key[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ]
                     # broardcast
-                    scale_k = k_scale[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx:(gIdx + 1)]
+                    scale_k = k_scale[
+                        :, nIdx : (nIdx + 1), sIdx : (sIdx + 1), gIdx : (gIdx + 1)
+                    ]
                     scale_k = np.full((1, grp_size), scale_k)
                     # mul
                     key_cur = key_cur * scale_k
                     # copy to
-                    key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1),
-                    gIdx * grp_size:(gIdx + 1) * grp_size] = key_cur
-    if v_anti_mode in ['1', '4']:
+                    key[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ] = key_cur
+    if v_anti_mode in ["1", "4"]:
         scale2 = v_scale[0:1, :, :]
         offset2 = v_offset[0:1, :, :]
         for nIdx in range(N):
-            value_cur = value[:, nIdx:(nIdx + 1), :, :]
+            value_cur = value[:, nIdx : (nIdx + 1), :, :]
             scale2_cur = np.expand_dims(scale2, axis=-1)
             offset2_cur = np.expand_dims(offset2, axis=-1)
             value_cur = np.add(value_cur, offset2_cur)
             value_cur = np.multiply(value_cur, scale2_cur)
-            value[:, nIdx:(nIdx + 1), :, :] = value_cur
-    elif v_anti_mode in ['0', '2']:
+            value[:, nIdx : (nIdx + 1), :, :] = value_cur
+    elif v_anti_mode in ["0", "2"]:
         # 2,n,1,d -> 1,n,1,d
         scale2 = v_scale[0:1, :, :, :]
         offset2 = v_offset[0:1, :, :, :]
         for nIdx in range(N):
             for sIdx in range(S):
-                value_cur = value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :]
-                value_cur = value_cur + offset2[:, nIdx:(nIdx + 1), :, :]
-                value_cur = value_cur * scale2[:, nIdx:(nIdx + 1), :, :]
-                value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :] = value_cur
-    elif v_anti_mode in ['3', '5']:
+                value_cur = value[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :]
+                value_cur = value_cur + offset2[:, nIdx : (nIdx + 1), :, :]
+                value_cur = value_cur * scale2[:, nIdx : (nIdx + 1), :, :]
+                value[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :] = value_cur
+    elif v_anti_mode in ["3", "5"]:
         # 计算, scale为1SN, value为bnsd
         scale1 = v_scale[0:1, :, :]
         offset1 = v_offset[0:1, :, :]
         for nIdx in range(N):
             # value_cur：11sd
-            value_cur = value[:, nIdx:(nIdx + 1), :, :]
+            value_cur = value[:, nIdx : (nIdx + 1), :, :]
             # scale/offset：11s
-            scale1_cur = scale1[:, nIdx:(nIdx + 1), :]
-            offset1_cur = offset1[:, nIdx:(nIdx + 1), :]
+            scale1_cur = scale1[:, nIdx : (nIdx + 1), :]
+            offset1_cur = offset1[:, nIdx : (nIdx + 1), :]
             # scale/offset：11s1
             scale1_cur = np.expand_dims(scale1_cur, axis=-1)
             offset1_cur = np.expand_dims(offset1_cur, axis=-1)
             # (11sd + 11s1) * 11s1
             value_cur = np.add(value_cur, offset1_cur)
             value_cur = np.multiply(value_cur, scale1_cur)
-            value[:, nIdx:(nIdx + 1), :, :] = value_cur
-    elif v_anti_mode == '6':
+            value[:, nIdx : (nIdx + 1), :, :] = value_cur
+    elif v_anti_mode == "6":
         g = v_scale.shape[4]
         v_scale = v_scale[0]
         grp_size = 32
@@ -1914,33 +1948,42 @@ def _t_indequant_ds_act(ifa_param):
 
         softmaxres = np.exp(qkBmmRes - rowMax).astype(np.float32)
         rowSum_A = softmaxres.sum(axis=3, keepdims=True).astype(np.float32)
-        rowMax_A = (np.exp(rowmax_tmp - rowMax) + np.finfo(float).eps).astype(np.float32)
+        rowMax_A = (np.exp(rowmax_tmp - rowMax) + np.finfo(float).eps).astype(
+            np.float32
+        )
         rowSum = update_mul * rowSum + rowSum_A
 
         quantScale = 127 / rowMax_A
 
         softmaxres = (softmaxres * quantScale).astype(np.float32)
 
-        if ifa_param['q_dtype'] != "float32":
+        if ifa_param["q_dtype"] != "float32":
             softmaxres = np.round(softmaxres.astype(np.float16)).astype(np.int8)
         else:
             softmaxres = np.round(softmaxres).astype(np.int8)
 
         bmm2Res = np.matmul(softmaxres.astype(np.int32), k_cur.astype(np.int32))
-        bmm2Res = (bmm2Res / np.float32(1024)).astype(np.float16) * rowMax_A.astype(np.float16)
+        bmm2Res = (bmm2Res / np.float32(1024)).astype(np.float16) * rowMax_A.astype(
+            np.float16
+        )
 
         O_flash = O_flash.astype(np.float16) * update_mul.astype(np.float16) + bmm2Res
 
-
-    O = O_flash.astype(np.float32) * np.float32(1024) / rowSum / np.float32(127) * np.float32(dequantScale2)
+    O = (
+        O_flash.astype(np.float32)
+        * np.float32(1024)
+        / rowSum
+        / np.float32(127)
+        * np.float32(dequantScale2)
+    )
 
     # 这里处理行无效,要使用整个kv_s的mask,即mask_tensor
-    if ifa_param['m_flag']:
+    if ifa_param["m_flag"]:
         if mask_tensor is not None:
-            if ifa_param['sparse_mode'] == 3 or act_seq_q > 1:
+            if ifa_param["sparse_mode"] == 3 or act_seq_q > 1:
                 for i in range(mask_tensor.shape[2]):
                     if mask_tensor[:, :, i, :].all() == 1:
-                        print(f'mask i: {i} all is 1')
+                        print(f"mask i: {i} all is 1")
                         O[:, :, i, :] = 0
                         if lse is not None:
                             lse[:, :, i, :] = np.inf
@@ -2077,36 +2120,40 @@ def _t_indequant_ds_act_golden(ifa_param):
 
     return O, lse
 
+
 def _t_ifaattention_act(ifa_param, device="cpu"):
     print("def _t_ifaattention_act(ifa_param):")
     # 低精度标记位，默认走高精度流程，lowprecision_flag = False
     lowprecision_flag = False
 
     # 如果跑one命令或者innerprecise=1且跑bm命令时，改为走低精度流程，lowprecision_flag = True
-    if ifa_param['action_type'] == "one" or (ifa_param['action_type'] == "bm" and ifa_param['innerprecise'] == 1):
+    if ifa_param["action_type"] == "one" or (
+        ifa_param["action_type"] == "bm" and ifa_param["innerprecise"] == 1
+    ):
         lowprecision_flag = True
         print("低精度模式...")
-    q_tensor = ifa_param['q_tensor_cur']
-    k_tensor = ifa_param['k_sub_tensor']
-    v_tensor = ifa_param['v_sub_tensor']
-    m_tensor = ifa_param['mask_cur']
-    m_dtype = ifa_param['m_dtype']
-    p_tensor = ifa_param['pse_cur']
-    scalar = ifa_param['scaleValue']
-    act_seq = ifa_param['act_seq']
-    act_seq_q = ifa_param['act_seq_q']
-    sinner = ifa_param['sinner']
-    lse_flag = ifa_param['softmax_lse_flag']
-    if ifa_param['padding_flag']:
-        s_begin =int(k_tensor.shape[2] - act_seq - ifa_param['padding_size'])
-        s_end = int(k_tensor.shape[2] - ifa_param['padding_size'])
+    q_tensor = ifa_param["q_tensor_cur"]
+    k_tensor = ifa_param["k_sub_tensor"]
+    v_tensor = ifa_param["v_sub_tensor"]
+    m_tensor = ifa_param["mask_cur"]
+    m_dtype = ifa_param["m_dtype"]
+    p_tensor = ifa_param["pse_cur"]
+    scalar = ifa_param["scaleValue"]
+    act_seq = ifa_param["act_seq"]
+    act_seq_q = ifa_param["act_seq_q"]
+    sinner = ifa_param["sinner"]
+    lse_flag = ifa_param["softmax_lse_flag"]
+    if ifa_param["padding_flag"]:
+        s_begin = int(k_tensor.shape[2] - act_seq - ifa_param["padding_size"])
+        s_end = int(k_tensor.shape[2] - ifa_param["padding_size"])
         print(f"left padding--- s_begin:{s_begin}, s_end:{s_end}")
 
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}"
+    )
     # matmul_dtype 赋值
     matmul_dtype = np.float32
-    if ifa_param['in_quant_flag']:
+    if ifa_param["in_quant_flag"]:
         # 输入int8 场景，mm使用int32
         matmul_dtype = np.int32
     # elif ifa_param['out_quant_flag']:
@@ -2122,67 +2169,143 @@ def _t_ifaattention_act(ifa_param, device="cpu"):
         v_cur = v_tensor
     else:
         kv_smax = act_seq
-        if ifa_param['padding_flag']:
+        if ifa_param["padding_flag"]:
             k_cur = k_tensor[:, :, s_begin:s_end, :]
             v_cur = v_tensor[:, :, s_begin:s_end, :]
-            if ifa_param['kv_quant_pto_flag']:
-                ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale_cur'][:, :, s_begin:s_end]
-                ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset_cur'][:, :, s_begin:s_end]
-            if ifa_param['k_antiquant_pto_flag'] or ifa_param['k_antiquant_ptopa_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, s_begin:s_end]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, s_begin:s_end]
-            if ifa_param['v_antiquant_pto_flag'] or ifa_param['v_antiquant_ptopa_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, s_begin:s_end]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, s_begin:s_end]
+            if ifa_param["kv_quant_pto_flag"]:
+                ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale_cur"][
+                    :, :, s_begin:s_end
+                ]
+                ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset_cur"][
+                    :, :, s_begin:s_end
+                ]
+            if ifa_param["k_antiquant_pto_flag"] or ifa_param["k_antiquant_ptopa_flag"]:
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, s_begin:s_end
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, s_begin:s_end
+                ]
+            if ifa_param["v_antiquant_pto_flag"] or ifa_param["v_antiquant_ptopa_flag"]:
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, s_begin:s_end
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, s_begin:s_end
+                ]
 
-            if ifa_param['k_antiquant_ptoh_flag'] or ifa_param['k_antiquant_ptohpa_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, s_begin:s_end]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, s_begin:s_end]
-            if ifa_param['v_antiquant_ptoh_flag'] or ifa_param['v_antiquant_ptohpa_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, s_begin:s_end]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, s_begin:s_end]
+            if (
+                ifa_param["k_antiquant_ptoh_flag"]
+                or ifa_param["k_antiquant_ptohpa_flag"]
+            ):
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, s_begin:s_end
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, s_begin:s_end
+                ]
+            if (
+                ifa_param["v_antiquant_ptoh_flag"]
+                or ifa_param["v_antiquant_ptohpa_flag"]
+            ):
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, s_begin:s_end
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, s_begin:s_end
+                ]
 
-            if ifa_param['kv_quant_ptog_flag']:
-                ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale_cur'][:, :, :, s_begin:s_end, :]
-                ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset_cur'][:, :, :, s_begin:s_end, :]
-            if ifa_param['k_antiquant_ptog_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, :, s_begin:s_end, :]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, :, s_begin:s_end, :]
-            if ifa_param['v_antiquant_ptog_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, :, s_begin:s_end, :]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, :, s_begin:s_end, :]
+            if ifa_param["kv_quant_ptog_flag"]:
+                ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
+                ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
+            if ifa_param["k_antiquant_ptog_flag"]:
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
+            if ifa_param["v_antiquant_ptog_flag"]:
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, :, s_begin:s_end, :
+                ]
         else:
             k_cur = k_tensor[:, :, :act_seq, :]
             v_cur = v_tensor[:, :, :act_seq, :]
-            if ifa_param['kv_quant_pto_flag']:
-                ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale_cur'][:, :, :act_seq]
-                ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset_cur'][:, :, :act_seq]
-            if ifa_param['k_antiquant_pto_flag'] or ifa_param['k_antiquant_ptopa_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, :act_seq]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, :act_seq]
-            if ifa_param['v_antiquant_pto_flag'] or ifa_param['v_antiquant_ptopa_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, :act_seq]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, :act_seq]
+            if ifa_param["kv_quant_pto_flag"]:
+                ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale_cur"][
+                    :, :, :act_seq
+                ]
+                ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset_cur"][
+                    :, :, :act_seq
+                ]
+            if ifa_param["k_antiquant_pto_flag"] or ifa_param["k_antiquant_ptopa_flag"]:
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, :act_seq
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, :act_seq
+                ]
+            if ifa_param["v_antiquant_pto_flag"] or ifa_param["v_antiquant_ptopa_flag"]:
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, :act_seq
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, :act_seq
+                ]
 
-            if ifa_param['k_antiquant_ptoh_flag'] or ifa_param['k_antiquant_ptohpa_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, :act_seq]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, :act_seq]
-            if ifa_param['v_antiquant_ptoh_flag'] or ifa_param['v_antiquant_ptohpa_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, :act_seq]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, :act_seq]
+            if (
+                ifa_param["k_antiquant_ptoh_flag"]
+                or ifa_param["k_antiquant_ptohpa_flag"]
+            ):
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, :act_seq
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, :act_seq
+                ]
+            if (
+                ifa_param["v_antiquant_ptoh_flag"]
+                or ifa_param["v_antiquant_ptohpa_flag"]
+            ):
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, :act_seq
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, :act_seq
+                ]
 
-            if ifa_param['kv_quant_ptog_flag']:
-                ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale_cur'][:, :, :, :act_seq, :]
-                ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset_cur'][:, :, :, :act_seq, :]
-            if ifa_param['k_antiquant_ptog_flag']:
-                ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale_cur'][:, :, :, :act_seq, :]
-                ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset_cur'][:, :, :, :act_seq, :]
-            if ifa_param['v_antiquant_ptog_flag']:
-                ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale_cur'][:, :, :, :act_seq, :]
-                ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset_cur'][:, :, :, :act_seq, :]
+            if ifa_param["kv_quant_ptog_flag"]:
+                ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale_cur"][
+                    :, :, :, :act_seq, :
+                ]
+                ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset_cur"][
+                    :, :, :, :act_seq, :
+                ]
+            if ifa_param["k_antiquant_ptog_flag"]:
+                ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale_cur"][
+                    :, :, :, :act_seq, :
+                ]
+                ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset_cur"][
+                    :, :, :, :act_seq, :
+                ]
+            if ifa_param["v_antiquant_ptog_flag"]:
+                ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale_cur"][
+                    :, :, :, :act_seq, :
+                ]
+                ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset_cur"][
+                    :, :, :, :act_seq, :
+                ]
 
-    if ifa_param['in_quant_flag'] and ifa_param['deep_seek_flag']:
-        if ifa_param['action_type'] == 'bm_output_gold':
+    if ifa_param["in_quant_flag"] and ifa_param["deep_seek_flag"]:
+        if ifa_param["action_type"] == "bm_output_gold":
             # 走golden流程，生成高精度cpu golden数据。
             print("bmm2Res, lse = _t_indequant_ds_act_golden(ifa_param)")
             bmm2Res, lse = _t_indequant_ds_act_golden(ifa_param)
@@ -2263,72 +2386,129 @@ def _t_ifaattention_act(ifa_param, device="cpu"):
                                 sinner_tail = sinner
                             else:
                                 sinner_tail = kv_smax % sinner
-                        qk_cur_loop = qkEleRes[:, nIdx:(nIdx + 1), :, (sinner_loop_times * sinner):(
-                                (sinner_loop_times) * sinner + sinner_tail)]  # 1, 1, 1, Sinner
-                        v_cur_loop = v_cur[:, nIdx:(nIdx + 1),
-                                     (sinner_loop_times * sinner):((sinner_loop_times) * sinner + sinner_tail),
-                                     :]  # 1, 1, Sinner, 1
+                        qk_cur_loop = qkEleRes[
+                            :,
+                            nIdx : (nIdx + 1),
+                            :,
+                            (sinner_loop_times * sinner) : (
+                                (sinner_loop_times) * sinner + sinner_tail
+                            ),
+                        ]  # 1, 1, 1, Sinner
+                        v_cur_loop = v_cur[
+                            :,
+                            nIdx : (nIdx + 1),
+                            (sinner_loop_times * sinner) : (
+                                (sinner_loop_times) * sinner + sinner_tail
+                            ),
+                            :,
+                        ]  # 1, 1, Sinner, 1
                         # 处理第一次loop
                         if sinner_loop_times == 0:
-                            softmax_max, softmax_sum, softmax_res, exp_max_res = softmax_flash(qk_cur_loop)
-                            softmax_res = quant(softmax_res, ifa_param['quantScale1'], 0)
-                            bmm2Res_1 = np.matmul(softmax_res, v_cur_loop, dtype=matmul_dtype)
-                            bmm2Res_1 = dequant(bmm2Res_1, ifa_param['dequantScale2'], None)
+                            softmax_max, softmax_sum, softmax_res, exp_max_res = (
+                                softmax_flash(qk_cur_loop)
+                            )
+                            softmax_res = quant(
+                                softmax_res, ifa_param["quantScale1"], 0
+                            )
+                            bmm2Res_1 = np.matmul(
+                                softmax_res, v_cur_loop, dtype=matmul_dtype
+                            )
+                            bmm2Res_1 = dequant(
+                                bmm2Res_1, ifa_param["dequantScale2"], None
+                            )
                             max_front = softmax_max
                             sum_front = softmax_sum
                             o_front = bmm2Res_1
                         # 处理后续场景
                         else:
-                            softmax_max, softmax_sum, softmax_res, exp_max_res = softmax_flash(qk_cur_loop,
-                                                                                               max_front=max_front,
-                                                                                               sum_front=sum_front,
-                                                                                               update=True)
-                            softmax_res = quant(softmax_res, ifa_param['quantScale1'], 0)
-                            o_front_update = o_front.astype(np.float32) * exp_max_res.astype(np.float32)  # Mul
+                            softmax_max, softmax_sum, softmax_res, exp_max_res = (
+                                softmax_flash(
+                                    qk_cur_loop,
+                                    max_front=max_front,
+                                    sum_front=sum_front,
+                                    update=True,
+                                )
+                            )
+                            softmax_res = quant(
+                                softmax_res, ifa_param["quantScale1"], 0
+                            )
+                            o_front_update = o_front.astype(
+                                np.float32
+                            ) * exp_max_res.astype(np.float32)  # Mul
                             o_front_update = o_front_update.astype(np.float16)
-                            bmm2Res_1 = np.matmul(softmax_res, v_cur_loop, dtype=matmul_dtype)
-                            bmm2Res_1 = dequant(bmm2Res_1, ifa_param['dequantScale2'], None)
-                            bmm2Res_1 = o_front_update.astype(np.float32) + bmm2Res_1.astype(np.float32)
+                            bmm2Res_1 = np.matmul(
+                                softmax_res, v_cur_loop, dtype=matmul_dtype
+                            )
+                            bmm2Res_1 = dequant(
+                                bmm2Res_1, ifa_param["dequantScale2"], None
+                            )
+                            bmm2Res_1 = o_front_update.astype(
+                                np.float32
+                            ) + bmm2Res_1.astype(np.float32)
                             max_front = softmax_max
                             sum_front = softmax_sum
                             o_front = bmm2Res_1.astype(np.float16)
                     # 按n拼接
-                    bmm2Res[:, nIdx:(nIdx + 1), :, :] = o_front
+                    bmm2Res[:, nIdx : (nIdx + 1), :, :] = o_front
             # 量化非切分场景
             else:
-                print(f"[INFO]输入量化+无sinner切分！")
+                print("[INFO]输入量化+无sinner切分！")
                 softmax_res = softmax(qkEleRes)
-                softmax_res = quant(softmax_res, ifa_param['quantScale1'], 0)
+                softmax_res = quant(softmax_res, ifa_param["quantScale1"], 0)
                 bmm2Res = np.matmul(softmax_res, v_cur, dtype=matmul_dtype)
-                bmm2Res = dequant(bmm2Res, ifa_param['dequantScale2'], None)
+                bmm2Res = dequant(bmm2Res, ifa_param["dequantScale2"], None)
         # 非输入量化场景
         else:
             if kv_smax <= 512 and ifa_param["softmaxV1_flag"] == True:
                 softmax_res, softmax_sum, softmax_max = softmaxv1(qkEleRes)
-                if ifa_param['q_dtype'] == "float16":
-                    bmm2Res = np.matmul(softmax_res.astype(np.float16).astype(np.float32), v_cur,
-                                        dtype=matmul_dtype)
-                elif ifa_param['q_dtype'] == "bfloat16":
-                    bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_cur,
-                                        dtype=matmul_dtype)
+                if ifa_param["q_dtype"] == "float16":
+                    bmm2Res = np.matmul(
+                        softmax_res.astype(np.float16).astype(np.float32),
+                        v_cur,
+                        dtype=matmul_dtype,
+                    )
+                elif ifa_param["q_dtype"] == "bfloat16":
+                    bmm2Res = np.matmul(
+                        softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(
+                            np.float32
+                        ),
+                        v_cur,
+                        dtype=matmul_dtype,
+                    )
                 else:
                     bmm2Res = np.matmul(softmax_res, v_cur, dtype=matmul_dtype)
             else:
                 softmax_res, softmax_sum, softmax_max = softmax(qkEleRes)
-                if ifa_param['q_dtype'] == "float16":
-                    bmm2Res = np.matmul(softmax_res.astype(np.float16).astype(np.float32), v_cur,
-                                        dtype=matmul_dtype) / softmax_sum
-                elif ifa_param['q_dtype'] == "bfloat16":
-                    bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_cur,
-                                        dtype=matmul_dtype) / softmax_sum
+                if ifa_param["q_dtype"] == "float16":
+                    bmm2Res = (
+                        np.matmul(
+                            softmax_res.astype(np.float16).astype(np.float32),
+                            v_cur,
+                            dtype=matmul_dtype,
+                        )
+                        / softmax_sum
+                    )
+                elif ifa_param["q_dtype"] == "bfloat16":
+                    bmm2Res = (
+                        np.matmul(
+                            softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(
+                                np.float32
+                            ),
+                            v_cur,
+                            dtype=matmul_dtype,
+                        )
+                        / softmax_sum
+                    )
                 else:
-                    bmm2Res = np.matmul(softmax_res, v_cur, dtype=matmul_dtype) / softmax_sum
+                    bmm2Res = (
+                        np.matmul(softmax_res, v_cur, dtype=matmul_dtype) / softmax_sum
+                    )
             if lse_flag:
                 lse = np.log(softmax_sum) + softmax_max
             else:
                 lse = None
             if mask_cur is not None:
-                if ifa_param['sparse_mode'] == 3 or act_seq_q > 1:
+                if ifa_param["sparse_mode"] == 3 or act_seq_q > 1:
                     for i in range(mask_cur.shape[2]):
                         if mask_cur[:, :, i, :].all() == 1:
                             bmm2Res[:, :, i, :] = 0
@@ -2478,7 +2658,7 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
             new_tensor[:, i, :, :] = tensor[i]
         return new_tensor
     else:
-        print(f"[INFO]_trans_antiparam_to_1n1d : pass！！")
+        print("[INFO]_trans_antiparam_to_1n1d : pass！！")
         return tensor
 
 
@@ -2533,38 +2713,38 @@ def broadcast_kv_split_dequant_tensor_ptoh(
         tensor_new = np.zeros([B, numheads, S], dtype=dtype)
         for i in range(numheads):
             j = i // factor
-            tensor_new[:, i:i + 1, :] = tensor[:, j:j + 1, :]
+            tensor_new[:, i : i + 1, :] = tensor[:, j : j + 1, :]
         return tensor_new
 
 
 def _t_increattention_bnsd(ifa_param):
-
-    batch_value = ifa_param['q_shape_bnsd'][0]
-    n = ifa_param['q_shape_bnsd'][1]
-    qs = ifa_param['q_shape_bnsd'][2]
-    k_tensor_list = ifa_param['k_tensor_list_bnsd']
-    v_tensor_list = ifa_param['v_tensor_list_bnsd']
-    k_shape_list = ifa_param['k_shape_list_bnsd']
-    v_shape_list = ifa_param['v_shape_list_bnsd']
-    actseqlens_q = ifa_param['actualSeqLengths_q']
-    actseqlens = ifa_param['actualSeqLengths']
+    batch_value = ifa_param["q_shape_bnsd"][0]
+    n = ifa_param["q_shape_bnsd"][1]
+    qs = ifa_param["q_shape_bnsd"][2]
+    k_tensor_list = ifa_param["k_tensor_list_bnsd"]
+    v_tensor_list = ifa_param["v_tensor_list_bnsd"]
+    k_shape_list = ifa_param["k_shape_list_bnsd"]
+    v_shape_list = ifa_param["v_shape_list_bnsd"]
+    actseqlens_q = ifa_param["actualSeqLengths_q"]
+    actseqlens = ifa_param["actualSeqLengths"]
     actseqlens_size = len(actseqlens)
     print(
-        f"B:{batch_value} k tensor number:{len(k_tensor_list)} v tensor number:{len(v_tensor_list)}  actseqlens_q:{actseqlens_q} actseqlens:{actseqlens}")
+        f"B:{batch_value} k tensor number:{len(k_tensor_list)} v tensor number:{len(v_tensor_list)}  actseqlens_q:{actseqlens_q} actseqlens:{actseqlens}"
+    )
     # deepseek场景下，output的d轴需要复原
-    out_shape = ifa_param['q_shape_bnsd'].copy()
+    out_shape = ifa_param["q_shape_bnsd"].copy()
     out_shape[3] = v_shape_list[0][3]
-    if ifa_param['deep_seek_flag']:
-        if ifa_param['inputLayout'] in ["BNSD", "BSND", "BSND_NBSD", "BNSD_NBSD"]:
-            out_shape[3] = ifa_param['out_shape'][3]
-        elif ifa_param['inputLayout'] in ["TND", "TND_NTD"]:
-            out_shape[3] = ifa_param['out_shape'][2]
+    if ifa_param["deep_seek_flag"]:
+        if ifa_param["inputLayout"] in ["BNSD", "BSND", "BSND_NBSD", "BNSD_NBSD"]:
+            out_shape[3] = ifa_param["out_shape"][3]
+        elif ifa_param["inputLayout"] in ["TND", "TND_NTD"]:
+            out_shape[3] = ifa_param["out_shape"][2]
         else:
-            out_shape[3] = int(ifa_param['out_shape'][2] / ifa_param['numHeads'])
+            out_shape[3] = int(ifa_param["out_shape"][2] / ifa_param["numHeads"])
     y = np.zeros(out_shape, dtype=np.float32)
     lse = np.full([batch_value, n, qs, 1], np.inf)
     # 连续场景预处理
-    if ifa_param['continue_flag']:
+    if ifa_param["continue_flag"]:
         # 处理连续场景：将单个tensor shape依据B值拆成列表
         k_shape_list = split_tensor_shape_by_b(k_shape_list)
         v_shape_list = split_tensor_shape_by_b(v_shape_list)
@@ -2574,111 +2754,160 @@ def _t_increattention_bnsd(ifa_param):
 
     for b_index in range(batch_value):
         prefix_len = 0
-        ifa_param['batch_id'] = b_index
-        if ifa_param['prefix_flag']:
-            prefix_len = ifa_param['prefix_act_lens']
+        ifa_param["batch_id"] = b_index
+        if ifa_param["prefix_flag"]:
+            prefix_len = ifa_param["prefix_act_lens"]
         # 处理实际参与计算的kv s
-        if ifa_param['as_flag']:
-            ifa_param['act_seq'] = act_seq = actseqlens[b_index] + prefix_len
+        if ifa_param["as_flag"]:
+            ifa_param["act_seq"] = act_seq = actseqlens[b_index] + prefix_len
         else:
-            ifa_param['act_seq'] = act_seq = k_shape_list[b_index][2] + prefix_len
+            ifa_param["act_seq"] = act_seq = k_shape_list[b_index][2] + prefix_len
 
-        if ifa_param['as_q_flag']:
-            ifa_param['act_seq_q'] = act_seq_q = actseqlens_q[b_index]
+        if ifa_param["as_q_flag"]:
+            ifa_param["act_seq_q"] = act_seq_q = actseqlens_q[b_index]
         else:
-            ifa_param['act_seq_q'] = act_seq_q = qs
+            ifa_param["act_seq_q"] = act_seq_q = qs
 
-        ifa_param['k_sub_shape'] = k_sub_shape = k_shape_list[b_index]
-        ifa_param['v_sub_shape'] = v_sub_shape = v_shape_list[b_index]
+        ifa_param["k_sub_shape"] = k_sub_shape = k_shape_list[b_index]
+        ifa_param["v_sub_shape"] = v_sub_shape = v_shape_list[b_index]
         if act_seq == 0 or act_seq_q == 0 or 0 in k_sub_shape or 0 in v_sub_shape:
             continue
-        ifa_param['k_sub_tensor'] = k_tensor_list[b_index]
-        ifa_param['v_sub_tensor'] = v_tensor_list[b_index]
-        ifa_param['q_tensor_cur'] = ifa_param['q_tensor_bnsd'][b_index:(b_index + 1), :, :act_seq_q, :]
-        if ifa_param['in_quant_flag']:
-            ifa_param['dequantScale1_cur'] = ifa_param['dequantScale1'][b_index:(b_index + 1), :, :act_seq_q, :]
-            ifa_param['q_rope_tensor_cur'] = ifa_param['q_rope_bnsd_tensor'][b_index:(b_index + 1), :, :act_seq_q, :]
-            ifa_param['k_rope_tensor_cur'] = ifa_param['k_rope_bnsd_tensor'][b_index:(b_index + 1), :, :, :]
+        ifa_param["k_sub_tensor"] = k_tensor_list[b_index]
+        ifa_param["v_sub_tensor"] = v_tensor_list[b_index]
+        ifa_param["q_tensor_cur"] = ifa_param["q_tensor_bnsd"][
+            b_index : (b_index + 1), :, :act_seq_q, :
+        ]
+        if ifa_param["in_quant_flag"]:
+            ifa_param["dequantScale1_cur"] = ifa_param["dequantScale1"][
+                b_index : (b_index + 1), :, :act_seq_q, :
+            ]
+            ifa_param["q_rope_tensor_cur"] = ifa_param["q_rope_bnsd_tensor"][
+                b_index : (b_index + 1), :, :act_seq_q, :
+            ]
+            ifa_param["k_rope_tensor_cur"] = ifa_param["k_rope_bnsd_tensor"][
+                b_index : (b_index + 1), :, :, :
+            ]
 
         # prefix拼接
-        if ifa_param['prefix_flag']:
-            k_sub_tensor_temp = np.concatenate((ifa_param['k_prefix_tensor'], ifa_param['k_sub_tensor']), axis=2)
-            v_sub_tensor_temp = np.concatenate((ifa_param['v_prefix_tensor'], ifa_param['v_sub_tensor']), axis=2)
-            ifa_param['k_sub_tensor'] = k_sub_tensor_temp
-            ifa_param['v_sub_tensor'] = v_sub_tensor_temp
-            print(ifa_param['k_sub_tensor'].shape)
+        if ifa_param["prefix_flag"]:
+            k_sub_tensor_temp = np.concatenate(
+                (ifa_param["k_prefix_tensor"], ifa_param["k_sub_tensor"]), axis=2
+            )
+            v_sub_tensor_temp = np.concatenate(
+                (ifa_param["v_prefix_tensor"], ifa_param["v_sub_tensor"]), axis=2
+            )
+            ifa_param["k_sub_tensor"] = k_sub_tensor_temp
+            ifa_param["v_sub_tensor"] = v_sub_tensor_temp
+            print(ifa_param["k_sub_tensor"].shape)
 
         # 判断attenmask是否为空
-        if not ifa_param['m_flag']:
-            ifa_param['mask_cur'] = None
+        if not ifa_param["m_flag"]:
+            ifa_param["mask_cur"] = None
         else:
-            ifa_param['mask_cur'] = ifa_param['m_tensor'][b_index:(b_index + 1), :, :act_seq_q, :]
+            ifa_param["mask_cur"] = ifa_param["m_tensor"][
+                b_index : (b_index + 1), :, :act_seq_q, :
+            ]
         # 判断pse是否为空,如果非空,检查pse第一维是否为1：如果格式为1n1s,则直接传入下层计算;如果格式为bn1s,则按B拆分后进入下层。
-        if not ifa_param['p_flag']:
+        if not ifa_param["p_flag"]:
             pse_cur = None
-        elif ifa_param['p_tensor'].shape[0] == 1:
-            pse_cur = ifa_param['p_tensor']
+        elif ifa_param["p_tensor"].shape[0] == 1:
+            pse_cur = ifa_param["p_tensor"]
         else:
-            pse_cur = ifa_param['p_tensor'][b_index:(b_index + 1), :, :, :]
-        ifa_param['pse_cur'] = pse_cur
+            pse_cur = ifa_param["p_tensor"][b_index : (b_index + 1), :, :, :]
+        ifa_param["pse_cur"] = pse_cur
         # 伪量化Per token处理
-        if ifa_param['kv_quant_pto_flag']:
-            ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale'][:, b_index:(b_index + 1), :]
-            ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset'][:, b_index:(b_index + 1), :]
+        if ifa_param["kv_quant_pto_flag"]:
+            ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale"][
+                :, b_index : (b_index + 1), :
+            ]
+            ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset"][
+                :, b_index : (b_index + 1), :
+            ]
         # ptog伪量化参数切分
-        elif ifa_param['kv_quant_ptog_flag']:
-            ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale'][:, b_index:(b_index + 1), :, :, :]
-            ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset'][:, b_index:(b_index + 1), :, :, :]
-        elif ifa_param['kv_quant_flag']:
-            ifa_param['antiquantScale_cur'] = ifa_param['antiquantScale']
-            ifa_param['antiquantOffset_cur'] = ifa_param['antiquantOffset']
+        elif ifa_param["kv_quant_ptog_flag"]:
+            ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+            ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+        elif ifa_param["kv_quant_flag"]:
+            ifa_param["antiquantScale_cur"] = ifa_param["antiquantScale"]
+            ifa_param["antiquantOffset_cur"] = ifa_param["antiquantOffset"]
         else:
             pass
         # kv分离伪量化处理
-        if ifa_param['k_antiquant_pto_flag'] or ifa_param['k_antiquant_ptopa_flag']:
-            ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale'][:, b_index:(b_index + 1), :]
-            
-            ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset'][:, b_index:(b_index + 1), :]
-         
-        elif ifa_param['k_antiquant_ptoh_flag'] or ifa_param['k_antiquant_ptohpa_flag']:
-            ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale'][b_index:(b_index + 1), :, :]
-            ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset'][b_index:(b_index + 1), :, :]
-        elif ifa_param['k_antiquant_ptog_flag']:
-            ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale'][:, b_index:(b_index + 1), :, :, :]
-            ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset'][:, b_index:(b_index + 1), :, :, :]
-        elif ifa_param['k_antiquant_flag']:
-            ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale']
-            ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset']
+        if ifa_param["k_antiquant_pto_flag"] or ifa_param["k_antiquant_ptopa_flag"]:
+            ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale"][
+                :, b_index : (b_index + 1), :
+            ]
+
+            ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset"][
+                :, b_index : (b_index + 1), :
+            ]
+
+        elif ifa_param["k_antiquant_ptoh_flag"] or ifa_param["k_antiquant_ptohpa_flag"]:
+            ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale"][
+                b_index : (b_index + 1), :, :
+            ]
+            ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset"][
+                b_index : (b_index + 1), :, :
+            ]
+        elif ifa_param["k_antiquant_ptog_flag"]:
+            ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+            ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+        elif ifa_param["k_antiquant_flag"]:
+            ifa_param["k_antiquantScale_cur"] = ifa_param["k_antiquantScale"]
+            ifa_param["k_antiquantOffset_cur"] = ifa_param["k_antiquantOffset"]
         else:
             pass
-        if ifa_param['v_antiquant_pto_flag'] or ifa_param['v_antiquant_ptopa_flag']:
-            ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale'][:, b_index:(b_index + 1), :]
-            ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset'][:, b_index:(b_index + 1), :]
-        elif ifa_param['v_antiquant_ptoh_flag'] or ifa_param['v_antiquant_ptohpa_flag']:
-            ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale'][b_index:(b_index + 1), :, :]
-            ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset'][b_index:(b_index + 1), :, :]
-        elif ifa_param['v_antiquant_ptog_flag']:
-            ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale'][:, b_index:(b_index + 1), :, :, :]
-            ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset'][:, b_index:(b_index + 1), :, :, :]
-        elif ifa_param['v_antiquant_flag']:
-            ifa_param['v_antiquantScale_cur'] = ifa_param['v_antiquantScale']
-            ifa_param['v_antiquantOffset_cur'] = ifa_param['v_antiquantOffset']
+        if ifa_param["v_antiquant_pto_flag"] or ifa_param["v_antiquant_ptopa_flag"]:
+            ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale"][
+                :, b_index : (b_index + 1), :
+            ]
+            ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset"][
+                :, b_index : (b_index + 1), :
+            ]
+        elif ifa_param["v_antiquant_ptoh_flag"] or ifa_param["v_antiquant_ptohpa_flag"]:
+            ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale"][
+                b_index : (b_index + 1), :, :
+            ]
+            ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset"][
+                b_index : (b_index + 1), :, :
+            ]
+        elif ifa_param["v_antiquant_ptog_flag"]:
+            ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+            ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset"][
+                :, b_index : (b_index + 1), :, :, :
+            ]
+        elif ifa_param["v_antiquant_flag"]:
+            ifa_param["v_antiquantScale_cur"] = ifa_param["v_antiquantScale"]
+            ifa_param["v_antiquantOffset_cur"] = ifa_param["v_antiquantOffset"]
         else:
             pass
 
-        if ifa_param['as_q_flag']:
-            y[b_index:(b_index + 1), :, :act_seq_q, :], lse[b_index:(b_index + 1), :, :act_seq_q, :] = _t_ifaattention_act(
-            ifa_param)
+        if ifa_param["as_q_flag"]:
+            (
+                y[b_index : (b_index + 1), :, :act_seq_q, :],
+                lse[b_index : (b_index + 1), :, :act_seq_q, :],
+            ) = _t_ifaattention_act(ifa_param)
         else:
-            y[b_index:(b_index + 1), :, :act_seq_q, :], lse[b_index:(b_index + 1), :, :, :] = _t_ifaattention_act(
-                ifa_param)
+            (
+                y[b_index : (b_index + 1), :, :act_seq_q, :],
+                lse[b_index : (b_index + 1), :, :, :],
+            ) = _t_ifaattention_act(ifa_param)
 
-
-    if ifa_param['out_quant_flag']:
-        if ifa_param['out_quant_pc_flag']:
-            y = quant_pc(y, ifa_param['quantScale2'], ifa_param['quantOffset2'])
+    if ifa_param["out_quant_flag"]:
+        if ifa_param["out_quant_pc_flag"]:
+            y = quant_pc(y, ifa_param["quantScale2"], ifa_param["quantOffset2"])
         else:
-            y = quant(y, ifa_param['quantScale2'][0], ifa_param['quantOffset2'][0])
+            y = quant(y, ifa_param["quantScale2"][0], ifa_param["quantOffset2"][0])
     return y, lse
 
 
@@ -2740,350 +2969,455 @@ def cut_padding_size(tensor, list, padding_size):
     ms = shape[-1]
     for i in range(len(list)):
         cut_len = int(ms - padding_size - list[i])
-        tensor[i:(i + 1), ..., :cut_len] = 1
+        tensor[i : (i + 1), ..., :cut_len] = 1
     return tensor
 
 
 # 融合表格参数获取函数
 def get_param_fus(torch_tensor_list, params):
     ifa_param = {}
-    ifa_param['normal_flag'] = True
+    ifa_param["normal_flag"] = True
     # ===参数获取===
-    ifa_param['flag_list'] = str_to_bool_list(params['flaglist'])
+    ifa_param["flag_list"] = str_to_bool_list(params["flaglist"])
 
     # >> attr info
-    ifa_param['actualSeqLengths_q_raw'] = actualSeqLengths_q = params['actualseqlengths']
-    ifa_param['actualSeqLengths_raw'] = actualSeqLengths = params['actualseqlengthskv']
-    ifa_param['numHeads'] = numHeads = params['numheads']
-    ifa_param['scaleValue'] = scaleValue = params['scalevalue']
-    ifa_param['inputLayout'] = inputLayout = params['inputlayout']
+    ifa_param["actualSeqLengths_q_raw"] = actualSeqLengths_q = params[
+        "actualseqlengths"
+    ]
+    ifa_param["actualSeqLengths_raw"] = actualSeqLengths = params["actualseqlengthskv"]
+    ifa_param["numHeads"] = numHeads = params["numheads"]
+    ifa_param["scaleValue"] = scaleValue = params["scalevalue"]
+    ifa_param["inputLayout"] = inputLayout = params["inputlayout"]
 
     # >> q info
-    ifa_param['q_shape'] = q_shape = params['shape_input'][0]
-    ifa_param['q_dtype'] = q_dtype = trans_input_dtype(params['dtype_input'][0])
-    ifa_param['q_tensor'] = torch_tensor_list[0]
+    ifa_param["q_shape"] = q_shape = params["shape_input"][0]
+    ifa_param["q_dtype"] = q_dtype = trans_input_dtype(params["dtype_input"][0])
+    ifa_param["q_tensor"] = torch_tensor_list[0]
 
     if inputLayout in ["TND", "TND_NTD"]:
-        ifa_param['b'] = len(actualSeqLengths_q)
+        ifa_param["b"] = len(actualSeqLengths_q)
     else:
-        ifa_param['b'] = ifa_param['q_shape'][0]
+        ifa_param["b"] = ifa_param["q_shape"][0]
 
     # >> kv info
     # k和v的位置通过b计算
-    k1_shape = params['shape_input'][1]
+    k1_shape = params["shape_input"][1]
     kb1 = k1_shape[0]
     # 如果第一个K的B=1,则默认kv列表长度为b;如果第一个K的B!=1,则默认kv列表长度为1
     if kb1 == 1:
-        k_shape_num = v_shape_num = ifa_param['b']
+        k_shape_num = v_shape_num = ifa_param["b"]
     else:
         k_shape_num = v_shape_num = 1
 
-    ifa_param['k_num'] = k_shape_num
-    ifa_param['k_start_index'] = k_start_index = 1
-    ifa_param['k_end_index'] = k_end_index = int(k_shape_num)
-    ifa_param['v_start_index'] = v_start_index = int(k_shape_num) + 1
-    ifa_param['v_end_index'] = v_end_index = int(k_shape_num + v_shape_num)
+    ifa_param["k_num"] = k_shape_num
+    ifa_param["k_start_index"] = k_start_index = 1
+    ifa_param["k_end_index"] = k_end_index = int(k_shape_num)
+    ifa_param["v_start_index"] = v_start_index = int(k_shape_num) + 1
+    ifa_param["v_end_index"] = v_end_index = int(k_shape_num + v_shape_num)
 
     print(
-        f"k_start_index:{k_start_index} k_end_index:{k_end_index} v_start_index:{v_start_index} v_end_index:{v_end_index}")
+        f"k_start_index:{k_start_index} k_end_index:{k_end_index} v_start_index:{v_start_index} v_end_index:{v_end_index}"
+    )
 
-    ifa_param['k_shape_list'] = k_ori_shape_list = params['shape_input'][k_start_index:k_end_index + 1]
-    ifa_param['v_shape_list'] = v_ori_shape_list = params['shape_input'][v_start_index:v_end_index + 1]
-    ifa_param['k_dtype'] = k_dtype = trans_input_dtype(params['dtype_input'][1])
-    ifa_param['v_dtype'] = v_dtype = trans_input_dtype(params['dtype_input'][v_start_index])
-    ifa_param['k_tensor_list'] = torch_tensor_list[k_start_index:k_end_index + 1]
-    ifa_param['v_tensor_list'] = torch_tensor_list[v_start_index:v_end_index + 1]
+    ifa_param["k_shape_list"] = k_ori_shape_list = params["shape_input"][
+        k_start_index : k_end_index + 1
+    ]
+    ifa_param["v_shape_list"] = v_ori_shape_list = params["shape_input"][
+        v_start_index : v_end_index + 1
+    ]
+    ifa_param["k_dtype"] = k_dtype = trans_input_dtype(params["dtype_input"][1])
+    ifa_param["v_dtype"] = v_dtype = trans_input_dtype(
+        params["dtype_input"][v_start_index]
+    )
+    ifa_param["k_tensor_list"] = torch_tensor_list[k_start_index : k_end_index + 1]
+    ifa_param["v_tensor_list"] = torch_tensor_list[v_start_index : v_end_index + 1]
 
     # >> out info
-    ifa_param['out_shape'] = q_shape
-    ifa_param['out_dtype'] = trans_input_dtype(params['dtype_output'][0])
+    ifa_param["out_shape"] = q_shape
+    ifa_param["out_dtype"] = trans_input_dtype(params["dtype_output"][0])
 
     # >> p info
-    ifa_param['p_shape'] = p_shape = params['shape_input'][v_end_index + 1]
-    ifa_param['p_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 1])
-    ifa_param['p_tensor'] = p_tensor = torch_tensor_list[v_end_index + 1]
+    ifa_param["p_shape"] = p_shape = params["shape_input"][v_end_index + 1]
+    ifa_param["p_dtype"] = trans_input_dtype(params["dtype_input"][v_end_index + 1])
+    ifa_param["p_tensor"] = p_tensor = torch_tensor_list[v_end_index + 1]
 
     # >> m info
-    ifa_param['m_shape'] = m_shape = params['shape_input'][v_end_index + 2]
-    ifa_param['m_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 2])
-    ifa_param['m_tensor'] = m_tensor = torch_tensor_list[v_end_index + 2]
+    ifa_param["m_shape"] = m_shape = params["shape_input"][v_end_index + 2]
+    ifa_param["m_dtype"] = trans_input_dtype(params["dtype_input"][v_end_index + 2])
+    ifa_param["m_tensor"] = m_tensor = torch_tensor_list[v_end_index + 2]
 
     # kv prefix
-    ifa_param['k_prefix_shape'] = k_prefix_shape = params['shape_input'][v_end_index + 17]
-    ifa_param['k_prefix_dtype'] = k_prefix_dtype = trans_input_dtype(params['dtype_input'][v_end_index + 17])
-    ifa_param['k_prefix_tensor'] = k_prefix_tensor = torch_tensor_list[v_end_index + 17]
+    ifa_param["k_prefix_shape"] = k_prefix_shape = params["shape_input"][
+        v_end_index + 17
+    ]
+    ifa_param["k_prefix_dtype"] = k_prefix_dtype = trans_input_dtype(
+        params["dtype_input"][v_end_index + 17]
+    )
+    ifa_param["k_prefix_tensor"] = k_prefix_tensor = torch_tensor_list[v_end_index + 17]
 
-    ifa_param['v_prefix_shape'] = v_prefix_shape = params['shape_input'][v_end_index + 18]
-    ifa_param['v_prefix_dtype'] = v_prefix_dtype = trans_input_dtype(params['dtype_input'][v_end_index + 18])
+    ifa_param["v_prefix_shape"] = v_prefix_shape = params["shape_input"][
+        v_end_index + 18
+    ]
+    ifa_param["v_prefix_dtype"] = v_prefix_dtype = trans_input_dtype(
+        params["dtype_input"][v_end_index + 18]
+    )
 
-    ifa_param['v_prefix_tensor'] = v_prefix_tensor = torch_tensor_list[v_end_index + 18]
+    ifa_param["v_prefix_tensor"] = v_prefix_tensor = torch_tensor_list[v_end_index + 18]
 
     # >> q rope info
-    ifa_param['q_rope_shape'] = params['shape_input'][v_end_index + 21]
-    ifa_param['q_rope_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 21])
-    ifa_param['q_rope_tensor'] = torch_tensor_list[v_end_index + 21]
+    ifa_param["q_rope_shape"] = params["shape_input"][v_end_index + 21]
+    ifa_param["q_rope_dtype"] = trans_input_dtype(
+        params["dtype_input"][v_end_index + 21]
+    )
+    ifa_param["q_rope_tensor"] = torch_tensor_list[v_end_index + 21]
 
     # >> k rope info
-    ifa_param['k_rope_shape'] = params['shape_input'][v_end_index + 22]
-    ifa_param['k_rope_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 22])
-    ifa_param['k_rope_tensor'] = torch_tensor_list[v_end_index + 22]
-    ifa_param['k_rope_cache_shape'] = params['shape_input'][v_end_index + 23]
+    ifa_param["k_rope_shape"] = params["shape_input"][v_end_index + 22]
+    ifa_param["k_rope_dtype"] = trans_input_dtype(
+        params["dtype_input"][v_end_index + 22]
+    )
+    ifa_param["k_rope_tensor"] = torch_tensor_list[v_end_index + 22]
+    ifa_param["k_rope_cache_shape"] = params["shape_input"][v_end_index + 23]
 
     # 当numKeyValueHeads传入0时，处理为与numHeads相等
-    numKeyValueHeads = params['numkeyvalueheads'] if params['numkeyvalueheads'] != 0 else numHeads
-    ifa_param['numKeyValueHeads'] = numKeyValueHeads
-    ifa_param['blocksize'] = params['blocksize']
-    ifa_param['innerprecise'] = params['innerprecise']
-    ifa_param['antiquant_mode'] = str(params['antiquant_mode'])
+    numKeyValueHeads = (
+        params["numkeyvalueheads"] if params["numkeyvalueheads"] != 0 else numHeads
+    )
+    ifa_param["numKeyValueHeads"] = numKeyValueHeads
+    ifa_param["blocksize"] = params["blocksize"]
+    ifa_param["innerprecise"] = params["innerprecise"]
+    ifa_param["antiquant_mode"] = str(params["antiquant_mode"])
     # kv antiquant分离
-    ifa_param['k_antiquant_mode'] = str(params['k_antiquant_mode'])
-    ifa_param['v_antiquant_mode'] = str(params['v_antiquant_mode'])
+    ifa_param["k_antiquant_mode"] = str(params["k_antiquant_mode"])
+    ifa_param["v_antiquant_mode"] = str(params["v_antiquant_mode"])
 
-    ifa_param['pre_tokens'] = params['pretokens']
-    ifa_param['next_tokens'] = params['nexttokens']
-    ifa_param['sparse_mode'] = params['sparsemode']
-    ifa_param['softmax_lse_flag'] = params['softmax_lse_flag']
+    ifa_param["pre_tokens"] = params["pretokens"]
+    ifa_param["next_tokens"] = params["nexttokens"]
+    ifa_param["sparse_mode"] = params["sparsemode"]
+    ifa_param["softmax_lse_flag"] = params["softmax_lse_flag"]
 
     # >> quant info
-    ifa_param['dequantScale1'] = params['range_input'][v_end_index + 3][0]
-    ifa_param['quantScale1'] = params['range_input'][v_end_index + 4][0]
-    ifa_param['dequantScale2'] = params['range_input'][v_end_index + 5][0]
+    ifa_param["dequantScale1"] = params["range_input"][v_end_index + 3][0]
+    ifa_param["quantScale1"] = params["range_input"][v_end_index + 4][0]
+    ifa_param["dequantScale2"] = params["range_input"][v_end_index + 5][0]
 
     # V4
-    ifa_param['query_quant_mode'] = str(params['query_quant_mode'])
-    ifa_param['dequant_scale_query'] = params['range_input'][v_end_index + 24][0]
+    ifa_param["query_quant_mode"] = str(params["query_quant_mode"])
+    ifa_param["dequant_scale_query"] = params["range_input"][v_end_index + 24][0]
 
-    ifa_param['quantScale2_shape'] = params['shape_input'][v_end_index + 6]
-    ifa_param['quantScale2'] = torch_tensor_list[v_end_index + 6]
+    ifa_param["quantScale2_shape"] = params["shape_input"][v_end_index + 6]
+    ifa_param["quantScale2"] = torch_tensor_list[v_end_index + 6]
 
-    ifa_param['quantOffset2_shape'] = params['shape_input'][v_end_index + 7]
-    ifa_param['quantOffset2'] = torch_tensor_list[v_end_index + 7]
+    ifa_param["quantOffset2_shape"] = params["shape_input"][v_end_index + 7]
+    ifa_param["quantOffset2"] = torch_tensor_list[v_end_index + 7]
 
     # >> kv_s list
-    ifa_param['kv_s_list'] = get_kvs_list(ifa_param['k_shape_list'], ifa_param['inputLayout'])
+    ifa_param["kv_s_list"] = get_kvs_list(
+        ifa_param["k_shape_list"], ifa_param["inputLayout"]
+    )
 
     # ===flag_list判断===
-    ifa_param['p_flag'] = False
-    ifa_param['m_flag'] = False
-    ifa_param['as_flag'] = False
-    ifa_param['as_q_flag'] = False
-    ifa_param['pa_flag'] = False
-    ifa_param['in_quant_flag'] = ifa_param['out_quant_flag'] = ifa_param['kv_quant_flag'] = False
-    ifa_param['out_quant_offset_flag'] = ifa_param['kv_quant_offset_flag'] = ifa_param['kv_quant_pto_flag'] = False
-    ifa_param['k_antiquant_flag'] = ifa_param['v_antiquant_flag'] = False
-    ifa_param['k_antiquant_offset_flag'] = ifa_param['v_antiquant_offset_flag'] = False
-    ifa_param['k_antiquant_pc_flag'] = ifa_param['v_antiquant_pc_flag'] = False
-    ifa_param['k_antiquant_pto_flag'] = ifa_param['v_antiquant_pto_flag'] = False
-    ifa_param['k_antiquant_pth_flag'] = ifa_param['v_antiquant_pth_flag'] = False
-    ifa_param['k_antiquant_ptoh_flag'] = ifa_param['v_antiquant_ptoh_flag'] = False
-    ifa_param['k_antiquant_ptopa_flag'] = ifa_param['v_antiquant_ptopa_flag'] = False
-    ifa_param['k_antiquant_ptohpa_flag'] = ifa_param['v_antiquant_ptohpa_flag'] = False
-    ifa_param['k_antiquant_ptog_flag'] = ifa_param['v_antiquant_ptog_flag'] = False
-    ifa_param['kv_quant_ptog_flag'] = False
-    ifa_param['continue_flag'] = False
-    ifa_param['padding_flag'] = False
-    ifa_param['out_quant_pc_flag'] = False
-    ifa_param['deep_seek_flag'] = False
-    ifa_param['prefix_flag'] = ifa_param['prefix_act_flag'] = False
-    ifa_param['tnd_flag'] = False
+    ifa_param["p_flag"] = False
+    ifa_param["m_flag"] = False
+    ifa_param["as_flag"] = False
+    ifa_param["as_q_flag"] = False
+    ifa_param["pa_flag"] = False
+    ifa_param["in_quant_flag"] = ifa_param["out_quant_flag"] = ifa_param[
+        "kv_quant_flag"
+    ] = False
+    ifa_param["out_quant_offset_flag"] = ifa_param["kv_quant_offset_flag"] = ifa_param[
+        "kv_quant_pto_flag"
+    ] = False
+    ifa_param["k_antiquant_flag"] = ifa_param["v_antiquant_flag"] = False
+    ifa_param["k_antiquant_offset_flag"] = ifa_param["v_antiquant_offset_flag"] = False
+    ifa_param["k_antiquant_pc_flag"] = ifa_param["v_antiquant_pc_flag"] = False
+    ifa_param["k_antiquant_pto_flag"] = ifa_param["v_antiquant_pto_flag"] = False
+    ifa_param["k_antiquant_pth_flag"] = ifa_param["v_antiquant_pth_flag"] = False
+    ifa_param["k_antiquant_ptoh_flag"] = ifa_param["v_antiquant_ptoh_flag"] = False
+    ifa_param["k_antiquant_ptopa_flag"] = ifa_param["v_antiquant_ptopa_flag"] = False
+    ifa_param["k_antiquant_ptohpa_flag"] = ifa_param["v_antiquant_ptohpa_flag"] = False
+    ifa_param["k_antiquant_ptog_flag"] = ifa_param["v_antiquant_ptog_flag"] = False
+    ifa_param["kv_quant_ptog_flag"] = False
+    ifa_param["continue_flag"] = False
+    ifa_param["padding_flag"] = False
+    ifa_param["out_quant_pc_flag"] = False
+    ifa_param["deep_seek_flag"] = False
+    ifa_param["prefix_flag"] = ifa_param["prefix_act_flag"] = False
+    ifa_param["tnd_flag"] = False
     if inputLayout in ["TND", "TND_NTD"]:
-        ifa_param['tnd_flag'] = True
-    flag_list = str_to_bool_list(params['flaglist'])
-    kv_batch_value = ifa_param['k_shape_list'][0][0]
-    if ifa_param['k_dtype'] in ['fp4_e2m1', 'fp4_e1m2', 'float4_e1m2', 'float4_e2m1']:
-        ifa_param['kv_quant_ptog_flag'] = True
+        ifa_param["tnd_flag"] = True
+    flag_list = str_to_bool_list(params["flaglist"])
+    kv_batch_value = ifa_param["k_shape_list"][0][0]
+    if ifa_param["k_dtype"] in ["fp4_e2m1", "fp4_e1m2", "float4_e1m2", "float4_e2m1"]:
+        ifa_param["kv_quant_ptog_flag"] = True
     # 判断是否是连续场景
-    if kv_batch_value >= 1 and len(ifa_param['k_shape_list']) == 1:
-        ifa_param['continue_flag'] = True
+    if kv_batch_value >= 1 and len(ifa_param["k_shape_list"]) == 1:
+        ifa_param["continue_flag"] = True
     if not flag_list[0] or not flag_list[1] or not flag_list[2] or not flag_list[24]:
-        ifa_param['normal_flag'] = False
-        print('[WARNING]:异常-->  q/k/v/out不输入场景！')
+        ifa_param["normal_flag"] = False
+        print("[WARNING]:异常-->  q/k/v/out不输入场景！")
     if 0 in q_shape:
-        ifa_param['normal_flag'] = False
-        print('[WARNING]:异常-->  q为空场景！')
-    if 0 in k_ori_shape_list or len(k_ori_shape_list) == 0 or is_0_tensor(k_ori_shape_list):
-        ifa_param['normal_flag'] = False
-        print('[WARNING]:异常-->  k为空场景！')
-    if 0 in v_ori_shape_list or len(v_ori_shape_list) == 0 or is_0_tensor(v_ori_shape_list):
-        ifa_param['normal_flag'] = False
-        print('[WARNING]:异常-->  v为空场景！')
+        ifa_param["normal_flag"] = False
+        print("[WARNING]:异常-->  q为空场景！")
+    if (
+        0 in k_ori_shape_list
+        or len(k_ori_shape_list) == 0
+        or is_0_tensor(k_ori_shape_list)
+    ):
+        ifa_param["normal_flag"] = False
+        print("[WARNING]:异常-->  k为空场景！")
+    if (
+        0 in v_ori_shape_list
+        or len(v_ori_shape_list) == 0
+        or is_0_tensor(v_ori_shape_list)
+    ):
+        ifa_param["normal_flag"] = False
+        print("[WARNING]:异常-->  v为空场景！")
     if flag_list[3]:
-        ifa_param['p_flag'] = True
+        ifa_param["p_flag"] = True
     if flag_list[4]:
-        ifa_param['m_flag'] = True
+        ifa_param["m_flag"] = True
     if flag_list[5]:
-        ifa_param['as_q_flag'] = True
+        ifa_param["as_q_flag"] = True
     if flag_list[6]:
-        ifa_param['as_flag'] = True
+        ifa_param["as_flag"] = True
     if flag_list[7] and flag_list[8] and flag_list[9]:
-        ifa_param['in_quant_flag'] = True
+        ifa_param["in_quant_flag"] = True
     if flag_list[17] and flag_list[19] and flag_list[29] and flag_list[26]:
-        ifa_param['in_quant_flag'] = True
+        ifa_param["in_quant_flag"] = True
     if flag_list[10]:
-        ifa_param['out_quant_flag'] = True
+        ifa_param["out_quant_flag"] = True
         if flag_list[11]:
-            ifa_param['out_quant_offset_flag'] = True
+            ifa_param["out_quant_offset_flag"] = True
         else:
             # 当不传入quantOffset2时，也需要生成一个和scale一样大小的全0 Offset，用于后续计算
-            ifa_param['quantOffset2'] = np.zeros(ifa_param['quantScale2_shape'], np.float32)
-            ifa_param['quantOffset2_shape'] = ifa_param['quantScale2_shape']
-        if ifa_param['quantScale2_shape'] != [1]:
-            ifa_param['out_quant_pc_flag'] = True
+            ifa_param["quantOffset2"] = np.zeros(
+                ifa_param["quantScale2_shape"], np.float32
+            )
+            ifa_param["quantOffset2_shape"] = ifa_param["quantScale2_shape"]
+        if ifa_param["quantScale2_shape"] != [1]:
+            ifa_param["out_quant_pc_flag"] = True
 
     # 判断kv 分离的antiquant是否存在
     if flag_list[17]:
         ifa_param["k_antiquant_flag"] = True
         if flag_list[18]:
-            ifa_param['k_antiquant_offset_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '0':
-            ifa_param['k_antiquant_pc_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '1':
-            ifa_param['k_antiquant_pto_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '2':
-            ifa_param['k_antiquant_pth_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '3':
-            ifa_param['k_antiquant_ptoh_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '4':
-            ifa_param['k_antiquant_ptopa_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '5':
-            ifa_param['k_antiquant_ptohpa_flag'] = True
-        if ifa_param['k_antiquant_mode'] == '6':
-            ifa_param['k_antiquant_ptog_flag'] = True
-            ifa_param['kv_quant_ptog_flag'] = False
+            ifa_param["k_antiquant_offset_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "0":
+            ifa_param["k_antiquant_pc_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "1":
+            ifa_param["k_antiquant_pto_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "2":
+            ifa_param["k_antiquant_pth_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "3":
+            ifa_param["k_antiquant_ptoh_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "4":
+            ifa_param["k_antiquant_ptopa_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "5":
+            ifa_param["k_antiquant_ptohpa_flag"] = True
+        if ifa_param["k_antiquant_mode"] == "6":
+            ifa_param["k_antiquant_ptog_flag"] = True
+            ifa_param["kv_quant_ptog_flag"] = False
     if flag_list[19]:
         ifa_param["v_antiquant_flag"] = True
         if flag_list[20]:
-            ifa_param['v_antiquant_offset_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '0':
-            ifa_param['v_antiquant_pc_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '1':
-            ifa_param['v_antiquant_pto_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '2':
-            ifa_param['v_antiquant_pth_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '3':
-            ifa_param['v_antiquant_ptoh_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '4':
-            ifa_param['v_antiquant_ptopa_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '5':
-            ifa_param['v_antiquant_ptohpa_flag'] = True
-        if ifa_param['v_antiquant_mode'] == '6':
-            ifa_param['v_antiquant_ptog_flag'] = True
-            ifa_param['kv_quant_ptog_flag'] = False
+            ifa_param["v_antiquant_offset_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "0":
+            ifa_param["v_antiquant_pc_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "1":
+            ifa_param["v_antiquant_pto_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "2":
+            ifa_param["v_antiquant_pth_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "3":
+            ifa_param["v_antiquant_ptoh_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "4":
+            ifa_param["v_antiquant_ptopa_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "5":
+            ifa_param["v_antiquant_ptohpa_flag"] = True
+        if ifa_param["v_antiquant_mode"] == "6":
+            ifa_param["v_antiquant_ptog_flag"] = True
+            ifa_param["kv_quant_ptog_flag"] = False
     if flag_list[12] and not flag_list[17] and not flag_list[19]:
-        ifa_param['kv_quant_flag'] = True
+        ifa_param["kv_quant_flag"] = True
         if flag_list[13]:
-            ifa_param['kv_quant_offset_flag'] = True
-        if ifa_param['antiquant_mode'] == '1':
-            ifa_param['kv_quant_pto_flag'] = True
+            ifa_param["kv_quant_offset_flag"] = True
+        if ifa_param["antiquant_mode"] == "1":
+            ifa_param["kv_quant_pto_flag"] = True
     if flag_list[14]:
-        ifa_param['pa_flag'] = True
-        ifa_param['bt_shape'] = params['shape_input'][12]
-        ifa_param['bt_dtype'] = trans_input_dtype(params['dtype_input'][12])
-        ifa_param['block_table'] = torch_tensor_list[12]
-        ifa_param['k_cache_shape'] = params['shape_input'][21]
-        ifa_param['v_cache_shape'] = params['shape_input'][22]
-        if 0 in ifa_param['k_cache_shape']:
-            ifa_param['normal_flag'] = False
+        ifa_param["pa_flag"] = True
+        ifa_param["bt_shape"] = params["shape_input"][12]
+        ifa_param["bt_dtype"] = trans_input_dtype(params["dtype_input"][12])
+        ifa_param["block_table"] = torch_tensor_list[12]
+        ifa_param["k_cache_shape"] = params["shape_input"][21]
+        ifa_param["v_cache_shape"] = params["shape_input"][22]
+        if 0 in ifa_param["k_cache_shape"]:
+            ifa_param["normal_flag"] = False
 
-    if flag_list[16] and ifa_param['as_flag'] and ifa_param['continue_flag'] and not ifa_param['pa_flag']:
-        ifa_param['padding_flag'] = True
-        ifa_param['padding_size'] = params['range_input'][v_end_index + 12][0]
-        if ifa_param['padding_size'] < 0:
-            ifa_param['padding_size'] = 0
+    if (
+        flag_list[16]
+        and ifa_param["as_flag"]
+        and ifa_param["continue_flag"]
+        and not ifa_param["pa_flag"]
+    ):
+        ifa_param["padding_flag"] = True
+        ifa_param["padding_size"] = params["range_input"][v_end_index + 12][0]
+        if ifa_param["padding_size"] < 0:
+            ifa_param["padding_size"] = 0
     if flag_list[21] and flag_list[22]:
-        ifa_param['prefix_flag'] = True
+        ifa_param["prefix_flag"] = True
     elif not flag_list[21] and not flag_list[22]:
-        ifa_param['prefix_flag'] = False
+        ifa_param["prefix_flag"] = False
     else:
-        ifa_param['normal_flag'] = False
-        print('[WARNING]:异常--> prefix未成对出现！')
+        ifa_param["normal_flag"] = False
+        print("[WARNING]:异常--> prefix未成对出现！")
     if flag_list[23]:
-        ifa_param['prefix_act_flag'] = True
-        ifa_param['prefix_act_lens'] = params['prefix_act_lens'][0]
+        ifa_param["prefix_act_flag"] = True
+        ifa_param["prefix_act_lens"] = params["prefix_act_lens"][0]
 
     if flag_list[26]:
-        ifa_param['deep_seek_flag'] = True
-        ifa_param['v_shape_list'] = v_ori_shape_list = params['shape_input'][k_start_index:k_end_index + 1]
-        ifa_param['v_dtype'] = v_dtype = trans_input_dtype(params['dtype_input'][1])
-        ifa_param['v_tensor_list'] = torch_tensor_list[k_start_index:k_end_index + 1]
+        ifa_param["deep_seek_flag"] = True
+        ifa_param["v_shape_list"] = v_ori_shape_list = params["shape_input"][
+            k_start_index : k_end_index + 1
+        ]
+        ifa_param["v_dtype"] = v_dtype = trans_input_dtype(params["dtype_input"][1])
+        ifa_param["v_tensor_list"] = torch_tensor_list[k_start_index : k_end_index + 1]
 
     # 获取kv量化参数
-    if ifa_param['kv_quant_flag']:
-        ifa_param['antiquantscale_shape_raw'] = antiquantscale_shape_raw = params['shape_input'][v_end_index + 8]
-        if 0 in ifa_param['antiquantscale_shape_raw']:
-            ifa_param['normal_flag'] = False
-            print('[WARNING]:异常-->  antiquantscale为空场景！')
-        ifa_param['antiquantscale_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 8])
-        ifa_param['antiquantscale_tensor_raw'] = torch_tensor_list[v_end_index + 8]
-        if ifa_param['kv_quant_offset_flag']:
-            ifa_param['antiquantoffset_shape_raw'] = antiquantoffset_shape_raw = params['shape_input'][v_end_index + 9]
+    if ifa_param["kv_quant_flag"]:
+        ifa_param["antiquantscale_shape_raw"] = antiquantscale_shape_raw = params[
+            "shape_input"
+        ][v_end_index + 8]
+        if 0 in ifa_param["antiquantscale_shape_raw"]:
+            ifa_param["normal_flag"] = False
+            print("[WARNING]:异常-->  antiquantscale为空场景！")
+        ifa_param["antiquantscale_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 8]
+        )
+        ifa_param["antiquantscale_tensor_raw"] = torch_tensor_list[v_end_index + 8]
+        if ifa_param["kv_quant_offset_flag"]:
+            ifa_param["antiquantoffset_shape_raw"] = antiquantoffset_shape_raw = params[
+                "shape_input"
+            ][v_end_index + 9]
             if 0 in antiquantoffset_shape_raw:
-                ifa_param['normal_flag'] = False
-                print('[WARNING]:异常-->  antiquantoffset为空场景！')
-            ifa_param['antiquantoffset_tensor_raw'] = torch_tensor_list[v_end_index + 9]
+                ifa_param["normal_flag"] = False
+                print("[WARNING]:异常-->  antiquantoffset为空场景！")
+            ifa_param["antiquantoffset_tensor_raw"] = torch_tensor_list[v_end_index + 9]
         else:
-            ifa_param['antiquantoffset_shape_raw'] = antiquantscale_shape_raw
-            ifa_param['antiquantoffset_tensor_raw'] = torch.zeros(antiquantscale_shape_raw).numpy()
+            ifa_param["antiquantoffset_shape_raw"] = antiquantscale_shape_raw
+            ifa_param["antiquantoffset_tensor_raw"] = torch.zeros(
+                antiquantscale_shape_raw
+            ).numpy()
     # 获取kv分离的量化参数
-    ifa_param['k_rope_antiquantscale_shape_raw'] = None
-    ifa_param['k_rope_antiquantscale_dtype_raw'] = None
-    ifa_param['k_rope_antiquantscale_tensor_raw'] = None
-    if ifa_param['k_antiquant_flag']:
-        ifa_param['k_antiquantscale_shape_raw'] = k_antiquantscale_shape_raw = params['shape_input'][v_end_index + 13]
-        if 0 in ifa_param['k_antiquantscale_shape_raw']:
-            ifa_param['normal_flag'] = False
-            print('[WARNING]:异常-->  k_antiquantscale为空场景！')
-        ifa_param['k_antiquantscale_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 13])
-        ifa_param['k_antiquantscale_tensor_raw'] = torch_tensor_list[v_end_index + 13]
-        if ifa_param['k_antiquant_offset_flag']:
-            ifa_param['k_antiquantoffset_shape_raw'] = k_antiquantoffset_shape_raw = params['shape_input'][
-                v_end_index + 14]
-            ifa_param['k_antiquantoffset_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 14])
+    ifa_param["k_rope_antiquantscale_shape_raw"] = None
+    ifa_param["k_rope_antiquantscale_dtype_raw"] = None
+    ifa_param["k_rope_antiquantscale_tensor_raw"] = None
+    if ifa_param["k_antiquant_flag"]:
+        ifa_param["k_antiquantscale_shape_raw"] = k_antiquantscale_shape_raw = params[
+            "shape_input"
+        ][v_end_index + 13]
+        if 0 in ifa_param["k_antiquantscale_shape_raw"]:
+            ifa_param["normal_flag"] = False
+            print("[WARNING]:异常-->  k_antiquantscale为空场景！")
+        ifa_param["k_antiquantscale_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 13]
+        )
+        ifa_param["k_antiquantscale_tensor_raw"] = torch_tensor_list[v_end_index + 13]
+        if ifa_param["k_antiquant_offset_flag"]:
+            ifa_param["k_antiquantoffset_shape_raw"] = k_antiquantoffset_shape_raw = (
+                params["shape_input"][v_end_index + 14]
+            )
+            ifa_param["k_antiquantoffset_dtype"] = trans_input_dtype(
+                params["dtype_input"][v_end_index + 14]
+            )
             if 0 in k_antiquantoffset_shape_raw:
-                ifa_param['normal_flag'] = False
-                print('[WARNING]:异常-->  k_antiquantoffset为空场景！')
-            ifa_param['k_antiquantoffset_tensor_raw'] = torch_tensor_list[v_end_index + 14]
+                ifa_param["normal_flag"] = False
+                print("[WARNING]:异常-->  k_antiquantoffset为空场景！")
+            ifa_param["k_antiquantoffset_tensor_raw"] = torch_tensor_list[
+                v_end_index + 14
+            ]
         else:
-            ifa_param['k_antiquantoffset_shape_raw'] = k_antiquantscale_shape_raw
-            ifa_param['k_antiquantoffset_dtype'] = ifa_param['k_antiquantscale_dtype']
-            ifa_param['k_antiquantoffset_tensor_raw'] = torch.zeros(k_antiquantscale_shape_raw).numpy()
+            ifa_param["k_antiquantoffset_shape_raw"] = k_antiquantscale_shape_raw
+            ifa_param["k_antiquantoffset_dtype"] = ifa_param["k_antiquantscale_dtype"]
+            ifa_param["k_antiquantoffset_tensor_raw"] = torch.zeros(
+                k_antiquantscale_shape_raw
+            ).numpy()
         # rope quant scale
-        if len(ifa_param['flag_list']) > 28:
-            ifa_param['k_rope_antiquantscale_shape_raw'] = params['shape_input'][v_end_index + 24]
-            ifa_param['k_rope_antiquantscale_dtype_raw'] = trans_input_dtype(params['dtype_input'][v_end_index + 24])
-            ifa_param['k_rope_antiquantscale_tensor_raw'] = torch_tensor_list[v_end_index + 24]
+        if len(ifa_param["flag_list"]) > 28:
+            ifa_param["k_rope_antiquantscale_shape_raw"] = params["shape_input"][
+                v_end_index + 24
+            ]
+            ifa_param["k_rope_antiquantscale_dtype_raw"] = trans_input_dtype(
+                params["dtype_input"][v_end_index + 24]
+            )
+            ifa_param["k_rope_antiquantscale_tensor_raw"] = torch_tensor_list[
+                v_end_index + 24
+            ]
             # 创建一个空的rope offset
-            ifa_param['k_rope_antiquantoffset_shape_raw'] = params['shape_input'][v_end_index + 24]
-            ifa_param['k_rope_antiquantoffset_dtype_raw'] = trans_input_dtype(params['dtype_input'][v_end_index + 24])
-            ifa_param['k_rope_antiquantoffset_tensor_raw'] = torch.zeros(ifa_param['k_rope_antiquantoffset_shape_raw']).numpy()
+            ifa_param["k_rope_antiquantoffset_shape_raw"] = params["shape_input"][
+                v_end_index + 24
+            ]
+            ifa_param["k_rope_antiquantoffset_dtype_raw"] = trans_input_dtype(
+                params["dtype_input"][v_end_index + 24]
+            )
+            ifa_param["k_rope_antiquantoffset_tensor_raw"] = torch.zeros(
+                ifa_param["k_rope_antiquantoffset_shape_raw"]
+            ).numpy()
 
-    if ifa_param['v_antiquant_flag']:
-        if ifa_param['flag_list'][26]:
-            ifa_param['v_antiquantscale_shape_raw'] = copy.deepcopy(ifa_param['k_antiquantscale_shape_raw'])
-            ifa_param['v_antiquantscale_dtype'] = copy.deepcopy(ifa_param['k_antiquantoffset_dtype'])
-            ifa_param['v_antiquantscale_tensor_raw'] = copy.deepcopy(ifa_param['k_antiquantscale_tensor_raw'])
+    if ifa_param["v_antiquant_flag"]:
+        if ifa_param["flag_list"][26]:
+            ifa_param["v_antiquantscale_shape_raw"] = copy.deepcopy(
+                ifa_param["k_antiquantscale_shape_raw"]
+            )
+            ifa_param["v_antiquantscale_dtype"] = copy.deepcopy(
+                ifa_param["k_antiquantoffset_dtype"]
+            )
+            ifa_param["v_antiquantscale_tensor_raw"] = copy.deepcopy(
+                ifa_param["k_antiquantscale_tensor_raw"]
+            )
 
-            ifa_param['v_antiquantoffset_shape_raw'] = copy.deepcopy(ifa_param['k_antiquantoffset_shape_raw'])
-            ifa_param['v_antiquantoffset_dtype'] = copy.deepcopy(ifa_param['k_antiquantoffset_dtype'])
-            ifa_param['v_antiquantoffset_tensor_raw'] = copy.deepcopy(ifa_param['k_antiquantoffset_tensor_raw'])
+            ifa_param["v_antiquantoffset_shape_raw"] = copy.deepcopy(
+                ifa_param["k_antiquantoffset_shape_raw"]
+            )
+            ifa_param["v_antiquantoffset_dtype"] = copy.deepcopy(
+                ifa_param["k_antiquantoffset_dtype"]
+            )
+            ifa_param["v_antiquantoffset_tensor_raw"] = copy.deepcopy(
+                ifa_param["k_antiquantoffset_tensor_raw"]
+            )
         else:
-            ifa_param['v_antiquantscale_shape_raw'] = v_antiquantscale_shape_raw = params['shape_input'][v_end_index + 15]
-            if 0 in ifa_param['v_antiquantscale_shape_raw']:
-                ifa_param['normal_flag'] = False
-                print('[WARNING]:异常-->  v_antiquantscale为空场景！')
-            ifa_param['v_antiquantscale_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 15])
-            ifa_param['v_antiquantscale_tensor_raw'] = torch_tensor_list[v_end_index + 15]
-            if ifa_param['v_antiquant_offset_flag']:
-                ifa_param['v_antiquantoffset_shape_raw'] = v_antiquantoffset_shape_raw = params['shape_input'][v_end_index + 16]
-                ifa_param['v_antiquantoffset_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 16])
+            ifa_param["v_antiquantscale_shape_raw"] = v_antiquantscale_shape_raw = (
+                params["shape_input"][v_end_index + 15]
+            )
+            if 0 in ifa_param["v_antiquantscale_shape_raw"]:
+                ifa_param["normal_flag"] = False
+                print("[WARNING]:异常-->  v_antiquantscale为空场景！")
+            ifa_param["v_antiquantscale_dtype"] = trans_input_dtype(
+                params["dtype_input"][v_end_index + 15]
+            )
+            ifa_param["v_antiquantscale_tensor_raw"] = torch_tensor_list[
+                v_end_index + 15
+            ]
+            if ifa_param["v_antiquant_offset_flag"]:
+                ifa_param["v_antiquantoffset_shape_raw"] = (
+                    v_antiquantoffset_shape_raw
+                ) = params["shape_input"][v_end_index + 16]
+                ifa_param["v_antiquantoffset_dtype"] = trans_input_dtype(
+                    params["dtype_input"][v_end_index + 16]
+                )
                 if 0 in v_antiquantoffset_shape_raw:
-                    ifa_param['normal_flag'] = False
-                    print('[WARNING]:异常-->  v_antiquantoffset为空场景！')
-                ifa_param['v_antiquantoffset_tensor_raw'] = torch_tensor_list[v_end_index + 16]
+                    ifa_param["normal_flag"] = False
+                    print("[WARNING]:异常-->  v_antiquantoffset为空场景！")
+                ifa_param["v_antiquantoffset_tensor_raw"] = torch_tensor_list[
+                    v_end_index + 16
+                ]
             else:
-                ifa_param['v_antiquantoffset_shape_raw'] = v_antiquantscale_shape_raw
-                ifa_param['v_antiquantoffset_dtype'] = ifa_param['v_antiquantscale_dtype']
-                ifa_param['v_antiquantoffset_tensor_raw'] = torch.zeros(v_antiquantscale_shape_raw).numpy()
+                ifa_param["v_antiquantoffset_shape_raw"] = v_antiquantscale_shape_raw
+                ifa_param["v_antiquantoffset_dtype"] = ifa_param[
+                    "v_antiquantscale_dtype"
+                ]
+                ifa_param["v_antiquantoffset_tensor_raw"] = torch.zeros(
+                    v_antiquantscale_shape_raw
+                ).numpy()
 
     # ND+rope： 当kvs<=512用softmaxV1 ;transpose/nz+rope ：golden计算都用softmaxV2
     ifa_param["softmaxV1_flag"] = False
@@ -3141,15 +3475,17 @@ def left_padding_handler_mask(tensor, act_list, padding_size):
         act_s = act_list[bindex]
         start_index = smax - padding_size - act_s
         end_index = smax - padding_size
-        new_tensor[bindex:bindex + 1, 0:act_s] = tensor[bindex:bindex + 1, start_index:end_index]
-        new_tensor[bindex:bindex + 1, act_s:] = 1
+        new_tensor[bindex : bindex + 1, 0:act_s] = tensor[
+            bindex : bindex + 1, start_index:end_index
+        ]
+        new_tensor[bindex : bindex + 1, act_s:] = 1
     return new_tensor
 
 
 # 将int32类型的数据,拆成Int4,存进int8
 def trans_int32_2_int4(input_int32):
     # 将Int32类型的数据按bit位平均拆成8份，每份长度为4bit
-    parts = [(input_int32 >> i) & 0xf for i in range(0, 32, 4)]
+    parts = [(input_int32 >> i) & 0xF for i in range(0, 32, 4)]
     output_int4 = []
     for part in parts:
         # 将每份数据构造成一个Int8类型的数据
@@ -3173,12 +3509,23 @@ def trans_int32_2_int4_tensor_bnsd(tensor_int32, shape_int32):
             for Sid in range(shape_int32[2]):
                 for Did in range(shape_int32[3]):
                     int4_data_list = trans_int32_2_int4(
-                        int(tensor_int32[Bid:Bid + 1, Nid:Nid + 1, Sid:Sid + 1, Did:Did + 1]))
+                        int(
+                            tensor_int32[
+                                Bid : Bid + 1,
+                                Nid : Nid + 1,
+                                Sid : Sid + 1,
+                                Did : Did + 1,
+                            ]
+                        )
+                    )
                     for i in range(8):
-                        tensor_int4[Bid:Bid + 1, Nid:Nid + 1, Sid:Sid + 1, 8 * Did + i:8 * Did + i + 1] = \
-                            int4_data_list[i]
+                        tensor_int4[
+                            Bid : Bid + 1,
+                            Nid : Nid + 1,
+                            Sid : Sid + 1,
+                            8 * Did + i : 8 * Did + i + 1,
+                        ] = int4_data_list[i]
     return tensor_int4, shape_int4
-
 
 
 # pertoken_pa 场景，将scale/offset从BB转为1BS
@@ -3223,20 +3570,30 @@ def trans_bb_2_1bns(input_tensor, tables, batch):
                 break
             if (block_base_index + 1) * block_size > max_seq:
                 lens = max_seq - block_base_index * block_size
-                output_tensor[bindex, :, block_base_index * block_size:max_seq] = input_tensor[block_index][:][0:lens]
+                output_tensor[bindex, :, block_base_index * block_size : max_seq] = (
+                    input_tensor[block_index][:][0:lens]
+                )
             else:
-                output_tensor[bindex, :, block_base_index * block_size:(block_base_index + 1) * block_size] = \
-                    input_tensor[block_index]
+                output_tensor[
+                    bindex,
+                    :,
+                    block_base_index * block_size : (block_base_index + 1) * block_size,
+                ] = input_tensor[block_index]
     return output_tensor
+
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
-        print(f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}")
+        print(
+            f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}"
+        )
         return None, None
     elif len(shape1) == 2:
         # 量化参数1h
         if shape1[0] != shape2[0]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         d1 = int(shape1[1] / n)
         d2 = int(shape2[1] / n)
@@ -3247,7 +3604,9 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 3:
         if shape1[0] != shape2[0] or shape1[1] != shape2[1]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         if tnd_flag:
             concatenated_tensor = np.concatenate((tensor1, tensor2), axis=2)
@@ -3262,7 +3621,9 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
             concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 4:
         if shape1[0] != shape2[0] or shape1[1] != shape2[1] or shape1[2] != shape2[2]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         concatenated_tensor = np.concatenate((tensor1, tensor2), axis=3)
         concatenated_shape = [shape1[0], shape1[1], shape1[2], shape1[3] + shape2[3]]
@@ -3281,39 +3642,50 @@ def trans_tnd_actseq(list):
         if new_item >= 0:
             list_new.append(new_item)
         else:
-            print(f"[ERROR]trans_tnd_actseq: Wrong input actseq:{list}, in loop {i}, item {new_item} < 0")
+            print(
+                f"[ERROR]trans_tnd_actseq: Wrong input actseq:{list}, in loop {i}, item {new_item} < 0"
+            )
     print(f"[INFO]before trans: {list}")
     print(f"[INFO]after trans: {list_new}")
     return list_new
 
 
 def deepseek_preprocessing(ifa_param):
-    numHeads = ifa_param['numHeads']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
+    numHeads = ifa_param["numHeads"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
     # 备份拼接前的信息
-    ifa_param['q_tensor_old'] = copy.deepcopy(ifa_param['q_tensor'])
-    ifa_param['q_shape_old'] = copy.deepcopy(ifa_param['q_shape'])
-    ifa_param['k_tensor_list_old'] = copy.deepcopy(ifa_param['k_tensor_list'])
-    ifa_param['k_shape_list_old'] = copy.deepcopy(ifa_param['k_shape_list'])
+    ifa_param["q_tensor_old"] = copy.deepcopy(ifa_param["q_tensor"])
+    ifa_param["q_shape_old"] = copy.deepcopy(ifa_param["q_shape"])
+    ifa_param["k_tensor_list_old"] = copy.deepcopy(ifa_param["k_tensor_list"])
+    ifa_param["k_shape_list_old"] = copy.deepcopy(ifa_param["k_shape_list"])
     # 非全量化场景1.将Q与QROPE拼接2.将K与KROPE拼接3.伪量化场景，k_antiscale与k_rope_antiscale拼接
-    if not ifa_param['in_quant_flag']:
-        q_new_tensor, q_new_shape = concat_tensor(ifa_param['q_tensor'], ifa_param['q_shape'],
-                                                  ifa_param['q_rope_tensor'],
-                                                  ifa_param['q_rope_shape'], numHeads, ifa_param['tnd_flag'])
+    if not ifa_param["in_quant_flag"]:
+        q_new_tensor, q_new_shape = concat_tensor(
+            ifa_param["q_tensor"],
+            ifa_param["q_shape"],
+            ifa_param["q_rope_tensor"],
+            ifa_param["q_rope_shape"],
+            numHeads,
+            ifa_param["tnd_flag"],
+        )
         if q_new_tensor is not None:
-            ifa_param['q_tensor'] = q_new_tensor
-            ifa_param['q_shape'] = q_new_shape
+            ifa_param["q_tensor"] = q_new_tensor
+            ifa_param["q_shape"] = q_new_shape
         else:
             print("[ERROR]q tensor的deepseek预处理异常，输出空tensor！")
             # return torch.zeros(out_shape)
-        if ifa_param['k_num'] == 1:
-            k_new_tensor, k_new_shape = concat_tensor(ifa_param['k_tensor_list'][0], ifa_param['k_shape_list'][0],
-                                                      ifa_param['k_rope_tensor'],
-                                                      ifa_param['k_rope_shape'], numKeyValueHeads,
-                                                      ifa_param['tnd_flag'])
+        if ifa_param["k_num"] == 1:
+            k_new_tensor, k_new_shape = concat_tensor(
+                ifa_param["k_tensor_list"][0],
+                ifa_param["k_shape_list"][0],
+                ifa_param["k_rope_tensor"],
+                ifa_param["k_rope_shape"],
+                numKeyValueHeads,
+                ifa_param["tnd_flag"],
+            )
             if k_new_tensor is not None:
-                ifa_param['k_tensor_list'][0] = k_new_tensor
-                ifa_param['k_shape_list'][0] = k_new_shape
+                ifa_param["k_tensor_list"][0] = k_new_tensor
+                ifa_param["k_shape_list"][0] = k_new_shape
             else:
                 print("[ERROR]k tensor的deepseek预处理异常，输出空tensor！")
                 # return torch.zeros(out_shape)
@@ -3321,34 +3693,50 @@ def deepseek_preprocessing(ifa_param):
             print("[ERROR]k tensor 长度不为1, deepseek预处理异常，输出空tensor！")
             # return torch.zeros(out_shape)
         # rope scale处理
-        if ifa_param['k_rope_antiquantscale_shape_raw'] is not None:
-            k_antiquantscale_shape_raw0 = ifa_param['k_antiquantscale_shape_raw']
-            k_antiquantscale_tensor_raw0 = ifa_param['k_antiquantscale_tensor_raw']
-            k_rope_antiquantscale_shape_raw = ifa_param['k_rope_antiquantscale_shape_raw']
-            k_rope_antiquantscale_tensor_raw = ifa_param['k_rope_antiquantscale_tensor_raw']
-            k_scale_new_tensor, k_scale_new_shape = concat_tensor(k_antiquantscale_tensor_raw0,
-                                                                  k_antiquantscale_shape_raw0,
-                                                                  k_rope_antiquantscale_tensor_raw,
-                                                                  k_rope_antiquantscale_shape_raw, numKeyValueHeads,
-                                                                  ifa_param['tnd_flag'])
+        if ifa_param["k_rope_antiquantscale_shape_raw"] is not None:
+            k_antiquantscale_shape_raw0 = ifa_param["k_antiquantscale_shape_raw"]
+            k_antiquantscale_tensor_raw0 = ifa_param["k_antiquantscale_tensor_raw"]
+            k_rope_antiquantscale_shape_raw = ifa_param[
+                "k_rope_antiquantscale_shape_raw"
+            ]
+            k_rope_antiquantscale_tensor_raw = ifa_param[
+                "k_rope_antiquantscale_tensor_raw"
+            ]
+            k_scale_new_tensor, k_scale_new_shape = concat_tensor(
+                k_antiquantscale_tensor_raw0,
+                k_antiquantscale_shape_raw0,
+                k_rope_antiquantscale_tensor_raw,
+                k_rope_antiquantscale_shape_raw,
+                numKeyValueHeads,
+                ifa_param["tnd_flag"],
+            )
 
             # offset是空的，但是也要拼接成大小相同的tensor
-            k_antiquantoffset_shape_raw0 = ifa_param['k_antiquantoffset_shape_raw']
-            k_antiquantoffset_tensor_raw0 = ifa_param['k_antiquantoffset_tensor_raw']
-            k_rope_antiquantoffset_shape_raw = ifa_param['k_rope_antiquantoffset_shape_raw']
-            k_rope_antiquantoffset_tensor_raw = ifa_param['k_rope_antiquantoffset_tensor_raw']
-            k_offset_new_tensor, k_offset_new_shape = concat_tensor(k_antiquantoffset_tensor_raw0,
-                                                                    k_antiquantoffset_shape_raw0,
-                                                                    k_rope_antiquantoffset_tensor_raw,
-                                                                    k_rope_antiquantoffset_shape_raw, numKeyValueHeads,
-                                                                    ifa_param['tnd_flag'])
+            k_antiquantoffset_shape_raw0 = ifa_param["k_antiquantoffset_shape_raw"]
+            k_antiquantoffset_tensor_raw0 = ifa_param["k_antiquantoffset_tensor_raw"]
+            k_rope_antiquantoffset_shape_raw = ifa_param[
+                "k_rope_antiquantoffset_shape_raw"
+            ]
+            k_rope_antiquantoffset_tensor_raw = ifa_param[
+                "k_rope_antiquantoffset_tensor_raw"
+            ]
+            k_offset_new_tensor, k_offset_new_shape = concat_tensor(
+                k_antiquantoffset_tensor_raw0,
+                k_antiquantoffset_shape_raw0,
+                k_rope_antiquantoffset_tensor_raw,
+                k_rope_antiquantoffset_shape_raw,
+                numKeyValueHeads,
+                ifa_param["tnd_flag"],
+            )
             if k_scale_new_tensor is not None:
-                ifa_param['k_antiquantscale_tensor_raw'] = k_scale_new_tensor
-                ifa_param['k_antiquantscale_shape_raw'] = k_scale_new_shape
-                ifa_param['k_antiquantoffset_tensor_raw'] = k_offset_new_tensor
-                ifa_param['k_antiquantoffset_shape_raw'] = k_offset_new_shape
+                ifa_param["k_antiquantscale_tensor_raw"] = k_scale_new_tensor
+                ifa_param["k_antiquantscale_shape_raw"] = k_scale_new_shape
+                ifa_param["k_antiquantoffset_tensor_raw"] = k_offset_new_tensor
+                ifa_param["k_antiquantoffset_shape_raw"] = k_offset_new_shape
             else:
-                print("[ERROR]k antiquant scale tensor的deepseek预处理异常，输出空tensor！")
+                print(
+                    "[ERROR]k antiquant scale tensor的deepseek预处理异常，输出空tensor！"
+                )
                 # return torch.zeros(out_shape)
     return ifa_param
 
@@ -3434,92 +3822,117 @@ def trans_bnsd_to_input_layout(tensor, shape, layout, act_q=None):
 
 
 def deepseek_ds_pa_preprocessing(ifa_param, params):
-    k_np_dtype = ifa_param['k_np_dtype']
-    v_np_dtype = ifa_param['v_np_dtype']
-    k_ori_shape_list = ifa_param['k_shape_list_old']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
-    numHeads = ifa_param['numHeads']
-    kv_layout = ifa_param['kv_layout']
-    actualSeqLengths = ifa_param['actualSeqLengths']
-    actualSeqLengths_q = ifa_param['actualSeqLengths_q']
+    k_np_dtype = ifa_param["k_np_dtype"]
+    v_np_dtype = ifa_param["v_np_dtype"]
+    k_ori_shape_list = ifa_param["k_shape_list_old"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
+    numHeads = ifa_param["numHeads"]
+    kv_layout = ifa_param["kv_layout"]
+    actualSeqLengths = ifa_param["actualSeqLengths"]
+    actualSeqLengths_q = ifa_param["actualSeqLengths_q"]
     # k_shape_bnsd_list = ifa_param['k_shape_bnsd_list']
-    blockSize = ifa_param['blocksize']
-    blockTableShape = ifa_param['bt_shape']
-    block_table = ifa_param['block_table']
-    inputLayout = ifa_param['inputLayout']
-    k_cache = np.zeros(ifa_param['k_cache_shape']).astype(k_np_dtype)
-    v_cache = np.zeros(ifa_param['v_cache_shape']).astype(v_np_dtype)
-    k_rope_cache = np.zeros(ifa_param['k_rope_cache_shape']).astype(k_np_dtype)
-    k_dtype = ifa_param['k_dtype']
+    blockSize = ifa_param["blocksize"]
+    blockTableShape = ifa_param["bt_shape"]
+    block_table = ifa_param["block_table"]
+    inputLayout = ifa_param["inputLayout"]
+    k_cache = np.zeros(ifa_param["k_cache_shape"]).astype(k_np_dtype)
+    v_cache = np.zeros(ifa_param["v_cache_shape"]).astype(v_np_dtype)
+    k_rope_cache = np.zeros(ifa_param["k_rope_cache_shape"]).astype(k_np_dtype)
+    k_dtype = ifa_param["k_dtype"]
     # 对备份的拼接前信息进行预处理
     x = 0
     k_tensor_bnsd_list = []
-    for i in range(0, ifa_param['k_num']):
+    for i in range(0, ifa_param["k_num"]):
         k_tensor_bnsd_list = []
-        k_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['k_tensor_list_old'][i], k_ori_shape_list[x],
-                                                        kv_layout,
-                                                        numKeyValueHeads, actualSeqLengths)
+        k_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+            ifa_param["k_tensor_list_old"][i],
+            k_ori_shape_list[x],
+            kv_layout,
+            numKeyValueHeads,
+            actualSeqLengths,
+        )
         x = x + 1
         k_tensor_bnsd_list.append(k_tensor)
         # k_shape_bnsd_list.append(k_bnsd_shape)
         # k int32预处理
-        if ifa_param['k_dtype'] == "int32":
-            k_tensor, k_bnsd_shape = trans_int32_2_int4_tensor_bnsd(k_tensor, k_bnsd_shape)
+        if ifa_param["k_dtype"] == "int32":
+            k_tensor, k_bnsd_shape = trans_int32_2_int4_tensor_bnsd(
+                k_tensor, k_bnsd_shape
+            )
 
-        if k_bnsd_shape[2] > ifa_param['ks_max']:
-            ifa_param['ks_max'] = k_bnsd_shape[2]
-    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['k_rope_tensor'],
-                                                                   ifa_param['k_rope_shape'],
-                                                                   kv_layout,
-                                                                   numKeyValueHeads, actualSeqLengths)
-    if ifa_param['k_dtype'] == "int32":
-        k_rope_bnsd_tensor, k_rope_bnsd_shape = trans_int32_2_int4_tensor_bnsd(k_rope_bnsd_tensor,
-                                                                               k_rope_bnsd_shape)
+        if k_bnsd_shape[2] > ifa_param["ks_max"]:
+            ifa_param["ks_max"] = k_bnsd_shape[2]
+    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["k_rope_tensor"],
+        ifa_param["k_rope_shape"],
+        kv_layout,
+        numKeyValueHeads,
+        actualSeqLengths,
+    )
+    if ifa_param["k_dtype"] == "int32":
+        k_rope_bnsd_tensor, k_rope_bnsd_shape = trans_int32_2_int4_tensor_bnsd(
+            k_rope_bnsd_tensor, k_rope_bnsd_shape
+        )
     # gen k cache
     # 获取qd
-    q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['q_tensor_old'], ifa_param['q_shape_old'],
-                                                         inputLayout,
-                                                         numHeads, actualSeqLengths_q)
-    if len(ifa_param['k_cache_shape']) != len(ifa_param['k_rope_cache_shape']):
-        print('[WARNING]:k_cache_shape与k_rope_cache_shape 维数不符，输出空tensor！')
+    q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["q_tensor_old"],
+        ifa_param["q_shape_old"],
+        inputLayout,
+        numHeads,
+        actualSeqLengths_q,
+    )
+    if len(ifa_param["k_cache_shape"]) != len(ifa_param["k_rope_cache_shape"]):
+        print("[WARNING]:k_cache_shape与k_rope_cache_shape 维数不符，输出空tensor！")
         # return torch.zeros(out_shape)
-    if len(ifa_param['k_cache_shape']) == 3:
+    if len(ifa_param["k_cache_shape"]) == 3:
         # trans kv to bsh(此处使用的tensor, 没有经过n的扩展)
-        k_tensor_bsh_raw = trans_bnsd_to_bsh(k_tensor_bnsd_list[0], k_tensor_bnsd_list[0].shape)
+        k_tensor_bsh_raw = trans_bnsd_to_bsh(
+            k_tensor_bnsd_list[0], k_tensor_bnsd_list[0].shape
+        )
         # kv paddIng
         kvh = numKeyValueHeads * q_bnsd_shape[3]
-        k_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)).astype(k_np_dtype)
+        k_tensor_bsh = np.zeros(
+            (q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_tensor_bbh: {k_tensor_bsh.shape}")
-        k_tensor_bsh[:, :k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[:, :, :]
+        k_tensor_bsh[:, : k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[:, :, :]
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[b,
-                                                               block_offset:(block_offset + blockSize), :]
+                    k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
 
         k_rope_tensor_bsh_raw = trans_bnsd_to_bsh(k_rope_bnsd_tensor, k_rope_bnsd_shape)
 
         kropeh = numKeyValueHeads * k_rope_bnsd_shape[3]
-        k_rope_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kropeh)).astype(
-            k_np_dtype)
+        k_rope_tensor_bsh = np.zeros(
+            (q_bnsd_shape[0], blockTableShape[1] * blockSize, kropeh)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_rope_tensor_bbh: {k_rope_tensor_bsh.shape}")
-        k_rope_tensor_bsh[:, :k_rope_tensor_bsh_raw.shape[1], :] = k_rope_tensor_bsh_raw[:, :, :]
+        k_rope_tensor_bsh[:, : k_rope_tensor_bsh_raw.shape[1], :] = (
+            k_rope_tensor_bsh_raw[:, :, :]
+        )
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    k_rope_cache[kv_cache_blk_id, 0:blockSize, :] = k_rope_tensor_bsh[b,
-                                                                    block_offset:(block_offset + blockSize), :]
-    elif len(ifa_param['k_cache_shape']) == 4:
+                    k_rope_cache[kv_cache_blk_id, 0:blockSize, :] = k_rope_tensor_bsh[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
+    elif len(ifa_param["k_cache_shape"]) == 4:
         kvn = k_tensor_bnsd_list[0].shape[1]
         kvs = k_tensor_bnsd_list[0].shape[2]
         kvd = k_tensor_bnsd_list[0].shape[3]
-        k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(k_np_dtype)
+        k_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_tensor_bnbd: {k_tensor_bnsd.shape}")
         k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
 
@@ -3650,60 +4063,72 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
     # 生成blocktable
     k_np_dtype = np.int8
     v_np_dtype = np.int8
-    k_rope_dtype = get_np_dtype(params['dtype_input'][24])
-    k_tensor_bnsd_list = ifa_param['k_tensor_list_bnsd']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
-    q_bnsd_shape = ifa_param['q_bnsd_shape']
-    blockSize = ifa_param['blocksize']
-    blockTableShape = ifa_param['bt_shape']
-    block_table = ifa_param['block_table']
-    k_rope_bnsd_tensor = ifa_param['k_rope_bnsd_tensor']
-    k_rope_bnsd_shape = ifa_param['k_rope_bnsd_shape']
+    k_rope_dtype = get_np_dtype(params["dtype_input"][24])
+    k_tensor_bnsd_list = ifa_param["k_tensor_list_bnsd"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
+    q_bnsd_shape = ifa_param["q_bnsd_shape"]
+    blockSize = ifa_param["blocksize"]
+    blockTableShape = ifa_param["bt_shape"]
+    block_table = ifa_param["block_table"]
+    k_rope_bnsd_tensor = ifa_param["k_rope_bnsd_tensor"]
+    k_rope_bnsd_shape = ifa_param["k_rope_bnsd_shape"]
     print(
-        f"[PageAtten]Input Kdtype:{params['dtype_input'][1]} Vdtype:{params['dtype_input'][2]} KRopeType:{params['dtype_input'][24]}")
-    k_cache = np.zeros(ifa_param['k_cache_shape']).astype(k_np_dtype)
-    v_cache = np.zeros(ifa_param['v_cache_shape']).astype(v_np_dtype)
-    print('[INFO]:PA + Deepseek！')
-    k_rope_cache = np.zeros(ifa_param['k_rope_cache_shape']).astype(k_rope_dtype)
-    if len(ifa_param['k_cache_shape']) != len(ifa_param['k_rope_cache_shape']):
-        print('[WARNING]:k_cache_shape与k_rope_cache_shape 维数不符，输出空tensor！')
-    if len(ifa_param['k_cache_shape']) == 3:
+        f"[PageAtten]Input Kdtype:{params['dtype_input'][1]} Vdtype:{params['dtype_input'][2]} KRopeType:{params['dtype_input'][24]}"
+    )
+    k_cache = np.zeros(ifa_param["k_cache_shape"]).astype(k_np_dtype)
+    v_cache = np.zeros(ifa_param["v_cache_shape"]).astype(v_np_dtype)
+    print("[INFO]:PA + Deepseek！")
+    k_rope_cache = np.zeros(ifa_param["k_rope_cache_shape"]).astype(k_rope_dtype)
+    if len(ifa_param["k_cache_shape"]) != len(ifa_param["k_rope_cache_shape"]):
+        print("[WARNING]:k_cache_shape与k_rope_cache_shape 维数不符，输出空tensor！")
+    if len(ifa_param["k_cache_shape"]) == 3:
         # trans kv to bsh(此处使用的tensor, 没有经过n的扩展)
-        k_tensor_bsh_raw = trans_bnsd_to_bsh(k_tensor_bnsd_list[0], k_tensor_bnsd_list[0].shape)
+        k_tensor_bsh_raw = trans_bnsd_to_bsh(
+            k_tensor_bnsd_list[0], k_tensor_bnsd_list[0].shape
+        )
         # kv paddIng
         kvh = numKeyValueHeads * q_bnsd_shape[3]
-        k_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)).astype(k_np_dtype)
+        k_tensor_bsh = np.zeros(
+            (q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_tensor_bbh: {k_tensor_bsh.shape}")
-        k_tensor_bsh[:, :k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[:, :, :]
+        k_tensor_bsh[:, : k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[:, :, :]
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[b,
-                                                               block_offset:(block_offset + blockSize), :]
+                    k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
 
         k_rope_tensor_bsh_raw = trans_bnsd_to_bsh(k_rope_bnsd_tensor, k_rope_bnsd_shape)
 
         kropeh = numKeyValueHeads * k_rope_bnsd_shape[3]
-        k_rope_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kropeh)).astype(
-            k_rope_dtype)
+        k_rope_tensor_bsh = np.zeros(
+            (q_bnsd_shape[0], blockTableShape[1] * blockSize, kropeh)
+        ).astype(k_rope_dtype)
         print(f"[INFO]k_rope_tensor_bbh: {k_rope_tensor_bsh.shape}")
-        k_rope_tensor_bsh[:, :k_rope_tensor_bsh_raw.shape[1], :] = k_rope_tensor_bsh_raw[:, :, :]
+        k_rope_tensor_bsh[:, : k_rope_tensor_bsh_raw.shape[1], :] = (
+            k_rope_tensor_bsh_raw[:, :, :]
+        )
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    k_rope_cache[kv_cache_blk_id, 0:blockSize, :] = k_rope_tensor_bsh[b,
-                                                                    block_offset:(block_offset + blockSize), :]
-    elif len(ifa_param['k_cache_shape']) == 4:
+                    k_rope_cache[kv_cache_blk_id, 0:blockSize, :] = k_rope_tensor_bsh[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
+    elif len(ifa_param["k_cache_shape"]) == 4:
         kvn = k_tensor_bnsd_list[0].shape[1]
         kvs = k_tensor_bnsd_list[0].shape[2]
         kvd = k_tensor_bnsd_list[0].shape[3]
-        k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(k_np_dtype)
+        k_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_tensor_bnbd: {k_tensor_bnsd.shape}")
         k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
 
@@ -3960,109 +4385,130 @@ def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, pa
 
         input_data_i = gen_tensor_data(params, index)
 
-        q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(input_data_i, ifa_param['q_rope_shape'],
-                                                                       inputLayout, numHeads, actualSeqLengths_q)
+        q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+            input_data_i,
+            ifa_param["q_rope_shape"],
+            inputLayout,
+            numHeads,
+            actualSeqLengths_q,
+        )
 
-        q_rope_bnsd_tensor_quant = np.nan_to_num(q_rope_bnsd_tensor.astype(np.float32) / dequantScale1_bnsd, nan=0.0)
+        q_rope_bnsd_tensor_quant = np.nan_to_num(
+            q_rope_bnsd_tensor.astype(np.float32) / dequantScale1_bnsd, nan=0.0
+        )
 
-        g_q_rope = torch.from_numpy(q_rope_bnsd_tensor.astype(np.float32)).to(torch.float32)
+        g_q_rope = torch.from_numpy(q_rope_bnsd_tensor.astype(np.float32)).to(
+            torch.float32
+        )
         npu_q_rope = torch.from_numpy(q_rope_bnsd_tensor_quant).to(torch.bfloat16)
 
-
-        g_q_rope = trans_bnsd_to_input_layout(g_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
-        npu_q_rope = trans_bnsd_to_input_layout(npu_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
+        g_q_rope = trans_bnsd_to_input_layout(
+            g_q_rope, rope_shape, inputLayout, actualSeqLengths_q
+        )
+        npu_q_rope = trans_bnsd_to_input_layout(
+            npu_q_rope, rope_shape, inputLayout, actualSeqLengths_q
+        )
 
     else:
-        q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(torch_tensor_list[28], rope_shape,
-                                                                       inputLayout, numHeads, actualSeqLengths_q)
-    ifa_param['q_rope_bnsd_tensor'] = q_rope_bnsd_tensor
-    ifa_param['q_rope_shape_bnsd'] = q_rope_bnsd_shape
+        q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+            torch_tensor_list[28], rope_shape, inputLayout, numHeads, actualSeqLengths_q
+        )
+    ifa_param["q_rope_bnsd_tensor"] = q_rope_bnsd_tensor
+    ifa_param["q_rope_shape_bnsd"] = q_rope_bnsd_shape
 
-    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['k_rope_tensor'],
-                                                                   ifa_param['k_rope_shape'],
-                                                                   kv_layout, numKeyValueHeads, actualSeqLengths)
-    ifa_param['k_rope_bnsd_tensor'] = k_rope_bnsd_tensor
-    ifa_param['k_rope_bnsd_shape'] = k_rope_bnsd_shape
-    ifa_param['dequantScale1'] = dequantScale1_bnsd
-    ifa_param['dequantScale2'] = torch_tensor_list[17]
+    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["k_rope_tensor"],
+        ifa_param["k_rope_shape"],
+        kv_layout,
+        numKeyValueHeads,
+        actualSeqLengths,
+    )
+    ifa_param["k_rope_bnsd_tensor"] = k_rope_bnsd_tensor
+    ifa_param["k_rope_bnsd_shape"] = k_rope_bnsd_shape
+    ifa_param["dequantScale1"] = dequantScale1_bnsd
+    ifa_param["dequantScale2"] = torch_tensor_list[17]
 
     return ifa_param
 
 
 def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
-
     print(f"aclnn_op_func: {type(torch_tensor_list[0])}")
     print("cpu执行中...")
     ifa_param = get_param_fus(torch_tensor_list, params)
 
-    if not ifa_param['normal_flag']:
-        return torch.zeros(ifa_param['out_shape'])
+    if not ifa_param["normal_flag"]:
+        return torch.zeros(ifa_param["out_shape"])
     ifa_param["action_type"] = params["action_type"]
 
     # ===参数预处理===
-    actualSeqLengths_q = ifa_param['actualSeqLengths_q_raw']
-    actualSeqLengths = ifa_param['actualSeqLengths_raw']
-    inputLayout = ifa_param['inputLayout']
-    numHeads = ifa_param['numHeads']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
-    p_shape = ifa_param['p_shape']
-    k_start_index = ifa_param['k_start_index']
-    k_end_index = ifa_param['k_end_index']
-    v_start_index = ifa_param['v_start_index']
-    v_end_index = ifa_param['v_end_index']
-    out_shape = ifa_param['out_shape']
-    k_ori_shape_list = copy.deepcopy(ifa_param['k_shape_list'])
-    v_ori_shape_list = copy.deepcopy(ifa_param['v_shape_list'])
-    k_dtype = ifa_param['k_dtype']
-    v_dtype = ifa_param['v_dtype']
-    m_tensor = ifa_param['m_tensor']
-    m_shape = ifa_param['m_shape']
-    sparse_mode = ifa_param['sparse_mode']
-    if ifa_param['tnd_flag'] and ifa_param['pa_flag']:
+    actualSeqLengths_q = ifa_param["actualSeqLengths_q_raw"]
+    actualSeqLengths = ifa_param["actualSeqLengths_raw"]
+    inputLayout = ifa_param["inputLayout"]
+    numHeads = ifa_param["numHeads"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
+    p_shape = ifa_param["p_shape"]
+    k_start_index = ifa_param["k_start_index"]
+    k_end_index = ifa_param["k_end_index"]
+    v_start_index = ifa_param["v_start_index"]
+    v_end_index = ifa_param["v_end_index"]
+    out_shape = ifa_param["out_shape"]
+    k_ori_shape_list = copy.deepcopy(ifa_param["k_shape_list"])
+    v_ori_shape_list = copy.deepcopy(ifa_param["v_shape_list"])
+    k_dtype = ifa_param["k_dtype"]
+    v_dtype = ifa_param["v_dtype"]
+    m_tensor = ifa_param["m_tensor"]
+    m_shape = ifa_param["m_shape"]
+    sparse_mode = ifa_param["sparse_mode"]
+    if ifa_param["tnd_flag"] and ifa_param["pa_flag"]:
         kv_layout = "BNSD"
     else:
         kv_layout = inputLayout
-    ifa_param['kv_layout'] = kv_layout
+    ifa_param["kv_layout"] = kv_layout
 
     # >> actualSeqLengths预处理：actualSeqLengths为单值场景，如果长度为1且b不为1，则将actualSeqLengths扩展为b个单值的列表
     # >> 仅非tnd场景，或tnd+pa场景，需要处理
-    if not ifa_param['tnd_flag'] or (ifa_param['tnd_flag'] and ifa_param['pa_flag']):
+    if not ifa_param["tnd_flag"] or (ifa_param["tnd_flag"] and ifa_param["pa_flag"]):
         # actq
-        if len(actualSeqLengths_q) == 1 and len(actualSeqLengths_q) != ifa_param['b']:
+        if len(actualSeqLengths_q) == 1 and len(actualSeqLengths_q) != ifa_param["b"]:
             actualSeqLengthsq_item = actualSeqLengths_q[0]
-            for b_count in range(ifa_param['b'] - 1):
+            for b_count in range(ifa_param["b"] - 1):
                 actualSeqLengths_q.append(actualSeqLengthsq_item)
-        if len(actualSeqLengths_q) > ifa_param['b']:
-            actualSeqLengths_q = actualSeqLengths_q[:ifa_param['b']]
+        if len(actualSeqLengths_q) > ifa_param["b"]:
+            actualSeqLengths_q = actualSeqLengths_q[: ifa_param["b"]]
         # actkv
-        if len(actualSeqLengths) == 1 and len(actualSeqLengths) != ifa_param['b']:
+        if len(actualSeqLengths) == 1 and len(actualSeqLengths) != ifa_param["b"]:
             actualSeqLengths_item = actualSeqLengths[0]
-            for b_count in range(ifa_param['b'] - 1):
+            for b_count in range(ifa_param["b"] - 1):
                 actualSeqLengths.append(actualSeqLengths_item)
         # >> actualSeqLengths预处理：actualSeqLengths长度超过b
-        if len(actualSeqLengths) > ifa_param['b']:
-            actualSeqLengths = actualSeqLengths[:ifa_param['b']]
-    if ifa_param['tnd_flag']:
+        if len(actualSeqLengths) > ifa_param["b"]:
+            actualSeqLengths = actualSeqLengths[: ifa_param["b"]]
+    if ifa_param["tnd_flag"]:
         # 将tnd格式下的act seq转成普通的act seq
         actualSeqLengths_q = trans_tnd_actseq(actualSeqLengths_q)
-        if not ifa_param['pa_flag']:
+        if not ifa_param["pa_flag"]:
             actualSeqLengths = trans_tnd_actseq(actualSeqLengths)
-        print(f"[INFO]trans_tnd_actseq end.")
+        print("[INFO]trans_tnd_actseq end.")
 
-    ifa_param['actualSeqLengths'] = actualSeqLengths
-    ifa_param['actualSeqLengths_q'] = actualSeqLengths_q
+    ifa_param["actualSeqLengths"] = actualSeqLengths
+    ifa_param["actualSeqLengths_q"] = actualSeqLengths_q
     # deepseek 预处理： 1.将Q与QROPE拼接 2.将K与KROPE拼接 3.伪量化场景，k_antiscale与k_rope_antiscale拼接
-    if ifa_param['deep_seek_flag']:
+    if ifa_param["deep_seek_flag"]:
         ifa_param = deepseek_preprocessing(ifa_param)
     # >> q 预处理：将q转换为bnsd
-    q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['q_tensor'], ifa_param['q_shape'], inputLayout,
-                                                         numHeads, actualSeqLengths_q)
-    ifa_param['q_bnsd_shape'] = q_bnsd_shape
+    q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["q_tensor"],
+        ifa_param["q_shape"],
+        inputLayout,
+        numHeads,
+        actualSeqLengths_q,
+    )
+    ifa_param["q_bnsd_shape"] = q_bnsd_shape
 
     qs = q_bnsd_shape[2]
-    ifa_param['q_tensor_bnsd'] = q_bnsd_tensor
-    ifa_param['q_shape_bnsd'] = q_bnsd_shape
-    ifa_param['q_d'] = q_bnsd_shape[3]
+    ifa_param["q_tensor_bnsd"] = q_bnsd_tensor
+    ifa_param["q_shape_bnsd"] = q_bnsd_shape
+    ifa_param["q_d"] = q_bnsd_shape[3]
 
     # >> kv预处理：1、将kv list 转换为bnsd 2、GQA场景，将kvn扩展为qn
     k_tensor_list = []
@@ -4073,72 +4519,91 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
     v_tensor_bnsd_list = []
     k_shape_bnsd_list = []
     v_shape_bnsd_list = []
-    ifa_param['ks_max'] = 0
+    ifa_param["ks_max"] = 0
 
-    for i in range(0, ifa_param['k_num']):
-        k_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['k_tensor_list'][i], ifa_param['k_shape_list'][i],
-                                                        kv_layout,
-                                                        numKeyValueHeads, actualSeqLengths)
+    for i in range(0, ifa_param["k_num"]):
+        k_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+            ifa_param["k_tensor_list"][i],
+            ifa_param["k_shape_list"][i],
+            kv_layout,
+            numKeyValueHeads,
+            actualSeqLengths,
+        )
         k_tensor_bnsd_list.append(k_tensor)
         k_shape_bnsd_list.append(k_bnsd_shape)
         # k int32预处理
-        if ifa_param['k_dtype'] == "int32":
-            k_tensor, k_bnsd_shape = trans_int32_2_int4_tensor_bnsd(k_tensor, k_bnsd_shape)
+        if ifa_param["k_dtype"] == "int32":
+            k_tensor, k_bnsd_shape = trans_int32_2_int4_tensor_bnsd(
+                k_tensor, k_bnsd_shape
+            )
 
         if numKeyValueHeads != numHeads:
-            if ifa_param['deep_seek_flag'] and ifa_param['in_quant_flag']:
+            if ifa_param["deep_seek_flag"] and ifa_param["in_quant_flag"]:
                 pass
             else:
-                k_tensor, k_bnsd_shape = _t_broadcastKV_sigle(numHeads, numKeyValueHeads, k_tensor, k_dtype)
-        if k_bnsd_shape[2] > ifa_param['ks_max']:
-            ifa_param['ks_max'] = k_bnsd_shape[2]
+                k_tensor, k_bnsd_shape = _t_broadcastKV_sigle(
+                    numHeads, numKeyValueHeads, k_tensor, k_dtype
+                )
+        if k_bnsd_shape[2] > ifa_param["ks_max"]:
+            ifa_param["ks_max"] = k_bnsd_shape[2]
         k_tensor_list.append(k_tensor)
         k_shape_list.append(k_bnsd_shape)
 
     x = 0
-    for i in range(0, ifa_param['k_num']):
-        v_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['v_tensor_list'][i], v_ori_shape_list[x], kv_layout,
-                                                        numKeyValueHeads, actualSeqLengths)
+    for i in range(0, ifa_param["k_num"]):
+        v_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(
+            ifa_param["v_tensor_list"][i],
+            v_ori_shape_list[x],
+            kv_layout,
+            numKeyValueHeads,
+            actualSeqLengths,
+        )
         x = x + 1
         v_tensor_bnsd_list.append(v_tensor)
         v_shape_bnsd_list.append(v_bnsd_shape)
         # v int32预处理
-        if ifa_param['v_dtype'] == "int32":
-            v_tensor, v_bnsd_shape = trans_int32_2_int4_tensor_bnsd(v_tensor, v_bnsd_shape)
+        if ifa_param["v_dtype"] == "int32":
+            v_tensor, v_bnsd_shape = trans_int32_2_int4_tensor_bnsd(
+                v_tensor, v_bnsd_shape
+            )
 
         if numKeyValueHeads != numHeads:
-            if ifa_param['deep_seek_flag'] and ifa_param['in_quant_flag']:
+            if ifa_param["deep_seek_flag"] and ifa_param["in_quant_flag"]:
                 pass
             else:
-                v_tensor, v_bnsd_shape = _t_broadcastKV_sigle(numHeads, numKeyValueHeads, v_tensor, v_dtype)
+                v_tensor, v_bnsd_shape = _t_broadcastKV_sigle(
+                    numHeads, numKeyValueHeads, v_tensor, v_dtype
+                )
         v_tensor_list.append(v_tensor)
         v_shape_list.append(v_bnsd_shape)
 
-    ifa_param['k_tensor_list_bnsd'] = k_tensor_list
-    ifa_param['k_shape_list_bnsd'] = k_shape_list
-    ifa_param['v_tensor_list_bnsd'] = v_tensor_list
-    ifa_param['v_shape_list_bnsd'] = v_shape_list
+    ifa_param["k_tensor_list_bnsd"] = k_tensor_list
+    ifa_param["k_shape_list_bnsd"] = k_shape_list
+    ifa_param["v_tensor_list_bnsd"] = v_tensor_list
+    ifa_param["v_shape_list_bnsd"] = v_shape_list
     # 处理deepseek全量化：1.将qkv从FP16转成INT8 2.生成dequantscale1,dequantscale2
-    if ifa_param['deep_seek_flag'] and ifa_param['in_quant_flag']:
-        if ifa_param['action_type'] in ['bm_output_gold', 'bm_output']:
-            ifa_param = deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, params)
+    if ifa_param["deep_seek_flag"] and ifa_param["in_quant_flag"]:
+        if ifa_param["action_type"] in ["bm_output_gold", "bm_output"]:
+            ifa_param = deepseek_inquant_preprocessing_for_recovery(
+                ifa_param, torch_tensor_list, params
+            )
         else:
             ifa_param = deepseek_inquant_preprocessing(ifa_param, params)
 
     # >> left padding 异常场景处理：起点/终点异常，返回全0
-    if ifa_param['padding_flag']:
+    if ifa_param["padding_flag"]:
         max_act_seq = max(actualSeqLengths)
-        kv_s = ifa_param['ks_max']
-        if kv_s - ifa_param['padding_size'] - max_act_seq < 0:
-            print('[WARNING]:paddingsize 溢出，输出空tensor！')
+        kv_s = ifa_param["ks_max"]
+        if kv_s - ifa_param["padding_size"] - max_act_seq < 0:
+            print("[WARNING]:paddingsize 溢出，输出空tensor！")
             return torch.zeros(out_shape)
     action_type = params["action_type"]
     # >> pse 处理
-    if ifa_param['p_flag']:
+    if ifa_param["p_flag"]:
         p_tensor = torch_tensor_list[3]
 
     # >> m预处理：1、将m扩展为BN1S  2、padding场景下，偏移部分设置为1 3、针对FP16格式，将tensor转成0/1
-    m_dtype = get_pt_dtype(params['dtype_input'][v_end_index + 2])
+    m_dtype = get_pt_dtype(params["dtype_input"][v_end_index + 2])
     m_tensor = torch.tensor(m_tensor, dtype=m_dtype)
 
     # qs大于1
@@ -4147,23 +4612,34 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
         numheads = q_bnsd_shape[1]
         npu_m_shape_s = m_shape
         if sparse_mode == 0 or sparse_mode == 1:
-            batch, numheads, ns1, ns2 = get_attention_mask_batch_num(m_shape,q_bnsd_shape)  # 获取输入attentionmask的batch 和numhead
+            batch, numheads, ns1, ns2 = get_attention_mask_batch_num(
+                m_shape, q_bnsd_shape
+            )  # 获取输入attentionmask的batch 和numhead
             npu_m_shape_s = [ns1, ns2]
         kvs = k_shape_list[0][2]
         cpu_m_shape = [qs, kvs]  # cpu
-        preTokens = ifa_param['pre_tokens']
-        nextTokens = ifa_param['next_tokens']
+        preTokens = ifa_param["pre_tokens"]
+        nextTokens = ifa_param["next_tokens"]
         actualprefixKV = 0
         prefix_kvs = 0
         kvs_list = [kvs]
-        cpu_m_tensor, npu_m_tensor, preTokens, nextTokens = _create_random_mask_by_spars(cpu_m_shape, npu_m_shape_s,
-                                                                                         m_dtype, preTokens, nextTokens,
-                                                                                         ifa_param[
-                                                                                             'actualSeqLengths_q'],
-                                                                                         actualSeqLengths,
-                                                                                         actualprefixKV,
-                                                                                         prefix_kvs, kvs_list, batch,
-                                                                                         numheads, sparse_mode)
+        cpu_m_tensor, npu_m_tensor, preTokens, nextTokens = (
+            _create_random_mask_by_spars(
+                cpu_m_shape,
+                npu_m_shape_s,
+                m_dtype,
+                preTokens,
+                nextTokens,
+                ifa_param["actualSeqLengths_q"],
+                actualSeqLengths,
+                actualprefixKV,
+                prefix_kvs,
+                kvs_list,
+                batch,
+                numheads,
+                sparse_mode,
+            )
+        )
 
         npu_m_tensor = torch.from_numpy(npu_m_tensor).to(m_dtype)
 
@@ -4174,47 +4650,70 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
         else:
             cpu_m_tensor = np.array(cpu_m_tensor)
             cpu_m_tensor = torch.from_numpy(cpu_m_tensor)
-            ifa_param['m_tensor'] = _t_broadcast_mask_n(cpu_m_tensor, cpu_m_tensor.shape, numHeads, q_bnsd_shape[0])
+            ifa_param["m_tensor"] = _t_broadcast_mask_n(
+                cpu_m_tensor, cpu_m_tensor.shape, numHeads, q_bnsd_shape[0]
+            )
     else:
-        if ifa_param['m_flag']:
+        if ifa_param["m_flag"]:
             m_rewrite_flag = False
-            if ifa_param['padding_flag']:
-                m_tensor = cut_padding_size(m_tensor, actualSeqLengths, ifa_param['padding_size'])
+            if ifa_param["padding_flag"]:
+                m_tensor = cut_padding_size(
+                    m_tensor, actualSeqLengths, ifa_param["padding_size"]
+                )
                 m_rewrite_flag = True
-            if ifa_param['m_dtype'] == "float16":
-                m_tensor = torch.where(m_tensor < 0.8, torch.tensor(0, dtype=torch.float16),
-                                       torch.tensor(1, dtype=torch.float16))
+            if ifa_param["m_dtype"] == "float16":
+                m_tensor = torch.where(
+                    m_tensor < 0.8,
+                    torch.tensor(0, dtype=torch.float16),
+                    torch.tensor(1, dtype=torch.float16),
+                )
                 m_rewrite_flag = True
-            ifa_param['m_tensor'] = _t_broadcast_mask_n(m_tensor, m_shape, numHeads, m_shape[0])
+            ifa_param["m_tensor"] = _t_broadcast_mask_n(
+                m_tensor, m_shape, numHeads, m_shape[0]
+            )
 
     # >> 后量化参数处理：1、给dtype赋值 2、如果是perchannel模式，要将后量化参数统一转换成1n1d格式
-    if ifa_param['out_quant_flag']:
-        ifa_param['quantScale2_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 6])
-        ifa_param['quantOffset2_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 7])
-    if ifa_param['out_quant_pc_flag']:
-        ifa_param['quantScale2'] = trans_to_1n1d(ifa_param['quantScale2'], ifa_param['quantScale2_shape'],
-                                                 ifa_param['q_shape_bnsd'][3])
-        if ifa_param['quantScale2'] is None:
+    if ifa_param["out_quant_flag"]:
+        ifa_param["quantScale2_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 6]
+        )
+        ifa_param["quantOffset2_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 7]
+        )
+    if ifa_param["out_quant_pc_flag"]:
+        ifa_param["quantScale2"] = trans_to_1n1d(
+            ifa_param["quantScale2"],
+            ifa_param["quantScale2_shape"],
+            ifa_param["q_shape_bnsd"][3],
+        )
+        if ifa_param["quantScale2"] is None:
             return torch.zeros(out_shape)
-        ifa_param['quantOffset2'] = trans_to_1n1d(ifa_param['quantOffset2'], ifa_param['quantOffset2_shape'],
-                                                  ifa_param['q_shape_bnsd'][3])
-        if ifa_param['quantOffset2'] is None:
+        ifa_param["quantOffset2"] = trans_to_1n1d(
+            ifa_param["quantOffset2"],
+            ifa_param["quantOffset2_shape"],
+            ifa_param["q_shape_bnsd"][3],
+        )
+        if ifa_param["quantOffset2"] is None:
             return torch.zeros(out_shape)
-        ifa_param['quantScale2_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 6])
-        ifa_param['quantOffset2_dtype'] = trans_input_dtype(params['dtype_input'][v_end_index + 7])
+        ifa_param["quantScale2_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 6]
+        )
+        ifa_param["quantOffset2_dtype"] = trans_input_dtype(
+            params["dtype_input"][v_end_index + 7]
+        )
 
         # >> 处理pageatten场景（以下处理不涉及cpu真值计算，仅为npu生成输入）：
         # 1、生成随机的block_table，并覆写原有bin文件
         # 2、将kv shape 统一转换成bsh
         # 3、生成kv cache
         # 4、将kv cache dump成新的bin文件，供aclnn接口调用
-    if ifa_param['pa_flag'] and "output" not in params["action_type"]:
+    if ifa_param["pa_flag"] and "output" not in params["action_type"]:
         # 生成blocktable
-        blockSize = ifa_param['blocksize']
-        blockTableShape = ifa_param['bt_shape']
-        blockNum = ifa_param['k_cache_shape'][0]
-        if 0 in ifa_param['bt_shape']:
-            print('[WARNING]:block_table为空场景，输出空tensor！')
+        blockSize = ifa_param["blocksize"]
+        blockTableShape = ifa_param["bt_shape"]
+        blockNum = ifa_param["k_cache_shape"][0]
+        if 0 in ifa_param["bt_shape"]:
+            print("[WARNING]:block_table为空场景，输出空tensor！")
             return torch.zeros(out_shape)
         blockNumPerBlock = []
         block_num_min = 0
@@ -4234,49 +4733,69 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
         block_table_batch_idx = 0
         for idx in blockNumPerBlock:
             for j in range(idx):
-                block_table[block_table_batch_idx][j] = (block_idx_list[block_idx])
+                block_table[block_table_batch_idx][j] = block_idx_list[block_idx]
                 block_idx += 1
             block_table_batch_idx += 1
-        ifa_param['block_table'] = block_table
-        k_np_dtype = tools.get_np_dtype(params['dtype_input'][1])
-        v_np_dtype = tools.get_np_dtype(params['dtype_input'][2])
-        ifa_param['k_np_dtype'] = k_np_dtype
-        ifa_param['v_np_dtype'] = v_np_dtype
-        print(f"[PageAtten]Input Kdtype:{params['dtype_input'][1]} Vdtype:{params['dtype_input'][2]}")
-        k_cache = np.zeros(ifa_param['k_cache_shape']).astype(k_np_dtype)
-        v_cache = np.zeros(ifa_param['v_cache_shape']).astype(v_np_dtype)
-        if not ifa_param['deep_seek_flag']:
-            print('[INFO]:PA + no Deepseek！')
+        ifa_param["block_table"] = block_table
+        k_np_dtype = tools.get_np_dtype(params["dtype_input"][1])
+        v_np_dtype = tools.get_np_dtype(params["dtype_input"][2])
+        ifa_param["k_np_dtype"] = k_np_dtype
+        ifa_param["v_np_dtype"] = v_np_dtype
+        print(
+            f"[PageAtten]Input Kdtype:{params['dtype_input'][1]} Vdtype:{params['dtype_input'][2]}"
+        )
+        k_cache = np.zeros(ifa_param["k_cache_shape"]).astype(k_np_dtype)
+        v_cache = np.zeros(ifa_param["v_cache_shape"]).astype(v_np_dtype)
+        if not ifa_param["deep_seek_flag"]:
+            print("[INFO]:PA + no Deepseek！")
             # gen kv cache
-            if len(ifa_param['k_cache_shape']) == 3:
+            if len(ifa_param["k_cache_shape"]) == 3:
                 # trans kv to bsh(此处使用的tensor, 没有经过n的扩展)
-                k_tensor_bsh_raw = trans_bnsd_to_bsh(k_tensor_bnsd_list[0], k_shape_bnsd_list[0])
-                v_tensor_bsh_raw = trans_bnsd_to_bsh(v_tensor_bnsd_list[0], v_shape_bnsd_list[0])
+                k_tensor_bsh_raw = trans_bnsd_to_bsh(
+                    k_tensor_bnsd_list[0], k_shape_bnsd_list[0]
+                )
+                v_tensor_bsh_raw = trans_bnsd_to_bsh(
+                    v_tensor_bnsd_list[0], v_shape_bnsd_list[0]
+                )
 
                 # kv paddIng
                 kvh = numKeyValueHeads * q_bnsd_shape[3]
-                if ifa_param['k_dtype'] == "int32":
+                if ifa_param["k_dtype"] == "int32":
                     kvh = int(kvh / 8)
-                k_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)).astype(k_np_dtype)
-                v_tensor_bsh = np.zeros((q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)).astype(v_np_dtype)
-                k_tensor_bsh[:, :k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[:, :, :]
-                v_tensor_bsh[:, :v_tensor_bsh_raw.shape[1], :] = v_tensor_bsh_raw[:, :, :]
+                k_tensor_bsh = np.zeros(
+                    (q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)
+                ).astype(k_np_dtype)
+                v_tensor_bsh = np.zeros(
+                    (q_bnsd_shape[0], blockTableShape[1] * blockSize, kvh)
+                ).astype(v_np_dtype)
+                k_tensor_bsh[:, : k_tensor_bsh_raw.shape[1], :] = k_tensor_bsh_raw[
+                    :, :, :
+                ]
+                v_tensor_bsh[:, : v_tensor_bsh_raw.shape[1], :] = v_tensor_bsh_raw[
+                    :, :, :
+                ]
                 for b in range(q_bnsd_shape[0]):
                     for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                         block_offset = block_i * blockSize
                         if kv_cache_blk_id == -1:
                             continue
                         else:
-                            k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[b,
-                                                                       block_offset:(block_offset + blockSize), :]
-                            v_cache[kv_cache_blk_id, 0:blockSize, :] = v_tensor_bsh[b,
-                                                                       block_offset:(block_offset + blockSize), :]
-            elif len(ifa_param['k_cache_shape']) == 4:
+                            k_cache[kv_cache_blk_id, 0:blockSize, :] = k_tensor_bsh[
+                                b, block_offset : (block_offset + blockSize), :
+                            ]
+                            v_cache[kv_cache_blk_id, 0:blockSize, :] = v_tensor_bsh[
+                                b, block_offset : (block_offset + blockSize), :
+                            ]
+            elif len(ifa_param["k_cache_shape"]) == 4:
                 kvn = k_tensor_bnsd_list[0].shape[1]
                 kvs = k_tensor_bnsd_list[0].shape[2]
                 kvd = k_tensor_bnsd_list[0].shape[3]
-                k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(k_np_dtype)
-                v_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(v_np_dtype)
+                k_tensor_bnsd = np.zeros(
+                    (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+                ).astype(k_np_dtype)
+                v_tensor_bnsd = np.zeros(
+                    (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+                ).astype(v_np_dtype)
                 k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
                 v_tensor_bnsd[:, :, :kvs, :] = v_tensor_bnsd_list[0][:, :, :, :]
 
@@ -4329,76 +4848,116 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                             continue
                         else:
                             for n in range(q_bnsd_shape[1]):
-                                k_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b,
-                                                                                                n:n + 1,
-                                                                                                block_offset:(block_offset + blockSize),:]
-                                v_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = v_tensor_bnsd[b,
-                                                                                                n:n + 1,
-                                                                                                block_offset:(block_offset + blockSize),:]
+                                k_cache_tensor_bnbd[
+                                    kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                                ] = k_tensor_bnsd[
+                                    b,
+                                    n : n + 1,
+                                    block_offset : (block_offset + blockSize),
+                                    :,
+                                ]
+                                v_cache_tensor_bnbd[
+                                    kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                                ] = v_tensor_bnsd[
+                                    b,
+                                    n : n + 1,
+                                    block_offset : (block_offset + blockSize),
+                                    :,
+                                ]
                 if k_dtype == "int8":
                     base = 32
                 else:
                     base = 16
-                k_cache = k_cache_tensor_bnbd.reshape(k_cache_tensor_bnbd.shape[0], k_cache_tensor_bnbd.shape[1],
-                                                      k_cache_tensor_bnbd.shape[2],
-                                                      k_cache_tensor_bnbd.shape[3] // base, base).transpose(0, 1, 3, 2,
-                                                                                                            4)
-                v_cache = v_cache_tensor_bnbd.reshape(k_cache_tensor_bnbd.shape[0], k_cache_tensor_bnbd.shape[1],
-                                                      k_cache_tensor_bnbd.shape[2],
-                                                      v_cache_tensor_bnbd.shape[3] // base, base).transpose(0, 1, 3, 2,
-                                                                                                            4)
+                k_cache = k_cache_tensor_bnbd.reshape(
+                    k_cache_tensor_bnbd.shape[0],
+                    k_cache_tensor_bnbd.shape[1],
+                    k_cache_tensor_bnbd.shape[2],
+                    k_cache_tensor_bnbd.shape[3] // base,
+                    base,
+                ).transpose(0, 1, 3, 2, 4)
+                v_cache = v_cache_tensor_bnbd.reshape(
+                    k_cache_tensor_bnbd.shape[0],
+                    k_cache_tensor_bnbd.shape[1],
+                    k_cache_tensor_bnbd.shape[2],
+                    v_cache_tensor_bnbd.shape[3] // base,
+                    base,
+                ).transpose(0, 1, 3, 2, 4)
             else:
-                print(f"[ERROR]Wrong input kv_cache_shape: {ifa_param['k_cache_shape']}")
+                print(
+                    f"[ERROR]Wrong input kv_cache_shape: {ifa_param['k_cache_shape']}"
+                )
                 return torch.zeros(out_shape)
             # 将kv cache 生成新的bin文件
 
             k_cache_index = 21
             v_cache_index = 22
         else:
-            print('[INFO]:PA + Deepseek！')
-            if ifa_param['in_quant_flag']:
+            print("[INFO]:PA + Deepseek！")
+            if ifa_param["in_quant_flag"]:
                 deepseek_inquant_ds_pa_preprocessing(ifa_param, params)
             else:
                 deepseek_ds_pa_preprocessing(ifa_param, params)
     # >> kv 伪量化预处理
-    if ifa_param['kv_quant_flag']:
-        antiquantscale_shape_raw = ifa_param['antiquantscale_shape_raw']
-        antiquantscale_tensor_raw = ifa_param['antiquantscale_tensor_raw']
-        antiquantoffset_shape_raw = ifa_param['antiquantoffset_shape_raw']
-        antiquantoffset_tensor_raw = ifa_param['antiquantoffset_tensor_raw']
+    if ifa_param["kv_quant_flag"]:
+        antiquantscale_shape_raw = ifa_param["antiquantscale_shape_raw"]
+        antiquantscale_tensor_raw = ifa_param["antiquantscale_tensor_raw"]
+        antiquantoffset_shape_raw = ifa_param["antiquantoffset_shape_raw"]
+        antiquantoffset_tensor_raw = ifa_param["antiquantoffset_tensor_raw"]
 
         # >> [TEMP]pertoken_group：1、将kv量化参数统一转换成2,B,N,S,D/32 2、GQA场景下，扩展kv量化参数
-        if ifa_param['kv_quant_ptog_flag']:
-            antiquantscale_tensor = _trans_antiparam_to_2bnsg(antiquantscale_shape_raw, antiquantscale_tensor_raw,
-                                                              inputLayout, numKeyValueHeads)
-            antiquantoffset_tensor = _trans_antiparam_to_2bnsg(antiquantoffset_shape_raw, antiquantoffset_tensor_raw,
-                                                               inputLayout, numKeyValueHeads)
-            antiquantscale_tensor = broadcast_kv_dequant_tensor_fp8e8m0(antiquantscale_tensor, numKeyValueHeads,
-                                                                        numHeads)
-            antiquantoffset_tensor = broadcast_kv_dequant_tensor_fp8e8m0(antiquantoffset_tensor, numKeyValueHeads,
-                                                                         numHeads)
+        if ifa_param["kv_quant_ptog_flag"]:
+            antiquantscale_tensor = _trans_antiparam_to_2bnsg(
+                antiquantscale_shape_raw,
+                antiquantscale_tensor_raw,
+                inputLayout,
+                numKeyValueHeads,
+            )
+            antiquantoffset_tensor = _trans_antiparam_to_2bnsg(
+                antiquantoffset_shape_raw,
+                antiquantoffset_tensor_raw,
+                inputLayout,
+                numKeyValueHeads,
+            )
+            antiquantscale_tensor = broadcast_kv_dequant_tensor_fp8e8m0(
+                antiquantscale_tensor, numKeyValueHeads, numHeads
+            )
+            antiquantoffset_tensor = broadcast_kv_dequant_tensor_fp8e8m0(
+                antiquantoffset_tensor, numKeyValueHeads, numHeads
+            )
 
-            ifa_param['antiquantScale'] = antiquantscale_tensor
-            ifa_param['antiquantOffset'] = antiquantoffset_tensor
+            ifa_param["antiquantScale"] = antiquantscale_tensor
+            ifa_param["antiquantOffset"] = antiquantoffset_tensor
         # pertensor/perchannel ->1、将kv量化参数统一转换成2n1d 2、GQA场景下，扩展kv量化参数
-        elif not ifa_param['kv_quant_pto_flag']:
+        elif not ifa_param["kv_quant_pto_flag"]:
             # 将kv量化参数转换为2n1d(匹配bnsd)
-            antiquantscale_tensor = _trans_antiparam_to_2n1d(antiquantscale_shape_raw, antiquantscale_tensor_raw,
-                                                             inputLayout, numKeyValueHeads, ifa_param['q_d'])
-            antiquantoffset_tensor = _trans_antiparam_to_2n1d(antiquantoffset_shape_raw, antiquantoffset_tensor_raw,
-                                                              inputLayout, numKeyValueHeads, ifa_param['q_d'])
+            antiquantscale_tensor = _trans_antiparam_to_2n1d(
+                antiquantscale_shape_raw,
+                antiquantscale_tensor_raw,
+                inputLayout,
+                numKeyValueHeads,
+                ifa_param["q_d"],
+            )
+            antiquantoffset_tensor = _trans_antiparam_to_2n1d(
+                antiquantoffset_shape_raw,
+                antiquantoffset_tensor_raw,
+                inputLayout,
+                numKeyValueHeads,
+                ifa_param["q_d"],
+            )
             # GQA场景，扩展kv反量化参数
-            q_dtype_np = get_np_dtype(params['dtype_input'][0])
-            antiquantscale_tensor = broadcast_kv_dequant_tensor(antiquantscale_tensor, numKeyValueHeads, numHeads,
-                                                                q_dtype_np)
-            antiquantoffset_tensor = broadcast_kv_dequant_tensor(antiquantoffset_tensor, numKeyValueHeads, numHeads,
-                                                                 q_dtype_np)
+            q_dtype_np = get_np_dtype(params["dtype_input"][0])
+            antiquantscale_tensor = broadcast_kv_dequant_tensor(
+                antiquantscale_tensor, numKeyValueHeads, numHeads, q_dtype_np
+            )
+            antiquantoffset_tensor = broadcast_kv_dequant_tensor(
+                antiquantoffset_tensor, numKeyValueHeads, numHeads, q_dtype_np
+            )
 
-            ifa_param['antiquantScale'] = antiquantscale_tensor
-            ifa_param['antiquantOffset'] = antiquantoffset_tensor
+            ifa_param["antiquantScale"] = antiquantscale_tensor
+            ifa_param["antiquantOffset"] = antiquantoffset_tensor
         else:
-            ifa_param['antiquantScale'] = antiquantscale_tensor_raw
-            ifa_param['antiquantOffset'] = antiquantoffset_tensor_raw
+            ifa_param["antiquantScale"] = antiquantscale_tensor_raw
+            ifa_param["antiquantOffset"] = antiquantoffset_tensor_raw
     # 判断kv分离的伪量化
     if ifa_param["k_antiquant_flag"] and not ifa_param["v_antiquant_flag"]:
         print("[ERROR] k_antiquant exit, but v_antiquant not exit")
@@ -4408,196 +4967,266 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
         exit(-1)
     else:
         if ifa_param["k_antiquant_flag"]:
-            k_antiquantscale_shape_raw = ifa_param['k_antiquantscale_shape_raw']
-            k_antiquantscale_tensor_raw = ifa_param['k_antiquantscale_tensor_raw']
-            k_antiquantoffset_shape_raw = ifa_param['k_antiquantoffset_shape_raw']
-            k_antiquantoffset_tensor_raw = ifa_param['k_antiquantoffset_tensor_raw']
+            k_antiquantscale_shape_raw = ifa_param["k_antiquantscale_shape_raw"]
+            k_antiquantscale_tensor_raw = ifa_param["k_antiquantscale_tensor_raw"]
+            k_antiquantoffset_shape_raw = ifa_param["k_antiquantoffset_shape_raw"]
+            k_antiquantoffset_tensor_raw = ifa_param["k_antiquantoffset_tensor_raw"]
             print(f"k_antiquant_pto_flag: {ifa_param['k_antiquant_pto_flag']}")
             print(f"k_antiquant_ptoh_flag: {ifa_param['k_antiquant_ptoh_flag']}")
             print(f"k_antiquant_ptopa_flag: {ifa_param['k_antiquant_ptopa_flag']}")
             print(f"k_antiquant_ptohpa_flag: {ifa_param['k_antiquant_ptohpa_flag']}")
             # pertoken_head
-            if ifa_param['k_antiquant_ptoh_flag']:
+            if ifa_param["k_antiquant_ptoh_flag"]:
                 # GQA场景，扩展kv反量化参数
-                k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(k_antiquantscale_tensor_raw,
-                                                                                 numKeyValueHeads, numHeads)
-                k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(k_antiquantoffset_tensor_raw,
-                                                                                  numKeyValueHeads, numHeads)
-                ifa_param['k_antiquantScale'] = k_antiquantscale_tensor
-                ifa_param['k_antiquantOffset'] = k_antiquantoffset_tensor
+                k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                    k_antiquantscale_tensor_raw, numKeyValueHeads, numHeads
+                )
+                k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                    k_antiquantoffset_tensor_raw, numKeyValueHeads, numHeads
+                )
+                ifa_param["k_antiquantScale"] = k_antiquantscale_tensor
+                ifa_param["k_antiquantOffset"] = k_antiquantoffset_tensor
             # pertensor/perchannel ->1、将kv量化参数统一转换成1n1d 2、GQA场景下，扩展kv量化参数
-            elif ifa_param['k_antiquant_pc_flag'] or ifa_param['k_antiquant_pth_flag']:
-                k_antiquantscale_tensor = _trans_antiparam_to_1n1d(k_antiquantscale_shape_raw,
-                                                                   k_antiquantscale_tensor_raw,
-                                                                   inputLayout, numKeyValueHeads, ifa_param['q_d'],
-                                                                   ifa_param['k_antiquant_mode'])
-                k_antiquantoffset_tensor = _trans_antiparam_to_1n1d(k_antiquantoffset_shape_raw,
-                                                                    k_antiquantoffset_tensor_raw,
-                                                                    inputLayout, numKeyValueHeads, ifa_param['q_d'],
-                                                                    ifa_param['k_antiquant_mode'])
+            elif ifa_param["k_antiquant_pc_flag"] or ifa_param["k_antiquant_pth_flag"]:
+                k_antiquantscale_tensor = _trans_antiparam_to_1n1d(
+                    k_antiquantscale_shape_raw,
+                    k_antiquantscale_tensor_raw,
+                    inputLayout,
+                    numKeyValueHeads,
+                    ifa_param["q_d"],
+                    ifa_param["k_antiquant_mode"],
+                )
+                k_antiquantoffset_tensor = _trans_antiparam_to_1n1d(
+                    k_antiquantoffset_shape_raw,
+                    k_antiquantoffset_tensor_raw,
+                    inputLayout,
+                    numKeyValueHeads,
+                    ifa_param["q_d"],
+                    ifa_param["k_antiquant_mode"],
+                )
                 # GQA场景，扩展kv反量化参数
-                q_dtype_np = get_np_dtype(params['dtype_input'][0])
-                k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor(k_antiquantscale_tensor, numKeyValueHeads,
-                                                                            numHeads, q_dtype_np)
-                k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor(k_antiquantoffset_tensor, numKeyValueHeads,
-                                                                             numHeads, q_dtype_np)
-                ifa_param['k_antiquantScale'] = k_antiquantscale_tensor
-                ifa_param['k_antiquantOffset'] = k_antiquantoffset_tensor
+                q_dtype_np = get_np_dtype(params["dtype_input"][0])
+                k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor(
+                    k_antiquantscale_tensor, numKeyValueHeads, numHeads, q_dtype_np
+                )
+                k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor(
+                    k_antiquantoffset_tensor, numKeyValueHeads, numHeads, q_dtype_np
+                )
+                ifa_param["k_antiquantScale"] = k_antiquantscale_tensor
+                ifa_param["k_antiquantOffset"] = k_antiquantoffset_tensor
             # pertoken_pa -> 1、将bb转成1bs
-            elif ifa_param['k_antiquant_ptopa_flag']:
-                if ifa_param['pa_flag']:
-                    ifa_param['k_antiquantScale'] = trans_bb_2_1bs(k_antiquantscale_tensor_raw,
-                                                                   ifa_param['block_table'], ifa_param['b'])
-                    ifa_param['k_antiquantOffset'] = trans_bb_2_1bs(k_antiquantoffset_tensor_raw,
-                                                                    ifa_param['block_table'], ifa_param['b'])
+            elif ifa_param["k_antiquant_ptopa_flag"]:
+                if ifa_param["pa_flag"]:
+                    ifa_param["k_antiquantScale"] = trans_bb_2_1bs(
+                        k_antiquantscale_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    ifa_param["k_antiquantOffset"] = trans_bb_2_1bs(
+                        k_antiquantoffset_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
                 else:
                     print("[ERROR]Got antiquant mode == 4,but not PA!")
                     exit(1)
             # pertoken_head_pa -> 1、将bb转成1bns
-            elif ifa_param['k_antiquant_ptohpa_flag']:
-                if ifa_param['pa_flag']:
-                    k_antiquantscale_tensor = trans_bb_2_1bns(k_antiquantscale_tensor_raw, ifa_param['block_table'],
-                                                              ifa_param['b'])
-                    k_antiquantoffset_tensor = trans_bb_2_1bns(k_antiquantoffset_tensor_raw, ifa_param['block_table'],
-                                                               ifa_param['b'])
-                    k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(k_antiquantscale_tensor,
-                                                                                     numKeyValueHeads, numHeads)
-                    k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(k_antiquantoffset_tensor,
-                                                                                      numKeyValueHeads, numHeads)
-                    ifa_param['k_antiquantScale'] = k_antiquantscale_tensor
-                    ifa_param['k_antiquantOffset'] = k_antiquantoffset_tensor
+            elif ifa_param["k_antiquant_ptohpa_flag"]:
+                if ifa_param["pa_flag"]:
+                    k_antiquantscale_tensor = trans_bb_2_1bns(
+                        k_antiquantscale_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    k_antiquantoffset_tensor = trans_bb_2_1bns(
+                        k_antiquantoffset_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    k_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                        k_antiquantscale_tensor, numKeyValueHeads, numHeads
+                    )
+                    k_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                        k_antiquantoffset_tensor, numKeyValueHeads, numHeads
+                    )
+                    ifa_param["k_antiquantScale"] = k_antiquantscale_tensor
+                    ifa_param["k_antiquantOffset"] = k_antiquantoffset_tensor
                 else:
                     print("[ERROR]Got antiquant mode == 5,but not PA!")
                     exit(1)
 
-            elif ifa_param['k_antiquant_ptog_flag']:
-                k_antiquantscale_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(k_antiquantscale_tensor_raw,
-                                                                                      numKeyValueHeads, numHeads)
-                k_antiquantoffset_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(k_antiquantoffset_tensor_raw,
-                                                                                       numKeyValueHeads, numHeads)
+            elif ifa_param["k_antiquant_ptog_flag"]:
+                k_antiquantscale_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(
+                    k_antiquantscale_tensor_raw, numKeyValueHeads, numHeads
+                )
+                k_antiquantoffset_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(
+                    k_antiquantoffset_tensor_raw, numKeyValueHeads, numHeads
+                )
 
-                ifa_param['k_antiquantScale'] = k_antiquantscale_tensor
-                ifa_param['k_antiquantOffset'] = k_antiquantoffset_tensor
+                ifa_param["k_antiquantScale"] = k_antiquantscale_tensor
+                ifa_param["k_antiquantOffset"] = k_antiquantoffset_tensor
 
             # pertoken -> 如果是BS,转成1BS
             else:
-                ifa_param['k_antiquantScale'] = _trans_antiparam_to_1bs(k_antiquantscale_tensor_raw)
-                ifa_param['k_antiquantOffset'] = _trans_antiparam_to_1bs(k_antiquantoffset_tensor_raw)
+                ifa_param["k_antiquantScale"] = _trans_antiparam_to_1bs(
+                    k_antiquantscale_tensor_raw
+                )
+                ifa_param["k_antiquantOffset"] = _trans_antiparam_to_1bs(
+                    k_antiquantoffset_tensor_raw
+                )
 
         if ifa_param["v_antiquant_flag"]:
-            v_antiquantscale_shape_raw = ifa_param['v_antiquantscale_shape_raw']
-            v_antiquantscale_tensor_raw = ifa_param['v_antiquantscale_tensor_raw']
-            v_antiquantoffset_shape_raw = ifa_param['v_antiquantoffset_shape_raw']
-            v_antiquantoffset_tensor_raw = ifa_param['v_antiquantoffset_tensor_raw']
+            v_antiquantscale_shape_raw = ifa_param["v_antiquantscale_shape_raw"]
+            v_antiquantscale_tensor_raw = ifa_param["v_antiquantscale_tensor_raw"]
+            v_antiquantoffset_shape_raw = ifa_param["v_antiquantoffset_shape_raw"]
+            v_antiquantoffset_tensor_raw = ifa_param["v_antiquantoffset_tensor_raw"]
             # pertoken_head
-            if ifa_param['v_antiquant_ptoh_flag']:
+            if ifa_param["v_antiquant_ptoh_flag"]:
                 # GQA场景，扩展kv反量化参数
-                v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(v_antiquantscale_tensor_raw,
-                                                                                 numKeyValueHeads, numHeads)
-                v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(v_antiquantoffset_tensor_raw,
-                                                                                  numKeyValueHeads, numHeads)
-                ifa_param['v_antiquantScale'] = v_antiquantscale_tensor
-                ifa_param['v_antiquantOffset'] = v_antiquantoffset_tensor
+                v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                    v_antiquantscale_tensor_raw, numKeyValueHeads, numHeads
+                )
+                v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                    v_antiquantoffset_tensor_raw, numKeyValueHeads, numHeads
+                )
+                ifa_param["v_antiquantScale"] = v_antiquantscale_tensor
+                ifa_param["v_antiquantOffset"] = v_antiquantoffset_tensor
             # pertensor/perchannel ->1、将kv量化参数统一转换成1n1d 2、GQA场景下，扩展kv量化参数
-            elif ifa_param['v_antiquant_pc_flag'] or ifa_param['v_antiquant_pth_flag']:
-                v_antiquantscale_tensor = _trans_antiparam_to_1n1d(v_antiquantscale_shape_raw,
-                                                                   v_antiquantscale_tensor_raw,
-                                                                   inputLayout, numKeyValueHeads, ifa_param['q_d'],
-                                                                   ifa_param['v_antiquant_mode'])
-                v_antiquantoffset_tensor = _trans_antiparam_to_1n1d(v_antiquantoffset_shape_raw,
-                                                                    v_antiquantoffset_tensor_raw,
-                                                                    inputLayout, numKeyValueHeads, ifa_param['q_d'],
-                                                                    ifa_param['v_antiquant_mode'])
+            elif ifa_param["v_antiquant_pc_flag"] or ifa_param["v_antiquant_pth_flag"]:
+                v_antiquantscale_tensor = _trans_antiparam_to_1n1d(
+                    v_antiquantscale_shape_raw,
+                    v_antiquantscale_tensor_raw,
+                    inputLayout,
+                    numKeyValueHeads,
+                    ifa_param["q_d"],
+                    ifa_param["v_antiquant_mode"],
+                )
+                v_antiquantoffset_tensor = _trans_antiparam_to_1n1d(
+                    v_antiquantoffset_shape_raw,
+                    v_antiquantoffset_tensor_raw,
+                    inputLayout,
+                    numKeyValueHeads,
+                    ifa_param["q_d"],
+                    ifa_param["v_antiquant_mode"],
+                )
                 # GQA场景，扩展kv反量化参数
-                q_dtype_np = get_np_dtype(params['dtype_input'][0])
-                v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor(v_antiquantscale_tensor, numKeyValueHeads,
-                                                                            numHeads, q_dtype_np)
-                v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor(v_antiquantoffset_tensor, numKeyValueHeads,
-                                                                             numHeads, q_dtype_np)
-                ifa_param['v_antiquantScale'] = v_antiquantscale_tensor
-                ifa_param['v_antiquantOffset'] = v_antiquantoffset_tensor
+                q_dtype_np = get_np_dtype(params["dtype_input"][0])
+                v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor(
+                    v_antiquantscale_tensor, numKeyValueHeads, numHeads, q_dtype_np
+                )
+                v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor(
+                    v_antiquantoffset_tensor, numKeyValueHeads, numHeads, q_dtype_np
+                )
+                ifa_param["v_antiquantScale"] = v_antiquantscale_tensor
+                ifa_param["v_antiquantOffset"] = v_antiquantoffset_tensor
             # pertoken_pa -> 1、将bb转成1bs
-            elif ifa_param['v_antiquant_ptopa_flag']:
-                if ifa_param['pa_flag']:
-                    ifa_param['v_antiquantScale'] = trans_bb_2_1bs(v_antiquantscale_tensor_raw,
-                                                                   ifa_param['block_table'], ifa_param['b'])
-                    ifa_param['v_antiquantOffset'] = trans_bb_2_1bs(v_antiquantoffset_tensor_raw,
-                                                                    ifa_param['block_table'], ifa_param['b'])
+            elif ifa_param["v_antiquant_ptopa_flag"]:
+                if ifa_param["pa_flag"]:
+                    ifa_param["v_antiquantScale"] = trans_bb_2_1bs(
+                        v_antiquantscale_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    ifa_param["v_antiquantOffset"] = trans_bb_2_1bs(
+                        v_antiquantoffset_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
                 else:
                     print("[ERROR]Got antiquant mode == 4,but not PA!")
                     exit(1)
 
             # per_token_head_pa -> 1、将bnb转成1bns
-            elif ifa_param['v_antiquant_ptohpa_flag']:
+            elif ifa_param["v_antiquant_ptohpa_flag"]:
                 print(v_antiquantscale_tensor_raw.shape)
-                if ifa_param['pa_flag']:
-                    v_antiquantscale_tensor = trans_bb_2_1bns(v_antiquantscale_tensor_raw, ifa_param['block_table'],
-                                                              ifa_param['b'])
-                    v_antiquantoffset_tensor = trans_bb_2_1bns(v_antiquantoffset_tensor_raw, ifa_param['block_table'],
-                                                               ifa_param['b'])
-                    v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(v_antiquantscale_tensor,
-                                                                                     numKeyValueHeads, numHeads)
-                    v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(v_antiquantoffset_tensor,
-                                                                                      numKeyValueHeads, numHeads)
-                    ifa_param['v_antiquantScale'] = v_antiquantscale_tensor
-                    ifa_param['v_antiquantOffset'] = v_antiquantoffset_tensor
+                if ifa_param["pa_flag"]:
+                    v_antiquantscale_tensor = trans_bb_2_1bns(
+                        v_antiquantscale_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    v_antiquantoffset_tensor = trans_bb_2_1bns(
+                        v_antiquantoffset_tensor_raw,
+                        ifa_param["block_table"],
+                        ifa_param["b"],
+                    )
+                    v_antiquantscale_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                        v_antiquantscale_tensor, numKeyValueHeads, numHeads
+                    )
+                    v_antiquantoffset_tensor = broadcast_kv_split_dequant_tensor_ptoh(
+                        v_antiquantoffset_tensor, numKeyValueHeads, numHeads
+                    )
+                    ifa_param["v_antiquantScale"] = v_antiquantscale_tensor
+                    ifa_param["v_antiquantOffset"] = v_antiquantoffset_tensor
                 else:
                     print("[ERROR]Got antiquant mode == 5,but not PA!")
                     exit(1)
 
             # per_token_group -> 1、将bb转成1bs
-            elif ifa_param['v_antiquant_ptog_flag']:
-                v_antiquantscale_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(v_antiquantscale_tensor_raw,
-                                                                                      numKeyValueHeads,
-                                                                                      numHeads)
-                v_antiquantoffset_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(v_antiquantoffset_tensor_raw,
-                                                                                       numKeyValueHeads,
-                                                                                       numHeads)
+            elif ifa_param["v_antiquant_ptog_flag"]:
+                v_antiquantscale_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(
+                    v_antiquantscale_tensor_raw, numKeyValueHeads, numHeads
+                )
+                v_antiquantoffset_tensor = broadcast_kv_split_antiquant_tensor_fp8e8m0(
+                    v_antiquantoffset_tensor_raw, numKeyValueHeads, numHeads
+                )
 
-                ifa_param['v_antiquantScale'] = v_antiquantscale_tensor
-                ifa_param['v_antiquantOffset'] = v_antiquantoffset_tensor
+                ifa_param["v_antiquantScale"] = v_antiquantscale_tensor
+                ifa_param["v_antiquantOffset"] = v_antiquantoffset_tensor
             # pertoken -> 如果是BS,转成1BS
             else:
-                ifa_param['v_antiquantScale'] = _trans_antiparam_to_1bs(v_antiquantscale_tensor_raw)
-                ifa_param['v_antiquantOffset'] = _trans_antiparam_to_1bs(v_antiquantoffset_tensor_raw)
+                ifa_param["v_antiquantScale"] = _trans_antiparam_to_1bs(
+                    v_antiquantscale_tensor_raw
+                )
+                ifa_param["v_antiquantOffset"] = _trans_antiparam_to_1bs(
+                    v_antiquantoffset_tensor_raw
+                )
 
     # >> 输入量化预处理：获取切分使用的sinner
-    ifa_param['sinner'] = 0
-    if ifa_param['in_quant_flag'] and not ifa_param['deep_seek_flag']:
+    ifa_param["sinner"] = 0
+    if ifa_param["in_quant_flag"] and not ifa_param["deep_seek_flag"]:
         sinner = get_sinner(ifa_param)
-        ifa_param['sinner'] = sinner
+        ifa_param["sinner"] = sinner
 
     # psefix 预处理：1.转成1nsd 2.GQA场景扩展N; 3.按act_prefix裁剪 4.获取perfix_act_lens
-    if ifa_param['prefix_flag']:
-        k_prefix_tensor = ifa_param['k_prefix_tensor']
-        k_prefix_shape = ifa_param['k_prefix_shape']
-        v_prefix_tensor = ifa_param['v_prefix_tensor']
-        v_prefix_shape = ifa_param['v_prefix_shape']
-        k_prefix_tensor, k_prefix_shape = _n_trans_shape_to_bnsd(k_prefix_tensor, k_prefix_shape, inputLayout,
-                                                                 numKeyValueHeads)
-        v_prefix_tensor, v_prefix_shape = _n_trans_shape_to_bnsd(v_prefix_tensor, v_prefix_shape, inputLayout,
-                                                                 numKeyValueHeads)
+    if ifa_param["prefix_flag"]:
+        k_prefix_tensor = ifa_param["k_prefix_tensor"]
+        k_prefix_shape = ifa_param["k_prefix_shape"]
+        v_prefix_tensor = ifa_param["v_prefix_tensor"]
+        v_prefix_shape = ifa_param["v_prefix_shape"]
+        k_prefix_tensor, k_prefix_shape = _n_trans_shape_to_bnsd(
+            k_prefix_tensor, k_prefix_shape, inputLayout, numKeyValueHeads
+        )
+        v_prefix_tensor, v_prefix_shape = _n_trans_shape_to_bnsd(
+            v_prefix_tensor, v_prefix_shape, inputLayout, numKeyValueHeads
+        )
 
         # kv prefix int32预处理
-        if ifa_param['k_prefix_dtype'] == "int32":
-            k_prefix_tensor, k_prefix_shape = trans_int32_2_int4_tensor_bnsd(k_prefix_tensor, k_prefix_shape)
-        if ifa_param['v_prefix_dtype'] == "int32":
-            v_prefix_tensor, v_prefix_shape = trans_int32_2_int4_tensor_bnsd(v_prefix_tensor, v_prefix_shape)
+        if ifa_param["k_prefix_dtype"] == "int32":
+            k_prefix_tensor, k_prefix_shape = trans_int32_2_int4_tensor_bnsd(
+                k_prefix_tensor, k_prefix_shape
+            )
+        if ifa_param["v_prefix_dtype"] == "int32":
+            v_prefix_tensor, v_prefix_shape = trans_int32_2_int4_tensor_bnsd(
+                v_prefix_tensor, v_prefix_shape
+            )
 
         if numKeyValueHeads != numHeads:
-            k_prefix_tensor, k_prefix_shape = _t_broadcastKV_sigle(numHeads, numKeyValueHeads, k_prefix_tensor,
-                                                                   ifa_param['k_prefix_dtype'])
-            v_prefix_tensor, v_prefix_shape = _t_broadcastKV_sigle(numHeads, numKeyValueHeads, v_prefix_tensor,
-                                                                   ifa_param['v_prefix_dtype'])
+            k_prefix_tensor, k_prefix_shape = _t_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, k_prefix_tensor, ifa_param["k_prefix_dtype"]
+            )
+            v_prefix_tensor, v_prefix_shape = _t_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, v_prefix_tensor, ifa_param["v_prefix_dtype"]
+            )
 
-        if ifa_param['prefix_act_flag']:
-            k_prefix_tensor = k_prefix_tensor[:, :, :ifa_param['prefix_act_lens'], :]
-            v_prefix_tensor = v_prefix_tensor[:, :, :ifa_param['prefix_act_lens'], :]
+        if ifa_param["prefix_act_flag"]:
+            k_prefix_tensor = k_prefix_tensor[:, :, : ifa_param["prefix_act_lens"], :]
+            v_prefix_tensor = v_prefix_tensor[:, :, : ifa_param["prefix_act_lens"], :]
         else:
-            ifa_param['prefix_act_lens'] = k_prefix_shape[2]
+            ifa_param["prefix_act_lens"] = k_prefix_shape[2]
 
-        ifa_param['k_prefix_tensor'] = k_prefix_tensor
-        ifa_param['v_prefix_tensor'] = v_prefix_tensor
+        ifa_param["k_prefix_tensor"] = k_prefix_tensor
+        ifa_param["v_prefix_tensor"] = v_prefix_tensor
 
         print(f"prefix_act_lens:{str(ifa_param['prefix_act_lens'])}")
 
@@ -4635,6 +5264,7 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
     else:
         return y_all
 
+
 def convert_tensor_to_numpy(obj):
     """
     递归地将字典中的所有 torch.tensor 对象转换为 numpy 数组。
@@ -4654,9 +5284,9 @@ def convert_tensor_to_numpy(obj):
         # 其他类型的对象直接返回
         return obj
 
+
 # PFA
 def t_bsh_to_bsnd(tensor, bsh_shape, headnums, actSeqLength, inputLayout="BSH"):
-    
     if inputLayout == "SH":  # SH格式
         print("SH")
         if len(actSeqLength) == 0:
@@ -4881,19 +5511,22 @@ def alibi_biases(pre_shift_shape):
     return alibi_biases
 
 
-def get_all_alibi(numHeads, pre_shift_shape,
-                  pse_dtype=np.float32):  # 输入是bnss或者是1nss B, Nq, Sq, Skv, pse_layout, pse_type, pse_dtype,pre_shift_shape
+def get_all_alibi(
+    numHeads, pre_shift_shape, pse_dtype=np.float32
+):  # 输入是bnss或者是1nss B, Nq, Sq, Skv, pse_layout, pse_type, pse_dtype,pre_shift_shape
     m = get_slopes(numHeads)  # m  系数
     m = m.numpy()
     alibi_biase = alibi_biases(pre_shift_shape)
     pse_shift = np.zeros(pre_shift_shape, dtype=np.float32)
 
     for n in range(numHeads):
-        pse_shift[:, n:n + 1, :, :] = alibi_biase * m[n]
+        pse_shift[:, n : n + 1, :, :] = alibi_biase * m[n]
     return pse_shift.astype(pse_dtype)
 
 
-def _np_broadcast_pseShift_n(pse_shift_tensor, pse_shift_shape, q_batch):  # pre_shift, pre_shift_shape, q_bnsd_shape[0]
+def _np_broadcast_pseShift_n(
+    pse_shift_tensor, pse_shift_shape, q_batch
+):  # pre_shift, pre_shift_shape, q_bnsd_shape[0]
     print(f"broadcast_mask_n:mask shape:{pse_shift_shape} q_batch:{q_batch}")
     # 1nss or bnss
     B_m = pse_shift_shape[0]
@@ -5058,25 +5691,47 @@ def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=Fals
 
         return out, x_max, x_sum, exp_max
 
-def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens, nextTokens,pfa_param,
-                             dequant_scale1=None,
-                             dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None,
-                             out_dtype="<class 'numpy.int8'>"):
+
+def _np_pfaattention_act_int8(
+    q_tensor,
+    k_tensor,
+    v_tensor,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    pfa_param,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+    out_dtype="<class 'numpy.int8'>",
+):
     S = None
-    qs_begin = pfa_param['qs_begin']
-    qs_end = pfa_param['qs_end']
-    kvs_begin = pfa_param['kvs_begin']
-    kvs_end = pfa_param['kvs_end']
+    qs_begin = pfa_param["qs_begin"]
+    qs_end = pfa_param["qs_end"]
+    kvs_begin = pfa_param["kvs_begin"]
+    kvs_end = pfa_param["kvs_end"]
 
     q_tensor = q_tensor[:, :, qs_begin:qs_end, :]
     k_tensor = k_tensor[:, :, kvs_begin:kvs_end, :]
     v_tensor = v_tensor[:, :, kvs_begin:kvs_end, :]
 
-    S = kvs_end-kvs_begin
+    S = kvs_end - kvs_begin
 
     if mask_tensor is not None:
-        if pfa_param['sparse'] == 2 or pfa_param['sparse'] == 3 or pfa_param['sparse'] == 4:
-            mask_tensor = mask_tensor[:, :, :(qs_end - qs_begin), :(kvs_end - kvs_begin)]
+        if (
+            pfa_param["sparse"] == 2
+            or pfa_param["sparse"] == 3
+            or pfa_param["sparse"] == 4
+        ):
+            mask_tensor = mask_tensor[
+                :, :, : (qs_end - qs_begin), : (kvs_end - kvs_begin)
+            ]
         else:
             mask_tensor = mask_tensor[:, :, qs_begin:qs_end, kvs_begin:kvs_end]
     # 这里需要加paddingmask
@@ -5089,9 +5744,9 @@ def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_ten
 
     # dequant 算子内部使用float19进行计算
     dequant_scale1.dtype = np.uint32
-    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xffffe000)
+    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xFFFFE000)
     dequant_scale1.dtype = np.float32
-    
+
     data_length = one_loop_size
     max_front, sum_front, o_front = None, None, None
     for i in range(max_range):
@@ -5103,14 +5758,16 @@ def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_ten
         vi = v_tensor[:, :, data_start:data_end, :]  # [2, 2, 128, 128]
         qDtype = q_tensor.dtype
 
-        qk_i = np.matmul(q_tensor.astype(np.int32), ki.transpose(0, 1, 3, 2).astype(np.int32))
+        qk_i = np.matmul(
+            q_tensor.astype(np.int32), ki.transpose(0, 1, 3, 2).astype(np.int32)
+        )
         qk_i = qk_i.astype(np.float32) * dequant_scale1
 
         # 转成fp16防止溢出
         qk_i = np.where(qk_i > 65504, 65504, qk_i)
         qk_i = np.where(qk_i < -65504, -65504, qk_i)
         qk_i = qk_i.astype(np.float16)
-        qk_i = qk_i* np.float16(scalar)
+        qk_i = qk_i * np.float16(scalar)
 
         # qk_i = qk_i*scalar
         if pse_tensor is not None:
@@ -5220,8 +5877,14 @@ def _np_pfaattention_act_fp8(
 
     if mask_tensor is not None:
         print(f"mask_shape:{mask_tensor.shape}")
-        if pfa_param['sparse'] == 2 or pfa_param['sparse'] == 3 or pfa_param['sparse'] == 4:
-            mask_tensor = mask_tensor[:, :, :(qs_end - qs_begin), :(kvs_end - kvs_begin)]
+        if (
+            pfa_param["sparse"] == 2
+            or pfa_param["sparse"] == 3
+            or pfa_param["sparse"] == 4
+        ):
+            mask_tensor = mask_tensor[
+                :, :, : (qs_end - qs_begin), : (kvs_end - kvs_begin)
+            ]
         else:
             mask_tensor = mask_tensor[:, :, qs_begin:qs_end, kvs_begin:kvs_end]
     # 这里需要加paddingmask
@@ -5239,11 +5902,11 @@ def _np_pfaattention_act_fp8(
 
     # dequant 算子内部使用float19进行计算
     dequant_scale1.dtype = np.uint32
-    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xffffe000)
+    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xFFFFE000)
     dequant_scale1.dtype = np.float32
 
     dequant_scale2.dtype = np.uint32
-    dequant_scale2 = np.bitwise_and(dequant_scale2, 0xffffe000)
+    dequant_scale2 = np.bitwise_and(dequant_scale2, 0xFFFFE000)
     dequant_scale2.dtype = np.float32
 
     data_length = one_loop_size
@@ -5292,7 +5955,9 @@ def _np_pfaattention_act_fp8(
             o_i = o_i.astype(np.float32) * dequant_scale2
             max_front, sum_front, o_front = max_i, sum_i, o_i
         else:
-            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(qk_i, max_front, sum_front, update=True, is_fp16=False)
+            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(
+                qk_i, max_front, sum_front, update=True, is_fp16=False
+            )
             print("start matmul2")
             py_s_i = py_s_i * quant_scale1.astype(np.float32)
 
@@ -5379,8 +6044,14 @@ def _np_pfaattention_act_hifp8(
 
     if mask_tensor is not None:
         print(f"mask_shape:{mask_tensor.shape}")
-        if pfa_param['sparse'] == 2 or pfa_param['sparse'] == 3 or pfa_param['sparse'] == 4:
-            mask_tensor = mask_tensor[:, :, :(qs_end - qs_begin), :(kvs_end - kvs_begin)]
+        if (
+            pfa_param["sparse"] == 2
+            or pfa_param["sparse"] == 3
+            or pfa_param["sparse"] == 4
+        ):
+            mask_tensor = mask_tensor[
+                :, :, : (qs_end - qs_begin), : (kvs_end - kvs_begin)
+            ]
         else:
             mask_tensor = mask_tensor[:, :, qs_begin:qs_end, kvs_begin:kvs_end]
     # 这里需要加paddingmask
@@ -5398,11 +6069,11 @@ def _np_pfaattention_act_hifp8(
 
     # dequant 算子内部使用float19进行计算
     dequant_scale1.dtype = np.uint32
-    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xffffe000)
+    dequant_scale1 = np.bitwise_and(dequant_scale1, 0xFFFFE000)
     dequant_scale1.dtype = np.float32
 
     dequant_scale2.dtype = np.uint32
-    dequant_scale2 = np.bitwise_and(dequant_scale2, 0xffffe000)
+    dequant_scale2 = np.bitwise_and(dequant_scale2, 0xFFFFE000)
     dequant_scale2.dtype = np.float32
 
     data_length = one_loop_size
@@ -5458,8 +6129,9 @@ def _np_pfaattention_act_hifp8(
             print("start matmul2")
             py_s_i = py_s_i * quant_scale1.astype(np.float32)
 
-            py_s_i = trans_np_float_tensor_to_hifuint8(in_tensor=py_s_i, round_mode="hybrid",
-                                                       over_mode=True)
+            py_s_i = trans_np_float_tensor_to_hifuint8(
+                in_tensor=py_s_i, round_mode="hybrid", over_mode=True
+            )
             py_s_i = trans_np_hifuint8_tensor_to_float32(py_s_i).astype(np.float32)
 
             # o_i = np.matmul(py_s_i.astype(np.float32), vi.astype(np.int8).astype(np.float32))
@@ -6110,63 +6782,103 @@ def _np_promtattention_bnsd(
                     if len(quant_scale2.shape) == 1:
                         quant_scale2_cur = quant_scale2
                     else:
-                        quant_scale2_cur = quant_scale2[:, n_index:(n_index + 1), :, :]
+                        quant_scale2_cur = quant_scale2[
+                            :, n_index : (n_index + 1), :, :
+                        ]
                     if quant_offset2 is not None:
                         if len(quant_offset2.shape) == 1:
                             quant_offset2_cur = quant_offset2
                         else:
-                            quant_offset2_cur = quant_offset2[:, n_index:(n_index + 1), :, :]
+                            quant_offset2_cur = quant_offset2[
+                                :, n_index : (n_index + 1), :, :
+                            ]
 
                 antiquant_scale_k = None
                 antiquant_scale_v = None
                 antiquant_offset_k = None
                 antiquant_offset_v = None
                 if k_tensor_cur.dtype == np.int8 and q_tensor_cur.dtype != np.int8:
-                    if pfa_param['anti_or_kvanti'] == 1:
+                    if pfa_param["anti_or_kvanti"] == 1:
                         if len(antiquant_scale.shape) == 1:
                             antiquant_scale_k = antiquant_scale[0]
                             antiquant_scale_v = antiquant_scale[1]
                         else:
-                            antiquant_scale_k = antiquant_scale[0, n_index:(n_index + 1), :, :]
-                            antiquant_scale_v = antiquant_scale[1, n_index:(n_index + 1), :, :]
+                            antiquant_scale_k = antiquant_scale[
+                                0, n_index : (n_index + 1), :, :
+                            ]
+                            antiquant_scale_v = antiquant_scale[
+                                1, n_index : (n_index + 1), :, :
+                            ]
                         if antiquant_offset is not None:
                             if len(antiquant_offset.shape) == 1:
                                 antiquant_offset_k = antiquant_offset[0]
                                 antiquant_offset_v = antiquant_offset[1]
                             else:
-                                antiquant_offset_k = antiquant_offset[0, n_index:(n_index + 1), :, :]
-                                antiquant_offset_v = antiquant_offset[1, n_index:(n_index + 1), :, :]
-                    if pfa_param['anti_or_kvanti'] == 2:  # 分离量化参数
-                        if pfa_param['k_antiquant_mode'] == 0:
-                            if len(pfa_param['k_antiquant_scale'].shape) == 1:
-                                antiquant_scale_k = pfa_param['k_antiquant_scale']
-                                antiquant_scale_v = pfa_param['v_antiquant_scale']
+                                antiquant_offset_k = antiquant_offset[
+                                    0, n_index : (n_index + 1), :, :
+                                ]
+                                antiquant_offset_v = antiquant_offset[
+                                    1, n_index : (n_index + 1), :, :
+                                ]
+                    if pfa_param["anti_or_kvanti"] == 2:  # 分离量化参数
+                        if pfa_param["k_antiquant_mode"] == 0:
+                            if len(pfa_param["k_antiquant_scale"].shape) == 1:
+                                antiquant_scale_k = pfa_param["k_antiquant_scale"]
+                                antiquant_scale_v = pfa_param["v_antiquant_scale"]
                             else:
-                                antiquant_scale_k = pfa_param['k_antiquant_scale'][n_index:(n_index + 1), :, :]
-                                antiquant_scale_v = pfa_param['v_antiquant_scale'][n_index:(n_index + 1), :, :]
-                            if pfa_param['k_antiquant_offset'] is not None:
-                                if len(pfa_param['k_antiquant_offset'].shape) == 1:  # petensor
-                                    antiquant_offset_k = pfa_param['k_antiquant_offset']
-                                    antiquant_offset_v = pfa_param['v_antiquant_offset']
+                                antiquant_scale_k = pfa_param["k_antiquant_scale"][
+                                    n_index : (n_index + 1), :, :
+                                ]
+                                antiquant_scale_v = pfa_param["v_antiquant_scale"][
+                                    n_index : (n_index + 1), :, :
+                                ]
+                            if pfa_param["k_antiquant_offset"] is not None:
+                                if (
+                                    len(pfa_param["k_antiquant_offset"].shape) == 1
+                                ):  # petensor
+                                    antiquant_offset_k = pfa_param["k_antiquant_offset"]
+                                    antiquant_offset_v = pfa_param["v_antiquant_offset"]
                                 else:
-                                    antiquant_offset_k = pfa_param['k_antiquant_offset'][n_index:(n_index + 1), :, :]
-                                    antiquant_offset_v = pfa_param['v_antiquant_offset'][n_index:(n_index + 1), :, :]
-                        if pfa_param['k_antiquant_mode'] == 1:
-                            antiquant_scale_k = pfa_param['k_antiquant_scale'][b_index:(b_index + 1), :]
-                            antiquant_scale_v = pfa_param['v_antiquant_scale'][b_index:(b_index + 1), :]
-                            if pfa_param['k_antiquant_offset'] is not None:
-                                antiquant_offset_k = pfa_param['k_antiquant_offset'][b_index:(b_index + 1), :]
-                                antiquant_offset_v = pfa_param['v_antiquant_offset'][b_index:(b_index + 1), :]
+                                    antiquant_offset_k = pfa_param[
+                                        "k_antiquant_offset"
+                                    ][n_index : (n_index + 1), :, :]
+                                    antiquant_offset_v = pfa_param[
+                                        "v_antiquant_offset"
+                                    ][n_index : (n_index + 1), :, :]
+                        if pfa_param["k_antiquant_mode"] == 1:
+                            antiquant_scale_k = pfa_param["k_antiquant_scale"][
+                                b_index : (b_index + 1), :
+                            ]
+                            antiquant_scale_v = pfa_param["v_antiquant_scale"][
+                                b_index : (b_index + 1), :
+                            ]
+                            if pfa_param["k_antiquant_offset"] is not None:
+                                antiquant_offset_k = pfa_param["k_antiquant_offset"][
+                                    b_index : (b_index + 1), :
+                                ]
+                                antiquant_offset_v = pfa_param["v_antiquant_offset"][
+                                    b_index : (b_index + 1), :
+                                ]
 
                 sinks_cur = None
                 if sinks is not None:
-                    sinks_cur = sinks[n_index:(n_index + 1)]
+                    sinks_cur = sinks[n_index : (n_index + 1)]
 
                 if q_tensor.dtype == "int8":
-                    y[b_index:(b_index + 1), n_index:(n_index + 1), qs_begin:qs_end, :], lse[b_index:(b_index + 1),
-                                                                                         n_index:(n_index + 1),
-                                                                                         qs_begin:qs_end,
-                                                                                         :] = _np_pfaattention_act_int8(
+                    (
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                        lse[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                    ) = _np_pfaattention_act_int8(
                         q_tensor_cur,
                         k_tensor_cur,
                         v_tensor_cur,
@@ -6301,15 +7013,19 @@ def conv_float_to_u32(data_f):
 
     return result
 
+
 def trans_19bit(deqscale):
     res_19bit = np.zeros(deqscale.shape[0], dtype=np.uint64)
 
     for idx, scale in enumerate(deqscale):
-        val = np.bitwise_and(((conv_float_to_u32(scale) >> 13) << 13), 0xffffffff)  # [31:13], M
+        val = np.bitwise_and(
+            ((conv_float_to_u32(scale) >> 13) << 13), 0xFFFFFFFF
+        )  # [31:13], M
         val = val.astype(np.uint64)
         res_19bit[idx] = val
 
     return res_19bit
+
 
 def qtensor_seqlength(q_shape, inputLayout):
     if inputLayout == "SH":  # SH格式
@@ -6340,90 +7056,121 @@ def kvantiquantmode(flagList, torch_tensor_list, params, v_end_index, numKeyValu
     flagtensor = 0
     if flagList[12]:
         anti_or_kvanti = 1
-        antiquantscale_shape = params['shape_input'][v_end_index + 8]
+        antiquantscale_shape = params["shape_input"][v_end_index + 8]
         antiquantscale_tensor = torch_tensor_list[v_end_index + 8]
         if len(antiquantscale_shape) == 1:  # pertensor
             print("antiquantscale_pertensor")
             antiquant_scale = antiquantscale_tensor
         else:  # perchanel
             # 将kv量化参数转换为2n1d(匹配bnsd)
-            antiquantscale_2n1d_tensor = _t_trans_2h_to_2n1d(antiquantscale_shape, antiquantscale_tensor,
-                                                             numKeyValueHeads)
+            antiquantscale_2n1d_tensor = _t_trans_2h_to_2n1d(
+                antiquantscale_shape, antiquantscale_tensor, numKeyValueHeads
+            )
 
             antiquant_scale = antiquantscale_2n1d_tensor.permute(0, 2, 1, 3)
     if flagList[13]:
-        antiquantoffset_shape = params['shape_input'][v_end_index + 9]
+        antiquantoffset_shape = params["shape_input"][v_end_index + 9]
         antiquantoffset_tensor = torch_tensor_list[v_end_index + 9]
         if len(antiquantoffset_shape) == 1:
             print("antiquantoffset_pertensor")
             antiquant_offset = antiquantoffset_tensor
         else:
-            antiquantoffset_2n1d_tensor = _t_trans_2h_to_2n1d(antiquantoffset_shape, antiquantoffset_tensor,
-                                                              numKeyValueHeads)
+            antiquantoffset_2n1d_tensor = _t_trans_2h_to_2n1d(
+                antiquantoffset_shape, antiquantoffset_tensor, numKeyValueHeads
+            )
 
             antiquant_offset = antiquantoffset_2n1d_tensor.permute(0, 2, 1, 3)
     if flagList[12]:
-        return antiquant_scale[:1], antiquant_scale[1:2], antiquant_offset[:1], antiquant_offset[1:2]
+        return (
+            antiquant_scale[:1],
+            antiquant_scale[1:2],
+            antiquant_offset[:1],
+            antiquant_offset[1:2],
+        )
     # 判断kv分离的伪量化
     if flagList[17] or flagList[19]:
         anti_or_kvanti = 2
-        q_dtype_np = tools.get_np_dtype(params['dtype_input'][0])
-        k_antiquantscale_shape = params['shape_input'][v_end_index + 13]
+        q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+        k_antiquantscale_shape = params["shape_input"][v_end_index + 13]
         k_antiquantscale_tensor = torch_tensor_list[v_end_index + 13]
-        v_antiquantscale_shape = params['shape_input'][v_end_index + 15]
+        v_antiquantscale_shape = params["shape_input"][v_end_index + 15]
         v_antiquantscale_tensor = torch_tensor_list[v_end_index + 15]
 
-        if params['k_antiquant_mode'] == 0:
-            if len(k_antiquantscale_shape) == 1 and k_antiquantscale_shape[0] == 1:  # pertensor
+        if params["k_antiquant_mode"] == 0:
+            if (
+                len(k_antiquantscale_shape) == 1 and k_antiquantscale_shape[0] == 1
+            ):  # pertensor
                 print("antiquantscale_pertensor")
                 k_antiquant_scale = k_antiquantscale_tensor
                 v_antiquant_scale = v_antiquantscale_tensor
             else:  # perchanel
                 # 将kv量化参数转换为n1d(匹配bnsd)
-                k_antiquantscale_n1d_tensor = _t_trans_h_to_n1d(k_antiquantscale_shape, k_antiquantscale_tensor,
-                                                                numKeyValueHeads)
-                v_antiquantscale_n1d_tensor = _t_trans_h_to_n1d(v_antiquantscale_shape, v_antiquantscale_tensor,
-                                                                numKeyValueHeads)
+                k_antiquantscale_n1d_tensor = _t_trans_h_to_n1d(
+                    k_antiquantscale_shape, k_antiquantscale_tensor, numKeyValueHeads
+                )
+                v_antiquantscale_n1d_tensor = _t_trans_h_to_n1d(
+                    v_antiquantscale_shape, v_antiquantscale_tensor, numKeyValueHeads
+                )
 
                 k_antiquant_scale = k_antiquantscale_n1d_tensor.permute(0, 2, 1, 3)
                 v_antiquant_scale = v_antiquantscale_n1d_tensor.permute(0, 2, 1, 3)
-        if params['k_antiquant_mode'] == 1:  # pertoken
+        if params["k_antiquant_mode"] == 1:  # pertoken
             # pertoken -> BS
-            k_antiquant_scale = k_antiquantscale_tensor.reshape(k_antiquantscale_tensor.shape[0],
-                                                                k_antiquantscale_tensor.shape[1], 1, 1)
-            v_antiquant_scale = v_antiquantscale_tensor.reshape(v_antiquantscale_tensor.shape[0],
-                                                                v_antiquantscale_tensor.shape[1], 1, 1)
+            k_antiquant_scale = k_antiquantscale_tensor.reshape(
+                k_antiquantscale_tensor.shape[0], k_antiquantscale_tensor.shape[1], 1, 1
+            )
+            v_antiquant_scale = v_antiquantscale_tensor.reshape(
+                v_antiquantscale_tensor.shape[0], v_antiquantscale_tensor.shape[1], 1, 1
+            )
 
     if flagList[18] or flagList[20]:
-        q_dtype_np = tools.get_np_dtype(params['dtype_input'][0])
-        k_antiquantoffset_shape = params['shape_input'][v_end_index + 14]
+        q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+        k_antiquantoffset_shape = params["shape_input"][v_end_index + 14]
         k_antiquantoffset_tensor = torch_tensor_list[v_end_index + 14]
-        v_antiquantoffset_shape = params['shape_input'][v_end_index + 16]
+        v_antiquantoffset_shape = params["shape_input"][v_end_index + 16]
         v_antiquantoffset_tensor = torch_tensor_list[v_end_index + 16]
 
-        if params['k_antiquant_mode'] == 0:
-            if len(k_antiquantoffset_shape) == 1 and k_antiquantoffset_shape[0] == 1:  # pertensor
+        if params["k_antiquant_mode"] == 0:
+            if (
+                len(k_antiquantoffset_shape) == 1 and k_antiquantoffset_shape[0] == 1
+            ):  # pertensor
                 print("antiquantscale_pertensor")
                 k_antiquant_offset = k_antiquantoffset_tensor
                 v_antiquant_offset = v_antiquantoffset_tensor
             else:  # perchanel
                 # 将kv量化参数转换为2n1d(匹配bnsd)
-                k_antiquantoffset_n1d_tensor = _t_trans_h_to_n1d(k_antiquantoffset_shape,
-                                                                 k_antiquantoffset_tensor, numKeyValueHeads)
-                v_antiquantoffset_n1d_tensor = _t_trans_h_to_n1d(v_antiquantoffset_shape,
-                                                                 v_antiquantoffset_tensor, numKeyValueHeads)
+                k_antiquantoffset_n1d_tensor = _t_trans_h_to_n1d(
+                    k_antiquantoffset_shape, k_antiquantoffset_tensor, numKeyValueHeads
+                )
+                v_antiquantoffset_n1d_tensor = _t_trans_h_to_n1d(
+                    v_antiquantoffset_shape, v_antiquantoffset_tensor, numKeyValueHeads
+                )
 
                 k_antiquant_offset = k_antiquantoffset_n1d_tensor.permute(0, 2, 1, 3)
                 v_antiquant_offset = v_antiquantoffset_n1d_tensor.permute(0, 2, 1, 3)
-        if params['k_antiquant_mode'] == 1:  # pertoken
+        if params["k_antiquant_mode"] == 1:  # pertoken
             # pertoken -> BS
-            k_antiquant_offset = k_antiquantoffset_tensor.reshape(k_antiquantoffset_tensor.shape[0],
-                                                                  k_antiquantoffset_tensor.shape[1], 1, 1)
-            v_antiquant_offset = v_antiquantoffset_tensor.reshape(v_antiquantoffset_tensor.shape[0],
-                                                                  v_antiquantoffset_tensor.shape[1], 1, 1)
+            k_antiquant_offset = k_antiquantoffset_tensor.reshape(
+                k_antiquantoffset_tensor.shape[0],
+                k_antiquantoffset_tensor.shape[1],
+                1,
+                1,
+            )
+            v_antiquant_offset = v_antiquantoffset_tensor.reshape(
+                v_antiquantoffset_tensor.shape[0],
+                v_antiquantoffset_tensor.shape[1],
+                1,
+                1,
+            )
     if flagList[17]:
-        return k_antiquant_scale, v_antiquant_scale, k_antiquant_offset, v_antiquant_offset
+        return (
+            k_antiquant_scale,
+            v_antiquant_scale,
+            k_antiquant_offset,
+            v_antiquant_offset,
+        )
     return k_antiquant_scale, v_antiquant_scale, k_antiquant_offset, v_antiquant_offset
+
 
 def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
     batch, numhead = None, None
@@ -6620,14 +7367,19 @@ def gen_outshape(layout, qshape, vshape, numKeyValueHeads, numHeads):
         outshape[-1] = vshape[-1]
         return outshape
 
+
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
-        print(f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}")
+        print(
+            f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}"
+        )
         return None, None
     elif len(shape1) == 2:
         # 量化参数1h
         if shape1[0] != shape2[0]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         d1 = int(shape1[1] / n)
         d2 = int(shape2[1] / n)
@@ -6638,7 +7390,9 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 3:
         if shape1[0] != shape2[0] or shape1[1] != shape2[1]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         if tnd_flag:
             concatenated_tensor = np.concatenate((tensor1, tensor2), axis=2)
@@ -6653,7 +7407,9 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
             concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 4:
         if shape1[0] != shape2[0] or shape1[1] != shape2[1] or shape1[2] != shape2[2]:
-            print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
+            print(
+                f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}"
+            )
             return None, None
         concatenated_tensor = np.concatenate((tensor1, tensor2), axis=3)
         concatenated_shape = [shape1[0], shape1[1], shape1[2], shape1[3] + shape2[3]]
@@ -6662,54 +7418,70 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         return None, None
     return concatenated_tensor, concatenated_shape
 
-def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
-    v_end_index = pfa_param['v_end_index']
+
+def deepseek_ds_pa_preprocessing(pfa_param, params, torch_tensor_list):
+    v_end_index = pfa_param["v_end_index"]
     k_cache = torch_tensor_list[v_end_index + 19]
     v_cache = torch_tensor_list[v_end_index + 20]
     k_rope_cache = torch_tensor_list[v_end_index + 23]
 
-    numKeyValueHeads = params['numkeyvalueheads']
-    actualSeqLengthsKV = pfa_param['actualSeqLengthsKV']
-    kv_inputlayout = pfa_param['kv_inputlayout']
+    numKeyValueHeads = params["numkeyvalueheads"]
+    actualSeqLengthsKV = pfa_param["actualSeqLengthsKV"]
+    kv_inputlayout = pfa_param["kv_inputlayout"]
     k_tensor_bnsd_list = []
     k_shape_bnsd_raw_list = []
 
     v_tensor_bnsd_list = []
     v_shape_bnsd_raw_list = []
-    k_shape_num = pfa_param['k_num']
+    k_shape_num = pfa_param["k_num"]
     for i in range(k_shape_num):
-        k_bnsd_tensor, k_bnsd_shape = np_bsh_to_bnsd(torch_tensor_list[1], pfa_param['k_shape_list_raw'][0], numKeyValueHeads,
-                                                actualSeqLengthsKV,
-                                                kv_inputlayout)
-        k_tensor_bnsd_list.append(k_bnsd_tensor) #转成bnsd原始
+        k_bnsd_tensor, k_bnsd_shape = np_bsh_to_bnsd(
+            torch_tensor_list[1],
+            pfa_param["k_shape_list_raw"][0],
+            numKeyValueHeads,
+            actualSeqLengthsKV,
+            kv_inputlayout,
+        )
+        k_tensor_bnsd_list.append(k_bnsd_tensor)  # 转成bnsd原始
         k_shape_bnsd_raw_list.append(k_bnsd_shape)
 
-
     for i in range(k_shape_num):
-        v_shape = pfa_param['v_shape_list_raw'][i]
-        v_bnsd_tensor, v_bnsd_shape = np_bsh_to_bnsd(torch_tensor_list[2], v_shape, numKeyValueHeads,
-                                                    actualSeqLengthsKV,
-                                                    kv_inputlayout)
+        v_shape = pfa_param["v_shape_list_raw"][i]
+        v_bnsd_tensor, v_bnsd_shape = np_bsh_to_bnsd(
+            torch_tensor_list[2],
+            v_shape,
+            numKeyValueHeads,
+            actualSeqLengthsKV,
+            kv_inputlayout,
+        )
         v_tensor_bnsd_list.append(v_bnsd_tensor)  # 转成bnsd原始
         v_shape_bnsd_raw_list.append(v_bnsd_shape)
 
     k_rope_tensor = torch_tensor_list[v_end_index + 22]
-    k_rope_shape = params['shape_input'][v_end_index + 22]
-    k_rope_bnsd_tensor, k_rope_bnsd_shape = np_bsh_to_bnsd(k_rope_tensor, k_rope_shape, numKeyValueHeads,
-                                                           actualSeqLengthsKV,
-                                                           kv_inputlayout)
+    k_rope_shape = params["shape_input"][v_end_index + 22]
+    k_rope_bnsd_tensor, k_rope_bnsd_shape = np_bsh_to_bnsd(
+        k_rope_tensor,
+        k_rope_shape,
+        numKeyValueHeads,
+        actualSeqLengthsKV,
+        kv_inputlayout,
+    )
 
-    blockNumPerBlock = pfa_param['blockNumPerBlock']
-    block_table = pfa_param['block_table']
-    blockSize = params['blocksize']
+    blockNumPerBlock = pfa_param["blockNumPerBlock"]
+    block_table = pfa_param["block_table"]
+    blockSize = params["blocksize"]
 
     k_tensor_bsh_raw = k_tensor_bnsd_list[0]
     v_tensor_bsh_raw = v_tensor_bnsd_list[0]
     k_rope_bsh_raw = k_rope_bnsd_tensor
 
     if k_cache.ndim == 3:
-        k_tensor_bsh_raw = trans_bnsd_to_bsh(k_tensor_bnsd_list[0], k_shape_bnsd_raw_list[0])
-        v_tensor_bsh_raw = trans_bnsd_to_bsh(v_tensor_bnsd_list[0], v_shape_bnsd_raw_list[0])
+        k_tensor_bsh_raw = trans_bnsd_to_bsh(
+            k_tensor_bnsd_list[0], k_shape_bnsd_raw_list[0]
+        )
+        v_tensor_bsh_raw = trans_bnsd_to_bsh(
+            v_tensor_bnsd_list[0], v_shape_bnsd_raw_list[0]
+        )
         k_rope_bsh_raw = trans_bnsd_to_bsh(k_rope_bnsd_tensor, k_rope_bnsd_shape)
         for b, block_per_b in enumerate(blockNumPerBlock):
             for blockid_index in range(block_per_b):
@@ -6778,90 +7550,113 @@ def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
                 block_offset = blockid_index * blockSize
                 if blockid_index == block_per_b - 1:
                     blocksize_left = actualSeqLengthsKV[b] - block_offset
-                    k_cache_bnsd[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[b, :,
-                                                                    block_offset:(
-                                                                            block_offset + blocksize_left),
-                                                                    :]
-                    v_cache_bnsd[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[b, :,
-                                                                    block_offset:(
-                                                                            block_offset + blocksize_left),
-                                                                    :]
-                    k_rope_cache_bnsd[blockid, :, 0:blocksize_left, :] = k_rope_bsh_raw[b, :,
-                                                                    block_offset:(
-                                                                            block_offset + blocksize_left),
-                                                                    :]
+                    k_cache_bnsd[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    v_cache_bnsd[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    k_rope_cache_bnsd[blockid, :, 0:blocksize_left, :] = k_rope_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
                 else:
-                    k_cache_bnsd[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blockSize), :]
-                    v_cache_bnsd[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blockSize), :]
-                    k_rope_cache_bnsd[blockid, :, 0:blockSize, :] = k_rope_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blockSize), :]
+                    k_cache_bnsd[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
+                    v_cache_bnsd[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
+                    k_rope_cache_bnsd[blockid, :, 0:blockSize, :] = k_rope_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
 
             base = 16
-            k_cache = k_cache_bnsd.reshape(k_cache_bnsd.shape[0],
-                                           k_cache_bnsd.shape[1],
-                                           k_cache_bnsd.shape[2],
-                                           k_cache_bnsd.shape[3] // base,
-                                           base).transpose(0, 1, 3, 2, 4)
-            v_cache = v_cache_bnsd.reshape(v_cache_bnsd.shape[0],
-                                           v_cache_bnsd.shape[1],
-                                           v_cache_bnsd.shape[2],
-                                           v_cache_bnsd.shape[3] // base,
-                                           base).transpose(0, 1, 3, 2, 4)
-            k_rope_cache = k_rope_cache_bnsd.reshape(k_rope_cache_bnsd.shape[0],
-                                           k_rope_cache_bnsd.shape[1],
-                                           k_rope_cache_bnsd.shape[2],
-                                           k_rope_cache_bnsd.shape[3] // base,
-                                           base).transpose(0, 1, 3, 2, 4)
+            k_cache = k_cache_bnsd.reshape(
+                k_cache_bnsd.shape[0],
+                k_cache_bnsd.shape[1],
+                k_cache_bnsd.shape[2],
+                k_cache_bnsd.shape[3] // base,
+                base,
+            ).transpose(0, 1, 3, 2, 4)
+            v_cache = v_cache_bnsd.reshape(
+                v_cache_bnsd.shape[0],
+                v_cache_bnsd.shape[1],
+                v_cache_bnsd.shape[2],
+                v_cache_bnsd.shape[3] // base,
+                base,
+            ).transpose(0, 1, 3, 2, 4)
+            k_rope_cache = k_rope_cache_bnsd.reshape(
+                k_rope_cache_bnsd.shape[0],
+                k_rope_cache_bnsd.shape[1],
+                k_rope_cache_bnsd.shape[2],
+                k_rope_cache_bnsd.shape[3] // base,
+                base,
+            ).transpose(0, 1, 3, 2, 4)
 
-    kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+    kv_dtype = tools.get_np_dtype(params["dtype_input"][1])
 
     if str(kv_dtype) == "<class 'bfloat16'>":
         k_cache = torch.from_numpy(k_cache).to(torch.bfloat16)
         v_cache = torch.from_numpy(v_cache).to(torch.bfloat16)
         k_rope_cache = torch.from_numpy(k_rope_cache).to(torch.bfloat16)
-    elif str(kv_dtype) != "<class 'float8_e5m2'>" and params['dtype_input'][1] != "hifloat8" and \
-            params['dtype_input'][1] != "float8_e4m3fn":
+    elif (
+        str(kv_dtype) != "<class 'float8_e5m2'>"
+        and params["dtype_input"][1] != "hifloat8"
+        and params["dtype_input"][1] != "float8_e4m3fn"
+    ):
         k_cache = torch.from_numpy(k_cache.astype(kv_dtype))
         v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
         k_rope_cache = torch.from_numpy(k_rope_cache.astype(kv_dtype))
 
-def deepseek_preprocessing(params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag):
-    v_end_index = pfa_param['v_end_index']
+
+def deepseek_preprocessing(
+    params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag
+):
+    v_end_index = pfa_param["v_end_index"]
     # >> q rope info
-    q_rope_tensor_shape = params['shape_input'][v_end_index + 21]
-    q_rope_dtype = params['dtype_input'][v_end_index + 21]
+    q_rope_tensor_shape = params["shape_input"][v_end_index + 21]
+    q_rope_dtype = params["dtype_input"][v_end_index + 21]
     q_rope_tensor = torch_tensor_list[v_end_index + 21]
 
     # >> k rope info
-    k_rope_shape = params['shape_input'][v_end_index + 22]
-    k_rope_dtype = params['dtype_input'][v_end_index + 22]
+    k_rope_shape = params["shape_input"][v_end_index + 22]
+    k_rope_dtype = params["dtype_input"][v_end_index + 22]
     k_rope_tensor = torch_tensor_list[v_end_index + 22]
 
     # 非全量化场景1.将Q与QROPE拼接2.将K与KROPE拼接3.伪量化场景，k_antiscale与k_rope_antiscale拼接
     # if not ifa_param['in_quant_flag']:
-    q_new_tensor, q_new_shape = concat_tensor(torch_tensor_list[0], params['shape_input'][0],
-                                              q_rope_tensor,
-                                              q_rope_tensor_shape, numHeads, tnd_flag)
-    k_new_tensor, k_new_shape = concat_tensor(torch_tensor_list[1], params['shape_input'][1],
-                                              k_rope_tensor,
-                                              k_rope_shape, numKeyValueHeads, tnd_flag)
+    q_new_tensor, q_new_shape = concat_tensor(
+        torch_tensor_list[0],
+        params["shape_input"][0],
+        q_rope_tensor,
+        q_rope_tensor_shape,
+        numHeads,
+        tnd_flag,
+    )
+    k_new_tensor, k_new_shape = concat_tensor(
+        torch_tensor_list[1],
+        params["shape_input"][1],
+        k_rope_tensor,
+        k_rope_shape,
+        numKeyValueHeads,
+        tnd_flag,
+    )
 
-    pfa_param['q_tensor'] = q_new_tensor
-    pfa_param['q_shape'] = q_new_shape
-    pfa_param['k_tensor_list'][0] = k_new_tensor
-    pfa_param['k_shape_list'][0] = k_new_shape
+    pfa_param["q_tensor"] = q_new_tensor
+    pfa_param["q_shape"] = q_new_shape
+    pfa_param["k_tensor_list"][0] = k_new_tensor
+    pfa_param["k_shape_list"][0] = k_new_shape
 
     return pfa_param
+
 
 def pfa_get_param_fus(torch_tensor_list, params, qdim):
     pfa_param = {}
     # ===参数获取===
-    flag_list = params['flaglist']
-    inputLayout = params['inputlayout']
-    actualSeqLengths = params['actualseqlengths']
-    q_shape = params['shape_input'][0]
+    flag_list = params["flaglist"]
+    inputLayout = params["inputlayout"]
+    actualSeqLengths = params["actualseqlengths"]
+    q_shape = params["shape_input"][0]
 
     tnd_flag = False
     if inputLayout in ["TND", "TND_NTD", "NTD_TND"]:
@@ -6869,51 +7664,68 @@ def pfa_get_param_fus(torch_tensor_list, params, qdim):
         batch = len(actualSeqLengths)
     else:
         batch = q_shape[0]
-    pfa_param['batch'] = batch
+    pfa_param["batch"] = batch
 
-    pfa_param['q_tensor'] = torch_tensor_list[0]
-    pfa_param['q_shape'] = params['shape_input'][0]
-
+    pfa_param["q_tensor"] = torch_tensor_list[0]
+    pfa_param["q_shape"] = params["shape_input"][0]
 
     # >> kv info
     # k和v的位置通过b计算
-    k1_shape = params['shape_input'][1]
+    k1_shape = params["shape_input"][1]
     kb1 = k1_shape[0]
     # 如果第一个K的B=1,则默认kv列表长度为b;如果第一个K的B!=1,则默认kv列表长度为1
     if kb1 != 1 or inputLayout in ["TND", "NTD_TND"]:
         k_shape_num = v_shape_num = 1
     else:
         k_shape_num = v_shape_num = batch
-    pfa_param['v_end_index'] = v_end_index = int(k_shape_num + v_shape_num)
-    pfa_param['tnd_flag'] = tnd_flag
-    pfa_param['k_num'] = k_shape_num
-    pfa_param['k_start_index'] = k_start_index = 1
-    pfa_param['k_end_index'] = k_end_index = int(k_shape_num)
-    pfa_param['v_start_index'] = v_start_index = int(k_shape_num) + 1
+    pfa_param["v_end_index"] = v_end_index = int(k_shape_num + v_shape_num)
+    pfa_param["tnd_flag"] = tnd_flag
+    pfa_param["k_num"] = k_shape_num
+    pfa_param["k_start_index"] = k_start_index = 1
+    pfa_param["k_end_index"] = k_end_index = int(k_shape_num)
+    pfa_param["v_start_index"] = v_start_index = int(k_shape_num) + 1
     print(
-        f"k_start_index:{k_start_index} k_end_index:{k_end_index} v_start_index:{v_start_index} v_end_index:{v_end_index}")
+        f"k_start_index:{k_start_index} k_end_index:{k_end_index} v_start_index:{v_start_index} v_end_index:{v_end_index}"
+    )
 
-    pfa_param['k_shape_list'] = pfa_param['k_shape_list_raw'] = params['shape_input'][k_start_index:k_end_index + 1]
-    pfa_param['k_tensor_list'] = torch_tensor_list[k_start_index:k_end_index + 1]
-
-    if flag_list[26] and qdim == 512:
-        pfa_param['v_shape_list'] = params['shape_input'][k_start_index:k_end_index + 1]
-        pfa_param['v_tensor_list'] = torch_tensor_list[k_start_index:k_end_index + 1]
-    else:
-        pfa_param['v_shape_list'] = params['shape_input'][v_start_index:v_end_index + 1]
-        pfa_param['v_tensor_list'] = torch_tensor_list[v_start_index:v_end_index + 1]
-
-    pfa_param['k_shape_list_raw'] = params['shape_input'][k_start_index:k_end_index + 1]
-    pfa_param['k_tensor_list_raw']=  torch_tensor_list[k_start_index:k_end_index + 1]
+    pfa_param["k_shape_list"] = pfa_param["k_shape_list_raw"] = params["shape_input"][
+        k_start_index : k_end_index + 1
+    ]
+    pfa_param["k_tensor_list"] = torch_tensor_list[k_start_index : k_end_index + 1]
 
     if flag_list[26] and qdim == 512:
-        pfa_param['v_shape_list_raw'] = params['shape_input'][k_start_index:k_end_index + 1]
-        pfa_param['v_tensor_list_raw'] = torch_tensor_list[k_start_index:k_end_index + 1]
+        pfa_param["v_shape_list"] = params["shape_input"][
+            k_start_index : k_end_index + 1
+        ]
+        pfa_param["v_tensor_list"] = torch_tensor_list[k_start_index : k_end_index + 1]
     else:
-        pfa_param['v_shape_list_raw'] =  params['shape_input'][v_start_index:v_end_index + 1]
-        pfa_param['v_tensor_list_raw'] = torch_tensor_list[v_start_index:v_end_index + 1]
+        pfa_param["v_shape_list"] = params["shape_input"][
+            v_start_index : v_end_index + 1
+        ]
+        pfa_param["v_tensor_list"] = torch_tensor_list[v_start_index : v_end_index + 1]
+
+    pfa_param["k_shape_list_raw"] = params["shape_input"][
+        k_start_index : k_end_index + 1
+    ]
+    pfa_param["k_tensor_list_raw"] = torch_tensor_list[k_start_index : k_end_index + 1]
+
+    if flag_list[26] and qdim == 512:
+        pfa_param["v_shape_list_raw"] = params["shape_input"][
+            k_start_index : k_end_index + 1
+        ]
+        pfa_param["v_tensor_list_raw"] = torch_tensor_list[
+            k_start_index : k_end_index + 1
+        ]
+    else:
+        pfa_param["v_shape_list_raw"] = params["shape_input"][
+            v_start_index : v_end_index + 1
+        ]
+        pfa_param["v_tensor_list_raw"] = torch_tensor_list[
+            v_start_index : v_end_index + 1
+        ]
 
     return pfa_param
+
 
 def qtensor_dim(q_shape, inputLayout, numhead):
     if inputLayout == "SH":  # SH格式
@@ -6923,8 +7735,8 @@ def qtensor_dim(q_shape, inputLayout, numhead):
     else:
         return q_shape[-1]
 
-def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
 
+def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     # torch_tensor_list ---tensor  params--attr参数
 
     pfa_param = {}
@@ -6932,14 +7744,14 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     action_type = params["action_type"]
     gold = ["bm_output", "bm_output_gold", "bm_gold"]
 
-    flagList = params['flaglist']
-    actualSeqLengths = params['actualseqlengths']
-    actualSeqLengthsKV = params['actualseqlengthskv']
-    numHeads = int(params['numheads'])
+    flagList = params["flaglist"]
+    actualSeqLengths = params["actualseqlengths"]
+    actualSeqLengthsKV = params["actualseqlengthskv"]
+    numHeads = int(params["numheads"])
     # 设置参数默认值
 
     if flagList[25] == 0:
-        inputLayout = 'BSH'
+        inputLayout = "BSH"
         # 所有的参数的默认值都给写在这里
         numKeyValueHeads = 0
         scaleValue = 1.0
@@ -6948,37 +7760,41 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         sp_mode = 0
         block_size = 0
     else:
-        scaleValue = params['scalevalue'] if 'scalevalue' in params else 1
-        preTokens = params['pretokens'] if 'pretokens' in params else 214748647
-        nextTokens = params['nexttokens'] if 'nexttokens' in params else 214748647
-        inputLayout = params['inputlayout'] if 'inputlayout' in params else "BSH"
-        numKeyValueHeads = params['numkeyvalueheads'] if 'numkeyvalueheads' in params else 0
-        sp_mode = params['sparsemode'] if 'sparsemode' in params else 0
+        scaleValue = params["scalevalue"] if "scalevalue" in params else 1
+        preTokens = params["pretokens"] if "pretokens" in params else 214748647
+        nextTokens = params["nexttokens"] if "nexttokens" in params else 214748647
+        inputLayout = params["inputlayout"] if "inputlayout" in params else "BSH"
+        numKeyValueHeads = (
+            params["numkeyvalueheads"] if "numkeyvalueheads" in params else 0
+        )
+        sp_mode = params["sparsemode"] if "sparsemode" in params else 0
 
     if numKeyValueHeads == 0:
         numKeyValueHeads = numHeads
-    q_shape = params['shape_input'][0]
+    q_shape = params["shape_input"][0]
     qdim = qtensor_dim(q_shape, inputLayout, numHeads)
     pfa_param = pfa_get_param_fus(torch_tensor_list, params, qdim)
-    q_shape = pfa_param['q_shape']
-    q_dtype = get_np_dtype(params['dtype_input'][0])  # numpy类型
-    pfa_param['q_dtype'] = q_dtype
+    q_shape = pfa_param["q_shape"]
+    q_dtype = get_np_dtype(params["dtype_input"][0])  # numpy类型
+    pfa_param["q_dtype"] = q_dtype
     batch = pfa_param["batch"]
     tnd_flag = pfa_param["tnd_flag"]
 
     kv_inputlayout = inputLayout
     if (inputLayout == "TND" or inputLayout == "NTD_TND") and flagList[14]:
         kv_inputlayout = "BNSD"
-    pfa_param['kv_inputlayout'] = kv_inputlayout
+    pfa_param["kv_inputlayout"] = kv_inputlayout
 
     if inputLayout == "SH":
         actualSeqLengthsKV = actualSeqLengths
     else:
-        actualSeqLengthsKV = params['actualseqlengthskv']
+        actualSeqLengthsKV = params["actualseqlengthskv"]
     if inputLayout == "TND" or inputLayout == "NTD_TND":
         # 将tnd格式下的act seq转成普通的act seq
         actualSeqLengths = trans_tnd_actseq(actualSeqLengths)
-    if (inputLayout == "TND" or inputLayout == "NTD_TND") and flagList[14] == 0:  # TND非PA场景需要转成普通actseq
+    if (inputLayout == "TND" or inputLayout == "NTD_TND") and flagList[
+        14
+    ] == 0:  # TND非PA场景需要转成普通actseq
         actualSeqLengthsKV = trans_tnd_actseq(actualSeqLengthsKV)
     # >> actualSeqLengths预处理：actualSeqLengths为单值场景，如果长度为1且b不为1，则将actualSeqLengths扩展为b个单值的列表
     if inputLayout != "TND" and inputLayout != "NTD_TND":
@@ -6998,31 +7814,40 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
             # >> actualSeqLengths预处理：actualSeqLengths长度超过
             if len(actualSeqLengthsKV) > batch:
                 actualSeqLengthsKV = actualSeqLengthsKV[:batch]
-    pfa_param['actualSeqLengthsKV'] = actualSeqLengthsKV
-    k_shape_num = pfa_param['k_num']
-    v_shape = params['shape_input'][1 + k_shape_num]
-    out_dtype = get_np_dtype(params['dtype_output'][0])  # numpy类型
+    pfa_param["actualSeqLengthsKV"] = actualSeqLengthsKV
+    k_shape_num = pfa_param["k_num"]
+    v_shape = params["shape_input"][1 + k_shape_num]
+    out_dtype = get_np_dtype(params["dtype_output"][0])  # numpy类型
     out_shape = gen_outshape(inputLayout, q_shape, v_shape, numKeyValueHeads, numHeads)
 
     if 0 in q_shape or len(q_shape) == 0:
         if params["softmax_lse_flag"]:
-            return torch.from_numpy(torch_tensor_list[0]), torch.from_numpy(np.array([]))
+            return torch.from_numpy(torch_tensor_list[0]), torch.from_numpy(
+                np.array([])
+            )
         return torch.from_numpy(torch_tensor_list[0])
-    k_shape = pfa_param['k_shape_list'][0]
+    k_shape = pfa_param["k_shape_list"][0]
 
-    pfa_param['q_tensor'] = torch_tensor_list[0]
+    pfa_param["q_tensor"] = torch_tensor_list[0]
     if flagList[26]:
-        pfa_param = deepseek_preprocessing(params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag)
-    q_tensor, q_bnsd_shape = np_bsh_to_bnsd(pfa_param['q_tensor'], pfa_param['q_shape'], numHeads, actualSeqLengths,
-                                            inputLayout)
+        pfa_param = deepseek_preprocessing(
+            params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag
+        )
+    q_tensor, q_bnsd_shape = np_bsh_to_bnsd(
+        pfa_param["q_tensor"],
+        pfa_param["q_shape"],
+        numHeads,
+        actualSeqLengths,
+        inputLayout,
+    )
     if 0 in k_shape or len(k_shape) == 0:
         if params["softmax_lse_flag"]:
-            return torch.zeros(out_shape), torch.zeros(pfa_param['lseshape'])
+            return torch.zeros(out_shape), torch.zeros(pfa_param["lseshape"])
         return torch.zeros(out_shape)
     if inputLayout == "TND" or inputLayout == "NTD_TND":
-        pfa_param['lseshape'] = [q_shape[0], q_shape[1], 1]
+        pfa_param["lseshape"] = [q_shape[0], q_shape[1], 1]
     else:
-        pfa_param['lseshape'] = [q_bnsd_shape[0], q_bnsd_shape[1], q_bnsd_shape[2], 1]
+        pfa_param["lseshape"] = [q_bnsd_shape[0], q_bnsd_shape[1], q_bnsd_shape[2], 1]
 
     # >> kv info
     k_tensor_list = []
@@ -7033,67 +7858,88 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     v_tensor_bnsd_list = []
     k_shape_bnsd_raw_list = []
     v_shape_bnsd_raw_list = []
-    k_start_index = pfa_param['k_start_index']
-    k_end_index = pfa_param['k_end_index']
-    v_start_index = pfa_param['v_start_index']
-    v_end_index = pfa_param['v_end_index']
+    k_start_index = pfa_param["k_start_index"]
+    k_end_index = pfa_param["k_end_index"]
+    v_start_index = pfa_param["v_start_index"]
+    v_end_index = pfa_param["v_end_index"]
     kvs_max = 0
     kvs_list = []
-    k_dtype = params['dtype_input'][1]
+    k_dtype = params["dtype_input"][1]
     print(f"k_start_index:{k_start_index}, k_end_index:{k_end_index}")
 
     for i in range(k_shape_num):
-        k_shape = pfa_param['k_shape_list'][i]
+        k_shape = pfa_param["k_shape_list"][i]
         if 0 in k_shape or len(k_shape) == 0:
             if params["softmax_lse_flag"]:
-                return torch.zeros(out_shape), torch.zeros(pfa_param['lseshape'])
+                return torch.zeros(out_shape), torch.zeros(pfa_param["lseshape"])
             return torch.zeros(out_shape)
-        k_tensor, k_bnsd_shape = np_bsh_to_bnsd(pfa_param['k_tensor_list'][i], k_shape, numKeyValueHeads,
-                                                actualSeqLengthsKV,
-                                                kv_inputlayout)
-        k_tensor_bnsd_list.append(k_tensor) #转成bnsd原始
+        k_tensor, k_bnsd_shape = np_bsh_to_bnsd(
+            pfa_param["k_tensor_list"][i],
+            k_shape,
+            numKeyValueHeads,
+            actualSeqLengthsKV,
+            kv_inputlayout,
+        )
+        k_tensor_bnsd_list.append(k_tensor)  # 转成bnsd原始
         k_shape_bnsd_raw_list.append(k_bnsd_shape)
         kvs_list.append(k_bnsd_shape[2])
         kvs_max = max(kvs_max, k_bnsd_shape[2])
         if numKeyValueHeads != numHeads:
             print("broadcast k")
-            k_tensor, k_bnsd_shape = _np_broadcastKV_sigle(numHeads, numKeyValueHeads, k_tensor, k_tensor.dtype)
+            k_tensor, k_bnsd_shape = _np_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, k_tensor, k_tensor.dtype
+            )
         k_tensor_list.append(k_tensor)
         k_shape_bnsd_list.append(k_bnsd_shape)
     for i in range(k_shape_num):
-        v_shape = pfa_param['v_shape_list'][i]
-        v_tensor, v_bnsd_shape = np_bsh_to_bnsd(pfa_param['v_tensor_list'][i], v_shape, numKeyValueHeads,
-                                                actualSeqLengthsKV,
-                                                kv_inputlayout)
+        v_shape = pfa_param["v_shape_list"][i]
+        v_tensor, v_bnsd_shape = np_bsh_to_bnsd(
+            pfa_param["v_tensor_list"][i],
+            v_shape,
+            numKeyValueHeads,
+            actualSeqLengthsKV,
+            kv_inputlayout,
+        )
         v_tensor_bnsd_list.append(v_tensor)
         v_shape_bnsd_raw_list.append(v_bnsd_shape)
         if numKeyValueHeads != numHeads:
             print("broadcast v")
-            v_tensor, v_bnsd_shape = _np_broadcastKV_sigle(numHeads, numKeyValueHeads, v_tensor, v_tensor.dtype)
+            v_tensor, v_bnsd_shape = _np_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, v_tensor, v_tensor.dtype
+            )
         v_tensor_list.append(v_tensor)
         v_shape_bnsd_list.append(v_bnsd_shape)
     kvs = kvs_max
     actualprefixKV = 0
     prefix_kvs = 0
     if flagList[21]:
-        prefix_k_shape = params['shape_input'][v_end_index + 17]
-        prefix_v_shape = params['shape_input'][v_end_index + 18]
-        if len(params['prefix_act_lens']) != 0:
-            actualprefixKV = params['prefix_act_lens'][0]
+        prefix_k_shape = params["shape_input"][v_end_index + 17]
+        prefix_v_shape = params["shape_input"][v_end_index + 18]
+        if len(params["prefix_act_lens"]) != 0:
+            actualprefixKV = params["prefix_act_lens"][0]
 
-        prefix_k_tensor, prefix_k_bnsd_shape = np_bsh_to_bnsd(torch_tensor_list[v_end_index + 17], prefix_k_shape,
-                                                              numKeyValueHeads, actualprefixKV,
-                                                              inputLayout)
+        prefix_k_tensor, prefix_k_bnsd_shape = np_bsh_to_bnsd(
+            torch_tensor_list[v_end_index + 17],
+            prefix_k_shape,
+            numKeyValueHeads,
+            actualprefixKV,
+            inputLayout,
+        )
 
-        prefix_v_tensor, prefix_v_bnsd_shape = np_bsh_to_bnsd(torch_tensor_list[v_end_index + 18], prefix_v_shape,
-                                                              numKeyValueHeads,
-                                                              actualprefixKV,
-                                                              inputLayout)
+        prefix_v_tensor, prefix_v_bnsd_shape = np_bsh_to_bnsd(
+            torch_tensor_list[v_end_index + 18],
+            prefix_v_shape,
+            numKeyValueHeads,
+            actualprefixKV,
+            inputLayout,
+        )
         if numKeyValueHeads != numHeads:
-            prefix_k_tensor, prefix_k_bnsd_shape = _np_broadcastKV_sigle(numHeads, numKeyValueHeads, prefix_k_tensor,
-                                                                         prefix_k_tensor.dtype)
-            prefix_v_tensor, prefix_v_bnsd_shape = _np_broadcastKV_sigle(numHeads, numKeyValueHeads, prefix_v_tensor,
-                                                                         prefix_v_tensor.dtype)
+            prefix_k_tensor, prefix_k_bnsd_shape = _np_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, prefix_k_tensor, prefix_k_tensor.dtype
+            )
+            prefix_v_tensor, prefix_v_bnsd_shape = _np_broadcastKV_sigle(
+                numHeads, numKeyValueHeads, prefix_v_tensor, prefix_v_tensor.dtype
+            )
         pfa_param["actualprefixKV"] = actualprefixKV
         pfa_param["shared_prefix_k"] = prefix_k_tensor
         pfa_param["shared_prefix_v"] = prefix_v_tensor
@@ -7153,64 +7999,85 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         numheads = q_bnsd_shape[1]
         npu_m_shape_s = npu_m_shape
         if sp_mode == 0 or sp_mode == 1:
-            batch, numheads, ns1, ns2 = get_attention_mask_batch_num(npu_m_shape,
-                                                                     q_bnsd_shape)  # 获取输入attentionmask的batch 和numhead
+            batch, numheads, ns1, ns2 = get_attention_mask_batch_num(
+                npu_m_shape, q_bnsd_shape
+            )  # 获取输入attentionmask的batch 和numhead
             npu_m_shape_s = [ns1, ns2]
         cpu_m_shape = [qs, kvs]  # cpu
 
-        cpu_m_tensor, npu_m_tensor, preTokens, nextTokens = _create_random_mask_by_spars(cpu_m_shape, npu_m_shape_s,
-                                                                                         m_dtype, preTokens, nextTokens,
-                                                                                         actualSeqLengths,
-                                                                                         actualSeqLengthsKV,
-                                                                                         actualprefixKV, prefix_kvs,
-                                                                                         kvs_list, batch,
-                                                                                         numheads, sp_mode,
-                                                                                         random_ones=randoms)
-        if mrandom_type == 'invalid' or mrandom_type == 'invaild':
-            randoms = int(params['mrandom'])
+        cpu_m_tensor, npu_m_tensor, preTokens, nextTokens = (
+            _create_random_mask_by_spars(
+                cpu_m_shape,
+                npu_m_shape_s,
+                m_dtype,
+                preTokens,
+                nextTokens,
+                actualSeqLengths,
+                actualSeqLengthsKV,
+                actualprefixKV,
+                prefix_kvs,
+                kvs_list,
+                batch,
+                numheads,
+                sp_mode,
+                random_ones=randoms,
+            )
+        )
+        if mrandom_type == "invalid" or mrandom_type == "invaild":
+            randoms = int(params["mrandom"])
             cpu_m_tensor[..., :randoms] = 1
             npu_m_tensor[..., :randoms] = 1
 
         npu_m_tensor = torch.from_numpy(npu_m_tensor)
 
         if sp_mode == 0 or sp_mode == 1:
-            m_bnsd_tensor = _np_broadcast_mask_n(cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0])
+            m_bnsd_tensor = _np_broadcast_mask_n(
+                cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0]
+            )
         else:
             m_bnsd_tensor = cpu_m_tensor
 
-    dequant_scale1, dequant_scale2, quant_scale1, quant_scale2, quant_offset2 = None, None, None, None, None
+    dequant_scale1, dequant_scale2, quant_scale1, quant_scale2, quant_offset2 = (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
 
     if flagList[7]:
         dequant_scale1 = torch_tensor_list[v_end_index + 3]
         dequant_scale1 = np.frombuffer(dequant_scale1, dtype=np.float32)
-        dequant_scale1 = dequant_scale1[: 1]
+        dequant_scale1 = dequant_scale1[:1]
 
     if flagList[8]:
         quant_scale1 = torch_tensor_list[v_end_index + 4]
     if flagList[9]:
         dequant_scale2 = torch_tensor_list[v_end_index + 5]
         dequant_scale2 = np.frombuffer(dequant_scale2, dtype=np.float32)
-        dequant_scale2 = dequant_scale2[: 1]
+        dequant_scale2 = dequant_scale2[:1]
     if flagList[10]:
         quant_scale2 = torch_tensor_list[v_end_index + 6]
-        quant_scale2_shape = params['shape_input'][v_end_index + 6]
+        quant_scale2_shape = params["shape_input"][v_end_index + 6]
         per_channel = True
         if len(quant_scale2_shape) == 1:
             if quant_scale2_shape[0] == 1:
                 per_channel = False
         if per_channel:
-            quant_scale2 = _trans_1h_to_1n1d(quant_scale2_shape, quant_scale2,
-                                             numHeads, inputLayout)
+            quant_scale2 = _trans_1h_to_1n1d(
+                quant_scale2_shape, quant_scale2, numHeads, inputLayout
+            )
     if flagList[11]:
         quant_offset2 = torch_tensor_list[v_end_index + 7]
-        quant_offset2_shape = params['shape_input'][v_end_index + 7]
+        quant_offset2_shape = params["shape_input"][v_end_index + 7]
         per_channel = True
         if len(quant_offset2_shape) == 1:
             if quant_offset2_shape[0] == 1:
                 per_channel = False
         if per_channel:
-            quant_offset2 = _trans_1h_to_1n1d(quant_offset2_shape, quant_offset2,
-                                              numHeads, inputLayout)
+            quant_offset2 = _trans_1h_to_1n1d(
+                quant_offset2_shape, quant_offset2, numHeads, inputLayout
+            )
 
     antiquant_scale = None
     antiquant_offset = None
@@ -7228,127 +8095,164 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         # 获取kv量化参数
         if flagList[12]:
             anti_or_kvanti = 1
-            antiquantscale_shape = params['shape_input'][v_end_index + 8]
+            antiquantscale_shape = params["shape_input"][v_end_index + 8]
             antiquantscale_tensor = torch_tensor_list[v_end_index + 8]
             if len(antiquantscale_shape) == 1:  # pertensor
                 print("antiquantscale_pertensor")
                 antiquant_scale = antiquantscale_tensor
             else:  # perchanel
                 # 将kv量化参数转换为2n1d(匹配bnsd)
-                antiquantscale_2n1d_tensor = _trans_2h_to_2n1d(antiquantscale_shape, antiquantscale_tensor,
-                                                               numKeyValueHeads)
+                antiquantscale_2n1d_tensor = _trans_2h_to_2n1d(
+                    antiquantscale_shape, antiquantscale_tensor, numKeyValueHeads
+                )
 
                 # GQA场景，扩展kv反量化参数
                 if numKeyValueHeads != numHeads:
                     print("broadcast kvanti")
-                    antiquant_scale = broadcast_kv_dequant_tensor(antiquantscale_2n1d_tensor, numKeyValueHeads,
-                                                                  numHeads)
+                    antiquant_scale = broadcast_kv_dequant_tensor(
+                        antiquantscale_2n1d_tensor, numKeyValueHeads, numHeads
+                    )
                 else:
                     antiquant_scale = antiquantscale_2n1d_tensor
         if flagList[13]:
-            antiquantoffset_shape = params['shape_input'][v_end_index + 9]
+            antiquantoffset_shape = params["shape_input"][v_end_index + 9]
             antiquantoffset_tensor = torch_tensor_list[v_end_index + 9]
             if len(antiquantoffset_shape) == 1:
                 print("antiquantoffset_pertensor")
                 antiquant_offset = antiquantoffset_tensor
             else:
-                antiquantoffset_2n1d_tensor = _trans_2h_to_2n1d(antiquantoffset_shape, antiquantoffset_tensor,
-                                                                numKeyValueHeads)
+                antiquantoffset_2n1d_tensor = _trans_2h_to_2n1d(
+                    antiquantoffset_shape, antiquantoffset_tensor, numKeyValueHeads
+                )
 
                 # GQA场景，扩展kv反量化参数
                 if numKeyValueHeads != numHeads:
                     print("broadcast kvanti")
-                    antiquant_offset = broadcast_kv_dequant_tensor(antiquantoffset_2n1d_tensor, numKeyValueHeads,
-                                                                   numHeads)
+                    antiquant_offset = broadcast_kv_dequant_tensor(
+                        antiquantoffset_2n1d_tensor, numKeyValueHeads, numHeads
+                    )
                 else:
                     antiquant_offset = antiquantoffset_2n1d_tensor
         # 判断kv分离的伪量化
 
         if flagList[17] or flagList[19]:
             anti_or_kvanti = 2
-            q_dtype_np = tools.get_np_dtype(params['dtype_input'][0])
-            k_antiquantscale_shape = params['shape_input'][v_end_index + 13]
+            q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+            k_antiquantscale_shape = params["shape_input"][v_end_index + 13]
             k_antiquantscale_tensor = torch_tensor_list[v_end_index + 13]
-            v_antiquantscale_shape = params['shape_input'][v_end_index + 15]
+            v_antiquantscale_shape = params["shape_input"][v_end_index + 15]
             v_antiquantscale_tensor = torch_tensor_list[v_end_index + 15]
 
-            if params['k_antiquant_mode'] == 0:
-                if len(k_antiquantscale_shape) == 1 and k_antiquantscale_shape[0] == 1:  # pertensor
+            if params["k_antiquant_mode"] == 0:
+                if (
+                    len(k_antiquantscale_shape) == 1 and k_antiquantscale_shape[0] == 1
+                ):  # pertensor
                     print("antiquantscale_pertensor")
                     k_antiquant_scale = k_antiquantscale_tensor
                     v_antiquant_scale = v_antiquantscale_tensor
                 else:  # perchanel
                     # 将kv量化参数转换为n1d(匹配bnsd)
-                    k_antiquantscale_n1d_tensor = _trans_h_to_n1d(k_antiquantscale_shape, k_antiquantscale_tensor,
-                                                                  numKeyValueHeads)
-                    v_antiquantscale_n1d_tensor = _trans_h_to_n1d(v_antiquantscale_shape, v_antiquantscale_tensor,
-                                                                  numKeyValueHeads)
+                    k_antiquantscale_n1d_tensor = _trans_h_to_n1d(
+                        k_antiquantscale_shape,
+                        k_antiquantscale_tensor,
+                        numKeyValueHeads,
+                    )
+                    v_antiquantscale_n1d_tensor = _trans_h_to_n1d(
+                        v_antiquantscale_shape,
+                        v_antiquantscale_tensor,
+                        numKeyValueHeads,
+                    )
                     # GQA场景，扩展kv反量化参数
                     if numKeyValueHeads != numHeads:
                         print("broadcast kvanti")
-                        k_antiquant_scale = broadcast_kv_split_dequant_tensor(k_antiquantscale_n1d_tensor,
-                                                                              numKeyValueHeads, numHeads, q_dtype_np)
-                        v_antiquant_scale = broadcast_kv_split_dequant_tensor(v_antiquantscale_n1d_tensor,
-                                                                              numKeyValueHeads, numHeads, q_dtype_np)
+                        k_antiquant_scale = broadcast_kv_split_dequant_tensor(
+                            k_antiquantscale_n1d_tensor,
+                            numKeyValueHeads,
+                            numHeads,
+                            q_dtype_np,
+                        )
+                        v_antiquant_scale = broadcast_kv_split_dequant_tensor(
+                            v_antiquantscale_n1d_tensor,
+                            numKeyValueHeads,
+                            numHeads,
+                            q_dtype_np,
+                        )
                         print(v_antiquant_scale.shape)
                     else:
                         k_antiquant_scale = k_antiquantscale_n1d_tensor
                         v_antiquant_scale = v_antiquantscale_n1d_tensor
-            if params['k_antiquant_mode'] == 1:  # pertoken
+            if params["k_antiquant_mode"] == 1:  # pertoken
                 # pertoken -> BS
                 k_antiquant_scale = k_antiquantscale_tensor
                 v_antiquant_scale = v_antiquantscale_tensor
-        pfa_param['k_antiquant_scale'] = k_antiquant_scale
-        pfa_param['v_antiquant_scale'] = v_antiquant_scale
+        pfa_param["k_antiquant_scale"] = k_antiquant_scale
+        pfa_param["v_antiquant_scale"] = v_antiquant_scale
 
         if flagList[18] or flagList[20]:
-            q_dtype_np = tools.get_np_dtype(params['dtype_input'][0])
-            k_antiquantoffset_shape = params['shape_input'][v_end_index + 14]
+            q_dtype_np = tools.get_np_dtype(params["dtype_input"][0])
+            k_antiquantoffset_shape = params["shape_input"][v_end_index + 14]
             k_antiquantoffset_tensor = torch_tensor_list[v_end_index + 14]
-            v_antiquantoffset_shape = params['shape_input'][v_end_index + 16]
+            v_antiquantoffset_shape = params["shape_input"][v_end_index + 16]
             v_antiquantoffset_tensor = torch_tensor_list[v_end_index + 16]
 
-            if params['k_antiquant_mode'] == 0:
-                if len(k_antiquantoffset_shape) == 1 and k_antiquantoffset_shape[0] == 1:  # pertensor
+            if params["k_antiquant_mode"] == 0:
+                if (
+                    len(k_antiquantoffset_shape) == 1
+                    and k_antiquantoffset_shape[0] == 1
+                ):  # pertensor
                     print("antiquantscale_pertensor")
                     k_antiquant_offset = k_antiquantoffset_tensor
                     v_antiquant_offset = v_antiquantoffset_tensor
                 else:  # perchanel
                     # 将kv量化参数转换为2n1d(匹配bnsd)
-                    k_antiquantoffset_n1d_tensor = _trans_h_to_n1d(k_antiquantoffset_shape, k_antiquantoffset_tensor,
-                                                                   numKeyValueHeads)
-                    v_antiquantoffset_n1d_tensor = _trans_h_to_n1d(v_antiquantoffset_shape, v_antiquantoffset_tensor,
-                                                                   numKeyValueHeads)
+                    k_antiquantoffset_n1d_tensor = _trans_h_to_n1d(
+                        k_antiquantoffset_shape,
+                        k_antiquantoffset_tensor,
+                        numKeyValueHeads,
+                    )
+                    v_antiquantoffset_n1d_tensor = _trans_h_to_n1d(
+                        v_antiquantoffset_shape,
+                        v_antiquantoffset_tensor,
+                        numKeyValueHeads,
+                    )
 
                     # GQA场景，扩展kv反量化参数
                     if numKeyValueHeads != numHeads:
                         print("broadcast kvanti")
-                        k_antiquant_offset = broadcast_kv_split_dequant_tensor(k_antiquantoffset_n1d_tensor,
-                                                                               numKeyValueHeads, numHeads, q_dtype_np)
-                        v_antiquant_offset = broadcast_kv_split_dequant_tensor(v_antiquantoffset_n1d_tensor,
-                                                                               numKeyValueHeads, numHeads, q_dtype_np)
+                        k_antiquant_offset = broadcast_kv_split_dequant_tensor(
+                            k_antiquantoffset_n1d_tensor,
+                            numKeyValueHeads,
+                            numHeads,
+                            q_dtype_np,
+                        )
+                        v_antiquant_offset = broadcast_kv_split_dequant_tensor(
+                            v_antiquantoffset_n1d_tensor,
+                            numKeyValueHeads,
+                            numHeads,
+                            q_dtype_np,
+                        )
                     else:
                         k_antiquant_offset = k_antiquantoffset_n1d_tensor
                         v_antiquant_offset = v_antiquantoffset_n1d_tensor
-            if params['k_antiquant_mode'] == 1:  # pertoken
+            if params["k_antiquant_mode"] == 1:  # pertoken
                 # pertoken -> BS
                 k_antiquant_offset = k_antiquantoffset_tensor
                 v_antiquant_offset = v_antiquantoffset_tensor
-        pfa_param['k_antiquant_offset'] = k_antiquant_offset
-        pfa_param['v_antiquant_offset'] = v_antiquant_offset
+        pfa_param["k_antiquant_offset"] = k_antiquant_offset
+        pfa_param["v_antiquant_offset"] = v_antiquant_offset
 
-        pfa_param['anti_or_kvanti'] = anti_or_kvanti
-        pfa_param['k_antiquant_mode'] = params['k_antiquant_mode']
+        pfa_param["anti_or_kvanti"] = anti_or_kvanti
+        pfa_param["k_antiquant_mode"] = params["k_antiquant_mode"]
         if flagList[14] and "output" not in params["action_type"]:
             # shape_input取tensorshape
-            blockSize = params['blocksize']
-            btShape = params['shape_input'][v_end_index + 10]
-            kvcacheShape = params['shape_input'][v_end_index + 19]
+            blockSize = params["blocksize"]
+            btShape = params["shape_input"][v_end_index + 10]
+            kvcacheShape = params["shape_input"][v_end_index + 19]
             if 0 in btShape:
-                print('[WARNING]:block_table为空场景，输出空tensor！')
+                print("[WARNING]:block_table为空场景，输出空tensor！")
                 return torch.zeros(out_shape)
             if 0 in kvcacheShape:
-                print('[WARNING]:PA场景下kvcache为空tensor，输出空tensor！')
+                print("[WARNING]:PA场景下kvcache为空tensor，输出空tensor！")
                 return torch.zeros(out_shape)
             block_idx_list = np.arange(kvcacheShape[0])
             block_idx_list = np.random.permutation(block_idx_list)
@@ -7359,38 +8263,54 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 blockNumPerBlock.append(math.ceil(actual_seq / blockSize))
             for idx, block_per_b in enumerate(blockNumPerBlock):
                 for j in range(block_per_b):
-                    block_table[idx][j] = (block_idx_list[block_idx])
+                    block_table[idx][j] = block_idx_list[block_idx]
                     block_idx += 1
-            pfa_param['blockNumPerBlock'] = blockNumPerBlock
-            pfa_param['block_table'] = block_table
-            if  flagList[26]:
-                print('[INFO]:PA + Deepseek！')
-                deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list)
+            pfa_param["blockNumPerBlock"] = blockNumPerBlock
+            pfa_param["block_table"] = block_table
+            if flagList[26]:
+                print("[INFO]:PA + Deepseek！")
+                deepseek_ds_pa_preprocessing(pfa_param, params, torch_tensor_list)
             else:
-                print('[INFO]:PA + no Deepseek！')
+                print("[INFO]:PA + no Deepseek！")
                 # trans kv to bsh(此处使用的tensor, 没有经过n的扩展)
                 k_cache = torch_tensor_list[v_end_index + 19]
                 v_cache = torch_tensor_list[v_end_index + 20]
                 print(k_cache.shape)
                 print(v_cache.shape)
                 if k_cache.ndim == 3:
-                    k_tensor_bsh_raw = trans_bnsd_to_bsh(k_tensor_bnsd_list[0], k_shape_bnsd_raw_list[0])
-                    v_tensor_bsh_raw = trans_bnsd_to_bsh(v_tensor_bnsd_list[0], v_shape_bnsd_raw_list[0])
+                    k_tensor_bsh_raw = trans_bnsd_to_bsh(
+                        k_tensor_bnsd_list[0], k_shape_bnsd_raw_list[0]
+                    )
+                    v_tensor_bsh_raw = trans_bnsd_to_bsh(
+                        v_tensor_bnsd_list[0], v_shape_bnsd_raw_list[0]
+                    )
                     for b, block_per_b in enumerate(blockNumPerBlock):
                         for blockid_index in range(block_per_b):
                             blockid = block_table[b][blockid_index]
                             block_offset = blockid_index * blockSize
                             if blockid_index == block_per_b - 1:
                                 blocksize_left = actualSeqLengthsKV[b] - block_offset
-                                k_cache[blockid, 0:blocksize_left, :] = k_tensor_bsh_raw[b,
-                                                                        block_offset:(block_offset + blocksize_left), :]
-                                v_cache[blockid, 0:blocksize_left, :] = v_tensor_bsh_raw[b,
-                                                                        block_offset:(block_offset + blocksize_left), :]
+                                k_cache[blockid, 0:blocksize_left, :] = (
+                                    k_tensor_bsh_raw[
+                                        b,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
+                                v_cache[blockid, 0:blocksize_left, :] = (
+                                    v_tensor_bsh_raw[
+                                        b,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
                             else:
-                                k_cache[blockid, 0:blockSize, :] = k_tensor_bsh_raw[b,
-                                                                   block_offset:(block_offset + blockSize), :]
-                                v_cache[blockid, 0:blockSize, :] = v_tensor_bsh_raw[b,
-                                                                   block_offset:(block_offset + blockSize), :]
+                                k_cache[blockid, 0:blockSize, :] = k_tensor_bsh_raw[
+                                    b, block_offset : (block_offset + blockSize), :
+                                ]
+                                v_cache[blockid, 0:blockSize, :] = v_tensor_bsh_raw[
+                                    b, block_offset : (block_offset + blockSize), :
+                                ]
                 if k_cache.ndim == 4:
                     k_tensor_bsh_raw = k_tensor_bnsd_list[0]
                     v_tensor_bsh_raw = v_tensor_bnsd_list[0]
@@ -7653,31 +8573,31 @@ def timeit_decorator(func):
         duration = end_time - start_time
         # 更新性能数据
         func_name = func.__qualname__  # 这会包含类名和函数名，例如 MyClass.method
-        _performance_data[func_name]['total_time'] += duration
-        _performance_data[func_name]['calls'] += 1
+        _performance_data[func_name]["total_time"] += duration
+        _performance_data[func_name]["calls"] += 1
         return result
 
     return wrapper
 
 
-def print_performance_report(n=10, sort_by='total_time'):
+def print_performance_report(n=10, sort_by="total_time"):
     # 计算平均耗时
     data = []
     for func_name, stats in _performance_data.items():
-        total_time = stats['total_time']
-        calls = stats['calls']
+        total_time = stats["total_time"]
+        calls = stats["calls"]
         avg_time = total_time / calls if calls > 0 else 0
         data.append((func_name, total_time, avg_time, calls))
     # 排序
-    if sort_by == 'total_time':
+    if sort_by == "total_time":
         sorted_data = sorted(data, key=lambda x: x[1], reverse=True)
-    elif sort_by == 'avg_time':
+    elif sort_by == "avg_time":
         sorted_data = sorted(data, key=lambda x: x[2], reverse=True)
     else:
         raise ValueError("sort_by must be 'total_time' or 'avg_time'")
     # 打印报告
     print(f"{'Function':<40} {'Total Time (s)':<15} {'Avg Time (s)':<15} {'Calls':<10}")
-    print('-' * 80)
+    print("-" * 80)
     for item in sorted_data[:n]:
         func_name, total_time, avg_time, calls = item
         print(f"{func_name:<40} {total_time:15.6f} {avg_time:15.6f} {calls:10}")
@@ -8035,7 +8955,9 @@ class FiaTensor:
                 if act_s == 0:
                     continue
                 # 将批次b_idx的数据填充到output[t_start:t_end]
-                output_data[t_start:t_end, :, :] = self.transpose(self.data[b_idx, :, :act_s, :], [1, 0, 2])
+                output_data[t_start:t_end, :, :] = self.transpose(
+                    self.data[b_idx, :, :act_s, :], [1, 0, 2]
+                )
                 t_start += act_s
 
             return output_data
@@ -8402,19 +9324,19 @@ def quant_pc(x, qscale, qoffset, n1):
 def s8_saturation_vectorized(inputdata):
     """向量化的s8饱和函数"""
     # 使用np.where替代if-else条件判断
-    saturated = np.where(inputdata > 127, 127,
-                         np.where(inputdata < -128, -128, inputdata))
+    saturated = np.where(
+        inputdata > 127, 127, np.where(inputdata < -128, -128, inputdata)
+    )
     return saturated.astype(np.int8)
 
 
 def s9_saturation_vectorized(inputdata):
     """向量化的s9饱和函数"""
     # 使用np.where替代if-else条件判断
-    return np.where(inputdata > 255, 255,
-                    np.where(inputdata < -256, -256, inputdata))
+    return np.where(inputdata > 255, 255, np.where(inputdata < -256, -256, inputdata))
 
 
-class FiaSoftmax():
+class FiaSoftmax:
     @staticmethod
     def softmaxv1(x):
         x = x.astype(np.float32)
@@ -8500,15 +9422,28 @@ class MaskGenerator:
 
     @staticmethod
     def _create_mask(m_shape, pre_tokens, next_tokens):
-        next_masks = np.triu(np.ones(m_shape, dtype='uint8'), k=1 + int(next_tokens))  # 生成下三角全是0的矩阵
-        pre_mask = np.tril(np.ones(m_shape, dtype='uint8'), k=-1 - int(pre_tokens))  # 生成上三角全是0的矩阵
+        next_masks = np.triu(
+            np.ones(m_shape, dtype="uint8"), k=1 + int(next_tokens)
+        )  # 生成下三角全是0的矩阵
+        pre_mask = np.tril(
+            np.ones(m_shape, dtype="uint8"), k=-1 - int(pre_tokens)
+        )  # 生成上三角全是0的矩阵
         atten_masks = pre_mask + next_masks
 
         return atten_masks
 
     @classmethod
-    def _create_mask_no_sparse(cls, m_shape, npu_m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype,
-                               random_ones=0):
+    def _create_mask_no_sparse(
+        cls,
+        m_shape,
+        npu_m_shape,
+        pre_tokens,
+        next_tokens,
+        batch,
+        numheads,
+        m_dtype,
+        random_ones=0,
+    ):
         re_mask_batch = []
         re_mask_npu_batch = []
 
@@ -8764,7 +9699,9 @@ class FiaLayoutTool:
                 if act_s == 0:
                     continue
                 # 将批次b_idx的数据填充到output[t_start:t_end]
-                output[t_start:t_end, :, :] = cls.transpose(tensor[b_idx, :, :act_s, :], [1, 0, 2])
+                output[t_start:t_end, :, :] = cls.transpose(
+                    tensor[b_idx, :, :act_s, :], [1, 0, 2]
+                )
                 t_start += act_s
 
             return output
@@ -8979,12 +9916,16 @@ class FiaOpParam:
         for i in range(len(actual_seq_lens) - 1):
             seq_len = actual_seq_lens[i + 1] - actual_seq_lens[i]
             if seq_len < 0:
-                raise RuntimeError(f"_trans_tnd_actseq: actual_seq_lens[{i}] = {seq_len}, it should >= 0")
+                raise RuntimeError(
+                    f"_trans_tnd_actseq: actual_seq_lens[{i}] = {seq_len}, it should >= 0"
+                )
             normal_seq_lens.append(seq_len)
         return normal_seq_lens
 
     def _get_actual_seq_lens_q(self):
-        actual_seq_lens_q = self._expand_actual_seq_lens(copy.deepcopy(self.params['actualseqlengths']))
+        actual_seq_lens_q = self._expand_actual_seq_lens(
+            copy.deepcopy(self.params["actualseqlengths"])
+        )
         if self.tnd_flag:
             # 将tnd格式下的act seq转成普通的act seq
             fia_debug("_trans_tnd_actseq actual_seq_lens_q")
@@ -8992,7 +9933,9 @@ class FiaOpParam:
         return actual_seq_lens_q
 
     def _get_actual_seq_lens_kv(self):
-        actual_seq_lens_kv = self._expand_actual_seq_lens(copy.deepcopy(self.params['actualseqlengthskv']))
+        actual_seq_lens_kv = self._expand_actual_seq_lens(
+            copy.deepcopy(self.params["actualseqlengthskv"])
+        )
         if self.tnd_flag and (not self.pa_flag):
             fia_debug("_trans_tnd_actseq actual_seq_lens_kv")
             # 将tnd格式下的act seq转成普通的act seq
@@ -9054,53 +9997,57 @@ class FiaOpParam:
         return self.params["action_type"]
 
     def _get_input_layout(self):
-        return self.params['inputlayout']
+        return self.params["inputlayout"]
 
     def _get_actual_seq_lens_q_raw(self):
-        return self.params['actualseqlengths']
+        return self.params["actualseqlengths"]
 
     def _get_actual_seq_lens_kv_raw(self):
-        return self.params['actualseqlengthskv']
+        return self.params["actualseqlengthskv"]
 
     def _get_num_heads(self):
-        return self.params['numheads']
+        return self.params["numheads"]
 
     def _get_scale_value(self):
-        return self.params['scalevalue']
+        return self.params["scalevalue"]
 
     def _get_block_size(self):
-        return self.params['blocksize']
+        return self.params["blocksize"]
 
     def _get_inner_precise(self):
-        return self.params['innerprecise']
+        return self.params["innerprecise"]
 
     def _get_antiquant_mode(self):
-        return str(self.params['antiquant_mode'])
+        return str(self.params["antiquant_mode"])
 
     def _get_k_antiquant_mode(self):
-        return str(self.params['k_antiquant_mode'])
+        return str(self.params["k_antiquant_mode"])
 
     def _get_v_antiquant_mode(self):
-        return str(self.params['v_antiquant_mode'])
+        return str(self.params["v_antiquant_mode"])
 
     def _get_pretokens(self):
-        return self.params['pretokens']
+        return self.params["pretokens"]
 
     def _get_nexttokens(self):
-        return self.params['nexttokens']
+        return self.params["nexttokens"]
 
     def _get_sparse_mode(self):
-        return self.params['sparsemode']
+        return self.params["sparsemode"]
 
     def _get_softmax_lse_flag(self):
-        return self.params['softmax_lse_flag']
+        return self.params["softmax_lse_flag"]
 
     def _get_num_kv_heads(self):
         # 当numKeyValueHeads传入0时，处理为与numHeads相等
-        return self.params['numkeyvalueheads'] if self.params['numkeyvalueheads'] != 0 else self.params['numheads']
+        return (
+            self.params["numkeyvalueheads"]
+            if self.params["numkeyvalueheads"] != 0
+            else self.params["numheads"]
+        )
 
     def _get_tnd_flag(self):
-        return (self.params['inputlayout'] in ["TND", "TND_NTD", "NTD", "NTD_TND"])
+        return self.params["inputlayout"] in ["TND", "TND_NTD", "NTD", "NTD_TND"]
 
     def _get_storage_mode(self):
         if self._get_flag("block_table"):
@@ -9386,14 +10333,24 @@ class FiaOpParam:
                 # 当不传入quantOffset2时，也需要生成一个和scale一样大小的全0 Offset，用于后续计算
                 quant_offset2_shape = self._get_shape("quant_scale2")
                 quant_offset2_data = np.zeros(quant_offset2_shape, np.float32)
-                self.quant_offset2 = FiaTensor(quant_offset2_data, quant_offset2_shape, "fp32",
-                                               self._get_quant_scale_offset_layout(quant_offset2_shape),
-                                               self.num_heads, name="quant_offset2")
+                self.quant_offset2 = FiaTensor(
+                    quant_offset2_data,
+                    quant_offset2_shape,
+                    "fp32",
+                    self._get_quant_scale_offset_layout(quant_offset2_shape),
+                    self.num_heads,
+                    name="quant_offset2",
+                )
             if self._get_shape("quant_scale2") != [1]:
                 self.out_quant_pc_flag = True
 
     def _get_normal_flag(self):
-        if not self.flag_list[0] or not self.flag_list[1] or not self.flag_list[2] or not self.flag_list[24]:
+        if (
+            not self.flag_list[0]
+            or not self.flag_list[1]
+            or not self.flag_list[2]
+            or not self.flag_list[24]
+        ):
             fia_warn("q/k/v/out flag is false, return zero output")
             return False
         if self.query.empty():
@@ -9405,7 +10362,10 @@ class FiaOpParam:
         if self.value.empty():
             fia_warn("value is empty, return zero output")
             return False
-        if not ((self.flag_list[21] and self.flag_list[22]) or (not self.flag_list[21] and not self.flag_list[22])):
+        if not (
+            (self.flag_list[21] and self.flag_list[22])
+            or (not self.flag_list[21] and not self.flag_list[22])
+        ):
             fia_warn("prefix未成对出现, 返回全0输出")
             return False
         if self.block_table.empty():
@@ -9469,7 +10429,7 @@ class FiaOpPreprocess:
         self.preprocess_shared_prefix()
         self.preprocess_pse_shift()
         # 需要保证输入的mask是正确的
-        if self.op_params.sparse_mode in [2, 3, 4] and self.op_params.query.S > 1 :
+        if self.op_params.sparse_mode in [2, 3, 4] and self.op_params.query.S > 1:
             self.preprocess_atten_mask()
         self.preprocess_block_table()
         self.preprocess_kv_cache()
@@ -9576,70 +10536,91 @@ class FiaOpPreprocess:
                     if cache_block_id == -1:
                         continue
                     else:
-                        cache[cache_block_id, :, 0:block_size, :] = \
-                            k_tensor_bnsd[batch_idx, :, block_offset:(block_offset + block_size), :]
+                        cache[cache_block_id, :, 0:block_size, :] = k_tensor_bnsd[
+                            batch_idx, :, block_offset : (block_offset + block_size), :
+                        ]
         elif len(cache_shape) == 5:  # NZ
-            k_cache_tensor_bnbd = self._generate_cache([cache_shape[0], N, block_size, D],
-                                                       tensor_bnsd, shape_bnsd, src_dtype, dst_dtype)
+            k_cache_tensor_bnbd = self._generate_cache(
+                [cache_shape[0], N, block_size, D],
+                tensor_bnsd,
+                shape_bnsd,
+                src_dtype,
+                dst_dtype,
+            )
             D0 = 32 if src_dtype == "int8" else 16
-            cache = k_cache_tensor_bnbd.reshape(k_cache_tensor_bnbd.shape[0], k_cache_tensor_bnbd.shape[1],
-                                                k_cache_tensor_bnbd.shape[2],
-                                                k_cache_tensor_bnbd.shape[3] // D0, D0).transpose(0, 1, 3, 2, 4)
+            cache = k_cache_tensor_bnbd.reshape(
+                k_cache_tensor_bnbd.shape[0],
+                k_cache_tensor_bnbd.shape[1],
+                k_cache_tensor_bnbd.shape[2],
+                k_cache_tensor_bnbd.shape[3] // D0,
+                D0,
+            ).transpose(0, 1, 3, 2, 4)
         else:
-            raise ValueError(f"cache shape dim should be 3/4/5, but got {len(cache_shape)}")
+            raise ValueError(
+                f"cache shape dim should be 3/4/5, but got {len(cache_shape)}"
+            )
         return cache.astype(dst_dtype)
 
     def _preprocess_kv_cache_rope(self):
         fia_debug_func_begin("begin FiaOpPreprocess._preprocess_kv_cache_rope")
-        k_cache = self._generate_cache(self.op_params.k_cache.shape,
-                                       self.key.bnsd_data,
-                                       self.key.bnsd_shape,
-                                       self.key.dtype,
-                                       self.key.np_dtype)
+        k_cache = self._generate_cache(
+            self.op_params.k_cache.shape,
+            self.key.bnsd_data,
+            self.key.bnsd_shape,
+            self.key.dtype,
+            self.key.np_dtype,
+        )
 
         v_cache = None
         if not self.op_params.is_deepseek_mla:
-            v_cache = self._generate_cache(self.op_params.v_cache.shape,
-                                           self.value.bnsd_data,
-                                           self.value.bnsd_shape,
-                                           self.value.dtype,
-                                           self.value.np_dtype)
+            v_cache = self._generate_cache(
+                self.op_params.v_cache.shape,
+                self.value.bnsd_data,
+                self.value.bnsd_shape,
+                self.value.dtype,
+                self.value.np_dtype,
+            )
         else:
             v_cache = k_cache
-        k_rope_cache = self._generate_cache(self.op_params.k_rope_cache.shape,
-                                            self.k_rope.bnsd_data,
-                                            self.k_rope.bnsd_shape,
-                                            self.key.dtype,
-                                            self.key.np_dtype)
+        k_rope_cache = self._generate_cache(
+            self.op_params.k_rope_cache.shape,
+            self.k_rope.bnsd_data,
+            self.k_rope.bnsd_shape,
+            self.key.dtype,
+            self.key.np_dtype,
+        )
         # return torch.zeros(out_shape)
         # 将kv cache 生成新的bin文件
         k_cache_index = FiaOpParam.get_param_index("k_cache")
         v_cache_index = FiaOpParam.get_param_index("v_cache")
         k_rope_cache_index = FiaOpParam.get_param_index("k_rope_cache")
-        if self.params['is_preprocess']:
-            self.params['input_data'].kwargs['k_cache'] = k_cache
-            self.params['input_data'].kwargs['v_cache'] = v_cache
-            self.params['input_data'].kwargs['k_rope_cache'] = k_rope_cache
+        if self.params["is_preprocess"]:
+            self.params["input_data"].kwargs["k_cache"] = k_cache
+            self.params["input_data"].kwargs["v_cache"] = v_cache
+            self.params["input_data"].kwargs["k_rope_cache"] = k_rope_cache
 
     def _preprocess_kv_cache_no_rope(self):
-        k_cache = self._generate_cache(self.op_params.k_cache.shape,
-                                       self.key.bnsd_data_list[0],
-                                       self.key.bnsd_shape_list[0],
-                                       self.key.dtype,
-                                       self.key.np_dtype)
-        v_cache = self._generate_cache(self.op_params.v_cache.shape,
-                                       self.value.bnsd_data_list[0],
-                                       self.value.bnsd_shape_list[0],
-                                       self.value.dtype,
-                                       self.value.np_dtype)
+        k_cache = self._generate_cache(
+            self.op_params.k_cache.shape,
+            self.key.bnsd_data_list[0],
+            self.key.bnsd_shape_list[0],
+            self.key.dtype,
+            self.key.np_dtype,
+        )
+        v_cache = self._generate_cache(
+            self.op_params.v_cache.shape,
+            self.value.bnsd_data_list[0],
+            self.value.bnsd_shape_list[0],
+            self.value.dtype,
+            self.value.np_dtype,
+        )
 
         # 将kv cache 生成新的bin文件
         k_cache_index = FiaOpParam.get_param_index("k_cache")
         v_cache_index = FiaOpParam.get_param_index("v_cache")
-        if self.params['is_preprocess']:
-            self.params['input_data'].kwargs['k_cache'] = k_cache
-            self.params['input_data'].kwargs['v_cache'] = v_cache
-
+        if self.params["is_preprocess"]:
+            self.params["input_data"].kwargs["k_cache"] = k_cache
+            self.params["input_data"].kwargs["v_cache"] = v_cache
 
     def preprocess_kv_cache(self):
         # 2、将kv shape 统一转换成bsh
@@ -9687,10 +10668,12 @@ class FiaOpPreprocess:
             npu_m_shape_s = self.op_params.atten_mask.shape
             self.op_params.is_mask_bs = False
             if sparse_mode == 0 or sparse_mode == 1:
-                self.op_params.is_mask_bs = (self.op_params.atten_mask.shape[0] == self.op_params.batch) and (
-                        len(self.op_params.atten_mask.shape) == 2)
-                batch, num_heads, ns1, ns2 = get_attention_mask_batch_num(self.op_params.atten_mask.shape,
-                                                                          self.op_params.is_mask_bs)  # 获取输入attentionmask的batch 和numhead
+                self.op_params.is_mask_bs = (
+                    self.op_params.atten_mask.shape[0] == self.op_params.batch
+                ) and (len(self.op_params.atten_mask.shape) == 2)
+                batch, num_heads, ns1, ns2 = get_attention_mask_batch_num(
+                    self.op_params.atten_mask.shape, self.op_params.is_mask_bs
+                )  # 获取输入attentionmask的batch 和numhead
                 npu_m_shape_s = [ns1, ns2]
 
             q_s = self.op_params.query.bnsd_shape[2]
@@ -9794,14 +10777,17 @@ class FiaOpPreprocessTorch(FiaOpPreprocess):
         block_size = 64
         batch = self.op_params.batch
         self.op_params.cache_seqlens = torch.tensor(
-            self.op_params.actual_seq_lens_kv_raw, dtype=torch.int32).to(self.device)
+            self.op_params.actual_seq_lens_kv_raw, dtype=torch.int32
+        ).to(self.device)
         max_seqlen = self.op_params.cache_seqlens.max().item()
         max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
         padding_length = max_seqlen_pad - max_seqlen
         # 裁剪ks
-        k_new_tensor = key.bsnd_data[:, :key.S, :, :]
+        k_new_tensor = key.bsnd_data[:, : key.S, :, :]
         print(f"k_cache_before_padding:{k_new_tensor.shape}")
-        k_new_tensor = F.pad(k_new_tensor, (0, 0, 0, 0, 0, padding_length), "constant", 0)
+        k_new_tensor = F.pad(
+            k_new_tensor, (0, 0, 0, 0, 0, padding_length), "constant", 0
+        )
         print(f"k_cache_after_padding:{k_new_tensor.shape}")
         block_table = torch.arange(
             batch * max_seqlen_pad // block_size, dtype=torch.int32
@@ -10120,19 +11106,21 @@ class FiaOpForward:
             if n_idx is None:
                 pse_cur = self.op_params.pse_shift.data[:, :, :, :]
             else:
-                pse_cur = self.op_params.pse_shift.data[:, n_idx:(n_idx + 1), :, :]
+                pse_cur = self.op_params.pse_shift.data[:, n_idx : (n_idx + 1), :, :]
         else:
             if n_idx is None:
-                pse_cur = self.op_params.pse_shift.data[b_idx:(b_idx + 1), :, :, :]
+                pse_cur = self.op_params.pse_shift.data[b_idx : (b_idx + 1), :, :, :]
             else:
-                pse_cur = self.op_params.pse_shift.data[b_idx:(b_idx + 1), n_idx:(n_idx + 1), :, :]
+                pse_cur = self.op_params.pse_shift.data[
+                    b_idx : (b_idx + 1), n_idx : (n_idx + 1), :, :
+                ]
         return pse_cur
 
     def _get_sink_cur(self, n_idx):
         # 判断sink是否为空
         sink_cur = None
         if self.op_params.sink_flag:
-            sink_cur = self.op_params.sinks.data[n_idx:(n_idx + 1)]
+            sink_cur = self.op_params.sinks.data[n_idx : (n_idx + 1)]
         return sink_cur
 
     def _get_k_shape_by_idx(self, b_idx):
@@ -10252,7 +11240,7 @@ class FiaOpForward:
             max_act_seq = max(self.op_params.actual_seq_lens_kv_raw)
             kv_s = self.op_params.kv_s
             if kv_s - self.op_params.kv_padding_size - max_act_seq < 0:
-                fia_warn('paddingsize 溢出，输出空tensor！')
+                fia_warn("paddingsize 溢出，输出空tensor！")
                 return True
         return False
 
@@ -10266,16 +11254,19 @@ class FiaOpForward:
 
         if kv_s - kv_padding_size - max_act_seq < 0:
             fia_warn(
-                f'kv_padding_size overflow！kv_s={kv_s}，kv_padding_size={kv_padding_size}，max_act_seq={max_act_seq}')
+                f"kv_padding_size overflow！kv_s={kv_s}，kv_padding_size={kv_padding_size}，max_act_seq={max_act_seq}"
+            )
             return True
 
         return False
 
     def route_to_old(self):
-        if (self.op_params.input_layout in ['SH', 'NSD']) or \
-                (self.op_params.query.dtype not in ['float16', 'bfloat16', 'float32']) or \
-                (self.op_params.key.dtype not in ['float16', 'bfloat16', 'float32']) or \
-                (self.op_params.query.dtype != self.op_params.key.dtype):
+        if (
+            (self.op_params.input_layout in ["SH", "NSD"])
+            or (self.op_params.query.dtype not in ["float16", "bfloat16", "float32"])
+            or (self.op_params.key.dtype not in ["float16", "bfloat16", "float32"])
+            or (self.op_params.query.dtype != self.op_params.key.dtype)
+        ):
             return True
         # if self.op_params.query.D not in [64, 128, 192, 512]:
         #     return True
@@ -10475,13 +11466,13 @@ class TestFIAV4SplitFuse:
         valid_row_mask = ~np.isneginf(row_max)
         # add sink rowmax
         if sink_matrix is not None:
-            assert sink_matrix.shape == row_max.shape, \
+            assert sink_matrix.shape == row_max.shape, (
                 f"sink_matrix 形状 {sink_matrix.shape} 与 row_max 形状 {row_max.shape} 不一致！"
-            row_max[valid_row_mask] = np.maximum(
-                row_max[valid_row_mask], 
-                sink_matrix[valid_row_mask]
             )
-        
+            row_max[valid_row_mask] = np.maximum(
+                row_max[valid_row_mask], sink_matrix[valid_row_mask]
+            )
+
         sim_sub = sim - row_max
         sim_sub_high = sim.astype(np.float64) - row_max.astype(np.float64)
 
@@ -10521,14 +11512,14 @@ class TestFIAV4SplitFuse:
         else:
             hm = np.maximum(gm, lm)
             dm = gm - hm
-        
+
         valid_hm_mask = ~np.isneginf(hm)
         if sink_matrix is not None and is_kvs_last_loop:
-            assert sink_matrix.shape == hm.shape, \
-            f"sink_matrix 形状 {sink_matrix.shape} 与 hm 形状 {hm.shape} 不一致！"
+            assert sink_matrix.shape == hm.shape, (
+                f"sink_matrix 形状 {sink_matrix.shape} 与 hm 形状 {hm.shape} 不一致！"
+            )
             hm[valid_hm_mask] = np.maximum(
-                hm[valid_hm_mask], 
-                sink_matrix[valid_hm_mask]
+                hm[valid_hm_mask], sink_matrix[valid_hm_mask]
             )
             dm = gm - hm if not is_first else 0
 
@@ -10607,14 +11598,14 @@ class TestFIAV4SplitFuse:
     # ===================== 核心SWA计算函数（你的参数版）=====================
     def calc_swa_kvsLoop(
         self,
-        preToken, 
-        nextToken, 
-        qSeqlen, 
+        preToken,
+        nextToken,
+        qSeqlen,
         kvSeqlen,
-        qSBlockIdx,        # 传入：q_id（Q分块索引）
-        qSBlockSize,       # 传入：q_sub_len（Q子块长度）
-        curQSBlockTile,    # 传入：q_chunk_size（Q分块大小）
-        MAX_KV_STACK_LEN   # 传入：kv_chunk_size（KV分块大小）
+        qSBlockIdx,  # 传入：q_id（Q分块索引）
+        qSBlockSize,  # 传入：q_sub_len（Q子块长度）
+        curQSBlockTile,  # 传入：q_chunk_size（Q分块大小）
+        MAX_KV_STACK_LEN,  # 传入：kv_chunk_size（KV分块大小）
     ):
         # 初始化变量（和C++完全一致）
         leftPointPreToken = kvSeqlen
@@ -10684,14 +11675,14 @@ class TestFIAV4SplitFuse:
         print(f"lwg_key.shape:{key.shape}")
         value = np.transpose(value, (1, 0, 2))
         scale = np.float16(scale) if inner_prec == 1 else np.float32(scale)
-        sparseMode = swa_auxAttrs.sparseMode         
+        sparseMode = swa_auxAttrs.sparseMode
         preToken = swa_auxAttrs.preTokens
         nextToken = swa_auxAttrs.nextTokens
 
-        kv_seqlen = key.shape[2]        # KV总长度
-        q_seqlen = query.shape[1]       # Q总长度
-        kv_chunk_size = 512             # KV分块大小
-        q_chunk_size = 128              # Q分块大小：128
+        kv_seqlen = key.shape[2]  # KV总长度
+        q_seqlen = query.shape[1]  # Q总长度
+        kv_chunk_size = 512  # KV分块大小
+        q_chunk_size = 128  # Q分块大小：128
         num_heads = query.shape[0]
         head_size_vo = value.shape[2]
 
@@ -10709,69 +11700,83 @@ class TestFIAV4SplitFuse:
             # 1. 切分当前 Q 小块
             q_sub_len = min(q_chunk_size, q_seqlen - q_start)
             sub_query = query[:, q_start : q_start + q_sub_len, :]
-            
+
             # 每个 Q 小块独立初始化中间状态
             gm_chunk = None
             gl_chunk = None
             go_chunk = None
-            
+
             kvSLoopNumTotal = 0
-            MASK_TYPE = 0 # no mask
+            MASK_TYPE = 0  # no mask
             startIdx = 0
             if mask is not None:
-                if sparseMode == 3: # causal
+                if sparseMode == 3:  # causal
                     MASK_TYPE = 3
                     diffS = kv_seqlen - q_seqlen
-                    diffS  = 0 if diffS < 0 else diffS
-                    noSkipKvS = (q_id+1) * q_chunk_size + diffS
+                    diffS = 0 if diffS < 0 else diffS
+                    noSkipKvS = (q_id + 1) * q_chunk_size + diffS
                     noSkipKvS = min(noSkipKvS, kv_seqlen)
-                    kvSLoopNumTotal = (noSkipKvS + kv_chunk_size -1) // kv_chunk_size
-                elif sparseMode == 4: #swa mask
+                    kvSLoopNumTotal = (noSkipKvS + kv_chunk_size - 1) // kv_chunk_size
+                elif sparseMode == 4:  # swa mask
                     MASK_TYPE = 4
-                    startIdx, kvSLoopNumTotal = self.calc_swa_kvsLoop(preToken, nextToken, q_seqlen, kv_seqlen, qSBlockIdx = q_id,  
-                        qSBlockSize = q_sub_len, curQSBlockTile=q_chunk_size,  MAX_KV_STACK_LEN = kv_chunk_size)
+                    startIdx, kvSLoopNumTotal = self.calc_swa_kvsLoop(
+                        preToken,
+                        nextToken,
+                        q_seqlen,
+                        kv_seqlen,
+                        qSBlockIdx=q_id,
+                        qSBlockSize=q_sub_len,
+                        curQSBlockTile=q_chunk_size,
+                        MAX_KV_STACK_LEN=kv_chunk_size,
+                    )
                     if startIdx >= kvSLoopNumTotal or kvSLoopNumTotal <= 0:
                         continue
             sink_matrix_sub = None
             if sink_matrix is not None:
                 sink_matrix_sub = sink_matrix[:, q_start : q_start + q_sub_len, :]
 
-            is_kvs_last_loop  = False
+            is_kvs_last_loop = False
 
             # ============== 内层循环：KV 按 512 切块 ==============
             for kv_id, kv_start in enumerate(range(0, kv_seqlen, kv_chunk_size)):
                 sub_kv_len = min(kv_chunk_size, kv_seqlen - kv_start)
-                if MASK_TYPE == 0: # no mask
-                    is_kvs_last_loop = (kv_start + kv_chunk_size >= kv_seqlen)
-                elif MASK_TYPE == 3 or MASK_TYPE == 4: # causal & swa
-                    is_kvs_last_loop = (kv_id+1) >= kvSLoopNumTotal
+                if MASK_TYPE == 0:  # no mask
+                    is_kvs_last_loop = kv_start + kv_chunk_size >= kv_seqlen
+                elif MASK_TYPE == 3 or MASK_TYPE == 4:  # causal & swa
+                    is_kvs_last_loop = (kv_id + 1) >= kvSLoopNumTotal
                 else:
                     exit(-99)
                 sub_key = key[:, :, kv_start : kv_start + sub_kv_len]
                 sub_value = value[:, kv_start : kv_start + sub_kv_len, :]
                 sub_mask = None
                 if mask is not None:
-                    sub_mask = mask[q_start : q_start + q_sub_len, kv_start : kv_start + sub_kv_len].astype(interm_dtype)
+                    sub_mask = mask[
+                        q_start : q_start + q_sub_len, kv_start : kv_start + sub_kv_len
+                    ].astype(interm_dtype)
 
                 # QK 计算
-                qk_result = self.qkMM1(sub_query, sub_key,is_benchmark_task).astype(interm_dtype)
+                qk_result = self.qkMM1(sub_query, sub_key, is_benchmark_task).astype(
+                    interm_dtype
+                )
                 qk_result = qk_result * scale
                 if mask is not None:
                     qk_result += sub_mask
-            
+
                 # 分块 Softmax
                 p_result, row_sum, dm, gm_chunk, sink_exp = self.softmax1(
-                    qk_result, 
-                    kv_start == 0, 
-                    gm_chunk, 
-                    is_kvs_last_loop, 
-                    sink_matrix_sub, 
-                    interm_dtype
+                    qk_result,
+                    kv_start == 0,
+                    gm_chunk,
+                    is_kvs_last_loop,
+                    sink_matrix_sub,
+                    interm_dtype,
                 )
                 p_result = p_result.astype(data_type)
 
                 # PV 计算
-                lo = self.pvMM2(p_result, sub_value, is_benchmark_task).astype(interm_dtype)
+                lo = self.pvMM2(p_result, sub_value, is_benchmark_task).astype(
+                    interm_dtype
+                )
 
                 # 累积中间结果
                 if kv_start == 0:
@@ -10787,7 +11792,7 @@ class TestFIAV4SplitFuse:
                 # sink 处理
                 if is_kvs_last_loop and sink_exp is not None:
                     gl_chunk = gl_chunk + sink_exp
-                
+
                 if is_kvs_last_loop:
                     break
 
@@ -10797,24 +11802,27 @@ class TestFIAV4SplitFuse:
             final_output[:, q_start : q_start + q_sub_len, :] = go_chunk
 
             # ✅ 修复2：计算当前Q块的LSE，并存入对应位置（核心！）
-            lse_chunk = np.squeeze((np.log(gl_chunk) + gm_chunk), axis=-1).astype(np.float32)
+            lse_chunk = np.squeeze((np.log(gl_chunk) + gm_chunk), axis=-1).astype(
+                np.float32
+            )
             final_lse[:, q_start : q_start + q_sub_len] = lse_chunk
         final_output = np.transpose(final_output, (1, 0, 2))
         # ✅ 修复3：返回拼接完成的完整LSE
         return final_output.astype(data_type), final_lse
 
-    def ref_masked_attention(self,
-            query,  # (q_seqlen, num_heads, head_size)
-            key,    # (k_seqlen, kv_heads, head_size)
-            value,
-            scale: float,
-            mask,    # (q_seqlen, k_seqlen)
-            sink_matrix,
-            batch_i,
-            is_benchmark_task
+    def ref_masked_attention(
+        self,
+        query,  # (q_seqlen, num_heads, head_size)
+        key,  # (k_seqlen, kv_heads, head_size)
+        value,
+        scale: float,
+        mask,  # (q_seqlen, k_seqlen)
+        sink_matrix,
+        batch_i,
+        is_benchmark_task,
     ):
         if not is_benchmark_task:
-            q_seqlen = query.shape[0]       # Q总长度
+            q_seqlen = query.shape[0]  # Q总长度
             num_heads = query.shape[1]
             head_size_vo = value.shape[2]
 
@@ -10886,19 +11894,21 @@ class TestFIAV4SplitFuse:
             # kvs=0场景（PA下actualSeqKV[i]==0）：有query但无KV，输出为0、lse为-inf。
             # 跳过ref计算避免np.stack对空list报错，直接填充golden结果。
             if k_seqlen == 0:
-                output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = 0
-                golden_gpu_output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = 0
-                golden_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = -np.inf
-                golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = -np.inf
+                output[cu_seqlen : cu_seqlen + q_seqlen, :, :] = 0
+                golden_gpu_output[cu_seqlen : cu_seqlen + q_seqlen, :, :] = 0
+                golden_lse_output[:, cu_seqlen : cu_seqlen + q_seqlen] = -np.inf
+                golden_gpu_lse_output[:, cu_seqlen : cu_seqlen + q_seqlen] = -np.inf
                 cu_seqlen += q_seqlen
                 kv_seqlen_now += k_seqlen
                 continue
 
             q = None
             if attention_inputs.auxAttrs.layout_dtype == 1:
-                q = attention_inputs.query[cu_seqlen:(cu_seqlen + q_seqlen), :, :]
+                q = attention_inputs.query[cu_seqlen : (cu_seqlen + q_seqlen), :, :]
             else:
-                q = attention_inputs.query[i * max_q_seqlen:(i * max_q_seqlen + q_seqlen), :, :]
+                q = attention_inputs.query[
+                    i * max_q_seqlen : (i * max_q_seqlen + q_seqlen), :, :
+                ]
             keys = None
             values = None
             if attention_inputs.auxAttrs.kv_dtype == 1:
@@ -10960,20 +11970,28 @@ class TestFIAV4SplitFuse:
                 sink_expanded = np.expand_dims(learnable_sink, axis=1)
                 sink_expanded = np.expand_dims(sink_expanded, axis=2)
                 # [num_heads, 1, 1] → [num_heads, q_seqlen, 1]
-                sink_matrix = np.broadcast_to(sink_expanded, shape=(learnable_sink.shape[0], q_seqlen, 1))
+                sink_matrix = np.broadcast_to(
+                    sink_expanded, shape=(learnable_sink.shape[0], q_seqlen, 1)
+                )
 
             preTokens = attention_inputs.auxAttrs.preTokens
             nextTokens = attention_inputs.auxAttrs.nextTokens
-            
+
             preTokensChange = preTokens - k_seqlen + q_seqlen
             nextTokensChange = nextTokens + k_seqlen - q_seqlen
             nextTokensError = -nextTokensChange if nextTokensChange < 0 else 0
-            preTokensError = (q_seqlen - k_seqlen - preTokensChange) if q_seqlen > k_seqlen + preTokensChange else 0
+            preTokensError = (
+                (q_seqlen - k_seqlen - preTokensChange)
+                if q_seqlen > k_seqlen + preTokensChange
+                else 0
+            )
             actualSeq = q_seqlen
-            
+
             actualSeq -= nextTokensError
             actualSeq -= preTokensError
-            print(f"ljl-2 {i},:{preTokens},{nextTokens},{preTokensChange},{nextTokensChange},{preTokensError},{nextTokensError},{actualSeq}")
+            print(
+                f"ljl-2 {i},:{preTokens},{nextTokens},{preTokensChange},{nextTokensChange},{preTokensError},{nextTokensError},{actualSeq}"
+            )
             if actualSeq != q_seqlen and sparseMode == 4:
                 if nextTokensError != 0:
                     # 前n行置0
@@ -10981,9 +11999,22 @@ class TestFIAV4SplitFuse:
                 elif preTokensError != 0:
                     # 后n行置0
                     actualSeq = actualSeq
-            
-            out_normal, lse = self.ref_masked_attention(q, keys, values, scale, mask, sink_matrix, i , is_benchmark_task)
-            out_gpu, lse_gpu = self.ref_flash_attention(q, keys, values, scale, mask, attention_inputs, sink_matrix, i, swa_auxAttrs ,is_benchmark_task)
+
+            out_normal, lse = self.ref_masked_attention(
+                q, keys, values, scale, mask, sink_matrix, i, is_benchmark_task
+            )
+            out_gpu, lse_gpu = self.ref_flash_attention(
+                q,
+                keys,
+                values,
+                scale,
+                mask,
+                attention_inputs,
+                sink_matrix,
+                i,
+                swa_auxAttrs,
+                is_benchmark_task,
+            )
             out_gpu_test = torch.from_numpy(out_gpu.astype(np.float32))
             nan_out_gpu = torch.isnan(out_gpu_test)
             nan_count = nan_out_gpu.sum().item()
@@ -10993,49 +12024,91 @@ class TestFIAV4SplitFuse:
             out_gpu = out_gpu.reshape(-1, num_heads, head_size_vo)
 
             if attention_inputs.auxAttrs.layout_dtype == 1:
-                output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = out
-                golden_gpu_output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = out_gpu
+                output[cu_seqlen : cu_seqlen + q_seqlen, :, :] = out
+                golden_gpu_output[cu_seqlen : cu_seqlen + q_seqlen, :, :] = out_gpu
 
-                golden_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = lse
-                golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = lse_gpu
-                
+                golden_lse_output[:, cu_seqlen : cu_seqlen + q_seqlen] = lse
+                golden_gpu_lse_output[:, cu_seqlen : cu_seqlen + q_seqlen] = lse_gpu
+
                 if actualSeq != q_seqlen and sparseMode == 4:
                     if nextTokensError != 0:
-                        output[cu_seqlen : cu_seqlen  + actualSeq, :, :] = 0  # 前n行置0
-                        golden_gpu_output[cu_seqlen: cu_seqlen + actualSeq, :, :] = 0
-                        golden_lse_output[:, cu_seqlen: cu_seqlen + actualSeq] = np.inf
-                        golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + actualSeq] = np.inf
+                        output[cu_seqlen : cu_seqlen + actualSeq, :, :] = 0  # 前n行置0
+                        golden_gpu_output[cu_seqlen : cu_seqlen + actualSeq, :, :] = 0
+                        golden_lse_output[:, cu_seqlen : cu_seqlen + actualSeq] = np.inf
+                        golden_gpu_lse_output[:, cu_seqlen : cu_seqlen + actualSeq] = (
+                            np.inf
+                        )
                     elif preTokensError != 0:
-                        output[cu_seqlen + actualSeq: cu_seqlen  + q_seqlen, :, :] = 0  # 后n行置0
-                        golden_gpu_output[cu_seqlen + actualSeq: cu_seqlen + q_seqlen, :, :] = 0
-                        golden_lse_output[:, cu_seqlen + actualSeq: cu_seqlen  + q_seqlen] =  np.inf
-                        golden_gpu_lse_output[:, cu_seqlen + actualSeq: cu_seqlen + q_seqlen] =  np.inf
+                        output[cu_seqlen + actualSeq : cu_seqlen + q_seqlen, :, :] = (
+                            0  # 后n行置0
+                        )
+                        golden_gpu_output[
+                            cu_seqlen + actualSeq : cu_seqlen + q_seqlen, :, :
+                        ] = 0
+                        golden_lse_output[
+                            :, cu_seqlen + actualSeq : cu_seqlen + q_seqlen
+                        ] = np.inf
+                        golden_gpu_lse_output[
+                            :, cu_seqlen + actualSeq : cu_seqlen + q_seqlen
+                        ] = np.inf
             else:
-                output[i * max_q_seqlen: i * max_q_seqlen + q_seqlen, :, :] = out
-                golden_gpu_output[i * max_q_seqlen: i * max_q_seqlen + q_seqlen, :, :] = out_gpu
+                output[i * max_q_seqlen : i * max_q_seqlen + q_seqlen, :, :] = out
+                golden_gpu_output[
+                    i * max_q_seqlen : i * max_q_seqlen + q_seqlen, :, :
+                ] = out_gpu
 
-                golden_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + q_seqlen] = lse
-                golden_gpu_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + q_seqlen] = lse_gpu
+                golden_lse_output[:, i * max_q_seqlen : i * max_q_seqlen + q_seqlen] = (
+                    lse
+                )
+                golden_gpu_lse_output[
+                    :, i * max_q_seqlen : i * max_q_seqlen + q_seqlen
+                ] = lse_gpu
                 if actualSeq != q_seqlen and sparseMode == 4:
                     if nextTokensError != 0:
-                        output[i * max_q_seqlen: i * max_q_seqlen + actualSeq, :, :] = 0
-                        golden_gpu_output[i * max_q_seqlen: i * max_q_seqlen + actualSeq, :, :] = 0
+                        output[
+                            i * max_q_seqlen : i * max_q_seqlen + actualSeq, :, :
+                        ] = 0
+                        golden_gpu_output[
+                            i * max_q_seqlen : i * max_q_seqlen + actualSeq, :, :
+                        ] = 0
 
-                        golden_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + actualSeq] = np.inf
-                        golden_gpu_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + actualSeq] = np.inf
+                        golden_lse_output[
+                            :, i * max_q_seqlen : i * max_q_seqlen + actualSeq
+                        ] = np.inf
+                        golden_gpu_lse_output[
+                            :, i * max_q_seqlen : i * max_q_seqlen + actualSeq
+                        ] = np.inf
                     elif preTokensError != 0:
-                        output[i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen, :, :] = 0
-                        golden_gpu_output[i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen, :, :] = 0
+                        output[
+                            i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen,
+                            :,
+                            :,
+                        ] = 0
+                        golden_gpu_output[
+                            i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen,
+                            :,
+                            :,
+                        ] = 0
 
-                        golden_lse_output[:, i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen] = np.inf
-                        golden_gpu_lse_output[:, i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen] = np.inf
-            
+                        golden_lse_output[
+                            :,
+                            i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen,
+                        ] = np.inf
+                        golden_gpu_lse_output[
+                            :,
+                            i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen,
+                        ] = np.inf
+
             cu_seqlen += q_seqlen
             kv_seqlen_now += k_seqlen
-    
-    def calc_data(self, attention_inputs:AttentionInputs, is_benchmark_task):
+
+    def calc_data(self, attention_inputs: AttentionInputs, is_benchmark_task):
         num_tokens = attention_inputs.query.shape[0]
-        shape_out = (num_tokens, attention_inputs.auxAttrs.num_heads, attention_inputs.auxAttrs.head_size)
+        shape_out = (
+            num_tokens,
+            attention_inputs.auxAttrs.num_heads,
+            attention_inputs.auxAttrs.head_size,
+        )
         golden_output = np.zeros(shape_out, dtype=np.float32)
         golden_gpu_output = np.zeros(shape_out, dtype=np.float32)
 
@@ -11057,13 +12130,18 @@ class TestFIAV4SplitFuse:
         golden_gpu_lse_output = np.transpose(golden_gpu_lse_output, (1, 0))
         golden_gpu_lse_output = np.expand_dims(golden_gpu_lse_output, axis=2)
 
-        return golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output
-        
+        return (
+            golden_output,
+            golden_gpu_output,
+            golden_lse_output,
+            golden_gpu_lse_output,
+        )
+
 
 def construct_all_inf_rows(Q, K, seed=42):
     """
     构造函数：修改 Q 的部分行为 -inf，并调整 K 以确保 S 对应行为全 -inf。
-    
+
     参数:
         Q: torch.Tensor, 形状 (T, N, D), 类型建议为 float16 或 float32
         K: torch.Tensor, 形状 (T, N, D)
@@ -11084,8 +12162,9 @@ def construct_all_inf_rows(Q, K, seed=42):
     target_rows = torch.randperm(T, generator=gen)[:num_rows].tolist()
     # 注入 -inf
     for row in target_rows:
-        Q_mod[row, :, :] = float('-inf')
+        Q_mod[row, :, :] = float("-inf")
     return Q_mod, K_mod, target_rows
+
 
 def gen_list_from_cumSum(seqlenArray):
     seqlenList = []
@@ -11214,34 +12293,36 @@ def aclnn_op_func_fia_split_fuse_golden(input_data: InputDataset, is_benchmark_t
             fullMask[prevQseqlen : (prevQseqlen + qSeqlen), :kSeqlen] = tri
             prevQseqlen += qSeqlen
 
-    learnable_sink = None 
+    learnable_sink = None
     if input_data.kwargs.get("learnableSinkOptional") is not None:
         sink_torch_dtype = input_data.kwargs["learnableSinkOptional"].dtype
         if sink_torch_dtype == torch.float16:
             learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
             learnable_sink = learnable_sink.astype(np.float32)
         elif sink_torch_dtype == torch.bfloat16:
-            learnable_sink = input_data.kwargs["learnableSinkOptional"].to(torch.float32).numpy()
+            learnable_sink = (
+                input_data.kwargs["learnableSinkOptional"].to(torch.float32).numpy()
+            )
             learnable_sink_bf16 = np.array(learnable_sink, dtype=bfloat16)
-        # 2. 强制第三头的sink值为BF16近似值（关键：和NPU侧完全一致）
+            # 2. 强制第三头的sink值为BF16近似值（关键：和NPU侧完全一致）
             learnable_sink = learnable_sink_bf16.astype(np.float32)
         else:
             learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
     else:
         print("golden, sink为空 \n")
-    
+
     numHeads = input_data.kwargs["numHeads"]
     # if numHeads == 0:
-        # exit(-100)
+    # exit(-100)
     kvHeads = input_data.kwargs["numKeyValueHeads"]
-    headSize = query.shape[2] if inputLayout == 'TND' else 0
+    headSize = query.shape[2] if inputLayout == "TND" else 0
     numBlocks = key.shape[0] if pagedAttentionFlag == True else 0
     blockSize = input_data.kwargs["blockSize"]
     maskType = maskTypeMap[input_data.kwargs["sparseMode"]]
     sparseMode = input_data.kwargs["sparseMode"]
     dtype = dtypeMap[input_data_dtype]
     kvOrgMode = 1 if pagedAttentionFlag == True else 0
-    layoutMode = 1 if inputLayout == 'TND' else 0
+    layoutMode = 1 if inputLayout == "TND" else 0
     goldenGpuPrecision = input_data.kwargs["innerPrecise"]
     softmaxLseFlag = input_data.kwargs["softmaxLseFlag"]
     scale = float(input_data.kwargs["scaleValue"])
@@ -11255,19 +12336,51 @@ def aclnn_op_func_fia_split_fuse_golden(input_data: InputDataset, is_benchmark_t
             kvStorageMode = "bnbd"
     # print(key.shape)
     testObj = TestFIAV4SplitFuse()
-    auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode, kvStorageMode)
-    attentionInputs = testObj.AttentionInputs(query, key, value, blockTable, qSeqlenList, kvSeqlenList, fullMask, learnable_sink, auxAttrs)
-    golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = testObj.calc_data(attentionInputs, is_benchmark_task)
-    if inputLayout == 'TND' and totalQTokens < query.shape[0]:
+    auxAttrs = testObj.AuxAttrs(
+        preTokens,
+        nextTokens,
+        numHeads,
+        kvHeads,
+        headSize,
+        numBlocks,
+        blockSize,
+        maskType,
+        dtype,
+        kvOrgMode,
+        layoutMode,
+        maxQSeqlen,
+        maxKvSeqlen,
+        goldenGpuPrecision,
+        scale,
+        sparseMode,
+        kvStorageMode,
+    )
+    attentionInputs = testObj.AttentionInputs(
+        query,
+        key,
+        value,
+        blockTable,
+        qSeqlenList,
+        kvSeqlenList,
+        fullMask,
+        learnable_sink,
+        auxAttrs,
+    )
+    golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = (
+        testObj.calc_data(attentionInputs, is_benchmark_task)
+    )
+    if inputLayout == "TND" and totalQTokens < query.shape[0]:
         golden_output[totalQTokens:, :, :] = 0
         golden_gpu_output[totalQTokens:, :, :] = 0
     if golden_output.dtype == "bfloat16":
-        print("=================================走入bf16分支",golden_output.dtype)
+        print("=================================走入bf16分支", golden_output.dtype)
         golden_output = torch.from_numpy(golden_output.astype(np.float32))
         print(f"golden_output_dtype:{golden_output.dtype} \n")
         golden_gpu_output = torch.from_numpy(golden_gpu_output.astype(np.float32))
         golden_lse_output = torch.from_numpy(golden_lse_output.astype(np.float32))
-        golden_gpu_lse_output = torch.from_numpy(golden_gpu_lse_output.astype(np.float32))
+        golden_gpu_lse_output = torch.from_numpy(
+            golden_gpu_lse_output.astype(np.float32)
+        )
     else:
         golden_output = torch.from_numpy(golden_output)
         golden_gpu_output = torch.from_numpy(golden_gpu_output)
@@ -11284,6 +12397,7 @@ def aclnn_op_func_fia_split_fuse_golden(input_data: InputDataset, is_benchmark_t
         # 真值返回下面的
         return golden_output, golden_lse_output
 
+
 # ATK 处理逻辑
 arr_tuple_none = -9223372036854775808
 dtype_map = {
@@ -11296,8 +12410,9 @@ dtype_map = {
     torch.int64: "int32",
     torch.uint8: "uin8",
     torch.int4: "int4",
-    torch.float64: "fp64"
+    torch.float64: "fp64",
 }
+
 
 def overwrite_structured_mask(input_data):
     """
@@ -11305,15 +12420,15 @@ def overwrite_structured_mask(input_data):
     Mode 2/3: 下三角保留 (Causal)，上三角遮蔽。
     Mode 4:   Band 结构。
     """
-    mode = input_data.kwargs.get('sparseMode', 0)
-    mask_tensor = input_data.kwargs.get('attenMaskOptional', None)
+    mode = input_data.kwargs.get("sparseMode", 0)
+    mask_tensor = input_data.kwargs.get("attenMaskOptional", None)
 
     query = input_data.kwargs["query"].cpu().to(dtype=torch.float32).numpy()
     inputLaout = input_data.kwargs["inputLayout"]
     pfaFlag = False
     if inputLaout == "BNSD":
         pfaFlag = query.shape[2] > 1
-    if inputLaout in ['BSH', 'BSND']:
+    if inputLaout in ["BSH", "BSND"]:
         pfaFlag = query.shape[1] > 1
 
     # 如果没有 mask 或者 mode 是 0/1 (Default/All)，通常保持随机或全零即可，不做强制修改
@@ -11326,32 +12441,32 @@ def overwrite_structured_mask(input_data):
     # 获取最后两个维度
     S = shape[-2]
     KVS = shape[-1]
-    
+
     # 构造标准的结构化 Mask (numpy)
     # PFA 定义: 1 代表遮蔽(Masked), 0 代表保留(Keep)
     new_mask = np.zeros((S, KVS), dtype=np.int8)
-    
-    if mode == 2 or mode == 3: 
+
+    if mode == 2 or mode == 3:
         # Mode 2 (LeftUpCausal) / Mode 3 (RightDownCausal)
         # 构造上三角 Mask (k=1 表示对角线往上一格开始全是 1)
         new_mask = np.triu(np.ones((S, KVS), dtype=np.int8), k=1)
-        
+
     elif mode == 4:
         # Mode 4 (Band)
         # 需要读取 preTokens 和 nextTokens
-        pre_t = input_data.kwargs.get('preTokens', 2147483647)
-        next_t = input_data.kwargs.get('nextTokens', 2147483647)
-        
+        pre_t = input_data.kwargs.get("preTokens", 2147483647)
+        next_t = input_data.kwargs.get("nextTokens", 2147483647)
+
         # 如果是 Tensor/List 取第一个值简化处理 (因为 Mode 4 Mask 是固定的 2048x2048)
-        if hasattr(pre_t, 'item'):
+        if hasattr(pre_t, "item"):
             pre_t = pre_t.item()
         if isinstance(pre_t, (list, tuple)):
             pre_t = pre_t[0]
-        if hasattr(next_t, 'item'):
+        if hasattr(next_t, "item"):
             next_t = next_t.item()
         if isinstance(next_t, (list, tuple)):
             next_t = next_t[0]
-        
+
         # 利用广播机制生成 Band
         rows = np.arange(S)[:, None]
         cols = np.arange(KVS)[None, :]
@@ -11360,28 +12475,32 @@ def overwrite_structured_mask(input_data):
         new_mask[mask_condition] = 1
 
     # --- 将构造好的 2D Mask 广播回原始 Shape ---
-    
+
     # 1. 转回 Tensor
     # 保持和原 Mask 相同的 dtype (通常是 bool 或 int8)
     orig_dtype = mask_tensor.dtype
     new_mask_tensor = torch.from_numpy(new_mask).to(orig_dtype)
-    
+
     # 2. 恢复维度 (Broadcast)
     # 如果原 Mask 是 [B, 1, 2048, 2048]，需要把 2D 扩展回去
     if len(shape) == 4:
         # [2048, 2048] -> [1, 1, 2048, 2048] -> [B, 1, 2048, 2048]
         new_mask_tensor = new_mask_tensor.unsqueeze(0).unsqueeze(0)
-        new_mask_tensor = new_mask_tensor.expand(shape[0], shape[1], -1, -1).contiguous()
+        new_mask_tensor = new_mask_tensor.expand(
+            shape[0], shape[1], -1, -1
+        ).contiguous()
     elif len(shape) == 3:
         new_mask_tensor = new_mask_tensor.unsqueeze(0)
         new_mask_tensor = new_mask_tensor.expand(shape[0], -1, -1).contiguous()
     # 3. 覆盖回 input_data
-    input_data.kwargs['attenMaskOptional'] = new_mask_tensor
+    input_data.kwargs["attenMaskOptional"] = new_mask_tensor
     return input_data
+
 
 def get_split_fuse_flag(input_data):
     layout = input_data.kwargs["inputLayout"]
     return layout == "TND"
+
 
 def load_kv_cache(input_data: InputDataset):
     key_shape = list(input_data.kwargs["key"][0].shape)
@@ -11989,42 +13108,50 @@ def aclnn_op_func_fia_cpu(
         output = output.to(dtype=torch.int8)
     else:
         output = output.to(dtype=input_data.kwargs["query"].dtype)
-    
+
     if input_data.kwargs["softmaxLseFlag"]:
         return output, output_lse
     else:
         return output
 
+
 @register("executor_fused_infer_attention_score_v4")
 class fusedInferAttentionScoreApi(BaseApi):
     def __init__(self, task_result: TaskResult):
         super(fusedInferAttentionScoreApi, self).__init__(task_result)
-    
+
     def init_by_input_data(self, input_data: InputDataset):
         # 将cache生成逻辑数据直接存放input_data里
         input_data = overwrite_structured_mask(input_data)
         self.split_fuse_flag = get_split_fuse_flag(input_data)
-        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] != None: 
-            init_kv_cache(input_data, is_benchmark_task = True, is_preprocess=True)
+        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] != None:
+            init_kv_cache(input_data, is_benchmark_task=True, is_preprocess=True)
         if self.split_fuse_flag:
             fill_useless_out(input_data)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        if self.split_fuse_flag :
-            output, output_lse = aclnn_op_func_fia_split_fuse_golden(input_data, self.task_result.is_benchmark_task)
+        if self.split_fuse_flag:
+            output, output_lse = aclnn_op_func_fia_split_fuse_golden(
+                input_data, self.task_result.is_benchmark_task
+            )
             if input_data.kwargs["softmaxLseFlag"] == True:
                 return output, output_lse
             else:
                 return output
         else:
-            is_benchmark_task = True # 单标杆
+            is_benchmark_task = True  # 单标杆
             # is_benchmark_task = self.task_result.is_benchmark_task # 双标杆
             if input_data.kwargs["softmaxLseFlag"]:
-                output, output_lse = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                output, output_lse = aclnn_op_func_fia_cpu(
+                    input_data, is_benchmark_task, is_preprocess=False
+                )
                 return output, output_lse
             else:
-                output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                output = aclnn_op_func_fia_cpu(
+                    input_data, is_benchmark_task, is_preprocess=False
+                )
                 return output
+
 
 @register("executor_aclnn_fused_infer_attention_score_v4")
 class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
@@ -12055,23 +13182,40 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
             if input_data.kwargs["attenMaskOptional"] != None:
                 mask_dim_num = len(input_data.kwargs["attenMaskOptional"].shape)
                 mask_dtype = input_data.kwargs["attenMaskOptional"].dtype
-                input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(mask_dim_num, mask_dtype).npu()
+                input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(
+                    mask_dim_num, mask_dtype
+                ).npu()
 
         input_args = []  # 算子的入参列表
-        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] is not None: 
+        if (
+            not self.split_fuse_flag
+            and input_data.kwargs["blockTableOptional"] is not None
+        ):
             load_kv_cache(input_data)
-        
+
         # 处理actual输入None
         input_args, output_packages = super().init_by_input_data(input_data)
-        
-        AclIntArrayPtr=ctypes.POINTER(AclIntArray)
-        if input_data.kwargs["actualSeqLengthsOptional"] is None or input_data.kwargs["actualSeqLengthsOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsOptional"][0] < 0:
+
+        AclIntArrayPtr = ctypes.POINTER(AclIntArray)
+        if (
+            input_data.kwargs["actualSeqLengthsOptional"] is None
+            or input_data.kwargs["actualSeqLengthsOptional"][0] == arr_tuple_none
+            or input_data.kwargs["actualSeqLengthsOptional"][0] < 0
+        ):
             input_args[5] = ctypes.cast(None, AclIntArrayPtr)
 
-        if input_data.kwargs["actualSeqLengthsKvOptional"] is None or input_data.kwargs["actualSeqLengthsKvOptional"][0] == arr_tuple_none or input_data.kwargs["actualSeqLengthsKvOptional"][0] < 0:
+        if (
+            input_data.kwargs["actualSeqLengthsKvOptional"] is None
+            or input_data.kwargs["actualSeqLengthsKvOptional"][0] == arr_tuple_none
+            or input_data.kwargs["actualSeqLengthsKvOptional"][0] < 0
+        ):
             input_args[6] = ctypes.cast(None, AclIntArrayPtr)
 
-        if input_data.kwargs["actualSharedPrefixLenOptional"] is None or input_data.kwargs["actualSharedPrefixLenOptional"][0] == arr_tuple_none or input_data.kwargs["actualSharedPrefixLenOptional"][0] < 0:
+        if (
+            input_data.kwargs["actualSharedPrefixLenOptional"] is None
+            or input_data.kwargs["actualSharedPrefixLenOptional"][0] == arr_tuple_none
+            or input_data.kwargs["actualSharedPrefixLenOptional"][0] < 0
+        ):
             input_args[23] = ctypes.cast(None, AclIntArrayPtr)
 
         output_packages = []  # 算子的出参数据包列表
@@ -12082,13 +13226,20 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
             output_packages.append(input_args[-1])
         else:
             output_packages.append(input_args[-2])
-        
-         # 将所有type是tensor values是None的输入 改为AclTensor类型的空指针
+
+        # 将所有type是tensor values是None的输入 改为AclTensor类型的空指针
         for i, (name, kwarg) in enumerate(input_data.kwargs.items()):
-            if kwarg is None and self.task_result.case_config.inputs[i].type == "tensor":
+            if (
+                kwarg is None
+                and self.task_result.case_config.inputs[i].type == "tensor"
+            ):
                 from atk.tasks.backends.lib_interface.acl_wrapper import TensorPtr
+
                 input_args[i] = TensorPtr()
-            elif name == "actualSeqLengthsOptional" and self.task_result.case_config.inputs[i][0].dtype == "bool":
+            elif (
+                name == "actualSeqLengthsOptional"
+                and self.task_result.case_config.inputs[i][0].dtype == "bool"
+            ):
                 input_args[i] = pointer(AclIntArray)()
         return input_args, output_packages
 

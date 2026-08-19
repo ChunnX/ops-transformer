@@ -2307,9 +2307,12 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     }
 
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"),
+                return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Attributes returned from GetAttrs() is a nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Attributes returned from GetAttrs() is a nullptr"),
+                return ge::GRAPH_FAILED);
     const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     // 获取关键轴信息
     int64_t b = 0;
@@ -2329,13 +2332,15 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     }
     // 校验intput
     OP_CHECK_IF(CheckInputLayout(context, inputLayoutStr, queryS, queryD, isPageAttention) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check InputLayout failed"), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check InputLayout failed"),
+                return ge::GRAPH_FAILED);
     // 校验OutShape
     string outputLayoutStr = GetOutputLayoutStr(inputLayoutStr);
     auto outShape = context->GetOutputShape(ATTENTION_OUT_INDEX)->GetStorageShape();
     gert::Shape qkvShapeInfo{b, queryN, queryS, queryT, valueD};
     OP_CHECK_IF(CheckOutShape(context, outputLayoutStr, outShape, qkvShapeInfo) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"),
+                return ge::GRAPH_FAILED);
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
