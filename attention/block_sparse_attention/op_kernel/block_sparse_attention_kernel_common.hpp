@@ -11,6 +11,10 @@
 #ifndef BLOCK_SPARSE_ATTENTION_KERNEL_COMMON_HPP
 #define BLOCK_SPARSE_ATTENTION_KERNEL_COMMON_HPP
 
+#ifndef BSA_ENABLE_V_DOUBLE_BUFFER
+#define BSA_ENABLE_V_DOUBLE_BUFFER 1
+#endif
+
 #include "attn_infra/bsa_base_defs.hpp"
 #include "attn_infra/arch/bsa_arch.hpp"
 #include "attn_infra/layout/bsa_layout.hpp"
@@ -82,6 +86,9 @@ namespace BsaKernelCommon {
 
     constexpr uint32_t Q_TILE_CEIL = 128;
     constexpr uint32_t MAX_KV_STACK_LEN = 512; //可配置1024或512
+#if BSA_ENABLE_V_DOUBLE_BUFFER
+    constexpr uint32_t PV_K_TILE = 256; // A2 PV 流式双缓冲 K 分块，可配置 128 或 256
+#endif
 
     template <typename T>
     __aicore__ inline T AlignUp(T a, T b)

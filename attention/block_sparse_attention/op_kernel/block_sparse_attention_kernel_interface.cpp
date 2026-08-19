@@ -78,7 +78,11 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
                                             QType, KType, SType>;
 
+#if BSA_ENABLE_V_DOUBLE_BUFFER
+    using L1TileShapePV = GemmShape<128, 128, PV_K_TILE>;
+#else
     using L1TileShapePV = GemmShape<128, 128, 256>;
+#endif
     using L0TileShapePV = GemmShape<128, 128, 128>;
     using DispatchPolicyPV = Gemm::MmadAtlasA2SFAIPV<false, false>;
     using PType = Gemm::GemmType<ElementP, LayoutP>;

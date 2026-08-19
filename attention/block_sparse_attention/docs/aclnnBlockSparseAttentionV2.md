@@ -629,6 +629,51 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   - blockShapeOptional必须传入。
   - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
 
+<!-- npu="910b" id9 -->
+## A2 V双buffer优化
+
+Atlas A2的PV阶段支持V双buffer优化。该优化将一个stack内的V按K方向分块，并在两个L1B buffer之间轮转：
+
+- K分块大小由`PV_K_TILE`控制，默认值为256，当前支持配置为128或256。
+- 首个V tile可在Vector Core生成P期间预取；计算当前tile时，后续V tile和P tile依次提交到MTE2。
+- P使用event 0和event 1同步L1A buffer，V使用event 4和event 5同步L1B buffer。
+- 每个buffer在MTE2写入前等待MTE1释放，搬运完成后再通知MTE1读取，避免buffer被提前覆盖。
+
+该优化只影响Atlas A2的PV内核，不改变算子接口、tiling key、workspace、QK阶段和Softmax阶段。
+
+### 编译开关
+
+编译宏`BSA_ENABLE_V_DOUBLE_BUFFER`在
+`op_kernel/block_sparse_attention_kernel_common.hpp`中显式定义，默认值为1：
+
+```cpp
+#ifndef BSA_ENABLE_V_DOUBLE_BUFFER
+#define BSA_ENABLE_V_DOUBLE_BUFFER 1
+#endif
+```
+
+| 宏值 | 编译路径 |
+| --- | --- |
+| `1` | 使用V双buffer和K方向分块流水。 |
+| `0` | 使用原始单L1B buffer，先将当前stack的完整V搬入L1，再执行PV计算。 |
+
+保持默认值1即可开启优化；如需关闭优化，将`#define BSA_ENABLE_V_DOUBLE_BUFFER`的值改为0。
+切换宏值后需要重新编译：
+
+```bash
+bash build.sh --opkernel --soc=ascend910b --ops=block_sparse_attention
+```
+
+这是编译期开关，同一个kernel二进制中只包含一条路径。当前`build.sh`的`--bisheng_flags`仅支持预设调试选项，
+不能用于传入任意`-D`宏。进行A/B测试时，应使用独立输出目录或在切换宏值前清理旧构建产物。
+
+以BF16/FP16、headDim为128、`MAX_KV_STACK_LEN=512`、`PV_K_TILE=256`为例，原始路径和双buffer路径
+均使用128 KiB的P L1A空间和128 KiB的V L1B空间，因此总L1占用保持不变。
+
+建议分别使用宏值0和1编译，并以相同输入比较完整输出。至少覆盖K长度128、256、384和512，
+以及full mask、非连续稀疏块和最后一个KV block非完整等场景；正确性验证后再比较kernel耗时和MTE2/Cube流水。
+<!-- end id9 -->
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
