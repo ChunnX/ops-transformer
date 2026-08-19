@@ -413,19 +413,10 @@ public:
         }
     }
 
-    __aicore__ inline void runMainLoop(
-        uint32_t coreIdx,
-        uint32_t BIdx,
-        uint32_t qNBlockIdx,
-        uint32_t qSBlockIdx,
-        bool isSplitKV,
-        int32_t stS2IdxNow,
-        int32_t enS2IdxNow,
-        uint64_t gmOffsetLseFD,
-        uint64_t gmOffsetOFD,
-        GlobalTensorBundle &globalTensors,
-        int64_t pseQ,
-        int64_t pseKv)
+    __aicore__ inline void runMainLoop(uint32_t coreIdx, uint32_t BIdx, uint32_t qNBlockIdx, uint32_t qSBlockIdx,
+                                       bool isSplitKV, int32_t stS2IdxNow, int32_t enS2IdxNow, uint64_t gmOffsetLseFD,
+                                       uint64_t gmOffsetOFD, GlobalTensorBundle &globalTensors, int64_t pseQ,
+                                       int64_t pseKv)
     {
         auto &gQ = globalTensors.gQ;
         auto &gK = globalTensors.gK;
@@ -485,14 +476,12 @@ public:
         uint32_t qNStartIdx = kvNIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
         uint64_t lseTokenOffset = static_cast<uint64_t>(qSBlockIdx) * curQSBlockTile * qHeads;
 
-        uint64_t gmOffsetQ = qBOffset +
-                             static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideQ +
-                             static_cast<uint64_t>(qNStartIdx * embed);
+        uint64_t gmOffsetQ = qBOffset + static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideQ +
+                         static_cast<uint64_t>(qNStartIdx * embed);
         uint64_t gmOffsetK = kBOffset + static_cast<uint64_t>(kvNIdx * embed);
         uint64_t gmOffsetV = vBOffset + static_cast<uint64_t>(kvNIdx * embedV);
-        uint64_t gmOffsetO = oBOffset +
-                             static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
-                             static_cast<uint64_t>(qNStartIdx * embedV);
+        uint64_t gmOffsetO = oBOffset + static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
+                         static_cast<uint64_t>(qNStartIdx * embedV);
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
             gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
         } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
@@ -504,13 +493,11 @@ public:
         } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
             gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
         }
-        uint64_t gmOffsetLse = lseBOffset +
-                               static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
+        uint64_t gmOffsetLse = lseBOffset + static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
         uint64_t gmOffsetSink = qNStartIdx;
 
-        uint32_t qSBlockSize = (qSBlockIdx == (curQSBlockNum - 1U)) ?
-                                   (qSeqlen - qSBlockIdx * curQSBlockTile) :
-                                   curQSBlockTile;
+        uint32_t qSBlockSize =
+            (qSBlockIdx == (curQSBlockNum - 1U)) ? (qSeqlen - qSBlockIdx * curQSBlockTile) : curQSBlockTile;
         uint32_t qNBlockSize = (qNBlockIdxCurGroup == (qNBlockNumPerGroup - 1U)) ?
                                    (groupSize - qNBlockIdxCurGroup * curQNBlockTile) :
                                    curQNBlockTile;
@@ -536,8 +523,7 @@ public:
                 noSkipKvS = (qSBlockIdx + 1U) * curQSBlockTile + diffS;
                 noSkipKvS = AscendC::Std::min(static_cast<int64_t>(kvSeqlen), noSkipKvS);
             }
-            kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS),
-                                                                  MAX_KV_STACK_LEN);
+            kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
         } else {
             if (maskType != 0U && sparseMode != 4U && maskType != 4U) {
                 int64_t diffS = kvSeqlen - qSeqlen;
@@ -566,17 +552,17 @@ public:
                     leftPointNextToken = kvSeqlen - qSeqlen + nextToken;
                     nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken;
                     nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken;
-                    noSkipKvS = AscendC::Std::min(static_cast<int32_t>(kvSeqlen),
-                                                  NpuArch::Detail::Alignment::RoundUp(nextTokenEndLen,
-                                                                                      static_cast<int32_t>(MAX_KV_STACK_LEN)));
+                    noSkipKvS = AscendC::Std::min(
+                        static_cast<int32_t>(kvSeqlen),
+                        NpuArch::Detail::Alignment::RoundUp(nextTokenEndLen, static_cast<int32_t>(MAX_KV_STACK_LEN)));
                     noSkipKvS = noSkipKvS <= 0 ? kvSeqlen : noSkipKvS;
-                    kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS),
-                                                                          MAX_KV_STACK_LEN);
+                    kvSLoopNumTotal =
+                        NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
                     notNextMask = false;
                 } else {
                     noSkipKvS = kvSeqlen;
-                    kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS),
-                                                                          MAX_KV_STACK_LEN);
+                    kvSLoopNumTotal =
+                        NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
                 }
                 if (preTokenEndLen > static_cast<int32_t>(kvSeqlen) && preToken != SPARSE_MODE_INT_MAX) {
                     delStartRow = kvSeqlen - leftPointPreToken;
@@ -635,7 +621,7 @@ public:
             vRow = pagedBlockSize;
             vCol = blockStackNum * strideV;
             layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
-        }else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+        } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
             vRow = stackSeqTile;
             vCol = embedV;
             layoutVTemp = LayoutV(vRow, vCol);
@@ -653,42 +639,19 @@ public:
                 }
                 isLastStackTile = (kvSIdx + 1) >= kvSLoopNumTotal;
                 uint32_t curStackTileMod = stackSeqCount % (PRE_LAUNCH + 1U);
-                uint64_t gmOffsetS =
-                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
+                uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                     static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                 GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                 LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                 if constexpr (PAGED_CACHE_FLAG) {
-                    blockMmadQK(
-                        gQ[gmOffsetQ],
-                        gK[gmOffsetK],
-                        gS[gmOffsetS],
-                        gBlockTable[blockBOffset],
-                        layoutQTemp,
-                        layoutKTemp,
-                        layOutS,
-                        actualBlockShapeQK,
-                        kvSIdx,
-                        kvSLoopNumTotal,
-                        pagedBlockSize,
-                        strideK,
-                        keyBnStride);
+                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS], gBlockTable[blockBOffset],
+                                layoutQTemp, layoutKTemp, layOutS, actualBlockShapeQK, kvSIdx, kvSLoopNumTotal,
+                                pagedBlockSize, strideK, keyBnStride);
                 } else {
-                    blockMmadQK(
-                        gQ[gmOffsetQ],
-                        gK[gmOffsetK],
-                        gS[gmOffsetS],
-                        gBlockTable,
-                        layoutQTemp,
-                        layoutKTemp,
-                        layOutS,
-                        actualBlockShapeQK,
-                        kvSIdx,
-                        kvSLoopNumTotal,
-                        pagedBlockSize,
-                        strideK,
-                        keyBnStride);
+                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS], gBlockTable, layoutQTemp, layoutKTemp,
+                                layOutS, actualBlockShapeQK, kvSIdx, kvSLoopNumTotal, pagedBlockSize, strideK,
+                                keyBnStride);
                 }
                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
@@ -705,86 +668,32 @@ public:
                     bool doTriUMask = triUp < kvSEndIdx - 1;
                     if (doTriUMask) {
                         if constexpr (IS_FD) {
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                gMask,
-                                layOutP,
-                                layOutS,
-                                layOutMask,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                qkReady,
-                                triUp,
-                                triDown,
-                                kvSStartIdx,
-                                kvSEndIdx,
-                                isLastStackTile,
-                                isSplitKV);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], gMask, layOutP,
+                                                  layOutS, layOutMask, actualBlockShapeQK, (stackSeqCount == 0),
+                                                  qSBlockSize, qNBlockSize, curStackTileMod, qkReady, triUp, triDown,
+                                                  kvSStartIdx, kvSEndIdx, isLastStackTile, isSplitKV);
                         } else {
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                gMask,
-                                layOutP,
-                                layOutS,
-                                layOutMask,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                qkReady,
-                                triUp,
-                                triDown,
-                                kvSStartIdx,
-                                kvSEndIdx,
-                                isLastStackTile,
-                                false);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], gMask, layOutP,
+                                                  layOutS, layOutMask, actualBlockShapeQK, (stackSeqCount == 0),
+                                                  qSBlockSize, qNBlockSize, curStackTileMod, qkReady, triUp, triDown,
+                                                  kvSStartIdx, kvSEndIdx, isLastStackTile, false);
                         }
                     } else {
                         uint32_t noMaskStackSeqNum = (triUp + 1) / MAX_KV_STACK_LEN;
                         Arch::CrossCoreWaitFlag(qkReady);
                         if constexpr (IS_FD) {
                             int32_t localLastNoMaskStackId = (int32_t)(noMaskStackSeqNum - 1) - kvStart;
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                layOutP,
-                                layOutS,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                (stackSeqCount == localLastNoMaskStackId),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                isLastStackTile,
-                                isSplitKV,
-                                false,
-                                startsWithMaskThenNomaskFlag);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], layOutP, layOutS,
+                                                  actualBlockShapeQK, (stackSeqCount == 0),
+                                                  (stackSeqCount == localLastNoMaskStackId), qSBlockSize, qNBlockSize,
+                                                  curStackTileMod, isLastStackTile, isSplitKV, false,
+                                                  startsWithMaskThenNomaskFlag);
                         } else {
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                layOutP,
-                                layOutS,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                (stackSeqCount == noMaskStackSeqNum - 1),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                isLastStackTile,
-                                false,
-                                false,
-                                startsWithMaskThenNomaskFlag);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], layOutP, layOutS,
+                                                  actualBlockShapeQK, (stackSeqCount == 0),
+                                                  (stackSeqCount == noMaskStackSeqNum - 1), qSBlockSize, qNBlockSize,
+                                                  curStackTileMod, isLastStackTile, false, false,
+                                                  startsWithMaskThenNomaskFlag);
                         }
                     }
                 } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
@@ -801,119 +710,49 @@ public:
                         if (doTriUMask) {
                             startsWithMaskTile = true;
                             startsWithMaskThenNomaskFlag = true;
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                gMask,
-                                layOutP,
-                                layOutS,
-                                layOutMask,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                qkReady,
-                                kvSStartIdx,
-                                doTriUPreMask,
-                                doTriUNextMask,
-                                preTokenStartLen,
-                                preTokenEndLen,
-                                nextTokenStartLen,
-                                nextTokenEndLen,
-                                isLastStackTile);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], gMask, layOutP,
+                                                  layOutS, layOutMask, actualBlockShapeQK, (stackSeqCount == 0),
+                                                  qSBlockSize, qNBlockSize, curStackTileMod, qkReady, kvSStartIdx,
+                                                  doTriUPreMask, doTriUNextMask, preTokenStartLen, preTokenEndLen,
+                                                  nextTokenStartLen, nextTokenEndLen, isLastStackTile);
                         } else {
                             bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) ||
                                                          (nextTokenStartLen < 0);
                             uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
-                            uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ?
-                                                                NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
-                                                                NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
-                            uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) /
-                                                         MAX_KV_STACK_LEN;
+                            uint32_t alignedKvSeqlenLimit =
+                                isLastNoMaskStackTile ?
+                                    NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
+                                    NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
+                            uint32_t noMaskStackSeqNum =
+                                (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
                             Arch::CrossCoreWaitFlag(qkReady);
-                            epilogueOnlineSoftmax(
-                                gP[gmOffsetP],
-                                gS[gmOffsetS],
-                                gSink[gmOffsetSink],
-                                layOutP,
-                                layOutS,
-                                actualBlockShapeQK,
-                                (stackSeqCount == 0),
-                                (stackSeqCount == noMaskStackSeqNum - 1),
-                                qSBlockSize,
-                                qNBlockSize,
-                                curStackTileMod,
-                                isLastStackTile,
-                                false,
-                                startsWithMaskTile,
-                                startsWithMaskThenNomaskFlag);
+                            epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], layOutP, layOutS,
+                                                  actualBlockShapeQK, (stackSeqCount == 0),
+                                                  (stackSeqCount == noMaskStackSeqNum - 1), qSBlockSize, qNBlockSize,
+                                                  curStackTileMod, isLastStackTile, false, startsWithMaskTile,
+                                                  startsWithMaskThenNomaskFlag);
                             startsWithMaskTile = false;
                         }
                     }
                 } else if constexpr (MASK_TYPE == FaiKernel::MaskType::FULL_MASK) {
                     uint32_t rowOffer = qSBlockIdx * curQSBlockTile;
                     if constexpr (!IS_FD) {
-                        epilogueOnlineSoftmax(
-                            gP[gmOffsetP],
-                            gS[gmOffsetS],
-                            gSink[gmOffsetSink],
-                            gPseShift,
-                            layOutP,
-                            layOutS,
-                            layOutFullMask,
-                            actualBlockShapeQK,
-                            (stackSeqCount == 0),
-                            qSBlockSize,
-                            qNBlockSize,
-                            curStackTileMod,
-                            qkReady,
-                            rowOffer,
-                            kvSStartIdx,
-                            kvSEndIdx,
-                            qNStartIdx,
-                            BIdx,
-                            qHeads,
-                            pseQ,
-                            pseKv,
-                            isLastStackTile);
+                        epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], gPseShift, layOutP,
+                                              layOutS, layOutFullMask, actualBlockShapeQK, (stackSeqCount == 0),
+                                              qSBlockSize, qNBlockSize, curStackTileMod, qkReady, rowOffer, kvSStartIdx,
+                                              kvSEndIdx, qNStartIdx, BIdx, qHeads, pseQ, pseKv, isLastStackTile);
                     }
                 } else {
                     Arch::CrossCoreWaitFlag(qkReady);
                     if constexpr (IS_FD) {
-                        epilogueOnlineSoftmax(
-                            gP[gmOffsetP],
-                            gS[gmOffsetS],
-                            gSink[gmOffsetSink],
-                            layOutP,
-                            layOutS,
-                            actualBlockShapeQK,
-                            (stackSeqCount == 0),
-                            0,
-                            qSBlockSize,
-                            qNBlockSize,
-                            curStackTileMod,
-                            isLastStackTile,
-                            isSplitKV,
-                            false);
+                        epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], layOutP, layOutS,
+                                              actualBlockShapeQK, (stackSeqCount == 0), 0, qSBlockSize, qNBlockSize,
+                                              curStackTileMod, isLastStackTile, isSplitKV, false);
                     } else {
-                        epilogueOnlineSoftmax(
-                            gP[gmOffsetP],
-                            gS[gmOffsetS],
-                            gSink[gmOffsetSink],
-                            layOutP,
-                            layOutS,
-                            actualBlockShapeQK,
-                            (stackSeqCount == 0),
-                            0,
-                            qSBlockSize,
-                            qNBlockSize,
-                            curStackTileMod,
-                            isLastStackTile,
-                            false,
-                            false,
-                            startsWithMaskThenNomaskFlag);
+                        epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS], gSink[gmOffsetSink], layOutP, layOutS,
+                                              actualBlockShapeQK, (stackSeqCount == 0), 0, qSBlockSize, qNBlockSize,
+                                              curStackTileMod, isLastStackTile, false, false,
+                                              startsWithMaskThenNomaskFlag);
                     }
                 }
                 Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
@@ -927,52 +766,22 @@ public:
                     stackSeqTile = MAX_KV_STACK_LEN;
                 }
                 uint32_t curStackTileMod = (stackSeqCount - PRE_LAUNCH) % (PRE_LAUNCH + 1U);
-                uint64_t gmOffsetOTmp =
-                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
+                uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                        static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                 GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
                 LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
                 LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
-                uint64_t gmOffsetP =
-                    static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
-                    static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
+                uint64_t gmOffsetP = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
+                                     static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                 if constexpr (PAGED_CACHE_FLAG) {
-                    blockMmadPV(
-                        gP[gmOffsetP],
-                        gV[gmOffsetV],
-                        gOTmp[gmOffsetOTmp],
-                        gBlockTable[blockBOffset],
-                        layoutPTemp,
-                        layoutVTemp,
-                        layoutOTmp,
-                        actualBlockShapePV,
-                        nowkvSIdx,
-                        kvSLoopNumTotal,
-                        pagedBlockSize,
-                        noSkipKvS,
-                        strideV,
-                        blockStackNum,
-                        softmaxReady,
-                        valueBnStride);
+                    blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp], gBlockTable[blockBOffset],
+                                layoutPTemp, layoutVTemp, layoutOTmp, actualBlockShapePV, nowkvSIdx, kvSLoopNumTotal,
+                                pagedBlockSize, noSkipKvS, strideV, blockStackNum, softmaxReady, valueBnStride);
                 } else {
-                    blockMmadPV(
-                        gP[gmOffsetP],
-                        gV[gmOffsetV],
-                        gOTmp[gmOffsetOTmp],
-                        gBlockTable,
-                        layoutPTemp,
-                        layoutVTemp,
-                        layoutOTmp,
-                        actualBlockShapePV,
-                        nowkvSIdx,
-                        kvSLoopNumTotal,
-                        pagedBlockSize,
-                        noSkipKvS,
-                        strideV,
-                        blockStackNum,
-                        softmaxReady,
-                        valueBnStride);
+                    blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp], gBlockTable, layoutPTemp,
+                                layoutVTemp, layoutOTmp, actualBlockShapePV, nowkvSIdx, kvSLoopNumTotal, pagedBlockSize,
+                                noSkipKvS, strideV, blockStackNum, softmaxReady, valueBnStride);
                 }
                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
@@ -993,48 +802,15 @@ public:
                     splitParams.layoutgmLse = &layoutgmLse;
                     splitParams.layoutgmLo = &layoutgmLo;
 
-                    epilogueRescaleO(
-                        gO[gmOffsetO],
-                        gOTmp[gmOffsetOTmp],
-                        gOUpdate[gmOffsetUpdate],
-                        gLse[gmOffsetLse],
-                        layoutO,
-                        layoutOTmp,
-                        layoutUpdate,
-                        layoutLse,
-                        actualBlockShapePV,
-                        qSBlockSize,
-                        qNBlockSize,
-                        (stackSeqCount - PRE_LAUNCH == 0),
-                        nowkvSIdx + 1 >= kvEnd,
-                        curStackTileMod,
-                        delStartRow,
-                        delEndRow,
-                        qSeqlen,
-                        qSBlockIdx,
-                        curQNBlockTile,
-                        splitParams);
+                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate], gLse[gmOffsetLse], layoutO,
+                              layoutOTmp, layoutUpdate, layoutLse, actualBlockShapePV, qSBlockSize, qNBlockSize,
+                              (stackSeqCount - PRE_LAUNCH == 0), nowkvSIdx + 1 >= kvEnd, curStackTileMod, delStartRow,
+                              delEndRow, qSeqlen, qSBlockIdx, curQNBlockTile, splitParams);
                 } else {
-                    epilogueRescaleO(
-                        gO[gmOffsetO],
-                        gOTmp[gmOffsetOTmp],
-                        gOUpdate[gmOffsetUpdate],
-                        gLse[gmOffsetLse],
-                        layoutO,
-                        layoutOTmp,
-                        layoutUpdate,
-                        layoutLse,
-                        actualBlockShapePV,
-                        qSBlockSize,
-                        qNBlockSize,
-                        (stackSeqCount - PRE_LAUNCH == 0),
-                        nowkvSIdx + 1 >= kvSLoopNumTotal,
-                        curStackTileMod,
-                        delStartRow,
-                        delEndRow,
-                        qSeqlen,
-                        qSBlockIdx,
-                        curQNBlockTile);
+                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate], gLse[gmOffsetLse],
+                                     layoutO, layoutOTmp, layoutUpdate, layoutLse, actualBlockShapePV, qSBlockSize,
+                                     qNBlockSize, (stackSeqCount - PRE_LAUNCH == 0), nowkvSIdx + 1 >= kvSLoopNumTotal,
+                                     curStackTileMod, delStartRow, delEndRow, qSeqlen, qSBlockIdx, curQNBlockTile);
                 }
 #endif
             }

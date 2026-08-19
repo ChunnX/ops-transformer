@@ -85,14 +85,15 @@ public:
     /// Construct
     __aicore__ inline BlockMmad() {}
 
-    __aicore__ inline void init(Arch::Resource<ArchTag> &resource, uint32_t nDynamic, uint32_t kDynamic, uint32_t l1BufAddrStart = 0)
+    __aicore__ inline void init(Arch::Resource<ArchTag> &resource, uint32_t nDynamic, uint32_t kDynamic,
+                                uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
-        l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart +
-                                                                      L1TileShape::M * kDynamic * sizeof(ElementA) * STAGES);
+        l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1TileShape::M * kDynamic *
+                                                                                           sizeof(ElementA) * STAGES);
         for (uint32_t i = 0; i < STAGES; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart +
-                                                                             L1TileShape::M * kDynamic * sizeof(ElementA) * i);
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(
+                l1BufAddrStart + L1TileShape::M * kDynamic * sizeof(ElementA) * i);
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
@@ -104,8 +105,8 @@ public:
     /// Destructor
     __aicore__ inline ~BlockMmad() {}
 
-    __aicore__ inline void getBlockShape(
-        GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop, uint32_t &kvSeqlen, uint32_t &blockSize)
+    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop,
+                                         uint32_t &kvSeqlen, uint32_t &blockSize)
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1U) {
@@ -129,14 +130,13 @@ public:
         }
     }
 
-    __aicore__ inline void operator()(
-        AscendC::GlobalTensor<ElementA> gA,
-        AscendC::GlobalTensor<ElementB> gB,
-        AscendC::GlobalTensor<ElementC> gC,
-        AscendC::GlobalTensor<int32_t> gBlockTable,
-        LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
-        uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger, uint64_t valueBnStride)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
+                                      AscendC::GlobalTensor<ElementC> gC, AscendC::GlobalTensor<int32_t> gBlockTable,
+                                      LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
+                                      uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen,
+                                      uint32_t strideKV, uint32_t blockStackNum,
+                                      Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger,
+                                      uint64_t valueBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
@@ -209,13 +209,8 @@ public:
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         bool initMmad = (kL1Idx == 0U) && (kL0Idx == 0U);
                         uint32_t mL0AlignUp = (mL1ActualTemp + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
-                        tileMmad(l0CTensor[l0CPingPongFlag],
-                                 l0ATensor[l0ABPingPongFlag],
-                                 l0BTensor[l0ABPingPongFlag],
-                                 mL0AlignUp,
-                                 nL1Actual,
-                                 kL0Actual,
-                                 initMmad);
+                        tileMmad(l0CTensor[l0CPingPongFlag], l0ATensor[l0ABPingPongFlag], l0BTensor[l0ABPingPongFlag],
+                                 mL0AlignUp, nL1Actual, kL0Actual, initMmad);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
                         l0ABPingPongFlag = 1U - l0ABPingPongFlag;

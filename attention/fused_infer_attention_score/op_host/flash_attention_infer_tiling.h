@@ -435,10 +435,11 @@ void FAInferTiling::ConsumeS2BlocksFD(uint32_t groupSize, int64_t &resTaskNum, u
 {
     while (nowS2Idx < getBatchParams(nowBIdx, groupSize).curKSBlockNum && resTaskNum > 0) {
         BatchParams p = getBatchParams(nowBIdx, groupSize);
-        uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile :
-                                                                 (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-        uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile :
-                                                                  (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
+        uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ?
+                                  p.curQSBlockTile :
+                                  (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
+        uint32_t remainingKV =
+            (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
         uint64_t singleS2Task = remainingQ * remainingKV;
         resTaskNum -= singleS2Task;
         nowS2Idx += 1;
@@ -450,8 +451,8 @@ void FAInferTiling::ConsumeRemainingBatchesFD(uint32_t groupSize, int64_t &resTa
 {
     while (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum > 0) {
         BatchParams p = getBatchParams(nowBIdx, groupSize);
-        uint32_t remainingQ = p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) -
-                              nowS1Idx * p.curQSBlockTile;
+        uint32_t remainingQ =
+            p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) - nowS1Idx * p.curQSBlockTile;
         uint32_t remainingKV = p.kvSeqlen;
         uint32_t remainingInBatch = remainingQ * remainingKV;
         if (resTaskNum >= static_cast<int64_t>(remainingInBatch)) {
@@ -487,7 +488,8 @@ void FAInferTiling::ConsumeRemainingS1GroupsFD(int64_t &resTaskNum, const BatchP
                                                uint32_t &nowS2Idx)
 {
     while (nowS1Idx < p.curQSBlockNum && resTaskNum > 0) {
-        uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile :
+        uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ?
+                                  p.curQSBlockTile :
                                   (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
         uint64_t remainingInS1 = remainingQ * p.kvSeqlen;
         if (resTaskNum >= static_cast<int64_t>(remainingInS1)) {
@@ -500,7 +502,8 @@ void FAInferTiling::ConsumeRemainingS1GroupsFD(int64_t &resTaskNum, const BatchP
     }
 }
 
-void FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t perCoreTaskNum)
+void FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize,
+                                               uint64_t perCoreTaskNum)
 {
     uint32_t nowBIdx = 0;
     uint32_t nowN1Idx = 0;

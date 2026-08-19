@@ -27,8 +27,8 @@ namespace NpuArch::Gemm::Block {
 
 template <bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool BNBD_FLAG_, class L1TileShape_, class L0TileShape_,
           class AType_, class BType_, class CType_, class BiasType_, class TileCopy_, class TileMmad_>
-struct BlockMmad<MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>, L1TileShape_, L0TileShape_,
-                 AType_, BType_, CType_, BiasType_, TileCopy_, TileMmad_> {
+struct BlockMmad<MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>, L1TileShape_, L0TileShape_, AType_,
+                 BType_, CType_, BiasType_, TileCopy_, TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BNBD_FLAG_>;
@@ -90,11 +90,11 @@ public:
     {
         maxKVStackLen = setMaxKVStackLen;
         // Allocate L1 memory space
-        l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart +
-                                                                      L1TileShape::M * kDyn * sizeof(ElementA) * STAGES);
+        l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1TileShape::M * kDyn *
+                                                                                           sizeof(ElementA) * STAGES);
         for (uint32_t i = 0; i < STAGES; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart +
-                                                                             L1TileShape::M * kDyn * sizeof(ElementA) * i);
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(
+                l1BufAddrStart + L1TileShape::M * kDyn * sizeof(ElementA) * i);
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
@@ -121,8 +121,9 @@ public:
         kOffset = nIdx * maxKVStackLen * strideKV;
     }
 
-    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t blockStartOffset,
-                                       uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize, uint32_t embed, uint64_t valueBnStride)
+    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset,
+                                       uint32_t blockStartOffset, uint32_t nowNIdx, uint32_t &strideKV,
+                                       uint32_t &blockSize, uint32_t embed, uint64_t valueBnStride)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
         if (valueBnStride != 0) {
@@ -148,10 +149,12 @@ public:
         }
     }
 
-    __aicore__ inline void setBlockParam(uint32_t stackSeqTile, uint32_t &blockStart, uint32_t &blockEnd, uint32_t &curBlockTotalNum, uint32_t blockSize)
+    __aicore__ inline void setBlockParam(uint32_t stackSeqTile, uint32_t &blockStart, uint32_t &blockEnd,
+                                         uint32_t &curBlockTotalNum, uint32_t blockSize)
     {
         if (stackSeqTile >= blockStart && blockSize != 0) {
-            blockEnd = ((stackSeqTile - blockStart) % blockSize == 0) ? blockSize : (stackSeqTile - blockStart) % blockSize;
+            blockEnd =
+                ((stackSeqTile - blockStart) % blockSize == 0) ? blockSize : (stackSeqTile - blockStart) % blockSize;
             curBlockTotalNum = (((stackSeqTile - blockStart) + blockSize - 1) / blockSize) + 1;
         } else {
             blockStart = stackSeqTile;
@@ -170,14 +173,12 @@ public:
         curBlockIdx++;
     }
 
-    __aicore__ inline void operator()(
-        AscendC::GlobalTensor<ElementA> gA,
-        AscendC::GlobalTensor<ElementB> gB,
-        AscendC::GlobalTensor<ElementC> gC,
-        AscendC::GlobalTensor<int32_t> gBlockTable,
-        LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
-        uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint64_t valueBnStride)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
+                                      AscendC::GlobalTensor<ElementC> gC, AscendC::GlobalTensor<int32_t> gBlockTable,
+                                      LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
+                                      uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen,
+                                      uint32_t strideKV, uint32_t blockStackNum,
+                                      Arch::CrossCoreFlag softmaxFlag, uint64_t valueBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
@@ -263,13 +264,8 @@ public:
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         bool initMmad = (kL1Idx == 0U) && (kL0Idx == 0U);
                         uint32_t mL0AlignUp = (mL1Actual + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
-                        tileMmad(l0CTensor[l0CPingPongFlag],
-                                 l0ATensor[l0ABPingPongFlag],
-                                 l0BTensor[l0ABPingPongFlag],
-                                 mL0AlignUp,
-                                 nL1Actual,
-                                 kL0Actual,
-                                 initMmad);
+                        tileMmad(l0CTensor[l0CPingPongFlag], l0ATensor[l0ABPingPongFlag], l0BTensor[l0ABPingPongFlag],
+                                 mL0AlignUp, nL1Actual, kL0Actual, initMmad);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
                         l0ABPingPongFlag = 1U - l0ABPingPongFlag;
