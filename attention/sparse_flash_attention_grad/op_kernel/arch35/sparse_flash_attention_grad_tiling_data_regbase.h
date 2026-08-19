@@ -44,6 +44,7 @@
      int64_t selectedKWorkSpaceOffset;
      int64_t mm4ResWorkSpaceOffset;
      int64_t mm5ResWorkSpaceOffset;
+     int64_t isHeadNLe64;
  
      int64_t get_b() const {return b;}
      int64_t get_n2() const {return n2;}
@@ -64,6 +65,7 @@
      int64_t get_selectedKWorkSpaceOffset() const {return selectedKWorkSpaceOffset;}
      int64_t get_mm4ResWorkSpaceOffset() const {return mm4ResWorkSpaceOffset;}
      int64_t get_mm5ResWorkSpaceOffset() const {return mm5ResWorkSpaceOffset;}
+     int64_t get_isHeadNLe64() const {return isHeadNLe64;}
  
      void set_b(int64_t bParam) { this->b = bParam; }
      void set_n2(int64_t n2Param) { this->n2 = n2Param; }
@@ -84,6 +86,7 @@
      void set_selectedKWorkSpaceOffset(int64_t selectedKWorkSpaceOffsetParam) { this->selectedKWorkSpaceOffset = selectedKWorkSpaceOffsetParam; }
      void set_mm4ResWorkSpaceOffset(int64_t mm4ResWorkSpaceOffsetParam) { this->mm4ResWorkSpaceOffset = mm4ResWorkSpaceOffsetParam; }
      void set_mm5ResWorkSpaceOffset(int64_t mm5ResWorkSpaceOffsetParam) { this->mm5ResWorkSpaceOffset = mm5ResWorkSpaceOffsetParam; }
+     void set_isHeadNLe64(int64_t isHeadNLe64Param) { this->isHeadNLe64 = isHeadNLe64Param; }
  };
  
  class PreParamsRegbase {

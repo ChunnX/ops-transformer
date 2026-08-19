@@ -307,7 +307,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.n2Size = tilingData->baseParams.n2;
     constInfo.selectedBlockCount = tilingData->baseParams.selectedBlockCount;
     constInfo.commonConstInfo.gSize = tilingData->baseParams.g;
-    constInfo.isHeadNLe64 = constInfo.commonConstInfo.gSize <= SFAG_HEAD_N_L1_RESIDENT;
+    constInfo.isHeadNLe64 = tilingData->baseParams.isHeadNLe64 != 0;
     constInfo.commonConstInfo.s1Size = tilingData->baseParams.s1;
     constInfo.commonConstInfo.s2Size = tilingData->baseParams.s2;
     constInfo.commonConstInfo.dSize = IS_ROPE ? tilingData->baseParams.d - ROPE_D_64 : tilingData->baseParams.d;

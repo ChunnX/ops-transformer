@@ -38,7 +38,7 @@ public:
     __aicore__ inline void ProcessUnDeter();
 
 private:
-    __aicore__ inline void ProcessGather(FagRunInfo &runInfo);
+    __aicore__ inline void ProcessGather(FagRunInfo &runInfo, bool preloadNext = false, int32_t curI = 0);
     __aicore__ inline void ProcessMm12(FagRunInfo &runInfo);
     __aicore__ inline void ProcessSoftmax(FagRunInfo &runInfo);
     __aicore__ inline void ProcessMm345(FagRunInfo &runInfo);
@@ -46,6 +46,7 @@ private:
     __aicore__ inline void ProcessPreload(FagRunInfo &runInfo, int64_t taskId);
     __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
     __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId);
+    __aicore__ inline bool AdvanceToNextTask(int32_t curI, int32_t &nextI);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -60,16 +61,51 @@ FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(F
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo,
+                                                                                                 bool preloadNext,
+                                                                                                 int32_t curI)
 {
-    if ASCEND_IS_AIV {
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+    const bool gatherCurrent =
+        !preloadNext || !this->constInfo.isHeadNLe64 || runInfo.commonRunInfo.taskId == 0;
+    // 是否gather当轮KV
+    if (gatherCurrent) {
+        if ASCEND_IS_AIV {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        }
+        this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+        if ASCEND_IS_AIV {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        }
+        this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
     }
-    this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
-    if ASCEND_IS_AIV {
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+    if (!preloadNext || !this->constInfo.isHeadNLe64) {
+        return;
     }
-    this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
+
+    const int64_t saveT1 = this->t1Index;
+    const int64_t saveN2 = this->n2Index;
+    const int64_t saveBlk = this->blkCntOffset;
+    const int64_t saveB = this->bIndex;
+    const int64_t saveSel = this->actualSelectedBlockCount;
+    const int64_t saveCurS1 = this->curS1;
+    const int64_t saveCurS2 = this->curS2;
+    const int64_t saveS1Index = this->s1Index;
+    const int64_t saveLastT1 = this->lastT1Index;
+    int32_t nextI = curI;
+    if (AdvanceToNextTask(curI, nextI)) {
+        FagRunInfo nextInfo;
+        this->SetRunInfo(nextInfo, runInfo.commonRunInfo.taskId + 1, nextI);
+        ProcessGather(nextInfo);
+    }
+    this->t1Index = saveT1;
+    this->n2Index = saveN2;
+    this->blkCntOffset = saveBlk;
+    this->bIndex = saveB;
+    this->actualSelectedBlockCount = saveSel;
+    this->curS1 = saveCurS1;
+    this->curS2 = saveCurS2;
+    this->s1Index = saveS1Index;
+    this->lastT1Index = saveLastT1;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -91,6 +127,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        // N<=64 undeter: KV already in L1 after mm12 CopyKV, free GM ping-pong here (not after mm3).
+        if (!IS_DETER && this->constInfo.isHeadNLe64) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        }
     }
     runInfo.taskStep = TASK_C1C2;
 }
@@ -143,8 +184,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
         this->dqWorkSpaceGm, this->selectedKWorkSpaceGm, this->dSL1Buf, this->constInfo, runInfo);
     if ASCEND_IS_AIC {
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        // N<=64 undeter 优化后将这部分提前到了mm12后面
+        if (IS_DETER || !this->constInfo.isHeadNLe64) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        }
         if constexpr (!IS_DETER) {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -216,6 +260,40 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     ProcessSoftmax(runInfo);
     ProcessMm345(runInfo);
     ProcessScatter(runInfo);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::AdvanceToNextTask(int32_t curI,
+                                                                                                     int32_t &nextI)
+{
+    nextI = curI;
+    this->blkCntOffset += this->constInfo.selectedCountOffset;
+    if (this->blkCntOffset < this->actualSelectedBlockCount) {
+        return true;
+    }
+    const int64_t n2Max = this->tilingData->baseParams.n2;
+    for (int64_t n2 = this->n2Index + 1; n2 < n2Max; ++n2) {
+        this->n2Index = n2;
+        this->blkCntOffset = 0;
+        this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
+        if (this->actualSelectedBlockCount > 0) {
+            return true;
+        }
+    }
+    for (int32_t ii = curI + 1; ii < this->processBS1ByCore; ++ii) {
+        nextI = ii;
+        this->t1Index = this->cBlockIdx + this->usedCoreNum * ii;
+        this->GetTndSeqLen(this->t1Index, this->bIndex);
+        for (int64_t n2 = 0; n2 < n2Max; ++n2) {
+            this->n2Index = n2;
+            this->blkCntOffset = 0;
+            this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
+            if (this->actualSelectedBlockCount > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -347,15 +425,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 FagRunInfo &cur = runInfos[taskId % 3];
                 this->SetRunInfo(cur, taskId, i);
                 if (taskId == 0) {
-                    ProcessGather(cur);
+                    ProcessGather(cur, true, i);
                     ProcessMm12(cur);
                 } else if (taskId == 1) {
-                    ProcessGather(cur);
+                    ProcessGather(cur, true, i);
                     ProcessMm12(cur);
                     ProcessSoftmax(runInfos[0]);
                 } else {
                     ProcessMm345(runInfos[(taskId - 2) % 3]);
-                    ProcessGather(cur);
+                    ProcessGather(cur, true, i);
                     ProcessMm12(cur);
                     ProcessSoftmax(runInfos[(taskId - 1) % 3]);
                     ProcessScatter(runInfos[(taskId - 2) % 3]);
