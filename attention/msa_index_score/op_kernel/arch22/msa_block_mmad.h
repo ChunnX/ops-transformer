@@ -34,7 +34,8 @@
 
 namespace MsaIndexScoreNs {
 
-template <class AType_, class BType_, class CType_, uint32_t STAGES_IN = 3, bool USE_UNIT_FLAG_ = false>
+template <class AType_, class BType_, class CType_, uint32_t STAGES_IN = MSA_L1B_STAGES_FP16,
+          bool USE_UNIT_FLAG_ = false>
 class MsaBlockMmad {
 public:
     using ArchTag = Catlass::Arch::AtlasA2;

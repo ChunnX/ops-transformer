@@ -68,6 +68,18 @@ constexpr uint32_t MSA_REDUCE_ROWS = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE;
 // 向量单元一个 repeat 处理的 fp32 数 / 一个 32B datablock 的 fp32 数。
 constexpr uint32_t MSA_FP32_PER_REPEAT = 64;
 constexpr uint32_t MSA_FP32_PER_BLOCK = 8;
+// 向量 DataCopy 的 32B datablock。
+constexpr uint32_t MSA_DATABLOCK_BYTES = 32;
+// AscendC Duplicate 比较掩码字数（2×uint64）。
+constexpr uint32_t MSA_VEC_MASK_WORDS = 2;
+// MIX 核比：1 AIC : 2 AIV。
+constexpr uint32_t MSA_AIV_PER_AIC = 2;
+// UB 手工布局 512B 对齐。
+constexpr uint32_t MSA_UB_ALIGN_BYTES = 512;
+
+// BlockMmad L1B pingpong 级数：int8 用 scratch 时序保守取 2；非量化取 3。
+constexpr uint32_t MSA_L1B_STAGES_INT8 = 2;
+constexpr uint32_t MSA_L1B_STAGES_FP16 = 3;
 
 // score 输出末维的对齐粒度。
 constexpr uint32_t MSA_SCORE_STRIDE_ALIGN = 16;

@@ -30,6 +30,8 @@ constexpr uint32_t MSA_ACTUAL_SEQ_KLEN_INDEX = 6;
 constexpr uint32_t MSA_QUERY_DIM_NUM = 3;
 constexpr uint32_t MSA_KEY_TND_DIM_NUM = 3;
 constexpr uint32_t MSA_BLOCK_TABLE_DIM_NUM = 2;
+constexpr uint32_t MSA_SCORE_DIM_BLOCK = 2;
+constexpr int64_t MSA_KLEN_PREFIX_MIN = 2; // actual_seq_klen 为 [B+1]
 constexpr uint32_t MSA_ATTR_LAYOUT_KEY = 0;
 constexpr int64_t MSA_SCORE_STRIDE_ALIGN = 16;
 constexpr int64_t MSA_BLOCK_SIZE = 128;
@@ -78,7 +80,8 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
         const gert::Shape *klenShape = context->GetOptionalInputShape(MSA_ACTUAL_SEQ_KLEN_INDEX);
         const gert::Tensor *klenTensor = context->GetOptionalInputTensor(MSA_ACTUAL_SEQ_KLEN_INDEX);
         const int32_t *klenData = (klenTensor != nullptr) ? klenTensor->GetData<int32_t>() : nullptr;
-        if (klenData != nullptr && klenShape != nullptr && klenShape->GetDimNum() == 1 && klenShape->GetDim(0) >= 2) {
+        if (klenData != nullptr && klenShape != nullptr && klenShape->GetDimNum() == 1 &&
+            klenShape->GetDim(0) >= MSA_KLEN_PREFIX_MIN) {
             const int64_t prefixN = klenShape->GetDim(0);
             for (int64_t i = 0; i + 1 < prefixN; ++i) {
                 const int64_t kv = static_cast<int64_t>(klenData[i + 1]) - static_cast<int64_t>(klenData[i]);
@@ -97,9 +100,9 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
     // maxpool 已经把一个 block 内的 blockSize 个 token 归约成 1 个分数，
     // 因此输出末维是 block 数（16 对齐）而不是 kv token 数。
     scoreShape->SetDimNum(MSA_QUERY_DIM_NUM);
-    scoreShape->SetDim(0, numQHeads);                                    // 0: numQHeads
-    scoreShape->SetDim(1, totalQ);                                       // 1: totalQ
-    scoreShape->SetDim(2, RoundUpTo(maxBlocks, MSA_SCORE_STRIDE_ALIGN)); // 2: scoreBlockStride
+    scoreShape->SetDim(0, numQHeads); // 0: numQHeads
+    scoreShape->SetDim(1, totalQ);    // 1: totalQ
+    scoreShape->SetDim(MSA_SCORE_DIM_BLOCK, RoundUpTo(maxBlocks, MSA_SCORE_STRIDE_ALIGN));
 
     OP_LOGI(context->GetNodeName(), "MsaIndexScore InferShape end.");
     return ge::GRAPH_SUCCESS;

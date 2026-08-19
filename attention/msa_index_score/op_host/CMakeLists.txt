@@ -24,15 +24,12 @@ if(NOT EXISTS "${MSA_CATLASS_INCLUDE_DIR}/catlass/catlass.hpp")
         "MsaIndexScore requires vendored Catlass headers under op_kernel/catlass.")
 endif()
 
-# MSA_INDEX_SCORE_DEBUG=1 打开 device 侧 printf/DumpTensor。
-# 大 shape 对齐测试必须关闭：DumpTensor/printf 会导致 device 子进程超时（E39007）。
 add_ops_compile_options(
     OP_NAME MsaIndexScore
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -fpermissive
     OPTIONS -I${MSA_CATLASS_INCLUDE_DIR}
-    OPTIONS -DMSA_INDEX_SCORE_DEBUG=0
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)

@@ -34,7 +34,6 @@
 #include "catlass/gemm/gemm_type.hpp"
 
 #include "../msa_index_score_common.h"
-#include "../msa_index_score_debug.h"
 #include "msa_block_mmad.h"
 #include "msa_index_score_task.h"
 #include "msa_index_score_epilogue.h"
@@ -60,7 +59,8 @@ public:
 
     // int8 的 K 源是每 stile 复用的 per-core scratch，保持 2 级 L1B 流水（3 级实测竞态崩溃）；
     // 同样出于该 scratch 的时序保守性，unit flag 只在非量化路径开启。
-    using BlockMmad = MsaBlockMmad<QType, KType, SType, IS_QUANT ? 2U : 3U, !IS_QUANT>;
+    using BlockMmad =
+        MsaBlockMmad<QType, KType, SType, IS_QUANT ? MSA_L1B_STAGES_INT8 : MSA_L1B_STAGES_FP16, !IS_QUANT>;
 
     static constexpr uint32_t REVERSE_DEPTH = MSA_WORKSPACE_STAGES - 1;
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -128,24 +128,10 @@ private:
         const uint64_t coreKScratch = static_cast<uint64_t>(coreIdx) * MSA_K_SCRATCH_ELEM_NUM;
         const uint32_t totalTasks = scheduler_.TotalTasks();
 
-#if MSA_INDEX_SCORE_DEBUG
-        if (MsaDebugPrimaryCore()) {
-            AscendC::printf("[MSA_DBG][AIC] tiling batch=%u totalQ=%u Hq=%u D=%u isQuant=%u numPages=%u "
-                            "totalTasks=%u\n",
-                            tiling_->batch, tiling_->totalQ, tiling_->numQHeads, tiling_->headDim, tiling_->isQuant,
-                            tiling_->numPages, totalTasks);
-        }
-#endif
-
         uint32_t tileSeq = 0;
         MsaTask task;
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTasks; taskIdx += coreNum) {
             scheduler_.Decode(taskIdx, task);
-#if MSA_INDEX_SCORE_DEBUG
-            const bool dbgTask = MsaDebugPrimaryCore() && (taskIdx == coreIdx);
-#else
-            constexpr bool dbgTask = false;
-#endif
             // 只对可见 S-tile 做 QKᵀ + 握手；因果不可见尾由 AIV 直接写 -inf，避免空转同步。
             bool needLoadQ = true;
             for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
@@ -157,8 +143,7 @@ private:
                 }
                 const uint64_t sBase =
                     coreWsBase + static_cast<uint64_t>(tileSeq % MSA_WORKSPACE_STAGES) * MSA_STILE_ELEM_NUM;
-                ComputeSTile(blockMmad, task, st * MSA_BLOCKS_PER_STILE, sBase, coreKScratch, needLoadQ,
-                             dbgTask && (st == 0));
+                ComputeSTile(blockMmad, task, st * MSA_BLOCKS_PER_STILE, sBase, coreKScratch, needLoadQ);
                 needLoadQ = false;
                 Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagSReady);
                 ++tileSeq;
@@ -227,7 +212,7 @@ private:
             return;
         }
         const uint32_t bytes = nElem * static_cast<uint32_t>(sizeof(T));
-        if ((bytes % 32U) == 0U) {
+        if ((bytes % MSA_DATABLOCK_BYTES) == 0U) {
             AscendC::DataCopy(ub, gm, nElem);
             return;
         }
@@ -322,7 +307,7 @@ private:
     }
 
     __aicore__ inline void ComputeSTile(BlockMmad &blockMmad, const MsaTask &task, uint32_t blkBase, uint64_t sBase,
-                                        uint64_t kScratchBase, bool needLoadL1, bool dumpDebug)
+                                        uint64_t kScratchBase, bool needLoadL1)
     {
         const uint32_t mActual = task.mActual;
         const uint32_t headDim = tiling_->headDim;
@@ -333,15 +318,6 @@ private:
         const Catlass::GemmCoord shape{mActual, MSA_BLOCK_SIZE, headDim};
         const uint64_t qOffset = static_cast<uint64_t>(task.globalRowBase) * tiling_->strideQn;
         const uint32_t pageStride = MSA_BLOCK_SIZE * MSA_K_TILE;
-
-#if MSA_INDEX_SCORE_DEBUG
-        if (dumpDebug) {
-            const uint32_t qDumpN = headDim < MSA_DEBUG_DUMP_ELEMS ? headDim : MSA_DEBUG_DUMP_ELEMS;
-            AscendC::printf("[MSA_DBG][AIC] ComputeSTile blkBase=%u mActual=%u headDim=%u isQuant=%u\n", blkBase,
-                            mActual, headDim, static_cast<uint32_t>(IS_QUANT_V));
-            MsaDumpGmSample(gQuery_[qOffset], MSA_DUMP_DESC_Q, qDumpN);
-        }
-#endif
 
         for (uint32_t j = 0; j < MSA_BLOCKS_PER_STILE; ++j) {
             const uint32_t blk = blkBase + j;
@@ -359,14 +335,6 @@ private:
             }
             needLoadL1 = false;
         }
-
-#if MSA_INDEX_SCORE_DEBUG
-        if (dumpDebug) {
-            AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::printf("[MSA_DBG][AIC] after DOT S row0 blk0:");
-            MsaPrintGmFloats(gWorkspace_[sBase], MSA_DEBUG_DUMP_ELEMS);
-        }
-#endif
     }
 
     __aicore__ inline void ProcessVector()
@@ -391,11 +359,6 @@ private:
         MsaTask task;
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTasks; taskIdx += coreNum) {
             scheduler_.Decode(taskIdx, task);
-#if MSA_INDEX_SCORE_DEBUG
-            const bool dbgTask = MsaDebugPrimaryCore() && (taskIdx == coreIdx) && (subIdx == 0);
-#else
-            constexpr bool dbgTask = false;
-#endif
             epilogue.BeginTask(task, subIdx, subBlockNum);
             for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
                 if (StileNeedsKScratch(task, st * MSA_BLOCKS_PER_STILE)) {
@@ -409,13 +372,12 @@ private:
                 Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagSReady);
                 const uint64_t sBase =
                     coreWsBase + static_cast<uint64_t>(tileSeq % MSA_WORKSPACE_STAGES) * MSA_STILE_ELEM_NUM;
-                epilogue.ProcessSTile(gWorkspace_[sBase], task, st * MSA_BLOCKS_PER_STILE, subIdx, subBlockNum,
-                                      dbgTask && (st == 0));
+                epilogue.ProcessSTile(gWorkspace_[sBase], task, st * MSA_BLOCKS_PER_STILE);
                 ++tileSeq;
             }
             // 因果不可见尾：不握手，直接写 -inf（与 AIC 跳过这些 tile 对齐）。
             for (uint32_t st = task.numComputeSTiles; st < task.numSTiles; ++st) {
-                epilogue.ProcessSTile(gWorkspace_[0], task, st * MSA_BLOCKS_PER_STILE, subIdx, subBlockNum, false);
+                epilogue.ProcessSTile(gWorkspace_[0], task, st * MSA_BLOCKS_PER_STILE);
             }
             epilogue.EndTask();
         }
