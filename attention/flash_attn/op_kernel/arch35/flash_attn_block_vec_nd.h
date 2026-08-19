@@ -369,20 +369,21 @@ public:
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLseTNDtoNT<T>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                         constInfo_.gSize, constInfo_.t1Size);
+            DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
+                                                             runInfo.actVecMSize,
+                                                             {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBSND<T>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo_.s1Size,
-                                      constInfo_.gSize);
+            DataCopySoftmaxLse<T, SoftmaxLseFormat::BSND>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                          {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBNSD<T>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, qActSeqLens,
-                                      constInfo_.s1Size);
+            DataCopySoftmaxLse<T, SoftmaxLseFormat::BNSD>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                          {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
         }
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;

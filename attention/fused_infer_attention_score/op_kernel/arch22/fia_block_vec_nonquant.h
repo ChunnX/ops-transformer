@@ -491,16 +491,18 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
             if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTND<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
-                                         constInfo.gSize, constInfo.kvHeadNum);
+                DataCopySoftmaxLse<T, SoftmaxLseFormat::TND>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset,
+                                                             mSplitInfo.vecDealM,
+                                                             {.gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint32_t s1Size = info.bIdx == 0U ? actualSeqLengthsGmQ.GetValue(0U) :
                                                     actualSeqLengthsGmQ.GetValue(info.bIdx) -
                                                         actualSeqLengthsGmQ.GetValue(info.bIdx - 1U);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseNTD<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
-                                         s1Size, constInfo.gSize, constInfo.kvHeadNum);
+                DataCopySoftmaxLse<T, SoftmaxLseFormat::NTD>(
+                    softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                    {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
                 uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
                                      info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
@@ -509,8 +511,9 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
                     s1LeftPaddingSize =
                         constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
                 }
-                DataCopySoftmaxLseBSND<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
-                                          constInfo.qSeqSize, constInfo.gSize, s1LeftPaddingSize);
+                DataCopySoftmaxLse<T, SoftmaxLseFormat::BSND>(
+                    softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                    {.s1Size = constInfo.qSeqSize, .gSize = constInfo.gSize, .s1LeftPaddingSize = s1LeftPaddingSize});
             } else { // BNSD
                 uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
                                      info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
@@ -519,8 +522,9 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
                 if (constInfo.isQHasLeftPadding) {
                     s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
                 }
-                DataCopySoftmaxLseBNSD<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
-                                          qActSeqLens, constInfo.qSeqSize, s1LeftPaddingSize);
+                DataCopySoftmaxLse<T, SoftmaxLseFormat::BNSD>(
+                    softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                    {.s1Size = constInfo.qSeqSize, .qActSeqLens = qActSeqLens, .s1LeftPaddingSize = s1LeftPaddingSize});
             }
             outputQue2.FreeTensor(tmpLseResCastTensor);
         }

@@ -535,8 +535,8 @@ public:
 
         uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
         uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-        DataCopySoftmaxLseTNDtoNT<T>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                     constInfo_.realGSize, constInfo_.t1Size);
+        DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                         {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
 
         softmaxLseQueue_.FreeTensor(lseUb);
     }
