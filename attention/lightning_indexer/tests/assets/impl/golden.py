@@ -75,7 +75,7 @@ def cpu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None,
     data = CASE_DATA.activate(testcase_name)
     return_value = bool(return_value or kwargs.get("return_values", False))
     if return_value:
-        indices = data["cpu_result_raw"]
+        indices = data["cpu_result"]
         gather_idx = indices.clamp_min(0).to(torch.long)
         values = torch.gather(data["score_values"], -1, gather_idx)
         values = values.to(data["value_dtype"])

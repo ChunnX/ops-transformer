@@ -20,6 +20,9 @@ import math
 import ctypes
 import copy
 
+ENABLE_DISCONTIGUOUS_KEY = True # 是否开启key cache非连续
+KEY_D_EXPAND = 0 # key cache非连续时head_dim的扩展大小
+
 class GeneralizedLI:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, layout_key, sparse_count, sparse_mode):
         self.batch_size = batch_size
@@ -385,10 +388,10 @@ def generate_li_test_data(params):
     test_li = GeneralizedLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
                               qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, layout_key, sparse_count, sparse_mode)
 
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
+    actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype) \
+                            if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype)
+    actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(actual_seq_dtype) \
+                            if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype)
 
     # shape推导
     if layout_query == "BSND":
@@ -408,9 +411,9 @@ def generate_li_test_data(params):
         key_shape = [batch_size, k_head_num, k_max_s2, head_dim]
 
     # 随机数据生成
-    query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], query_shape)).to(qk_dtype).npu()
-    weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], weights_shape)).to(weight_dtype).npu()
-    key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], key_shape)).to(qk_dtype).npu()
+    query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], query_shape)).to(qk_dtype)
+    weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], weights_shape)).to(weight_dtype)
+    key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], key_shape)).to(qk_dtype)
     block_table = None
     key_cpu = key
 
@@ -450,18 +453,14 @@ def generate_li_test_data(params):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
         
         # kv_cache 0轴非连续：将key融合到blockFusion (ref v1 commit keyStride0)
-        properties = torch.npu.get_device_properties()
-        if "Ascend950" in properties.name:
-            key_stride = 10  # 0轴非连续增加stride
-            bytes_per_token = head_dim + key_stride # 整个非连续的长度
-            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
+        if ENABLE_DISCONTIGUOUS_KEY and KEY_D_EXPAND != 0:
+            key_d_new = head_dim + KEY_D_EXPAND
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * key_d_new), dtype=qk_dtype) # 整个非连续的长度
             key_flat = key.view(block_num, block_size * k_head_num * head_dim)
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
-            blockFusion = blockFusion.npu()
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
         
-        key = key.npu()
-        block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
+        block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
 
     # cpu golden生成
     cpu_result, topk_value = test_li.forward(
@@ -488,10 +487,10 @@ def li_output_single(params):
     data = generate_li_test_data(params)
     layout_query, layout_key, sparse_count, sparse_mode = params[15:19]
     npu_result, sparse_value = torch_npu.npu_lightning_indexer(
-                                                    data["query"], data["key"], data["weights"],
-                                                    actual_seq_lengths_query = data["actual_seq_lengths_query"],
-                                                    actual_seq_lengths_key = data["actual_seq_lengths_key"],
-                                                    block_table = data["block_table"],
+                                                    data["query"].npu(), data["key"].npu(), data["weights"].npu(),
+                                                    actual_seq_lengths_query = data["actual_seq_lengths_query"].npu(),
+                                                    actual_seq_lengths_key = data["actual_seq_lengths_key"].npu(),
+                                                    block_table = data["block_table"].npu(),
                                                     layout_query = layout_query,
                                                     layout_key = layout_key,
                                                     sparse_count = sparse_count,
