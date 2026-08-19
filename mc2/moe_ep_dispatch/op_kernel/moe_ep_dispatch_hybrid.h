@@ -76,6 +76,7 @@ constexpr uint32_t PER_GROUP_SIZE = 40 * 1024U; // token 分核后 40KB 足够�
 constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // GetExpertFreq 单次最多256个bin
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
+constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
 constexpr uint32_t STATUS_CLEAR_BATCH_RECORDS = 64U;
 // status[0]发布总slot数，其余status只表示对应slot已到达。
@@ -289,6 +290,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
+    uint32_t channelsPerRank_{1};
     uint32_t rankNumPerServer_{0};
     uint32_t currentServerIndex_{0};
     uint32_t serverStartRank_{0};
@@ -353,6 +355,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     workspaceGM_ = workspaceGM;
     mc2Context_ = (__gm__ Mc2Aclnn::MoeCommContext *)context;
     epRankId_ = mc2Context_->epRankId;
+    channelsPerRank_ = mc2Context_->channelsPerRank;
 
     InitTilingFields(tilingData);
     InitGlobalTensors(x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
@@ -394,6 +397,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     dispatchNotifyCount_ = info.dispatchNotifyCount;
     hostPinnedCounterAddrGM_ = (GM_ADDR)info.hostPinnedCounterAddr;
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
+    if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > HCCL_MAX_RANK_SIZE / epWorldSize_)) {
+        channelsPerRank_ = 1;
+    }
 
     InitAlignmentFields(tilingData);
 }
@@ -792,7 +798,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR remoteCountAddr = remoteStateAddr + epWorldSize_ * WIN_ADDR_ALIGN + epRankId_ * moeNumPerRankAlign512_;
     GM_ADDR srcWorkspaceAddr =
         sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, channelsPerRank_);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
     hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
@@ -1402,7 +1408,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t remoteServerOrdinal, uint32_t dstScaleoutIndex, uint32_t proxyRankId,
     uint32_t scaleoutSlotCount)
 {
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId, channelsPerRank_);
     GM_ADDR remoteScaleoutBase =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvDataOffset_);
     GM_ADDR remoteStatusBase =
@@ -1519,7 +1525,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, channelsPerRank_);
     GM_ADDR unusedNotifyAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
         static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN + UB_ALIGN;
@@ -1753,7 +1759,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t dstRankId)
 {
     uint64_t commHandle =
-        dstRankId == epRankId_ ? 0UL : MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+        dstRankId == epRankId_ ? 0UL : MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, channelsPerRank_);
     SendScaleupEntries(dstRankId, commHandle);
     if (dstRankId == epRankId_) {
         PipeBarrier<PIPE_MTE3>();
@@ -1801,7 +1807,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, channelsPerRank_);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
     for (uint32_t notifyIndex = 0U; notifyIndex < dispatchNotifyCount_; notifyIndex++) {
         GM_ADDR notifyAddr = notifyBase + static_cast<uint64_t>(notifyIndex) * WIN_ADDR_ALIGN;
