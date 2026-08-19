@@ -189,9 +189,8 @@ struct WorkspaceInfo {
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
         bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE && (isGenericGmm || isA8W4);
-        bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
-        bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA ||
-                                    (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
+        bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
+        bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
 
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
@@ -221,7 +220,7 @@ struct WorkspaceInfo {
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
 
-        if (useMteA8W8Wave) {
+        if (useMteWaveCombine) {
             gmm2ReadyPtr = base + workspaceSize;
             // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
             // 每个 AIC 到达标记独占一个 64B cache line。
@@ -270,8 +269,8 @@ struct WorkspaceInfo {
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
-            useMteA8W8Wave) {
-            if (useMteA8W8Wave) {
+            useMteWaveCombine) {
+            if (useMteWaveCombine) {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }
             gmm2MmadResPtr = base + workspaceSize;
@@ -281,8 +280,9 @@ struct WorkspaceInfo {
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteA8W8Wave ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
-                                              gmm2OutputBytes;
+            workspaceSize += useMteWaveCombine ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
         }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
