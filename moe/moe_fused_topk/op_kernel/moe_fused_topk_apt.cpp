@@ -44,28 +44,28 @@ extern "C" __global__ __aicore__ void moe_fused_topk(GM_ADDR x, GM_ADDR addNum, 
 
 #if (ORIG_DTYPE_X == DT_FLOAT)
     if (TILING_KEY_IS(0)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, float, float, 0);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, float, float, 0);
         return;
     } else if (TILING_KEY_IS(1)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, float, float, 1);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, float, float, 1);
         return;
     }
 #endif
 #if (ORIG_DTYPE_X == DT_FLOAT16)
     if (TILING_KEY_IS(0)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, half, float, 0);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, half, float, 0);
         return;
     } else if (TILING_KEY_IS(1)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, half, float, 1);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, half, float, 1);
         return;
     }
 #endif
 #if (ORIG_DTYPE_X == DT_BF16)
     if (TILING_KEY_IS(0)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, bfloat16_t, float, 0);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, bfloat16_t, float, 0);
         return;
     } else if (TILING_KEY_IS(1)) {
-        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopk, bfloat16_t, float, 1);
+        INVOKE_MOE_FUSED_ADD_TOPK_IMPL(MoeFusedTopkArch35, bfloat16_t, float, 1);
         return;
     }
 #endif
