@@ -23,17 +23,104 @@
 
 ## 功能说明
 
-- **接口功能**：
+- 接口功能：完成不涉及CP切分的KDA分块正向计算，输出注意力结果、最终状态和反向计算所需的中间量。
 
-    执行 KDA（Kernelized Delta Attention）分块前向计算，封装 aclnnChunkKdaFwd。支持 BSND、BNSD、TND、NTD 四种输入布局、定长及变长序列，并可按需返回最终状态和反向计算所需的中间量。
+- 计算公式：
 
-- **输出布局**：
+  将每条序列按$C=chunkSize$划分为$M$个chunk。以第$c$个chunk为例，$i$、$j$表示chunk内token下标，$l_c$表示该chunk最后一个有效token下标。以下公式省略batch和head下标；GQA场景中，每个Value head使用对应的Query/Key head。
 
-    输入 layout 仅描述 q、k、v、g 和 beta。注意力输出固定为 sequence-major；gk、aqk、akk、w、u、qg、kg 和 v_new 固定为 head-major。
+  令$x_{c,i,d}=g_{c,i,d}+dtBias_d$，未传入`dtBiasOptional`时令$dtBias_d=0$。激活后的gate为：
+
+  $$
+  \gamma_{c,i,d}=
+  \begin{cases}
+  g_{c,i,d}, & useGateInKernel=false,\\
+  -\exp(A_{log})\operatorname{softplus}(x_{c,i,d}),
+      & useGateInKernel=true,\ safeGate=false,\\
+  lowerBound\operatorname{sigmoid}(\exp(A_{log})x_{c,i,d}),
+      & useGateInKernel=true,\ safeGate=true.
+  \end{cases}
+  $$
+
+  `gkOut`为chunk内以2为底的累计gate：
+
+  $$
+  gk_{c,i,d}=\frac{1}{\ln 2}\sum_{t=0}^{i}\gamma_{c,t,d}.
+  $$
+
+  `qgOut`和`kgOut`分别为gate缩放后的Query和Key：
+
+  $$
+  qg_{c,i,d}=q_{c,i,d}2^{gk_{c,i,d}},\qquad
+  kg_{c,i,d}=k_{c,i,d}2^{gk_{c,l_c,d}-gk_{c,i,d}}.
+  $$
+
+  `aqkOut`为包含对角线的下三角Query-Key系数矩阵：
+
+  $$
+  Aqk_{c,i,j}=\mathbb{1}_{j\le i}\cdot scale
+  \sum_d q_{c,i,d}k_{c,j,d}2^{gk_{c,i,d}-gk_{c,j,d}}.
+  $$
+
+  定义严格下三角矩阵$L_c$，`akkOut`为$I+L_c$的逆矩阵：
+
+  $$
+  L_{c,i,j}=\mathbb{1}_{j<i}\cdot\beta_{c,i}
+  \sum_d k_{c,i,d}k_{c,j,d}2^{gk_{c,i,d}-gk_{c,j,d}},\qquad
+  Akk_c=(I+L_c)^{-1}.
+  $$
+
+  定义$w^{seed}$和$u^{seed}$：
+
+  $$
+  w^{seed}_{c,i,d}=\beta_{c,i}k_{c,i,d}2^{gk_{c,i,d}},\qquad
+  u^{seed}_{c,i,e}=\beta_{c,i}v_{c,i,e}.
+  $$
+
+  `wOut`和`uOut`为：
+
+  $$
+  w_c=Akk_c\,w^{seed}_c,\qquad u_c=Akk_c\,u^{seed}_c.
+  $$
+
+  令$h_c$为第$c$个chunk计算前的状态。传入`initialStateOptional`时$h_0=initialStateOptional$，否则$h_0=0$。`vNewOut`、下一个chunk状态、`hOut`和`finalStateOut`为：
+
+  $$
+  v^{new}_c=u_c-w_c\,h_c,
+  $$
+
+  $$
+  h_{c+1}=2^{gk_{c,l_c}}\odot h_c+kg_c^T\,v^{new}_c,
+  $$
+
+  $$
+  hOut[c]=h_c,\qquad finalStateOut=h_M.
+  $$
+
+  其中，$2^{gk_{c,l_c}}\odot h_c$表示沿$K$维缩放状态矩阵。`attnOut`为：
+
+  $$
+  attnOut_c=scale\cdot qg_c\,h_c+Aqk_c\,v^{new}_c.
+  $$
+
+- 符号说明：
+
+  | 符号 | 含义 |
+  | --- | --- |
+  | B | Batch Size。 |
+  | S | 四维输入的序列长度。 |
+  | T | 三维输入的总token数。 |
+  | H | Query和Key的head数。 |
+  | HV | Value和gate的head数。 |
+  | K | Query和Key的head dim。 |
+  | V | Value的head dim。 |
+  | N | 逻辑序列数。 |
+  | C | chunk大小。 |
+  | NC | 未传入`cuSeqlensOptional`时为每条序列的chunk数$\lceil S/C\rceil$；传入时为所有逻辑序列的chunk总数。 |
 
 ## 函数原型
 
-~~~python
+```python
 cann_ops_transformer.chunk_kda_fwd(
     q,
     k,
@@ -64,7 +151,7 @@ cann_ops_transformer.chunk_kda_fwd(
     Optional[Tensor], Optional[Tensor], Optional[Tensor],
     Optional[Tensor], Optional[Tensor], Optional[Tensor], Optional[Tensor]
 ]
-~~~
+```
 
 ## 参数说明
 
@@ -120,3 +207,34 @@ cann_ops_transformer.chunk_kda_fwd(
 - safe_gate=True 且 use_gate_in_kernel=True 时，lower_bound 的范围为 [-5,0)。
 - use_qk_l2norm_in_kernel 和 use_beta_sigmoid_in_kernel 当前均仅支持 False。
 - use_exp2 为预留参数，默认 True，当前取值不影响计算结果。
+
+## 调用说明
+
+- 单算子模式调用
+
+    ```python
+    import torch
+    import torch_npu
+    from cann_ops_transformer.ops import chunk_kda_fwd
+
+    torch_npu.npu.set_device(0)
+
+    B, S, H, HV, K, V = 1, 64, 96, 96, 128, 128
+    q = torch.randn(B, S, H, K, device="npu", dtype=torch.bfloat16)
+    k = torch.randn(B, S, H, K, device="npu", dtype=torch.bfloat16)
+    v = torch.randn(B, S, HV, V, device="npu", dtype=torch.bfloat16)
+    g = torch.randn(B, S, HV, K, device="npu", dtype=torch.float32)
+    beta = torch.randn(B, S, HV, device="npu", dtype=torch.float32)
+
+    outputs = chunk_kda_fwd(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        K ** -0.5,
+        chunk_size=64,
+        layout="BSND",
+    )
+    attn_out = outputs[0]
+    ```

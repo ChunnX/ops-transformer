@@ -23,17 +23,70 @@
 
 ## 功能说明
 
-- **接口功能**：
+- 接口功能：aclnnRecurrentKda 是基于 Gated Delta Rule 的线性注意力前向计算接口的递归（recurrent）实现，面向 decode / MTP（Multi-Token Prediction）短序列场景。该接口按 token 逐步推进递归状态 $S_t$，支持变长输入（配合 `cuSeqlensOptional`）、MTP 槽位复用（配合 `ssmStateIndicesOptional` 与 `numAcceptedTokensOptional`），并可选在 kernel 内将 `gate` 解释为 raw gate、对 q/k 做 L2 normalize、对 beta 做 sigmoid 等数值稳定处理。
+- 计算公式：
 
-    执行 recurrent KDA（Kernelized Delta Attention）前向计算，封装 aclnnRecurrentKda。接口支持固定长度 BSND 和变长 TND 布局，可按配置在算子内部完成 Q/K L2 归一化、门控预处理和 beta sigmoid，并支持状态槽索引及投机解码。
+  设内部状态矩阵按 `[V_dim, K_dim]` 参与计算。`useQkL2normInKernel=true` 时，算子先对每个 token 的 $q_t$、$k_t$ 做 L2 normalize；随后仅对 $q_t$ 乘缩放系数 `scale`，得到 $\bar q_t$、$\bar k_t$。
 
-- **状态更新**：
+  当 `useGateInKernel=false` 时，输入 `gate` 已经是 step log gate，即 $\ell_t=gate_t$。当 `useGateInKernel=true` 时，令 $x_t=gate_t+dtBias$（未传 `dtBiasOptional` 时不加偏置）、$a=\exp(A_{\log})$，则：
 
-    initial_state 是可变输入。当 output_final_state=True 且 inplace_final_state=True 时，最终状态原地写回 initial_state；当 output_final_state=True 且 inplace_final_state=False 时，最终状态通过第二个返回值返回。
+  $$
+  \ell_t =
+  \begin{cases}
+  lowerBound\cdot\sigma(a x_t), & safeGate=true \\
+  -a\cdot\operatorname{softplus}(x_t), & safeGate=false
+  \end{cases},
+  \qquad
+  d_t=\exp(\ell_t)
+  $$
+
+  beta 的有效值为：
+
+  $$
+  \bar\beta_t =
+  \begin{cases}
+  \beta_t, & useBetaSigmoidInKernel=false \\
+  \sigma(\beta_t), & useBetaSigmoidInKernel=true,\ allowNegEigval=false \\
+  2\sigma(\beta_t), & useBetaSigmoidInKernel=true,\ allowNegEigval=true
+  \end{cases}
+  $$
+
+  每个 token 的递归更新为：
+
+  $$
+  \begin{aligned}
+  \bar S_t &= S_{t-1}\odot d_t \\
+  \Delta_t &= \bar\beta_t\left(v_t-\bar S_t\bar k_t\right) \\
+  S_t &= \bar S_t+\Delta_t\bar k_t^T \\
+  o_t &= S_t\bar q_t
+  \end{aligned}
+  $$
+
+  其中，$S_{t-1},S_t \in R^{V_{dim}\times K_{dim}}$，$q_t,k_t\in R^{K_{dim}}$，$v_t,o_t\in R^{V_{dim}}$。$d_t$ 沿状态矩阵的 K 维广播。多个 value head 可以共享同一个 query/key head，要求 $H_v$ 能被 $H_k$ 整除。
+
+- 符号说明
+  | 符号        | 含义                                                                               |
+  | ----------- | ---------------------------------------------------------------------------------- |
+  | B           | Batch Size，输入样本批量大小                                                       |
+  | T           | Token Capacity，BSND 为 B*T，TND 为输入首维；有效 token 数可以小于 T              |
+  | H_k         | Query/Key 头数                                                                     |
+  | H_v         | Value/Gate 头数（要求 H_v 能被 H_k 整除）                                          |
+  | K_dim       | Key 每一个头的维度                                                                 |
+  | V_dim       | Value 每一个头的维度                                                               |
+  | seq_num     | 逻辑序列数（定长时等于 B，变长时等于 `cuSeqlensOptional` 长度减 1）                |
+  | scale       | 缩放系数，通常为 K_dim**-0.5                                                       |
+  | gate        | gate 张量。`useGateInKernel=true` 时为 raw gate 输入，由算子内部转换为 step log gate $\ell_t$；`useGateInKernel=false` 时为外部已预计算好的 step log gate |
+  | $d_t$       | 递归衰减系数，$d_t=\exp(\ell_t)$，沿状态矩阵的 K 维广播                           |
+  | A_log       | raw gate 分支参数，算子使用 $\exp(A_{\log})$ 参与 gate 计算                      |
+  | dtBias      | raw gate 偏置                                                                      |
+  | beta        | Delta 更新系数                                                                     |
+  | $S_t$       | 递归状态矩阵，按 `stateVFirst=True` 布局存储为 `[state_capacity, H_v, V_dim, K_dim]`，`stateVFirst=False` 布局存储为 `[state_capacity, H_v, K_dim, V_dim]` |
+  | $\bar S_t$  | 衰减后的状态，$\bar S_t=S_{t-1}\odot d_t$                                        |
+  | $\Delta_t$  | Delta 更新量，$\Delta_t=\bar\beta_t(v_t-\bar S_t\bar k_t)$                    |
 
 ## 函数原型
 
-~~~python
+```python
 cann_ops_transformer.recurrent_kda(
     q,
     k,
@@ -59,7 +112,7 @@ cann_ops_transformer.recurrent_kda(
     lower_bound=None,
     state_v_first=False,
 ) -> Tuple[Tensor, Optional[Tensor]]
-~~~
+```
 
 ## 参数说明
 
@@ -101,3 +154,41 @@ cann_ops_transformer.recurrent_kda(
 - safe_gate=True 时必须同时设置 use_gate_in_kernel=True，且 lower_bound 取值范围为 [-5, 0)。
 - 未提供 ssm_state_indices 时，initial_state 的 state_capacity 必须等于逻辑序列数；提供后由索引选择状态槽。
 - output_final_state 和 inplace_final_state 为独立开关；只有 output_final_state=True 时第二个返回值包含有效最终状态。
+
+## 调用说明
+
+- 单算子模式调用
+
+    ```python
+    import torch
+    import torch_npu
+    from cann_ops_transformer.ops import recurrent_kda
+
+    torch_npu.npu.set_device(0)
+
+    B, S, H, HV, K, V = 1, 64, 96, 96, 128, 128
+    q = torch.randn(B, S, H, K, device="npu", dtype=torch.bfloat16)
+    k = torch.randn(B, S, H, K, device="npu", dtype=torch.bfloat16)
+    v = torch.randn(B, S, HV, V, device="npu", dtype=torch.bfloat16)
+    g = torch.randn(B, S, HV, K, device="npu", dtype=torch.float32)
+    beta = torch.randn(B, S, HV, device="npu", dtype=torch.float32)
+    initial_state = torch.randn(
+        B,
+        HV,
+        K,
+        V,
+        device="npu",
+        dtype=torch.float32,
+    )
+
+    attn_out, final_state = recurrent_kda(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        initial_state,
+        layout="BSND",
+        output_final_state=True,
+    )
+    ```
