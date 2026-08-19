@@ -16,6 +16,7 @@
 #include "../matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "lib/matmul_intf.h"
 #include "../common_def.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_mx_quant_hcomm_impl.h"
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "matmul_a2a_vec_reduce_fp16_bf16.h" // 新实现：All2All + Vec Reduce
@@ -80,16 +81,25 @@ using namespace MatmulReduceScatterV2Impl;
     } while (0)
 
 template <bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, uint8_t TPL_INPUT, uint8_t TPL_OUTPUTDTYPE,
-          uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE>
+          uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE, bool TPL_USING_APACE>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM,
                                                     GM_ADDR x2ScaleGM, GM_ADDR quantScaleGM, GM_ADDR cGM,
                                                     GM_ADDR amaxOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    // david算子模板
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     auto context = GetHcclContext<0>();
-    GET_TILING_DATA(tilingData, tilingGM);
+    constexpr AscendC::HcclServerType hcclServerType = TPL_COMM_MODE == TPL_CCU_COMM_MODE ?
+        AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU : AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU;
+    REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);
+    if constexpr (TPL_USING_APACE) {
+        GET_TILING_DATA_WITH_STRUCT(hcommMatmulReduceScatterV2TilingData, tilingData, tilingGM);
+        Apace::MatmulReduceScatterV2MxQuantHcommImpl<
+            DTYPE_X1, DTYPE_X2, DTYPE_Y, TPL_TRANSB, hcommMatmulReduceScatterV2TilingData, hcclServerType>
+            op(&tilingData);
+        op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM);
+        op.Run();
+    } else {
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, tilingData, tilingGM);
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
@@ -130,4 +140,5 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
         }
     }
 #endif
+    }
 }
