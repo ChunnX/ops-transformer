@@ -78,35 +78,43 @@ __simd_vf__ void transpose_attn_out_vf(__ubuf__ float *atten_out_md, __ubuf__ fl
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src1, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src2, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src1, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src1, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src3, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src4, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src2, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src2, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src5, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src6, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src3, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
-        
+        Or((RegTensor<uint16_t> &)vreg_src3, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
+
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src7, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src8, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src4, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src4, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src9, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src10, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src5, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src5, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src11, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src12, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src6, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src6, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src13, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src14, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src7, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
-        
+        Or((RegTensor<uint16_t> &)vreg_src7, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
+
         Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src15, preg_all32);
         Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src16, preg_all32);
-        Or((RegTensor<uint16_t> &)vreg_src8, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
+        Or((RegTensor<uint16_t> &)vreg_src8, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2,
+           preg_all16);
 
         Interleave(vreg_src1, vreg_src5, vreg_src1, vreg_src5);
         Interleave(vreg_src2, vreg_src6, vreg_src2, vreg_src6);
@@ -123,35 +131,43 @@ __simd_vf__ void transpose_attn_out_vf(__ubuf__ float *atten_out_md, __ubuf__ fl
         Interleave(vreg_src5, vreg_src6, vreg_src5, vreg_src6);
         Interleave(vreg_src7, vreg_src8, vreg_src7, vreg_src8);
 
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 0,
-                                                                   (RegTensor<float> &)vreg_src1, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 1,
-                                                                   (RegTensor<float> &)vreg_src2, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 2,
-                                                                   (RegTensor<float> &)vreg_src3, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 3,
-                                                                   (RegTensor<float> &)vreg_src4, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 4,
-                                                                   (RegTensor<float> &)vreg_src5, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 5,
-                                                                   (RegTensor<float> &)vreg_src6, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 6,
-                                                                   (RegTensor<float> &)vreg_src7, 8 + 1, preg_all32);
-        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>((__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 7,
-                                                                   (RegTensor<float> &)vreg_src8, 8 + 1, preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 0, (RegTensor<float> &)vreg_src1, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 1, (RegTensor<float> &)vreg_src2, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 2, (RegTensor<float> &)vreg_src3, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 3, (RegTensor<float> &)vreg_src4, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 4, (RegTensor<float> &)vreg_src5, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 5, (RegTensor<float> &)vreg_src6, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 6, (RegTensor<float> &)vreg_src7, 8 + 1,
+            preg_all32);
+        StoreAlign<float, MicroAPI::DataCopyMode::DATA_BLOCK_COPY>(
+            (__ubuf__ float *)atten_out_md + 8 * i + (8 + 1) * 8 * 8 * 7, (RegTensor<float> &)vreg_src8, 8 + 1,
+            preg_all32);
     }
 }
 
 template <uint16_t QsBase = 128, typename Otype = bfloat16_t>
 __aicore__ inline void TransposeAttnOutCallVF(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
-                                     const LocalTensor<float> &rSum)
+                                              const LocalTensor<float> &rSum)
 {
-    __ubuf__ float *atten_out_md = (__ubuf__ float*) dstTensor.GetPhyAddr();
-    __ubuf__ float *atten_out_dm = (__ubuf__ float*) srcTensor.GetPhyAddr();
-    __ubuf__ float *rsum = (__ubuf__ float*) rSum.GetPhyAddr();
+    __ubuf__ float *atten_out_md = (__ubuf__ float *)dstTensor.GetPhyAddr();
+    __ubuf__ float *atten_out_dm = (__ubuf__ float *)srcTensor.GetPhyAddr();
+    __ubuf__ float *rsum = (__ubuf__ float *)rSum.GetPhyAddr();
 
     transpose_attn_out_vf<QsBase, Otype>(atten_out_md, atten_out_dm, rsum);
 }
 
-}  // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif  // VF_ATTN_OUT_TRANSPOSE_MXFP4_H_
+} // namespace NpuArch::Epilogue::Block::Mxfp4VF
+#endif // VF_ATTN_OUT_TRANSPOSE_MXFP4_H_

@@ -28,17 +28,8 @@ namespace NpuArch::Epilogue::Block {
 
 using namespace MXFP4Kernel;
 
-template <
-    MXQuantMode MX_QUANT_MODE_,
-    class ElementGroupMax_,
-    class ElementDm_,
-    class PScaleType_>
-class BlockEpilogue<
-    EpilogueComputePScaleBsaMX<true, MX_QUANT_MODE_>,
-    ElementGroupMax_,
-    ElementDm_,
-    PScaleType_>
-{
+template <MXQuantMode MX_QUANT_MODE_, class ElementGroupMax_, class ElementDm_, class PScaleType_>
+class BlockEpilogue<EpilogueComputePScaleBsaMX<true, MX_QUANT_MODE_>, ElementGroupMax_, ElementDm_, PScaleType_> {
 public:
     using DispatchPolicy = EpilogueComputePScaleBsaMX<true, MX_QUANT_MODE_>;
     static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
@@ -49,10 +40,11 @@ public:
     using LayoutPScale = typename PScaleType::Layout;
     using ElementDm = ElementDm_;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL) {
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL)
+    {
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
-            pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
-                MXFP4::UB_P_SCALE_BUF_OFFSET + MXFP4::UB_P_SCALE_BUF_SIZE * i);
+            pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(MXFP4::UB_P_SCALE_BUF_OFFSET +
+                                                                                       MXFP4::UB_P_SCALE_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
             peerGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(
@@ -68,8 +60,8 @@ public:
                 MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_UPDATE_SCALE_CNT; i++) {
-            dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
-                MXFP4::UB_UPDATE_SCALE_BUF_OFFSET + MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
+            dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(MXFP4::UB_UPDATE_SCALE_BUF_OFFSET +
+                                                                               MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
         LOG2_CX_CEIL_ = LOG2_CX_CEIL;
     }
@@ -97,7 +89,6 @@ public:
             return;
         }
 
-    
         uint16_t firstLoop = 0;
         uint16_t secondLoop = 0;
         uint16_t firstLoopStart = 0;
@@ -115,25 +106,21 @@ public:
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
                 Mxfp4VF::ComputePscaleAndDmCallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
                 Mxfp4VF::ComputePscaleAndDmQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         } else {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
                 Mxfp4VF::ComputePscaleAndDmCallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
                 Mxfp4VF::ComputePscaleAndDmQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         }
@@ -146,20 +133,23 @@ public:
 
         // copy pscale1 ub to l1
         bool isQsAlign128 = taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE;
-        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop, isQsAlign128);
+        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart,
+                         secondLoop, isQsAlign128);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
     }
 
-     template <class TensorDst>
-    __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src, AscendC::LocalTensor<ElementPScale> &pscale2Src, 
-                                                uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop, bool isQsAlign128) {
+    template <class TensorDst>
+    __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src,
+                                            AscendC::LocalTensor<ElementPScale> &pscale2Src, uint32_t subBlockIdx,
+                                            uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart,
+                                            uint16_t secondLoop, bool isQsAlign128)
+    {
         // 第一部分: firstLoop 组, 从 firstLoopStart 开始
         uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
-        auto l1TlaTile1 = tla::GetTile(l1PScaleTensor,
-            tla::MakeCoord(subBlockIdx + firstLoopStart, 0),
-            tla::MakeShape(firstLoop, l1PScaleTensorNSize));
+        auto l1TlaTile1 = tla::GetTile(l1PScaleTensor, tla::MakeCoord(subBlockIdx + firstLoopStart, 0),
+                                       tla::MakeShape(firstLoop, l1PScaleTensorNSize));
         uint32_t dstOffset = l1TlaTile1.layout()(l1TlaTile1.coord());
         uint16_t pscaleGroupLen = static_cast<uint16_t>(l1PScaleTensorNSize / MXFP4::DATA_BLOCK_BYTE);
         uint16_t pscaleGroupHalfLen = static_cast<uint16_t>(l1PScaleTensorNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
@@ -173,9 +163,8 @@ public:
 
         if (secondLoop != 0) {
             // 第二部分: secondLoop 组, 从 secondLoopStart 开始
-            auto l1TlaTile2 = tla::GetTile(l1PScaleTensor,
-                tla::MakeCoord(subBlockIdx + secondLoopStart, 0),
-                tla::MakeShape(secondLoop, l1PScaleTensorNSize));
+            auto l1TlaTile2 = tla::GetTile(l1PScaleTensor, tla::MakeCoord(subBlockIdx + secondLoopStart, 0),
+                                           tla::MakeShape(secondLoop, l1PScaleTensorNSize));
             uint32_t dstOffset2 = l1TlaTile2.layout()(l1TlaTile2.coord());
             AscendC::DataCopyParams repeatParams2;
             repeatParams2.blockCount = secondLoop;
@@ -188,9 +177,8 @@ public:
     }
 
 private:
-    __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx,
-                                           uint16_t &firstLoopStart, uint16_t &firstLoop, uint16_t &secondLoopStart,
-                                           uint16_t &secondLoop)
+    __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx, uint16_t &firstLoopStart,
+                                           uint16_t &firstLoop, uint16_t &secondLoopStart, uint16_t &secondLoop)
     {
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == tileInfo.kvsFirstTileStartVecCore);
         uint32_t loop = tileInfo.loop;
@@ -205,11 +193,12 @@ private:
         uint16_t toProcessGroupMaxLoopLen =
             (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
         toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
-        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen :
-                                                                                   WHOLE_PROCESS_LOOP;
+        toProcessGroupMaxLoopLen =
+            toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen : WHOLE_PROCESS_LOOP;
         firstLoop = (toProcessGroupMaxLoopLen / 2 + 1) / 2 * 2;
         secondLoop = toProcessGroupMaxLoopLen - firstLoop;
-        int32_t firstLoopStartNotU = static_cast<int32_t>(groupMaxEndIdx) - static_cast<int32_t>(toProcessGroupMaxLoopLen) + 1;
+        int32_t firstLoopStartNotU =
+            static_cast<int32_t>(groupMaxEndIdx) - static_cast<int32_t>(toProcessGroupMaxLoopLen) + 1;
         if (firstLoopStartNotU < 0) {
             firstLoopStart = static_cast<uint16_t>(firstLoopStartNotU + GROUP_MAX_SPACE_LEN);
             firstLoop = static_cast<uint16_t>(GROUP_MAX_SPACE_LEN - firstLoopStart);
@@ -228,15 +217,15 @@ private:
     static constexpr uint32_t GROUP_MAX_SPACE_LEN = 20;
     static constexpr uint32_t WHOLE_PROCESS_LOOP = 16;
 
-    AscendC::LocalTensor<ElementPScale>   pscaleUBTensor[MXFP4::UB_P_SCALE_CNT]; // pScale(复用P)
-    AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP4::UB_PEER_GLOBAL_MAX_CNT]; // peerGlobalMax
-    AscendC::LocalTensor<ElementGroupMax> softmaxMaxUBTensor;                    // softmaxMax
-    AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP4::UB_LOCAL_GROUP_MAX_CNT]; // LocalGroupMax
+    AscendC::LocalTensor<ElementPScale> pscaleUBTensor[MXFP4::UB_P_SCALE_CNT];                    // pScale(复用P)
+    AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP4::UB_PEER_GLOBAL_MAX_CNT];   // peerGlobalMax
+    AscendC::LocalTensor<ElementGroupMax> softmaxMaxUBTensor;                                     // softmaxMax
+    AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP4::UB_LOCAL_GROUP_MAX_CNT];   // LocalGroupMax
     AscendC::LocalTensor<ElementGroupMax> localGlobalMaxUBTensor[MXFP4::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
-    AscendC::LocalTensor<ElementDm>       dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
-    ElementGroupMax                       LOG2_CX_CEIL_;
+    AscendC::LocalTensor<ElementDm> dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT];                       // updateScale
+    ElementGroupMax LOG2_CX_CEIL_;
 };
 
-}  // namespace NpuArch::Epilogue::Block
+} // namespace NpuArch::Epilogue::Block
 
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_COMPUTE_PSCALE_ARCH35_MXFP4
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_COMPUTE_PSCALE_ARCH35_MXFP4

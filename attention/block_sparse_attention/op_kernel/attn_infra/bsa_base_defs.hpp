@@ -43,8 +43,14 @@ constexpr uint32_t BYTE_PER_FRACTAL = BYTE_PER_C0 * C0_NUM_PER_FRACTAL;
 //   ELE_NUM_PER_C0/ELE_NUM_PER_FRACTAL 须用 bit 粒度（fp4x2: 64/1024）而非 sizeof 字节
 //   粒度（32/512），否则 nZ/zN fractal 的 crd2offset 会 2× 偏、Nd2Nz dstNz*Stride 派发也错位。
 //   其余类型 8*sizeof(T)，与原 sizeof-based 算法等价（half/fp8/fp32/int8 零影响）。
-template <class T> struct SizeOfBits { static constexpr uint32_t value = sizeof(T) * 8; };
-template <> struct SizeOfBits<fp4x2_e2m1_t> { static constexpr uint32_t value = 4; };
+template <class T>
+struct SizeOfBits {
+    static constexpr uint32_t value = sizeof(T) * 8;
+};
+template <>
+struct SizeOfBits<fp4x2_e2m1_t> {
+    static constexpr uint32_t value = 4;
+};
 constexpr uint32_t BytesToBits(uint32_t bytes) { return bytes * 8; }
 
 constexpr uint32_t BYTE_PER_BLK = 32;
@@ -54,13 +60,14 @@ constexpr uint32_t BYTE_PER_VECTOR_FRACTAL = BYTE_PER_BLK * BLK_NUM_PER_VECTOR_F
 constexpr uint64_t L2_OFFSET = 0;
 constexpr uint32_t STRIDE_LIMIT = 65536;
 
-constexpr uint32_t BYTE_PER_BLK_FP = 128;  /// datablock size of A1->C2PiPE2GM
+constexpr uint32_t BYTE_PER_BLK_FP = 128; /// datablock size of A1->C2PiPE2GM
 
 constexpr uint32_t MX_SCALE_COPY_GROUP_NUM = 2;
 constexpr uint32_t MX_SCALE_GROUP_NUM = 32;
 constexpr uint32_t MX_BASEK_FACTOR = 64;
 
-class EmptyClass {};
+class EmptyClass {
+};
 
 } // namespace NpuArch
 
