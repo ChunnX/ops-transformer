@@ -111,6 +111,7 @@ def npu_qfa(
     B = batch_size if batch_size is not None and batch_size > 0 else (
         max(1, len(cu_seqlens_q_list) - 1)
         if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else len(list(seqused_q)) if seqused_q is not None and len(list(seqused_q)) > 0
         else 1
     )
 
