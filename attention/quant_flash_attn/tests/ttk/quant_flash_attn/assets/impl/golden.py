@@ -866,10 +866,8 @@ def cpu_qfa_hif8(
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
-    B = (
-        max(1, len(cu_seqlens_q) - 1)
-        if cu_seqlens_q and len(cu_seqlens_q) >= 2
-        else 1
+    B = batch_size if batch_size is not None and batch_size > 0 else (
+        max(1, len(cu_seqlens_q) - 1) if cu_seqlens_q and len(cu_seqlens_q) >= 2 else 1
     )
 
     if len(cu_seqlens_q) > 1:
@@ -1037,6 +1035,8 @@ def cpu_qfa_hif8(
         )
         while cpu_lse_aligned.ndim > 1 and cpu_lse_aligned.shape[-1] == 1:
             cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
+        if compare_layout == "TND" and cpu_lse_aligned.ndim == 2:
+            cpu_lse_aligned = cpu_lse_aligned.permute(1, 0).contiguous()
         result = [cpu_out_aligned, cpu_lse_aligned]
     else:
         result = [cpu_out_aligned, None]
