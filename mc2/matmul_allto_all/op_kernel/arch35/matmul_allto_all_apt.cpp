@@ -30,6 +30,7 @@
 #include "../../../common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "../../../common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_hcomm_impl.h"
 #include "../../../common/op_kernel/apace/kernel/fusions/quant_matmul_allto_all/quant_matmul_allto_all_tiling_data.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/quant_matmul_allto_all/quant_matmul_allto_all_mx_quant_matmul_hcomm_impl.h"
 
 using AscendC::HcclServerType;
 using AscendC::TPipe;
@@ -90,7 +91,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, QuantMatmulAlltoAllTilingData,        \
                                            MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
+        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
         ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
@@ -137,9 +138,9 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: all2all_out为空且卡数<=8时启用，使用 Blaze quant matmul + HCCL 纯C通信
+        // apace hcomm路径: all2all_out为空且卡数<=8时启用，MatMul→AllToAll顺序
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
-        Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
+        Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, false>
             op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1Scale, x2Scale, workspaceGM);
@@ -155,9 +156,9 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
     if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: all2all_out为空且卡数<=8时启用，FP4场景
+        // apace hcomm路径: all2all_out为空且卡数<=8时启用，FP4场景 MatMul→AllToAll
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
-        Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
+        Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, true>
             op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1Scale, x2Scale, workspaceGM);

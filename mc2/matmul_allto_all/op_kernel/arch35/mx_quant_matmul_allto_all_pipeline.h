@@ -88,18 +88,22 @@ MxQuantMatmulAlltoAllPipeLine<CommunicationType, TransposeType, ScaleTransposeTy
 {
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
-        if ASCEND_IS_AIV {
-            commStage_->Process(index);
-            AscendC::SyncAll<true>();
-            transStage_->Process(index);
-            // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
-            AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
-            AscendC::CrossCoreWaitFlag(8);
-            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
-        }
         if ASCEND_IS_AIC {
-            AscendC::CrossCoreWaitFlag(9);
+            // matmul_allto_all: 计算在前，通信在后
+            // 1. AIC 先执行 matmul
             computeStage_->Process(index);
+            AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
+            AscendC::CrossCoreWaitFlag(8);
+            AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
+        }
+        if ASCEND_IS_AIV {
+            // 2. AIV 等待 AIC 计算完成
+            AscendC::CrossCoreWaitFlag(9);
+            // 3. 转置 matmul 结果
+            transStage_->Process(index);
+            AscendC::SyncAll<true>();
+            // 4. AllToAll 通信发送转置后的结果
+            commStage_->Process(index);
         }
     }
 }
@@ -110,12 +114,8 @@ __aicore__ inline void
 MxQuantMatmulAlltoAllPipeLine<CommunicationType, TransposeType, ScaleTransposeType, ComputationType,
                               ContextType>::ProcessScale()
 {
-    if ASCEND_IS_AIV {
-        commStage_->PrepareAll(1);
-        commStage_->Process(0);
-        AscendC::SyncAll<true>();
-        scaleTransStage_->Process(0);
-    }
+    // matmul_allto_all: scale 在 matmul 阶段本地消费，无需独立通信+转置
+    // 此处保留空实现以匹配 pipeline 接口
 }
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
