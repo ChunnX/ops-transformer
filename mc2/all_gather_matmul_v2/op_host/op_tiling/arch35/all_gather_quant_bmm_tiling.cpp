@@ -63,6 +63,8 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
+constexpr uint32_t APACE_DEFAULT_TILE_M = 512;
+constexpr uint32_t APACE_M_TAIL_ALIGN = 16;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -82,7 +84,7 @@ bool AllGatherQuantBmmTiling::IsCapable()
     // geAType 和 geBType 为fp8/hif8时做tiling
     if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
         mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
-        OP_LOGI(opName_, "Start with allgather quantbmm tiling.");
+        OP_LOGI(opName_, "Start with allgather quantbmm tiling, apace Hcomm path.");
         return true;
     }
     // geAType 和 geBType 为fp4时做tiling
@@ -537,11 +539,49 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
-    if (args_.nValue != 0) {
-        MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
-    }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
+    if (quantMmMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) {
+        MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
+    } else {
+        if (args_.nValue != 0) {
+            MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
+{
+    auto &param = MutableRCSTilingDataA5();
+    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
+    param.tileCnt = static_cast<uint32_t>(args_.mValue) / tileM;
+    param.tailM = static_cast<uint32_t>(args_.mValue) % tileM;
+    param.tailCnt = (param.tailM > 0) ? 1 : 0;
+
+    uint32_t paddedTailM = (param.tailM > 0)
+        ? ((param.tailM + APACE_M_TAIL_ALIGN - 1) / APACE_M_TAIL_ALIGN * APACE_M_TAIL_ALIGN) : 0U;
+    uint32_t totalLogicalM = static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
+
+    if (isFp4_) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue,
+                                   false, args_.isBTrans,
+                                   allGatherMatmulTilingDataFp8_->mmTile);
+    } else {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue,
+                                   false, args_.isBTrans,
+                                   allGatherMatmulTilingDataFp8_->mmTile);
+    }
+
+    OP_LOGI(opName_, "DoApaceMatmulTiling: isFp4=%d, totalLogicalM=%u, n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
+            isFp4_, totalLogicalM, args_.nValue, args_.kValue, args_.isBTrans,
+            allGatherMatmulTilingDataFp8_->mmTile.usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 

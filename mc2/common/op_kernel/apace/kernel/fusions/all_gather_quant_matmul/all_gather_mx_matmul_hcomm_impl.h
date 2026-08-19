@@ -15,6 +15,9 @@
  * 复用 UDMA 的 FragmentTensor kernel (AllGatherQbmmMxKernel)，通过 CommPolicy 模板参数
  * 注入 HcommCommWaitPolicy，将通信等待从 CrossCoreWaitFlag 替换为 hccl_.Wait(handle)。
  *
+ * 通过 TilingDataType 模板参数接收实际算子的 tiling 结构体（如 AllGatherMatmulTilingDataFp8），
+ * 直接读取 param(RCSTiling) + mmTile(QuantMatmulTilingData)，零转换、零中间结构。
+ *
  * 与 UDMA 版本 (all_gather_mx_matmul_udma_impl.h) 的核心差异：
  * 1. 通信方式：HCCL AllGather<true>（AIC 核内）替代 UDMA CollectiveComm（AIV 跨核）
  * 2. 执行模型：AIC-only（全 C 核，无 AIV 参与通信）
@@ -36,9 +39,7 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
 #include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
-#include "apace/tiling/comm_tiling_data.h"
 
 namespace AllGatherQuantMatmulImpl {
 
@@ -89,10 +90,11 @@ struct HcommCommWaitPolicy {
     }
 };
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
 class AllGatherMxQuantMatmulHcommImpl {
 public:
-    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(hcommAllGatherMatmulTilingData *tilingData)
+    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(TilingDataType *tilingData)
         : tilingData_(tilingData) {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
@@ -110,7 +112,7 @@ private:
     __aicore__ inline void CommitAllGather();
     __aicore__ inline void SetupKernelParams(KernelParams &params);
 
-    hcommAllGatherMatmulTilingData *tilingData_;
+    TilingDataType *tilingData_;
 
     GM_ADDR aGM_{};
     GM_ADDR aScaleGM_{};
@@ -148,18 +150,18 @@ private:
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
 };
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::InitBaseParams()
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, TilingDataType, IsMxFp4>::InitBaseParams()
 {
-    const auto &ct = tilingData_->commTile;
-    tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
-    tileM_ = static_cast<uint32_t>(ct.splitAxisTileSize);
-    tailCnt_ = static_cast<uint32_t>(ct.splitAxisTailCnt);
-    tailM_ = static_cast<uint32_t>(ct.splitAxisTailSize);
+    const auto &param = tilingData_->param;
+    tileCnt_ = param.tileCnt;
+    tileM_ = (param.tileCnt > 0) ? ((param.rankM - param.tailM * param.tailCnt) / param.tileCnt) : param.rankM;
+    tailCnt_ = param.tailCnt;
+    tailM_ = param.tailM;
     k_ = tilingData_->mmTile.k;
     n_ = tilingData_->mmTile.n;
-    m_ = static_cast<uint32_t>(ct.splitAxisTileSize * ct.splitAxisTileCnt +
-                               ct.splitAxisTailSize * ct.splitAxisTailCnt);
+    m_ = param.rankM;
     commTurn_ = tileCnt_ + tailCnt_;
     paddedTailM_ = (tailM_ > 0) ? ((tailM_ + kPaddingLength - 1) / kPaddingLength * kPaddingLength) : 0U;
     headRows_ = static_cast<uint64_t>(tileCnt_) * tileM_;
@@ -177,8 +179,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     }
 }
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Init(
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, TilingDataType, IsMxFp4>::Init(
     GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR workspaceGM)
 {
     aGM_ = aGM;
@@ -193,7 +196,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(hcommAllGatherMatmulTilingData, mc2CcTiling)));
+        static_cast<uint64_t>(offsetof(TilingDataType, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
@@ -211,8 +214,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     commState_.tileCnt_ = tileCnt_;
 }
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::CommitAllGather()
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, TilingDataType, IsMxFp4>::CommitAllGather()
 {
     // Scale: 全量一次性提交（repeat=1）
     commState_.scaleHandle_ = commState_.hccl_.template AllGather<true>(
@@ -243,8 +247,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     }
 }
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::SetupKernelParams(KernelParams &params)
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, TilingDataType, IsMxFp4>::SetupKernelParams(KernelParams &params)
 {
     params.mmTile = &(tilingData_->mmTile);
     params.qbmmParams = {tilingData_->mmTile.baseM, tilingData_->mmTile.baseN,
@@ -264,8 +269,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     params.cBytesPerM = cBytesPerM_;
 }
 
-template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Run()
+template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType,
+          typename TilingDataType, bool IsMxFp4>
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, TilingDataType, IsMxFp4>::Run()
 {
     KernelParams params;
     SetupKernelParams(params);

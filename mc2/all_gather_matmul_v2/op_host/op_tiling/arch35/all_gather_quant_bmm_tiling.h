@@ -23,6 +23,7 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "../../../op_kernel/all_gather_matmul_tiling_data.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace optiling {
 
@@ -61,6 +62,7 @@ protected:
     ge::graphStatus DoAdaptSlidWindowTiling();
     ge::graphStatus SetMc2Hcomm();
     void SetTilingKeyParams();
+    ge::graphStatus DoApaceMatmulTiling();
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
     ge::graphStatus CheckMXFPScaleInput();
