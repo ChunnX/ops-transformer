@@ -91,7 +91,6 @@ private:
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
-    __aicore__ inline void InitExpertTokenCountExportBuffers();
     __aicore__ inline void ProcessSharedExpertGmm1();
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
@@ -164,7 +163,6 @@ private:
     SharedExpertPrepareScratch<ActivationType> sharedExpertPrepareScratch_;
     SendMaskScratch sendMaskScratch_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
-    ExpertTokenCountExportScratch expertTokenCountExportScratch_;
     WaveCombineScratch waveCombineScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
 
@@ -250,8 +248,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitTokenDispat
                             .quantWinOffset = quantWinOffset,
                             .quantTokenAlignBytes = quantProcessConfig_.quantTokenAlignBytes,
                             .quantScaleAlignBytes = quantProcessConfig_.quantScaleAlignBytes,
-                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes,
-                            .useCompactExpertCountWorkspace = true};
+                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes};
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -351,7 +348,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
 }
 
 // =================================================================================================
-// DispatchBuffInit：申请公共 SendCount 和 Token Dispatch 函数使用的 buffer。
+// DispatchBuffInit：申请紧凑 count/cumsum 和 Token Dispatch 使用的 buffer。
 // =================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
@@ -367,34 +364,21 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
         MXFP_MULTI_BASE_SIZE; // 输出 token-scale 元素数，紧密排列
 
     // 与 route batch 无关的固定占用
-    uint32_t expertTokenCntTensorSize = ALIGN_32;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // sendCntTensor：每 src rank 一个 burst(32B)，共 worldSize*32B。
-    uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址
-    // Tensor 用途：ComputeExpertTokenCountAndNotify 记录本卡各专家收到的 token 总数；
-    // Tensor 大小：仅记录 count 值且各专家之间复用，申请 32 字节；
-    uint32_t expertTokenCntTensorAddr = 0;
-    tokenDispatchScratch_.expertTokenCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
-    // Tensor 用途：ComputeExpertTokenCountAndNotify 记录本卡专家收到 token count 的前缀和；
+    // Tensor 用途：保存所有 [expert][source rank] 紧凑 count 的前缀和；
     // Tensor 大小：worldSize_ * moeExpertPerRank_ * sizeof(int32_t)，向上对齐至 32 字节；
-    uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
+    uint32_t cumsumInfoTensorAddr = 0U;
     tokenDispatchScratch_.cumsumInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
-    // Tensor 用途：ComputeExpertTokenCountAndNotify 暂存各源 rank 的 count；
-    // Tensor 大小：每个源 rank 占一个 32B burst，共 worldSize_ * 32B；
-    uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    tokenDispatchScratch_.sendCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
     // Tensor 用途：DispatchExpertTokens 接收当前 batch 的 mask 切片；
     // Tensor 大小：routeItemsPerBatch / 8 字节，每个 bit 对应一个路由项；
-    uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
+    uint32_t maskBatchAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     uint32_t maskBatchSize = static_cast<uint32_t>(routeItemsPerBatch / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     tokenDispatchScratch_.maskBatchTensor =
         LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint8_t));
@@ -437,7 +421,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
         static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     tokenDispatchScratch_.metaInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoReserveSize / sizeof(int32_t));
-    tokenDispatchScratch_.cumsumRevCntInRank = 0U;
     tokenDispatchScratch_.nextDispatchCoreIdx = 0U;
 }
 
@@ -739,15 +722,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpe
      * 在 GMM pipeline 开始前完成所有专家的 Dispatch。每个专家单独使用全部
      * Dispatch core，便于验证专家级分核的并发收益。
      */
-    for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
-        WaveDispatchCoreRange dispatchCoreRange =
-            PlanWaveExpertDispatch(tokenDispatchConfig_, tokenDispatchScratch_, expertIdx);
-        if (HasWaveDispatchRows(dispatchCoreRange)) {
-            DispatchWaveExpertRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
-                dispatchCoreRange);
-        }
-    }
+    RunAllWaveExpertDispatchStages<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_);
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -955,7 +931,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
     DispatchBuffInit();
     CombineBufferConfig combineBufferConfig = InitCombineBuffers();
-    InitExpertTokenCountExportBuffers();
     PrepareMoeExpertTokenCountTable(tokenDispatchConfig_, params_, tokenDispatchScratch_);
 
     GMMAddrInfo gmm1AddrInfo{};
@@ -1019,7 +994,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     }
     vecSetSyncCom = 0;
     gmm1PingPongIdx_ = 0;
-    ExportExpertTokenCountsFromWorkspace(tokenDispatchConfig_, params_, expertTokenCountExportScratch_);
+    ExportCompactExpertTokenCounts(tokenDispatchConfig_, params_, tokenDispatchScratch_);
 }
 
 template <TemplateMegaMoeWaveTypeClass>

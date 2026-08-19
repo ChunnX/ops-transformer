@@ -97,10 +97,9 @@ protected:
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmTileSequence);
-    __aicore__ inline bool PrepareGmm1ExpertState(ExpertLoopState &state, uint32_t expertIdx, uint32_t sendCnt);
+    __aicore__ inline bool PrepareGmm1ExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                      Gmm1ActivationState &runtimeState, uint32_t expertIdx,
-                                                      uint32_t sendCnt);
+                                                      Gmm1ActivationState &runtimeState, uint32_t expertIdx);
     __aicore__ inline void ProcessMoeExpertStages(int32_t &gmTileSequence);
     __aicore__ inline void ProcessSharedExpertGmm2(int32_t &gmTileSequence);
     __aicore__ inline void CrossRankSyncInWorldSize();
@@ -122,10 +121,6 @@ protected:
     QuantCombineConfig quantCombineConfig_;
     QuantCombineBufferConfig quantCombineBufferConfig_;
     TokenUnpermuteConfig tokenUnpermuteConfig_;
-    // A8W4 路径下 RunGmm1A8W4 会覆盖 V1 UB，导致 UB 上跨 expert 的状态
-    // 无法保持。tokenDispatchScratch_ 中的 cumsumInfoGlobalTensor 作为 GM 持久备份：
-    // ComputeExpertTokenCountAndNotify 中 Load → 计算 → Store；Dispatch/Export 从 GM 恢复。
-
     uint32_t k_ = 0;
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
@@ -217,7 +212,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs
     sendMaskConfig_ = {.maskAlignSize = maskAlignSize,
                        .maskWinOffset = maskWinOffset,
                        .compactCountWinOffset = compactCountWinOffset,
-                       .publishCompactCountTable = false,
+                       .publishCompactCountTable = true,
                        .bufferConfig = bufferConfig};
 
     resetWorkspaceConfig_ = {.flagElementCount = static_cast<int32_t>(CalcResetFlagElementCount(params_.tilingData)),
@@ -246,8 +241,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenDispatchConfig
                             .quantWinOffset = quantWinOffset,
                             .quantTokenAlignBytes = quantProcessConfig_.quantTokenAlignBytes,
                             .quantScaleAlignBytes = quantProcessConfig_.quantScaleAlignBytes,
-                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes,
-                            .useCompactExpertCountWorkspace = false};
+                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes};
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -379,26 +373,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(context.common.worldSize * context.common.moeExpertPerRank * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_32));
-    if constexpr (ENABLE_A8W4) {
-        scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            params_.workspaceInfo.cumsumInfoPtr +
-            static_cast<uint64_t>(cumsumInfoTensorSize) * context.countWorkspace.blockIdx));
-    }
-    scratch.cumsumRevCntInRank = 0U;
     scratch.nextDispatchCoreIdx = 0U;
 
-    uint32_t expertTokenCntTensorAddr = 0U;
-    uint32_t expertTokenCntTensorSize = ALIGN_32;
-    scratch.expertTokenCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
-    uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
+    uint32_t cumsumInfoTensorAddr = 0U;
     scratch.cumsumInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
-    uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t sendCntTensorSize = context.common.worldSize * static_cast<uint32_t>(ALIGN_32);
-    scratch.sendCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
-    uint32_t maskBatchTensorAddr = sendCntTensorAddr + sendCntTensorSize;
+    uint32_t maskBatchTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     uint32_t maskBatchTensorSize = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
     scratch.maskBatchTensor = LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchTensorAddr, maskBatchTensorSize);
     scratch.maskBatchU32Tensor =
@@ -656,25 +636,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 // 进入一个 MoE 专家时获取 token 数，并准备其完整 GMM1 状态。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmm1ExpertState(ExpertLoopState &state,
-                                                                                uint32_t expertIdx, uint32_t sendCnt)
+                                                                                uint32_t expertIdx)
 {
-    if (GetSubBlockIdx() == 0) {
-        WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, expertIdx);
-        sendCnt =
-            GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
+    if (!state.expertCountTableReady) {
+        WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+        state.expertCountTableReady = true;
     }
-    UpdateExpertLoopState(state, expertIdx, sendCnt);
-    return sendCnt != 0U;
+    return UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, state, expertIdx, true,
+                                              commonConfig_.moeExpertPerRank);
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm1ActivationForExpert(ExpertLoopState &state,
                                                                                     GMMAddrInfo &gmmAddrInfo,
                                                                                     Gmm1ActivationState &runtimeState,
-                                                                                    uint32_t expertIdx,
-                                                                                    uint32_t sendCnt)
+                                                                                    uint32_t expertIdx)
 {
-    if (!PrepareGmm1ExpertState(state, expertIdx, sendCnt)) {
+    if (!PrepareGmm1ExpertState(state, expertIdx)) {
         return;
     }
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
@@ -692,32 +670,24 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
     DispatchBuffInit();
+    PrepareMoeExpertTokenCountTable(tokenDispatchConfig_, params_, tokenDispatchScratch_);
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     uint32_t gmm1StartBlockIdx = 0U;
     int32_t gmm1VecSetSyncCom = 0;
     uint16_t gmm1PingPongIdx = 0U;
     Gmm1ActivationState gmm1RuntimeState{gmm1StartBlockIdx, gmm1VecSetSyncCom, gmTileSequence, gmm1PingPongIdx};
-    uint32_t currentSendCnt = 0U;
-    uint32_t nextSendCnt = 0U;
-
-    RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, 0U, nextSendCnt);
+    RunAllWaveExpertDispatchStages<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_);
     for (uint32_t expertIdx = 0U; expertIdx < commonConfig_.moeExpertPerRank; ++expertIdx) {
-        currentSendCnt = nextSendCnt;
-        if (expertIdx + 1U < commonConfig_.moeExpertPerRank) {
-            RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_,
-                expertIdx + 1U, nextSendCnt);
-        }
-        RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, currentSendCnt);
+        RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx);
     }
     FinishMoeGmm1ActivationStage<ENABLE_A8W4, TopkWeightsPrefetch>(commonConfig_, syncWorkspaceLayout_,
                                                                    params_.workspaceInfo, gmm1RuntimeState);
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            ExportExpertTokenCounts<ActivationType, ENABLE_A8W4>(tokenDispatchConfig_, tokenDispatchScratch_, params_);
+            ExportCompactExpertTokenCounts(tokenDispatchConfig_, params_, tokenDispatchScratch_);
         }
     }
     if constexpr (TopkWeightsPrefetch) {
