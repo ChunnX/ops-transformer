@@ -55,6 +55,7 @@ public:
 
     void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
     void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
+    void SetPlatformInfoPtr(fe::PlatFormInfos *ptr) { platformInfoPtr_ = ptr; }
 
 protected:
     QuantMatmulArgs args_{};
@@ -63,6 +64,7 @@ protected:
 
     bool isOpenOptimize_{true};
     bool enableMTailAlign_{false};
+    fe::PlatFormInfos *platformInfoPtr_{nullptr};
 
     virtual const char* TilingName() const = 0;
 
@@ -97,7 +99,15 @@ private:
     {
         // Query the platform once per tiling request so later decisions can
         // use the real cache sizes and core count of the current device.
-        auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
+        // Prefer the context-injected platform info (UT-friendly); fall back
+        // to the global manager singleton for standalone host launchers.
+        platform_ascendc::PlatformAscendC ctxPlatform(platformInfoPtr_);
+        platform_ascendc::PlatformAscendC *ascendcPlatform = nullptr;
+        if (platformInfoPtr_ != nullptr) {
+            ascendcPlatform = &ctxPlatform;
+        } else {
+            ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
+        }
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
         platformInfo_.socVersion = ascendcPlatform->GetSocVersion();
