@@ -570,7 +570,7 @@ ProcessVec1VfMxfp8(const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, co
     }
 }
 
-template <typename T>
+template <typename T, bool checkNegativeInf = false>
 __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb, const uint32_t m, const T minValue,
                                            const T maxValue)
 {
@@ -586,19 +586,23 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb,
     // 注意：当m大于64的时候需要开启循环
     LoadAlign(vreg_max, maxUb);
     LoadAlign(vreg_sum, sumUb);
-    Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
+    if constexpr (checkNegativeInf) {
+        Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
+    } else {
+        Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
+    }
     Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);
 }
 
-template <typename T>
+template <typename T, bool checkNegativeInf = false>
 __aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T> &sumTensor, const LocalTensor<T> &maxTensor,
                                         const uint32_t m, const T minValue, const T maxValue)
 {
     __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
     __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
 
-    SoftmaxSumUpdateVF<T>(sumUb, maxUb, m, minValue, maxValue);
+    SoftmaxSumUpdateVF<T, checkNegativeInf>(sumUb, maxUb, m, minValue, maxValue);
 }
 } // namespace FaVectorApi
 

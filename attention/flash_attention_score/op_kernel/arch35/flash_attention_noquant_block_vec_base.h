@@ -641,8 +641,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
         }
     }
-    if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
-                                           static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+    if (this->tilingData->inputParamsRegbase.implMode ==
+        static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
         this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
     }
     //-----------------------------------------------------------------
@@ -689,8 +689,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InvalidLinePro
             constInfo.softMaxCheckRes = false;
         } else {
             if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-                SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
-                                    this->positiveFloatScalar);
+                SoftmaxSumUpdate<T, true>(sumUb, maxUb, runInfo.halfS1RealSize, this->negativeFloatScalar,
+                                          this->positiveFloatScalar);
             }
         }
     }
@@ -1300,8 +1300,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     }
     if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
                   enableDataInvalidLineRepair) {
-        if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
-                                               static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+        if (this->tilingData->inputParamsRegbase.implMode ==
+            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
             this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
         }
     }
@@ -1328,8 +1328,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     }
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     if constexpr (!isFp8 && useDn) {
-        if (!enableDataInvalidLineRepair && this->tilingData->inputParamsRegbase.implMode !=
-                                                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+        if (this->tilingData->inputParamsRegbase.implMode !=
+            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
             if constexpr (isInfer) {
                 if (constInfo.s2Size <= 128 && !constInfo.isRowInvalid && !POST_QUANT) { // 128: kv方向基本块大小
                     ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf,
@@ -2038,14 +2038,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
-            if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
-                                                   static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                      enableDataInvalidLineRepair) {
+            if (this->tilingData->inputParamsRegbase.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
-                InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
-                                                       dSizeAligned64, this->negativeFloatScalar, 0.0);
+                InvalidLineUpdate<T, dTemplateAlign64, true>(vec2ResUb, vec2ResUb, maxTensor,
+                                                             runInfo.vec2S1RealSize, dSizeAligned64,
+                                                             this->negativeFloatScalar, 0.0);
             }
         }
         if constexpr (!POST_QUANT) {
@@ -2355,9 +2356,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         negativeScalar = *((float *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
-            if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
-                                                   static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                      enableDataInvalidLineRepair) {
+            if (this->tilingData->inputParamsRegbase.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
                 positiveScalar = *((float *)&tmp2);
             }
@@ -2366,9 +2367,9 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
         negativeScalar = *((half *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
-            if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
-                                                   static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                      enableDataInvalidLineRepair) {
+            if (this->tilingData->inputParamsRegbase.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;
                 positiveScalar = *((half *)&tmp2);
             }
