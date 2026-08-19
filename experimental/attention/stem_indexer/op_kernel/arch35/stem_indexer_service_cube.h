@@ -49,7 +49,7 @@ public:
     static constexpr uint64_t QUERY_BUF_NUM = 2;
     static constexpr uint64_t L0A_BUF_NUM = 2;
     static constexpr uint64_t L0B_BUF_NUM = 2;
-    static constexpr uint64_t L0C_BUF_NUM = 4;
+    static constexpr uint64_t L0C_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID2; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
@@ -365,8 +365,6 @@ __aicore__ inline void SIMatmul<SIT>::AllocEventID()
 
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 2);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 3);
 }
 
 template <typename SIT>
@@ -384,8 +382,6 @@ __aicore__ inline void SIMatmul<SIT>::FreeEventID()
 
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 2);
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 3);
 }
 } // namespace SIKernel
 #endif
