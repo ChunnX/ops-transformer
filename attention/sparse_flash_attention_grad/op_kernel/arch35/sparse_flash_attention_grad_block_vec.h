@@ -540,13 +540,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
                     dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                     constInfo.commonConstInfo.dSizeV);
             }
-            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
             int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
             if (s2Idx >= 0) {
-                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                if constexpr (!KV_MERGE) {
+                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                }
                 DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
                 if constexpr (!KV_MERGE) {
                     DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV],
@@ -579,13 +582,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
                 dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                 constInfo.commonConstInfo.dSizeV);
         }
-        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+        WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
     }
     for (int64_t row = 0; row < tailRows; row++) {
         int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
         if (s2Idx >= 0) {
-            SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            if constexpr (!KV_MERGE) {
+                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            }
             DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
             if constexpr (!KV_MERGE) {
                 DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV],
@@ -693,13 +699,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                         dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                         constInfo.commonConstInfo.dSizeV);
                 }
-                PipeBarrier<PIPE_V>();
+                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             }
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
                 if (s2Idx >= 0) {
-                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    if constexpr (!KV_MERGE) {
+                        SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                        WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    }
                     DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
                              dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
                     if constexpr (!KV_MERGE) {
@@ -735,13 +744,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                     dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                     constInfo.commonConstInfo.dSizeV);
             }
-            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
             if (s2Idx >= 0) {
-                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                if constexpr (!KV_MERGE) {
+                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                }
                 DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
                          dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
                 if constexpr (!KV_MERGE) {
