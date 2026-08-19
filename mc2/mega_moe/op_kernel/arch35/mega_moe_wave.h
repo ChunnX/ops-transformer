@@ -1151,7 +1151,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
         if (ownedBegin < ownedEnd) {
             uint32_t coreRowBegin = segmentRowBegin + ownedBegin - expertWaveRowBegin;
             uint32_t coreRowEnd = segmentRowBegin + ownedEnd - expertWaveRowBegin;
-            GroupSyncSlotLayout slotLayout = CalcGroupSyncSlotLayout(expertRowCount, blockNum_);
             uint32_t expectedTiles = Ops::Base::CeilDiv(
                 static_cast<uint32_t>(Get<K_VALUE>(combineState.problemShape)),
                 static_cast<uint32_t>(L1_TILE_N));
@@ -1168,14 +1167,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
                 if (processRowBegin >= processRowEnd) {
                     continue;
                 }
-                uint32_t firstSyncSlot = 0U;
-                uint32_t syncSlotCount = 0U;
-                GetGroupSyncSlotRange(groupIdx, slotLayout, firstSyncSlot, syncSlotCount);
-                if (syncSlotCount == 0U) {
-                    continue;
-                }
                 __gm__ int32_t *readyCounter = GetCombineSyncCounterAddress(
-                    combineAddrInfo.gmm2CombineSyncCounter, firstSyncSlot);
+                    combineAddrInfo.gmm2CombineSyncCounter, groupIdx);
                 while (AscendC::ReadGmByPassDCache(readyCounter) <
                        static_cast<int32_t>(expectedTiles)) {
                     int64_t waitBegin = AscendC::GetSystemCycle();

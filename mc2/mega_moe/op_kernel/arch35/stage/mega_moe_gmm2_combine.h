@@ -512,7 +512,10 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
     }
 }
 
-// Notifies all AIV consumers assigned to the completed GMM2 token group.
+// Notifies Combine consumers that one N tile of a GMM2 token group is complete.
+// Wave Combine owns arbitrary contiguous rows, so it uses one shared counter per
+// expert-local group instead of the legacy pre-assigned consumer-slot layout.
+template <bool UseSharedGroupCounter = false>
 __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
                                                               const GroupSyncSlotLayout &slotLayout,
                                                               __gm__ int32_t *expertCounterBase)
@@ -521,6 +524,10 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 
     uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
+    if constexpr (UseSharedGroupCounter) {
+        AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, tokenGroupIndex), int32_t(1));
+        return;
+    }
     uint32_t firstSyncSlot = 0;
     uint32_t syncSlotCount = 0;
     GetGroupSyncSlotRange(tokenGroupIndex, slotLayout, firstSyncSlot, syncSlotCount);
@@ -551,11 +558,10 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared &&
+                  !Config::IS_WAVE_FLAG_GRAINED) {
         uint32_t logicalCoreCount = config.blockNum;
-        if constexpr (!std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
-            logicalCoreCount *= 2U;
-        }
+        logicalCoreCount *= 2U;
         uint32_t syncExpertTokenCount = gmmAddrInfo.gmm2SyncExpertTokenCount == 0U ?
             config.m : gmmAddrInfo.gmm2SyncExpertTokenCount;
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(syncExpertTokenCount, logicalCoreCount);
@@ -599,7 +605,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             uint32_t expertRowOffset = gmmAddrInfo.gmm2TileOffsetInExpert * COMBINE_TOKEN_GROUP_SIZE + mLoc;
-            NotifyCombineConsumersOfTileCompletion(
+            NotifyCombineConsumersOfTileCompletion<Config::IS_WAVE_FLAG_GRAINED>(
                 expertRowOffset, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
@@ -617,7 +623,8 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared &&
+                  !Config::IS_WAVE_FLAG_GRAINED) {
         uint32_t logicalCoreCount = config.blockNum;
         uint32_t syncExpertTokenCount = gmmAddrInfo.gmm2SyncExpertTokenCount == 0U ?
             config.m : gmmAddrInfo.gmm2SyncExpertTokenCount;
@@ -645,7 +652,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             uint32_t expertRowOffset = gmmAddrInfo.gmm2TileOffsetInExpert * COMBINE_TOKEN_GROUP_SIZE + mLoc;
-            NotifyCombineConsumersOfTileCompletion(
+            NotifyCombineConsumersOfTileCompletion<Config::IS_WAVE_FLAG_GRAINED>(
                 expertRowOffset, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
