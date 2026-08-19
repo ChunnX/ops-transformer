@@ -588,16 +588,15 @@ public:
         }
     }
 
-    // [FIA_EXP] C1 关闭时的同步替身: 只保留迭代同步(crosscore + kvp flag 链), 不做计算/拷贝
-    // 注意: 与 IterateBmm1 一致, 每 loop 只 Get() 一次驱动轮转, 后续一律用引用 (Get() 多次会错误轮转)
+    // [FIA_EXP] C1 关闭时的同步替身: 只保留核间同步 + kvp 释放链的必要消费端
+    // 唯一保留的 MTE1_MTE2 WaitFlag 是 C2 释放链(CrossCoreBufferInit 3次 + C2 每loop Set)的平衡对偶:
+    // eventID 资源必须被消费, 否则池满死锁 (实测删除后 RUN=124). MTE2_MTE1 自闭环链已删(Set端仅C1自身)
     __aicore__ inline void ExpSyncC1(RunInfoX &runInfo)
     {
         auto &b1 = bmm1Buffers_.Get();
         auto &kvp = l1KvPBuffers_.Get();
         b1.WaitCrossCore();
         WaitFlag<HardEvent::MTE1_MTE2>(kvp.GetEventID<HardEvent::MTE1_MTE2>());
-        SetFlag<HardEvent::MTE2_MTE1>(kvp.GetEventID<HardEvent::MTE2_MTE1>());
-        WaitFlag<HardEvent::MTE2_MTE1>(kvp.GetEventID<HardEvent::MTE2_MTE1>());
         b1.SetCrossCore();
     }
 
@@ -613,13 +612,13 @@ public:
         b2.SetCrossCore();
     }
 
-    // [FIA_EXP] V1 关闭时的同步替身: 保留 ProcessVec1 的 crosscore 配对, 不做 softmax 计算
+    // [FIA_EXP] V1 关闭时的同步替身: 只保留核间同步(与 AIC C1/C2 配对), 不做 softmax 计算
+    // b1.Wait/Set 与 AIC ExpSyncC1/IterateBmm1 配对; kvp.Set 与 AIC C2 的 kvp.Wait 配对 (原版语义: V1 从不 Wait kvp)
     __aicore__ inline void ExpSyncV1(RunInfoX &runInfo)
     {
         auto &b1 = bmm1Buffers_.Get();
         auto &kvp = l1KvPBuffers_.Get();
         b1.WaitCrossCore();
-        kvp.WaitCrossCore();
         b1.SetCrossCore();
         kvp.SetCrossCore();
     }
