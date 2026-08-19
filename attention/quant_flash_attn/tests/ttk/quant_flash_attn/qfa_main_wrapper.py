@@ -106,6 +106,7 @@ def run_main(
     data_range_v: float = 1.0,
     **kwargs,
 ):
+    input_layout = kwargs.get("layout_q") or input_layout
     """重建 metadata 后调 quant_flash_attn 主算子, 返回 [atten_out, lse_out]。
 
     分离测试入口: 验证主算子 + metadata 完整链路。
