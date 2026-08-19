@@ -139,8 +139,10 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
                      tilingData_.normCorePerLoopTSize * nSize_ * nSize_ * sizeof(float));
     pipe_.InitBuffer(inputNormQue_, DOUBLE_BUFFER,
                      tilingData_.normCorePerLoopTSize * nSize_ * nAlignSize_ * sizeof(float));
-    pipe_.InitBuffer(inputSumQue_, DOUBLE_BUFFER,
-                     tilingData_.normCorePerLoopTSize * nAlignSize_ * sizeof(float));
+    int64_t sumFlatSize = tilingData_.normCorePerLoopTSize * nAlignSize_;
+    int64_t sumPadSize = nSize_ * Ceil(tilingData_.normCorePerLoopTSize, INDEX_BLOCK_LEN) * INDEX_BLOCK_LEN;
+    int64_t sumBufSize = sumFlatSize > sumPadSize ? sumFlatSize : sumPadSize;
+    pipe_.InitBuffer(inputSumQue_, DOUBLE_BUFFER, sumBufSize * sizeof(float));
     pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER,
                      tilingData_.normCorePerLoopTSize * nSize_ * nSize_ * sizeof(float));
 }
