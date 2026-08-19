@@ -138,8 +138,6 @@ public:
         broadTmpInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
         buffOffset += cubeSize;
         betaInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(betaUbSize), buffOffset);
-        Duplicate<float>(tmpBuff.Get<float>(), 0, restUbSize_ / sizeof(float));
-        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ComputeAvgload()
@@ -352,6 +350,11 @@ private:
         DataCopyPad(betaLocal, betaGm_[seq0 * NV_], betaInParams, padParams);
         betaInQueue_.EnQue<inType>(betaLocal);
         betaLocal = betaInQueue_.DeQue<inType>();
+        if (!buffersZeroed_) {
+            Duplicate<float>(tmpBuff.Get<float>(), 0, restUbSize_ / sizeof(float));
+            AscendC::PipeBarrier<PIPE_V>();
+            buffersZeroed_ = true;
+        }
         Cast(betaInUb, betaLocal, AscendC::RoundMode::CAST_NONE, bBatchSize);
         betaInQueue_.FreeTensor(betaLocal);
         if (hasGama_) {
@@ -456,6 +459,7 @@ private:
     bool hasAcceptedTokens_;
     bool hasGama_;
     bool hasGamaK_;
+    bool buffersZeroed_ = false;
     float gama_;
     float beta_;
     float scale_;

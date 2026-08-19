@@ -205,17 +205,6 @@ public:
         queryUb_ = queryBuff_.Get<float>();
         keyUb_ = keyBuff_.Get<float>();
         valueUb_ = valueBuff_.Get<float>();
-
-        Duplicate<float>(gamaUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
-        Duplicate<float>(stateUb_, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
-        Duplicate<float>(queryUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
-        Duplicate<float>(keyUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
-        Duplicate<float>(valueUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
-        LocalTensor<float> tmpUb2 = tmpBuff2_.Get<float>();
-        Duplicate<float>(tmpUb2, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
-        LocalTensor<float> tmpUb1 = tmpBuff1_.Get<float>();
-        Duplicate<float>(tmpUb1, 0, BUFFER_SIZE_BYTE_2K / sizeof(float));
-        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ComputeAvgload()
@@ -277,6 +266,20 @@ private:
             inputQueue1_.EnQue<float>(gamaKInUb);
             inputQueue1_.DeQue<float>();
 
+            if (!buffersZeroed_) {
+                Duplicate<float>(gamaUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(stateUb_, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+                Duplicate<float>(queryUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(keyUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(valueUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                LocalTensor<float> tmpUb2 = tmpBuff2_.Get<float>();
+                Duplicate<float>(tmpUb2, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+                LocalTensor<float> tmpUb1 = tmpBuff1_.Get<float>();
+                Duplicate<float>(tmpUb1, 0, BUFFER_SIZE_BYTE_2K / sizeof(float));
+                AscendC::PipeBarrier<PIPE_V>();
+                buffersZeroed_ = true;
+            }
+
             if (DK_ != alignDK_) {
                 Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -290,6 +293,19 @@ private:
             DataCopy(gamaUb_, gamaKInUb, repeatParams);
             inputQueue1_.FreeTensor(gamaKInUb);
         } else {
+            if (!buffersZeroed_) {
+                Duplicate<float>(gamaUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(stateUb_, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+                Duplicate<float>(queryUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(keyUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                Duplicate<float>(valueUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+                LocalTensor<float> tmpUb2 = tmpBuff2_.Get<float>();
+                Duplicate<float>(tmpUb2, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+                LocalTensor<float> tmpUb1 = tmpBuff1_.Get<float>();
+                Duplicate<float>(tmpUb1, 0, BUFFER_SIZE_BYTE_2K / sizeof(float));
+                AscendC::PipeBarrier<PIPE_V>();
+                buffersZeroed_ = true;
+            }
             Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
         }
     }
@@ -536,6 +552,7 @@ private:
     bool hasAcceptedTokens_;
     bool hasGama_;
     bool hasGamaK_;
+    bool buffersZeroed_ = false;
     float scale_;
     uint64_t blockIdx;
     uint64_t stateStride0_;
