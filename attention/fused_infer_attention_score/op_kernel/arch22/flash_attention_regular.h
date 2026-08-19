@@ -21,17 +21,10 @@ using namespace KernelCommon;
 using namespace NpuArch;
 
 namespace SplitFuse {
-template <
-    class BlockMmadQK,
-    class BlockMmadPV,
-    class EpilogueOnlineSoftmax,
-    class EpilogueRescaleO,
-    class EpilogueInitOut,
-    bool PAGED_CACHE_FLAG,
-    FaiKernel::MaskType MASK_TYPE = FaiKernel::MaskType::NO_MASK,
-    FaiKernel::inputLayout INPUT_LAYOUT = FaiKernel::inputLayout::BSND,
-    class CombineScale = void,
-    bool IS_FD = false>
+template <class BlockMmadQK, class BlockMmadPV, class EpilogueOnlineSoftmax, class EpilogueRescaleO,
+          class EpilogueInitOut, bool PAGED_CACHE_FLAG, FaiKernel::MaskType MASK_TYPE = FaiKernel::MaskType::NO_MASK,
+          FaiKernel::inputLayout INPUT_LAYOUT = FaiKernel::inputLayout::BSND, class CombineScale = void,
+          bool IS_FD = false>
 class FAInferKernel {
 public:
     using ArchTag = typename BlockMmadQK::ArchTag;
@@ -157,19 +150,17 @@ public:
         AscendC::GlobalTensor<ElementP> gP;
         gP.SetGlobalBuffer((__gm__ ElementP *)(params.workSpace + Lsesize + Losize + mm1OutSize));
         AscendC::GlobalTensor<ElementOTmp> gOTmp;
-        gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize +
-                                                     mm1OutSize + smOnlineOutSize));
+        gOTmp.SetGlobalBuffer(
+            (__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize + mm1OutSize + smOnlineOutSize));
         AscendC::GlobalTensor<ElementOTmp> gOUpdate;
-        gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize +
-                                                        mm1OutSize + smOnlineOutSize + mm2OutSize));
+        gOUpdate.SetGlobalBuffer(
+            (__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize + mm1OutSize + smOnlineOutSize + mm2OutSize));
         AscendC::GlobalTensor<ElementSink> gSink;
         gSink.SetGlobalBuffer((__gm__ ElementSink *)(params.sink));
 
         GlobalTensorBundle globalTensors{
-            gQ, gK, gV, gPseShift, gMask, gBlockTable,
-            gActualQseqlen, gActualKvseqlen,
-            gO, gLse, gLseFD, gOFD,
-            gS, gP, gOTmp, gOUpdate, gSink};
+            gQ,     gK,   gV, gPseShift, gMask, gBlockTable, gActualQseqlen, gActualKvseqlen, gO, gLse,
+            gLseFD, gOFD, gS, gP,        gOTmp, gOUpdate,    gSink};
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -201,9 +192,7 @@ public:
             ((maxQKPL1Size - maxQL1Size) / kDynNum / sizeof(ElementV) / DOUBLE_BUFFER) / NUM_32 * NUM_32;
 
         uint32_t nDynNum = maxNDynNum < L1_MAX_N_NUM ? maxNDynNum : L1_MAX_N_NUM;
-        nDynNum = L1_MAX_N_NUM % nDynNum != 0 ?
-                      NpuArch::Detail::Alignment::RoundDown((nDynNum - 1), NUM_32) :
-                      nDynNum;
+        nDynNum = L1_MAX_N_NUM % nDynNum != 0 ? NpuArch::Detail::Alignment::RoundDown((nDynNum - 1), NUM_32) : nDynNum;
 
         uint32_t L1_QK_SIZE = BlockMmadQK::L1TileShape::M * kDynNum * sizeof(ElementQ);
         blockMmadQK.init(resource, nDynNum, kDynNum, MAX_KV_STACK_LEN);
@@ -261,14 +250,12 @@ public:
                 uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx));
                 uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
                 if constexpr (INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                    uint32_t prevQSeqlenSum = (BIdx == 0) ?
-                                                  0 :
-                                                  static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
+                    uint32_t prevQSeqlenSum =
+                        (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
                     qSeqlenCur = qSeqlenCur - prevQSeqlenSum;
                     if constexpr (!PAGED_CACHE_FLAG) {
-                        uint32_t prevKvSeqlenSum = (BIdx == 0) ?
-                                                       0 :
-                                                       static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
+                        uint32_t prevKvSeqlenSum =
+                            (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
                         kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSum;
                     }
                 }
@@ -278,8 +265,8 @@ public:
                 uint32_t curQNBlockNumTmp = qNBlockNumPerGroupTmp * kvHeads;
                 uint32_t curQSBlockTileTmp = GetQSBlockTile(kvSeqlenCur);
                 uint32_t curQSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(qSeqlenCur, curQSBlockTileTmp);
-                uint32_t curKSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(kvSeqlenCur,
-                                                                                GetKSBlockTile(kvSeqlenCur));
+                uint32_t curKSBlockNumTmp =
+                    NpuArch::Detail::Alignment::CeilDiv(kvSeqlenCur, GetKSBlockTile(kvSeqlenCur));
 
                 int32_t stN1IdxNow = (BIdx == startBIdx) ? startN1Idx : 0;
                 int32_t enN1IdxNow = (BIdx == endBIdx) ? endN1Idx : curQNBlockNumTmp - 1;
@@ -289,9 +276,8 @@ public:
                     int32_t enS1IdxNow = (BIdx == endBIdx && n1Idx == enN1IdxNow) ? endS1Idx : curQSBlockNumTmp - 1;
 
                     for (int32_t s1Idx = stS1IdxNow; s1Idx <= enS1IdxNow; s1Idx++) {
-                        int32_t stS2IdxNow = (BIdx == startBIdx && n1Idx == stN1IdxNow && s1Idx == stS1IdxNow) ?
-                                                 startS2Idx :
-                                                 0;
+                        int32_t stS2IdxNow =
+                            (BIdx == startBIdx && n1Idx == stN1IdxNow && s1Idx == stS1IdxNow) ? startS2Idx : 0;
                         int32_t enS2IdxNow = (BIdx == endBIdx && n1Idx == enN1IdxNow && s1Idx == enS1IdxNow) ?
                                                  endS2Idx :
                                                  curKSBlockNumTmp;
@@ -299,11 +285,8 @@ public:
                         bool isSplitKV = (enS2IdxNow - stS2IdxNow) > 0 &&
                                          (enS2IdxNow - stS2IdxNow) < static_cast<int32_t>(curKSBlockNumTmp);
 
-                        runMainLoop(
-                            coreIdx, BIdx, n1Idx, s1Idx,
-                            isSplitKV, stS2IdxNow, enS2IdxNow,
-                            gmOffsetLseFD, gmOffsetOFD,
-                            globalTensors, pseQ, pseKv);
+                        runMainLoop(coreIdx, BIdx, n1Idx, s1Idx, isSplitKV, stS2IdxNow, enS2IdxNow, gmOffsetLseFD,
+                                    gmOffsetOFD, globalTensors, pseQ, pseKv);
 
                         if (isSplitKV) {
                             uint32_t qSBlockSizeTmp = (s1Idx == static_cast<int32_t>(curQSBlockNumTmp - 1U)) ?
@@ -332,21 +315,19 @@ public:
                     uint32_t qSeqlenTmp = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
                     uint32_t kvSeqlenTmp = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
                     if constexpr (INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                        uint32_t prevQSeqlenSumTmp = (curBatchTmp == 0) ?
-                                                         0 :
-                                                         static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
+                        uint32_t prevQSeqlenSumTmp =
+                            (curBatchTmp == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
                         qSeqlenTmp = qSeqlenTmp - prevQSeqlenSumTmp;
                         if constexpr (!PAGED_CACHE_FLAG) {
-                            uint32_t prevKvSeqlenSumTmp = (curBatchTmp == 0) ?
-                                                              0 :
-                                                              static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
+                            uint32_t prevKvSeqlenSumTmp =
+                                (curBatchTmp == 0) ? 0 :
+                                                     static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
                             kvSeqlenTmp = kvSeqlenTmp - prevKvSeqlenSumTmp;
                         }
                     }
 
                     uint32_t curQNBlockTileTmp = GetQNBlockTile(qSeqlenTmp, groupSize);
-                    uint32_t qNBlockNumPerGroupTmp = NpuArch::Detail::Alignment::CeilDiv(groupSize,
-                                                                                         curQNBlockTileTmp);
+                    uint32_t qNBlockNumPerGroupTmp = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileTmp);
                     uint32_t curQNBlockNumTmp = qNBlockNumPerGroupTmp * kvHeads;
                     uint32_t curQSBlockTileTmp = GetQSBlockTile(kvSeqlenTmp);
                     uint32_t curQSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(qSeqlenTmp, curQSBlockTileTmp);
@@ -356,14 +337,12 @@ public:
                 uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
                 uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
                 if constexpr (INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                    uint32_t prevQSeqlenSumCur = (curBatchTmp == 0) ?
-                                                     0 :
-                                                     static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
+                    uint32_t prevQSeqlenSumCur =
+                        (curBatchTmp == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
                     qSeqlenCur = qSeqlenCur - prevQSeqlenSumCur;
                     if constexpr (!PAGED_CACHE_FLAG) {
-                        uint32_t prevKvSeqlenSumCur = (curBatchTmp == 0) ?
-                                                          0 :
-                                                          static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
+                        uint32_t prevKvSeqlenSumCur =
+                            (curBatchTmp == 0) ? 0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
                         kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSumCur;
                     }
                 }
@@ -376,11 +355,8 @@ public:
                 uint32_t qSBlockIdxCur = taskIdxCurBatch / curQNBlockNumCur;
                 uint32_t qNBlockIdxCur = taskIdxCurBatch - qSBlockIdxCur * curQNBlockNumCur;
 
-                runMainLoop(
-                    coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
-                    false, 0, 0,
-                    0, 0,
-                    globalTensors, pseQ, pseKv);
+                runMainLoop(coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur, false, 0, 0, 0, 0, globalTensors, pseQ,
+                            pseKv);
             }
         }
 
@@ -431,18 +407,8 @@ public:
 #ifdef __DAV_C220_VEC__
             CombineScale combineScale;
             combineScale.init(resource);
-            combineScale(
-                qHeads,
-                fATilingData->totalSplitNodeNum,
-                embedV,
-                &fATilingData->splitInfo,
-                gLseFD,
-                gOFD,
-                gO,
-                gActualQseqlen,
-                true,
-                (LSE_MODE == Epilogue::LseMode::OUT_ONLY),
-                gLse);
+            combineScale(qHeads, fATilingData->totalSplitNodeNum, embedV, &fATilingData->splitInfo, gLseFD, gOFD, gO,
+                         gActualQseqlen, true, (LSE_MODE == Epilogue::LseMode::OUT_ONLY), gLse);
 #endif
         }
     }
@@ -485,14 +451,12 @@ public:
         uint32_t prevKvSeqlenSum = 0;
 
         if constexpr (INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-            prevQSeqlenSum = (BIdx == 0) ?
-                                 0 :
-                                 static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
+            prevQSeqlenSum =
+                (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
             qSeqlen = qSeqlen - prevQSeqlenSum;
             if constexpr (!PAGED_CACHE_FLAG) {
-                prevKvSeqlenSum = (BIdx == 0) ?
-                                      0 :
-                                      static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
+                prevKvSeqlenSum =
+                    (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
         }

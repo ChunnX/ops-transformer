@@ -32,23 +32,34 @@ from atk.configs.results_config import TaskResult
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
-from atk.tasks.backends.lib_interface.acl_wrapper import AclIntArray,pointer
+from atk.tasks.backends.lib_interface.acl_wrapper import AclIntArray, pointer
+
 
 # public function
 def get_np_dtype(type_str):
     type_dict = {
-        'fp64': np.float64, 'fp32': np.float32, 'fp16': np.float16,
-        'int64': np.int64, 'int32': np.int32, 'int16': np.int16, 'int8': np.int8,
-        'uint64': np.uint64, 'uint32': np.uint32, 'uint16': np.uint16, 'uint8': np.uint8,
-        'bool': np.bool_, 'complex64': np.complex64, 'complex128': np.complex128,
-        'complex32': np.float16,
-        'bf16': tf.bfloat16.as_numpy_dtype,
-        'bfloat16': tf.bfloat16.as_numpy_dtype,
-        'float4_e2m1': np.uint8,
-        'float4_e1m2': np.uint8,
-        'float8_e8m0': np.uint8,
-        'hifloat8': np.uint8,
-        'fp4_e1m2': np.uint8,
+        "fp64": np.float64,
+        "fp32": np.float32,
+        "fp16": np.float16,
+        "int64": np.int64,
+        "int32": np.int32,
+        "int16": np.int16,
+        "int8": np.int8,
+        "uint64": np.uint64,
+        "uint32": np.uint32,
+        "uint16": np.uint16,
+        "uint8": np.uint8,
+        "bool": np.bool_,
+        "complex64": np.complex64,
+        "complex128": np.complex128,
+        "complex32": np.float16,
+        "bf16": tf.bfloat16.as_numpy_dtype,
+        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "float4_e2m1": np.uint8,
+        "float4_e1m2": np.uint8,
+        "float8_e8m0": np.uint8,
+        "hifloat8": np.uint8,
+        "fp4_e1m2": np.uint8,
         "fp4_e2m1": np.uint8,
         "fp8_e8m0": np.uint8,
         "float32": np.float32,
@@ -59,31 +70,46 @@ def get_np_dtype(type_str):
         "qint16": np.int16,
         "uint1": np.uint8,
         "quint16": np.uint16,
-        "fp4_e2m1_as_fp32": np.float32
+        "fp4_e2m1_as_fp32": np.float32,
     }
     if type_str == "int4":
         from ml_dtypes import int4
+
         return int4
     elif type_str == "float8_e5m2":
         from ml_dtypes import float8_e5m2
+
         return float8_e5m2
     elif type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
+
         return float8_e4m3fn
     else:
         return type_dict[type_str]
 
+
 def get_pt_dtype(type_str):
     type_dict = {
-        'fp32': torch.float32, 'fp16': torch.float16, 'fp64': torch.float64,
-        'int8': torch.int8, 'int16': torch.int16, 'int32': torch.int32, 'int64': torch.int64,
-        'uint8': torch.uint8, 'bool': torch.bool, 'complex64': torch.complex64,
-        'complex128': torch.complex128, 'bf16': torch.bfloat16, 'uint1': torch.uint8
+        "fp32": torch.float32,
+        "fp16": torch.float16,
+        "fp64": torch.float64,
+        "int8": torch.int8,
+        "int16": torch.int16,
+        "int32": torch.int32,
+        "int64": torch.int64,
+        "uint8": torch.uint8,
+        "bool": torch.bool,
+        "complex64": torch.complex64,
+        "complex128": torch.complex128,
+        "bf16": torch.bfloat16,
+        "uint1": torch.uint8,
     }
-    if type_str == 'hifloat8':
+    if type_str == "hifloat8":
         import torch_npu
+
         return torch_npu.hifloat8
     return type_dict[type_str]
+
 
 def cvt_hifuint8_to_float(x, over_mode=True):
     x = int(x)
@@ -169,18 +195,33 @@ def cvt_hifuint8_to_float(x, over_mode=True):
             print("error,dot error")
             m_value = 0.0
             exponet_value = 0
-        return sign*pow(2.0, exponet_value)*m_value
+        return sign * pow(2.0, exponet_value) * m_value
+
 
 def cvt_fp4_e1m2_to_bfloat16(x):
-    Fp4e1m2ToBf16 = {'0': 0.0, '1': 0.25, '2': 0.5, '3': 0.75,
-                     '4': 1.0, '5': 1.25, '6': 1.5, '7': 1.75,
-                     '8': -0.0, '9': -0.25, '10': -0.5, '11': -0.75,
-                     '12': -1.0, '13': -1.25, '14': -1.5, '15': -1.75
-                     }
+    Fp4e1m2ToBf16 = {
+        "0": 0.0,
+        "1": 0.25,
+        "2": 0.5,
+        "3": 0.75,
+        "4": 1.0,
+        "5": 1.25,
+        "6": 1.5,
+        "7": 1.75,
+        "8": -0.0,
+        "9": -0.25,
+        "10": -0.5,
+        "11": -0.75,
+        "12": -1.0,
+        "13": -1.25,
+        "14": -1.5,
+        "15": -1.75,
+    }
     x = int(x)
-    first_fp4val = x & 0x0f
+    first_fp4val = x & 0x0F
     first_fp4str = str(first_fp4val)
     return Fp4e1m2ToBf16[first_fp4str]
+
 
 def new_trans_np_fp4_e2m1_tensor_to_bfloat16(in_tensor):
     shape_tensor = in_tensor.shape

@@ -284,18 +284,22 @@ static void ConvertDataTypePFA(gert::TilingContext &context, ContextParamsForPFA
                                           context.GetOptionalInputDesc(BLOCK_TABLE_INDEX)->GetDataType() :
                                           ge::DT_INT32;
     contextKeyParams.outputDataType = context.GetOutputDesc(ATTENTION_OUT_INDEX)->GetDataType();
-    contextKeyParams.KeyAntiquantScaleType = (context.GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX) != nullptr) ?
-                                                 context.GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX)->GetDataType() :
-                                                 contextKeyParams.inputDataType;
-    contextKeyParams.valueAntiquantScaleType = (context.GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX) != nullptr) ?
-                                                   context.GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX)->GetDataType() :
-                                                   contextKeyParams.inputDataType;
-    contextKeyParams.KeyAntiquantOffsetType = (context.GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX) != nullptr) ?
-                                                  context.GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX)->GetDataType() :
-                                                  contextKeyParams.inputDataType;
-    contextKeyParams.valueAntiquantOffsetType = (context.GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX) != nullptr) ?
-                                                    context.GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX)->GetDataType() :
-                                                    contextKeyParams.inputDataType;
+    contextKeyParams.KeyAntiquantScaleType =
+        (context.GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX) != nullptr) ?
+            context.GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX)->GetDataType() :
+            contextKeyParams.inputDataType;
+    contextKeyParams.valueAntiquantScaleType =
+        (context.GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX) != nullptr) ?
+            context.GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX)->GetDataType() :
+            contextKeyParams.inputDataType;
+    contextKeyParams.KeyAntiquantOffsetType =
+        (context.GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX) != nullptr) ?
+            context.GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX)->GetDataType() :
+            contextKeyParams.inputDataType;
+    contextKeyParams.valueAntiquantOffsetType =
+        (context.GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX) != nullptr) ?
+            context.GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX)->GetDataType() :
+            contextKeyParams.inputDataType;
 }
 
 static void ConvertShapePFA(gert::TilingContext &context, ContextParamsForPFATiling &contextKeyParams)
@@ -360,10 +364,11 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
 }
 
 static ge::graphStatus GetCumulativeKeyValueSInBSH(gert::TilingContext &context,
-                                                   ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
-                                                   const int64_t validBatchOfK)
+                                                   ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS,
+                                                   int64_t &cumulativeValueS, const int64_t validBatchOfK)
 {
-    // DIM_2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
+    // DIM_2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are
+    // the same.
     auto standardH = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(DIM_2);
     for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
         if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardH) ||
@@ -381,15 +386,17 @@ static ge::graphStatus GetCumulativeKeyValueSInBSH(gert::TilingContext &context,
         }
         cumulativeKeyS += contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1);
         cumulativeValueS += contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1);
-        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                                           static_cast<uint32_t>(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
+        contextKeyParams.maxKVs =
+            std::max(contextKeyParams.maxKVs,
+                     static_cast<uint32_t>(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetCumulativeKeyValueSInBNSD(gert::TilingContext &context,
-                                                    ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
+                                                    ContextParamsForPFATiling &contextKeyParams,
+                                                    int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
                                                     const int64_t validBatchOfK)
 {
     auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(1);
@@ -423,15 +430,16 @@ static ge::graphStatus GetCumulativeKeyValueSInBNSD(gert::TilingContext &context
         }
         cumulativeKeyS += contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(DIM_2);
         cumulativeValueS += contextKeyParams.vTensorList[idx]->GetStorageShape().GetDim(DIM_2);
-        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                                           uint32_t(contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(DIM_2)));
+        contextKeyParams.maxKVs = std::max(
+            contextKeyParams.maxKVs, uint32_t(contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(DIM_2)));
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus GetCumulativeKeyValueSInBSND(gert::TilingContext &context,
-                                                    ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
+                                                    ContextParamsForPFATiling &contextKeyParams,
+                                                    int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
                                                     const int64_t validBatchOfK)
 {
     auto standardN = contextKeyParams.kTensorList[0]->GetStorageShape().GetDim(DIM_2);
@@ -445,7 +453,8 @@ static ge::graphStatus GetCumulativeKeyValueSInBSND(gert::TilingContext &context
     }
 
     for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
-        // DIM_2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
+        // DIM_2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist
+        // are the same.
         if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardN) ||
             (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardN)) {
             OP_LOGE(context.GetNodeName(), "N is not the same across batch and Key Value under tensorlist mode!");
@@ -466,36 +475,36 @@ static ge::graphStatus GetCumulativeKeyValueSInBSND(gert::TilingContext &context
         }
         cumulativeKeyS += contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1);
         cumulativeValueS += contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1);
-        contextKeyParams.maxKVs = std::max(contextKeyParams.maxKVs,
-                                           uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
+        contextKeyParams.maxKVs = std::max(
+            contextKeyParams.maxKVs, uint32_t(contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1)));
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckCumulativeKeyValue(gert::TilingContext &context,
-                                               ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS, int64_t &cumulativeValueS,
-                                               const int64_t validBatchOfK)
+                                               ContextParamsForPFATiling &contextKeyParams, int64_t &cumulativeKeyS,
+                                               int64_t &cumulativeValueS, const int64_t validBatchOfK)
 {
     const string layoutStr = string(contextKeyParams.layout);
     if (layoutStr == "BSH") {
         // check all H across batches and KVs are the same under BSH layout
-        OP_CHECK_IF(GetCumulativeKeyValueSInBSH(
-                        context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) != ge::GRAPH_SUCCESS,
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                "get cumulativeKeyS and cumulativeValueS in BSH failed"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            GetCumulativeKeyValueSInBSH(context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) !=
+                ge::GRAPH_SUCCESS,
+            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "get cumulativeKeyS and cumulativeValueS in BSH failed"),
+            return ge::GRAPH_FAILED);
     } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND") {
         // check N and D, respectively, are the same across batches and KVs under BNSD/BNSD_BSND
-        OP_CHECK_IF(GetCumulativeKeyValueSInBNSD(
-                        context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) != ge::GRAPH_SUCCESS,
+        OP_CHECK_IF(GetCumulativeKeyValueSInBNSD(context, contextKeyParams, cumulativeKeyS, cumulativeValueS,
+                                                 validBatchOfK) != ge::GRAPH_SUCCESS,
                     OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
                                                 "get cumulativeKeyS and cumulativeValueS in BNSD/BNSD_BSND failed"),
                     return ge::GRAPH_FAILED);
     } else {
         // check N and D, respectively, are the same across batches and KVs under BSND
-        OP_CHECK_IF(GetCumulativeKeyValueSInBSND(
-                        context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) != ge::GRAPH_SUCCESS,
+        OP_CHECK_IF(GetCumulativeKeyValueSInBSND(context, contextKeyParams, cumulativeKeyS, cumulativeValueS,
+                                                 validBatchOfK) != ge::GRAPH_SUCCESS,
                     OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
                                                 "get cumulativeKeyS and cumulativeValueS in BSND failed"),
                     return ge::GRAPH_FAILED);
@@ -519,10 +528,12 @@ static ge::graphStatus CheckKvPFA(gert::TilingContext &context, ContextParamsFor
         batchOfK = contextKeyParams.keyInputShape->GetStorageShape().GetDim(0);
     }
 
-    int64_t validBatchOfK = 0; // Obtain the actual number of K input elements and determine whether they belong to the tensorlist scene
+    int64_t validBatchOfK =
+        0; // Obtain the actual number of K input elements and determine whether they belong to the tensorlist scene
     while (context.GetDynamicInputShape(KEY_INDEX, validBatchOfK) != nullptr) {
         validBatchOfK++;
-        if (validBatchOfK > 1) { // If there are more than 1, break. When the input is large, it saves time. The tensorlist scene also needs to verify separately whether it is 1
+        if (validBatchOfK > 1) { // If there are more than 1, break. When the input is large, it saves time. The
+                                 // tensorlist scene also needs to verify separately whether it is 1
             break;
         }
     }
@@ -535,31 +546,35 @@ static ge::graphStatus CheckKvPFA(gert::TilingContext &context, ContextParamsFor
         contextKeyParams.vTensorList.resize(batchOfQ);
         while (context.GetDynamicInputShape(KEY_INDEX, validBatchOfK) != nullptr) {
             contextKeyParams.kTensorList[validBatchOfK] = context.GetDynamicInputShape(KEY_INDEX, validBatchOfK);
-            OP_CHECK_IF(contextKeyParams.kTensorList[validBatchOfK]->GetStorageShape().GetDim(0) != 1,
-                        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                    "Batch value of Key is NOT 1 but should be 1 under tensorlist mode!"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                contextKeyParams.kTensorList[validBatchOfK]->GetStorageShape().GetDim(0) != 1,
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
+                                            "Batch value of Key is NOT 1 but should be 1 under tensorlist mode!"),
+                return ge::GRAPH_FAILED);
             validBatchOfK++;
         }
 
         while (context.GetDynamicInputShape(VALUE_INDEX, validBatchOfV) != nullptr) {
             contextKeyParams.vTensorList[validBatchOfV] = context.GetDynamicInputShape(VALUE_INDEX, validBatchOfV);
-            OP_CHECK_IF(contextKeyParams.vTensorList[validBatchOfV]->GetStorageShape().GetDim(0) != 1,
-                        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                    "Batch value of Value is NOT 1 but should be 1 under tensorlist mode!"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                contextKeyParams.vTensorList[validBatchOfV]->GetStorageShape().GetDim(0) != 1,
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
+                                            "Batch value of Value is NOT 1 but should be 1 under tensorlist mode!"),
+                return ge::GRAPH_FAILED);
             validBatchOfV++;
         }
 
         OP_CHECK_IF((batchOfQ != validBatchOfK) || (validBatchOfK != validBatchOfV),
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                "Batch of Query, Key and Value do NOT equal but should equal under tensorlist mode!"),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context.GetNodeName(),
+                        "Batch of Query, Key and Value do NOT equal but should equal under tensorlist mode!"),
                     return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(CheckCumulativeKeyValue(
-                        context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) != ge::GRAPH_SUCCESS,
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "check cumulativeKeyS and cumulativeValueS failed"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            CheckCumulativeKeyValue(context, contextKeyParams, cumulativeKeyS, cumulativeValueS, validBatchOfK) !=
+                ge::GRAPH_SUCCESS,
+            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "check cumulativeKeyS and cumulativeValueS failed"),
+            return ge::GRAPH_FAILED);
 
         contextKeyParams.isKvContinuous = 0U;
     }
@@ -577,7 +592,8 @@ static ge::graphStatus CheckParamsPFA(gert::TilingContext &context, ContextParam
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        ((contextKeyParams.queryPaddingSize != nullptr || contextKeyParams.kvPaddingSize != nullptr) && layoutStr == "TND"),
+        ((contextKeyParams.queryPaddingSize != nullptr || contextKeyParams.kvPaddingSize != nullptr) &&
+         layoutStr == "TND"),
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "when layout is TND, left padding is not supported!"),
         return ge::GRAPH_FAILED);
 
@@ -595,7 +611,8 @@ static ge::graphStatus CheckParamsPFA(gert::TilingContext &context, ContextParam
     OP_CHECK_IF(((contextKeyParams.kvPaddingSize != nullptr) &&
                  (contextKeyParams.kvPaddingSize->GetStorageShape().GetShapeSize() != 1 ||
                   contextKeyParams.kvPaddingSize->GetStorageShape().GetDimNum() != 1)),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "KV PaddingSize input is invalid!"), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "KV PaddingSize input is invalid!"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(((contextKeyParams.blockTable != nullptr) &&
                  ((contextKeyParams.queryPaddingSize != nullptr) || (contextKeyParams.kvPaddingSize != nullptr))),
@@ -603,14 +620,16 @@ static ge::graphStatus CheckParamsPFA(gert::TilingContext &context, ContextParam
                                             "when page attention is used, left padding is not supported!"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(((contextKeyParams.queryPaddingSize != nullptr) && (contextKeyParams.actualSequenceLengthQ == nullptr)),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                            "if Query has leftpadding, the query's actual sequence lengths are required!"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(((contextKeyParams.kvPaddingSize != nullptr) && (contextKeyParams.actualSequenceLengthKV == nullptr)),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                            "if KV has leftpadding, the key/value's actual sequence lengths are required!"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ((contextKeyParams.queryPaddingSize != nullptr) && (contextKeyParams.actualSequenceLengthQ == nullptr)),
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
+                                    "if Query has leftpadding, the query's actual sequence lengths are required!"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ((contextKeyParams.kvPaddingSize != nullptr) && (contextKeyParams.actualSequenceLengthKV == nullptr)),
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
+                                    "if KV has leftpadding, the key/value's actual sequence lengths are required!"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -663,10 +682,11 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext &context,
     ConvertDataTypePFA(context, contextKeyParams);
     ConvertShapePFA(context, contextKeyParams);
 
-    contextKeyParams.hasLearnableSink = ((contextKeyParams.learnableSink != nullptr) && (contextKeyParams.learnableSinkShape != nullptr) &&
-                                         (contextKeyParams.learnableSinkShape->GetStorageShape().GetShapeSize() != 0)) ?
-                                            true :
-                                            false;
+    contextKeyParams.hasLearnableSink =
+        ((contextKeyParams.learnableSink != nullptr) && (contextKeyParams.learnableSinkShape != nullptr) &&
+         (contextKeyParams.learnableSinkShape->GetStorageShape().GetShapeSize() != 0)) ?
+            true :
+            false;
 
     OP_CHECK_IF(ConvertAttrsPFA(context, contextKeyParams) != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "convert attrs failed"), return ge::GRAPH_FAILED);
@@ -804,20 +824,22 @@ static ge::graphStatus CheckDequantParams(gert::TilingContext &context, const in
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "antiquant_mode is not supported!"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(s > NUM_16 && (context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "when s(%ld) > 16, not support dequantScaleQuery exist", s),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        s > NUM_16 && (context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr),
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "when s(%ld) > 16, not support dequantScaleQuery exist", s),
+        return ge::GRAPH_FAILED);
 
     auto qRope = context.GetOptionalInputTensor(QUERY_ROPE_INDEX);
-    OP_CHECK_IF(qRope == nullptr && (context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "when qRope is null, not support dequantScaleQuery exist"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        qRope == nullptr && (context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr),
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "when qRope is null, not support dequantScaleQuery exist"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckLseShape(gert::TilingContext &context, bool lseFlag, const int64_t b,
-                                     const int64_t s, const int64_t n)
+static ge::graphStatus CheckLseShape(gert::TilingContext &context, bool lseFlag, const int64_t b, const int64_t s,
+                                     const int64_t n)
 {
     const string inputLayoutStr = string(context.GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     auto tempLse = context.GetOutputShape(SOFTMAX_LSE_INDEX);
@@ -830,33 +852,34 @@ static ge::graphStatus CheckLseShape(gert::TilingContext &context, bool lseFlag,
                     return ge::GRAPH_FAILED);
 
         auto tempQ = context.GetInputShape(QUERY_INDEX);
-        OP_CHECK_IF(((lseFlag != false) &&
-                     ((tempLse->GetStorageShape().GetDim(DIM_0) != s) || (tempLse->GetStorageShape().GetDim(DIM_1) != n) ||
-                      (tempLse->GetStorageShape().GetDim(DIM_2) != 1))),
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                "Layout is %s query Shape is [%ld, %ld, %ld], expect SoftmaxLse shape TN1 [%ld, %ld, 1], but got "
-                                                "SoftmaxLse shape [%ld, %ld, %ld]!",
-                                                inputLayoutStr.c_str(),
-                                                tempQ->GetStorageShape().GetDim(DIM_0), tempQ->GetStorageShape().GetDim(DIM_1),
-                                                tempQ->GetStorageShape().GetDim(DIM_2), s, n,
-                                                tempLse->GetStorageShape().GetDim(DIM_0), tempLse->GetStorageShape().GetDim(DIM_1),
-                                                tempLse->GetStorageShape().GetDim(DIM_2)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            ((lseFlag != false) &&
+             ((tempLse->GetStorageShape().GetDim(DIM_0) != s) || (tempLse->GetStorageShape().GetDim(DIM_1) != n) ||
+              (tempLse->GetStorageShape().GetDim(DIM_2) != 1))),
+            OPS_REPORT_VECTOR_INNER_ERR(
+                context.GetNodeName(),
+                "Layout is %s query Shape is [%ld, %ld, %ld], expect SoftmaxLse shape TN1 [%ld, %ld, 1], but got "
+                "SoftmaxLse shape [%ld, %ld, %ld]!",
+                inputLayoutStr.c_str(), tempQ->GetStorageShape().GetDim(DIM_0), tempQ->GetStorageShape().GetDim(DIM_1),
+                tempQ->GetStorageShape().GetDim(DIM_2), s, n, tempLse->GetStorageShape().GetDim(DIM_0),
+                tempLse->GetStorageShape().GetDim(DIM_1), tempLse->GetStorageShape().GetDim(DIM_2)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(((lseFlag != false) && (tempLse->GetStorageShape().GetDimNum() != 4)),
                     OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "SoftmaxLse shape dim should be 4!"),
                     return ge::GRAPH_FAILED);
 
         int64_t tempN = *context.GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX);
-        OP_CHECK_IF(((lseFlag != false) &&
-                     ((tempLse->GetStorageShape().GetDim(0) != b) || (tempLse->GetStorageShape().GetDim(1) != tempN) ||
-                      (tempLse->GetStorageShape().GetDim(DIM_2) != s) || (tempLse->GetStorageShape().GetDim(DIM_3) != 1))),
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        context.GetNodeName(),
-                        "SoftmaxLse shape size[%ld, %ld, %ld, %ld] does not match BNS1[%ld, %ld, %ld, 1]!",
-                        tempLse->GetStorageShape().GetDim(0), tempLse->GetStorageShape().GetDim(1),
-                        tempLse->GetStorageShape().GetDim(DIM_2), tempLse->GetStorageShape().GetDim(DIM_3), b, tempN, s),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            ((lseFlag != false) &&
+             ((tempLse->GetStorageShape().GetDim(0) != b) || (tempLse->GetStorageShape().GetDim(1) != tempN) ||
+              (tempLse->GetStorageShape().GetDim(DIM_2) != s) || (tempLse->GetStorageShape().GetDim(DIM_3) != 1))),
+            OPS_REPORT_VECTOR_INNER_ERR(
+                context.GetNodeName(),
+                "SoftmaxLse shape size[%ld, %ld, %ld, %ld] does not match BNS1[%ld, %ld, %ld, 1]!",
+                tempLse->GetStorageShape().GetDim(0), tempLse->GetStorageShape().GetDim(1),
+                tempLse->GetStorageShape().GetDim(DIM_2), tempLse->GetStorageShape().GetDim(DIM_3), b, tempN, s),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -883,14 +906,16 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext &context, PromptFlash
     } else {
         compileInfoPtr.defaultSysWorkspaceSize = 0U;
 
-        OP_CHECK_IF((compileInfoPtr.aivNum != compileInfoPtr.aicNum) && (compileInfoPtr.aivNum != compileInfoPtr.aicNum * 2U),
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.",
-                                                compileInfoPtr.aicNum, compileInfoPtr.aivNum),
-                    return GRAPH_FAILED);
+        OP_CHECK_IF(
+            (compileInfoPtr.aivNum != compileInfoPtr.aicNum) && (compileInfoPtr.aivNum != compileInfoPtr.aicNum * 2U),
+            OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.",
+                                        compileInfoPtr.aicNum, compileInfoPtr.aivNum),
+            return GRAPH_FAILED);
         OP_CHECK_IF(compileInfoPtr.aivNum == compileInfoPtr.aicNum,
-                    OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                                "when CV 1:1, only support MLA non-quantization (QKV type both are FLOAT16 or BFLOAT16) "
-                                                "and MLA fully quantization (QKV type both are INT8)"),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context.GetNodeName(),
+                        "when CV 1:1, only support MLA non-quantization (QKV type both are FLOAT16 or BFLOAT16) "
+                        "and MLA fully quantization (QKV type both are INT8)"),
                     return GRAPH_FAILED);
     }
 
@@ -907,8 +932,8 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     PromptFlashAttentionTilingData pfaTilingData;
     PromptFlashAttentionTiling pfa_tiling(nullptr);
     ContextParamsForPFATiling contextParamsForPFATiling;
-    PromptFlashAttentionCompileInfo tempCompileInfoPtr = {0, 0, 0, 0, 0, 0, 0, 0,
-                                                          platform_ascendc::SocVersion::ASCEND310P};
+    PromptFlashAttentionCompileInfo tempCompileInfoPtr = {
+        0, 0, 0, 0, 0, 0, 0, 0, platform_ascendc::SocVersion::ASCEND310P};
 
     auto ret = CheckDequantParams(*context, s);
     if (ret != ge::GRAPH_SUCCESS)
@@ -927,8 +952,8 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
 
     bool lseFlag = *context->GetAttrs()->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     if (lseFlag != false) {
-        if (pfa_tiling.CheckNonEmptyShapeExceptions(contextParamsForPFATiling,
-                                                    contextParamsForPFATiling.lseoutputShape, "softmaxLse")) {
+        if (pfa_tiling.CheckNonEmptyShapeExceptions(contextParamsForPFATiling, contextParamsForPFATiling.lseoutputShape,
+                                                    "softmaxLse")) {
             return ge::GRAPH_FAILED;
         }
         ret = CheckLseShape(*context, lseFlag, b, s, n);
@@ -943,7 +968,10 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
                  (tempD % D_ALIGN_32 != 0)),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "D should be 32 elements aligned when INT8 is involved!!"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((tempD % D_ALIGN_16 != 0), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "D should be 16 elements aligned when with FLOAT16/BFLOAT16 dtype!"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((tempD % D_ALIGN_16 != 0),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "D should be 16 elements aligned when with FLOAT16/BFLOAT16 dtype!"),
+                return ge::GRAPH_FAILED);
     uint64_t tilingKey = 7U;
     uint32_t blockDimToBeSet;
     pfa_tiling.fromPFA_ = false;
