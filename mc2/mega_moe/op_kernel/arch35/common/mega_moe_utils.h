@@ -110,6 +110,24 @@ __aicore__ inline uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t row
     return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
 }
 
+// AIC 未拥有当前冷专家切片的任何 tile 时，只推进 rolling 游标，跳过地址和 scheduler 构造。
+__aicore__ inline bool SkipUnownedWaveAicProblem(uint32_t problemTileCount, const BlockJobContext &blockJob,
+                                                 uint32_t &startBlockIdx)
+{
+    if constexpr (g_coreType == AIC) {
+        if (problemTileCount < blockJob.totalJobs) {
+            uint32_t firstOwnedTile =
+                (blockJob.jobIndex < startBlockIdx ? blockJob.jobIndex + blockJob.totalJobs : blockJob.jobIndex) -
+                startBlockIdx;
+            if (firstOwnedTile >= problemTileCount) {
+                startBlockIdx = (startBlockIdx + problemTileCount) % blockJob.totalJobs;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // 计算剩余分组预算允许当前 Wave 在本专家内推进到的结束行偏移。
 __aicore__ inline uint32_t GetWaveEndRowOffsetInExpert(uint64_t expertRowCount, uint32_t currentRowOffsetInExpert,
                                                        uint32_t remainingMGroupCount, uint32_t rowsPerMGroup)
