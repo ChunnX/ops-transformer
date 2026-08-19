@@ -123,7 +123,6 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
 
 # Instantiate the builder
 quant_flash_attn_grad_op_builder = QuantFlashAttnGradOpBuilder()
-op_module = quant_flash_attn_grad_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, quant_flash_attn_grad_op_builder.name, "PrivateUse1")
@@ -156,7 +155,7 @@ def quant_flash_attn_grad(
     """
     quant_mode = quant_mode.value if isinstance(quant_mode, IntEnum) else quant_mode
     mask_mode = mask_mode.value if isinstance(mask_mode, IntEnum) else mask_mode
-
+    op_module = quant_flash_attn_grad_op_builder.load()  # Compiles/loads the .so file
     return op_module.quant_flash_attn_grad(
         q, k, v, dout, attn_out,
         q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale, softmax_lse,
