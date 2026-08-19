@@ -8,16 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "mask_checker.h"
+#include "mask_checker_sparse_flash_mla.h"
 #include "log/log.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
-const char *Op(const CheckContext &context)
-{
-    return context.opName == nullptr ? "SparseMla" : context.opName;
-}
+const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
 } // namespace
 
 ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
@@ -26,10 +23,10 @@ ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "ori_mask_mode", std::to_string(context.oriMaskMode).c_str(),
                                           "0, 3 or 4"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.cmpMaskMode != 0 && context.cmpMaskMode != 3,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_mask_mode", std::to_string(context.cmpMaskMode).c_str(),
-                                          "0 or 3"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.cmpMaskMode != 0 && context.cmpMaskMode != 3,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_mask_mode", std::to_string(context.cmpMaskMode).c_str(), "0 or 3"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriWinLeft < -1 || context.oriWinRight < -1,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     Op(context), "ori_win_left and ori_win_right",
