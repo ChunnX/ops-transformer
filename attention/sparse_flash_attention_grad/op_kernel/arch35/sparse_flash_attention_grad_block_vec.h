@@ -540,11 +540,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
                     dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                     constInfo.commonConstInfo.dSizeV);
             }
+            PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
+        int32_t s2IdxLocal[8];
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-            int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+            s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+        }
+        for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+            int32_t s2Idx = s2IdxLocal[row];
             if (s2Idx >= 0) {
                 if constexpr (!KV_MERGE) {
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -582,11 +587,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
                 dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                 constInfo.commonConstInfo.dSizeV);
         }
+        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
     }
+    int32_t s2IdxTail[8];
     for (int64_t row = 0; row < tailRows; row++) {
-        int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+        s2IdxTail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+    }
+    for (int64_t row = 0; row < tailRows; row++) {
+        int32_t s2Idx = s2IdxTail[row];
         if (s2Idx >= 0) {
             if constexpr (!KV_MERGE) {
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -699,11 +709,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                         dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                         constInfo.commonConstInfo.dSizeV);
                 }
+                PipeBarrier<PIPE_V>();
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             }
+            int32_t s2IdxLocal[8];
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-                int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+                s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+            }
+            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                int32_t s2Idx = s2IdxLocal[row];
                 if (s2Idx >= 0) {
                     if constexpr (!KV_MERGE) {
                         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -744,11 +759,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                     dvInTensor[row * constInfo.commonConstInfo.dSizeV],
                     constInfo.commonConstInfo.dSizeV);
             }
+            PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         }
+        int32_t s2IdxTail[8];
         for (int64_t row = 0; row < tailRows; row++) {
-            int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+            s2IdxTail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+        }
+        for (int64_t row = 0; row < tailRows; row++) {
+            int32_t s2Idx = s2IdxTail[row];
             if (s2Idx >= 0) {
                 if constexpr (!KV_MERGE) {
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
