@@ -258,7 +258,7 @@ if(UT_TEST_ALL
 
         # add op_tiling ut common object: transformer_op_tiling_ut_cases_obj
         if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
-          add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+          add_library(${MODULE_UT_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
         endif()
         file(GLOB OPHOST_TILING_CASES_SRC ${MODULE_DIR}/test_*_tiling.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_TILING_CASES_SRC})
@@ -277,7 +277,7 @@ if(UT_TEST_ALL
 
         # add op_infershape ut common object: transformer_op_infershape_ut_cases_obj
         if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
-          add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+          add_library(${MODULE_UT_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
         endif()
         file(GLOB OPHOST_INFERSHAPE_CASES_SRC ${MODULE_DIR}/test_*_infershape.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_INFERSHAPE_CASES_SRC})
@@ -306,7 +306,7 @@ if(UT_TEST_ALL
 
         # add op_tiling ut common object: transformer_op_tiling_ut_cases_obj
         if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
-          add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+          add_library(${MODULE_UT_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
         endif()
         file(GLOB OPHOST_TILING_CASES_SRC ${MODULE_DIR}/test_*_tiling.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_TILING_CASES_SRC})
@@ -327,7 +327,7 @@ if(UT_TEST_ALL
 
         # add op_infershape ut common object: transformer_op_infershape_ut_cases_obj
         if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
-          add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+          add_library(${MODULE_UT_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
         endif()
         file(GLOB OPHOST_INFERSHAPE_CASES_SRC ${MODULE_DIR}/test_*_infershape.cpp)
         target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPHOST_INFERSHAPE_CASES_SRC})
@@ -355,7 +355,7 @@ if(UT_TEST_ALL
       # add op_api ut common object: transformer_op_api_ut_cases_obj
       register_op_name(${OP_NAME})
       if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
-        add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+        add_library(${MODULE_UT_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
       endif()
       file(GLOB OPAPI_CASES_SRC ${MODULE_DIR}/test_aclnn_*.cpp)
       target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPAPI_CASES_SRC})
