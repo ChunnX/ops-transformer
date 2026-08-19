@@ -49,8 +49,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool useDn = false>
 class QuantFlashAttnBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
@@ -441,8 +441,7 @@ protected:
         for (int64_t row = 0; row < dealRowCount; ++row) {
             if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { // 内存按照S1G排布
                 gIdx = (taskInfo_.gS1Idx + startRow + row) % constInfo_.gSize;
-            } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) ||
-                                 (Q_FORMAT == GmFormat::NGTD)) { // 内存按照GS1排布
+            } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { // 内存按照GS1排布
                 int64_t actS1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                 gIdx = (taskInfo_.gS1Idx + startRow + row) / actS1Size;
             }
@@ -553,32 +552,29 @@ public:
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset =
-                        taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset,
-                                                                             mOffset, actualGSplitSize, constInfo_);
+                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
+                    DataCopySoftmaxLseTNDtoNTNoGS1Merge<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                           actualGSplitSize, constInfo_.gSize, constInfo_.t1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo_.gSize * constInfo_.n2Size + taskInfo_.n2Idx * constInfo_.gSize;
-                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                               actualGSplitSize, constInfo_, s1Size);
+                    DataCopySoftmaxLseNTD<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize, s1Size,
+                                             constInfo_.gSize, constInfo_.n2Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    uint64_t s1LeftPaddingSize = 0;
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, s1LeftPaddingSize);
+                    DataCopySoftmaxLseBSND<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                              constInfo_.s1Size, constInfo_.gSize);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
                     uint64_t s1LeftPaddingSize = 0;
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, qActSeqLens,
-                                                                s1LeftPaddingSize);
+                    DataCopySoftmaxLseBNSD<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                              qActSeqLens, constInfo_.s1Size);
                 }
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
@@ -605,8 +601,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool useDn = false>
 class QuantFlashAttnBlockVecFlashDecodeDummy {
 public:
     using ConstInfoX = ConstInfo_t;
