@@ -137,6 +137,13 @@ public:
         if (mAligned16TileNum == 2) {
             mFirstTile = mAlignedTile;
         }
+
+        AscendC::printf("tkd m: %u\n", m);
+        AscendC::printf("tkd mRound: %u\n", mRound);
+        AscendC::printf("tkd mAlignedTile: %u\n", mAlignedTile);
+        AscendC::printf("tkd mFirstTile: %u\n", mFirstTile);
+        AscendC::printf("tkd mAligned16TileNum: %u\n", mAligned16TileNum);
+
         __ubuf__ ElementInput *sUbAddr = (__ubuf__ ElementInput *)lsUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ ElementOutput *pUbAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ float *gmUbAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
