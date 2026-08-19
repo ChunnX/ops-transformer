@@ -18,32 +18,16 @@
 extern "C" {
 #endif
 
+// V1 接口：不带 sinks/dSinks（5 输出），位置参数与商发 npu_sparse_flash_attention_grad 严格对齐。
+// 带 sinks/dSinks（6 输出）请使用 aclnnSparseFlashAttentionGradV2。
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *sparseIndices,
-    const aclTensor *dOut,
-    const aclTensor *out,
-    const aclTensor *softmaxMax,
-    const aclTensor *softmaxSum,
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKvOptional,
-    const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional,
-    double scaleValue,
-    int64_t sparseBlockSize,
-    char *layoutOptional,
-    int64_t sparseMode,
-    int64_t preTokens,
-    int64_t nextTokens,
-    bool deterministic,
-    const aclTensor *dQueryOut,
-    const aclTensor *dKeyOut,
-    const aclTensor *dValueOut,
-    const aclTensor *dQueryRopeOutOptional,
-    const aclTensor *dKeyRopeOutOptional,
-    uint64_t *workspaceSize,
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseIndices,
+    const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
+    const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKvOptional,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, double scaleValue, int64_t sparseBlockSize,
+    char *layoutOptional, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool deterministic,
+    const aclTensor *dQueryOut, const aclTensor *dKeyOut, const aclTensor *dValueOut,
+    const aclTensor *dQueryRopeOutOptional, const aclTensor *dKeyRopeOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace,
