@@ -15,14 +15,21 @@
 #ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
+#include "adv_api/activation/softmax.h" 
 #include "../utils/attenmask_gs1.h"
 
 #if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#include "../../../common/op_kernel/vector_common.h" 
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h" 
+#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h" 
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h" 
 #else
 #include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#include "../../common/vector_common.h" 
+#include "../../common/memcopy/fa_gm_tensor.h" 
+#include "../../common/memcopy/copy_gm_to_l1.h" 
+#include "../../common/memcopy/copy_ub_to_gm.h" 
 #endif
 
 namespace BaseApi {
