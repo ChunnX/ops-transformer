@@ -105,8 +105,8 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;
         uint64_t end = begin + blockCore;
-        uint32_t s1BaseTailSize = tilingData->baseParams.s1 % POST_S_BASE;   // 128
-        uint32_t s2BaseTailSize = tilingData->baseParams.s2 % POST_S_BASE;   // 128
+        uint32_t s1BaseTailSize = tilingData->baseParams.s1 % POST_S_BASE;
+        uint32_t s2BaseTailSize = tilingData->baseParams.s2 % POST_S_BASE;
 
         if (end > inputTotalSize) {
             end = inputTotalSize;
@@ -117,7 +117,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
             LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
             uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
             uint32_t pingSize = pongIdx < inputTotalSize ? REGBASE_POST_BASE : qPostTailNum;
-            uint64_t dqPongGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE; // 18*512
+            uint64_t dqPongGmOffset = dqPingGmOffset + VALUE_DIM * POST_S_BASE;
             uint32_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
             DataCopy(vecInPing, dqkvWorkspace[qkvIdx][pingIdx], (pingSize + 7) >> 3 << 3);
             inQueuePing.EnQue(vecInPing);
@@ -144,12 +144,9 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                 if (qkvIdx == 2) {
                     DataCopy(dqkv[qkvIdx][pingIdx], vecOutPing, pingSize);
                 }  else {
-                    // 18 * (512 + 64)基本块
                     DataCopyParams dataCopyParams;
                     dataCopyParams.blockCount = seqPingSize;
-                    // 512 * sizeof(OUTDTYPE) / 32B
                     dataCopyParams.blockLen = 16 * sizeof(OUTDTYPE);
-                    // 64 * sizeof(OUTDTYPE) / 32B
                     dataCopyParams.srcStride = 2 * sizeof(OUTDTYPE);
                     DataCopy(dqkv[qkvIdx][dqPingGmOffset], vecOutPing, dataCopyParams);
 
@@ -178,12 +175,9 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
                     if (qkvIdx == 2) {
                         DataCopy(dqkv[qkvIdx][pongIdx], vecOutPong, pongSize);
                     }  else {
-                        // 96 * (128 + 64)基本块
                         DataCopyParams dataCopyParams;
                         dataCopyParams.blockCount = seqPongSize;
-                        // 128 * sizeof(OUTDTYPE) / 32B
                         dataCopyParams.blockLen = 16 * sizeof(OUTDTYPE);
-                        // 64 * sizeof(OUTDTYPE) / 32B
                         dataCopyParams.srcStride = 2 * sizeof(OUTDTYPE);
                         DataCopy(dqkv[qkvIdx][dqPongGmOffset], vecOutPong, dataCopyParams);
     

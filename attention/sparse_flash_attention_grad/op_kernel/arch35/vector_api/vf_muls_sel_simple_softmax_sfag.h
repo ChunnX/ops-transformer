@@ -53,7 +53,6 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
     RegTensor<float> vregDiv;
     RegTensor<float> vregMuls;
     RegTensor<float> vregMin;
-    // tail
     RegTensor<float> vregSrcTail;
     RegTensor<float> vregSubTail;
     RegTensor<float> vregExpTail;
@@ -77,13 +76,11 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
 
     Duplicate(vregMin, minValue);
 
-    // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregMax, ((__ubuf__ float *&)maxLocalInt), 8);
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregSum, ((__ubuf__ float *&)sumLocalInt), 8);
-        // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
             LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
@@ -180,7 +177,6 @@ __simd_vf__ inline void MulsSelVFPseType0(uint64_t srcLocalInt, uint64_t dstLoca
     RegTensor<float> vregDiv;
     RegTensor<float> vregMuls;
     RegTensor<float> vregMin;
-    // tail
     RegTensor<float> vregSrcTail;
     RegTensor<float> vregSubTail;
     RegTensor<float> vregExpTail;
@@ -204,13 +200,11 @@ __simd_vf__ inline void MulsSelVFPseType0(uint64_t srcLocalInt, uint64_t dstLoca
 
     Duplicate(vregMin, minValue);
 
-    // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregMax, ((__ubuf__ float *&)maxLocalInt), 8);
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregSum, ((__ubuf__ float *&)sumLocalInt), 8);
-        // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
             LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
@@ -301,7 +295,6 @@ __simd_vf__ inline void MulsSelVFPseType2(uint64_t srcLocalInt, uint64_t dstLoca
     RegTensor<float> vregDiv;
     RegTensor<float> vregMuls;
     RegTensor<float> vregMin;
-    // tail
     RegTensor<float> vregSrcTail;
     RegTensor<float> vregSubTail;
     RegTensor<float> vregExpTail;
@@ -320,13 +313,11 @@ __simd_vf__ inline void MulsSelVFPseType2(uint64_t srcLocalInt, uint64_t dstLoca
     Duplicate(vregMin, minValue);
     Arange(vregPseIdx, posShift);
     Arange(vregPseIdxTail, posShift + tailStartIdx);
-    // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregMax, ((__ubuf__ float *&)maxLocalInt), 8);
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregSum, ((__ubuf__ float *&)sumLocalInt), 8);
-        // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
             LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
@@ -395,7 +386,6 @@ __simd_vf__ inline void MulsSelVFPseType3(uint64_t srcLocalInt, uint64_t dstLoca
     RegTensor<float> vregDiv;
     RegTensor<float> vregMuls;
     RegTensor<float> vregMin;
-    // tail
     RegTensor<float> vregSrcTail;
     RegTensor<float> vregSubTail;
     RegTensor<float> vregExpTail;
@@ -416,13 +406,11 @@ __simd_vf__ inline void MulsSelVFPseType3(uint64_t srcLocalInt, uint64_t dstLoca
     Arange(vregPseIdx, posShift);
     Arange(vregPseIdxTail, posShift + tailStartIdx);
 
-    // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregMax, ((__ubuf__ float *&)maxLocalInt), 8);
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
             vregSum, ((__ubuf__ float *&)sumLocalInt), 8);
-        // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
             LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);

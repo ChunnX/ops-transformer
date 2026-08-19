@@ -80,7 +80,6 @@ __simd_vf__ inline void CastAligned512F16VF384(uint64_t srcLocalInt, uint64_t ds
     MaskReg pregTailExe = UpdateMask<float>(reduceSize);
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-        // 手动unroll 128个数分64个数做mul和add
         if constexpr (IsSameType<T1, half>::value) {
             LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcHalf, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
             LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradHalf, ((__ubuf__ T1 *&)gradLocalInt), HEAD_DIM_ALIGN);
@@ -201,7 +200,6 @@ __simd_vf__ inline void CastAligned512F16VF512(uint64_t srcLocalInt, uint64_t ds
     MaskReg pregTailExe = UpdateMask<float>(reduceSize);
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-        // 手动unroll 128个数分64个数做mul和add
         if constexpr (IsSameType<T1, half>::value) {
             LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcHalf, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
             LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradHalf, ((__ubuf__ T1 *&)gradLocalInt), HEAD_DIM_ALIGN);
