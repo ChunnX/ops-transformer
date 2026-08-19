@@ -20,14 +20,8 @@ using namespace ge;
 
 class block_sparse_attention_tiling_ut : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        cout << "block_sparse_attention_tiling_ut SetUp" << endl;
-    }
-    static void TearDownTestCase()
-    {
-        cout << "block_sparse_attention_tiling_ut TearDown" << endl;
-    }
+    static void SetUpTestCase() { cout << "block_sparse_attention_tiling_ut SetUp" << endl; }
+    static void TearDownTestCase() { cout << "block_sparse_attention_tiling_ut TearDown" << endl; }
 };
 
 namespace {
