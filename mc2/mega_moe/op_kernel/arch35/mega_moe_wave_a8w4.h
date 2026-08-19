@@ -140,14 +140,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Prepare
                                                                                                uint32_t expertIdx)
 {
     if constexpr (WaitForTokenCountReady) {
-        if (GetSubBlockIdx() == 0U) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
-                                            expertIdx);
+        if (GetSubBlockIdx() == 0U && !state.expertCountTableReady) {
+            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+            state.expertCountTableReady = true;
         }
     }
-    uint32_t expertTokenCount =
-        GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
-    UpdateExpertLoopState(state, expertIdx, expertTokenCount);
+    UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, state, expertIdx, true,
+                                       commonConfig_.moeExpertPerRank);
 }
 
 // 更新当前专家切片的输入、输出及同步地址，并执行 GMM1 和 Activation。
@@ -201,6 +200,7 @@ template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
     DispatchBuffInit();
+    PrepareMoeExpertTokenCountTable(tokenDispatchConfig_, params_, tokenDispatchScratch_);
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
@@ -306,6 +306,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process()
 {
+    // A8W4 Wave 与 A8W8 Wave 共用紧凑 count/cumsum。
+    sendMaskConfig_.publishCompactCountTable = true;
+    tokenDispatchConfig_.useCompactExpertCountWorkspace = true;
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
@@ -336,7 +339,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U && tokenDispatchConfig_.countWorkspace.blockIdx == 0U) {
-            ExportExpertTokenCounts<ActivationType, true>(tokenDispatchConfig_, tokenDispatchScratch_, params_);
+            ExportCompactExpertTokenCounts(tokenDispatchConfig_, params_, tokenDispatchScratch_);
         }
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();

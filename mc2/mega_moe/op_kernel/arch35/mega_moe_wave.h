@@ -212,10 +212,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitInputPrepar
         Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, static_cast<int64_t>(ALIGN_32));
     uint64_t maskWinOffset =
         static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
+    uint64_t compactCountWinOffset =
+        static_cast<uint64_t>(params_.peermemInfo.compactCountRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     const SendMaskBufferConfig &bufferConfig = aivCoreIdx_ < params_.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                    params_.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                    params_.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    sendMaskConfig_ = {.maskAlignSize = maskAlignSize, .maskWinOffset = maskWinOffset, .bufferConfig = bufferConfig};
+    sendMaskConfig_ = {.maskAlignSize = maskAlignSize,
+                       .maskWinOffset = maskWinOffset,
+                       .compactCountWinOffset = compactCountWinOffset,
+                       .publishCompactCountTable = true,
+                       .bufferConfig = bufferConfig};
 
     resetWorkspaceConfig_ = {.flagElementCount = static_cast<int32_t>(CalcResetFlagElementCount(params_.tilingData)),
                              .resetBatchElementCount = 0};
@@ -243,7 +249,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitTokenDispat
                             .quantWinOffset = quantWinOffset,
                             .quantTokenAlignBytes = quantProcessConfig_.quantTokenAlignBytes,
                             .quantScaleAlignBytes = quantProcessConfig_.quantScaleAlignBytes,
-                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes};
+                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes,
+                            .useCompactExpertCountWorkspace = true};
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -405,7 +412,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     tokenDispatchScratch_.topkIndexTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
-    // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
+    // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区、逐专家 count 输出和 32B metaInfo 环形缓冲区。
     // Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
     // EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
     // 只记基址：槽视图在热路径由 GetDispatchCopyBuffer 现场构造，
@@ -416,9 +423,14 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
     tokenDispatchScratch_.copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     uint32_t copyTmpTotalSize =
         static_cast<uint32_t>(bufferConfig.bufferCount) * tokenDispatchConfig_.quantTokenScaleAlignBytes;
+    uint32_t expertTokenNumsOutTensorAddr = tokenDispatchScratch_.copyTmpBaseAddr + copyTmpTotalSize;
+    uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
+        static_cast<uint64_t>(moeExpertPerRank_ * sizeof(int32_t)), static_cast<uint64_t>(ALIGN_32));
+    tokenDispatchScratch_.expertTokenNumsOutTensor = LocalTensor<int32_t>(
+        TPosition::VECCALC, expertTokenNumsOutTensorAddr, expertTokenNumsOutTensorSize / sizeof(int32_t));
     // Tensor 用途：CopyTokensAndMetaForDispatch 中的 metaInfo 环形缓冲区，逐 token 即时写入 GM；
     // Tensor 大小：bufferCount * 32B，与 copyTmp 槽位和事件编号一一对应。
-    uint32_t metaInfoTensorAddr = tokenDispatchScratch_.copyTmpBaseAddr + copyTmpTotalSize;
+    uint32_t metaInfoTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     uint32_t metaInfoReserveSize =
         static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     tokenDispatchScratch_.metaInfoTensor =
@@ -758,11 +770,13 @@ __aicore__ inline ExpertTokenPosition MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::
     uint32_t processedMGroupCount = 0U;
     while (gmm1Position.expertIdx < moeExpertPerRank_ && processedMGroupCount < mGroupsPerWave_) {
         if (gmm1Position.tokenIndexInExpert == 0U) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
-                                            gmm1Position.expertIdx);
-            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                                         countWorkspace_, gmm1Position.expertIdx);
-            UpdateExpertLoopState(gmm1ExpertState, gmm1Position.expertIdx, expertTokenCount);
+            if (!gmm1ExpertState.expertCountTableReady) {
+                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                0U);
+                gmm1ExpertState.expertCountTableReady = true;
+            }
+            UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm1ExpertState,
+                                               gmm1Position.expertIdx, true, moeExpertPerRank_);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm1ExpertState.problemShape);
@@ -819,9 +833,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 
     while (!IsSameExpertTokenPosition(gmm2Position, waveEndPosition) && gmm2Position.expertIdx < moeExpertPerRank_) {
         if (gmm2Position.tokenIndexInExpert == 0U) {
-            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                                         countWorkspace_, gmm2Position.expertIdx);
-            UpdateExpertLoopState(gmm2ExpertState, gmm2Position.expertIdx, expertTokenCount);
+            UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm2ExpertState,
+                                               gmm2Position.expertIdx, true, moeExpertPerRank_);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm2ExpertState.problemShape);
@@ -870,10 +883,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
-        uint32_t expertTokenCount =
-            GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, expertIdx);
-        UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
-        if (expertTokenCount == 0U) {
+        if (!UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, combineState, expertIdx, true,
+                                                moeExpertPerRank_)) {
             continue;
         }
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType, true, false, false>(
@@ -893,6 +904,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     DispatchBuffInit();
     CombineBufferConfig combineBufferConfig = InitCombineBuffers();
     InitExpertTokenCountExportBuffers();
+    PrepareMoeExpertTokenCountTable(tokenDispatchConfig_, params_, tokenDispatchScratch_);
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};

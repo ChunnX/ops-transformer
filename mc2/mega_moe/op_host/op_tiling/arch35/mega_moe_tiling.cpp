@@ -228,6 +228,10 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t maskRecvSize = ops::CeilAlign(
         (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    int64_t compactCountRecvSize = ops::CeilAlign(static_cast<int64_t>(tilingData->moeExpertPerRank) *
+                                                      tilingData->epWorldSize * static_cast<int64_t>(sizeof(int32_t)),
+                                                  static_cast<int64_t>(ALIGN_512));
+    OP_LOGD(nodeName, "compactCountRecvSize: {%ld}\n", compactCountRecvSize);
     uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
     uint32_t scaleAlignBytes =
@@ -254,7 +258,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            rankSyncInWorldSize + maskRecvSize + compactCountRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -516,6 +520,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
     int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
     int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
+    int64_t compactCountRecvSize =
+        ops::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
     // quantTokenScale Size
     uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
@@ -539,7 +545,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     }
     int64_t combineSendSize =
         ops::CeilAlign(numMaxTokensPerRank * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
+    int64_t leastCclBufferSize =
+        PEERMEM_DATA_OFFSET + maskRecvSize + compactCountRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
@@ -1042,7 +1049,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
-    // sendCntAccTensor_ 按本卡 MoE 专家数分配，与 kernel 地址布局一致。
+    // sendCntAccTensor_ 按本核负责的连续专家数分配，与 kernel 地址布局一致。
     uint32_t maxExpertCountPerCore =
         ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, tilingData->blockAivNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
@@ -1052,8 +1059,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
                                         2U * quantInputBufferBytes + sendCountAccumulatorBytes;
 
     /*
-     * 与 kernel SendMaskCal 的 expert 遍历一一对应：
-     *   globalExpertId = aivCoreIdx + ownedIdx * blockAivNum。
+     * 与 kernel SendMaskCal 的连续 expert 区间分配一一对应。
      * totalExpertCount 除以 blockAivNum 后，前 remainder 个 AIV core 各多处理一个 expert，其余 core
      * 处理 quotient 个 expert，因此这里只需预计算两套配置。
      *

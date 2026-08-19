@@ -209,10 +209,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs
         Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, static_cast<int64_t>(ALIGN_32));
     uint64_t maskWinOffset =
         static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
+    uint64_t compactCountWinOffset =
+        static_cast<uint64_t>(params_.peermemInfo.compactCountRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     const SendMaskBufferConfig &bufferConfig = aivCoreIdx_ < params_.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                    params_.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                    params_.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    sendMaskConfig_ = {.maskAlignSize = maskAlignSize, .maskWinOffset = maskWinOffset, .bufferConfig = bufferConfig};
+    sendMaskConfig_ = {.maskAlignSize = maskAlignSize,
+                       .maskWinOffset = maskWinOffset,
+                       .compactCountWinOffset = compactCountWinOffset,
+                       .publishCompactCountTable = false,
+                       .bufferConfig = bufferConfig};
 
     resetWorkspaceConfig_ = {.flagElementCount = static_cast<int32_t>(CalcResetFlagElementCount(params_.tilingData)),
                              .resetBatchElementCount = 0};
@@ -240,7 +246,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenDispatchConfig
                             .quantWinOffset = quantWinOffset,
                             .quantTokenAlignBytes = quantProcessConfig_.quantTokenAlignBytes,
                             .quantScaleAlignBytes = quantProcessConfig_.quantScaleAlignBytes,
-                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes};
+                            .quantTokenScaleAlignBytes = quantProcessConfig_.quantTokenScaleAlignBytes,
+                            .useCompactExpertCountWorkspace = false};
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -378,6 +385,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
             static_cast<uint64_t>(cumsumInfoTensorSize) * context.countWorkspace.blockIdx));
     }
     scratch.cumsumRevCntInRank = 0U;
+    scratch.nextDispatchCoreIdx = 0U;
 
     uint32_t expertTokenCntTensorAddr = 0U;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
