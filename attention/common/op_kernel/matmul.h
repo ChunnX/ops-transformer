@@ -34,6 +34,7 @@ static constexpr uint8_t LOAD3D_FILTER_W = 1;
 static constexpr uint8_t LOAD3D_FILTER_H = 1;
 static constexpr uint8_t LOAD3D_DILA_FILTER_W = 1;
 static constexpr uint8_t LOAD3D_DILA_FILTER_H = 1;
+static constexpr uint8_t MMAD_DEFAULT_FIXED_SHIFT_VAL = 42;
 static constexpr uint32_t K_STEP_ALIGN_BASE = 2;
 static constexpr uint32_t M_STEP_ALIGN_BASE = 2;
 static constexpr uint32_t MX_FP4_PTG_PCG_SCALE_PARAM = 32; // mxfp4场景随路伪量化中32个元素共用一个scale
@@ -477,6 +478,9 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const Local
     mmadParams.cmatrixInitVal = param.isOutKFisrt;
     mmadParams.cmatrixSource = false;
     mmadParams.unitFlag = param.unitFlag;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+    mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
 
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
@@ -553,6 +557,9 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor, const LocalTen
                                       UNITFLAG_EN_OUTER_LAST :
                                       UNITFLAG_ENABLE;
         }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
 
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
@@ -619,6 +626,9 @@ __aicore__ inline void MatmulMMx(const LocalTensor<A> &aL1Tensor, const LocalTen
                                       UNITFLAG_EN_OUTER_LAST :
                                       UNITFLAG_ENABLE;
         }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
         Mmad(cL0Tensor[m * L0Coffset], L0ATensor, L0BTensor, mmadParams);
         l0aBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
     }
@@ -768,6 +778,9 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     if (mmadParams.m == 1) {
         mmadParams.m = 16;
     }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+    mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
 
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
@@ -850,6 +863,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
                                       UNITFLAG_EN_OUTER_LAST :
                                       UNITFLAG_ENABLE;
         }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 
         l0aBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
@@ -923,6 +939,9 @@ __aicore__ inline void MatmulKbias(const LocalTensor<A> &aL1Tensor, const LocalT
                                       UNITFLAG_EN_OUTER_LAST :
                                       UNITFLAG_ENABLE;
         }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
 
         if (k == 0) {
             Mmad(cL0Tensor, L0ATensor, L0BTensor, biasTensor, mmadParams);
@@ -1004,6 +1023,9 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
         mmadParams.cmatrixInitVal = param.isOutKFisrt;
         mmadParams.cmatrixSource = false;
         mmadParams.unitFlag = param.unitFlag;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
         Mmad(cL0Tensor[n * L0Coffset], L0ATensor, L0BTensor, mmadParams);
 
         l0bBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
@@ -1051,6 +1073,9 @@ MatmulKM(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, Buffe
             mmadParams.k = kSplitSize;
             mmadParams.cmatrixInitVal = param.isOutKFisrt && (k == 0); // 配置C矩阵初始值是否为0。默认值ture
             mmadParams.cmatrixSource = false;                          //  来源于CO1
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+            mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
             Mmad(cL0Tensor[m * L0Coffset], L0ATensor, L0BTensor, mmadParams);
 
             l0aBuffer.template Set<HardEvent::M_MTE1>(); // 释放L0A
@@ -1115,6 +1140,9 @@ __aicore__ inline void MatmulKPP(const LocalTensor<A> &aL1Tensor, const LocalTen
                                       UNITFLAG_EN_OUTER_LAST :
                                       UNITFLAG_ENABLE;
         }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+        mmadParams.fixShiftVal = MMAD_DEFAULT_FIXED_SHIFT_VAL;
+#endif
 
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
 #if (__CCE_AICORE__ != 310) && (!(defined __DAV_310R6__))
