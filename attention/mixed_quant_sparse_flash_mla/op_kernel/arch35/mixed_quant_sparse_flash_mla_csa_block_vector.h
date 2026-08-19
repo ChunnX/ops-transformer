@@ -139,6 +139,7 @@ public:
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
                                             __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
                                             __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -2267,6 +2268,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &co
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
+{
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
+        WaitFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
+    }
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
+    if (constInfo.isSoftmaxLseEnable) {
+        WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
+    }
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_STAGE0_IN(0));
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_STAGE0_IN(1));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(0));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(1));
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
     FdRunInfo fdBufferInfo = fdRunInfo;
@@ -2306,6 +2327,7 @@ public:
     {}
 
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo) {}
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &fdStaging) {}
     __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
                                               Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)

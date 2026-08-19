@@ -81,6 +81,7 @@ public:
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        bool notLastTwoLoop, RunInfo &runInfoNext, RunInfo &runInfo,
                                        ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent();
 
     __aicore__ inline void IterateBmm2(StaticBuffer<T> &outputBuf, StaticBuffer<Q_T> &l1PBuffer, RunInfo &runInfo,
                                        ConstInfo &constInfo);
@@ -181,6 +182,20 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint
     }
 }
 
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
+{
+    WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(0));
+    WaitFlag<HardEvent::M_MTE1>(INNERCORE_L0AB(1));
+    WaitFlag<HardEvent::FIX_M>(INNERCORE_L0C(0));
+    WaitFlag<HardEvent::FIX_M>(INNERCORE_L0C(1));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(0));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(1));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1Q(2));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(0));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(1));
+    WaitFlag<HardEvent::MTE1_MTE2>(INNERCORE_L1KV(2));
+}
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
@@ -375,6 +390,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                             const ConstInfo &constInfo)
     {}
+    __aicore__ inline void FreeEvent() {}
 };
 
 template <typename T>
