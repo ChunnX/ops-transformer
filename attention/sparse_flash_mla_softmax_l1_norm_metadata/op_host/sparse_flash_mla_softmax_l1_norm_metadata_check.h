@@ -169,7 +169,8 @@ aclnnStatus CheckSingleParamSmlaL1Norm(int64_t batchSize, int64_t maxSeqLenQ, in
     // 校验 layout_q 为 BSND 时，max_seqlen_q 必须大于 0
     if (strcmp(layoutQ, "BSND") == 0 && maxSeqLenQ <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqLenQ),
-                                              "When layout_q is BSND, the value of max_seqlen_q must be greater than 0");
+                                              "When layout_q is BSND, the value of max_seqlen_q must be "
+                                              "greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_k 校验
