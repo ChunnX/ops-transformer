@@ -522,7 +522,7 @@ public:
     bool HasAxis(const SMLAAxis &axis, const SMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout) const;
     uint32_t GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
+    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
 
     // BaseParams
     uint32_t bSize_ = 0;
