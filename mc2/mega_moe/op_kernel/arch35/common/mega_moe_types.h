@@ -30,6 +30,7 @@ struct ExpertLoopState {
     ProblemShape problemShape;
     int64_t globalTokenStartIndex = 0;
     uint32_t expertIdx = 0U;
+    bool expertCountTableReady = false;
 };
 
 // 标识 MoE 专家序列中的二维 token 位置。
