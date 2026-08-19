@@ -296,9 +296,9 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     }
 
     // m,n不切，k切256，mm1B直接用tensor的数据
-    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>( // m,n不切，k切128
-        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
-        mmL0ABuffers, mmL0BBuffers, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], inputRightBuf.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
 
     curL1QBufId = (curL1QBufId + 1) % 3;
     if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -308,8 +308,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     param.isOutKFisrt = false;
 
     // m,n不切，k切256, mm1B直接用tensor的数据
-    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>( // m,n不切，k切128
-        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], // mm1B直接用tensor的数据
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
         inputRightBuf.GetTensor<Q_T>()[(constInfo.dSize >> 1) * Align32Func(runInfo.s2RealSize)], mmL0ABuffers,
         mmL0BBuffers, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
 

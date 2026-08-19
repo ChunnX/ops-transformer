@@ -187,7 +187,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
 {
-    mmL0ABuffers.Uninit(l0aBufferManager); // db类型，填入数值是总大小的一半
+    mmL0ABuffers.Uninit(l0aBufferManager);
     mmL0BBuffers.Uninit(l0bBufferManager);
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId);
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
