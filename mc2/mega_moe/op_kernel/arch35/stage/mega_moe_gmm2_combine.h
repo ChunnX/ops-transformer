@@ -96,7 +96,7 @@ template <typename DataType, bool IsQuantized = true>
 __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
                                                 uint32_t groupIdx, uint32_t rankId,
                                                 LocalTensor<int32_t> &metaInfoTensor, LocalTensor<DataType> &ubQuant,
-                                                const Params &params, GM_ADDR localSrcPtr, HcommBatchHandle activeBatchHandle)
+                                                const Params &params, GM_ADDR localSrcPtr, HcommBatchHandle activeBatchHandle = {})
 {
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
@@ -135,8 +135,9 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     }
 
     if (toRankId != rankId) {
+        ChannelHandle channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
         GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
-        params.combineCommParams.hcomm->WriteNbi(activeBatchHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
+        params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
     }
 #endif
 }
@@ -170,13 +171,13 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                                          LocalTensor<int32_t> &metaInfoTensor, int64_t ubTensorSize, int64_t offset,
                                          uint32_t quantTokenSizeBytes, uint32_t dstRankId = -1)
 {
-    HcommBatchHandle activeBatchHandle{};
-    if constexpr (IsLayered) {
-        LocalTensor<uint8_t> hcommBatchTensor(TPosition::VECIN, 512, 64 * tokenCount);
-        ChannelHandle channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, dstRankId, rankId);
-        activeBatchHandle = params.combineCommParams.hcomm->MakeBatchHandle(channelHandle, GetRankWinAddrWithOffset(dstRankId, 0),
-            nullptr, hcommBatchTensor, 64 * tokenCount);
-    }
+    // HcommBatchHandle activeBatchHandle{};
+    // if constexpr (IsLayered) {
+    //     LocalTensor<uint8_t> hcommBatchTensor(TPosition::VECIN, 512, 64 * tokenCount);
+    //     ChannelHandle channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, dstRankId, rankId);
+    //     activeBatchHandle = params.combineCommParams.hcomm->MakeBatchHandle(channelHandle, GetRankWinAddrWithOffset(dstRankId, 0),
+    //         nullptr, hcommBatchTensor, 64 * tokenCount);
+    // }
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
 
@@ -214,16 +215,18 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                 ubQuantSend = ubBf16;
             }
             GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
+            // CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
+            //                                                 ubQuantSend, params, localSrcPtr, activeBatchHandle);
             CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
-                                                            ubQuantSend, params, localSrcPtr, activeBatchHandle);
+                                                            ubQuantSend, params, localSrcPtr);
         } else {
             CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params,
                                              quantTokenSizeBytes);
         }
     }
-    if constexpr (IsLayered) {
-        params.combineCommParams.hcomm->BatchCommit(activeBatchHandle);
-    }
+    // if constexpr (IsLayered) {
+    //     params.combineCommParams.hcomm->BatchCommit(activeBatchHandle);
+    // }
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 

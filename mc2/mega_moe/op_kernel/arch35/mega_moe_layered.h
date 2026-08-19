@@ -309,7 +309,7 @@ private:
  	     .se = 0,
  	     .cqe = 0,
  	     .inlineEn = 0};
-    static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
+    static constexpr uint32_t HCOMM_BATCH_CAPACITY = 512;
  	static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 
     using HcommBatchHandle = typename AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>::BatchHandleType;
@@ -448,7 +448,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
 
     LocalTensor<uint8_t> hcommTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
     hcomm_.Init(hcommTensor_, ALIGN_512 / sizeof(uint8_t));
-    hcommBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+    hcommBatchTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, ALIGN_512, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
     uint32_t expertTokenCntTensorAddr = ALIGN_512 + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     expertTokenCntTensor_ =
@@ -1386,8 +1386,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
     GM_ADDR remoteFlagAddr =
         GetRankWinAddrWithOffset(relayRank, dispatchFlagWinOffset_) + RelayFlagOffset(srcServer, 0);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, GetRankWinAddrWithOffset(relayRank, 0),
-        nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+    // HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, GetRankWinAddrWithOffset(relayRank, 0),
+    //     nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
     DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
     DataCopyPadExtParams<uint64_t> flagCopyPadParams{true, 0U, 0U, 0U};
 
@@ -1418,8 +1418,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             GM_ADDR scaleDstAddr =
                 params_.workspaceInfo.dispatchRevScalePtr +
                 static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthAScale * sizeof(QuantScaleOutType);
-            hcomm_.ReadNbi(activeBatchHandle, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
-            hcomm_.ReadNbi(activeBatchHandle, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
+            hcomm_.ReadNbi(channel, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
+            hcomm_.ReadNbi(channel, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
                                  widthAScale * sizeof(QuantScaleOutType));
             if constexpr (TopkWeightsPrefetch) {
                 GM_ADDR weightDstAddr = params_.workspaceInfo.dispatchRevWeightsPtr +
@@ -1432,9 +1432,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             ++receivedCount;
         }
         SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
-        hcomm_.BatchCommit(activeBatchHandle);
+        // hcomm_.BatchCommit(activeBatchHandle);
     }
-    hcomm_.Drain(activeBatchHandle);
+    hcomm_.Drain(channel);
 }
 
 // ============================================================================
@@ -2001,7 +2001,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx, uint32_t &startRankId,
     uint32_t &endRankId)
 {
-    int64_t offset = ALIGN_512 + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+    // int64_t offset = ALIGN_512 + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+    int64_t offset = ALIGN_512;
     uint32_t processRankNum = 0;
     SplitToCore(worldSize_, blockAivNum_, startRankId, endRankId, processRankNum);
     if (startRankId >= endRankId || processRankNum == 0) {
