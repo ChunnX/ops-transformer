@@ -123,10 +123,10 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             supportedStr += std::to_string(mode);
             idx++;
         }
-        if (supportedStr.length() >= 2) {
-            supportedStr.pop_back();
-            supportedStr.pop_back();
-        }
+        // if (supportedStr.length() >= 2) {
+        //     supportedStr.pop_back();
+        //     supportedStr.pop_back();
+        // }
         OP_LOGE_FOR_INVALID_VALUE("aclnnMlaPrologV4", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
         return false;
     }
