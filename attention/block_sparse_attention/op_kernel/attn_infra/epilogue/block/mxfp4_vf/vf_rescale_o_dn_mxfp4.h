@@ -29,7 +29,7 @@ using namespace MicroAPI;
 
 template <bool isUpdate, uint16_t KvsBase = 256>
 __simd_vf__ void process_update_o_vf(__ubuf__ float *update_res_ub, __ubuf__ float *mm2_res_ub, __ubuf__ float *urs,
-                               __ubuf__ float *rsum, __ubuf__ float *ursum)
+                                     __ubuf__ float *rsum, __ubuf__ float *ursum)
 {
     // 更新 mm2
     MaskReg preg_all32 = CreateMask<uint32_t, MaskPattern::ALL>();
@@ -92,8 +92,8 @@ __simd_vf__ void process_update_o_vf(__ubuf__ float *update_res_ub, __ubuf__ flo
 
 template <bool isUpdate, uint16_t KvsBase = 256>
 __aicore__ inline void ProcessUpdateOCallVF(const LocalTensor<float> &updateResUb, const LocalTensor<float> &mm2ResUb,
-                                     const LocalTensor<float> &urs, const LocalTensor<float> &rsum,
-                                     const LocalTensor<float> &ursum)
+                                            const LocalTensor<float> &urs, const LocalTensor<float> &rsum,
+                                            const LocalTensor<float> &ursum)
 {
     __ubuf__ float *update_res_ub_buf = (__ubuf__ float *)updateResUb.GetPhyAddr();
     __ubuf__ float *mm2_res_ub_buf = (__ubuf__ float *)mm2ResUb.GetPhyAddr();
@@ -104,5 +104,5 @@ __aicore__ inline void ProcessUpdateOCallVF(const LocalTensor<float> &updateResU
     process_update_o_vf<isUpdate, KvsBase>(update_res_ub_buf, mm2_res_ub_buf, urs_buf, rsum_buf, ursum_buf);
 }
 
-}  // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif  // VF_RESCALE_O_DN_MXFP4_H_
+} // namespace NpuArch::Epilogue::Block::Mxfp4VF
+#endif // VF_RESCALE_O_DN_MXFP4_H_

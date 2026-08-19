@@ -21,32 +21,24 @@ namespace NpuArch::Gemm::Tile {
 /// Partial specialization for CopyGmToL1, AtlasA5, RowMajor in and zN out.
 template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
 struct TileCopyTla<
-    Arch::AtlasA5,
-    tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
     tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
     std::enable_if_t<tla::detail::isRowMajor<LayoutSrc>::value && tla::detail::iszN<ElementDst, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<ElementSrc>::value;
 
     // Methods
 
-    __aicore__ inline
-    TileCopyTla() {};
+    __aicore__ inline TileCopyTla(){};
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(
-        TensorDst const &dstTensor,
-        TensorSrc const &srcTensor,
-        uint32_t ndNum = 1,
-        uint32_t srcNdMatrixStride = 0,
-        uint32_t dstNzMatrixStride = 0
-    )
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
+                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorSrc::Layout>::value
-                && tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be GM and RowMajor, while TensorDst must be L1 and zN"
-        );
+            tla::detail::isRowMajor<typename TensorSrc::Layout>::value &&
+                tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and RowMajor, while TensorDst must be L1 and zN");
 
         const uint32_t nValue = tla::get<0>(srcTensor.shape());
         const uint32_t dValue = tla::get<1>(srcTensor.shape());
@@ -84,30 +76,25 @@ struct TileCopyTla<
 
 /// Partial specialization for CopyGmToL1, AtlasA5, zN in and zN out.
 template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
-struct TileCopyTla<
-    Arch::AtlasA5,
-    tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
-    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
-    std::enable_if_t<tla::detail::iszN<ElementSrc, LayoutSrc>::value && tla::detail::iszN<ElementDst, LayoutDst>::value>> {
+struct TileCopyTla<Arch::AtlasA5,
+                   tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+                   tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+                   std::enable_if_t<tla::detail::iszN<ElementSrc, LayoutSrc>::value &&
+                                    tla::detail::iszN<ElementDst, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<ElementSrc>::value;
 
     // Methods
 
-    __aicore__ inline
-    TileCopyTla() {};
+    __aicore__ inline TileCopyTla(){};
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(
-        TensorDst const &dstTensor,
-        TensorSrc const &srcTensor
-    )
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor)
     {
         static_assert(
-            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be GM and zN, while TensorDst must be L1 and zN"
-        );
+            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value &&
+                tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and zN, while TensorDst must be L1 and zN");
 
         const uint32_t blockCount = tla::get<1, 1>(srcTensor.shape());
         const uint32_t blockLen = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
@@ -129,33 +116,25 @@ struct TileCopyTla<
 /// Partial specialization for CopyGmToL1, AtlasA5, ColumnMajor in and nZ out.
 template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
 struct TileCopyTla<
-    Arch::AtlasA5,
-    tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
     tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
     std::enable_if_t<tla::detail::isColumnMajor<LayoutSrc>::value && tla::detail::isnZ<ElementDst, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<ElementSrc>::value;
 
     // Methods
 
-    __aicore__ inline
-    TileCopyTla() {};
+    __aicore__ inline TileCopyTla(){};
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(
-        TensorDst const &dstTensor,
-        TensorSrc const &srcTensor,
-        uint32_t ndNum = 1,
-        uint32_t srcNdMatrixStride = 0,
-        uint32_t dstNzMatrixStride = 0
-    )
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
+                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
-        static_assert(
-            tla::detail::isColumnMajor<typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be GM and ColumnMajor, "
-            "while TensorDst must be L1 and nZ"
-        );
+        static_assert(tla::detail::isColumnMajor<typename TensorSrc::Layout>::value &&
+                          tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::GM &&
+                          TensorDst::position == AscendC::TPosition::A1,
+                      "The input parameters do not match. TensorSrc must be GM and ColumnMajor, "
+                      "while TensorDst must be L1 and nZ");
 
         const uint32_t nValue = tla::get<1>(srcTensor.shape());
         const uint32_t dValue = tla::get<0>(srcTensor.shape());
@@ -192,31 +171,26 @@ struct TileCopyTla<
 
 /// Partial specialization for CopyGmToL1, AtlasA5, nZ in and nZ out.
 template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
-struct TileCopyTla<
-    Arch::AtlasA5,
-    tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
-    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
-    std::enable_if_t<tla::detail::isnZ<ElementSrc, LayoutSrc>::value && tla::detail::isnZ<ElementDst, LayoutDst>::value>> {
+struct TileCopyTla<Arch::AtlasA5,
+                   tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+                   tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+                   std::enable_if_t<tla::detail::isnZ<ElementSrc, LayoutSrc>::value &&
+                                    tla::detail::isnZ<ElementDst, LayoutDst>::value>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<ElementSrc>::value;
 
     // Methods
 
-    __aicore__ inline
-    TileCopyTla() {};
+    __aicore__ inline TileCopyTla(){};
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(
-        TensorDst const &dstTensor,
-        TensorSrc const &srcTensor
-    )
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor)
     {
-        static_assert(
-            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be GM and nZ, "
-            "while TensorDst must be L1 and nZ"
-        );
+        static_assert(tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value &&
+                          tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::GM &&
+                          TensorDst::position == AscendC::TPosition::A1,
+                      "The input parameters do not match. TensorSrc must be GM and nZ, "
+                      "while TensorDst must be L1 and nZ");
 
         const uint32_t blockCount = tla::get<0, 1>(srcTensor.shape());
         const uint32_t blockLen = tla::get<1, 0>(srcTensor.shape()) * tla::get<1, 1>(srcTensor.shape());
@@ -247,36 +221,28 @@ struct TileCopyTla<
 ///     dstNzC0Stride = get<0,1>(dstStride)/BYTE_PER_C0, dstNzNStride = 1
 /// 全部与原 raw SparseVScaleBaseTileL1FullLoad 的 Nd2Nz 对齐（待上机验证）。
 template <class ElementMx, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
-struct TileCopyTla<
-    Arch::AtlasA5,
-    tla::Tensor<AscendC::GlobalTensor<ElementMx>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
-    tla::Tensor<AscendC::LocalTensor<ElementMx>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
-    std::enable_if_t<tla::detail::isMxScaleATrans<ElementMx, LayoutSrc>::value &&
-                     tla::detail::isMxScalezZ<ElementMx, LayoutDst>::value>> {
-    __aicore__ inline
-    TileCopyTla() {};
+struct TileCopyTla<Arch::AtlasA5,
+                   tla::Tensor<AscendC::GlobalTensor<ElementMx>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+                   tla::Tensor<AscendC::LocalTensor<ElementMx>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+                   std::enable_if_t<tla::detail::isMxScaleATrans<ElementMx, LayoutSrc>::value &&
+                                    tla::detail::isMxScalezZ<ElementMx, LayoutDst>::value>> {
+    __aicore__ inline TileCopyTla(){};
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(
-        TensorDst const &dstTensor,
-        TensorSrc const &srcTensor,
-        uint32_t ndNum = 1,
-        uint32_t srcNdMatrixStride = 0,
-        uint32_t dstNzMatrixStride = 0
-    )
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
+                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
-        static_assert(
-            tla::detail::isMxScaleATrans<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isMxScalezZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
-            "MxScaleA(ColumnMajor,trans) GM -> zZ L1: src must be isMxScaleATrans/GM, dst isMxScalezZ/A1"
-        );
+        static_assert(tla::detail::isMxScaleATrans<typename TensorSrc::Element, typename TensorSrc::Layout>::value &&
+                          tla::detail::isMxScalezZ<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::GM &&
+                          TensorDst::position == AscendC::TPosition::A1,
+                      "MxScaleA(ColumnMajor,trans) GM -> zZ L1: src must be isMxScaleATrans/GM, dst isMxScalezZ/A1");
 
         // bsa 无 originShape：MxScaleA shape=(rows,(2,CeilDiv(cols,2))) -> 直接取 fractal 字段
-        const uint32_t nValue = tla::get<1, 1>(srcTensor.shape());                         // = CeilDiv(cols,2)
-        const uint32_t dValue = tla::get<0>(srcTensor.shape());                           // = rows
+        const uint32_t nValue = tla::get<1, 1>(srcTensor.shape()); // = CeilDiv(cols,2)
+        const uint32_t dValue = tla::get<0>(srcTensor.shape());    // = rows
         const uint32_t srcDValue = CeilDiv(tla::get<1, 1>(srcTensor.stride()),
-                                          MX_SCALE_COPY_GROUP_NUM);                        // = rows*2/2
+                                           MX_SCALE_COPY_GROUP_NUM); // = rows*2/2
         const uint32_t dstOuterStrideRow = tla::get<0, 1>(dstTensor.stride());
         const uint32_t dstNzC0Stride = dstOuterStrideRow / BYTE_PER_C0;
 
