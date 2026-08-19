@@ -171,7 +171,8 @@ BlockScheduleResult SelectBlockSchedule(const FuzzyBaseInfoParamsRegbase &params
     }
 
     const bool causalCond =
-        params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) && params.isS1S2Same;
+        params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
+        (params.isS1S2Same || params.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL));
     const bool rightDownBandCond = params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
                                    params.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
     result.isSplitByBlockIdx = canSplitByBlockIdx && (((params.b * params.n2) & 1) == 0) && params.g == 1 &&
