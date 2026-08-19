@@ -29,6 +29,7 @@
 #endif
 
 #include "fia_tiling_data_noquant_gqa.h"
+#include "fia_exp_stage_switch.h"
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
@@ -553,22 +554,82 @@ public:
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
+#if FIA_EXP_STAGE_C1 // [FIA_EXP] C1: bmm1 matmul 阶段开关
                 ComputeMm1(runInfo0);
+#else
+                ExpSyncC1(runInfo0);
+#endif
             } else {
+#if FIA_EXP_STAGE_V1 // [FIA_EXP] V1: AIV softmax 阶段开关
                 ComputeVec1(runInfo0);
+#else
+                ExpSyncV1(runInfo0);
+#endif
             }
         }
 
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
+#if FIA_EXP_STAGE_C2 // [FIA_EXP] C2: bmm2 matmul 阶段开关
                     ComputeMm2(runInfoNegN);
+#else
+                    ExpSyncC2(runInfoNegN);
+#endif
                 } else {
+#if FIA_EXP_STAGE_V2 // [FIA_EXP] V2: AIV 写回 阶段开关
                     ComputeVec2(runInfoNegN);
+#else
+                    ExpSyncV2(runInfoNegN);
+#endif
                 }
                 DisableTask(runInfoNegN);
             }
         }
+    }
+
+    // [FIA_EXP] C1 关闭时的同步替身: 只保留迭代同步(crosscore + kvp flag 链), 不做计算/拷贝
+    // 注意: 与 IterateBmm1 一致, 每 loop 只 Get() 一次驱动轮转, 后续一律用引用 (Get() 多次会错误轮转)
+    __aicore__ inline void ExpSyncC1(RunInfoX &runInfo)
+    {
+        auto &b1 = bmm1Buffers_.Get();
+        auto &kvp = l1KvPBuffers_.Get();
+        b1.WaitCrossCore();
+        WaitFlag<HardEvent::MTE1_MTE2>(kvp.GetEventID<HardEvent::MTE1_MTE2>());
+        SetFlag<HardEvent::MTE2_MTE1>(kvp.GetEventID<HardEvent::MTE2_MTE1>());
+        WaitFlag<HardEvent::MTE2_MTE1>(kvp.GetEventID<HardEvent::MTE2_MTE1>());
+        b1.SetCrossCore();
+    }
+
+    // [FIA_EXP] C2 关闭时的同步替身: 保留 IterateBmm2 的同步骨架(crosscore + kvp 释放链), 不做计算
+    // 与 ComputeMm2 一致使用 GetReused() (不轮转, 与 C1 同一块)
+    __aicore__ inline void ExpSyncC2(RunInfoX &runInfo)
+    {
+        auto &kvp = l1KvPBuffers_.GetReused();
+        auto &b2 = bmm2Buffers_.Get();
+        kvp.WaitCrossCore();
+        b2.WaitCrossCore();
+        SetFlag<HardEvent::MTE1_MTE2>(kvp.GetEventID<HardEvent::MTE1_MTE2>());
+        b2.SetCrossCore();
+    }
+
+    // [FIA_EXP] V1 关闭时的同步替身: 保留 ProcessVec1 的 crosscore 配对, 不做 softmax 计算
+    __aicore__ inline void ExpSyncV1(RunInfoX &runInfo)
+    {
+        auto &b1 = bmm1Buffers_.Get();
+        auto &kvp = l1KvPBuffers_.Get();
+        b1.WaitCrossCore();
+        kvp.WaitCrossCore();
+        b1.SetCrossCore();
+        kvp.SetCrossCore();
+    }
+
+    // [FIA_EXP] V2 关闭时的同步替身: 保留 ProcessVec2 的 crosscore 配对, 不做更新/写回
+    __aicore__ inline void ExpSyncV2(RunInfoX &runInfo)
+    {
+        auto &b2 = bmm2Buffers_.Get();
+        b2.WaitCrossCore();
+        b2.SetCrossCore();
     }
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
@@ -796,10 +857,14 @@ public:
         uint32_t fdWorkspaceIdx =
             fiaMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FD_WORKSPACE_IDX_INDEX));
 
+#if FIA_EXP_STAGE_FD // [FIA_EXP] FD: flashdecode 聚合阶段开关
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
+#endif
         vecFdBlock_.AllocEventID();
         AscendC::SyncAll();
+#if FIA_EXP_STAGE_FD
         vecFdBlock_.FlashDecode(fdParams);
+#endif
         vecFdBlock_.FreeEventID();
     }
 
