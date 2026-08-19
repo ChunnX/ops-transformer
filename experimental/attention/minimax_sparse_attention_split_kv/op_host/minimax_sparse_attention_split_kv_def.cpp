@@ -8,7 +8,8 @@ namespace ops {
 
 class MinimaxSparseAttentionSplitKv : public OpDef {
 public:
-    explicit MinimaxSparseAttentionSplitKv(const char* name) : OpDef(name)
+    explicit MinimaxSparseAttentionSplitKv(const char *name)
+        : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -30,10 +31,7 @@ public:
         // tensor Input (no const-fold) — the kernel reads csrStart/csrEnd from this GM tensor
         // (params.k2qRowPtr) via GetValue; host tiling derives totalKvRows from the Input SHAPE
         // only (no host value-read, so no .tolist / aclIntArray / ConvertToTensor front-end).
-        this->Input("k2qRowPtr")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("k2qRowPtr").ParamType(REQUIRED).DataType({ge::DT_INT32, ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Input("k2qQIndices")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
@@ -67,4 +65,4 @@ public:
 
 OP_ADD(MinimaxSparseAttentionSplitKv);
 
-}  // namespace ops
+} // namespace ops

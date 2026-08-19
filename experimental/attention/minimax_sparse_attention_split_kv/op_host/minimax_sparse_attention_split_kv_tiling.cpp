@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "minimax_sparse_attention_split_kv_tiling.h"
 #include <cmath>
 #include <cstring>
@@ -61,7 +60,8 @@ namespace optiling {
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
 {
-    if (n1 == 0) return 0;
+    if (n1 == 0)
+        return 0;
     return (n2 != 0) ? ((n1 + n2 - 1) / n2) : n1;
 }
 
@@ -134,13 +134,11 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     auto kTensor = context->GetInputDesc(KEY_INDEX);
     auto vTensor = context->GetInputDesc(VALUE_INDEX);
     if (kTensor->GetDataType() != dataType_ || vTensor->GetDataType() != dataType_) {
-        OP_LOGE(context->GetNodeName(),
-                "MinimaxSparseAttentionSplitKv Q/K/V dtype must be consistent.");
+        OP_LOGE(context->GetNodeName(), "MinimaxSparseAttentionSplitKv Q/K/V dtype must be consistent.");
         return ge::GRAPH_FAILED;
     }
     if (dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE(context->GetNodeName(),
-                "MinimaxSparseAttentionSplitKv Q/K/V only support BF16 or FLOAT8_E4M3FN.");
+        OP_LOGE(context->GetNodeName(), "MinimaxSparseAttentionSplitKv Q/K/V only support BF16 or FLOAT8_E4M3FN.");
         return ge::GRAPH_FAILED;
     }
 
@@ -162,8 +160,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseSeqlens(gert::TilingCo
     // row-major so the linear layout is identical). flatSize = total element count; derive
     // totalRows = flatSize / kvHeads - 1. Shape-only: no host value-read.
     int64_t flatSize = k2qRowPtrShape->GetStorageShape().GetShapeSize();
-    if (flatSize <= 0 || kvHeads_ == 0U ||
-        static_cast<uint64_t>(flatSize) % static_cast<uint64_t>(kvHeads_) != 0U) {
+    if (flatSize <= 0 || kvHeads_ == 0U || static_cast<uint64_t>(flatSize) % static_cast<uint64_t>(kvHeads_) != 0U) {
         printf("[MinimaxSparseAttentionSplitKvTiling] k2qRowPtr flat size %lld not divisible by kvHeads %u!\n",
                static_cast<long long>(flatSize), kvHeads_);
         return ge::GRAPH_FAILED;
@@ -207,8 +204,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateTaskSplit(gert::Ti
     // walk overhead the IntArray/const-fold path added). The kernel derives coreNum from
     // GetBlockNum(); no per-core boundary arrays are serialized.
     (void)context;
-    uint32_t totalTasks = numKvBlocks_ * kvHeads_;        // Phase1 row-outer task count
-    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;     // Phase2 strided task count
+    uint32_t totalTasks = numKvBlocks_ * kvHeads_;   // Phase1 row-outer task count
+    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_; // Phase2 strided task count
     // blockDim covers BOTH phases (strided): cores with no task simply skip the loop.
     uint32_t totalTaskMax = std::max(totalTasks, totalTaskP2);
     blockDim_ = (totalTaskMax == 0U) ? 1U : std::min(totalTaskMax, aicNum_);
@@ -230,10 +227,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     lseStatSize_ = taskSlots * slotStatElems;
     // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
     // fp8 path (key 20003) always uses fp32 O_partial regardless of innerPrecise.
-    const bool useBf16OPartial =
-        (dataType_ != ge::DT_FLOAT8_E4M3FN) && (innerPrecise_ == 1U);
-    uint64_t accumOutBytes = accumOutSize_ *
-        (useBf16OPartial ? sizeof(uint16_t) : sizeof(float));
+    const bool useBf16OPartial = (dataType_ != ge::DT_FLOAT8_E4M3FN) && (innerPrecise_ == 1U);
+    uint64_t accumOutBytes = accumOutSize_ * (useBf16OPartial ? sizeof(uint16_t) : sizeof(float));
     uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
@@ -273,13 +268,11 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
     tilingData_->set_workSpaceSize(workSpaceSize_);
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         if (embeddingSize_ != 128U || blockSize_ != 128U) {
-            OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires D=128 and blockSize=128.");
+            OP_LOGE(context->GetNodeName(), "MinimaxSparseAttentionSplitKv fp8 path requires D=128 and blockSize=128.");
             return ge::GRAPH_FAILED;
         }
         if (innerPrecise_ != 4U) {
-            OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=4.");
+            OP_LOGE(context->GetNodeName(), "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=4.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -290,39 +283,47 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
 }
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::GetTiling(gert::TilingContext *context,
-    MinimaxSparseAttentionSplitKvTilingData &tilingData)
+                                                               MinimaxSparseAttentionSplitKvTilingData &tilingData)
 {
     tilingData_ = &tilingData;
 
     auto ret = GetNpuInfo(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseAttrs(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseInputTensors(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseSeqlens(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateReverseIndexMeta(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateTaskSplit(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateWorkSpace(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = FillTilingData(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::SetTilingData(gert::TilingContext *context,
-    MinimaxSparseAttentionSplitKvTilingData &tilingData)
+                                                                   MinimaxSparseAttentionSplitKvTilingData &tilingData)
 {
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
@@ -335,14 +336,13 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::SetTilingData(gert::TilingC
     workspaces[0] = static_cast<size_t>(workSpaceSize_);
 
     // Set tiling data
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(),
-                            context->GetRawTilingData()->GetCapacity());
+    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     return ge::GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext *context)
 {
     // printf("[MinimaxSparseAttentionSplitKvTiling] ===== TilingMinimaxSparseAttentionSplitKv ENTER =====\n");
     if (context == nullptr) {
@@ -362,7 +362,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::Tilin
     return ge::GRAPH_FAILED;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -372,4 +372,4 @@ IMPL_OP_OPTILING(MinimaxSparseAttentionSplitKv)
     .Tiling(TilingMinimaxSparseAttentionSplitKv)
     .TilingParse<MinimaxSparseAttentionSplitKvCompileInfo>(TilingPrepareForMinimaxSparseAttentionSplitKv);
 
-}  // namespace optiling
+} // namespace optiling

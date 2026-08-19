@@ -8,24 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "kernel_operator.h"
 #include "minimax_sparse_attention_split_kv_tilingkey.h"
 #include "minimax_sparse_attention_split_kv_kernel_interface.cpp"
 
 extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
-    __gm__ uint8_t* query,
-    __gm__ uint8_t* key,
-    __gm__ uint8_t* value,
-    __gm__ uint8_t* blockTable,
-    __gm__ uint8_t* k2qRowPtr,
-    __gm__ uint8_t* k2qQIndices,
-    __gm__ uint8_t* k2qSlotIndices,
-    __gm__ uint8_t* actualSeqLengths,
-    __gm__ uint8_t* actualSeqLengthsKv,
-    __gm__ uint8_t* attentionOut,
-    __gm__ uint8_t* workspace,
-    __gm__ uint8_t* tiling)
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *k2qRowPtr, __gm__ uint8_t *k2qQIndices, __gm__ uint8_t *k2qSlotIndices,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     if (TILING_KEY_VAR >= MINIMAX_SA_SPLIT_KV_BASE_TILING) {
         __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
@@ -34,29 +25,23 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
 #if (__CCE_AICORE__ == 310)
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_TILING
-        MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, float>(
-            query, key, value, blockTable,
-            k2qRowPtr, k2qQIndices, k2qSlotIndices,
-            actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+        MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, float>(query, key, value, blockTable, k2qRowPtr, k2qQIndices,
+                                                                 k2qSlotIndices, actualSeqLengths, actualSeqLengthsKv,
+                                                                 attentionOut, user, tiling);
 #endif
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING
         // innerPrecise==1: REDtype(bf16) => PV fixpipe F322BF16 + Phase2 regbase cast
         // (bf16 O_partial). fp32 path (above) stays byte-identical.
-        MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, bfloat16_t>(
-            query, key, value, blockTable,
-            k2qRowPtr, k2qQIndices, k2qSlotIndices,
-            actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+        MinimaxSaSplitKvInferIntf<bfloat16_t, bfloat16_t, bfloat16_t>(query, key, value, blockTable, k2qRowPtr,
+                                                                      k2qQIndices, k2qSlotIndices, actualSeqLengths,
+                                                                      actualSeqLengthsKv, attentionOut, user, tiling);
 #endif
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING
-        MinimaxSaSplitKvInferIntf<fp8_e4m3fn_t, bfloat16_t, float>(
-            query, key, value, blockTable,
-            k2qRowPtr, k2qQIndices, k2qSlotIndices,
-            actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+        MinimaxSaSplitKvInferIntf<fp8_e4m3fn_t, bfloat16_t, float>(query, key, value, blockTable, k2qRowPtr,
+                                                                   k2qQIndices, k2qSlotIndices, actualSeqLengths,
+                                                                   actualSeqLengthsKv, attentionOut, user, tiling);
 #endif
 #endif
     }
