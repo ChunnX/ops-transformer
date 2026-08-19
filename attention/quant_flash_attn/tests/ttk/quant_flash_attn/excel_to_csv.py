@@ -460,7 +460,9 @@ def _build_attributes(row, col_by_name):
     _set("win_right", _str_to_int(row.get(col_by_name["BS_win_right"])))
     _set_force("max_seqlen_q", _str_to_int(row.get(col_by_name["BT_max_seqlen_q"])))
     _set_force("max_seqlen_kv", _str_to_int(row.get(col_by_name["BU_max_seqlen_kv"])))
-    _set("layout_q", _strip_or_none(row.get(col_by_name["BV_layout_q"])))
+    layout_q_val = _strip_or_none(row.get(col_by_name["BV_layout_q"]))
+    _set("layout_q", layout_q_val)
+    _set("input_layout", layout_q_val)
     _set("layout_q_descale", _strip_or_none(row.get(col_by_name["BW_layout_q_descale"])))
     _set("layout_kv", _strip_or_none(row.get(col_by_name["BX_layout_kv"])))
     _set("layout_out", _strip_or_none(row.get(col_by_name["BY_layout_out"])))
@@ -478,8 +480,7 @@ def _build_attributes(row, col_by_name):
     if B_val is None:
         cu_q = _str_to_int_list(row.get(col_by_name["AP_cu_seqlens_q_value"]))
         B_val = max(1, len(cu_q) - 1) if cu_q and len(cu_q) >= 2 else 1
-    _set("B", B_val)
-    _set("batch_size", B_val)
+    _set_force("batch_size", B_val)
     _set_force("enable_pa", isinstance(layout_kv, str) and layout_kv.startswith("PA_"))
     _set_force("kv_cache_layout", layout_kv)
     _set_force("q_scale_layout", layout_q_descale)
