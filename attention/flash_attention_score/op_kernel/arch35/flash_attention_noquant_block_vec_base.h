@@ -74,7 +74,9 @@ public:
         optionalDn ||
         IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
              s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
-    static constexpr bool enableDataInvalidLineRepair = useDn && isBf16Fp16 && !hasAtten;
+    static constexpr bool enableDataInvalidLineRepair =
+        isBf16Fp16 && !ContainOptionalInput(pseMode, hasAtten, hasDrop) && !hasRope && !enableKVPrefix &&
+        (static_cast<uint16_t>(dTemplateType) <= static_cast<uint16_t>(DTemplateType::Aligned256));
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter =
@@ -1296,9 +1298,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     if constexpr (IsSameType<INPUT_T, float>::value) {
         this->sumBrdcst.template FreeTensor(apiTmpBuffer);
     }
-    if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-        if (this->tilingData->inputParamsRegbase.implMode ==
-            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+    if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
+                  enableDataInvalidLineRepair) {
+        if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
+                                               static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
             this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
         }
     }
@@ -2035,7 +2038,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn)) {
+                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
             if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
                                                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
@@ -2352,7 +2355,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         negativeScalar = *((float *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn)) {
+                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
             if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
                                                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
@@ -2363,7 +2366,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
         negativeScalar = *((half *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn)) {
+                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
             if (enableDataInvalidLineRepair || this->tilingData->inputParamsRegbase.implMode ==
                                                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;

@@ -287,9 +287,9 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         }
         if ASCEND_IS_AIV {
             if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION ||
-                          IsSameType<INPUT_T, float>::value || BaseClass::enableDataInvalidLineRepair) {
-                if (BaseClass::enableDataInvalidLineRepair || this->sharedParams.implMode ==
-                                                                  static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                          IsSameType<INPUT_T, float>::value || VecBlockType::enableDataInvalidLineRepair) {
+                if (VecBlockType::enableDataInvalidLineRepair || this->sharedParams.implMode ==
+                                                                     static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                     this->constInfo.softMaxCheckRes = true;
                 }
             }
