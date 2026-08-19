@@ -38,7 +38,7 @@ __global__ __aicore__ void MinimaxSaSplitKvInferIntf(
     using KernelBlockMmadPV = Gemm::Block::BlockMmadPVSplitKvArch35<InDtype, InDtype, REDtype>;
     using DispatchPolicyRescaleO = Epilogue::EpilogueRescaleOSplitKvArch35;
     using KernelEpilogueRescaleO = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyRescaleO, InDtype, REDtype>;
+        DispatchPolicyRescaleO, SMDtype, REDtype, InDtype>;
 
     using MinimaxSaSplitKvKernel = MinimaxSparseAttentionSplitKvKernelArch35<
         KernelBlockMmadQK,

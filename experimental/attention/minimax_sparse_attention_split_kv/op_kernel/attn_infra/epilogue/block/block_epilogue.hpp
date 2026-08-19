@@ -45,17 +45,19 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
 
 namespace NpuArch::Epilogue::Block {
-template <class InDtype, class Tws>
+template <class InDtype, class Tws, class ElementKV>
 class BlockEpilogue<
     EpilogueRescaleOSplitKvArch35,
     InDtype,
-    Tws>
+    Tws,
+    ElementKV>
 {
 public:
     using DispatchPolicy = EpilogueRescaleOSplitKvArch35;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = InDtype;
     using T = float;            // lse / rowSum / dst / cast compute (always fp32)
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
     // O_partial (workspace accumOut) dtype: float (fp32 path) or bfloat16_t (innerPrecise==1
     // bf16 path: PV fixpipe F322BF16 writes bf16, Phase2 MTE2 reads bf16, regbase-cast to fp32).
     using TwsO = Tws;
@@ -234,6 +236,10 @@ private:
         // pipe, in-order). Invalid slots have rowSum==0 (WS_ROWSUM_INIT) -> reciprocal=+inf,
         // never used (combineDone breaks before the reduce reaches them).
         AscendC::Reciprocal<T>(lseSumTmpBuf, lseSumTmpBuf, static_cast<int32_t>(alignedLseCount));
+        if constexpr (FULL_QUANT_FP8) {
+            AscendC::Muls<T>(lseSumTmpBuf, lseSumTmpBuf, 1.0f / 448.0f,
+                             static_cast<int32_t>(alignedLseCount));
+        }
         AscendC::PipeBarrier<PIPE_V>();
     }
 

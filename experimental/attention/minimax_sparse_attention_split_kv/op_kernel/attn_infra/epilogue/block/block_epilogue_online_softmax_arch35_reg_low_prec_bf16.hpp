@@ -241,7 +241,8 @@ public:
             __ubuf__ ElementInput *sSlice = sAddr + localOff * nRound;
             __ubuf__ float *maxSlice = nowMaxFloatAddr + statsOff;
             __ubuf__ float *sumSlice = nowSumAddr + statsOff;
-            __ubuf__ ElementOutput *pSlice = pAddr + localOff * ELE_NUM_PER_C0;
+            constexpr uint32_t P_C0 = FULL_QUANT_FP8 ? ELE_NUM_PER_C0_FP8 : ELE_NUM_PER_C0;
+            __ubuf__ ElementOutput *pSlice = pAddr + localOff * P_C0;
 
             uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
             if (kvBaseTileRegStages == 1) {

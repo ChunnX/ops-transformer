@@ -27,6 +27,7 @@ constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_TILING = 20001;
 // regbase-cast bf16->fp32 before combine). Otherwise (e.g. innerPrecise==4) the fp32
 // O_partial path is used byte-for-byte (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING).
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING = 20002;
+constexpr uint64_t MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING = 20003;
 
 BEGIN_TILING_DATA_DEF(MinimaxSparseAttentionSplitKvTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
@@ -80,6 +81,7 @@ private:
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
     ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
     ge::graphStatus FillTilingData(gert::TilingContext *context);
+    uint64_t GenerateTilingKey() const;
 
 private:
     uint32_t batch_ = 0;

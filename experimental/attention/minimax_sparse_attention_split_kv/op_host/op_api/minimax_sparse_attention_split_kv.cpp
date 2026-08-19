@@ -42,7 +42,8 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
            actualSeqLengths, actualSeqLengthsKv,
            numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
 
-    DataType attentionOutDtype = query->GetDataType();
+    DataType attentionOutDtype = query->GetDataType() == DataType::DT_FLOAT8_E4M3FN ?
+        DataType::DT_BF16 : query->GetDataType();
     auto attentionOutTensor = executor->AllocTensor(attentionOutDtype,
         Format::FORMAT_ND, Format::FORMAT_ND);
 

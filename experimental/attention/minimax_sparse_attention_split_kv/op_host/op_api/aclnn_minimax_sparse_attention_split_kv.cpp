@@ -29,6 +29,72 @@ extern "C" {
 
 namespace {
 
+static bool IsSupportedQkvDtype(DataType dtype)
+{
+    return dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT8_E4M3FN;
+}
+
+static aclnnStatus ValidateParams(const aclTensor *query,
+                                  const aclTensor *key,
+                                  const aclTensor *value,
+                                  const aclTensor *blockTable,
+                                  const aclTensor *k2qRowPtr,
+                                  const aclTensor *k2qQIndices,
+                                  const aclTensor *k2qSlotIndices,
+                                  const aclTensor *actualSeqLengths,
+                                  const aclTensor *actualSeqLengthsKv,
+                                  const aclTensor *attentionOut,
+                                  int64_t innerPrecise)
+{
+    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengths != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengthsKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    DataType qDtype = query->GetDataType();
+    DataType kDtype = key->GetDataType();
+    DataType vDtype = value->GetDataType();
+    if (!IsSupportedQkvDtype(qDtype) || !IsSupportedQkvDtype(kDtype) ||
+        !IsSupportedQkvDtype(vDtype)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MinimaxSparseAttentionSplitKv Q/K/V only support BF16 or FLOAT8_E4M3FN.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qDtype != kDtype || qDtype != vDtype) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MinimaxSparseAttentionSplitKv Q/K/V dtype must be consistent.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (blockTable->GetDataType() != DataType::DT_INT32 ||
+        k2qRowPtr->GetDataType() != DataType::DT_INT32 ||
+        k2qQIndices->GetDataType() != DataType::DT_INT32 ||
+        k2qSlotIndices->GetDataType() != DataType::DT_INT32 ||
+        actualSeqLengths->GetDataType() != DataType::DT_INT32 ||
+        actualSeqLengthsKv->GetDataType() != DataType::DT_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MinimaxSparseAttentionSplitKv index/seqlen inputs must be INT32.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (attentionOut->GetDataType() != DataType::DT_BF16) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MinimaxSparseAttentionSplitKv attentionOut must be BF16.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (qDtype == DataType::DT_FLOAT8_E4M3FN && innerPrecise != 4) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=4, got %ld.",
+                innerPrecise);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&key,
                                   const aclTensor *&value,
@@ -103,6 +169,14 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    aclnnStatus validateRet = ValidateParams(query, key, value, blockTable,
+                                             k2qRowPtr, k2qQIndices, k2qSlotIndices,
+                                             actualSeqLengths, actualSeqLengthsKv,
+                                             attentionOut, innerPrecise);
+    if (validateRet != ACLNN_SUCCESS) {
+        return validateRet;
+    }
 
     L2_DFX_PHASE_1(aclnnMinimaxSparseAttentionSplitKv,
                    DFX_IN(query, key, value, blockTable,

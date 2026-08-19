@@ -62,6 +62,7 @@ struct BlockMmadPVSplitKvArch35 {
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
     static constexpr uint32_t COPY_GRANULARITY = 2;
     static constexpr uint32_t C0_SIZE = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementP);
 
     AscendC::LocalTensor<ElementV> l1VTensor_;
     AscendC::LocalTensor<ElementP> l1PTensor_;
@@ -122,7 +123,7 @@ struct BlockMmadPVSplitKvArch35 {
     {
         vBufBytes_ = blockSize * D * sizeof(ElementV);
         l1BaseAddr_ = l1StartAddr;
-        l1PStageBytes_ = RoundUp(groupSize, 16U) * RoundUp(blockSize, 16U) * sizeof(ElementP);
+        l1PStageBytes_ = RoundUp(groupSize, 16U) * RoundUp(blockSize, ELE_NUM_PER_C0) * sizeof(ElementP);
         resourcePtr_ = &resource;
         l1VTensor_ = resource.l1Buf.template GetBufferByByte<ElementV>(l1StartAddr);
         l1PTensor_ = resource.l1Buf.template GetBufferByByte<ElementP>(l1StartAddr + vBufBytes_);
