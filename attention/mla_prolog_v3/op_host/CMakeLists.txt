@@ -28,5 +28,9 @@ if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE mla_prolog_v3 ACLNNTYPE aclnn_inner)
+        OPTYPE mla_prolog_v3 ACLNNTYPE aclnn_inner ACLNN_EXTRA_VERSION v1)
+else()
+    # RTY(kernel)构建：def已通过BUILD_OPEN_PROJECT分支加入op_host_aclnnInner，
+    # 此处仅补齐extra version的inner接口名，供根CMakeLists的RTY分支消费
+    concat_op_names(OPTYPE mla_prolog_v3 ACLNNTYPE aclnn_inner ACLNN_EXTRA_VERSION v1)
 endif()
