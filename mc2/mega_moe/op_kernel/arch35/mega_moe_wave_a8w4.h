@@ -131,6 +131,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     uint64_t gmm1Count = 0U;
     uint64_t gmm2Count = 0U;
     DispatchBuffInit();
+    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
