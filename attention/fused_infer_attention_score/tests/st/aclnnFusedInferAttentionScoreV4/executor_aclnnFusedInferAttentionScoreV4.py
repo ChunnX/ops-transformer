@@ -9935,10 +9935,14 @@ def overwrite_structured_mask(input_data):
         next_t = input_data.kwargs.get('nextTokens', 2147483647)
         
         # 如果是 Tensor/List 取第一个值简化处理 (因为 Mode 4 Mask 是固定的 2048x2048)
-        if hasattr(pre_t, 'item'): pre_t = pre_t.item()
-        if isinstance(pre_t, (list, tuple)): pre_t = pre_t[0]
-        if hasattr(next_t, 'item'): next_t = next_t.item()
-        if isinstance(next_t, (list, tuple)): next_t = next_t[0]
+        if hasattr(pre_t, 'item'):
+            pre_t = pre_t.item()
+        if isinstance(pre_t, (list, tuple)):
+            pre_t = pre_t[0]
+        if hasattr(next_t, 'item'):
+            next_t = next_t.item()
+        if isinstance(next_t, (list, tuple)):
+            next_t = next_t[0]
         
         # 利用广播机制生成 Band
         rows = np.arange(S)[:, None]
