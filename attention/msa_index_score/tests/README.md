@@ -37,9 +37,9 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 `tests/golden/msa_index_score_golden.py`：
 
 ```python
-golden = msa_index_score_golden(
+golden = msa_index_score_golden(MsaIndexScoreGoldenInputs(
     query, key, block_table, actual_seq_qlen, actual_seq_klen, start_loc,
-    sparse_mode=3, scale=None)
+    sparse_mode=3, scale=None))
 ```
 
 ## 4. 判定标准
