@@ -48,6 +48,24 @@ __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertToken
     return sliceTokenCount;
 }
 
+// AIC 未拥有当前冷专家的任何 tile 时，只推进 rolling 游标，跳过地址和 scheduler 构造。
+__aicore__ inline bool SkipUnownedA8W4AicProblem(uint32_t problemTileCount, const BlockJobContext &blockJob,
+                                                 uint32_t &startBlockIdx)
+{
+    if constexpr (g_coreType == AIC) {
+        if (problemTileCount < blockJob.totalJobs) {
+            uint32_t firstOwnedTile =
+                (blockJob.jobIndex < startBlockIdx ? blockJob.jobIndex + blockJob.totalJobs : blockJob.jobIndex) -
+                startBlockIdx;
+            if (firstOwnedTile >= problemTileCount) {
+                startBlockIdx = (startBlockIdx + problemTileCount) % blockJob.totalJobs;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 template <TemplateMegaMoeA8W4WaveTypeClass>
 class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc> {
 private:
@@ -155,6 +173,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
     uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
 {
+    uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm1TilesPerMGroup;
+    if (SkipUnownedA8W4AicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
+        return;
+    }
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
                                     A_ELEMS_PER_BYTE, true, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
