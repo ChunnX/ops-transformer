@@ -367,6 +367,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     tokenDispatchScratch_.metaInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoReserveSize / sizeof(int32_t));
     tokenDispatchScratch_.cumsumRevCntInRank = 0U;
+    tokenDispatchScratch_.nextDispatchCoreIdx = 0U;
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -591,15 +592,15 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitTokenUnpermuteBuffers()
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchAllExpertTokens()
 {
-    /**
-     * 在 GMM pipeline 开始前完成所有专家的 Dispatch。每个专家单独使用全部
-     * Dispatch core，复用与普通模板一致的单专家 Dispatch 入口。
-     */
+    // 在 GMM pipeline 开始前完成所有专家的 Dispatch，并跨冷专家滚动首个工作核。
     for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
-        uint32_t expertTokenCount = 0U;
-        RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, false, GMM1_TILE_M, TopkWeightsPrefetch>(
-            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_, syncWorkspaceLayout_,
-            params_, winRankAddr_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+        WaveDispatchCoreRange dispatchCoreRange = PlanWaveExpertDispatch(
+            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, tokenDispatchScratch_, expertIdx);
+        if (HasWaveDispatchRows(dispatchCoreRange)) {
+            DispatchWaveExpertRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                tokenDispatchConfig_, commonConfig_, syncWorkspaceLayout_, params_, winRankAddr_,
+                tokenDispatchScratch_, expertIdx, dispatchCoreRange);
+        }
     }
 }
 
