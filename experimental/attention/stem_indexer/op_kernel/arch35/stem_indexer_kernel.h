@@ -107,6 +107,7 @@ protected:
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     // ================================Process functions================================
+    __aicore__ inline void WaitMm1CrossCoreSlots();
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
     // ================================Params Calc=====================================
@@ -480,9 +481,26 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
 }
 
 template <typename SIT>
+__aicore__ inline void SIPreload<SIT>::WaitMm1CrossCoreSlots()
+{
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
+        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
+}
+
+template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::Process()
 {
     if (isUsedCoreEqZero) {
+        if ASCEND_IS_AIC {
+            WaitMm1CrossCoreSlots();
+        }
         return;
     }
 
@@ -504,15 +522,7 @@ __aicore__ inline void SIPreload<SIT>::Process()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-            SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
+        WaitMm1CrossCoreSlots();
     }
 }
 
