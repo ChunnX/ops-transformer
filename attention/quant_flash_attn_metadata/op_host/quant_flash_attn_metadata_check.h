@@ -49,6 +49,9 @@ private:
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
 
+    // 校验 v_descale: quantMode=6 时不应传入, quantMode=1 时必传且维度需与 layoutKv 匹配
+    static inline aclnnStatus CheckVDescale(int64_t quantMode, const aclTensor *vDescaleOptional, const char *layoutKv);
+
     // 校验参数存在性: metadata 必须传入; TND 时必须传 cu_seqlens, 非 TND 时不可传 cu_seqlens 且
     // max_seqlen/seqused 至少提供一个
     static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQ,
@@ -70,11 +73,12 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::ParamsCheck(
     int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
     const char *layoutOut, const aclTensor *metadata)
 {
-    (void)vDescaleOptional; // v_descale 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
                              layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode, winLeft, winRight);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckVDescale(quantMode, vDescaleOptional, layoutKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistency(maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional, cuSeqlensKvOptional,
                          sequsedQOptional, sequsedKvOptional, metadata);
@@ -158,13 +162,53 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int6
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
-    constexpr int64_t WINDOW_MASK = 4;
+    constexpr int64_t SLIDING_WINDOW = 4;
 
     static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK, WINDOW_MASK};
     CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "maskMode only supports %ld, %ld, %ld, but got %ld", NO_MASK, CAUSAL_MASK, WINDOW_MASK, maskMode);
     CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or at least 0, but got %ld", winLeft);
     CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
+
+    // 文档约束: maskMode为0(NO_MASK) 或 3(CAUSAL) 时 winLeft/winRight 必须为 -1
+    if (maskMode != SLIDING_WINDOW) {
+        CHECK_COND(winLeft == -1 && winRight == -1, ACLNN_ERR_RUNTIME_ERROR,
+                   "When maskMode is not 4 (SLIDING_WINDOW), winLeft and winRight must be -1, "
+                   "but got winLeft=%ld, winRight=%ld",
+                   winLeft, winRight);
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckVDescale(int64_t quantMode, const aclTensor *vDescaleOptional,
+                                                              const char *layoutKv)
+{
+    constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
+    constexpr int64_t QUANT_MODE_GQA_FP8_FULLQUANT = 6;
+
+    if (quantMode == QUANT_MODE_GQA_FP8_FULLQUANT) {
+        CHECK_COND(!IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 6, vDescale should not be provided, but got non-null");
+        return ACLNN_SUCCESS;
+    }
+
+    if (quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        CHECK_COND(IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 1 (MxFP8), vDescale must be provided, but got null");
+        auto dimNum = vDescaleOptional->GetViewShape().GetDimNum();
+        if (strcmp(layoutKv, "TND") == 0) {
+            CHECK_COND(dimNum == 4, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is TND, vDescale must be 4D, but got %ldD", dimNum);
+        } else if (strcmp(layoutKv, "PA_BNBD") == 0) {
+            CHECK_COND(dimNum == 5, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is PA_BNBD, vDescale must be 5D, but got %ldD", dimNum);
+        } else if (strcmp(layoutKv, "PA_NZ") == 0) {
+            CHECK_COND(dimNum == 6, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 and layoutKv is PA_NZ, vDescale must be 6D, but got %ldD", dimNum);
+        }
+        return ACLNN_SUCCESS;
+    }
 
     return ACLNN_SUCCESS;
 }
