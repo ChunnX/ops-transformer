@@ -339,20 +339,22 @@ def cpu_compressor(
     _GOLDEN_CONTEXT["seqused_list"] = seqused_list
     _GOLDEN_CONTEXT["cu_seqlens_list"] = cu_seqlens_list
     _GOLDEN_CONTEXT["is_th"] = is_th
-    bench_outputs = _run_benchmark(
-        x_cpu,
-        wkv_cpu,
-        wgate_cpu,
-        state_cache_cpu,
-        ape_cpu,
-        block_table,
-        cmp_ratio,
-        coff,
-        cache_mode,
-        start_pos_list,
-        cu_seqlens_list,
-        seqused_list,
-    )
+    bench_outputs = None
+    if _get_compare_method == "cross_check" :
+        bench_outputs = _run_benchmark(
+            x_cpu,
+            wkv_cpu,
+            wgate_cpu,
+            state_cache_cpu,
+            ape_cpu,
+            block_table,
+            cmp_ratio,
+            coff,
+            cache_mode,
+            start_pos_list,
+            cu_seqlens_list,
+            seqused_list,
+        )
     _GOLDEN_CONTEXT["bench_outputs"] = bench_outputs
     gc.collect()
     return [
@@ -431,21 +433,23 @@ def aclnn_compressor_golden(
     _GOLDEN_CONTEXT["gradEnabled"] = gradEnabled
     _GOLDEN_CONTEXT["mid_result_mask"] = mid_result_mask
 
-    bench_outputs = _run_benchmark(
-        x_cpu,
-        wkv_cpu,
-        wgate_cpu,
-        state_cache_cpu,
-        ape_cpu,
-        block_table,
-        cmpRatio,
-        coff,
-        cacheMode,
-        start_pos_list,
-        cu_seqlens_list,
-        seqused_list,
-        grad_enabled=gradEnabled,
-    )
+    bench_outputs = None
+    if _get_compare_method == "cross_check" :
+        bench_outputs = _run_benchmark(
+            x_cpu,
+            wkv_cpu,
+            wgate_cpu,
+            state_cache_cpu,
+            ape_cpu,
+            block_table,
+            cmpRatio,
+            coff,
+            cacheMode,
+            start_pos_list,
+            cu_seqlens_list,
+            seqused_list,
+            grad_enabled=gradEnabled,
+        )
     _GOLDEN_CONTEXT["bench_outputs"] = bench_outputs
 
     return [cmp_kv, softmax, kv, golden_state_cache]
