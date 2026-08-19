@@ -935,13 +935,11 @@ static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData,
  */
 static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData)
 {
-    // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
+    // fixedBufferBytes 包含紧凑 cumsumInfoTensor_ 和 expertTokenNumsOutTensor_。
     uint32_t fixedBufferBytes =
-        static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(ops::CeilAlign(
             static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank * sizeof(int32_t),
             static_cast<uint64_t>(ALIGN_32))) +
-        tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
                                              static_cast<uint64_t>(ALIGN_32)));
     return fixedBufferBytes;
