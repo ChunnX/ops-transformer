@@ -24,6 +24,7 @@
 #include <cstring>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include "acl/acl.h"
@@ -107,14 +108,27 @@ std::vector<uint16_t> MakeInput(size_t count, uint32_t seed)
     return out;
 }
 
-// BSND index: [b, s, n, d]
+// Layout of q/k/v/dout/attn_out and the dq/dk/dv outputs. softmax_lse is
+// always [B,N,S1] and is unaffected.
+enum class Layout { BSND, BNSD };
+Layout g_layout = Layout::BSND;
+
+// Element index. BSND is [b,s,n,d]; BNSD is [b,n,s,d]. Only the axis order
+// differs -- d stays innermost in both, which is what lets the kernel use a
+// single 4D view for both layouts.
 inline size_t Idx(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
 {
+    if (g_layout == Layout::BNSD) {
+        return static_cast<size_t>(((b * sh.n + n) * sh.s1 + s) * sh.d + d);
+    }
     return static_cast<size_t>(((b * sh.s1 + s) * sh.n + n) * sh.d + d);
 }
 
 inline size_t IdxKv(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
 {
+    if (g_layout == Layout::BNSD) {
+        return static_cast<size_t>(((b * sh.n + n) * sh.s2 + s) * sh.d + d);
+    }
     return static_cast<size_t>(((b * sh.s2 + s) * sh.n + n) * sh.d + d);
 }
 
@@ -286,13 +300,21 @@ int main()
     // Host golden is an O(B*N*S1*S2*D) triple loop; skip it for large shapes and
     // only assert the kernel ran and produced non-zero output there.
     const bool checkGolden = EnvInt("FAG_CHECK", 1) != 0;
+    const char *layoutEnv = std::getenv("FAG_LAYOUT");
+    std::string layoutStr = (layoutEnv != nullptr && *layoutEnv != '\0') ? layoutEnv : "BSND";
+    if (layoutStr == "BNSD") {
+        g_layout = Layout::BNSD;
+    } else if (layoutStr != "BSND") {
+        printf("FAG_LAYOUT only supports BSND / BNSD, got %s\n", layoutStr.c_str());
+        return -1;
+    }
     const float scale = 1.0F / std::sqrt(static_cast<float>(sh.d));
     const size_t qCount = static_cast<size_t>(sh.b * sh.s1 * sh.n * sh.d);
     const size_t kvCount = static_cast<size_t>(sh.b * sh.s2 * sh.n * sh.d);
     const size_t lseCount = static_cast<size_t>(sh.b * sh.n * sh.s1);
 
-    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N=%ld D=%ld scale=%.6f\n", sh.b, sh.s1,
-           sh.s2, sh.n, sh.d, scale);
+    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N=%ld D=%ld scale=%.6f layout=%s\n", sh.b,
+           sh.s1, sh.s2, sh.n, sh.d, scale, layoutStr.c_str());
 
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
@@ -326,8 +348,12 @@ int main()
         attnOutHost[i] = FloatToHalf(golden.attnOut[i]);
     }
 
-    const std::vector<int64_t> qShape = {sh.b, sh.s1, sh.n, sh.d};
-    const std::vector<int64_t> kvShape = {sh.b, sh.s2, sh.n, sh.d};
+    const bool isBnsd = (g_layout == Layout::BNSD);
+    const std::vector<int64_t> qShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n, sh.s1, sh.d}
+                                               : std::vector<int64_t>{sh.b, sh.s1, sh.n, sh.d};
+    const std::vector<int64_t> kvShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n, sh.s2, sh.d}
+                                                : std::vector<int64_t>{sh.b, sh.s2, sh.n, sh.d};
+    // softmax_lse is [B,N,S1] regardless of layout
     const std::vector<int64_t> lseShape = {sh.b, sh.n, sh.s1};
 
     DeviceTensor q, k, v, dout, attnOut, lse, dq, dk, dv;
@@ -341,9 +367,12 @@ int main()
     CHECK_RET(CreateTensor(dk, kvShape, ACL_FLOAT16, nullptr, kvCount * 2) == 0, "dk\n");
     CHECK_RET(CreateTensor(dv, kvShape, ACL_FLOAT16, nullptr, kvCount * 2) == 0, "dv\n");
 
-    char layoutQ[] = "BSND";
-    char layoutKv[] = "BSND";
-    char layoutOut[] = "BSND";
+    // The three layout attrs must agree (enforced by CheckLayout on the host)
+    std::vector<char> layoutBuf(layoutStr.begin(), layoutStr.end());
+    layoutBuf.push_back('\0');
+    char *layoutQ = layoutBuf.data();
+    char *layoutKv = layoutBuf.data();
+    char *layoutOut = layoutBuf.data();
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;

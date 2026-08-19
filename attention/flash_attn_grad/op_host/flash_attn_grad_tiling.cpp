@@ -75,7 +75,12 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         if (layoutQPtr != nullptr) { layoutQStr = std::string(layoutQPtr); }
     }
 
+    // tilingkey bit2 only distinguishes TND from non-TND; BNSD is a non-TND
+    // layout and deliberately does NOT get a tilingkey bit of its own -- it is
+    // handled at runtime through the view parameters below, so the tilingkey
+    // combination count (and thus the operator binary size) stays unchanged.
     int64_t layout = (layoutQStr == "TND") ? 1 : 0;
+    bool isBnsd = (layoutQStr == "BNSD");
 
     auto qShape = context->GetInputShape(Q_INDEX);
     auto kShape = context->GetInputShape(K_INDEX);
@@ -102,6 +107,16 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         } else {
             bSize = 1;
         }
+    } else if (isBnsd) {
+        // BNSD [B,N,S,D]; matches the AscendC reference's derivation in
+        // flash_attention_score_grad_infershape.cpp (the "BNSD" else branch).
+        bSize = qShape->GetStorageShape().GetDim(0);
+        n1Size = qShape->GetStorageShape().GetDim(1);
+        s1Size = qShape->GetStorageShape().GetDim(2);
+        dSize = qShape->GetStorageShape().GetDim(3);
+        dvSize = vShape->GetStorageShape().GetDim(3);
+        n2Size = kShape->GetStorageShape().GetDim(1);
+        s2Size = kShape->GetStorageShape().GetDim(2);
     } else {
         bSize = qShape->GetStorageShape().GetDim(0);
         s1Size = qShape->GetStorageShape().GetDim(1);
@@ -178,6 +193,23 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     tilingData->dv = dvSize;
     tilingData->scaleValue = scaleValue == 0.0f ? 1.0f / sqrt(static_cast<float>(dSize)) : scaleValue;
 
+    // Collapse the layout difference into the 4D view parameters (see the field
+    // comments in flash_attn_grad_tiling.h). The kernel then runs one pl.load
+    // form for both layouts, picking the slice with plain arithmetic.
+    if (isBnsd) {
+        tilingData->viewD0 = bSize * n2Size;
+        tilingData->viewD2 = 1;
+        tilingData->coefB0 = n2Size;
+        tilingData->coefN0 = 1;
+        tilingData->coefN2 = 0;
+    } else {
+        tilingData->viewD0 = bSize;
+        tilingData->viewD2 = n2Size;
+        tilingData->coefB0 = 1;
+        tilingData->coefN0 = 0;
+        tilingData->coefN2 = 1;
+    }
+
     bool hasAttenMask = HasAttenMask(context, maskMode);
     // TilingKey: bit[1:0]=template(0=bn2gs1s2,1=bn2,2=bn2s2,3=bn2multiblk),
     //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask,
@@ -205,8 +237,10 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: blockDim=%u, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, tilingKey=%llu, workspaceSize=%zu.",
-            blockDim, layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size, dSize, tilingKey, workspaceSize);
+            "FlashAttnGrad tiling: blockDim=%u, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, view=[%ld,S,%ld,D], coef=(%ld,%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
+            blockDim, layoutQStr.c_str(), layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size, dSize,
+            tilingData->viewD0, tilingData->viewD2, tilingData->coefB0, tilingData->coefN0, tilingData->coefN2,
+            tilingKey, workspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }

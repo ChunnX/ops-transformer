@@ -7,7 +7,7 @@ pypto-pro 重写。变量名与代码结构尽量跟随 AscendC 原版。
 
 | 项 | 取值 |
 |---|---|
-| 布局 | BSND（非 TND） |
+| 布局 | BSND / BNSD（均为非 TND），见 3 节 |
 | headDim | 128 |
 | 数据类型 | fp16 输入 / fp32 累加 / fp16 输出 |
 | 不支持 | sparse、pse、dropout、attenMask、确定性计算、rope |
@@ -114,11 +114,51 @@ kernel 入口 `flash_attn_grad`：**13 输入 / 3 输出 / 1 workspace / 1 tilin
 ```python
 b, s1, s2, n1, n2, d, dv: int
 scaleValue: float
+viewD0, viewD2, coefB0, coefN0, coefN2: int   # 布局视图参数，见下
 ```
 
 注意其中**没有 coreNum 字段**，kernel 里改用 `pl.get_block_num()`（实测
 cube/vector 两侧都返回物理核数 36，故 CV 双侧算出的 `numBlocks` 一致，
 set/wait 能正确配对）。
+
+### 布局泛化：BSND / BNSD 统一四维视图
+
+跟随布局的共 8 个张量：输入 `q/k/v/dout/attn_out` 与输出 `dq/dk/dv`
+（输出形状由 infershape 的 `*dqShape = *qShape` 强制跟随输入）。
+`softmax_lse` 恒为 `[B,N,S1]`，其余输入布局不变。
+
+**layout 不占 tilingkey 位**（组合数保持 32，不撑大算子二进制）。做法是把两种
+布局收敛成同一种四维紧凑视图 `[viewD0, S, viewD2, D]`，于是 kernel 里
+`make_tensor` 与 `pl.load(order=...)` 只有一份代码，布局差异全部退化为数值：
+
+| layout | 视图 shape | 索引 `[idx0, s, idx2, 0]` | 系数 (B0,N0,N2) |
+|---|---|---|---|
+| BSND `[B,S,N,D]` | `[B, S, N, D]` | `[b, s, n, 0]` | (1, 0, 1) |
+| BNSD `[B,N,S,D]` | `[B*N, S, 1, D]` | `[b*N+n, s, 0, 0]` | (N, 1, 0) |
+
+```
+idx0 = boIdx * coefB0 + n2oIdx * coefN0
+idx2 = n2oIdx * coefN2
+```
+
+两者的**最内轴都是 D**，所以已验证的 `order=[1,3]`（转置读 `[3,1]`）语义不变；
+索引是纯算术、无分支，因此不触碰 pypto「分支赋值无法 phi 合并」的限制。
+BNSD 的 `viewD2 = 1` 是退化轴（实测支持）。
+
+**不能改用「倒置 stride」的办法**：`make_tensor` 的 `stride` 参数不支持任意
+跨距，给出中间轴跨距倒置的 stride 时被**静默忽略**、按 shape 的紧凑跨距去读，
+不报错。实测 BNSD 这样读出的数据精确等于「按 BSND 语义（stride `N*D`）误读」
+的那一段。探针见 `/root/.claude/jobs/c66577db/tmp/probe_layout.py`（证伪）与
+`probe_bnsd4d.py`（验证本方案的 plain 读 / 转置读 / atomicAdd 三项）。
+
+pre/post 与 workspace **无需改动**：workspace 与输出用同一布局，而 pre 是整体
+清零（顺序无关）、post 是 `[rows,D]` 展平后逐行 cast 搬运，两者逐元素对应 ——
+无论哪种布局都是同一个 `B*S*N*D` 紧凑块的同一种排列。
+
+host 侧维度提取对齐 ASC 参考实现
+（`attention/flash_attention_score_grad/op_host/flash_attention_score_grad_infershape.cpp`
+的 BNSD 分支）：BNSD 取 `b,n,s1,d = dim(0..3)`，k/v 的 `s2 = dim(2)`。
+swizzle 判据与 workspace 尺寸只依赖 B/S/N/D 的数值，与布局无关。
 
 单块 workspace 内部再切三份 fp32 累加区（主循环用 atomicAdd 累加，pre 阶段清零）：
 
@@ -320,6 +360,7 @@ pl.load(lse_ub, tensor_lse,
 | 尾块 dQ/dK/dV 全错（0.2~nan） | `set_validshape` 收窄到 `rows` 改变了源跨距，与 VF 固定按 65 写入错位；且 insert 后忘记恢复 65 |
 | workspace 残留 NaN 在高位列 | **一个 vreg 只装 64 个 fp32**，`[rows,128]` 每行需要**两条** store（offset 0 和 +64）。按行判定 NaN 会看不见（缺口在列方向），要逐元素并同时报行和列 |
 | B2N2 / S1=384 的 dQ 错 1.3/4.2 | 手工软流水预取是条件执行的，`next()` 调用次数随分支变化导致 `current()` 槽位错位。改成**每轮无条件轮转**，重叠交给框架 |
+| BNSD 用「倒置 stride」读出错位数据且不报错 | `make_tensor` 的 `stride` 不支持任意跨距，非紧凑轴序被**静默忽略**、按紧凑跨距读。改用该布局自身的紧凑视图（见 3 节） |
 | 3 槽 L1 复用比不复用还慢 | writer 与 reader 在环上挨着，共享 mutex 的阻塞超过省下的 GM 搬运。加到 4 槽才转正 |
 | dS/P 共享 L1 加双缓冲零收益 | 假设错了：停顿不在 CV 反向等待，而在 L0 层。已回退 |
 
@@ -343,7 +384,7 @@ def sel(flag, whenOne, whenZero):
 |---|---|
 | `op_kernel/flash_attn_grad.py` | kernel 实现（~1530 行），含 `FlashAttnGradTilingData` / `FlashAttnGradTilingKey` / `decide_swizzle()` |
 | `op_kernel/test_flash_attention_score_grad_pypto.py` | 13 个 shape 用例，含 S1/S2 尾块；带 2 分钟执行看护 |
-| `op_kernel/prof_pypto.py` | msprof 各流水占用率，支持 `B/N/S1/S2/CORES` 环境变量 |
+| `op_kernel/prof_pypto.py` | msprof 各流水占用率，支持 `B/N/S1/S2/CORES/FAG_LAYOUT` 环境变量 |
 | `op_kernel/bench_fag_asc_vs_pypto.py` | 与 AscendC 端到端对比 + 正确性交叉验证 |
 | `op_host/flash_attn_grad_tiling.cpp` | tiling：workspace 尺寸、swizzle 门控、tilingkey 拼装 |
 | `op_host/flash_attn_grad_tiling_check.cpp` | 参数校验。**文件名必须含 `_tiling`**，tiling 对象库按 `*_tiling*.cpp` glob 收源文件，原名 `_check.cpp` 会漏编，链接期报 `undefined symbol CheckParams` |
@@ -359,6 +400,7 @@ cd op_kernel
 PYTHONPATH=$PYPTO $PY test_flash_attention_score_grad_pypto.py   # 全部用例
 CASE_FILTER=11 PYTHONPATH=$PYPTO $PY test_...py                  # 单个用例
 FAG_FORCE_SWIZZLE=1 PYTHONPATH=$PYPTO $PY test_...py             # 强制分核方式
+FAG_LAYOUT=BNSD PYTHONPATH=$PYPTO $PY test_...py                 # 切布局(BSND/BNSD)
 B=1 N=32 S1=8192 S2=8192 PROF_OUT=/tmp/p PYTHONPATH=$PYPTO $PY prof_pypto.py
 PYTHONPATH=$PYPTO $PY bench_fag_asc_vs_pypto.py                  # 对比 ASC
 ```
@@ -390,7 +432,7 @@ g++ -std=c++17 -O2 examples/test_aclnn_flash_attn_grad.cpp -o /tmp/fag_aclnn \
   -L$CANN/lib64 -L$VEND/op_api/lib -lascendcl -lnnopbase -lcust_opapi
 export LD_LIBRARY_PATH=$VEND/op_api/lib:$CANN/lib64:$LD_LIBRARY_PATH
 export ASCEND_CUSTOM_OPP_PATH=$VEND
-FAG_B=1 FAG_N=1 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
+FAG_LAYOUT=BNSD FAG_B=1 FAG_N=2 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
 ```
 
 `FAG_CHECK=0` 跳过 host golden（`O(B*N*S1*S2*D)` 三重循环，大 shape 太慢），
@@ -413,6 +455,19 @@ FAG_B=1 FAG_N=1 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
   （N=1 16.38 MB，N=8 112 MB）。
 - **swizzle 判据**：已改为 tilingkey bit4，阈值校准到 `2 * L2`；N=1/8/10/12/16/24
   六个测点，host 判据全部选中实测更快的那条路径。
+- **布局泛化**：BSND / BNSD 均通过。JIT 侧 2 布局 x 2 分核 = 4 种组合各跑满
+  13 个 shape 用例，三项 max_diff 恒为 6.10e-05（与布局无关）；AOT 侧
+  `FAG_LAYOUT=BSND/BNSD` 各跑 aclnn 用例（N=2，真实走到 head 轴）均 PASS。
+  host 日志确认 BSND 得 `view=[1,S,4,D] coef=(1,0,1)`、BNSD 得
+  `view=[4,S,1,D] coef=(4,1,0)`，且两者 `tilingKey` 相同 —— 布局未占 tilingkey。
+  性能无回归（S=8192，36 核，task_duration）：
+
+  | N | BSND | BNSD | 差异 |
+  |---|---|---|---|
+  | 1 | 192.96 | 193.32 | +0.2% |
+  | 12 | 2339.10 | 2385.05 | +2.0% |
+
+  索引由编译期常量变成一次乘加，开销在噪声内。
 
 性能：N=1 0.93x、N=32 0.96x、N=64 0.94x（ASC 为 1.0 基线）。
 

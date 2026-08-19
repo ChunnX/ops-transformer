@@ -225,6 +225,22 @@ class FlashAttnGradTilingData:
     d: int
     dv: int
     scaleValue: float
+    # ---- 布局视图参数 ----
+    # BSND 与 BNSD 统一成同一种四维紧凑视图 [viewD0, S, viewD2, D]，
+    # 这样 kernel 只需一份 pl.load(order=...) 代码，布局差异全部退化成数值：
+    #   BSND [B,S,N,D] -> 视图 [B,   S, N, D]，索引 [b,     s, n, 0]
+    #   BNSD [B,N,S,D] -> 视图 [B*N, S, 1, D]，索引 [b*N+n, s, 0, 0]
+    #   idx0 = b*coefB0 + n*coefN0 ; idx2 = n*coefN2
+    #   BSND: coefB0=1, coefN0=0, coefN2=1
+    #   BNSD: coefB0=N, coefN0=1, coefN2=0
+    # 运行期纯算术、无分支，故不占 tilingkey 位(不增大算子二进制)。
+    # 注意不能改用「倒置 stride」的办法：make_tensor 对非紧凑 stride 会
+    # 静默忽略并按紧凑跨距去读，不报错(实测见 FAG_PYPTO_DEV.md)。
+    viewD0: int
+    viewD2: int
+    coefB0: int
+    coefN0: int
+    coefN2: int
 
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
@@ -274,6 +290,12 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         totalBlockNum=tiling.b * tiling.n2 * s1Outer * s2Outer,
         coreNum=coreNum,
         enableSwizzle=enableSwizzle,
+        # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释
+        viewD0=tiling.viewD0,
+        viewD2=tiling.viewD2,
+        coefB0=tiling.coefB0,
+        coefN0=tiling.coefN0,
+        coefN2=tiling.coefN2,
     )
 
 
@@ -302,6 +324,10 @@ def make_run_infos():
         queryOffset=0,
         keyOffset=0,
         isS2IdxNoChange=0,
+        # 统一四维视图 [viewD0, S, viewD2, D] 上的第 0 / 第 2 轴索引。
+        # 由 (boIdx, n2oIdx) 与 host 传入的系数算出，见 set_run_info()。
+        idx0=0,
+        idx2=0,
     )
 
 
@@ -533,6 +559,11 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     prevS2oIdx = (index - 1) % constInfo.s1oS2o // constInfo.s1Outer
     runInfo.isS2IdxNoChange = runInfo.s2oIdx == prevS2oIdx
 
+    # 统一四维视图上的两个非 S 轴索引。BSND 下退化为 (boIdx, n2oIdx)，
+    # BNSD 下为 (boIdx*n2 + n2oIdx, 0)，纯算术无分支。
+    runInfo.idx0 = runInfo.boIdx * constInfo.coefB0 + runInfo.n2oIdx * constInfo.coefN0
+    runInfo.idx2 = runInfo.n2oIdx * constInfo.coefN2
+
 
 # ==================================================================
 #  IterateMmQK —— mm2: S = Q @ K^T   (block_cube.h::IterateMmQK)
@@ -546,14 +577,14 @@ def iterate_mm_qk(constInfo, runInfo, tensor_q, tensor_k,
     # k_l1 以 [D,S2] 载入，故 S2 是它的列
     pl.set_validshape(k_t, [HEAD_DIM_ALIGN, runInfo.s2RealSize])
     # BSND -> tile[S,D]: order=[1,3] 取 (S,D) 两轴
-    pl.load(q_t, tensor_q, [runInfo.boIdx, runInfo.queryOffset, runInfo.n2oIdx, 0],
+    pl.load(q_t, tensor_q, [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
             order=[1, 3])
     # 右矩阵转置(isRightTranspose=true)：K[S2,D] 以 [D,S2] 载入。
     # 仅在 s2 组切换时重载：S1 是最快轴，同组内连续 s1Outer 个 task 的 K
     # 完全相同(对应 ASC isCopyRight = !isS2IdxNoChange)。
     if loadKV == 1:
         pl.load(k_t, tensor_k,
-                [runInfo.boIdx, runInfo.keyOffset, runInfo.n2oIdx, 0],
+                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
                 order=[3, 1])
     lt = left.next()
     rt = right.next()
@@ -581,12 +612,12 @@ def iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
     v_t = v_l1.current()
     pl.set_validshape(do_t, [runInfo.s1RealSize, HEAD_DIM_ALIGN])
     pl.set_validshape(v_t, [HEAD_DIM_ALIGN, runInfo.s2RealSize])
-    pl.load(do_t, tensor_dy, [runInfo.boIdx, runInfo.queryOffset, runInfo.n2oIdx, 0],
+    pl.load(do_t, tensor_dy, [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
             order=[1, 3])
     # 同 mm2 的 K：仅在 s2 组切换时重载
     if loadKV == 1:
         pl.load(v_t, tensor_v,
-                [runInfo.boIdx, runInfo.keyOffset, runInfo.n2oIdx, 0],
+                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
                 order=[3, 1])
     lt = left.next()
     rt = right.next()
@@ -620,7 +651,7 @@ def iterate_mm_dsk(constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV,
     # 同 mm2/mm1：仅在 s2 组切换时重载(mm3 的 K 是非转置视图)
     if loadKV == 1:
         pl.load(k_t, tensor_k,
-                [runInfo.boIdx, runInfo.keyOffset, runInfo.n2oIdx, 0],
+                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
                 order=[1, 3])
     lt = left.next()
     rt = right.next()
@@ -633,7 +664,7 @@ def iterate_mm_dsk(constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV,
     pl.move(rt, k_t)
     pl.matmul(at, lt, rt)
     pl.store(tensor_dq_ws, at,
-             [runInfo.boIdx, runInfo.queryOffset, runInfo.n2oIdx, 0],
+             [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
 
 
@@ -775,9 +806,9 @@ def process_vec1_chunk(constInfo, runInfo, s1Base, rowOff, rows,
     loadBase = pl.max(pl.min(rowBase, constInfo.s1Size - SFMG_LOOP_SIZE), 0)
     rowShift = rowBase - loadBase
     pl.load(y_ub, tensor_y,
-            [runInfo.boIdx, loadBase, runInfo.n2oIdx, 0], order=[1, 3])
+            [runInfo.idx0, loadBase, runInfo.idx2, 0], order=[1, 3])
     pl.load(dy_ub, tensor_dy,
-            [runInfo.boIdx, loadBase, runInfo.n2oIdx, 0], order=[1, 3])
+            [runInfo.idx0, loadBase, runInfo.idx2, 0], order=[1, 3])
     softmax_grad_front_mul_vf(prod_ub, y_ub, dy_ub, rows, rowShift)
     # dim=0：沿最后一轴(D)做行向 reduce，得到 [rows, 1]
     pl.sum(sfmg_chunk_ub, prod_ub, tmp_ub, dim=0)
@@ -1079,10 +1110,10 @@ def flush_dkv(runInfo, tensor_dk_ws, tensor_dv_ws, dk_at, dv_at):
     只写一次。仍用 atomicAdd：多核可能分到同一 s2 块的不同 s1 区间。
     """
     pl.store(tensor_dk_ws, dk_at,
-             [runInfo.boIdx, runInfo.keyOffset, runInfo.n2oIdx, 0],
+             [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
     pl.store(tensor_dv_ws, dv_at,
-             [runInfo.boIdx, runInfo.keyOffset, runInfo.n2oIdx, 0],
+             [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
 
 
@@ -1138,39 +1169,47 @@ def flash_attn_grad(
     dk_workspace = pl.addptr(dq_workspace, wsRowsQ * HEAD_DIM_ALIGN)
     dv_workspace = pl.addptr(dk_workspace, wsRowsKV * HEAD_DIM_ALIGN)
 
-    s1nd = constInfo.s1Size * constInfo.n2D
-    s2nd = constInfo.s2Size * constInfo.n2D
+    # ---- 统一四维视图 [viewD0, S, viewD2, D] ----
+    # BSND 与 BNSD 共用同一套 make_tensor / pl.load(order=...) 代码，
+    # 布局差异只体现在 viewD0/viewD2 与索引系数上(见 set_run_info 的 idx0/idx2)：
+    #   BSND: [B,   S, N, D]，idx = [b,     s, n, 0]
+    #   BNSD: [B*N, S, 1, D]，idx = [b*N+n, s, 0, 0]
+    # 两者都是紧凑排布 —— 这一点是必须的：make_tensor 对非紧凑 stride 会静默
+    # 忽略并按紧凑跨距去读(不报错)，所以不能用「倒置 stride」表达 BNSD。
+    viewD2 = constInfo.viewD2
+    d2d = viewD2 * HEAD_DIM_ALIGN
+    s1nd = constInfo.s1Size * d2d
+    s2nd = constInfo.s2Size * d2d
 
-    # 输入按 BSND [B,S,N,D] 建 tensor
-    tensor_q = pl.make_tensor(q, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                              [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_k = pl.make_tensor(k, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                              [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_q = pl.make_tensor(q, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
+                              [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_k = pl.make_tensor(k, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
+                              [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     # MM3(dQ = dS@K) 需要「未转置」的 K，而 MM2 需要 K^T。
     # 每个 GM tensor 只会推导出一种 Layout：tensor_k 因 MM2 的转置读被定成
     # Layout::DN，MM3 若共用它，plain 读也会被按 DN 解释，实测等价于拿到 K^T
     # (partial 与 K[s2o]^T 吻合到 1e-4)。故为 MM3 单独建一份同 buffer 的
     # tensor 视图，让它独立推导 layout。
-    tensor_k_nt = pl.make_tensor(k, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                                 [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_v = pl.make_tensor(v, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                              [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_dy = pl.make_tensor(dout, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                               [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_y = pl.make_tensor(attn_out, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                              [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_k_nt = pl.make_tensor(k, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
+                                 [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_v = pl.make_tensor(v, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
+                              [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_dy = pl.make_tensor(dout, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
+                               [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_y = pl.make_tensor(attn_out, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
+                              [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     # softmax_lse : [B,N,S1]
     tensor_lse = pl.make_tensor(
         softmax_lse, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size],
         [constInfo.n2Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32)
     # dq/dk/dv workspace 为 fp32，供 atomicAdd 累加
-    tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                                  [s1nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
-    tensor_dk_ws = pl.make_tensor(dk_workspace, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                                  [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
-    tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, HEAD_DIM_ALIGN],
-                                  [s2nd, constInfo.n2D, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
+                                  [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dk_ws = pl.make_tensor(dk_workspace, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
+                                  [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
+                                  [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
 
     # ---- pre/post 用的展平视图 ----
     # workspace 逻辑形状 [B,S,N2,D]，pre/post 只需按行线性遍历，

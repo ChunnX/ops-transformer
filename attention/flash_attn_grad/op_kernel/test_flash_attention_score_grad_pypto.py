@@ -121,6 +121,29 @@ def run_case(B, N, S1, S2, D, num_cores):
     y_in = y_gold.to(device).contiguous()
     lse_gold = lse_gold.to(device).contiguous()
 
+    # ---- 布局 ----
+    # golden 始终按 BSND 计算；BNSD 只是把喂给 kernel 的张量 permute 成
+    # [B,N,S,D]，再把 kernel 的输出 permute 回 BSND 做比对，故比对逻辑与
+    # 布局无关。lse 恒为 [B,N,S1]，不参与 permute。
+    layout = os.environ.get("FAG_LAYOUT", "BSND").upper()
+    if layout not in ("BSND", "BNSD"):
+        raise SystemExit(f"FAG_LAYOUT 只支持 BSND / BNSD，收到 {layout}")
+    is_bnsd = layout == "BNSD"
+
+    def to_dev_layout(x):
+        """BSND [B,S,N,D] -> 目标布局的连续张量"""
+        return x.permute(0, 2, 1, 3).contiguous() if is_bnsd else x.contiguous()
+
+    def from_dev_layout(x):
+        """目标布局 -> BSND，用于与 golden 比对"""
+        return x.permute(0, 2, 1, 3).contiguous() if is_bnsd else x
+
+    q = to_dev_layout(q)
+    k = to_dev_layout(k)
+    v = to_dev_layout(v)
+    dy = to_dev_layout(dy)
+    y_in = to_dev_layout(y_in)
+
     # 单块 workspace，kernel 内切成 dq/dk/dv 三段 fp32（见 make_ptr 处）。
     # 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
     # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
@@ -128,11 +151,20 @@ def run_case(B, N, S1, S2, D, num_cores):
     workspace = torch.full((ws_elems,), float("nan"), device=device,
                            dtype=torch.float32)
     # fp16 最终输出：由 kernel 的 post 阶段写(scale + cast)
-    dq_out_t = torch.zeros(B, S1, N, D, device=device, dtype=torch.float16)
-    dk_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
-    dv_out_t = torch.zeros(B, S2, N, D, device=device, dtype=torch.float16)
+    # 输出张量按目标布局分配（dq/dk/dv 的布局跟随 q/k/v）
+    _oq = (B, N, S1, D) if is_bnsd else (B, S1, N, D)
+    _okv = (B, N, S2, D) if is_bnsd else (B, S2, N, D)
+    dq_out_t = torch.zeros(*_oq, device=device, dtype=torch.float16)
+    dk_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
+    dv_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
+    # 视图参数与 host 的 TilingFunc 一致：两种布局统一成 [viewD0,S,viewD2,D]
     tiling = FlashAttnGradTilingData(
         b=B, s1=S1, s2=S2, n1=N, n2=N, d=D, dv=D, scaleValue=scale,
+        viewD0=(B * N) if is_bnsd else B,
+        viewD2=1 if is_bnsd else N,
+        coefB0=N if is_bnsd else 1,
+        coefN0=1 if is_bnsd else 0,
+        coefN2=0 if is_bnsd else 1,
     )
     # swizzle 由 tilingkey 区分(每种分核各编一份二进制)，不再走 tiling 字段。
     # 判据与 host 的 TilingFunc 保持一致。
@@ -145,7 +177,8 @@ def run_case(B, N, S1, S2, D, num_cores):
 
     # Launch kernel
     print(f"Launching kernel: B={B}, N={N}, S1={S1}, S2={S2}, D={D}, "
-          f"scale={scale:.6f}, cores={num_cores}")
+          f"scale={scale:.6f}, cores={num_cores}, layout={layout}, "
+          f"swizzle={swizzle}")
 
     # 先触发编译（不计入执行看护窗口）：编译发生在首次调用内部，
     # 故这里用 launch + 同步作为一次完整执行，并只对「执行」计时看护。
@@ -168,10 +201,11 @@ def run_case(B, N, S1, S2, D, num_cores):
         timeout_s=KERNEL_TIMEOUT_S,
     )
 
-    # scale + cast 已由 kernel 的 post 阶段完成，直接取 fp16 输出
-    dq_out = dq_out_t
-    dk_out = dk_out_t
-    dv_out = dv_out_t
+    # scale + cast 已由 kernel 的 post 阶段完成，直接取 fp16 输出。
+    # BNSD 时 permute 回 BSND，使下面的比对与布局无关。
+    dq_out = from_dev_layout(dq_out_t)
+    dk_out = from_dev_layout(dk_out_t)
+    dv_out = from_dev_layout(dv_out_t)
 
     # Compare with golden
     def check(name, out, gold, rtol, atol):

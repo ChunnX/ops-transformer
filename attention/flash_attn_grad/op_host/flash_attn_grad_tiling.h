@@ -28,6 +28,22 @@ TILING_DATA_FIELD_DEF(int64_t, n2)
 TILING_DATA_FIELD_DEF(int64_t, d)
 TILING_DATA_FIELD_DEF(int64_t, dv)
 TILING_DATA_FIELD_DEF(float, scaleValue)
+// Layout view parameters. Both BSND and BNSD are expressed as ONE 4D compact
+// view [viewD0, S, viewD2, D] so the kernel needs a single pl.load form with a
+// fixed order= -- the layout difference reduces to these numbers, evaluated at
+// runtime with no branch and no extra tilingkey bit.
+//   BSND [B,S,N,D] -> view [B,   S, N, D], index [b,     s, n, 0]
+//   BNSD [B,N,S,D] -> view [B*N, S, 1, D], index [b*N+n, s, 0, 0]
+// index0 = b * coefB0 + n * coefN0 ; index2 = n * coefN2
+//   BSND: coefB0=1, coefN0=0, coefN2=1
+//   BNSD: coefB0=N, coefN0=1, coefN2=0
+// Note: a plain stride remap does NOT work -- make_tensor silently ignores
+// non-compact strides and reads with the compact ones instead.
+TILING_DATA_FIELD_DEF(int64_t, viewD0)
+TILING_DATA_FIELD_DEF(int64_t, viewD2)
+TILING_DATA_FIELD_DEF(int64_t, coefB0)
+TILING_DATA_FIELD_DEF(int64_t, coefN0)
+TILING_DATA_FIELD_DEF(int64_t, coefN2)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 
