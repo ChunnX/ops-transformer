@@ -1628,7 +1628,7 @@ bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsReg
 }
 
 void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
-                  TndBaseInfo &tndBaseInfo)
+                  const TndBaseInfo &tndBaseInfo)
 {
     fBaseParams.isBn2 = (fBaseParams.s1 <= BN2_MAX_S && fBaseParams.s2 <= BN2_MAX_S) &&
                         (fBaseParams.n1 == fBaseParams.n2) &&
