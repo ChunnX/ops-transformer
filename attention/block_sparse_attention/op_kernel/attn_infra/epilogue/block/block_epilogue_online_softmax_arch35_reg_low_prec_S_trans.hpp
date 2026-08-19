@@ -189,8 +189,8 @@ public:
             }
         }
 
-        // AscendC::printf("tkd p\n");
-        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 32);
+        AscendC::printf("tkd p\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 256);
         // AscendC::printf("tkd l\n");
         // AscendC::DumpTensor(llUbTensor, 1, 32);
 
