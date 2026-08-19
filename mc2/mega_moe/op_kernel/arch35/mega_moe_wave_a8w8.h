@@ -132,6 +132,7 @@ private:
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
     uint32_t gmm1TilesPerMGroup_ = 1U;
+    uint32_t gmm2TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
@@ -234,6 +235,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     sharedExpertNum_ = tilingData->sharedExpertNum;
     uint32_t gmm1SchedulerWidth = GMM1_INTERLEAVED ? tilingData->hiddenDim : tilingData->hiddenDim / ACTIVATION_N_HALF;
     gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
+    gmm2TilesPerMGroup_ = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(L1_TILE_N));
     mGroupsPerWave_ = tilingData->mGroupsPerWave == 0U ? 1U : tilingData->mGroupsPerWave;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -728,6 +730,32 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (gmm2Position.expertIdx == waveEndPosition.expertIdx) {
             waveEndTokenIndexInExpert = waveEndPosition.tokenIndexInExpert;
         }
+        uint32_t waveRowCount = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
+        uint32_t problemMGroupCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
+        bool ownsGmm2Tile = true;
+        if constexpr (g_coreType == AIC) {
+            uint32_t problemTileCount = problemMGroupCount * gmm2TilesPerMGroup_;
+            // tile 数量足以覆盖所有 AIC 时，每个核必然有任务，保持原执行路径。
+            if (problemTileCount < blockNum_) {
+                uint32_t firstOwnedTile = (blockIdx_ < runtimeState.startBlockIdx ? blockIdx_ + blockNum_ : blockIdx_) -
+                                          runtimeState.startBlockIdx;
+                ownsGmm2Tile = firstOwnedTile < problemTileCount;
+                if (!ownsGmm2Tile) {
+                    // 与底层 no-owner 分支保持相同 rolling 推进，但跳过 problem/address/scheduler 构造。
+                    runtimeState.startBlockIdx = (runtimeState.startBlockIdx + problemTileCount) % blockNum_;
+                }
+            }
+        }
+        if (!ownsGmm2Tile) {
+            gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
+            if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
+                NotifyWaveGmm2Ready(waveCombineConfig_, params_, gmm2Position.expertIdx);
+                ++gmm2Position.expertIdx;
+                gmm2Position.tokenIndexInExpert = 0U;
+            }
+            continue;
+        }
+
         ProblemShape gmm2WaveProblemShape = gmm2ExpertState.problemShape;
         Get<M_VALUE>(gmm2WaveProblemShape) = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType, true, false, false>(
