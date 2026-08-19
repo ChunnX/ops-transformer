@@ -174,7 +174,7 @@
     <tr>
       <td>return_softmax_lse</td>
       <td>可选属性</td>
-      <td>用于表示是否返回softmax_max和softmax_sum。True表示返回，False表示不返回，默认值为False。该参数仅在训练且layout_kv不为PA_BSND场景支持。</td>
+      <td>用于表示是否返回softmax_max和softmax_sum。True表示返回，False表示不返回，默认值为False。该参数仅在训练场景支持。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
