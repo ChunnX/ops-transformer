@@ -59,6 +59,7 @@ private:
     TQue<QuePosition::VECIN, 1> gradQInQ_, gradKInQ_, cosInQ_, sinInQ_;
     TQue<QuePosition::VECOUT, 1> gradQOutQ_, gradKOutQ_;
     int64_t blkIdx_, bStart_, bLen_, ubB_, ubN_, D_, dHalf_, dBuffer_;
+    bool dHalfAligned_ = false;
 };
 
 template <typename T>
@@ -94,6 +95,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T>::InitAllBuffer()
     ubB_ = tilingData_->ubFactorS; ubN_ = tilingData_->ubFactorN;
     D_ = tilingData_->d;
     dHalf_ = D_ / HALF_COEF;
+    dHalfAligned_ = (dHalf_ % (BLOCK_TYPE_SIZE / sizeof(T))) == 0;
     dBuffer_ = Ops::Base::CeilAlign<int64_t>(dHalf_, BLOCK_TYPE_SIZE / sizeof(T)) * HALF_COEF;
     pipe_->InitBuffer(gradQInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
     pipe_->InitBuffer(gradKInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
@@ -140,8 +142,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T>::CopyInCosAndSin(int64_t pos, i
 {
     LocalTensor<T> cU = cosInQ_.AllocTensor<T>();
     LocalTensor<T> sU = sinInQ_.AllocTensor<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
-                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep;
+    if (dHalfAligned_) {
+        ep = {1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    } else {
+        ep = {static_cast<uint16_t>(len * HALF_COEF), static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    }
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(cU, cosGm_[pos * D_], ep, pp);
     DataCopyPad(sU, sinGm_[pos * D_], ep, pp);
@@ -153,8 +159,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T>::CopyIn(
     TQue<QuePosition::VECIN, 1>& inQ, GlobalTensor<T>& src, int64_t pos, int64_t len)
 {
     LocalTensor<T> t = inQ.AllocTensor<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
-                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep;
+    if (dHalfAligned_) {
+        ep = {1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    } else {
+        ep = {static_cast<uint16_t>(len * HALF_COEF), static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    }
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(t, src[pos * D_], ep, pp);
     inQ.EnQue(t);
@@ -165,8 +175,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T>::CopyOut(
     TQue<QuePosition::VECOUT, 1>& outQ, GlobalTensor<T>& dst, int64_t pos, int64_t len)
 {
     LocalTensor<T> s = outQ.DeQue<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
-                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep;
+    if (dHalfAligned_) {
+        ep = {1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    } else {
+        ep = {static_cast<uint16_t>(len * HALF_COEF), static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
+    }
     DataCopyPad(dst[pos * D_], s, ep);
     outQ.FreeTensor(s);
 }
