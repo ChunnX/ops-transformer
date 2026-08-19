@@ -94,7 +94,7 @@ private:
 protected:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
-    __aicore__ inline void InitCombineBuffers();
+    __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
     template <bool WaitForTokenCountReady>
@@ -119,8 +119,8 @@ protected:
     TokenDispatchConfig tokenDispatchConfig_;
     SendMaskConfig sendMaskConfig_;
     QuantProcessConfig quantProcessConfig_;
-    QuantCombineConfig quantCombineConfig_;
-    QuantCombineBufferConfig quantCombineBufferConfig_;
+    QuantTokenBufferConfig quantTokenBufferConfig_;
+    AivJobContext waveCombineJob_{};
     TokenUnpermuteConfig tokenUnpermuteConfig_;
 
     uint32_t k_ = 0;
@@ -170,6 +170,7 @@ protected:
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
+    WaveCombineScratch waveCombineScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
     __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
@@ -201,17 +202,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitGmmConfigs()
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
                            .groupedMatmulMode = params_.tilingData->groupedMatmulMode,
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
-    constexpr bool pairedAivCombine = ENABLE_A8W4 || ENABLE_A4W4;
-    quantCombineConfig_ = {.job = {.jobIndex = pairedAivCombine ? blockIdx_ : aivCoreIdx_,
-                                   .totalJobs = pairedAivCombine ? blockNum_ : blockAivNum_},
-                           .participates = !pairedAivCombine || GetSubBlockIdx() == 1U};
+    waveCombineJob_ = {.jobIndex = blockIdx_, .totalJobs = blockNum_};
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenUnpermuteConfig()
 {
     tokenUnpermuteConfig_ = {.job = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_},
-                             .quantTokenSizeBytes = quantCombineBufferConfig_.quantTokenSizeBytes,
+                             .quantTokenSizeBytes = quantTokenBufferConfig_.quantTokenSizeBytes,
                              .fullTokenChunkJobCount = params_.tilingData->unpermuteFullTokenChunkCoreCount,
                              .fullTokenChunkConfig = params_.tilingData->unpermuteConfigForFullTokenChunk,
                              .tailTokenChunkConfig = params_.tilingData->unpermuteConfigForTailTokenChunk};
@@ -283,7 +281,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     tokenDispatchConfig_ = CreateTokenDispatchConfig(params_, quantProcessConfig_, sendMaskConfig_.maskAlignSize);
     InitSyncWorkspaceConfigs(dispatchFlagSlotsPerExpert, activationFlagSlotsPerExpert);
     InitGmmConfigs();
-    InitCombineBuffers();
+    InitQuantTokenBufferConfig();
     InitTokenUnpermuteConfig();
 
     gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
@@ -346,11 +344,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferConfig()
 {
-    quantCombineBufferConfig_ = {.combineUbElementCount = 0, .quantTokenSizeBytes = 0U};
+    quantTokenBufferConfig_ = {.quantTokenSizeBytes = 0U};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-        quantCombineBufferConfig_ = CreateQuantCombineBufferConfig(k_);
+        quantTokenBufferConfig_ = CreateQuantTokenBufferConfig(k_);
     }
 }
 
@@ -516,13 +514,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     GmmRuntimeState runtimeState{startBlockIdx, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
-        UpdateSharedExpertGmm2GlobalBuffer<ActivationQuantOutType, Weight1Type, QuantScaleOutType, GMM1_TILE_M,
-                                           ENABLE_A8W4 || ENABLE_A4W4>(
+        UpdateSharedExpertGmm2GlobalBuffer<ActivationQuantOutType, Weight1Type, QuantScaleOutType, GMM1_TILE_M>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                       ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
-            gmmExecutionConfig_, params_, gmmAddrInfo, problemShape, runtimeState);
+            gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState);
     }
 }
 

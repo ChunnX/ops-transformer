@@ -922,19 +922,16 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    if (tilingData->combineQuantMode == COMBINE_NO_QUANT && tilingData->topoType != TOPO_TYPE_URMA ||
+    // MTE 统一使用 per-expert AIC ready 表；group counter 只服务 layered 量化 Combine。
+    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
         tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
-    bool useAiv1OnlyWaveCombine =
-        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
-        // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
@@ -948,12 +945,9 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool useMteA8W8Wave =
-        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useGroupSyncCounters =
-        tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
+    bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
     uint64_t activationFlagSlotsPerExpert = useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : INT_CACHELINE;
@@ -966,7 +960,7 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
-    if (useMteA8W8Wave) {
+    if (useMteWaveCombine) {
         flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {
