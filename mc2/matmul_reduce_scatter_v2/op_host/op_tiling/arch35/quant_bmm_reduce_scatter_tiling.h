@@ -22,6 +22,7 @@
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_kernel/mc2_tiling_struct.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace optiling {
 
@@ -79,6 +80,8 @@ protected:
     Mc2Tiling::RCSTiling &MutableRCSTilingDataA5() const;
 
     ge::graphStatus DoAdaptSlidWindowTiling();
+    ge::graphStatus DoApaceMxTiling();
+    void AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus CheckInput() override;
     bool CommonParamCheck() const;
@@ -95,9 +98,11 @@ protected:
 private:
     Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData quantBmmMatmulReducescatterTilingDataSelf_;
     Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData *quantBmmMatmulReducescatterTilingData_;
+    hcommMatmulReduceScatterV2TilingData apaceTilingData_{};
     uint64_t myWorkSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMode_{mc2tiling::Mc2QuantMode::DEFAULT};
     bool isMxfp4_{false}; // MXFP4场景标志位
+    bool usingApaceImpl_{false};
 };
 
 class QuantBmmReduceScatterHelper : public Mc2AdaptiveSlidingWindowTiling {
