@@ -22,24 +22,24 @@
  * \brief BlockAttnResUpdate aclnn example for Ascend 950PR/Ascend 950DT.
  */
 
-#define CHECK_RET(cond, return_expr) \
-    do { \
-        if (!(cond)) { \
-            return_expr; \
-        } \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define CHECK_FREE_RET(cond, return_expr) \
-    do { \
-        if (!(cond)) { \
-            Finalize(deviceId, stream); \
-            return_expr; \
-        } \
+#define CHECK_FREE_RET(cond, return_expr)                                                                              \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            Finalize(deviceId, stream);                                                                                \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...) \
-    do { \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -145,7 +145,7 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
                                  aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &partialBlock);
     std::unique_ptr<void, aclError (*)(void *)> partialBlockDeviceAddrPtr(partialBlockDeviceAddr, aclrtFree);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> partialBlockTensorPtr(partialBlock,
-                                                                                         aclDestroyTensor);
+                                                                                        aclDestroyTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor<uint16_t>(deltaHostData, matrixShape, &deltaDeviceAddr, aclDataType::ACL_BF16,
@@ -190,10 +190,9 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     void *workspaceAddr = nullptr;
 
     ret = aclnnBlockAttnResUpdateGetWorkspaceSize(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum,
-                                                  eps, h, &workspaceSize, &executor);
+                                                   eps, h, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnBlockAttnResUpdateGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
+              LOG_PRINT("aclnnBlockAttnResUpdateGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     std::unique_ptr<void, aclError (*)(void *)> workspaceAddrPtr(nullptr, aclrtFree);
     if (workspaceSize > 0) {

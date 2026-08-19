@@ -146,7 +146,9 @@ def _compute(
     # Compatibility path: the linked calculation draft described BF16 add;
     # casting the sum back before promotion reproduces that rounding point.
     partial_dtype = _dtype_name(partial_block)
-    partial_sum_f32 = partial_block_np.astype(np.float32) + delta_np.astype(np.float32)
+    partial_sum_f32 = (
+        partial_block_np.astype(np.float32) + delta_np.astype(np.float32)
+    )
     if partial_dtype in ("float16", "bfloat16"):
         partial_sum = partial_sum_f32.astype(partial_block_np.dtype).astype(np.float32)
     else:
@@ -154,27 +156,23 @@ def _compute(
 
     # RMSNorm denominator, score, and online-softmax merge are all FP32.
     square_sum = np.sum(partial_sum * partial_sum, axis=-1, dtype=np.float32)
-    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(eps)).astype(
-        np.float32
-    )
-    score = (
-        np.sum(
-            partial_sum * pseudo_query_np.astype(np.float32),
-            axis=-1,
-            dtype=np.float32,
-        )
-        / rms
-    )
+    rms = np.sqrt(square_sum / np.float32(hidden_size) + np.float32(eps)).astype(np.float32)
+    score = np.sum(
+        partial_sum * pseudo_query_np.astype(np.float32),
+        axis=-1,
+        dtype=np.float32,
+    ) / rms
 
     history_max = logit_max_np.astype(np.float32)
     merged_max = np.maximum(history_max, score).astype(np.float32)
     alpha = np.exp(history_max - merged_max).astype(np.float32)
     beta = np.exp(score - merged_max).astype(np.float32)
-    merged_denominator = (alpha * exp_sum_np.astype(np.float32) + beta).astype(
-        np.float32
-    )
+    merged_denominator = (
+        alpha * exp_sum_np.astype(np.float32) + beta
+    ).astype(np.float32)
     merged_numerator = (
-        alpha[:, None] * numerator_np.astype(np.float32) + beta[:, None] * partial_sum
+        alpha[:, None] * numerator_np.astype(np.float32)
+        + beta[:, None] * partial_sum
     ).astype(np.float32)
     output = (merged_numerator / merged_denominator[:, None]).astype(np.float32)
 
@@ -220,7 +218,7 @@ def block_attn_res_update_e2e_golden(
     eps,
     **kwargs,
 ):
-    """E2E golden; return order matches the public Torch API: (h, partial_blocks)."""
+    """E2E golden: explicit output h followed by TTK-collected inplace input 0."""
     output, updated_partial = _compute(
         partial_block,
         delta,

@@ -13,7 +13,6 @@
 #include <c10/core/DeviceGuard.h>
 
 #include <cmath>
-#include <tuple>
 
 #include "aclnn_common.h"
 
@@ -103,26 +102,24 @@ void CheckInputs(const at::Tensor &partialBlock, const at::Tensor &delta,
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> block_attn_res_update(
-    at::Tensor partialBlock, const at::Tensor &delta, const at::Tensor &pseudoQuery,
+at::Tensor block_attn_res_update(
+    at::Tensor &partialBlock, const at::Tensor &delta, const at::Tensor &pseudoQuery,
     const at::Tensor &numerator, const at::Tensor &logitMax, const at::Tensor &expSum, float eps)
 {
     CheckInputs(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 
     at::Tensor h{nullptr};
-    at::Tensor partialBlocks{nullptr};
     {
         const auto localDevice = c10::Device(partialBlock.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         h = at::empty(delta.sizes(), delta.options());
-        // The ACLNN contract updates partialBlock in place. Clone it so the public Torch API remains functional.
-        partialBlocks = partialBlock.clone(c10::MemoryFormat::Contiguous);
     }
 
-    ACLNN_CMD(aclnnBlockAttnResUpdate, partialBlocks, delta, pseudoQuery, numerator, logitMax, expSum,
+    // ACLNN updates partialBlock in place; the Torch API only returns h.
+    ACLNN_CMD(aclnnBlockAttnResUpdate, partialBlock, delta, pseudoQuery, numerator, logitMax, expSum,
               eps, h);
 
-    return std::make_tuple(h, partialBlocks);
+    return h;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

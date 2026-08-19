@@ -110,7 +110,8 @@ public:
         const uint32_t validN = static_cast<uint32_t>(validNValue);
         // validN comes from valid_blocks at runtime. The host only provides
         // the capacity; choose cache/reload here for the concrete N.
-        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_;
+        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_ && \
+                               validNValue <= (MAX_PIPE_ID - qBufferNum_);
 
         for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
             ProcessWork(workStart + workOffset, validN, cacheAllV);
@@ -150,12 +151,11 @@ private:
     {
         qUbOffset_ = 0U;
         oUbOffset_ = qUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->vBufferNum) * baseDAlign_ * FP32_BYTES;
+                     static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
         statUbOffset_ = oUbOffset_ +
                         static_cast<uint64_t>(tilingData_->oBufferNum) * baseDAlign_ * FP32_BYTES;
         vCacheUbOffset_ = statUbOffset_ + static_cast<uint64_t>(tilingData_->statUbElems) * FP32_BYTES;
-        vUbOffset_ = vCacheUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
+        vUbOffset_ = vCacheUbOffset_;
     }
 
     template <typename T>
@@ -331,16 +331,17 @@ private:
         const uint64_t sIndex = workId - tIndex * tilingData_->totalS;
         __ubuf__ float *statAddr = GetUbAddr<float>(statUbOffset_);
 
+        wait_flag(PIPE_MTE3, PIPE_V, tilingData_->oBufferNum + 1);
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
             const uint64_t remainingD = tilingData_->totalD - dOffset;
             const uint32_t validD = static_cast<uint32_t>(
                 remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint64_t qOffset = sIndex * tilingData_->totalD + dOffset;
-            const uint32_t qBufferIndex = dLoop % tilingData_->qBufferNum;
+            const uint32_t qBufferIndex = qLoop_ % tilingData_->qBufferNum;
             const event_t qEvent = GetEvent(qBufferIndex);
             wait_flag(PIPE_V, PIPE_MTE2, qEvent);
-            __ubuf__ float *qAddr = CopyInQ(qOffset, validD, dLoop);
+            __ubuf__ float *qAddr = CopyInQ(qOffset, validD, qLoop_);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
                 const uint64_t vOffset =
@@ -356,14 +357,17 @@ private:
                 }
                 AccumulateStats(qAddr, vAddr, statAddr, dLoop, validD, nIndex);
                 if (!cacheAllV) {
-                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_++ & 1));
+                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ & 1));
+                    vLoop_++;
                 }
             }
             set_flag(PIPE_V, PIPE_MTE2, qEvent);
+            qLoop_++;
         }
 
         FinalizeStats(statAddr, validN);
         CopyOutStats(sIndex * tilingData_->totalT + tIndex);
+        set_flag(PIPE_MTE3, PIPE_V, tilingData_->oBufferNum + 1);
 
         __ubuf__ float *weightAddr = statAddr + BlockAttnResPrepareVF::DOT_OFFSET;
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
@@ -389,10 +393,11 @@ private:
                     vAddr = CopyInV(vOffset, validD, vLoop_);
                 }
                 AccumulateOutput(vAddr, weightAddr + nIndex, outputAddr, nIndex, validN, validD);
-                if (!cacheAllV) {
-                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_++ & 1));
-                } else {
+                if (cacheAllV) {
                     set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + nIndex);
+                } else {
+                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ & 1));
+                    vLoop_++;
                 }
             }
 
@@ -402,6 +407,7 @@ private:
             set_flag(PIPE_MTE3, PIPE_V, outputEvent);
             ++oLoop_;
         }
+        PipeBarrier<PIPE_V>();
     }
 
     const optiling::BlockAttnResPrepareTilingData *__restrict tilingData_ = nullptr;

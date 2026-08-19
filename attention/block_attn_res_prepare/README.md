@@ -34,8 +34,9 @@ PyTorch users can import `block_attn_res_prepare` from `cann_ops_transformer`.  
 Vector arithmetic is implemented with Ascend 950 VF programming, while tensor creation and GM/UB movement use
 AscendC Tensor APIs. UB is assigned directly from tiling-derived byte offsets; the kernel does not create `TPipe`,
 `TQue`, or `TBuf`. MTE2/V/MTE3 dependencies are protected by explicit paired `set_flag`/`wait_flag` instructions.
-Both tiling keys include an `N=1` runtime path that skips max/exp/sum and weighted accumulation, directly copying
-`V[:,0,:]` with `E=1`, `L=1`.
+The Vector tiling key keeps an `N=1` arithmetic shortcut that skips max/exp/sum and weighted accumulation, directly
+copying `V[:,0,:]` with `E=1`, `L=1`. The mixed AIC/AIV key uses the same MM1, softmax, and MM2 pipeline for every
+runtime `valid_blocks[0] >= 1`; this preserves parallel AIC/AIV execution for the single-valid-block case.
 
 Host tiling expands `(T,S)` into independent AIV work units and selects `baseD` from `D/1024/512/256`. The
 `qBufferNum`, `vBufferNum`, and `oBufferNum` fields are calculated from the actual loop counts: Q/O use one buffer
@@ -47,7 +48,7 @@ The current single-VReg softmax implementation supports physical `N <= 64`. Netw
 `N=8`, `D=7168`, `S in {18,24}`, and `T in {1,2,4,32,254}`.
 
 The arch35 kernel also contains the no-`TPipe` mixed AIC/AIV Cube template contract: direct UB/L1 address planning,
-the runtime `N=1` bypass, and paired cross-core events for MM1 dot, E, and MM2 output. The mixed template uses the
+and paired cross-core events for MM1 dot, E, and MM2 output. The mixed template uses the
 hardware 1:2 task ratio; both AIV peers participate and split the S rows of RMS/softmax/MM2-copy work. Host tiling
 evaluates the Cube template first for the supported prefill candidate range and falls
 back to the Vector key when the shape or queried L1/L0/UB resources cannot satisfy the Cube plan. Cube MM1/E

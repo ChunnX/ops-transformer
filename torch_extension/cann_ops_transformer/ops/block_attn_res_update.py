@@ -9,7 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-from typing import Tuple
 
 import torch
 from torch.library import impl
@@ -28,9 +27,9 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "block_attn_res_update("
-            "Tensor partial_block, Tensor delta, Tensor pseudo_query, "
+            "Tensor(a!) partial_block, Tensor delta, Tensor pseudo_query, "
             "Tensor numerator, Tensor logit_max, Tensor exp_sum, "
-            "float eps) -> (Tensor, Tensor)"
+            "float eps) -> Tensor"
         )
 
     def register_meta(self):
@@ -181,10 +180,7 @@ class BlockAttnResUpdateOpBuilder(OpBuilder):
             )
 
             h = torch.empty(delta.shape, dtype=delta.dtype, device="meta")
-            partial_blocks = torch.empty(
-                partial_block.shape, dtype=torch.float32, device="meta"
-            )
-            return (h, partial_blocks)
+            return h
 
 
 _block_attn_res_update_op_builder = BlockAttnResUpdateOpBuilder()
@@ -220,16 +216,18 @@ def block_attn_res_update(
     logit_max: torch.Tensor,
     exp_sum: torch.Tensor,
     eps: float,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> torch.Tensor:
     """BlockAttnRes Phase 2 更新，封装 aclnnBlockAttnResUpdate。
 
-    将当前 ``delta`` 累加到 FP32 ``partial_block``，计算当前
+    将当前 ``delta`` 原地累加到 FP32 ``partial_block``，计算当前
     partial block 的 RMSNorm score，并与 Phase 1 的 online softmax
-    中间状态合并，输出当前层结果和更新后的 partial block。
+    中间状态合并并返回当前层结果。更新后的 partial block 原地写回
+    ``partial_block``，不作为独立返回值返回。
 
     Args:
         partial_block (Tensor): 已累计的 partial block，shape ``(T, D)``，
             dtype 为 ``torch.float32``，且必须连续；``1 <= D <= 8192``。
+            调用完成后被原地更新。
         delta (Tensor): 当前层增量，shape ``(T, D)``，dtype 为
             ``torch.bfloat16``，且必须连续。
         pseudo_query (Tensor): 预计算的伪 query，shape ``(D,)``，
@@ -243,10 +241,8 @@ def block_attn_res_update(
         eps (float): FP32 RMSNorm 数值稳定项，必须为有限正数。
 
     Returns:
-        Tuple[Tensor, Tensor]: ``(h, partial_blocks)``。``h`` 的 shape 和
-        dtype 与 ``delta`` 一致；``partial_blocks`` 的 shape 与
-        ``partial_block`` 一致，dtype 为 ``torch.float32``；两个输出均为
-        连续 Tensor。
+        Tensor: 当前层结果 ``h``，shape 和 dtype 与 ``delta`` 一致，
+        为连续 Tensor。输入 ``partial_block`` 在调用完成后已被原地更新。
     """
     return torch.ops.cann_ops_transformer.block_attn_res_update(
         partial_block,
