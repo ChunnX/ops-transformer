@@ -216,3 +216,75 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
         "9223372036854775807 9223372036854775807 1 0 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
+
+// topk=2049 on 910B must be rejected: >2048 and not a multiple of 1024
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_5)
+{
+    struct LIV2CompileInfo {} compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexerV2",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},       // q            input0
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // k            input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                // w            input2
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cu_seqlens_q input3
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cu_seqlens_k input4
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // seqused_q    input5
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // seqused_k    input6
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cmp_residual_k input7
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // block_table  input8
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // output_idx_offset input9
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                            // metadata     input10
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},      // sparse_indices
+            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}                                 // sparse_values
+        },
+        {
+            {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2049)},
+            {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// topk=3000 on 910B must be rejected: >2048 and not a multiple of 1024
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_6)
+{
+    struct LIV2CompileInfo {} compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexerV2",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},       // q            input0
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // k            input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},                // w            input2
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cu_seqlens_q input3
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cu_seqlens_k input4
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // seqused_q    input5
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // seqused_k    input6
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // cmp_residual_k input7
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // block_table  input8
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                           // output_idx_offset input9
+            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                            // metadata     input10
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},      // sparse_indices
+            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}                                 // sparse_values
+        },
+        {
+            {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3000)},
+            {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}

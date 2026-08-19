@@ -261,3 +261,135 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_6)
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
+
+// sparse_count=0 must be rejected (regression: 0%1024==0 previously bypassed the range check)
+TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_7)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {39, 39};
+    int64_t actual_seq_kvlist[] = {1, 1};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // query        input0
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},           // key          input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_BF16, ge::FORMAT_ND},                   // weights      input2
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_key
+            {{{2, 1}, {2, 1}}, ge::DT_INT32, ge::FORMAT_ND}                             // block_table  input3
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},        // sparse_indices
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND}                                    // sparse_values
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// sparse_count=-1024 must be rejected (regression: negative 1024-multiple previously bypassed)
+TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_8)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {39, 39};
+    int64_t actual_seq_kvlist[] = {1, 1};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // query        input0
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},           // key          input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_BF16, ge::FORMAT_ND},                   // weights      input2
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_key
+            {{{2, 1}, {2, 1}}, ge::DT_INT32, ge::FORMAT_ND}                             // block_table  input3
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},        // sparse_indices
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND}                                    // sparse_values
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1024)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// sparse_count=2049 must be rejected (>2048 and not a multiple of 1024)
+TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_9)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {39, 39};
+    int64_t actual_seq_kvlist[] = {1, 1};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // query        input0
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},           // key          input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_BF16, ge::FORMAT_ND},                   // weights      input2
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_key
+            {{{2, 1}, {2, 1}}, ge::DT_INT32, ge::FORMAT_ND}                             // block_table  input3
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},        // sparse_indices
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND}                                    // sparse_values
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2049)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// sparse_count=8193 must be rejected (>8192)
+TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_10)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    int64_t actual_seq_qlist[] = {39, 39};
+    int64_t actual_seq_kvlist[] = {1, 1};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},         // query        input0
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},           // key          input1
+            {{{2, 39, 64}, {2, 39, 64}}, ge::DT_BF16, ge::FORMAT_ND},                   // weights      input2
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_key
+            {{{2, 1}, {2, 1}}, ge::DT_INT32, ge::FORMAT_ND}                             // block_table  input3
+        },
+        {
+            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},        // sparse_indices
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND}                                    // sparse_values
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8193)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
