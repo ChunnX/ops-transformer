@@ -61,6 +61,19 @@ def _is_abnormal_kv_shape(k, v):
     return tuple(k.shape[:-1]) != tuple(v.shape[:-1])
 
 
+def _is_abnormal_head_dim(d, v_d):
+    """检测 head_dim (D/V_D) 是否不在算子支持列表内.
+    来源: op_host/checkers/quant_checker.cpp supportedHeadDims={128}.
+    异常 D 值 (如 130) 会导致 golden transpose_qscale reshape 失败 (n_blk_q 奇数),
+    应提前走 fallback 让 op_host checker 拦截 'MxFP4 only supports D=128'."""
+    supported = {128}
+    if d is not None and d not in supported:
+        return True
+    if v_d is not None and v_d not in supported:
+        return True
+    return False
+
+
 def _is_abnormal_seq_lens(
     act_seq_lens_q, max_seqlen_q, act_seq_lens_kv, max_seqlen_kv, b_size
 ):
@@ -326,20 +339,22 @@ def run_main(
         }
     )
 
-    # 提前检测异常输入 (如 s2=0 / k v shape 不一致 / seq 缺失): 直接走 fallback 让 op_host 拦截
+    # 提前检测异常输入 (如 s2=0 / k v shape 不一致 / D 不支持 / seq 缺失): 直接走 fallback 让 op_host 拦截
     # - tensor 异常: q/k/v/descale 任一 0 元素或 0 维
     # - k v shape 异常: 除最后一维 (D/V_D) 外维度不一致 (B/N_kv/S)
+    # - head_dim 异常: D/V_D 不在算子支持列表 {128} 内 (如 130)
     # - seq 异常: act_seq_lens 空且 max_seqlen < 0, 或 act_seq_lens 长度 != B
     # 正常 case 走 generate_data -> _apply_csv_shape_override 原流程.
     if (
         _is_abnormal_input(q, k, v, q_descale, k_descale, v_descale)
         or _is_abnormal_kv_shape(k, v)
+        or _is_abnormal_head_dim(D, V_D)
         or _is_abnormal_seq_lens(
             act_seq_lens_q, max_seqlen_q, act_seq_lens_kv, max_seqlen_kv, B
         )
     ):
         logger.warning(
-            "[MAIN_WRAPPER] 检测到异常输入 (tensor 0 维/0 元素 或 k/v shape 不一致 或 seq 缺失/长度不匹配), "
+            "[MAIN_WRAPPER] 检测到异常输入 (tensor 0 维/0 元素 或 k/v shape 不一致 或 D 不支持 或 seq 缺失/长度不匹配), "
             "跳过 generate_data 直接走 NPU 让 op_host 拦截"
         )
         data_dict = _build_fallback_data_dict(
