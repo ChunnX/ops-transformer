@@ -13,7 +13,7 @@
 
 /**
  * BlockSparseAttention TilingKey 定义
- * 
+ *
  * TilingKey编码规则 (64-bit):
  * 位域: AAAABBBBCCCCDDDDEEEE
  * - [0-1]   Q Layout: 2=TND, 3=BNSD, 4=BSND
@@ -114,5 +114,4 @@
 #define QMFP4CX_KVMFP4CX_OF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_KEY 9050000060400045
 
 #endif
-#endif  // BLOCK_SPARSE_ATTENTION_TILINGKEY_H_
-
+#endif // BLOCK_SPARSE_ATTENTION_TILINGKEY_H_

@@ -25,14 +25,13 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBaseAlign = 32, uint16_t QsBase = 128>
-__simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexes_ub,
-                                                  const T NEG_LOG2_CX)
+__simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
+                                                                   __ubuf__ T *local_group_max, __ubuf__ T *global_max,
+                                                                   __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX)
 {
-// ====================== 寄存器定义 ======================
+    // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
     RegTensor<half> src_n0, src_n1, src_n2, src_n3;
     RegTensor<half> curr_group_max;
@@ -62,17 +61,16 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
     MaskReg preg_invalid_max;
 
-
     LoadAlign(group_gmax, global_max);
     LoadAlign(idx_nd2nz, indexes_ub);
 
     // ====================== 预计算：第一个分组的最大值 ======================
     Duplicate(curr_group_max, MIN_VALUE);
     for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
-        LoadAlign(src_c0, s + (iter * QsBase * ROW_SUB_LOOP + 0 * QsBase)*2);
-        LoadAlign(src_c1, s + (iter * QsBase * ROW_SUB_LOOP + 1 * QsBase)*2);
-        LoadAlign(src_c2, s + (iter * QsBase * ROW_SUB_LOOP + 2 * QsBase)*2);
-        LoadAlign(src_c3, s + (iter * QsBase * ROW_SUB_LOOP + 3 * QsBase)*2);
+        LoadAlign(src_c0, s + (iter * QsBase * ROW_SUB_LOOP + 0 * QsBase) * 2);
+        LoadAlign(src_c1, s + (iter * QsBase * ROW_SUB_LOOP + 1 * QsBase) * 2);
+        LoadAlign(src_c2, s + (iter * QsBase * ROW_SUB_LOOP + 2 * QsBase) * 2);
+        LoadAlign(src_c3, s + (iter * QsBase * ROW_SUB_LOOP + 3 * QsBase) * 2);
 
         Max(src_c0, src_c0, src_c1, preg_VL64_16bit);
         Max(src_c2, src_c2, src_c3, preg_VL64_16bit);
@@ -101,10 +99,10 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
             // 当前块计算：Sub + Exp
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + j * ROW_SUB_LOOP;
-            LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase)*2);
-            LoadAlign(src_c1, s + (rowOffset_cur * QsBase + 1 * QsBase)*2);
-            LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
-            LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
+            LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase) * 2);
+            LoadAlign(src_c1, s + (rowOffset_cur * QsBase + 1 * QsBase) * 2);
+            LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase) * 2);
+            LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase) * 2);
 
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
@@ -138,7 +136,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
             // 写入内存（偶数块：无+128偏移）
             StoreAlign(((__ubuf__ uint8_t *&)p_dest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
-                       preg_vl128  // 低128字节掩码
+                       preg_vl128 // 低128字节掩码
             );
         }
 
@@ -146,10 +144,10 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
             // 当前块计算：Sub + Exp
             uint16_t rowOffset_cur = i * ROWS_PER_GROUP + (j + 1) * ROW_SUB_LOOP;
-            LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase)*2);
-            LoadAlign(src_c1, s + (rowOffset_cur * QsBase + 1 * QsBase)*2);
-            LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
-            LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
+            LoadAlign(src_c0, s + (rowOffset_cur * QsBase + 0 * QsBase) * 2);
+            LoadAlign(src_c1, s + (rowOffset_cur * QsBase + 1 * QsBase) * 2);
+            LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase) * 2);
+            LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase) * 2);
 
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
@@ -192,26 +190,25 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
 
     // GroupMaxpadding到64, 使得对应的pscale=0
     Duplicate(min_val_reg, MIN_VALUE);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * QsBase, min_val_reg, preg_all_16bit);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * QsBase, min_val_reg,
+                                                      preg_all_16bit);
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBaseAlign = 32, uint16_t QsBase = 128>
-__aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                                  const LocalTensor<T> &localGroupMax,
-                                                  const LocalTensor<T> &globalMax,
-                                                  const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T NEG_LOG2_CX)
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32CallVF(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &localGroupMax,
+    const LocalTensor<T> &globalMax, const LocalTensor<uint8_t> &indexesBuf, const T NEG_LOG2_CX)
 {
-    __ubuf__ T2 *p_dest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ T *local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
-    __ubuf__ T *global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
-    __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
+    __ubuf__ T2 *p_dest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T *local_group_max = (__ubuf__ T *)localGroupMax.GetPhyAddr();
+    __ubuf__ T *global_max = (__ubuf__ T *)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t *indexes_ub = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_align_qs64_kvs32_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBaseAlign, QsBase>(
         p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX);
 }
 
-}
-#endif  // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_H_
+} // namespace NpuArch::Epilogue::Block::Mxfp4VF
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_H_
