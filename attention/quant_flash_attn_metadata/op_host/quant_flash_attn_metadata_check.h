@@ -170,7 +170,7 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int6
     CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or at least 0, but got %ld", winLeft);
     CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
 
-    // 文档约束: maskMode为0(NO_MASK) 或 3(CAUSAL) 时 winLeft/winRight 必须为 -1
+    // 非 maskMode = 4 (SLIDING_WINDOW) 场景下 winLeft 和 winRight 必须为 -1
     if (maskMode != SLIDING_WINDOW) {
         CHECK_COND(winLeft == -1 && winRight == -1, ACLNN_ERR_RUNTIME_ERROR,
                    "When maskMode is not 4 (SLIDING_WINDOW), winLeft and winRight must be -1, "
