@@ -87,7 +87,8 @@ def mhc_pre_sinkhorn_backward_input(
     bias.copy_(torch.randn(hm, dtype=torch.float32, device=x.device))
 
     x_fp32 = x.float()
-    x_flat = x_fp32.reshape(*x_fp32.shape[:-2], -1)
+    prod_nd = n * c
+    x_flat = x_fp32.reshape(*x_fp32.shape[:-2], prod_nd)
 
     hcbn = torch.nn.functional.linear(x_flat, phi) + bias
     inv_rms_val = torch.rsqrt(x_flat.square().mean(-1, keepdim=True) + hc_eps_val)
@@ -180,7 +181,7 @@ def mhc_pre_sinkhorn_backward_input(
     gold_x = grad_x_hin + gx_rms4.view(x4.shape) + gx_mm4.view(x4.shape)
 
     if is_3d:
-        gold_x = gold_x.view(-1, n4, d4)
+        gold_x = gold_x.view(x.shape[0], n4, d4)
 
     grad_x_out.copy_(gold_x.to(x.dtype))
     grad_phi_out.copy_(gold_phi)
