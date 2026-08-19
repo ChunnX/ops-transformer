@@ -15,6 +15,8 @@
 
 namespace Catlass {
 
+static constexpr int MATRIX_COORD_RANK = 2;
+
 template <uint32_t ROW_ = 1, uint32_t COLUMN_ = 1>
 struct MatrixShape {
     static constexpr uint32_t ROW = ROW_;
@@ -23,7 +25,7 @@ struct MatrixShape {
     static constexpr int64_t COUNT = ROW * COLUMN;
 
     CATLASS_HOST_DEVICE
-    static Coord<2> ToCoord() { return MakeCoord(ROW, COLUMN); }
+    static Coord<MATRIX_COORD_RANK> ToCoord() { return MakeCoord(ROW, COLUMN); }
 };
 
 /// MatrixCoord wraps Coord<2, uint32_t> to provide a helper for accessing named dimensions. Classes
