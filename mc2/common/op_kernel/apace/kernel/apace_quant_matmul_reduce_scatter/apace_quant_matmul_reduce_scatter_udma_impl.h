@@ -160,6 +160,10 @@ private:
     __aicore__ inline void DoReduceSum(uint32_t tileIdx, uint32_t tileM, uint64_t tileMOffset,
                                         uint32_t nSize, uint32_t rowBytes, uint64_t stride,
                                         uint32_t usedCoreNum, uint32_t blockIdx);
+    // 方案3: tileCnt=1 路径专用, 使用批量 reduceSum 优化
+    __aicore__ inline void DoReduceSumBatch(uint32_t tileIdx, uint32_t tileM, uint64_t tileMOffset,
+                                            uint32_t nSize, uint32_t rowBytes, uint64_t stride,
+                                            uint32_t usedCoreNum, uint32_t blockIdx);
 };
 
 // =================================================================================
@@ -195,8 +199,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    // AllToAll: totalJobs=1, block 0 处理所有 target ranks
-    // reduceSum: 多核并行 (前 rankSize 个 block 按 blockIdx 分配行段)
+    // AllToAll: totalJobs=1, block 0 处理所有 target ranks (多核 PUT 有跨设备可见性问题)
+    // reduceSum: 多核并行 (所有 block 参与)
     teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1,
                       static_cast<uint32_t>(GetBlockIdx()));
 
@@ -331,24 +335,25 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     uint32_t usedCoreNum = tilingData_->mmTilingData.usedCoreNum;
     uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
     uint64_t stride = static_cast<uint64_t>(baseParams_.chunkM) * nSize;
+    bool isCommBlock = (blockIdx == 0);
 
     if (commTurn <= 1) {
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
-        SyncAll<true>();
-        if (blockIdx == 0) {
+        SyncAll<true>();  // #1: 确保所有 AIC matmul 完成 (workspace 数据完整)
+        if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         }
-        SyncAll<true>();
-        // ReduceSum tile 0
+        SyncAll<true>();  // #2: 确保所有核知道 AllToAll 完成 (win 区数据完整)
+        // ReduceSum tile 0 — 所有 block 参与
         {
             uint32_t tileM = GetTileM(0);
             uint64_t tileMOffset = GetTileMOffset(0);
             if (tileM > 0) {
-                DoReduceSum(0, tileM, tileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
+                DoReduceSumBatch(0, tileM, tileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
             }
         }
-        if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
+        if (isCommBlock) { allToAllC_.template Finalize<BARRIER_NONE>(); }
         return;
     }
 
@@ -356,7 +361,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     // Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
     SyncAll<true>();
-    if (blockIdx == 0) {
+    if (isCommBlock) {
         allToAllC_.template Commit<BARRIER_NONE>();
         allToAllC_.template Wait<BARRIER_DEVICE>();
     }
@@ -367,8 +372,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();
 
-        // Phase 1: block 0 做 AllToAll(t), block 1-27 做 ReduceSum(t-1)
-        if (blockIdx == 0) {
+        // Phase 1: 通信核做 AllToAll(t), 非通信核做 ReduceSum(t-1)
+        if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_DEVICE>();
         } else {
@@ -381,8 +386,8 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         }
         SyncAll<true>();
 
-        // Phase 2: block 0 补做 ReduceSum(t-1)
-        if (blockIdx == 0) {
+        // Phase 2: 通信核补做 ReduceSum(t-1)
+        if (isCommBlock) {
             uint32_t rsT = t - 1;
             uint32_t rsTileM = GetTileM(rsT);
             uint64_t rsTileMOffset = GetTileMOffset(rsT);
@@ -403,7 +408,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         }
     }
 
-    if (blockIdx == 0) { allToAllC_.template Finalize<BARRIER_NONE>(); }
+    if (isCommBlock) { allToAllC_.template Finalize<BARRIER_NONE>(); }
 }
 
 // =================================================================================
@@ -444,6 +449,23 @@ QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::DoReduceSum(
     reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
                     usedCoreNum, srcAddr, selfAddr, dstAddr);
     reduceSum_.ExecuteReduceSum(tileM, nSize);
+}
+
+// 方案3: 批量 reduceSum 实现
+template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
+__aicore__ inline void
+QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::DoReduceSumBatch(
+    uint32_t tileIdx, uint32_t tileM, uint64_t tileMOffset,
+    uint32_t nSize, uint32_t rowBytes, uint64_t stride,
+    uint32_t usedCoreNum, uint32_t blockIdx)
+{
+    uint64_t outputSize = static_cast<uint64_t>(tileM) * nSize;
+    GM_ADDR srcAddr = baseParams_.selfWinAddr + tileMOffset * rowBytes;
+    GM_ADDR selfAddr = baseParams_.workspaceGm + tileMOffset * rowBytes;
+    GM_ADDR dstAddr = baseParams_.cGm + tileMOffset * rowBytes;
+    reduceSum_.Init(outputSize, stride, baseParams_.rankSize, baseParams_.rankId,
+                    usedCoreNum, srcAddr, selfAddr, dstAddr);
+    reduceSum_.ExecuteReduceSumBatch(tileM, nSize);
 }
 
 } // namespace Apace

@@ -61,11 +61,15 @@ def gen_golden_data_quant_matmul_reduce_scatter(m, k, n, rank_num):
 
     # B Scale: [n, ceil(k/64), 2] → [n, K/32] flatten
     b_scale_ori = np.random.uniform(1, 8, size=(n, math.ceil(k / 64), 2)).astype(float8_e8m0)
-    b_scale_all = b_scale_ori.reshape(n, k // 32).flatten()
+    b_scale_all = b_scale_ori.reshape(n, math.ceil(k / 64) * 2).flatten()
 
     # 反量化 B: [n, k] → transpose → [k, n]
-    b_scale_reshape = b_scale_ori.reshape(n, -1)
-    b_scale_broadcast = np.repeat(b_scale_reshape, 32, axis=-1)[..., :k]
+    # MXFP8 scale: [n, ceil(K/64), 2] → 每组 2 个 scale 各覆盖 32 个元素
+    # reshape 到 [n, ceil(K/64), 2, 1] → repeat 32 → [n, ceil(K/64), 2, 32] → reshape [n, ceil(K/64)*64] → 截断到 K
+    k_padded = math.ceil(k / 64) * 64
+    b_scale_broadcast = b_scale_ori.reshape(n, math.ceil(k / 64), 2, 1)
+    b_scale_broadcast = np.repeat(b_scale_broadcast, 32, axis=-1)  # [n, ceil(K/64), 2, 32]
+    b_scale_broadcast = b_scale_broadcast.reshape(n, k_padded)[..., :k]  # [n, k]
     b_scale_broadcast_transpose = np.swapaxes(b_scale_broadcast, -1, -2)  # [k, n]
     b_dequant = b_ori.astype(np.float32).T * b_scale_broadcast_transpose  # [k, n]
 
@@ -84,8 +88,10 @@ def gen_golden_data_quant_matmul_reduce_scatter(m, k, n, rank_num):
         a_scale_list.append(a_scale)
 
         # 反量化 A
-        a_scale_reshape = a_scale.reshape(m, -1)
-        a_scale_broadcast = np.repeat(a_scale_reshape, 32, axis=-1)[..., :k]
+        # MXFP8 scale: [m, ceil(K/64), 2] → 每组 2 个 scale 各覆盖 32 个元素
+        a_scale_broadcast = a_scale.reshape(m, math.ceil(k / 64), 2, 1)
+        a_scale_broadcast = np.repeat(a_scale_broadcast, 32, axis=-1)  # [m, ceil(K/64), 2, 32]
+        a_scale_broadcast = a_scale_broadcast.reshape(m, k_padded)[..., :k]  # [m, k]
         a_dequant = a_local.astype(np.float32) * a_scale_broadcast  # [m, k]
 
         # C_i = A_i × B  → [m, n]
