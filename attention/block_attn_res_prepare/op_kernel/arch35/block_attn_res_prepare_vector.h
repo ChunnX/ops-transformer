@@ -151,12 +151,11 @@ private:
     {
         qUbOffset_ = 0U;
         oUbOffset_ = qUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->vBufferNum) * baseDAlign_ * FP32_BYTES;
+                     static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
         statUbOffset_ = oUbOffset_ +
                         static_cast<uint64_t>(tilingData_->oBufferNum) * baseDAlign_ * FP32_BYTES;
         vCacheUbOffset_ = statUbOffset_ + static_cast<uint64_t>(tilingData_->statUbElems) * FP32_BYTES;
-        vUbOffset_ = vCacheUbOffset_ +
-                     static_cast<uint64_t>(tilingData_->qBufferNum) * baseDAlign_ * FP32_BYTES;
+        vUbOffset_ = vCacheUbOffset_;
     }
 
     template <typename T>
@@ -332,6 +331,7 @@ private:
         const uint64_t sIndex = workId - tIndex * tilingData_->totalS;
         __ubuf__ float *statAddr = GetUbAddr<float>(statUbOffset_);
 
+        wait_flag(PIPE_MTE3, PIPE_V, tilingData_->oBufferNum + 1);
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
             const uint64_t remainingD = tilingData_->totalD - dOffset;
@@ -367,6 +367,7 @@ private:
 
         FinalizeStats(statAddr, validN);
         CopyOutStats(sIndex * tilingData_->totalT + tIndex);
+        set_flag(PIPE_MTE3, PIPE_V, tilingData_->oBufferNum + 1);
 
         __ubuf__ float *weightAddr = statAddr + BlockAttnResPrepareVF::DOT_OFFSET;
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
@@ -406,6 +407,7 @@ private:
             set_flag(PIPE_MTE3, PIPE_V, outputEvent);
             ++oLoop_;
         }
+        PipeBarrier<PIPE_V>();
     }
 
     const optiling::BlockAttnResPrepareTilingData *__restrict tilingData_ = nullptr;
