@@ -804,7 +804,7 @@ mask_mode参数解释
             </td>
             <td rowspan="3">
                 <ul>
-                    <li>当mask_mode为0时，不支持传入attn_mask</li>
+                    <li>当mask_mode为0时，不支持传入attn_mask，且win_left与win_right必须为-1</li>
                     <li>当mask_mode为3时，必须传入attn_mask矩阵，且win_left与win_right必须为-1</li>
                 </ul>
             </td>
