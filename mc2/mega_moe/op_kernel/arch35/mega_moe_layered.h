@@ -170,7 +170,7 @@ private:
     __aicore__ inline void ProcessCombineGroups(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                                 uint32_t expertIdx, uint32_t &startRankId, uint32_t &endRankId);
     __aicore__ inline void ProcessCombineBatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
-                                               uint32_t expertIdx, uint32_t rankIndex,
+                                               uint32_t expertIdx, uint32_t startRankId, uint32_t rankIndex,
                                                LocalTensor<int32_t> &rankInfoTensor, uint32_t processRankNum,
                                                uint32_t batchBaseOffset, int64_t &offset, uint32_t &totalProcessed);
     __aicore__ inline void DrainCombineChannels(uint32_t startRankId, uint32_t endRankId);
@@ -1942,7 +1942,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::BuildComb
 // =============================================
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCombineBatch(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx, uint32_t rankIndex,
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx, uint32_t startRankId, uint32_t rankIndex,
     LocalTensor<int32_t> &rankInfoTensor, uint32_t processRankNum, uint32_t batchBaseOffset, int64_t &offset,
     uint32_t &totalProcessed)
 {
@@ -1984,7 +1984,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     // 执行 combine 并发送
     CombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
-        combineUbTensorSize_, offset, quantTokenSizeBytes, rankIndex);
+        combineUbTensorSize_, offset, quantTokenSizeBytes, startRankId + rankIndex);
 
     // 更新进度
     rankInfoTensor.SetValue(2 * processRankNum + rankIndex, processedCnt + batchCount);
@@ -2047,7 +2047,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
         __gm__ int32_t *counterAddr = GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
 
         if (AscendC::ReadGmByPassDCache(counterAddr) >= static_cast<int32_t>(nTilesPerGroup)) {
-            ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx, rankIndex, rankInfoTensor, processRankNum,
+            ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx, startRankId, rankIndex, rankInfoTensor, processRankNum,
                                 batchBaseOffset, offset, totalProcessed);
         }
         rankIndex = (rankIndex + 1) % processRankNum;
