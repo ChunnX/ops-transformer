@@ -41,13 +41,3 @@ struct alignas(8) AllGatherMxMatmulUdmaTilingData {
     CommTilingData commTile;
 };
 #pragma pack(pop)
-
-// Hcomm/CCU 路径 tiling 结构体
-// 无 localMatmul：FragmentTensor kernel 的 HEAD 区域天然 local-first
-// 无 scaleCommTile：scale 通信参数（scaleKLen=CeilDiv(K,64)*2）由 impl 从 mmTile.k 推导
-struct hcommAllGatherMatmulTilingData {
-    Mc2InitTiling mc2InitTiling;       // HCCL 初始化参数
-    Mc2CcTiling mc2CcTiling;           // HCCL CC task 配置
-    CommTilingData commTile;           // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
-    QuantMatmulTilingData mmTile;      // Matmul tiling 参数
-};
