@@ -80,7 +80,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
 
 
 def _calculate_metadata_size():
-    return 4096
+    return 4096*2;
 
 
 class QuantFlashAttnOpBuilder(OpBuilder):
@@ -100,7 +100,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
             'str? layout_q="BSND", str? layout_q_descale="BSND", '
-            'str? layout_kv="BSND", str? layout_out="BSND") -> Tensor',
+            'str? layout_kv="BSND", str? layout_out="BSND", '
+            "bool is_grade_enabled=False) -> Tensor",
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
             "Tensor? block_table=None, Tensor? p_scale=None, "
@@ -140,6 +141,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_q_descale: Optional[str] = "BSND",
             layout_kv: Optional[str] = "BSND",
             layout_out: Optional[str] = "BSND",
+            is_grade_enabled: Optional[bool] = False,
         ):
             metadata_size = _calculate_metadata_size()
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
@@ -247,6 +249,7 @@ def quant_flash_attn_metadata(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grade_enabled: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
@@ -263,6 +266,7 @@ def quant_flash_attn_metadata(
     layout_q_descale = "BSND" if layout_q_descale is None else layout_q_descale
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
+    is_grade_enabled = False if is_grade_enabled is None else is_grade_enabled
 
     metadata_size = _calculate_metadata_size()
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
@@ -288,6 +292,7 @@ def quant_flash_attn_metadata(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grade_enabled,
         output,
     )
 
@@ -313,6 +318,7 @@ def quant_flash_attn_metadata_fallback(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grade_enabled: Optional[bool] = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return quant_flash_attn_metadata(
@@ -335,6 +341,7 @@ def quant_flash_attn_metadata_fallback(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grade_enabled,
     )
 
 
