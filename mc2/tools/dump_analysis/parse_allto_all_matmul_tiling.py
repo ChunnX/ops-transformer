@@ -155,7 +155,7 @@ def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
     if offset + ALLTO_ALL_MATMUL_TILING_INFO_SIZE > len(data):
         return {"error": "data too short for AlltoAllMatmulTilingInfo"}
     fields = struct.unpack_from("<10I 6Q", data, offset)
-    hccl_dt = fields[15]
+    hccl_dt = fields[12]
     return {
         "rankDim": fields[0],
         "tileM": fields[1],
@@ -171,9 +171,9 @@ def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
         "permuteLen": fields[11],
         "hcclDataType": hccl_dt,
         "hcclDataTypeName": HCCL_DATA_TYPE_MAP.get(hccl_dt, f"UNKNOWN({hccl_dt})"),
-        "x1ScaleOptionalLen": fields[12],
-        "dynamicExtraSpace": fields[13],
-        "x1QuantDtype": fields[14],
+        "x1ScaleOptionalLen": fields[13],
+        "dynamicExtraSpace": fields[14],
+        "x1QuantDtype": fields[15],
     }
 
 
@@ -279,15 +279,39 @@ def parse_quant_tiling_data(data: bytes) -> dict:
     }
 
 
+def detect_quant_mode(data: bytes) -> bool:
+    """自动检测量化/非量化模式。
+
+    检测依据：AlltoAllMatmulTilingInfo 中的量化专属字段。
+    非量化场景下 x1ScaleOptionalLen / dynamicExtraSpace / x1QuantDtype 均为 0，
+    量化场景下至少一个非零。
+
+    字段偏移（基于 AlltoAllMatmulTilingInfo 起始 offset=576）:
+      x1ScaleOptionalLen  offset=640 (576+64), u64
+      dynamicExtraSpace   offset=648 (576+72), u64
+      x1QuantDtype        offset=656 (576+80), u64
+    """
+    if len(data) < OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE:
+        return False
+    info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
+    if "error" in info:
+        return False
+    return (info.get("x1ScaleOptionalLen", 0) != 0 or
+            info.get("dynamicExtraSpace", 0) != 0 or
+            info.get("x1QuantDtype", 0) != 0)
+
+
 def parse_args_info(data: bytes) -> dict:
-    """解析 args_info_*.bin（16 × uint64 指针）。"""
-    num_ptrs = min(16, len(data) // 8)
+    """解析 args_info_*.bin（AlltoAllMatmul 有 13 个有效 args，index 0-12）。"""
+    num_valid_args = len(ARGS_INDEX_NAMES)
+    num_ptrs = min(num_valid_args, len(data) // 8)
     ptrs = struct.unpack_from(f"<{num_ptrs}Q", data, 0)
     args = {}
     for i in range(num_ptrs):
-        name = ARGS_INDEX_NAMES[i] if i < len(ARGS_INDEX_NAMES) else f"arg_{i}"
+        name = ARGS_INDEX_NAMES[i]
         args[f"[{i}] {name}"] = f"0x{ptrs[i]:016x}"
-    args["_devArgsLen"] = len(data)
+    args["_dumpFileSize"] = len(data)
+    args["_validArgCount"] = num_ptrs
     return args
 
 
@@ -334,11 +358,13 @@ def print_tiling_data(result: dict, is_quant: bool):
 def print_args_info(result: dict):
     """人类可读格式打印 args info。"""
     print_section("Args Info (kernel GM pointer)")
-    dev_args_len = result.pop("_devArgsLen", 0)
+    dump_file_size = result.pop("_dumpFileSize", 0)
+    valid_arg_count = result.pop("_validArgCount", 0)
     for name, addr in result.items():
         logging.info("  %-30s: %s", name, addr)
-    logging.info("  %-30s: %d bytes (%d pointers)", "_devArgsLen", dev_args_len, dev_args_len // 8)
     logging.info("")
+    logging.info("  有效 args 数量: %d (index 0-%d)", valid_arg_count, valid_arg_count - 1)
+    logging.info("  dump 文件大小: %d bytes", dump_file_size)
     logging.info("  提示: tilingGM 应在 [12] 位置 (offset=96)")
     tiling_gm = result.get("[12] tilingGM", "N/A")
     logging.info("  tilingGM = %s", tiling_gm)
@@ -351,13 +377,11 @@ def main():
         epilog="""
 示例:
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin
-  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --quant
   python parse_allto_all_matmul_tiling.py args_info_AlltoAllMatmul.0.1.20260819.bin --args
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --json
         """,
     )
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
-    parser.add_argument("--quant", action="store_true", help="按量化场景 AlltoAllQuantMatmulTilingData (1384B) 解析")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     args = parser.parse_args()
@@ -379,7 +403,12 @@ def main():
             print_args_info(result)
         return
 
-    is_quant = args.quant
+    is_quant = detect_quant_mode(data)
+    if is_quant:
+        logging.info("解析模式: 量化 (x1ScaleOptionalLen/dynamicExtraSpace/x1QuantDtype 非零)")
+    else:
+        logging.info("解析模式: 非量化 (x1ScaleOptionalLen/dynamicExtraSpace/x1QuantDtype 均为零)")
+
     struct_size = ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE if is_quant else ALLTO_ALL_MATMUL_TILING_DATA_SIZE
     if len(data) < struct_size:
         logging.warning(
@@ -389,13 +418,13 @@ def main():
     if is_quant:
         result = parse_quant_tiling_data(data)
         logging.info(
-            "解析模式: 量化 AlltoAllQuantMatmulTilingData (结构体 %dB, dump 文件 %dB, 尾部 %dB 为 padding)",
+            "结构体 AlltoAllQuantMatmulTilingData: %dB, dump 文件 %dB, 尾部 %dB 为 padding",
             struct_size, len(data), len(data) - struct_size,
         )
     else:
         result = parse_non_quant_tiling_data(data)
         logging.info(
-            "解析模式: 非量化 AlltoAllMatmulTilingData (结构体 %dB, dump 文件 %dB, 尾部 %dB 为 padding)",
+            "结构体 AlltoAllMatmulTilingData: %dB, dump 文件 %dB, 尾部 %dB 为 padding",
             struct_size, len(data), len(data) - struct_size,
         )
 

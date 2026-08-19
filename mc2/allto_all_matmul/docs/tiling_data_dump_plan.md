@@ -64,22 +64,87 @@ pr_10103 的 `Mc2ExceptionImplTmp` 读 `args[0]`（offset=0）作为 hccl contex
 
 ## 4. 改动方案
 
-### 仅改 1 个文件
+### 涉及 2 个文件
 
-`mc2/allto_all_matmul/op_host/op_tiling/allto_all_matmul_tiling.cpp`
+| 文件 | 改动 |
+|------|------|
+| `mc2/common/utils/mc2_exception_dump.h` | 新增通用 `Mc2DumpTilingData` 函数 |
+| `mc2/allto_all_matmul/op_host/op_tiling/allto_all_matmul_tiling.cpp` | 调用通用函数，删除算子专属 dump 代码 |
 
-### 改动内容
+### 4.1 通用 dump 函数
 
-在 `AlltoAllMatmulExceptionImplWrapper` 中，保留原有 `Mc2ExceptionImplTmp` 调用（dump xn/cke），追加 TilingData dump 逻辑：
+在 `mc2/common/utils/mc2_exception_dump.h` 中新增 `Mc2DumpTilingData`：
 
-1. 调用 `Mc2Exception::GetAclrtGetArgsFromExceptionInfoFunc()` 获取 `devArgsPtr`, `devArgsLen`
-2. `OP_LOGE` 打印 `devArgsPtr` 和 `devArgsLen`（诊断 args 布局）
-3. Dump 全部 args 指针（固定 256 字节）到 `args_info_AlltoAllMatmul.*.bin`——用于验证 args 布局
-4. 从 `devArgsPtr + 96` 读 `tilingGM` 指针值（`aclrtMemcpy` 8 字节 D2H）
-5. `aclrtMemcpy` 2048 字节从 `tilingGM` 到 host buffer
-6. `DumpToFileWithSize` 写 `tiling_data_AlltoAllMatmul.*.bin`
+```cpp
+inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op,
+                              uint32_t tilingGmArgIdx, uint32_t argsOffset = 0U)
+```
 
-### 复用的已有 helper（mc2_exception_dump.h）
+#### 参数说明
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| args | `aclrtExceptionInfo *` | 异常信息指针（回调入参） |
+| op | `const char *` | 算子名（用于日志和文件名） |
+| tilingGmArgIdx | `uint32_t` | tilingGM 在 kernel args 中的索引（从 0 开始） |
+| argsOffset | `uint32_t` | FFTS 前缀偏移字节数（默认 0，MegaMoe 等 mix 算子需传 8） |
+
+#### 内部逻辑
+
+1. 调用 `GetAclrtGetArgsFromExceptionInfoFunc()` 获取 `devArgsPtr`, `devArgsLen`
+2. 计算 `tilingGmOffset = argsOffset + tilingGmArgIdx * 8`，并校验 `tilingGmOffset + 8 <= devArgsLen`
+3. Dump `min(devArgsLen, 256)` 字节 args 指针到 `args_info_<op>.*.bin`
+4. 从 `devArgsPtr + tilingGmOffset` 读 `tilingGM` 指针值（D2H 8 字节）
+5. 校验 `tilingGM != 0`
+6. `aclrtMemcpy` 2048 字节从 `tilingGM` 到 host buffer
+7. `DumpToFileWithSize` 写 `tiling_data_<op>.*.bin`
+
+#### 各 mc2 算子参数对照
+
+不同算子的 kernel 参数数量不同，tilingGM 的 args index 也不同：
+
+| 算子 | kernel 参数数 | tilingGmArgIdx | argsOffset | 调用示例 |
+|------|-------------|----------------|------------|---------|
+| AlltoAllMatmul | 12 | 12 | 0 | `Mc2DumpTilingData(args, "AlltoAllMatmul", 12U, 0U)` |
+| AllGatherMatmulV2 | 11 | 11 | 0 | `Mc2DumpTilingData(args, "AllGatherMatmulV2", 11U, 0U)` |
+| MatmulAlltoAll | 11 | 11 | 0 | `Mc2DumpTilingData(args, "MatmulAlltoAll", 11U, 0U)` |
+| MatmulReduceScatterV2 | 10 | 10 | 0 | `Mc2DumpTilingData(args, "MatmulReduceScatterV2", 10U, 0U)` |
+| MegaMoe | - | - | 8 | `Mc2DumpTilingData(args, "MegaMoe", <idx>U, 8U)` |
+
+### 4.2 AlltoAllMatmul 接入
+
+在 `allto_all_matmul_tiling.cpp` 的 `AlltoAllMatmulExceptionImplWrapper` 中，保留原有 `Mc2ExceptionImplTmp` 调用（dump xn/cke），替换为通用函数调用：
+
+```cpp
+inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
+    Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AlltoAllMatmul");
+    constexpr uint32_t TILING_GM_ARG_IDX = 12U;
+    constexpr uint32_t ARGS_OFFSET = 0U;
+    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmul", TILING_GM_ARG_IDX, ARGS_OFFSET);
+}
+```
+
+### 4.3 其他 mc2 算子接入方式
+
+其他 mc2 算子只需在各自的 `ExceptionImplWrapper` 回调中调用 `Mc2DumpTilingData`，传入正确的 `tilingGmArgIdx` 即可，无需重复实现 dump 逻辑：
+
+```cpp
+// all_gather_matmul_v2 (11 参数，tilingGM 是第 11 个参数)
+Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV2", 11U, 0U);
+
+// matmul_allto_all (11 参数)
+Mc2Exception::Mc2DumpTilingData(args, "MatmulAlltoAll", 11U, 0U);
+
+// matmul_reduce_scatter_v2 (10 参数)
+Mc2Exception::Mc2DumpTilingData(args, "MatmulReduceScatterV2", 10U, 0U);
+```
+
+### 4.4 复用的已有 helper（mc2_exception_dump.h）
 
 | 函数 | 用途 |
 |------|------|
@@ -88,18 +153,20 @@ pr_10103 的 `Mc2ExceptionImplTmp` 读 `args[0]`（offset=0）作为 hccl contex
 | `GenDumpFileNameWithPrefix(args, op, prefix)` | 生成 dump 文件名 |
 | `DumpToFileWithSize(dir, name, id, buf, size)` | 写 dump 文件 |
 
-无需新增公共函数，无需改动 kernel 侧。
+无需改动 kernel 侧。
 
 ## 5. 产出文件
 
-异常触发后在 `acldumpGetPath(AIC_ERR_BRIEF_DUMP)` 路径下生成：
+异常触发后在 `acldumpGetPath(AIC_ERR_BRIEF_DUMP)` 路径下生成（`<op>` 为算子名，如 `AlltoAllMatmul`）：
 
 | 文件 | 内容 | 大小 |
 |------|------|------|
-| `args_info_AlltoAllMatmul.<streamId>.<taskId>.<ts>.bin` | 全部 args 指针（诊断） | 256B |
-| `tiling_data_AlltoAllMatmul.<streamId>.<taskId>.<ts>.bin` | TilingData 原始二进制 | 2048B |
-| `xn_addr_info_*` | HCCL Xn 寄存器（pr_10103 已有） | 32KB |
-| `cke_addr_info_*` | HCCL CKE 寄存器（pr_10103 已有） | 1KB |
+| `args_info_<op>.<streamId>.<taskId>.<ts>.bin` | 全部 args 指针（诊断） | min(devArgsLen, 256)B |
+| `tiling_data_<op>.<streamId>.<taskId>.<ts>.bin` | TilingData 原始二进制 | 2048B |
+| `xn_addr_info_<op>.*` | HCCL Xn 寄存器（pr_10103 已有） | 32KB |
+| `cke_addr_info_<op>.*` | HCCL CKE 寄存器（pr_10103 已有） | 1KB |
+
+dump 文件固定 2048B（`MAX_DUMP_TILING_SIZE`），而实际结构体大小通常小于此值（如非量化 1136B、量化 1384B），尾部为 padding（device 上结构体之后的内存），解析时忽略即可。
 
 ## 6. 解析 Dump 数据方案
 
@@ -306,8 +373,10 @@ dump 出的 `tiling_data_*.bin` 是 `AlltoAllMatmulTilingData` 或 `AlltoAllQuan
 
 | 风险 | 说明 | 缓解 |
 |------|------|------|
-| tilingGmOffset=96 不正确 | 如有额外 FFTS 前缀，实际 offset 可能为 104 | args_info dump 用于诊断；日志打印 devArgsLen 可推算元素数 |
+| tilingGmArgIdx 不正确 | 各算子参数数量不同，需逐一确认 | 参见 4.1 节参数对照表；args_info dump 可验证 |
+| FFTS 前缀偏移 | 部分 mix 算子 args[0] 不是 hccl context 而是 FFTS 指针 | `argsOffset` 参数支持传入偏移（如 MegaMoe 传 8） |
 | tilingGM 指针为 0 或无效 | 异常可能发生在 tilingGM 未初始化前 | 代码中检查 tilingGM == 0 并跳过 |
+| args 长度不足 | `tilingGmOffset + 8 > devArgsLen` | 代码中校验边界并跳过 |
 | 仅支持 arch35 | pr_10103 已限制 Ascend950 | 与 pr_10103 一致，arch22 后续扩展 |
 
 ### 验证步骤
@@ -316,7 +385,7 @@ dump 出的 `tiling_data_*.bin` 是 `AlltoAllMatmulTilingData` 或 `AlltoAllQuan
 2. 安装算子包到环境
 3. `export ASCEND_GLOBAL_LOG_LEVEL=1`（开启 DEBUG 日志）
 4. 触发 AlltoAllMatmul 异常
-5. 检查日志中 `devArgsLen` 值（预期 104 = 13 × 8 字节，或 13）
+5. 检查日志中 `devArgsLen` 和 `tilingGmArgIdx` 值（AlltoAllMatmul 预期 idx=12, offset=96）
 6. 检查 `args_info_*.bin`，确认 args[12] 是否为有效 GM 地址
 7. 检查 `tiling_data_*.bin`，按 AlltoAllMatmulTilingData 结构体解析验证字段值
 8. 使用 `parse_allto_all_matmul_tiling.py` 脚本自动解析
