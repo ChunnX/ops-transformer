@@ -484,6 +484,16 @@ BEGIN_TILING_DATA_DEF(InputParamsRegbase)
     TILING_DATA_FIELD_DEF(uint16_t, antiquantPerTensorFlag);
     TILING_DATA_FIELD_DEF(uint16_t, antiquantPerHeadFlag);
     TILING_DATA_FIELD_DEF(uint32_t, antiquantParaSeqSize);
+    TILING_DATA_FIELD_DEF(uint64_t, keyBnStride);
+    TILING_DATA_FIELD_DEF(uint64_t, keyN2Stride);
+    TILING_DATA_FIELD_DEF(uint64_t, valueBnStride);
+    TILING_DATA_FIELD_DEF(uint64_t, valueN2Stride);
+    TILING_DATA_FIELD_DEF(uint64_t, keyRopeBnStride);
+    TILING_DATA_FIELD_DEF(uint64_t, keyRopeN2Stride);
+    TILING_DATA_FIELD_DEF(uint64_t, kScaleBnStride);
+    TILING_DATA_FIELD_DEF(uint64_t, kScaleN2Stride);
+    TILING_DATA_FIELD_DEF(uint64_t, vScaleBnStride);
+    TILING_DATA_FIELD_DEF(uint64_t, vScaleN2Stride);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(InputParamsRegbaseOp, InputParamsRegbase)
 

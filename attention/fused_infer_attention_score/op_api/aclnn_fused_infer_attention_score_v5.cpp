@@ -243,11 +243,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret =
-        CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
-    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
-        return ret;
+    if (CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional,
+                              keyRopeOptional) != ACLNN_SUCCESS) {
+        OP_LOGI("Non-contiguous tensor detected, proceeding with stride-based path.");
     }
 
     const aclTensor *placeHolder = nullptr;
@@ -261,7 +259,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     } else {
         placeHolder = softmaxLse;
     }
-    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
