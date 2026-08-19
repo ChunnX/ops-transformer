@@ -18,12 +18,11 @@ kv_state_origin, score_state_origin.
 """
 
 import gc
-import types
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import torch
-import importlib.util
-import sys
-from pathlib import Path
 
 _PYTEST_GOLDEN_MODULE = None
 
@@ -48,62 +47,25 @@ _OUTPUT_NAMES = [
 
 _BATCH_CONSISTENCY_CACHE = {}
 
+
 def _load_pytest_golden_module():
+    """Reuse golden.py's load_pytest_golden_module to avoid duplicating stub logic.
+
+    golden.py owns the canonical stub mechanism (torch_npu/torchair/
+    cann_ops_transformer stub + sys.modules save/restore + np.random state).
+    compare.py delegates to it, so any fix to the stub logic only needs to
+    be applied in one place.
+    """
     global _PYTEST_GOLDEN_MODULE
     if _PYTEST_GOLDEN_MODULE is not None:
         return _PYTEST_GOLDEN_MODULE
-    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
-    module_path = pytest_dir / "compressor_golden.py"
-
-    _stub_modules = {}
-    for mod_name in ("torch_npu", "torchair"):
-        if mod_name not in sys.modules:
-            stub = types.ModuleType(mod_name)
-            if mod_name == "torch_npu":
-                stub.npu = types.SimpleNamespace(
-                    set_device=lambda *a, **kw: None,
-                    config=types.SimpleNamespace(allow_internal_format=True),
-                )
-                testing_mod = types.ModuleType("torch_npu.testing")
-                testcase_mod = types.ModuleType("torch_npu.testing.testcase")
-                testcase_mod.TestCase = object
-                testcase_mod.run_tests = lambda *a, **kw: None
-                testing_mod.testcase = testcase_mod
-                stub.testing = testing_mod
-            sys.modules[mod_name] = stub
-            _stub_modules[mod_name] = None
-
-    _saved_cann = {}
-    for mod_name in ("cann_ops_transformer", "cann_ops_transformer.ops"):
-        if mod_name in sys.modules:
-            _saved_cann[mod_name] = sys.modules[mod_name]
-    cann_stub = types.ModuleType("cann_ops_transformer")
-    ops_stub = types.ModuleType("cann_ops_transformer.ops")
-    ops_stub.compressor = lambda *a, **kw: None
-    cann_stub.ops = ops_stub
-    sys.modules["cann_ops_transformer"] = cann_stub
-    sys.modules["cann_ops_transformer.ops"] = ops_stub
-
-    _np_random_state = np.random.get_state()
-    sys.path.insert(0, str(pytest_dir))
-    try:
-        spec = importlib.util.spec_from_file_location(
-            f"compressor_pytest_golden_compare_{abs(hash(module_path))}", module_path
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    finally:
-        try:
-            sys.path.remove(str(pytest_dir))
-        except ValueError:
-            pass
-        np.random.set_state(_np_random_state)
-        for mod_name, saved in _saved_cann.items():
-            sys.modules[mod_name] = saved
-        for mod_name in ("cann_ops_transformer", "cann_ops_transformer.ops"):
-            if mod_name not in _saved_cann and mod_name in sys.modules:
-                del sys.modules[mod_name]
-    _PYTEST_GOLDEN_MODULE = module
+    golden_path = Path(__file__).resolve().parent / "golden.py"
+    spec = importlib.util.spec_from_file_location(
+        f"compressor_assets_golden_ref_{abs(hash(golden_path))}", golden_path
+    )
+    golden_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(golden_mod)
+    _PYTEST_GOLDEN_MODULE = golden_mod.load_pytest_golden_module()
     return _PYTEST_GOLDEN_MODULE
 
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software; you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -14,9 +14,13 @@
 
 import importlib.util
 from pathlib import Path
-from ttk.utilities.container_utils import get_global_storage
 
 import torch
+
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
 
 try:
     from ttk.core_modules.comparison.cross_check import CrossCheckComparison
@@ -24,6 +28,25 @@ try:
     _TTK_CROSS_CHECK_AVAILABLE = True
 except Exception:
     _TTK_CROSS_CHECK_AVAILABLE = False
+
+
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
+
+
+def load_impl_module(stem):
+    path = ASSET_IMPL_DIR / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(
+        f"compressor_assets_impl_{stem}_{abs(hash(path))}", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+golden_module = load_impl_module("golden")
+inputs_module = load_impl_module("inputs")
+compare_module = load_impl_module("compare")
+
 
 _OUTPUT_NAMES = [
     "cmp_kv",
@@ -35,6 +58,52 @@ _OUTPUT_NAMES = [
     "kv",
 ]
 
+
+def _register_compressor_api_params():
+    try:
+        from ttk.utilities.simple_param_extractor import (
+            ParamInfo,
+            register_api_params,
+        )
+    except Exception:
+        return
+    params = [
+        ParamInfo(name="x", type="Tensor"),
+        ParamInfo(name="wkv", type="Tensor"),
+        ParamInfo(name="wgate", type="Tensor"),
+        ParamInfo(name="state_cache", type="Tensor"),
+        ParamInfo(name="ape", type="Tensor"),
+        ParamInfo(name="cmp_ratio", type="int", default=4, is_optional=True),
+        ParamInfo(name="state_block_table", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="cu_seqlens", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="seqused", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="start_pos", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="coff", type="int", default=1, is_optional=True,
+                  is_keyword_only=True),
+        ParamInfo(name="cache_mode", type="int", default=1, is_optional=True,
+                  is_keyword_only=True),
+    ]
+    register_api_params(
+        "cann_ops_transformer.ops.compressor", params, source="manual_compress"
+    )
+
+
+_register_compressor_api_params()
+
+
+def _get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
+
+
 def _resolve_cross_check_params(dtype_str="float32"):
     tolerance = {dtype_str: {"standard": "cross_check", "level": "L1"}}
     standards = resolve_tolerance(tolerance, None, None, [dtype_str], "cross_check")
@@ -42,11 +111,8 @@ def _resolve_cross_check_params(dtype_str="float32"):
 
 
 def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, params):
-    print(npu_out.dtype)
-    print(bench_out.dtype)
-    print(golden_out.dtype)
     c = CrossCheckComparison(
-        npu_out, bench_out, idx, dtype_str, params, third_party=golden_out
+        npu_out, golden_out, idx, dtype_str, params, third_party=bench_out
     )
     precision_str, log, is_pass, metrics = c.compare()
     return {
@@ -56,11 +122,8 @@ def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, para
         "error_info": None if is_pass else log,
     }
 
-def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
-    """Split ACLNN outputs into sub-tensors for per-tensor comparison.
 
-    Returns (npu_sub, golden_sub, bench_sub, names).
-    """
+def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
     GOLDEN_OUTPUT_COUNT = 4
     golden_outputs = [compare_module._to_torch(g) for g in outputs[-GOLDEN_OUTPUT_COUNT:]]
     npu_outputs = [compare_module._to_torch(o) for o in outputs[:-GOLDEN_OUTPUT_COUNT]]
@@ -147,7 +210,6 @@ def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
 
 
 def _run_ttk_cross_check_aclnn(outputs, kwargs, bench_outputs):
-    """Three-way cross check using ttk's built-in CrossCheckComparison."""
     npu_sub, golden_sub, bench_sub, names = _split_aclnn_outputs(
         outputs, kwargs, bench_outputs
     )
@@ -176,11 +238,8 @@ def _run_ttk_cross_check_aclnn(outputs, kwargs, bench_outputs):
         results.append(result_consistency)
     return results
 
-def _split_e2e_outputs(outputs, kwargs, bench_outputs):
-    """Split E2E outputs into sub-tensors for per-tensor comparison.
 
-    Returns (npu_sub, golden_sub, bench_sub, names).
-    """
+def _split_e2e_outputs(outputs, kwargs, bench_outputs):
     GOLDEN_OUTPUT_COUNT = 2
     golden_outputs = [compare_module._to_torch(g) for g in outputs[-GOLDEN_OUTPUT_COUNT:]]
     npu_outputs = [compare_module._to_torch(o) for o in outputs[:-GOLDEN_OUTPUT_COUNT]]
@@ -224,7 +283,7 @@ def _split_e2e_outputs(outputs, kwargs, bench_outputs):
         golden_sub.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score])
 
         if bench_outputs and len(bench_outputs) > 1:
-            bench_state = compare_module._to_torch(bench_outputs[1])
+            bench_state = compare_module._to_torch(bench_outputs[1]).to(torch.float32)
             bench_sub.append(bench_state[:, :, : bench_state.shape[2] // 2][update_kv])
             bench_sub.append(bench_state[:, :, bench_state.shape[2] // 2 :][update_score])
             bench_sub.append(bench_state[:, :, : bench_state.shape[2] // 2][~update_kv])
@@ -255,16 +314,9 @@ def _split_e2e_outputs(outputs, kwargs, bench_outputs):
 
 
 def _run_ttk_cross_check_e2e(outputs, kwargs, bench_outputs):
-    """Three-way cross check using ttk's built-in CrossCheckComparison (e2e mode)."""
     npu_sub, golden_sub, bench_sub, names = _split_e2e_outputs(
         outputs, kwargs, bench_outputs
     )
-    print(npu_sub[0].dtype)
-    print(golden_sub[0].dtype)
-    print(bench_sub[0].dtype)
-    print(npu_sub[1].dtype)
-    print(golden_sub[1].dtype)
-    print(bench_sub[1].dtype)
     params = _resolve_cross_check_params("float32")
     results = []
     for idx in range(len(golden_sub)):
@@ -291,39 +343,16 @@ def _run_ttk_cross_check_e2e(outputs, kwargs, bench_outputs):
     return results
 
 
-ASSET_IMPL_DIR = Path(__file__).with_name("impl")
-
-
-def load_impl_module(stem):
-    path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"compressor_assets_impl_{stem}_{abs(hash(path))}", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-golden_module = load_impl_module("golden")
-inputs_module = load_impl_module("inputs")
-compare_module = load_impl_module("compare")
-
-def _get_compare_method():
-    if get_global_storage is not None:
-        try:
-            return getattr(get_global_storage(), "compare_method", None)
-        except Exception:
-            return None
-    return None
-
 class CompressorSpec:
     golden = golden_module.cpu_compressor
     customize_inputs = inputs_module.generate_compressor_inputs
     tolerance = {
-        "float16": {"standard": "cross_check","level": "L0", "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-              "small_value": 2**-10, "small_value_atol": 2**-16},
-        "bfloat16": {"standard": "cross_check","level": "L0", "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-              "small_value": 2**-10, "small_value_atol": 2**-16},
+        "float16": {"standard": "cross_check", "level": "L0",
+                     "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
+                     "small_value": 2**-10, "small_value_atol": 2**-16},
+        "bfloat16": {"standard": "cross_check", "level": "L0",
+                      "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
+                      "small_value": 2**-10, "small_value_atol": 2**-16},
     }
 
     def compare(*outputs, compare_context=None, **kwargs):
@@ -354,10 +383,12 @@ class AclnnCompressorSpec:
     golden = golden_module.aclnn_compressor_golden
     customize_inputs = inputs_module.aclnn_compressor_input
     tolerance = {
-        "float16": {"standard": "cross_check","level": "L1", "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-              "small_value": 2**-10, "small_value_atol": 2**-16},
-        "bfloat16": {"standard": "cross_check","level": "L1", "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-              "small_value": 2**-10, "small_value_atol": 2**-16},
+        "float16": {"standard": "cross_check", "level": "L1",
+                     "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
+                     "small_value": 2**-10, "small_value_atol": 2**-16},
+        "bfloat16": {"standard": "cross_check", "level": "L1",
+                      "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
+                      "small_value": 2**-10, "small_value_atol": 2**-16},
     }
 
     def compare(*outputs, compare_context=None, **kwargs):
