@@ -297,31 +297,40 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
         SyncAll<false>();
     }
     for (uint32_t groupIdx = 0, preCount = 0; groupIdx < tiling->groupNum; ++groupIdx) {
-        int32_t m = static_cast<int32_t>(groupTokensGm.GetValue(groupIdx));
-        if (m <= 0) {
+        int32_t groupRemainingLogical = static_cast<int32_t>(groupTokensGm.GetValue(groupIdx));
+        if (groupRemainingLogical <= 0) {
             continue;
         }
         if constexpr (mmType::groupListType) {
-            m -= mnConfig.offsetM / 2;
+            groupRemainingLogical -= mnConfig.offsetM / 2;
         }
-        mnConfig.m = static_cast<uint32_t>(m) * 2;      // 2: int8 has been split in 2 int4
-        mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
-        mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
-        uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
-        uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
-
-        while (curBlock < curCount) {
-            mnConfig.mIdx = (curBlock - preCount) / mnConfig.blockDimN;
-            mnConfig.nIdx = (curBlock - preCount) % mnConfig.blockDimN;
-            MMCompute(groupIdx, mnConfig);
+        while (groupRemainingLogical > 0) {
+            uint32_t chunkLogical = static_cast<uint32_t>(groupRemainingLogical);
+            if (tiling->deterministicFlag == 1 && chunkLogical > syncConfig.windowSize) {
+                chunkLogical = static_cast<uint32_t>(syncConfig.windowSize);
+            }
+            mnConfig.m = chunkLogical * 2;      // 2: int8 has been split in 2 int4
+            mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
             if ASCEND_IS_AIV {
                 VectorDeterSync(mnConfig, syncConfig);
-                VectorCompute(groupIdx, mnConfig, syncConfig);
             }
-            curBlock += tiling->coreNum;
+            mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
+            uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
+            uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
+
+            while (curBlock < curCount) {
+                mnConfig.mIdx = (curBlock - preCount) / mnConfig.blockDimN;
+                mnConfig.nIdx = (curBlock - preCount) % mnConfig.blockDimN;
+                MMCompute(groupIdx, mnConfig);
+                if ASCEND_IS_AIV {
+                    VectorCompute(groupIdx, mnConfig, syncConfig);
+                }
+                curBlock += tiling->coreNum;
+            }
+            preCount = curCount % tiling->coreNum;
+            mnConfig.offsetM += mnConfig.m;
+            groupRemainingLogical -= chunkLogical;
         }
-        preCount = curCount % tiling->coreNum;
-        mnConfig.offsetM += mnConfig.m;
     }
     if ASCEND_IS_AIV{
         if (tiling->deterministicFlag == 1) {
@@ -648,35 +657,20 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::DataCopyAndBrcbOfRowSum(MNConf
 }
 
 template <typename mmType>
-__aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorDeterSync(MNConfig& mnConfig, SyncConfig& syncConfig){
+__aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorDeterSync(MNConfig& mnConfig, SyncConfig& syncConfig)
+{
     if (tiling->deterministicFlag == 0) {
         return;
     }
-    uint32_t curSingleM = mnConfig.mIdx == mnConfig.blockDimM - 1 ? 
-                          mnConfig.m - mnConfig.mIdx * mnConfig.singleM : mnConfig.singleM;
-    mnConfig.curBlockM = mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM + curSingleM;
-    mnConfig.curBlockM /= 2;
-    while (mnConfig.curBlockM > syncConfig.lowBoundM) {
-        while (syncConfig.curGroup < tiling->groupNum) {
-            uint32_t rowIdx = static_cast<uint32_t>(groupTokensGm.GetValue(syncConfig.curGroup));
-            if constexpr (mmType::groupListType){
-                if (syncConfig.curGroup > 0) {
-                    rowIdx -= static_cast<uint32_t>(groupTokensGm.GetValue(syncConfig.curGroup - 1));
-                }
-            }
-            if(syncConfig.curGroupM + rowIdx <= syncConfig.lowBoundM){
-                syncConfig.curGroupM += rowIdx;
-                syncConfig.curM = syncConfig.curGroupM;
-                syncConfig.curGroup ++;
-            } else {
-                uint32_t curVecSingleM = mnConfig.singleM / 2;
-                syncConfig.curM += (syncConfig.lowBoundM - syncConfig.curM) / curVecSingleM * curVecSingleM;
-                break;
-            }
-        }
-        FinalizeRoutingDeterministic(syncConfig);
-        syncConfig.lowBoundM = syncConfig.curM + syncConfig.windowSize;
+    // All AIVs visit every group boundary. Flush completed groups before the next group crosses
+    // the workspace window, keeping FinalizeRoutingDeterministic barriers balanced.
+    uint64_t nextGroupM = (static_cast<uint64_t>(mnConfig.offsetM) + mnConfig.m) / 2;
+    if (nextGroupM <= syncConfig.lowBoundM) {
+        return;
     }
+    syncConfig.curM = mnConfig.offsetM / 2;
+    FinalizeRoutingDeterministic(syncConfig);
+    syncConfig.lowBoundM = syncConfig.curM + syncConfig.windowSize;
 }
 
 template <typename mmType>
@@ -705,6 +699,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::FinalizeRoutingDeterministic(S
             bindLocal = queBind.DeQue<DTYPE_OUT>();
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyPad2DA8W4(yGm[outRow * n + nOffset], bindLocal, copyDimParams, n);
+            PipeBarrier<PIPE_MTE3>();
             SetAtomicNone();
             queBind.FreeTensor(bindLocal);
         }

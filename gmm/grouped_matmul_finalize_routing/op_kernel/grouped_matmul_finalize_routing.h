@@ -305,28 +305,35 @@ __aicore__ inline void QuantGroupMatmul<P>::Process()
     uint64_t nTimes = Ceil(tiling->n, DETER_UB_SIZE / sizeof(DTYPE_OUT));
     syncConfig.baseN = Ceil(Ceil(tiling->n, nTimes), 128) * 128;  //  128: num int32_t in 512B align block
     for (uint32_t groupIdx = 0, preCount = 0; groupIdx < tiling->groupNum; ++groupIdx) {
-        uint32_t m = static_cast<uint32_t>(groupTokensGm.GetValue(groupIdx));
-        if (m <= 0) {
+        uint32_t groupRemaining = static_cast<uint32_t>(groupTokensGm.GetValue(groupIdx));
+        if (groupRemaining == 0) {
             continue;
         }
         if constexpr (P::groupListType){
-            m -= mnConfig.offsetM;
+            groupRemaining -= mnConfig.offsetM;
         }
-        mnConfig.m = static_cast<uint32_t>(m);
-        mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
-        uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
-        uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
-        uint32_t thresholdMDimN = thresholdBlockNum * mnConfig.blockDimN;
-
-        while (curBlock < curCount) {
-            MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdMDimN, tiling->deterministicFlag);
-            MMCompute(groupIdx, mnConfig);
+        while (groupRemaining > 0) {
+            uint32_t chunkM = groupRemaining;
+            if (tiling->deterministicFlag == 1 && chunkM > syncConfig.windowSize) {
+                chunkM = static_cast<uint32_t>(syncConfig.windowSize);
+            }
+            mnConfig.m = chunkM;
+            mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
             VectorSync(mnConfig, syncConfig);
-            VectorCompute(groupIdx, mnConfig, syncConfig);
-            curBlock += tiling->coreNum;
+            uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
+            uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
+            uint32_t thresholdMDimN = thresholdBlockNum * mnConfig.blockDimN;
+
+            while (curBlock < curCount) {
+                MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdMDimN, tiling->deterministicFlag);
+                MMCompute(groupIdx, mnConfig);
+                VectorCompute(groupIdx, mnConfig, syncConfig);
+                curBlock += tiling->coreNum;
+            }
+            preCount = curCount % tiling->coreNum;
+            mnConfig.offsetM += chunkM;
+            groupRemaining -= chunkM;
         }
-        preCount = curCount % tiling->coreNum;
-        mnConfig.offsetM += mnConfig.m;
     }
     if (tiling->deterministicFlag == 1) {
         syncConfig.curM = mnConfig.offsetM;
@@ -627,26 +634,15 @@ __aicore__ inline void QuantGroupMatmul<P>::VectorSync(MNConfig& mnConfig, SyncC
     if (tiling->deterministicFlag == 0) {
         return;
     }
-    while (mnConfig.curBlockM > syncConfig.lowBoundM) {
-        while (syncConfig.curGroup < tiling->groupNum) {
-            uint32_t mi = static_cast<uint32_t>(groupTokensGm.GetValue(syncConfig.curGroup));
-            if constexpr (P::groupListType){
-                if (syncConfig.curGroup > 0) {
-                    mi -= static_cast<uint32_t>(groupTokensGm.GetValue(syncConfig.curGroup - 1));
-                }
-            }
-            if (syncConfig.curGroupM + mi <= syncConfig.lowBoundM) {
-                syncConfig.curGroupM += mi;
-                syncConfig.curM = syncConfig.curGroupM;
-                syncConfig.curGroup++;
-            } else {
-                syncConfig.curM += (syncConfig.lowBoundM - syncConfig.curM) / mnConfig.singleM * mnConfig.singleM;
-                break;
-            }
-        }
-        FRDeterministic(syncConfig);
-        syncConfig.lowBoundM = syncConfig.curM + syncConfig.windowSize;
+    // All AIVs visit every group boundary. Flush completed groups before the next group crosses
+    // the workspace window, keeping FRDeterministic all-core barriers balanced.
+    uint64_t nextGroupM = static_cast<uint64_t>(mnConfig.offsetM) + mnConfig.m;
+    if (nextGroupM <= syncConfig.lowBoundM) {
+        return;
     }
+    syncConfig.curM = mnConfig.offsetM;
+    FRDeterministic(syncConfig);
+    syncConfig.lowBoundM = syncConfig.curM + syncConfig.windowSize;
 }
 
 template <class P>
@@ -679,6 +675,7 @@ __aicore__ inline void QuantGroupMatmul<P>::FRDeterministic(SyncConfig& syncConf
             bindLocal = queBind.DeQue<DTYPE_OUT>();
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyPad(yGm[outRow * tiling->n + nOffset], bindLocal, paramsOut);
+            PipeBarrier<PIPE_MTE3>();
             SetAtomicNone();
             queBind.FreeTensor(bindLocal);
         }
