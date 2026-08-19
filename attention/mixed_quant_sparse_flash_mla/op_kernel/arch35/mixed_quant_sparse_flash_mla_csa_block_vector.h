@@ -2282,9 +2282,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInf
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_STAGE0_IN(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(0));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE0_OUT(1));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(0));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(1));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
     WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
