@@ -20,8 +20,6 @@
 #include "../../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
-#include "../../../common/op_kernel/apace/tiling/comm_tiling_data.h"
-#include "../../../common/op_kernel/apace/tiling/quant_matmul_tiling_data.h"
 
 struct MatmulAlltoAllTilingInfo {
     uint32_t rankDim;      // 卡数:kernel能通过hccl接口获取到就直接删除
@@ -53,15 +51,6 @@ struct QuantMatmulAlltoAllTilingData {
     MatmulAlltoAllTilingInfo quantMatmulAlltoAllTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantBmmV3TileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantBmmV3TailTilingData; // 通算切分尾块matmul tiling数据
-};
-
-// Hcomm通信MX量化tiling结构体（apace hcomm纯C通信路径使用）
-struct hcommAllToAllMatmulTilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling;
-    Apace::CommTilingData commTilingData;
-    Apace::QuantMatmulTilingData tileQbmmTilingData;
-    uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomicadd
 };
 
 #endif // MATMUL_ALLTO_ALL_TILING_H
