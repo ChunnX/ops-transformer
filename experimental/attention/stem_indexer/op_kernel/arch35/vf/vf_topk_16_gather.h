@@ -87,9 +87,8 @@ __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     HistogramsHighProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 3, rowIdx3);
 }
 
-__simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHighBuf,
-                                                      __ubuf__ uint32_t *histogramsBuf, uint32_t topK,
-                                                      uint32_t validLen, uint32_t rowSlot)
+__simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *histogramsBuf,
+                                                      uint32_t topK, uint32_t validLen, uint32_t rowSlot)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
@@ -128,8 +127,7 @@ __simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHigh
     MicroAPI::StoreUnAlignPost(roundIdxHighBuf, alignIdxHigh);
 }
 
-__simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t *idxHighBuf,
-                                                       __ubuf__ uint32_t *nkValueBuf,
+__simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *nkValueBuf,
                                                        __ubuf__ uint32_t *histogramsBuf, uint32_t topK,
                                                        uint32_t validLen, uint32_t rowSlot)
 {

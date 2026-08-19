@@ -83,16 +83,15 @@ public:
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
 protected:
-    __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx,
-                                uint32_t l0cSlot);
+    __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx, uint32_t l0cSlot);
     __aicore__ inline void ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
                                       bool needMBarrier);
     __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
                                                  uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset,
                                       uint32_t queryL1Slot, const SICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset,
-                                    uint32_t keyL1Slot, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, uint32_t keyL1Slot,
+                                    const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -191,8 +190,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
         const uint64_t s2L1RealSize =
             s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
-        const uint32_t nBlockNum =
-            static_cast<uint32_t>(CeilDiv(s2L1RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
+        const uint32_t nBlockNum = static_cast<uint32_t>(CeilDiv(s2L1RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
         LoadData2DParamsV2 keyLoadParams;
         keyLoadParams.mStartPosition = 0U;
         keyLoadParams.kStartPosition = 0U;
@@ -208,8 +206,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
         const uint64_t l0cOffset = l0cSlot * L0C_BUFFER_OFFSET + s2GmOffset * mAlignSize;
 
         uint32_t dL1Idx = 0U;
-        for (uint64_t kGmOffset = 0; kGmOffset < kProcessSize;
-             kGmOffset += D_BASIC_BLOCK_L1, ++dL1Idx) {
+        for (uint64_t kGmOffset = 0; kGmOffset < kProcessSize; kGmOffset += D_BASIC_BLOCK_L1, ++dL1Idx) {
             const uint32_t keyL1Slot = keyL1BufIdx_ & (KEY_BUF_NUM - 1U);
             const uint32_t queryL1Slot = dL1Idx & (QUERY_BUF_NUM - 1U);
             WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
@@ -322,8 +319,8 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot,
-                                                 const MmadParams &mmadParams, bool needMBarrier)
+__aicore__ inline void SIMatmul<SIT>::ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
+                                                 bool needMBarrier)
 {
     Mmad(cL0_[l0cOffset], queryL0_[l0Slot * L0A_BUFFER_OFFSET], keyL0_[l0Slot * L0B_BUFFER_OFFSET], mmadParams);
     if (needMBarrier) {
@@ -349,9 +346,8 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gRealSize, uint64_t s2Real
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
     // 将matmul结果从L0C搬运到UB。
-    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(
-        mm1ResUB_[mm1BufferIdx * (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))],
-        cL0_[l0cSlot * L0C_BUFFER_OFFSET], fixpipeParams);
+    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[mm1BufferIdx * (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))],
+                                              cL0_[l0cSlot * L0C_BUFFER_OFFSET], fixpipeParams);
 }
 
 template <typename SIT>

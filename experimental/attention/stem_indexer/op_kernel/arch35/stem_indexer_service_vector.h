@@ -242,9 +242,8 @@ __aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx,
     uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
     int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (aivParity == 0U) ?
-                                   ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
-                                   (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
+                                                   (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
     if (curAivGS1ProcNum == 0) {
         return;
     }
@@ -330,8 +329,7 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(uint32_t s1Idx, i
     float interpolatedTopkCount = kStartFloat + t * (kEnd - kStartFloat);
 
     // 正数转有符号整数等价于 floor；外推到负数时先钳制，避免无符号转换。
-    int32_t dynamicTopkCount =
-        interpolatedTopkCount < 1.0f ? 1 : static_cast<int32_t>(interpolatedTopkCount);
+    int32_t dynamicTopkCount = interpolatedTopkCount < 1.0f ? 1 : static_cast<int32_t>(interpolatedTopkCount);
     dynamicTopkCount = Min(dynamicTopkCount, kStart);
 
     return static_cast<uint32_t>(dynamicTopkCount);
@@ -426,10 +424,11 @@ __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(const SICommon::RunIn
 }
 
 template <typename SIT>
-__aicore__ inline void
-SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop,
-                                const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
-                                const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum, int64_t curAivGS1Idx)
+__aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
+                                                       bool isLastS2InnerLoop, const SICommon::RowIdx4 &rowIdx4,
+                                                       const SICommon::TopkNum4 &topkNum4,
+                                                       const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
+                                                       int64_t curAivGS1Idx)
 {
     // padding（各行按自身 s2BlockValidLen 补齐到 TRUNK_LEN_256，非零行结果一致）
     if (isFirstS2InnerLoop) {
@@ -443,8 +442,7 @@ SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2Inn
     uint32_t validLen = isFirstS2InnerLoop ? SICommon::TRUNK_LEN_256 : (TOPK_ALIGN_SIZE + SICommon::TRUNK_LEN_256);
 
     LocalTensor<uint32_t> reuseMm1ResLocal =
-        resMm1Local_[(info.loop % SICommon::MM1_RES_BUFFER_NUM) *
-                     (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))]
+        resMm1Local_[(info.loop % SICommon::MM1_RES_BUFFER_NUM) * (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))]
             .ReinterpretCast<uint32_t>();
     PipeBarrier<PIPE_V>();
 
@@ -489,9 +487,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
     uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
     int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (aivParity == 0U) ?
-                                   ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
-                                   (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
+                                                   (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
 
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
@@ -585,8 +582,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
                          curAivGS1Idx);
     }
     // TopK已不再访问当前resMm1Local_槽，先归还给Cube，使下一轮MM1可与最终MTE3搬出并行。
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(
-        SICommon::CROSS_VC_EVENT + (info.loop % SICommon::MM1_RES_BUFFER_NUM));
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT +
+                                                      (info.loop % SICommon::MM1_RES_BUFFER_NUM));
     if (isLastS2InnerLoop) {
         CopyOutPackedResults(info, curAivGS1Idx, curAivGS1ProcNum);
     }
@@ -620,9 +617,8 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
         int64_t curAivGS1Idx = curGS1Idx + aivParity * ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U);
         // 当前AIV核需要处理的gS1行数量
-        int64_t curAivGS1ProcNum = (aivParity == 0U) ?
-                                       ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
-                                       (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
+        int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((static_cast<uint64_t>(curGS1ProcNum) + 1U) >> 1U) :
+                                                       (static_cast<uint64_t>(curGS1ProcNum) >> 1U);
 
         uint32_t curS1RealS2Len = actS2Size;
         uint32_t curAivGSize = CeilDiv(curAivGS1ProcNum, actS1Size);

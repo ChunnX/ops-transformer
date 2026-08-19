@@ -322,11 +322,12 @@ __aicore__ inline void SIPreload<SIT>::GetFASectionInfo(uint32_t sectionIdx)
 }
 
 template <typename SIT>
-__aicore__ inline void
-SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias, __gm__ uint8_t *qSeqLens,
-                     __gm__ uint8_t *kvSeqLens, __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
-                     __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *workspace,
-                     const StemIndexerTilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
+                                            __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
+                                            __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
+                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
+                                            __gm__ uint8_t *workspace, const StemIndexerTilingData *__restrict tiling,
+                                            TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -338,8 +339,7 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
-    __gm__ uint8_t *effectiveNumPromptTokens =
-        useKvSeqLensAsNumPrompt ? kvSeqLens : numPromptTokens;
+    __gm__ uint8_t *effectiveNumPromptTokens = useKvSeqLensAsNumPrompt ? kvSeqLens : numPromptTokens;
     numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)effectiveNumPromptTokens, constInfo.batchSize);
 
     sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
@@ -436,8 +436,8 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
                       tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim;
     keyCoreOffset = tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize * constInfo.headDim +
                     tempLoopInfo.n2Idx * constInfo.kSeqSize * constInfo.headDim;
-    vbiasCoreOffset = tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize +
-                      tempLoopInfo.n2Idx * constInfo.kSeqSize;
+    vbiasCoreOffset =
+        tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize + tempLoopInfo.n2Idx * constInfo.kSeqSize;
     indiceOutCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize +
                           tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.kSeqSize;
     indiceLenCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
@@ -474,8 +474,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.indiceLenOffset = indiceLenCoreOffset;
 
-    runInfo.tensorKeyOffset = keyCoreOffset +
-                              runInfo.s2Idx * constInfo.s2BaseSize * constInfo.headDim;
+    runInfo.tensorKeyOffset = keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.headDim;
 
     runInfo.tensorVBiasOffset = vbiasCoreOffset;
 }
@@ -486,12 +485,9 @@ __aicore__ inline void SIPreload<SIT>::WaitMm1CrossCoreSlots()
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0U);
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1U);
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2U);
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(
-        SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 0U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 1U);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + SICommon::AIV0_AIV1_OFFSET + 2U);
 }
 
 template <typename SIT>
@@ -556,8 +552,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx,
-                                                        SICommon::RunInfo &runInfo)
+__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

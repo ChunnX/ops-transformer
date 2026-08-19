@@ -219,12 +219,9 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
             auto &prevFaRes = (secIdx == 0U) ? dummyHead : result.sectionFaResult[secIdx - 1U];
             auto prevLastCore = (secIdx == 0U) ? 0U : prevFaRes.usedCoreNum - 1U;
-            SLI_METADATA_T bn2Start =
-                (aicIdx == 0) ? prevFaRes.bN2End[prevLastCore] : faRes.bN2End[aicIdx - 1U];
-            SLI_METADATA_T mStart =
-                (aicIdx == 0) ? prevFaRes.gS1End[prevLastCore] : faRes.gS1End[aicIdx - 1U];
-            SLI_METADATA_T s2Start =
-                (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
+            SLI_METADATA_T bn2Start = (aicIdx == 0) ? prevFaRes.bN2End[prevLastCore] : faRes.bN2End[aicIdx - 1U];
+            SLI_METADATA_T mStart = (aicIdx == 0) ? prevFaRes.gS1End[prevLastCore] : faRes.gS1End[aicIdx - 1U];
+            SLI_METADATA_T s2Start = (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
 
             sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN2_START_INDEX, bn2Start);
             sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_START_INDEX, mStart);
