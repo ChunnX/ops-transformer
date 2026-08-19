@@ -203,7 +203,7 @@ struct RunInfo {
     uint32_t aivIdx; \
     uint8_t subBlockIdx; \
     bool hasOriTopkLength; \
-    bool hasCmpTopkLength;
+    bool hasCmpTopkLength
 
 #define INFER_CONST_INFO \
     /* 推理 */ \

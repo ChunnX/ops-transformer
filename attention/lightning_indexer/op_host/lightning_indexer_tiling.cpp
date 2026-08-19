@@ -550,8 +550,8 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 
         if (kLayout_ == DataLayout::BnBsND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(1));
-            shapeSize = static_cast<uint64_t>(shape.GetDim(1)) * static_cast<uint64_t>(shape.GetDim(2)) *
-                        static_cast<uint64_t>(shape.GetDim(3));
+            shapeSize = static_cast<uint64_t>(shape.GetDim(1)) * static_cast<uint64_t>(shape.GetDim(2U)) *
+                        static_cast<uint64_t>(shape.GetDim(3U));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(shape.GetDim(0));
             shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();

@@ -430,7 +430,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (groupSize_ > 64U) {
             isSplitG_ = true;
-            aicCoreNum_ /= 2;
+            aicCoreNum_ /= 2U;
         }
         mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
