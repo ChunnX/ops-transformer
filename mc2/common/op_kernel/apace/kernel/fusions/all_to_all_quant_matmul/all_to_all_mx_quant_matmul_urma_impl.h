@@ -26,7 +26,7 @@
 
 #include "adv_api/hcomm/hcomm.h"
 #include "blaze/gemm/utils/common_utils.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_mmad.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"

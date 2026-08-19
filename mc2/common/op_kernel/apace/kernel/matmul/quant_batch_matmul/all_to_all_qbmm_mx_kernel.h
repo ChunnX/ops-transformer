@@ -24,7 +24,7 @@
 
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_mmad.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 
 namespace Blaze {
