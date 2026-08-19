@@ -98,6 +98,9 @@ def run_main(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
@@ -106,7 +109,7 @@ def run_main(
     data_range_v: float = 1.0,
     **kwargs,
 ):
-    input_layout = kwargs.get("layout_q") or input_layout
+    input_layout = layout_q or input_layout
     """重建 metadata 后调 quant_flash_attn 主算子, 返回 [atten_out, lse_out]。
 
     分离测试入口: 验证主算子 + metadata 完整链路。
@@ -397,6 +400,8 @@ def run_main(
     act_seqused_q = (
         fp8_golden_mod._actual_seq_q()
         if quant_mode == 6
+        else hif8_golden_mod._actual_seq_q()
+        if quant_mode == 7
         else mxfp8_golden_mod._actual_seq_q()
     )
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,

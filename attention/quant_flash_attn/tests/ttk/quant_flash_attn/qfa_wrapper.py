@@ -83,6 +83,9 @@ def npu_qfa(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
@@ -91,7 +94,7 @@ def npu_qfa(
     data_range_v: float = 1.0,
     **kwargs,
 ):
-    input_layout = kwargs.get("layout_q") or input_layout
+    input_layout = layout_q or input_layout
     torch_npu.npu.set_device(int(device_id))
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None:
@@ -105,7 +108,7 @@ def npu_qfa(
 
     # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
     # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
-    B = (
+    B = batch_size if batch_size is not None and batch_size > 0 else (
         max(1, len(cu_seqlens_q_list) - 1)
         if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
         else 1
