@@ -315,6 +315,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
                                                static_cast<uint64_t>(cumsumInfoTensorSize) * countWorkspace_.blockIdx));
     }
     scratch.cumsumRevCntInRank = 0U;
+    scratch.nextDispatchCoreIdx = 0U;
 
     uint32_t expertTokenCntTensorAddr = 0U;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
@@ -534,22 +535,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// 计算当前专家的 token 数，并在非空时执行完整 Dispatch。
+// 使用紧凑 count/cumsum 规划当前专家的跨专家滚动 Dispatch。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
 {
-    uint32_t expertTokenCount = 0U;
-    ComputeExpertTokenCountAndNotify<ActivationType, ENABLE_A8W4 || ENABLE_A4W4, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, commonConfig_, countWorkspace_, params_, tokenDispatchScratch_, expertIdx,
-        expertTokenCount);
-    if (expertTokenCount != 0U) {
-        int32_t expertGlobalRowBegin =
-            GetExpertGlobalRowBegin(tokenDispatchScratch_, expertIdx, commonConfig_.worldSize);
-        DispatchExpertTokensByRankShard<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_, syncWorkspaceLayout_,
-            params_, winRankAddr_, tokenDispatchScratch_, expertIdx, expertGlobalRowBegin);
+    WaveDispatchCoreRange dispatchCoreRange = PlanWaveExpertDispatch(
+        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, tokenDispatchScratch_, expertIdx);
+    if (HasWaveDispatchRows(dispatchCoreRange)) {
+        DispatchWaveExpertRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            tokenDispatchConfig_, commonConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_,
+            expertIdx, dispatchCoreRange);
     }
-    return expertTokenCount;
+    return static_cast<uint32_t>(dispatchCoreRange.expertRowCount);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
