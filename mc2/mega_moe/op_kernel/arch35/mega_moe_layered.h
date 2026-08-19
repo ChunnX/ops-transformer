@@ -1386,8 +1386,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
     GM_ADDR remoteFlagAddr =
         GetRankWinAddrWithOffset(relayRank, dispatchFlagWinOffset_) + RelayFlagOffset(srcServer, 0);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    // HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, GetRankWinAddrWithOffset(relayRank, 0),
-    //     nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+    HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, GetRankWinAddrWithOffset(relayRank, 0),
+        nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
     DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
     DataCopyPadExtParams<uint64_t> flagCopyPadParams{true, 0U, 0U, 0U};
 
@@ -1418,8 +1418,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             GM_ADDR scaleDstAddr =
                 params_.workspaceInfo.dispatchRevScalePtr +
                 static_cast<uint64_t>(rowDstOffsetInCore + copyIdx) * widthAScale * sizeof(QuantScaleOutType);
-            hcomm_.ReadNbi(channel, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
-            hcomm_.ReadNbi(channel, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
+            hcomm_.ReadNbi(activeBatchHandle, tokenDstAddr, remoteRecordAddr, widthA * sizeof(ActivationType));
+            hcomm_.ReadNbi(activeBatchHandle, scaleDstAddr, remoteRecordAddr + mxQuantTokenAlignBytes_,
                                  widthAScale * sizeof(QuantScaleOutType));
             if constexpr (TopkWeightsPrefetch) {
                 GM_ADDR weightDstAddr = params_.workspaceInfo.dispatchRevWeightsPtr +
@@ -1432,9 +1432,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             ++receivedCount;
         }
         SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
-        // hcomm_.BatchCommit(activeBatchHandle);
+        hcomm_.BatchCommit(activeBatchHandle);
     }
-    hcomm_.Drain(channel);
+    hcomm_.Drain(activeBatchHandle);
 }
 
 // ============================================================================
