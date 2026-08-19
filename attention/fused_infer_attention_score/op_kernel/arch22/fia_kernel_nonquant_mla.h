@@ -989,7 +989,8 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
                 CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, extraInfo);
                 createdTaskCount++;
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
-            } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP ||
+            } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
+                       taskDealMode == TASK_DEAL_MODE::SKIP ||
                        taskDealMode == TASK_DEAL_MODE::SKIP_ZERO) {
                 // 仅推进指针，不执行计算
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);

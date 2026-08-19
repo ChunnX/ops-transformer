@@ -601,7 +601,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
         while (taskId < usedCoreNum &&
                (bN2IdxOfFdHead[taskId] != curbN2Idx ||
                 gS1IdxOfFdHead[taskId] * constInfo.mBaseSize !=
-                    info.gS1Idx)) { // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
+                    info.gS1Idx)) {                       // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
             accumTmpOutNum += s2SplitNumOfFdHead[taskId]; // 计算前面的workspace数
             taskId++;
         }

@@ -503,6 +503,7 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     l2CacheOffFlag_ = GetL2CacheOffFlag();
     tilingData_.baseParams.set_l2CacheOffFlag(l2CacheOffFlag_);
     tilingData_.baseParams.set_isLegacyIfa(fiaInfo_->isLegacyIfa);
+    tilingData_.baseParams.set_needInit(fiaInfo_->needInit);
     tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
     // The generic arch22 template does not consume cache view strides.
     tilingData_.kvStrideParams.set_keyBnStride(0);
