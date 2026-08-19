@@ -153,14 +153,19 @@ inline HcclResult PrepareAllGatherMatmul(void *sendBuf, void *recvBuf, uint64_t 
     }
 
     // ---- 拷贝 inputOffsets/outputOffsets 到 device GM（供 AIC kernel 读取）----
+    // 注意：本函数返回 HcclResult，不能用 ACLCHECK（返回 aclError），需手动检查
     void *dInputOffsets = nullptr;
-    ACLCHECK(aclrtMalloc(&dInputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY));
+    aclError aclRet = aclrtMalloc(&dInputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
     void *dOutputOffsets = nullptr;
-    ACLCHECK(aclrtMalloc(&dOutputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY));
-    ACLCHECK(aclrtMemcpy(dInputOffsets, ctx.commTurn * sizeof(uint64_t),
-                         ctx.inputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE));
-    ACLCHECK(aclrtMemcpy(dOutputOffsets, ctx.commTurn * sizeof(uint64_t),
-                         ctx.outputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE));
+    aclRet = aclrtMalloc(&dOutputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMemcpy(dInputOffsets, ctx.commTurn * sizeof(uint64_t),
+                         ctx.inputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMemcpy(dOutputOffsets, ctx.commTurn * sizeof(uint64_t),
+                         ctx.outputOffsets, ctx.commTurn * sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
     ctx.d_inputOffsetsAddr = reinterpret_cast<uint64_t>(dInputOffsets);
     ctx.d_outputOffsetsAddr = reinterpret_cast<uint64_t>(dOutputOffsets);
 
