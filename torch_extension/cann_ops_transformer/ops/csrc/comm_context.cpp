@@ -107,10 +107,13 @@ static void CopyContextToTensor(const CommContext &context, at::Tensor &tensor)
 // ======================== KFC Mode ========================
 class KfcContextBuilder {
 public:
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor)
+    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
+               void **localDeviceBuffer)
     {
         CommContext mc2ContextHost;
         GetMc2Context(mc2ContextHost, worldSize, cclBufferSize, group.c_str());
+        TORCH_CHECK(mc2ContextHost.epRankId < HCCL_MAX_RANK_SIZE, "Invalid local rank id: ", mc2ContextHost.epRankId);
+        *localDeviceBuffer = reinterpret_cast<void *>(mc2ContextHost.epHcclBuffer_[mc2ContextHost.epRankId]);
 
         CopyContextToTensor(mc2ContextHost, contextTensor);
     }
@@ -530,8 +533,8 @@ public:
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
         TORCH_CHECK(memBufferTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
-            "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
-            ", got ", memBufferTag.size());
+                    "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+                    ", got ", memBufferTag.size());
         AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize, memBufferTag);
@@ -630,9 +633,16 @@ public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
                        int64_t customCclBufferSize = 0)
-        : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName), backend_(backend),
-          mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0), topoType_(TopoType::INTRA_SUPER_NODE),
-          rankNumPerServer_(2), customCclBufferSize_(customCclBufferSize)
+        : group_(group),
+          worldSize_(worldSize),
+          commAlg_(commAlg),
+          opName_(opName),
+          backend_(backend),
+          mode_(BackendMode::UNINITIALIZED),
+          cclBufferSize_(0),
+          topoType_(TopoType::INTRA_SUPER_NODE),
+          rankNumPerServer_(2),
+          customCclBufferSize_(customCclBufferSize)
     {
     }
 
@@ -678,6 +688,7 @@ public:
             TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFree(customDeviceBuffer_) failed, ret=", aclRet);
             customDeviceBuffer_ = nullptr;
         }
+        localDeviceBuffer_ = nullptr;
     }
 
     int64_t CclBufferSize() const
@@ -691,6 +702,24 @@ public:
     int64_t GetRankNumPerServer() const
     {
         return static_cast<int64_t>(rankNumPerServer_);
+    }
+
+    at::Tensor GetLocalBufferTensor(const py::object &dtype, int64_t offset) const
+    {
+        TORCH_CHECK(localDeviceBuffer_ != nullptr, "Local CCL buffer is not initialized.");
+        TORCH_CHECK(offset >= 0, "offset must be non-negative, got ", offset, ".");
+        torch::ScalarType scalarType = torch::python::detail::py_object_to_dtype(dtype);
+        int64_t elementBytes = static_cast<int64_t>(c10::elementSize(scalarType));
+        TORCH_CHECK(elementBytes > 0, "Invalid element size for requested dtype.");
+        int64_t totalElements = cclBufferSize_ / elementBytes;
+        TORCH_CHECK(offset <= totalElements, "offset must be in [0, ", totalElements, "], got ", offset, ".");
+
+        void *data = static_cast<void *>(static_cast<uint8_t *>(localDeviceBuffer_) + offset * elementBytes);
+        auto options = at::TensorOptions()
+                           .dtype(scalarType)
+                           .device(c10::DeviceType::PrivateUse1)
+                           .memory_format(c10::MemoryFormat::Contiguous);
+        return at::from_blob(data, {totalElements - offset}, options);
     }
 
 private:
@@ -709,21 +738,20 @@ private:
     void DispatchBuild(at::Tensor &tensor)
     {
         switch (mode_) {
-            case BackendMode::KFC:
-                {
-                    KfcContextBuilder builder;
-                    builder.Build(group_, worldSize_, cclBufferSize_, tensor);
-                    return;
-                }
-            case BackendMode::CHANNEL:
-                {
-                    HcclChannelContextBuilder builder;
-                    builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_,
-                                  customCclBufferSize_, &customDeviceBuffer_, &customMemHandle_);
-                    topoType_ = builder.GetTopoType();
-                    rankNumPerServer_ = builder.GetRankNumPerServer();
-                    return;
-                }
+            case BackendMode::KFC: {
+                KfcContextBuilder builder;
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, &localDeviceBuffer_);
+                return;
+            }
+            case BackendMode::CHANNEL: {
+                HcclChannelContextBuilder builder;
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_,
+                              customCclBufferSize_, &customDeviceBuffer_, &customMemHandle_);
+                localDeviceBuffer_ = customDeviceBuffer_;
+                topoType_ = builder.GetTopoType();
+                rankNumPerServer_ = builder.GetRankNumPerServer();
+                return;
+            }
             default:
                 TORCH_CHECK(false, "Unknown backend mode: ", static_cast<int>(mode_));
         }
@@ -740,6 +768,7 @@ private:
     int64_t rankNumPerServer_ = 2;
     int64_t customCclBufferSize_ = 0;
     void *customDeviceBuffer_ = nullptr;
+    void *localDeviceBuffer_ = nullptr;
     HcclMemHandle customMemHandle_ = nullptr;
 };
 
@@ -755,6 +784,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
         .def("destroy", &CommContextManager::Destroy)
+        .def("get_local_buffer_tensor", &CommContextManager::GetLocalBufferTensor, py::arg("dtype"),
+             py::arg("offset") = 0)
         .def_property_readonly("ccl_buffer_size", &CommContextManager::CclBufferSize)
         .def_property_readonly("topo_type", &CommContextManager::GetTopoType)
         .def_property_readonly("rank_num_per_server", &CommContextManager::GetRankNumPerServer);
