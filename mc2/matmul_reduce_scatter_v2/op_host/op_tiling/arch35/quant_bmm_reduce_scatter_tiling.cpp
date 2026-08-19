@@ -540,9 +540,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 
 uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 {
-    bool enableNd2Nz = false;              // quantbatchmatmul输入数据格式为ND
-    bool isCastBias = false;               // david上支持bias数据类型为bf16
-    uint8_t commAlgorithm = args_.commAlg; // fullmesh
     uint8_t outputType = 0;
     uint32_t yDType = static_cast<uint32_t>(*context_->GetAttrs()->GetAttrPointer<uint64_t>(YDTYPE_INDEX));
     if (yDType == DTYPE_ENUM_FLOAT) {
@@ -667,9 +664,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
                         return ge::GRAPH_FAILED);
         apaceTilingData_.mc2InitTiling = quantBmmMatmulReducescatterTilingData_->mc2InitTiling;
         apaceTilingData_.mc2CcTiling = quantBmmMatmulReducescatterTilingData_->mc2CcTiling;
-        apaceTilingData_.param = quantBmmMatmulReducescatterTilingData_->param;
-        apaceTilingData_.dataType = quantBmmMatmulReducescatterTilingData_->dataType;
-        apaceTilingData_.debugMode = quantBmmMatmulReducescatterTilingData_->debugMode;
         auto outTilingData = context_->GetTilingData<hcommMatmulReduceScatterV2TilingData>();
         OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "failed to get APACE tiling data from context"),
                         return ge::GRAPH_FAILED);
@@ -695,8 +689,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     }
     uint32_t usedCoreNum = 0;
     if (usingApaceImpl_) {
-        usedCoreNum = std::max(apaceTilingData_.tileQbmmTilingData.usedCoreNum,
-                               apaceTilingData_.tailQbmmTilingData.usedCoreNum);
+        usedCoreNum = apaceTilingData_.tileQbmmTilingData.usedCoreNum;
     } else {
         usedCoreNum = std::max(MutableTCubeTileTilingData().usedCoreNum, MutableTCubeTailTilingData().usedCoreNum);
     }
@@ -787,25 +780,24 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
     const uint64_t perRankM = static_cast<uint64_t>(cfg.rankM) / cfg.rankDim;
     const uint64_t tileM =
         (perRankM - static_cast<uint64_t>(cfg.tailM) * cfg.tailCnt) / cfg.tileCnt;
+    auto &commTiling = apaceTilingData_.commTilingData;
+    commTiling.splitAxisTileSize = tileM;
+    commTiling.splitAxisTileCnt = cfg.tileCnt;
+    commTiling.splitAxisTailSize = cfg.tailM;
+    commTiling.splitAxisTailCnt = cfg.tailCnt;
+    commTiling.nonSplitAxisSize = args_.nValue;
     auto &tileTiling = apaceTilingData_.tileQbmmTilingData;
-    auto &tailTiling = apaceTilingData_.tailQbmmTilingData;
 
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(tileM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
-        if (cfg.tailCnt > 0) {
-            tilingSwat.GetTilingData(cfg.tailM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
-        }
+        tilingSwat.GetTilingData(cfg.rankM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
     } else {
         // E4M3 and E5M2 have the same B8 storage and share the APACE tiling strategy.
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(tileM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
-        if (cfg.tailCnt > 0) {
-            tilingSwat.GetTilingData(cfg.tailM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
-        }
+        tilingSwat.GetTilingData(cfg.rankM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
     }
-    OP_LOGD(opName_, "APACE MX tiling: tileM=%lu, tailM=%u, N=%lu, K=%lu", tileM, cfg.tailM, args_.nValue,
-            args_.kValue);
+    OP_LOGD(opName_, "APACE MX tiling: rankM=%u, tileM=%lu, tailM=%u, N=%lu, K=%lu", cfg.rankM, tileM,
+            cfg.tailM, args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -28,6 +28,18 @@ namespace Apace {
 
 constexpr uint32_t MAX_MATMUL_REDUCE_SCATTER_HCOMM_HANDLE = 64;
 
+template <typename T>
+constexpr AscendC::HcclDataType GetMatmulReduceScatterV2HcclDataType()
+{
+    if constexpr (AscendC::IsSameType<T, float>::value) {
+        return AscendC::HCCL_DATA_TYPE_FP32;
+    } else if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
+        return AscendC::HCCL_DATA_TYPE_BFP16;
+    } else {
+        return AscendC::HCCL_DATA_TYPE_FP16;
+    }
+}
+
 template <bool BTrans>
 struct MatmulReduceScatterV2BLayout {
     using Type = AscendC::Te::NDExtLayoutPtn;
@@ -81,9 +93,12 @@ public:
 
     __aicore__ inline void Run()
     {
-        RunSlices(tilingData_->param.tileCnt, false, &tilingData_->tileQbmmTilingData);
-        if (tilingData_->param.tailCnt > 0) {
-            RunSlices(tilingData_->param.tailCnt, true, &tilingData_->tailQbmmTilingData);
+        const auto &commTiling = tilingData_->commTilingData;
+        RunMatmul(&tilingData_->tileQbmmTilingData);
+        AscendC::SyncAll();
+        RunReduceScatterSlices(static_cast<uint32_t>(commTiling.splitAxisTileCnt), false);
+        if (commTiling.splitAxisTailCnt > 0) {
+            RunReduceScatterSlices(static_cast<uint32_t>(commTiling.splitAxisTailCnt), true);
         }
         if (AscendC::GetBlockIdx() == 0) {
             for (uint32_t i = 0; i < handleCount_; ++i) {
@@ -95,32 +110,16 @@ public:
     }
 
 private:
-    __aicore__ inline uint64_t GetInputBytes(uint64_t elements) const
+    __aicore__ inline void RunMatmul(const QuantMatmulTilingData *tiling)
     {
-        if constexpr (Blaze::Gemm::IsFp4<AType>()) {
-            return (elements + 1UL) / 2UL;
-        }
-        return elements * sizeof(AType);
-    }
-
-    __aicore__ inline uint64_t GetScaleKBytes(const QuantMatmulTilingData *tiling) const
-    {
-        constexpr uint64_t groupSize = 64UL;
-        constexpr uint64_t scaleMultiBase = 2UL;
-        return ((static_cast<uint64_t>(tiling->k) + groupSize - 1UL) / groupSize) * scaleMultiBase;
-    }
-
-    __aicore__ inline void RunSingleRank(GM_ADDR rankA, GM_ADDR rankScaleA, GM_ADDR rankC,
-                                         uint64_t sliceM, const QuantMatmulTilingData *tiling)
-    {
-        ProblemShape problemShape{static_cast<int64_t>(sliceM), static_cast<int64_t>(tiling->n),
+        ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
         BlockMmadParams mmParams;
-        mmParams.aGmAddr = rankA;
-        mmParams.scaleAGmAddr = rankScaleA;
+        mmParams.aGmAddr = aGM_;
+        mmParams.scaleAGmAddr = x1ScaleGM_;
         mmParams.bGmAddr = bGM_;
         mmParams.scaleBGmAddr = x2ScaleGM_;
-        mmParams.cGmAddr = rankC;
+        mmParams.cGmAddr = workspaceGM_;
         mmParams.biasGmAddr = biasGM_;
         L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
                           tiling->scaleKL1, tiling->nBufferNum};
@@ -134,35 +133,30 @@ private:
         kernel_(params);
     }
 
-    __aicore__ inline void RunSlices(uint32_t sliceCount, bool isTail, const QuantMatmulTilingData *tiling)
+    __aicore__ inline void RunReduceScatterSlices(uint32_t sliceCount, bool isTail)
     {
-        const auto &cfg = tilingData_->param;
-        const uint64_t perRankM = static_cast<uint64_t>(cfg.rankM) / cfg.rankDim;
-        const uint64_t tileM =
-            (perRankM - static_cast<uint64_t>(cfg.tailM) * cfg.tailCnt) / cfg.tileCnt;
-        const uint64_t sliceM = isTail ? cfg.tailM : tileM;
-        const uint64_t outputBase = isTail ? static_cast<uint64_t>(cfg.tileCnt) * tileM * cfg.rankN : 0;
-        const uint32_t handleShift = isTail ? cfg.tileCnt : 0;
-        const uint64_t stride = perRankM * cfg.rankN;
-        const auto dataType = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
+        const auto &commTiling = tilingData_->commTilingData;
+        const uint64_t tileM = commTiling.splitAxisTileSize;
+        const uint64_t tailM = commTiling.splitAxisTailSize;
+        const uint64_t tileCnt = commTiling.splitAxisTileCnt;
+        const uint64_t tailCnt = commTiling.splitAxisTailCnt;
+        const uint64_t rankN = commTiling.nonSplitAxisSize;
+        const uint64_t perRankM = tileM * tileCnt + tailM * tailCnt;
+        const uint64_t sliceM = isTail ? tailM : tileM;
+        const uint64_t outputBase = isTail ? tileCnt * tileM * rankN : 0;
+        const uint32_t handleShift = isTail ? static_cast<uint32_t>(tileCnt) : 0;
+        const uint64_t stride = perRankM * rankN;
+        constexpr auto dataType = GetMatmulReduceScatterV2HcclDataType<CType>();
 
         for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
             const uint64_t sliceStart = isTail
-                ? static_cast<uint64_t>(cfg.tileCnt) * tileM + static_cast<uint64_t>(sliceIdx) * cfg.tailM
+                ? tileCnt * tileM + static_cast<uint64_t>(sliceIdx) * tailM
                 : static_cast<uint64_t>(sliceIdx) * tileM;
-            for (uint32_t rank = 0; rank < cfg.rankDim; ++rank) {
-                const uint64_t globalRow = static_cast<uint64_t>(rank) * perRankM + sliceStart;
-                GM_ADDR rankA = aGM_ + GetInputBytes(globalRow * tiling->k);
-                GM_ADDR rankScaleA = x1ScaleGM_ + globalRow * GetScaleKBytes(tiling);
-                GM_ADDR rankC = workspaceGM_ + globalRow * tiling->n * sizeof(CType);
-                RunSingleRank(rankA, rankScaleA, rankC, sliceM, tiling);
-            }
-            AscendC::SyncAll();
-            GM_ADDR sendBuffer = workspaceGM_ + sliceStart * cfg.rankN * sizeof(CType);
+            GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankN * sizeof(CType);
             GM_ADDR recvBuffer = yGM_ +
-                (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * cfg.rankN) * sizeof(CType);
+                (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * rankN) * sizeof(CType);
             handles_[sliceIdx + handleShift] = hccl_.template ReduceScatter<true>(
-                sendBuffer, recvBuffer, sliceM * cfg.rankN, dataType,
+                sendBuffer, recvBuffer, sliceM * rankN, dataType,
                 AscendC::HcclReduceOp::HCCL_REDUCE_SUM, stride, 1);
         }
         handleCount_ += sliceCount;
