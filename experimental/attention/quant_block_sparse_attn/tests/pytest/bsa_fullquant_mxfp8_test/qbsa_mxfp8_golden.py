@@ -2928,24 +2928,30 @@ def _cache_case_name(case_id, case_name_arg, total_case_num):
     return f"{case_name_arg}_{safe_case_id}"
 
 
-def _cpu_golden_cache_name(case_name, p_scale):
-    """Key CPU golden by the effective E8M0 P-scale byte.
-
-    This intentionally avoids pre-fix CPU cache files whose golden may have
-    consumed the original FP32 P scale.
-    """
+def _cpu_p_scale_cache_tag(p_scale):
+    """Return the cache tag for the effective E8M0 P-scale byte."""
     if p_scale is None or p_scale.numel() == 0:
-        return f"{case_name}__cv3_v1__pse8_default"
+        return "pse8_default"
     p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "CPU cache P scale")
     raw = p_scale_e8m0.contiguous().view(torch.uint8).reshape(-1)
     if raw.numel() != 1:
         raise ValueError(f"P scale must contain one E8M0 value, got {raw.numel()}")
-    return f"{case_name}__cv3_v1__pse8_{int(raw.item()):02x}"
+    return f"pse8_{int(raw.item()):02x}"
+
+
+def _cpu_golden_cache_name(case_name, p_scale):
+    """Key three-way high-precision golden by the effective E8M0 P-scale."""
+    return f"{case_name}__cv3_v1__{_cpu_p_scale_cache_tag(p_scale)}"
 
 
 def _cpu_benchmark_cache_name(cpu_cache_name, use_quant_matmul):
     backend = "quant_matmul" if use_quant_matmul else "torch_matmul"
     return f"{cpu_cache_name}__{backend}"
+
+
+def _cpu_two_way_cache_name(case_name, p_scale, use_quant_matmul):
+    backend = "quant_matmul" if use_quant_matmul else "torch_matmul"
+    return f"{case_name}__tw2_v1__{backend}__{_cpu_p_scale_cache_tag(p_scale)}"
 
 
 def _safe_debug_case_name(case_name):
@@ -3101,6 +3107,7 @@ def run_one_case(
     debug=False,
     graph=False,
     use_quant_matmul=False,
+    three_way_compare=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -3205,12 +3212,21 @@ def run_one_case(
     # and NPU receive the exact same E8M0 P-scale tensor.
     if p_scale is not None and p_scale.numel() > 0:
         p_scale = fp32_to_e8m0fnu_safe(p_scale, "Shared P scale")
-    cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale)
-    benchmark_cache_name = _cpu_benchmark_cache_name(
-        cpu_cache_name, use_quant_matmul
-    )
-    logger.info("[CACHE] high-precision CPU golden key=%s", cpu_cache_name)
-    logger.info("[CACHE] low-precision CPU benchmark key=%s", benchmark_cache_name)
+    if three_way_compare:
+        cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale)
+        benchmark_cache_name = _cpu_benchmark_cache_name(
+            cpu_cache_name, use_quant_matmul
+        )
+        logger.info("[CACHE] high-precision CPU golden key=%s", cpu_cache_name)
+        logger.info(
+            "[CACHE] low-precision CPU benchmark key=%s", benchmark_cache_name
+        )
+    else:
+        cpu_cache_name = _cpu_two_way_cache_name(
+            case_name, p_scale, use_quant_matmul
+        )
+        benchmark_cache_name = None
+        logger.info("[CACHE] two-way CPU golden key=%s", cpu_cache_name)
 
     _, mfu_time = _log_attention_compute_stats(
         case_id, q_lengths, kv_lengths, sparse_indices, sparse_seq_len
@@ -3222,14 +3238,23 @@ def run_one_case(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
 
-    if (
-        rdv
-        and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir)
-        and golden_cache.has_benchmark_output(
-            benchmark_cache_name, cache_dir=rdv_cache_dir
+    has_rdv_cpu = rdv and golden_cache.has_cpu_output(
+        cpu_cache_name, cache_dir=rdv_cache_dir
+    )
+    has_rdv_benchmark = (
+        not three_way_compare
+        or (
+            rdv
+            and golden_cache.has_benchmark_output(
+                benchmark_cache_name, cache_dir=rdv_cache_dir
+            )
         )
-    ):
-        logger.info("\n[Step 2] 复用高/低精度 CPU 结果")
+    )
+    if has_rdv_cpu and has_rdv_benchmark:
+        logger.info(
+            "\n[Step 2] %s",
+            "复用高/低精度 CPU 结果" if three_way_compare else "复用 CPU Golden",
+        )
         logger.info(
             "[RDV] 已找到 case=%s 的 CPU golden，跳过 CPU 生成",
             cpu_cache_name,
@@ -3237,32 +3262,25 @@ def run_one_case(
         cpu_out, cpu_lse = golden_cache.load_cpu_output(
             cpu_cache_name, cache_dir=rdv_cache_dir
         )
-        benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
-            benchmark_cache_name, cache_dir=rdv_cache_dir
-        )
+        if three_way_compare:
+            benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
+                benchmark_cache_name, cache_dir=rdv_cache_dir
+            )
     elif "cpu" in mode:
-        logger.info("\n[Step 2] 高精度 CPU Golden + 低精度 CPU Benchmark")
+        logger.info(
+            "\n[Step 2] %s",
+            (
+                "高精度 CPU Golden + 低精度 CPU Benchmark"
+                if three_way_compare
+                else "低精度 CPU Golden（两方对比）"
+            ),
+        )
         if rdv:
             logger.info(
                 "[RDV] 未找到 case=%s 的 CPU golden，按原流程生成",
                 cpu_cache_name,
             )
-        cpu_out, cpu_lse = cpu_mxfp8_golden_high_precision(
-            q_fp8,
-            k_fp8,
-            v_fp8,
-            dequant_scale_q,
-            dequant_scale_k,
-            dequant_scale_v,
-            p_scale,
-            q_lengths,
-            kv_lengths,
-            cu_seqlens_q,
-            sparse_indices,
-            sparse_seq_len,
-            block_table_torch,
-        )
-        benchmark_out, benchmark_lse = cpu_mxfp8_golden(
+        low_precision_out, low_precision_lse = cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
             v_fp8,
@@ -3278,22 +3296,46 @@ def run_one_case(
             block_table_torch,
             use_quant_matmul=use_quant_matmul,
         )
+        if three_way_compare:
+            cpu_out, cpu_lse = cpu_mxfp8_golden_high_precision(
+                q_fp8,
+                k_fp8,
+                v_fp8,
+                dequant_scale_q,
+                dequant_scale_k,
+                dequant_scale_v,
+                p_scale,
+                q_lengths,
+                kv_lengths,
+                cu_seqlens_q,
+                sparse_indices,
+                sparse_seq_len,
+                block_table_torch,
+            )
+            benchmark_out, benchmark_lse = (
+                low_precision_out,
+                low_precision_lse,
+            )
+        else:
+            cpu_out, cpu_lse = low_precision_out, low_precision_lse
         golden_cache.save_cpu_output(
             cpu_cache_name, cpu_out, cpu_lse, cache_dir=cache_dir
         )
-        golden_cache.save_benchmark_output(
-            benchmark_cache_name,
-            benchmark_out,
-            benchmark_lse,
-            cache_dir=cache_dir,
-        )
+        if three_way_compare:
+            golden_cache.save_benchmark_output(
+                benchmark_cache_name,
+                benchmark_out,
+                benchmark_lse,
+                cache_dir=cache_dir,
+            )
     elif "compare" in mode:
         cpu_out, cpu_lse = golden_cache.load_cpu_output(
             cpu_cache_name, cache_dir=cache_dir
         )
-        benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
-            benchmark_cache_name, cache_dir=cache_dir
-        )
+        if three_way_compare:
+            benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
+                benchmark_cache_name, cache_dir=cache_dir
+            )
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
@@ -3335,15 +3377,19 @@ def run_one_case(
             case_id, "NpuDone", time.time() - start_time, mfu_time=mfu_time
         )
 
-    logger.info("\n[Step 4] Atten OUT 三方精度对比")
-    out_cv_report = _mxfp8_cv_compare(
-        cpu_out,
-        benchmark_out,
-        atten_out,
-        "qbsa_mxfp8_attention_out",
-        "bf16",
-    )
-    logger.info("[Simple] high-precision CPU vs NPU")
+    out_cv_report = None
+    if three_way_compare:
+        logger.info("\n[Step 4] Atten OUT 三方精度对比")
+        out_cv_report = _mxfp8_cv_compare(
+            cpu_out,
+            benchmark_out,
+            atten_out,
+            "qbsa_mxfp8_attention_out",
+            "bf16",
+        )
+        logger.info("[Simple] high-precision CPU vs NPU")
+    else:
+        logger.info("\n[Step 4] Atten OUT 两方精度对比")
     out_result = result_compare_method.check_result(cpu_out, atten_out, debug=debug)
     if precision_dir is not None:
         result_compare_method.save_precision_map(
@@ -3357,15 +3403,18 @@ def run_one_case(
     lse_result = None
     lse_cv_report = None
     if ENABLE_LSE:
-        logger.info("\n[Step 5] LSE 三方精度对比")
-        lse_cv_report = _mxfp8_cv_compare(
-            cpu_lse,
-            benchmark_lse,
-            lse_out,
-            "qbsa_mxfp8_softmax_lse",
-            "fp32",
-        )
-        logger.info("[Simple] high-precision CPU vs NPU")
+        if three_way_compare:
+            logger.info("\n[Step 5] LSE 三方精度对比")
+            lse_cv_report = _mxfp8_cv_compare(
+                cpu_lse,
+                benchmark_lse,
+                lse_out,
+                "qbsa_mxfp8_softmax_lse",
+                "fp32",
+            )
+            logger.info("[Simple] high-precision CPU vs NPU")
+        else:
+            logger.info("\n[Step 5] LSE 两方精度对比")
         lse_result = result_compare_method.check_result(cpu_lse, lse_out, debug=debug)
         if precision_dir is not None:
             result_compare_method.save_precision_map(
@@ -3377,8 +3426,13 @@ def run_one_case(
             )
 
     status = "Pass"
-    if not out_cv_report.passed or (
-        lse_cv_report is not None and not lse_cv_report.passed
+    if three_way_compare:
+        if not out_cv_report.passed or (
+            lse_cv_report is not None and not lse_cv_report.passed
+        ):
+            status = "Failed"
+    elif _result_status(out_result) != "Pass" or (
+        lse_result is not None and _result_status(lse_result) != "Pass"
     ):
         status = "Failed"
     return _make_case_result(
@@ -3462,6 +3516,13 @@ if __name__ == "__main__":
         "例如 --case_range 100:200 跑第100到200行(含)的用例",
     )
     parser.add_argument(
+        "--three_way_compare",
+        "--three-way-compare",
+        dest="three_way_compare",
+        action="store_true",
+        help="开启 FP64 golden、低精度 CPU 与 NPU 的 method-12 三方对比；默认两方对比",
+    )
+    parser.add_argument(
         "--quant_matmul",
         "--quant_mamtul",
         dest="quant_matmul",
@@ -3471,8 +3532,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     use_quant_matmul = args.quant_matmul
+    three_way_compare = args.three_way_compare
     logger.info(
-        "[Config] low-precision benchmark matmul backend: %s",
+        "[Config] precision comparison: %s",
+        "method-12 three-way" if three_way_compare else "standard two-way",
+    )
+    logger.info(
+        "[Config] low-precision CPU matmul backend: %s",
         "npu_quant_matmul" if use_quant_matmul else "torch.matmul (CPU)",
     )
 
@@ -3587,6 +3653,7 @@ if __name__ == "__main__":
                         debug=args.debug,
                         graph=args.aclgraph,
                         use_quant_matmul=use_quant_matmul,
+                        three_way_compare=three_way_compare,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
