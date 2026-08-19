@@ -442,12 +442,10 @@ public:
         uint32_t prevKvSeqlenSum = 0;
 
         if constexpr (INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-            prevQSeqlenSum =
-                (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
+            prevQSeqlenSum = (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
             qSeqlen = qSeqlen - prevQSeqlenSum;
             if constexpr (!PAGED_CACHE_FLAG) {
-                prevKvSeqlenSum =
-                    (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
+                prevKvSeqlenSum = (BIdx == 0) ? 0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
         }
@@ -477,11 +475,11 @@ public:
         uint64_t lseTokenOffset = static_cast<uint64_t>(qSBlockIdx) * curQSBlockTile * qHeads;
 
         uint64_t gmOffsetQ = qBOffset + static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideQ +
-                         static_cast<uint64_t>(qNStartIdx * embed);
+                             static_cast<uint64_t>(qNStartIdx * embed);
         uint64_t gmOffsetK = kBOffset + static_cast<uint64_t>(kvNIdx * embed);
         uint64_t gmOffsetV = vBOffset + static_cast<uint64_t>(kvNIdx * embedV);
         uint64_t gmOffsetO = oBOffset + static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
-                         static_cast<uint64_t>(qNStartIdx * embedV);
+                             static_cast<uint64_t>(qNStartIdx * embedV);
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
             gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
         } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
@@ -645,9 +643,9 @@ public:
                 LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                 if constexpr (PAGED_CACHE_FLAG) {
-                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS], gBlockTable[blockBOffset],
-                                layoutQTemp, layoutKTemp, layOutS, actualBlockShapeQK, kvSIdx, kvSLoopNumTotal,
-                                pagedBlockSize, strideK, keyBnStride);
+                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS], gBlockTable[blockBOffset], layoutQTemp,
+                                layoutKTemp, layOutS, actualBlockShapeQK, kvSIdx, kvSLoopNumTotal, pagedBlockSize,
+                                strideK, keyBnStride);
                 } else {
                     blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS], gBlockTable, layoutQTemp, layoutKTemp,
                                 layOutS, actualBlockShapeQK, kvSIdx, kvSLoopNumTotal, pagedBlockSize, strideK,
@@ -698,14 +696,17 @@ public:
                     }
                 } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
                     if constexpr (!IS_FD) {
-                        bool doTriUPreMask = (sparseMode != 4 || notPreMask) ? false :
-                                                                               (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
-                                                                                   (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
-                                                                                   (preTokenStartLen <= kvSStartIdx && preTokenEndLen >= kvSEndIdx);
-                        bool doTriUNextMask = (sparseMode != 4 || notNextMask) ? false :
-                                                                                 (nextTokenStartLen >= kvSStartIdx && nextTokenStartLen < kvSEndIdx) ||
-                                                                                     (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
-                                                                                     (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
+                        bool doTriUPreMask = (sparseMode != 4 || notPreMask) ?
+                                                 false :
+                                                 (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
+                                                     (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
+                                                     (preTokenStartLen <= kvSStartIdx && preTokenEndLen >= kvSEndIdx);
+                        bool doTriUNextMask =
+                            (sparseMode != 4 || notNextMask) ?
+                                false :
+                                (nextTokenStartLen >= kvSStartIdx && nextTokenStartLen < kvSEndIdx) ||
+                                    (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
+                                    (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
                         bool doTriUMask = (doTriUPreMask || doTriUNextMask);
                         if (doTriUMask) {
                             startsWithMaskTile = true;
@@ -716,8 +717,7 @@ public:
                                                   doTriUPreMask, doTriUNextMask, preTokenStartLen, preTokenEndLen,
                                                   nextTokenStartLen, nextTokenEndLen, isLastStackTile);
                         } else {
-                            bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) ||
-                                                         (nextTokenStartLen < 0);
+                            bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
                             uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
                             uint32_t alignedKvSeqlenLimit =
                                 isLastNoMaskStackTile ?
@@ -802,10 +802,11 @@ public:
                     splitParams.layoutgmLse = &layoutgmLse;
                     splitParams.layoutgmLo = &layoutgmLo;
 
-                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate], gLse[gmOffsetLse], layoutO,
-                              layoutOTmp, layoutUpdate, layoutLse, actualBlockShapePV, qSBlockSize, qNBlockSize,
-                              (stackSeqCount - PRE_LAUNCH == 0), nowkvSIdx + 1 >= kvEnd, curStackTileMod, delStartRow,
-                              delEndRow, qSeqlen, qSBlockIdx, curQNBlockTile, splitParams);
+                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate], gLse[gmOffsetLse],
+                                     layoutO, layoutOTmp, layoutUpdate, layoutLse, actualBlockShapePV, qSBlockSize,
+                                     qNBlockSize, (stackSeqCount - PRE_LAUNCH == 0), nowkvSIdx + 1 >= kvEnd,
+                                     curStackTileMod, delStartRow, delEndRow, qSeqlen, qSBlockIdx, curQNBlockTile,
+                                     splitParams);
                 } else {
                     epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate], gLse[gmOffsetLse],
                                      layoutO, layoutOTmp, layoutUpdate, layoutLse, actualBlockShapePV, qSBlockSize,

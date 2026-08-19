@@ -644,7 +644,8 @@ void FAInferTiling::ProcessCoreSplitInfo(FAInferTilingData &faTilingData, uint32
 
             for (int32_t S1Idx = curStartS1; S1Idx <= curEndS1; S1Idx++) {
                 int32_t curStartS2 = (BIdx == startBIdx && N1Idx == startN1Idx && S1Idx == startS1Idx) ? startS2Idx : 0;
-                int32_t curEndS2 = (BIdx == endBIdx && N1Idx == endN1Idx && S1Idx == endS1Idx) ? endS2Idx : p.curKSBlockNum;
+                int32_t curEndS2 =
+                    (BIdx == endBIdx && N1Idx == endN1Idx && S1Idx == endS1Idx) ? endS2Idx : p.curKSBlockNum;
 
                 uint32_t coveredS2 = curEndS2 - curStartS2;
                 bool isSplitKV = (coveredS2 > 0 && coveredS2 < p.curKSBlockNum);
@@ -657,8 +658,7 @@ void FAInferTiling::ProcessCoreSplitInfo(FAInferTilingData &faTilingData, uint32
                 uint32_t N1IdxPerGroup = N1Idx % p.qNBlockNumPerGroup;
                 uint32_t kvHeadIdx = N1Idx / p.qNBlockNumPerGroup;
                 uint32_t currentHeadStart = kvHeadIdx * groupSize + N1IdxPerGroup * p.curQNBlockTile;
-                uint32_t currentHeadEnd =
-                    std::min(currentHeadStart + p.curQNBlockTile, (kvHeadIdx + 1) * groupSize);
+                uint32_t currentHeadEnd = std::min(currentHeadStart + p.curQNBlockTile, (kvHeadIdx + 1) * groupSize);
                 uint32_t currentQStart = S1Idx * p.curQSBlockTile;
                 uint32_t currentQEnd = std::min(currentQStart + p.curQSBlockTile, p.qSeqlen);
                 uint32_t headLen = currentHeadEnd - currentHeadStart;

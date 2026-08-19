@@ -135,33 +135,33 @@ def cvt_hifuint8_to_float(x, over_mode=True):
             sign = -1.0
         else:
             sign = 1.0
-        dot_4_bits = x & 120 #b01111000 = 120
+        dot_4_bits = x & 120  # b01111000 = 120
         dot_4_value = dot_4_bits >> 3
         if dot_4_value >= 12:
-            #b1100 =12 D4
-            exponet = x & 30 #b00011110 = 30
+            # b1100 =12 D4
+            exponet = x & 30  # b00011110 = 30
             exponet_int = exponet >> 1
             if exponet_int >= 8:
-                #b1000 = 8
+                # b1000 = 8
                 exponet_value = -exponet_int
             else:
                 exponet_value = exponet_int + 8
 
-            fra_int = x & 1 #b00000001
+            fra_int = x & 1  # b00000001
             m_value = 1.0 + fra_int * 0.5
         elif dot_4_value >= 8:
-            #b1000 =8 D3
-            exponet = x & 28 #b00011100 = 28
+            # b1000 =8 D3
+            exponet = x & 28  # b00011100 = 28
             exponet_int = exponet >> 2
             if exponet_int >= 4:
-                #b100 = 4
+                # b100 = 4
                 exponet_value = -exponet_int
             else:
                 exponet_value = exponet_int + 4
-            fra_int = x & 3 #b00000011
+            fra_int = x & 3  # b00000011
             m_value = 1.0 + fra_int * 0.25
         elif dot_4_value >= 4:
-            #b0100 =8 D2
+            # b0100 =8 D2
             exponet = x & 24  # b00011000 = 24
             exponet_int = exponet >> 3
             if exponet_int >= 2:
@@ -172,8 +172,8 @@ def cvt_hifuint8_to_float(x, over_mode=True):
             fra_int = x & 7  # b00000111
             m_value = 1.0 + fra_int * 0.125
         elif dot_4_value >= 2:
-            #b0010 =2 D1
-            exponet = x & 8 # b00001000 = 8
+            # b0010 =2 D1
+            exponet = x & 8  # b00001000 = 8
             exponet_sign = exponet >> 3
             if exponet_sign >= 1:
                 # b10 = 2
@@ -183,12 +183,12 @@ def cvt_hifuint8_to_float(x, over_mode=True):
             fra_int = x & 7  # b00000111
             m_value = 1.0 + fra_int * 0.125
         elif dot_4_value == 1:
-            #d0
+            # d0
             exponet_value = 0
             fra_int = x & 7  # b00000111
             m_value = 1.0 + fra_int * 0.125
         elif dot_4_value == 0:
-            #dml
+            # dml
             m_value = 1
             exponet_value = (x & 7) - 23  # b00000111 = 7
         else:
@@ -232,6 +232,7 @@ def new_trans_np_fp4_e2m1_tensor_to_bfloat16(in_tensor):
         bfloat16_tensor[i] = cvt_fp4_e2m1_to_bfloat16(in_tensor[i])
     return bfloat16_tensor.reshape(shape_tensor)
 
+
 def new_trans_np_fp4_e1m2_tensor_to_bfloat16(in_tensor):
     shape_tensor = in_tensor.shape
     multi_shape = np.prod(shape_tensor)
@@ -240,6 +241,7 @@ def new_trans_np_fp4_e1m2_tensor_to_bfloat16(in_tensor):
     for i in range(multi_shape):
         bfloat16_tensor[i] = cvt_fp4_e1m2_to_bfloat16(in_tensor[i])
     return bfloat16_tensor.reshape(shape_tensor)
+
 
 def trans_np_hifuint8_tensor_to_float32(in_tensor):
     shape_tensor = in_tensor.shape
@@ -287,6 +289,7 @@ def _create_mask_band(m_shape, pre_tokens, next_tokens, actualSeqLengths, actual
         re_mask_batch.append(atten_masks)
     return re_mask_batch, pre_tokens_list, next_tokens_list
 
+
 def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
     batch, numhead = None, None
     if len(npu_m_shape) == 2:
@@ -306,8 +309,19 @@ def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
         return batch, numhead, s1, s2
 
 
-def _create_mask_right_down(m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV, actualprefixKV,
-                            prefix_kvs, batch, numheads, kvs_list, m_dtype):
+def _create_mask_right_down(
+    m_shape,
+    pre_tokens,
+    next_tokens,
+    actualSeqLengths,
+    actualSeqLengthsKV,
+    actualprefixKV,
+    prefix_kvs,
+    batch,
+    numheads,
+    kvs_list,
+    m_dtype,
+):
     mask_s_q = m_shape[0]
     mask_s_kv = m_shape[1]
 
@@ -330,6 +344,7 @@ def _create_mask_right_down(m_shape, pre_tokens, next_tokens, actualSeqLengths, 
         re_mask_batch.append(atten_masks)
     return re_mask_batch, next_tokens_list
 
+
 def _random_fill_tensor(tensor, shape, random_number, value=0):
     for i in range(0, random_number):
         point = []
@@ -348,7 +363,7 @@ def _t_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor):
     kv_res = torch.zeros([B, numHeads, S, D])
     for i in range(numHeads):
         j = i // factor
-        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+        kv_res[:, i : i + 1, :, :] = kv_tensor[:, j : j + 1, :, :]
     return kv_res, kv_res.shape
 
 
@@ -361,49 +376,104 @@ def _np_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor, dtype):
     kv_res = np.zeros([B, numHeads, S, D], dtype=dtype)
     for i in range(numHeads):
         j = i // factor
-        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+        kv_res[:, i : i + 1, :, :] = kv_tensor[:, j : j + 1, :, :]
     return kv_res, kv_res.shape
 
 
-def _create_random_mask_by_spars(cpu_m_shape, npu_m_shape, m_dtype, pre_tokens, next_tokens, actualSeqLengths,
-                                 actualSeqLengthsKV, actualprefixKV, prefix_kvs, kvs_list, batch=1, numheads=1,
-                                 sp_mode=0, random_ones=0):
+def _create_random_mask_by_spars(
+    cpu_m_shape,
+    npu_m_shape,
+    m_dtype,
+    pre_tokens,
+    next_tokens,
+    actualSeqLengths,
+    actualSeqLengthsKV,
+    actualprefixKV,
+    prefix_kvs,
+    kvs_list,
+    batch=1,
+    numheads=1,
+    sp_mode=0,
+    random_ones=0,
+):
     # mask shape [sq,skv]  #mshape  npu  fshape cpu
     print(
-        f"[_create_random_mask_by_spars] full_m_shape:{cpu_m_shape} m_shape:{npu_m_shape} datype:{m_dtype} pret:{pre_tokens} nextt:{next_tokens} sp_mode:{sp_mode}")
+        f"[_create_random_mask_by_spars] full_m_shape:{cpu_m_shape} m_shape:{npu_m_shape} datype:{m_dtype} pret:{pre_tokens} nextt:{next_tokens} sp_mode:{sp_mode}"
+    )
     if sp_mode == 0:
-        cpu_mask, npu_mask = _create_mask_no_sparse(cpu_m_shape, npu_m_shape, pre_tokens, next_tokens, batch, numheads,
-                                                    m_dtype, random_ones)
+        cpu_mask, npu_mask = _create_mask_no_sparse(
+            cpu_m_shape,
+            npu_m_shape,
+            pre_tokens,
+            next_tokens,
+            batch,
+            numheads,
+            m_dtype,
+            random_ones,
+        )
         return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
     if sp_mode == 1:
-        print(f"[_create_random_mask_by_spars] sp_mode is 1 return all zero mask")
+        print("[_create_random_mask_by_spars] sp_mode is 1 return all zero mask")
         pre_tokens = 214748647
         next_tokens = 214748647
-        cpu_mask, npu_mask = _create_mask_no_sparse(cpu_m_shape, npu_m_shape, pre_tokens, next_tokens, batch, numheads,
-                                                    m_dtype, random_ones)
+        cpu_mask, npu_mask = _create_mask_no_sparse(
+            cpu_m_shape,
+            npu_m_shape,
+            pre_tokens,
+            next_tokens,
+            batch,
+            numheads,
+            m_dtype,
+            random_ones,
+        )
         return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
 
     if sp_mode == 2:
         pre_tokens = 214748647
         next_tokens = 0
-        print(f"[_create_random_mask_by_spars] sp_mode is 2 npu mask shape:{npu_m_shape}")
+        print(
+            f"[_create_random_mask_by_spars] sp_mode is 2 npu mask shape:{npu_m_shape}"
+        )
         npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-        cpu_mask = _create_mask_left_up(cpu_m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype)
+        cpu_mask = _create_mask_left_up(
+            cpu_m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype
+        )
         return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
     if sp_mode == 3:  # rightdown
         pre_tokens = 214748647
-        print(f"[_create_random_mask_by_spars] sp_mode is 3 npu mask shape:{npu_m_shape}")
+        print(
+            f"[_create_random_mask_by_spars] sp_mode is 3 npu mask shape:{npu_m_shape}"
+        )
         npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-        cpu_mask, next_tokens_new = _create_mask_right_down(cpu_m_shape, pre_tokens, next_tokens, actualSeqLengths,
-                                                            actualSeqLengthsKV, actualprefixKV, prefix_kvs, batch,
-                                                            numheads, kvs_list, m_dtype)
+        cpu_mask, next_tokens_new = _create_mask_right_down(
+            cpu_m_shape,
+            pre_tokens,
+            next_tokens,
+            actualSeqLengths,
+            actualSeqLengthsKV,
+            actualprefixKV,
+            prefix_kvs,
+            batch,
+            numheads,
+            kvs_list,
+            m_dtype,
+        )
         return cpu_mask, npu_mask, pre_tokens, next_tokens_new
     if sp_mode == 4:
         npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-        cpu_mask, pre_tokens_new, next_tokens_new = _create_mask_band(cpu_m_shape, pre_tokens, next_tokens,
-                                                                      actualSeqLengths, actualSeqLengthsKV,
-                                                                      actualprefixKV, prefix_kvs, batch,
-                                                                      numheads, kvs_list, m_dtype)
+        cpu_mask, pre_tokens_new, next_tokens_new = _create_mask_band(
+            cpu_m_shape,
+            pre_tokens,
+            next_tokens,
+            actualSeqLengths,
+            actualSeqLengthsKV,
+            actualprefixKV,
+            prefix_kvs,
+            batch,
+            numheads,
+            kvs_list,
+            m_dtype,
+        )
         return cpu_mask, npu_mask.astype(m_dtype), pre_tokens_new, next_tokens_new
 
 
@@ -424,7 +494,7 @@ def find_output_value(input_list, output_value_list):
 def dequant(x, deqscale, relu_weight):
     deqscale = np.uint64(deqscale)
     deqscale = np.frombuffer(deqscale, dtype=np.float32)
-    deqscale = deqscale[: 1][0]
+    deqscale = deqscale[:1][0]
     if relu_weight is None:
         relu_weight = deqscale
     else:
@@ -457,6 +527,7 @@ def s9_saturation(inputdata):
     elif inputdata < -256:
         inputdata = -256
     return inputdata
+
 
 def quant_pc(x, qscale, qoffset):
     print(f"qscale:{qscale.shape}")
@@ -503,7 +574,9 @@ def trans_tensor_fp8_e8m0_to_bf16(tensor):
     return new_tensor
 
 
-def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8", q_dtype="float16"):
+def antiquant(
+    k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8", q_dtype="float16"
+):
     N = k.shape[1]
     S = v.shape[2]
     if kv_dtype in ["fp4_e1m2", "fp4_e2m1", "float4_e1m2", "float4_e2m1"]:
@@ -526,7 +599,9 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
             if lowprecision_flag:
                 if q_dtype == "float16":
                     key = new_trans_np_fp4_e1m2_tensor_to_bfloat16(k).astype(np.float16)
-                    value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v).astype(np.float16)
+                    value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v).astype(
+                        np.float16
+                    )
                 elif q_dtype == "bfloat16":
                     key = new_trans_np_fp4_e1m2_tensor_to_bfloat16(k)
                     value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v)
@@ -540,7 +615,9 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
             if lowprecision_flag:
                 if q_dtype == "float16":
                     key = new_trans_np_fp4_e2m1_tensor_to_bfloat16(k).astype(np.float16)
-                    value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v).astype(np.float16)
+                    value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v).astype(
+                        np.float16
+                    )
                 elif q_dtype == "bfloat16":
                     key = new_trans_np_fp4_e2m1_tensor_to_bfloat16(k)
                     value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v)
@@ -556,27 +633,49 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
             for sIdx in range(S):
                 for gIdx in range(g):
                     # copy from
-                    key_cur = key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx * grp_size:(gIdx + 1) * grp_size]
+                    key_cur = key[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ]
                     # broardcast
-                    scale_k = scale1[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx:(gIdx + 1)]
+                    scale_k = scale1[
+                        :, nIdx : (nIdx + 1), sIdx : (sIdx + 1), gIdx : (gIdx + 1)
+                    ]
                     scale_k = np.full((1, grp_size), scale_k)
                     # mul
                     key_cur = key_cur * scale_k
                     # copy to
-                    key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1),
-                    gIdx * grp_size:(gIdx + 1) * grp_size] = key_cur
+                    key[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ] = key_cur
 
                 for gIdx in range(g):
                     # copy from
-                    value_cur = value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx * grp_size:(gIdx + 1) * grp_size]
+                    value_cur = value[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ]
                     # broardcast
-                    scale_v = scale2[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx:(gIdx + 1)]
+                    scale_v = scale2[
+                        :, nIdx : (nIdx + 1), sIdx : (sIdx + 1), gIdx : (gIdx + 1)
+                    ]
                     scale_v = np.full((1, grp_size), scale_v)
                     # mul
                     value_cur = value_cur * scale_v
                     # copy to
-                    value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1),
-                    gIdx * grp_size:(gIdx + 1) * grp_size] = value_cur
+                    value[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ] = value_cur
     else:
         if lowprecision_flag:
             if q_dtype == "float16":
@@ -628,8 +727,12 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
                     key = trans_np_hifuint8_tensor_to_float32(k).astype(np.float16)
                     value = trans_np_hifuint8_tensor_to_float32(v).astype(np.float16)
                 elif q_dtype == "bfloat16":
-                    key = trans_np_hifuint8_tensor_to_float32(k).astype(tf.bfloat16.as_numpy_dtype)
-                    value = trans_np_hifuint8_tensor_to_float32(v).astype(tf.bfloat16.as_numpy_dtype)
+                    key = trans_np_hifuint8_tensor_to_float32(k).astype(
+                        tf.bfloat16.as_numpy_dtype
+                    )
+                    value = trans_np_hifuint8_tensor_to_float32(v).astype(
+                        tf.bfloat16.as_numpy_dtype
+                    )
                 else:
                     print(f"[ERROR]Invalid input q dtype: {q_dtype}")
                     exit(1)
@@ -660,19 +763,19 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
             offset1 = offset[0:1, :, :]
             offset2 = offset[1:2, :, :]
             for nIdx in range(N):
-                key_cur = key[:, nIdx:(nIdx + 1), :, :]
+                key_cur = key[:, nIdx : (nIdx + 1), :, :]
                 scale1_cur = np.expand_dims(scale1, axis=-1)
                 offset1_cur = np.expand_dims(offset1, axis=-1)
                 key_cur = np.add(key_cur, offset1_cur)
                 key_cur = np.multiply(key_cur, scale1_cur)
-                key[:, nIdx:(nIdx + 1), :, :] = key_cur
+                key[:, nIdx : (nIdx + 1), :, :] = key_cur
 
-                value_cur = value[:, nIdx:(nIdx + 1), :, :]
+                value_cur = value[:, nIdx : (nIdx + 1), :, :]
                 scale2_cur = np.expand_dims(scale2, axis=-1)
                 offset2_cur = np.expand_dims(offset2, axis=-1)
                 value_cur = np.add(value_cur, offset2_cur)
                 value_cur = np.multiply(value_cur, scale2_cur)
-                value[:, nIdx:(nIdx + 1), :, :] = value_cur
+                value[:, nIdx : (nIdx + 1), :, :] = value_cur
         else:
             # 2,n,1,d -> 1,n,1,d
             scale1 = scale[0:1, :, :, :]
@@ -681,18 +784,30 @@ def antiquant(k, v, scale, offset, pto_flag, lowprecision_flag, kv_dtype="int8",
             offset2 = offset[1:2, :, :, :]
             for nIdx in range(N):
                 for sIdx in range(S):
-                    key_cur = key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :]
-                    key_cur = key_cur + offset1[:, nIdx:(nIdx + 1), :, :]
-                    key_cur = key_cur * scale1[:, nIdx:(nIdx + 1), :, :]
-                    key[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :] = key_cur
+                    key_cur = key[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :]
+                    key_cur = key_cur + offset1[:, nIdx : (nIdx + 1), :, :]
+                    key_cur = key_cur * scale1[:, nIdx : (nIdx + 1), :, :]
+                    key[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :] = key_cur
 
-                    value_cur = value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :]
-                    value_cur = value_cur + offset2[:, nIdx:(nIdx + 1), :, :]
-                    value_cur = value_cur * scale2[:, nIdx:(nIdx + 1), :, :]
-                    value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), :] = value_cur
+                    value_cur = value[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :]
+                    value_cur = value_cur + offset2[:, nIdx : (nIdx + 1), :, :]
+                    value_cur = value_cur * scale2[:, nIdx : (nIdx + 1), :, :]
+                    value[:, nIdx : (nIdx + 1), sIdx : (sIdx + 1), :] = value_cur
     return key, value
 
-def kv_split_antiquant_tensor(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, v_anti_mode, kv_dtype="int8",q_dtype="float16"):
+
+def kv_split_antiquant_tensor(
+    k,
+    v,
+    k_scale,
+    k_offset,
+    v_scale,
+    v_offset,
+    k_anti_mode,
+    v_anti_mode,
+    kv_dtype="int8",
+    q_dtype="float16",
+):
     lowprecision_flag = False if q_dtype == "float32" else True
     if kv_dtype in ["fp4_e1m2", "fp4_e2m1", "float4_e1m2", "float4_e2m1"]:
         raise NotImplementedError
@@ -750,7 +865,19 @@ def kv_split_antiquant_tensor(k, v, k_scale, k_offset, v_scale, v_offset, k_anti
     return key, value
 
 
-def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, v_anti_mode, lowprecision_flag,kv_dtype="int8", q_dtype="float16"):
+def kv_split_antiquant(
+    k,
+    v,
+    k_scale,
+    k_offset,
+    v_scale,
+    v_offset,
+    k_anti_mode,
+    v_anti_mode,
+    lowprecision_flag,
+    kv_dtype="int8",
+    q_dtype="float16",
+):
     N = k.shape[1]
     S = k.shape[2]
     if kv_dtype in ["fp4_e1m2", "fp4_e2m1", "float4_e1m2", "float4_e2m1"]:
@@ -774,7 +901,9 @@ def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, 
             if lowprecision_flag:
                 if q_dtype == "float16":
                     key = new_trans_np_fp4_e1m2_tensor_to_bfloat16(k).astype(np.float16)
-                    value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v).astype(np.float16)
+                    value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v).astype(
+                        np.float16
+                    )
                 elif q_dtype == "bfloat16":
                     key = new_trans_np_fp4_e1m2_tensor_to_bfloat16(k)
                     value = new_trans_np_fp4_e1m2_tensor_to_bfloat16(v)
@@ -788,7 +917,9 @@ def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, 
             if lowprecision_flag:
                 if q_dtype == "float16":
                     key = new_trans_np_fp4_e2m1_tensor_to_bfloat16(k).astype(np.float16)
-                    value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v).astype(np.float16)
+                    value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v).astype(
+                        np.float16
+                    )
                 elif q_dtype == "bfloat16":
                     key = new_trans_np_fp4_e2m1_tensor_to_bfloat16(k)
                     value = new_trans_np_fp4_e2m1_tensor_to_bfloat16(v)
@@ -815,12 +946,11 @@ def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, 
                 print(f"[ERROR]Invalid input q dtype: {q_dtype}")
                 exit(1)
         else:
-
             k_scale = np.array(k_scale, dtype=np.float32)
             k_offset = np.array(k_offset, dtype=np.float32)
             v_scale = np.array(v_scale, dtype=np.float32)
             v_offset = np.array(v_offset, dtype=np.float32)
-            
+
         if kv_dtype == "int8":
             if lowprecision_flag:
                 if q_dtype == "float16":
@@ -860,8 +990,12 @@ def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, 
                     key = trans_np_hifuint8_tensor_to_float32(k).astype(np.float16)
                     value = trans_np_hifuint8_tensor_to_float32(v).astype(np.float16)
                 elif q_dtype == "bfloat16":
-                    key = trans_np_hifuint8_tensor_to_float32(k).astype(tf.bfloat16.as_numpy_dtype)
-                    value = trans_np_hifuint8_tensor_to_float32(v).astype(tf.bfloat16.as_numpy_dtype)
+                    key = trans_np_hifuint8_tensor_to_float32(k).astype(
+                        tf.bfloat16.as_numpy_dtype
+                    )
+                    value = trans_np_hifuint8_tensor_to_float32(v).astype(
+                        tf.bfloat16.as_numpy_dtype
+                    )
                 else:
                     print(f"[ERROR]Invalid input q dtype: {q_dtype}")
                     exit(1)
@@ -986,17 +1120,27 @@ def kv_split_antiquant(k, v, k_scale, k_offset, v_scale, v_offset, k_anti_mode, 
             for sIdx in range(S):
                 for gIdx in range(g):
                     # copy from
-                    value_cur = value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx * grp_size:(gIdx + 1) * grp_size]
+                    value_cur = value[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ]
                     # broardcast
-                    scale_v = v_scale[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1), gIdx:(gIdx + 1)]
+                    scale_v = v_scale[
+                        :, nIdx : (nIdx + 1), sIdx : (sIdx + 1), gIdx : (gIdx + 1)
+                    ]
                     scale_v = np.full((1, grp_size), scale_v)
                     # mul
                     value_cur = value_cur * scale_v
                     # copy to
-                    value[:, nIdx:(nIdx + 1), sIdx:(sIdx + 1),
-                    gIdx * grp_size:(gIdx + 1) * grp_size] = value_cur
+                    value[
+                        :,
+                        nIdx : (nIdx + 1),
+                        sIdx : (sIdx + 1),
+                        gIdx * grp_size : (gIdx + 1) * grp_size,
+                    ] = value_cur
     return key, value
-
 
 
 def _trans_antiparam_to_1bs(tensor):
@@ -1083,132 +1227,303 @@ def get_h(shape, layout):
 def get_sinner(ifa_param):
     from tbe.common.utils.op_tiling import do_op_tiling
     from tbe.common.platform import set_current_compile_soc_info
+
     set_current_compile_soc_info("Ascend910B1")
-    print("=============>ASCEND_OPP_PATH:", os.environ.get('ASCEND_OPP_PATH'))
-    q_shape = ifa_param['q_shape']
-    q_dtype = trans_input_dtype(ifa_param['q_dtype'])
-    m_shape = ifa_param['m_shape']
-    m_dtype = ifa_param['m_dtype']
-    p_shape = ifa_param['p_shape']
-    p_dtype = ifa_param['p_dtype']
-    k_shape = ifa_param['k_shape_list'][0]
-    v_shape = ifa_param['v_shape_list'][0]
+    print("=============>ASCEND_OPP_PATH:", os.environ.get("ASCEND_OPP_PATH"))
+    q_shape = ifa_param["q_shape"]
+    q_dtype = trans_input_dtype(ifa_param["q_dtype"])
+    m_shape = ifa_param["m_shape"]
+    m_dtype = ifa_param["m_dtype"]
+    p_shape = ifa_param["p_shape"]
+    p_dtype = ifa_param["p_dtype"]
+    k_shape = ifa_param["k_shape_list"][0]
+    v_shape = ifa_param["v_shape_list"][0]
     k_shape[0] = v_shape[0] = q_shape[0]
-    out_shape = ifa_param['out_shape']
-    out_dtype = ifa_param['out_dtype']
+    out_shape = ifa_param["out_shape"]
+    out_dtype = ifa_param["out_dtype"]
 
     op_type = "FusedInferAttentionScore"
     compile_info = {}
     # qkv
-    inputs = [{'shape': q_shape, 'ori_shape': q_shape, 'format': 'ND', 'ori_format': 'ND', 'dtype': q_dtype,
-               'range': [(0, None)], 'param_name': 'query'},
-              {'shape': k_shape, 'ori_shape': k_shape, 'format': 'ND', 'ori_format': 'ND',
-               'dtype': 'int8', 'range': [(0, None)], 'param_name': 'key'},
-              {'shape': v_shape, 'ori_shape': v_shape, 'format': 'ND', 'ori_format': 'ND',
-               'dtype': 'int8', 'range': [(0, None)], 'param_name': 'value'}]
+    inputs = [
+        {
+            "shape": q_shape,
+            "ori_shape": q_shape,
+            "format": "ND",
+            "ori_format": "ND",
+            "dtype": q_dtype,
+            "range": [(0, None)],
+            "param_name": "query",
+        },
+        {
+            "shape": k_shape,
+            "ori_shape": k_shape,
+            "format": "ND",
+            "ori_format": "ND",
+            "dtype": "int8",
+            "range": [(0, None)],
+            "param_name": "key",
+        },
+        {
+            "shape": v_shape,
+            "ori_shape": v_shape,
+            "format": "ND",
+            "ori_format": "ND",
+            "dtype": "int8",
+            "range": [(0, None)],
+            "param_name": "value",
+        },
+    ]
     # pse_shift
-    if ifa_param['p_flag']:
-        inputs.extend([{'shape': p_shape, 'ori_shape': p_shape, 'format': 'ND', 'ori_format': 'ND', 'dtype': p_dtype,
-                        'range': [(0, None)], 'param_name': 'pse_shift'}])
+    if ifa_param["p_flag"]:
+        inputs.extend(
+            [
+                {
+                    "shape": p_shape,
+                    "ori_shape": p_shape,
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": p_dtype,
+                    "range": [(0, None)],
+                    "param_name": "pse_shift",
+                }
+            ]
+        )
     else:
         inputs.extend([None])
     # atten_mask
-    if ifa_param['m_flag']:
-        inputs.extend([{'shape': m_shape, 'ori_shape': m_shape, 'format': 'ND', 'ori_format': 'ND',
-                        'dtype': m_dtype, 'range': [(0, None)], 'param_name': 'atten_mask'}])
+    if ifa_param["m_flag"]:
+        inputs.extend(
+            [
+                {
+                    "shape": m_shape,
+                    "ori_shape": m_shape,
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": m_dtype,
+                    "range": [(0, None)],
+                    "param_name": "atten_mask",
+                }
+            ]
+        )
     else:
         inputs.extend([None])
     # actual_seq_lengths
     inputs.extend([None])
     # actual_seq_lengths_kv
-    if ifa_param['as_flag']:
-        act_seq = ifa_param['actualSeqLengths_raw']
-        inputs.extend([{'shape': [len(act_seq)], 'ori_shape': [len(act_seq)], 'format': 'ND', 'ori_format': 'ND',
-                        'range': [(0, None)], 'const_value': act_seq, 'dtype': 'int64',
-                        'param_name': 'actual_seq_lengths_kv'}])
+    if ifa_param["as_flag"]:
+        act_seq = ifa_param["actualSeqLengths_raw"]
+        inputs.extend(
+            [
+                {
+                    "shape": [len(act_seq)],
+                    "ori_shape": [len(act_seq)],
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "range": [(0, None)],
+                    "const_value": act_seq,
+                    "dtype": "int64",
+                    "param_name": "actual_seq_lengths_kv",
+                }
+            ]
+        )
     else:
         inputs.extend([None])
     # dequant_scale1 quant_scale1 dequant_scale2
-    if ifa_param['in_quant_flag']:
-        inputs.extend([{'shape': [1], 'ori_shape': [1], 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': 'uint64', 'range': [(0, None)], 'param_name': 'dequant_scale_1'},
-                       {'shape': [1], 'ori_shape': [1], 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': 'float32', 'range': [(0, None)], 'param_name': 'quant_scale_1'},
-                       {'shape': [1], 'ori_shape': [1], 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': 'uint64', 'range': [(0, None)], 'param_name': 'dequant_scale_2'}])
+    if ifa_param["in_quant_flag"]:
+        inputs.extend(
+            [
+                {
+                    "shape": [1],
+                    "ori_shape": [1],
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": "uint64",
+                    "range": [(0, None)],
+                    "param_name": "dequant_scale_1",
+                },
+                {
+                    "shape": [1],
+                    "ori_shape": [1],
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": "float32",
+                    "range": [(0, None)],
+                    "param_name": "quant_scale_1",
+                },
+                {
+                    "shape": [1],
+                    "ori_shape": [1],
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": "uint64",
+                    "range": [(0, None)],
+                    "param_name": "dequant_scale_2",
+                },
+            ]
+        )
     else:
         inputs.extend([None, None, None])
     # quant_scale2 quant_offset2
-    if ifa_param['out_quant_flag']:
-        quantScale2_shape = ifa_param['quantScale2_shape']
-        quantOffset2_shape = ifa_param['quantOffset2_shape']
-        quantScale2_dtype = ifa_param['quantScale2_dtype']
-        quantOffset2_dtype = ifa_param['quantOffset2_dtype']
-        inputs.extend([{'shape': quantScale2_shape, 'ori_shape': quantScale2_shape, 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': quantScale2_dtype, 'range': [(0, None)],
-                        'param_name': 'quant_scale_2'}])
-        if ifa_param['out_quant_offset_flag']:
-            inputs.extend([{'shape': quantOffset2_shape, 'ori_shape': quantOffset2_shape, 'format': 'ND',
-                            'ori_format': 'ND', 'dtype': quantOffset2_dtype, 'range': [(0, None)],
-                            'param_name': 'quant_offset_2'}])
+    if ifa_param["out_quant_flag"]:
+        quantScale2_shape = ifa_param["quantScale2_shape"]
+        quantOffset2_shape = ifa_param["quantOffset2_shape"]
+        quantScale2_dtype = ifa_param["quantScale2_dtype"]
+        quantOffset2_dtype = ifa_param["quantOffset2_dtype"]
+        inputs.extend(
+            [
+                {
+                    "shape": quantScale2_shape,
+                    "ori_shape": quantScale2_shape,
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": quantScale2_dtype,
+                    "range": [(0, None)],
+                    "param_name": "quant_scale_2",
+                }
+            ]
+        )
+        if ifa_param["out_quant_offset_flag"]:
+            inputs.extend(
+                [
+                    {
+                        "shape": quantOffset2_shape,
+                        "ori_shape": quantOffset2_shape,
+                        "format": "ND",
+                        "ori_format": "ND",
+                        "dtype": quantOffset2_dtype,
+                        "range": [(0, None)],
+                        "param_name": "quant_offset_2",
+                    }
+                ]
+            )
         else:
             inputs.extend([None])
     else:
         inputs.extend([None, None])
     # antiquant_scale antiquant_offset
-    if ifa_param['kv_quant_flag']:
-        anti_quant_shape = ifa_param['antiquantscale_shape_raw']
-        anti_quant_dtype = ifa_param['antiquantscale_dtype']
-        inputs.extend([{'shape': anti_quant_shape, 'ori_shape': anti_quant_shape, 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': anti_quant_dtype, 'range': [(0, None)],
-                        'param_name': 'antiquant_scale'}])
-        if ifa_param['kv_quant_offset_flag']:
-            inputs.extend([{'shape': anti_quant_shape, 'ori_shape': anti_quant_shape, 'format': 'ND',
-                            'ori_format': 'ND', 'dtype': anti_quant_dtype, 'range': [(0, None)],
-                            'param_name': 'antiquant_offset'}])
+    if ifa_param["kv_quant_flag"]:
+        anti_quant_shape = ifa_param["antiquantscale_shape_raw"]
+        anti_quant_dtype = ifa_param["antiquantscale_dtype"]
+        inputs.extend(
+            [
+                {
+                    "shape": anti_quant_shape,
+                    "ori_shape": anti_quant_shape,
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": anti_quant_dtype,
+                    "range": [(0, None)],
+                    "param_name": "antiquant_scale",
+                }
+            ]
+        )
+        if ifa_param["kv_quant_offset_flag"]:
+            inputs.extend(
+                [
+                    {
+                        "shape": anti_quant_shape,
+                        "ori_shape": anti_quant_shape,
+                        "format": "ND",
+                        "ori_format": "ND",
+                        "dtype": anti_quant_dtype,
+                        "range": [(0, None)],
+                        "param_name": "antiquant_offset",
+                    }
+                ]
+            )
         else:
             inputs.extend([None])
     else:
         inputs.extend([None, None])
 
     # block_table
-    if ifa_param['pa_flag']:
-        bt_shape = ifa_param['bt_shape']
-        bt_dtype = ifa_param['bt_dtype']
-        inputs.extend([{'shape': bt_shape, 'ori_shape': bt_shape, 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': bt_dtype, 'range': [(0, None)], 'param_name': 'block_table'}])
-        bs = int(ifa_param['blocksize'])
-        act_seq = ifa_param['actualSeqLengths']
+    if ifa_param["pa_flag"]:
+        bt_shape = ifa_param["bt_shape"]
+        bt_dtype = ifa_param["bt_dtype"]
+        inputs.extend(
+            [
+                {
+                    "shape": bt_shape,
+                    "ori_shape": bt_shape,
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": bt_dtype,
+                    "range": [(0, None)],
+                    "param_name": "block_table",
+                }
+            ]
+        )
+        bs = int(ifa_param["blocksize"])
+        act_seq = ifa_param["actualSeqLengths"]
         kvcache_shape_1 = sum_ceil(act_seq, bs)
         kvcache_shape_2 = bs
-        kvcache_shape_3 = get_h(k_shape, ifa_param['inputLayout'])
-        inputs[1]['shape'] = inputs[1]['ori_shape'] = [kvcache_shape_1, kvcache_shape_2, kvcache_shape_3]
-        inputs[2]['shape'] = inputs[2]['ori_shape'] = [kvcache_shape_1, kvcache_shape_2, kvcache_shape_3]
+        kvcache_shape_3 = get_h(k_shape, ifa_param["inputLayout"])
+        inputs[1]["shape"] = inputs[1]["ori_shape"] = [
+            kvcache_shape_1,
+            kvcache_shape_2,
+            kvcache_shape_3,
+        ]
+        inputs[2]["shape"] = inputs[2]["ori_shape"] = [
+            kvcache_shape_1,
+            kvcache_shape_2,
+            kvcache_shape_3,
+        ]
     else:
         inputs.extend([None])
     # query_padding_size
     inputs.extend([None])
     # kv_padding_size
-    if ifa_param['padding_flag']:
-        inputs.extend([{'shape': [1], 'ori_shape': [1], 'format': 'ND',
-                        'ori_format': 'ND', 'dtype': 'int64', 'range': [(0, None)], 'param_name': 'kv_padding_size'}])
+    if ifa_param["padding_flag"]:
+        inputs.extend(
+            [
+                {
+                    "shape": [1],
+                    "ori_shape": [1],
+                    "format": "ND",
+                    "ori_format": "ND",
+                    "dtype": "int64",
+                    "range": [(0, None)],
+                    "param_name": "kv_padding_size",
+                }
+            ]
+        )
     else:
         inputs.extend([None])
 
-    outputs = [{'shape': out_shape, 'ori_shape': out_shape, 'format': 'ND', 'ori_format': 'ND', 'dtype': out_dtype,
-                'range': [(0, None)], 'param_name': 'attention_out'}]
+    outputs = [
+        {
+            "shape": out_shape,
+            "ori_shape": out_shape,
+            "format": "ND",
+            "ori_format": "ND",
+            "dtype": out_dtype,
+            "range": [(0, None)],
+            "param_name": "attention_out",
+        }
+    ]
 
-    attrs = [{'name': 'num_heads', 'dtype': 'int', 'value': ifa_param['numHeads']},
-             {'name': 'scale_value', 'dtype': 'float', 'value': ifa_param['scaleValue']},
-             {'name': 'pre_tokens', 'dtype': 'int', 'value': ifa_param['pre_tokens']},
-             {'name': 'next_tokens', 'dtype': 'int', 'value': ifa_param['next_tokens']},
-             {'name': 'input_layout', 'dtype': 'str', 'value': ifa_param['inputLayout']},
-             {'name': 'num_key_value_heads', 'dtype': 'int', 'value': ifa_param['numKeyValueHeads']},
-             {'name': 'sparse_mode', 'dtype': 'int', 'value': ifa_param['sparse_mode']},
-             {'name': 'inner_precise', 'dtype': 'int', 'value': ifa_param['innerprecise']},
-             {'name': 'block_size', 'dtype': 'int', 'value': ifa_param['blocksize']},
-             {'name': 'antiquant_mode', 'dtype': 'int', 'value': int(ifa_param['antiquant_mode'])},
-             {'name': 'softmax_lse_flag', 'dtype': 'bool', 'value': False}]
+    attrs = [
+        {"name": "num_heads", "dtype": "int", "value": ifa_param["numHeads"]},
+        {"name": "scale_value", "dtype": "float", "value": ifa_param["scaleValue"]},
+        {"name": "pre_tokens", "dtype": "int", "value": ifa_param["pre_tokens"]},
+        {"name": "next_tokens", "dtype": "int", "value": ifa_param["next_tokens"]},
+        {"name": "input_layout", "dtype": "str", "value": ifa_param["inputLayout"]},
+        {
+            "name": "num_key_value_heads",
+            "dtype": "int",
+            "value": ifa_param["numKeyValueHeads"],
+        },
+        {"name": "sparse_mode", "dtype": "int", "value": ifa_param["sparse_mode"]},
+        {"name": "inner_precise", "dtype": "int", "value": ifa_param["innerprecise"]},
+        {"name": "block_size", "dtype": "int", "value": ifa_param["blocksize"]},
+        {
+            "name": "antiquant_mode",
+            "dtype": "int",
+            "value": int(ifa_param["antiquant_mode"]),
+        },
+        {"name": "softmax_lse_flag", "dtype": "bool", "value": False},
+    ]
 
     print(f"inputs:{inputs}")
     print(f"outputs:{outputs}")
@@ -1219,7 +1534,9 @@ def get_sinner(ifa_param):
     tiling_data_pr = np.frombuffer(cache_tiling, dtype=np.int32)
     idx_singleProcessSInnerSize = 254
     singleProcessSInnerSize = tiling_data_pr[idx_singleProcessSInnerSize]
-    print(f"[INFO]get_sinner result --> tiling_key:{tiling_key}, singleProcessSInnerSize:{singleProcessSInnerSize}")
+    print(
+        f"[INFO]get_sinner result --> tiling_key:{tiling_key}, singleProcessSInnerSize:{singleProcessSInnerSize}"
+    )
     return singleProcessSInnerSize
 
 
@@ -1232,14 +1549,14 @@ def _t_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor, input_dtype):
     kv_res = np.zeros([B, numHeads, S, D], dtype=kv_tensor.dtype)
     for i in range(numHeads):
         j = i // factor
-        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+        kv_res[:, i : i + 1, :, :] = kv_tensor[:, j : j + 1, :, :]
     return kv_res, kv_res.shape
 
 
 def trans_uint64_2_float32(input):
     output = np.uint64(input)
     output = np.frombuffer(output, dtype=np.float32)
-    output = output[: 1][0]
+    output = output[:1][0]
     print(f"uint64:{input}, float32:{output}")
     return output
 
@@ -1248,9 +1565,9 @@ def torch_to_numpy(tensor):
     n_tensor = None
     print(tensor.dtype)
     if type(tensor) == "<class 'torch.Tensor'>":
-        if tensor.dtype in ['torch.float16', 'torch.bool']:
+        if tensor.dtype in ["torch.float16", "torch.bool"]:
             n_tensor = tensor.numpy()
-        elif tensor.dtype in ['torch.bfloat16']:
+        elif tensor.dtype in ["torch.bfloat16"]:
             n_tensor = tensor.numpy()
     return n_tensor
 
@@ -1287,7 +1604,9 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None):
             if act_s == 0:
                 continue
             for n_index in range(N):
-                new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                new_tensor[b_index, n_index, 0:act_s, :] = tensor[
+                    t_start:t_end, n_index, :
+                ]
             t_start += act_s
         return new_tensor, [B, N, S, D]
     else:
@@ -1370,7 +1689,7 @@ def _t_broadcast_mask_n(m_tensor, m_shape, N, B):
         m_res = torch.zeros([B, N, m_shape[2], m_shape[3]])
         for i in range(B):
             for j in range(N):
-                m_res[i:i + 1, j:j + 1, :, :] = m_tensor[i:i + 1, :, :, :]
+                m_res[i : i + 1, j : j + 1, :, :] = m_tensor[i : i + 1, :, :, :]
         print(f"after broadcast_mask_n:mask shape:{m_res.shape}")
         return m_res
     elif len(m_shape) == 3:
@@ -1378,7 +1697,7 @@ def _t_broadcast_mask_n(m_tensor, m_shape, N, B):
         m_res = torch.zeros([B, N, m_shape[1], m_shape[2]])
         for i in range(B):
             for j in range(N):
-                m_res[i:i + 1, j:j + 1, :, :] = m_tensor[i:i + 1, :, :]
+                m_res[i : i + 1, j : j + 1, :, :] = m_tensor[i : i + 1, :, :]
         print(f"after broadcast_mask_n:mask shape:{m_res.shape}")
         return m_res
     elif len(m_shape) == 2:
@@ -1386,7 +1705,7 @@ def _t_broadcast_mask_n(m_tensor, m_shape, N, B):
         m_res = torch.zeros([B, N, 1, m_shape[1]])
         for i in range(B):
             for j in range(N):
-                m_res[i:i + 1, j:j + 1, 0, :] = m_tensor[i:i + 1, :]
+                m_res[i : i + 1, j : j + 1, 0, :] = m_tensor[i : i + 1, :]
         print(f"after broadcast_mask_n:mask shape:{m_res.shape}")
         return m_res
     else:
@@ -1402,7 +1721,9 @@ def _trans_antiparam_to_2bnsg(shape, tensor, layout, numKeyValueHeads):
         G = shape[3]
         N = numKeyValueHeads
         G2 = int(G / N)
-        print(f"[INFO]_trans_antiparam_to_2bnsg: layout={layout}, b={B}, s={S} ,n={numKeyValueHeads},g(h/32)={G}")
+        print(
+            f"[INFO]_trans_antiparam_to_2bnsg: layout={layout}, b={B}, s={S} ,n={numKeyValueHeads},g(h/32)={G}"
+        )
         new_tensor = tensor.reshape(2, B, S, N, G2).transpose(0, 1, 3, 2, 4)
         return new_tensor
     # bsh: (2, B, S, N, D/32) -> (2, B, N, S, D/32)
@@ -1423,7 +1744,9 @@ def _trans_antiparam_to_1bnsg(shape, tensor, layout, numKeyValueHeads):
         G = shape[3]
         N = numKeyValueHeads
         G2 = int(G / N)
-        print(f"[INFO]_trans_antiparam_to_1bnsg: layout={layout}, b={B}, s={S} ,n={numKeyValueHeads},g(h/32)={G}")
+        print(
+            f"[INFO]_trans_antiparam_to_1bnsg: layout={layout}, b={B}, s={S} ,n={numKeyValueHeads},g(h/32)={G}"
+        )
         new_tensor = tensor.reshape(1, B, S, N, G2).transpose(0, 1, 3, 2, 4)
         return new_tensor
     # bsh: (1, B, S, N, D/32) -> (1, B, N, S, D/32)
@@ -1450,7 +1773,7 @@ def broadcast_kv_dequant_tensor_fp8e8m0(tensor, numKeyValueHeads, numheads):
         tensor_new = np.zeros([2, B, numheads, S, G], dtype=np.uint8)
         for i in range(numheads):
             j = i // factor
-            tensor_new[:, :, i:i + 1, :, :] = tensor[:, :, j:j + 1, :, :]
+            tensor_new[:, :, i : i + 1, :, :] = tensor[:, :, j : j + 1, :, :]
         return tensor_new
 
 
@@ -1468,7 +1791,7 @@ def broadcast_kv_split_antiquant_tensor_fp8e8m0(tensor, numKeyValueHeads, numhea
         tensor_new = np.zeros([1, B, numheads, S, G], dtype=np.uint8)
         for i in range(numheads):
             j = i // factor
-            tensor_new[:, :, i:i + 1, :, :] = tensor[:, :, j:j + 1, :, :]
+            tensor_new[:, :, i : i + 1, :, :] = tensor[:, :, j : j + 1, :, :]
         return tensor_new
 
 
@@ -1492,29 +1815,31 @@ def AS_fp32(int_vals):
 
 
 def _t_indequant_ds_act(ifa_param):
-    batch_index = ifa_param['batch_id']
-    q_tensor = ifa_param['q_tensor_cur']
-    k_tensor = ifa_param['k_sub_tensor']
-    v_tensor = ifa_param['v_sub_tensor']
-    q_rope_tensor = ifa_param['q_rope_tensor_cur']
-    k_rope_tensor = ifa_param['k_rope_tensor_cur']
-    scalar = ifa_param['scaleValue']
-    act_seq = ifa_param['act_seq']
-    act_seq_q = ifa_param['act_seq_q']
-    lse_flag = ifa_param['softmax_lse_flag']
-    print(f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}")
+    batch_index = ifa_param["batch_id"]
+    q_tensor = ifa_param["q_tensor_cur"]
+    k_tensor = ifa_param["k_sub_tensor"]
+    v_tensor = ifa_param["v_sub_tensor"]
+    q_rope_tensor = ifa_param["q_rope_tensor_cur"]
+    k_rope_tensor = ifa_param["k_rope_tensor_cur"]
+    scalar = ifa_param["scaleValue"]
+    act_seq = ifa_param["act_seq"]
+    act_seq_q = ifa_param["act_seq_q"]
+    lse_flag = ifa_param["softmax_lse_flag"]
+    print(
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}"
+    )
 
-    dequantScale1 = ifa_param['dequantScale1_cur']
-    dequantScale2 = ifa_param['dequantScale2']
-    print(f'dequantScale2: {dequantScale2.shape}')
+    dequantScale1 = ifa_param["dequantScale1_cur"]
+    dequantScale2 = ifa_param["dequantScale2"]
+    print(f"dequantScale2: {dequantScale2.shape}")
 
     if lse_flag:
         lse = np.zeros((q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1))
     else:
         lse = None
 
-    if ifa_param['m_flag']:
-        mask_tensor = ifa_param['mask_cur'].numpy()
+    if ifa_param["m_flag"]:
+        mask_tensor = ifa_param["mask_cur"].numpy()
 
     kv_smax = k_tensor.shape[2]
     if act_seq is not None and act_seq != -1:
@@ -1525,11 +1850,24 @@ def _t_indequant_ds_act(ifa_param):
     tail = kv_smax - (loop - 1) * s2Inner
     print(f"s2Inner:{s2Inner} kv_smax:{kv_smax} loop:{loop} tail:{tail}")
 
-    rowSum = np.zeros(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1), dtype=np.float32)
-    rowMax = np.full(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1), fill_value=-np.inf,
-                     dtype=np.float32)
-    O_flash = np.zeros(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], q_tensor.shape[3]),
-                       dtype=np.float16)
+    rowSum = np.zeros(
+        shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1),
+        dtype=np.float32,
+    )
+    rowMax = np.full(
+        shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1),
+        fill_value=-np.inf,
+        dtype=np.float32,
+    )
+    O_flash = np.zeros(
+        shape=(
+            q_tensor.shape[0],
+            q_tensor.shape[1],
+            q_tensor.shape[2],
+            q_tensor.shape[3],
+        ),
+        dtype=np.float16,
+    )
     pse_cur = None
     mask_cur = None
     for i in range(loop):
@@ -1537,23 +1875,27 @@ def _t_indequant_ds_act(ifa_param):
         kv_end_pos = (i + 1) * s2Inner
         if i == (loop - 1):
             kv_end_pos = i * s2Inner + tail
-        k_cur = k_tensor[:, :, kv_start_pos: kv_end_pos, :]
-        v_cur = v_tensor[:, :, kv_start_pos: kv_end_pos, :]
-        k_rope_cur = k_rope_tensor[:, :, kv_start_pos: kv_end_pos, :]
-        if ifa_param['p_flag']:
-            pse_cur = ifa_param['pse_cur'][:, :, :, kv_start_pos: kv_end_pos]
-        if ifa_param['m_flag']:
-            mask_cur = mask_tensor[:, :, :, kv_start_pos: kv_end_pos]
+        k_cur = k_tensor[:, :, kv_start_pos:kv_end_pos, :]
+        v_cur = v_tensor[:, :, kv_start_pos:kv_end_pos, :]
+        k_rope_cur = k_rope_tensor[:, :, kv_start_pos:kv_end_pos, :]
+        if ifa_param["p_flag"]:
+            pse_cur = ifa_param["pse_cur"][:, :, :, kv_start_pos:kv_end_pos]
+        if ifa_param["m_flag"]:
+            mask_cur = mask_tensor[:, :, :, kv_start_pos:kv_end_pos]
 
-        bias = 2 ** 21 + 150 * 2 ** 23
-        qkNopeRes = np.matmul(q_tensor.astype(np.int32), k_cur.transpose(0, 1, 3, 2).astype(np.int32))
+        bias = 2**21 + 150 * 2**23
+        qkNopeRes = np.matmul(
+            q_tensor.astype(np.int32), k_cur.transpose(0, 1, 3, 2).astype(np.int32)
+        )
         qkNopeRes = qkNopeRes + bias
 
-        bias2 = np.zeros_like(qkNopeRes, dtype=np.float32) - 2 ** 21 - 2 ** 23
+        bias2 = np.zeros_like(qkNopeRes, dtype=np.float32) - 2**21 - 2**23
         qkNopeRes_fp32 = (AS_fp32(qkNopeRes) + bias2).astype(np.float32)
 
-
-        qkRopeRes = np.matmul(q_rope_tensor.astype(np.float32), k_rope_cur.transpose(0, 1, 3, 2).astype(np.float32))
+        qkRopeRes = np.matmul(
+            q_rope_tensor.astype(np.float32),
+            k_rope_cur.transpose(0, 1, 3, 2).astype(np.float32),
+        )
 
         qkBmmRes = qkNopeRes_fp32 + qkRopeRes
 
@@ -1609,20 +1951,21 @@ def _t_indequant_ds_act(ifa_param):
 def _t_indequant_ds_act_golden(ifa_param):
     print("def _t_indequant_ds_act_golden(ifa_param): enter")
 
-    q_tensor = ifa_param['q_tensor_cur'].astype(np.float64)
-    k_tensor = ifa_param['k_sub_tensor'].astype(np.float64)
-    v_tensor = ifa_param['v_sub_tensor'].astype(np.float64)
-    q_rope_tensor = ifa_param['q_rope_tensor_cur'].astype(np.float64)
-    k_rope_tensor = ifa_param['k_rope_tensor_cur'].astype(np.float64)
-    scalar = np.array(ifa_param['scaleValue']).astype(np.float64)
-    act_seq = ifa_param['act_seq']
-    act_seq_q = ifa_param['act_seq_q']
-    lse_flag = ifa_param['softmax_lse_flag']
+    q_tensor = ifa_param["q_tensor_cur"].astype(np.float64)
+    k_tensor = ifa_param["k_sub_tensor"].astype(np.float64)
+    v_tensor = ifa_param["v_sub_tensor"].astype(np.float64)
+    q_rope_tensor = ifa_param["q_rope_tensor_cur"].astype(np.float64)
+    k_rope_tensor = ifa_param["k_rope_tensor_cur"].astype(np.float64)
+    scalar = np.array(ifa_param["scaleValue"]).astype(np.float64)
+    act_seq = ifa_param["act_seq"]
+    act_seq_q = ifa_param["act_seq_q"]
+    lse_flag = ifa_param["softmax_lse_flag"]
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act:{act_seq} act_q:{act_seq_q}"
+    )
 
-    dequantScale1 = ifa_param['dequantScale1_cur'].astype(np.float64)  # [1, 128, 1, 1]
-    dequantScale2 = ifa_param['dequantScale2'].astype(np.float64)  # float
+    dequantScale1 = ifa_param["dequantScale1_cur"].astype(np.float64)  # [1, 128, 1, 1]
+    dequantScale2 = ifa_param["dequantScale2"].astype(np.float64)  # float
     scaleQ = dequantScale1 / dequantScale2
     scaleK = dequantScale2
 
@@ -1630,7 +1973,7 @@ def _t_indequant_ds_act_golden(ifa_param):
     k_tensor = k_tensor * scaleK
     v_tensor = v_tensor * scaleK
 
-    #q_rope_tensor = q_rope_tensor * scaleQ * scaleK
+    # q_rope_tensor = q_rope_tensor * scaleQ * scaleK
 
     q_tensor_all = np.concatenate([q_tensor, q_rope_tensor], axis=3)
     k_tensor_all = np.concatenate([k_tensor, k_rope_tensor], axis=3)
@@ -1652,11 +1995,24 @@ def _t_indequant_ds_act_golden(ifa_param):
     tail = kv_smax - (loop - 1) * s2Inner
     print(f"s2Inner:{s2Inner} kv_smax:{kv_smax} loop:{loop} tail:{tail}")
 
-    rowSum = np.zeros(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1), dtype=np.float64)
-    rowMax = np.full(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1), fill_value=-np.inf,
-                     dtype=np.float64)
-    O_flash = np.zeros(shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], q_tensor.shape[3]),
-                       dtype=np.float64)
+    rowSum = np.zeros(
+        shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1),
+        dtype=np.float64,
+    )
+    rowMax = np.full(
+        shape=(q_tensor.shape[0], q_tensor.shape[1], q_tensor.shape[2], 1),
+        fill_value=-np.inf,
+        dtype=np.float64,
+    )
+    O_flash = np.zeros(
+        shape=(
+            q_tensor.shape[0],
+            q_tensor.shape[1],
+            q_tensor.shape[2],
+            q_tensor.shape[3],
+        ),
+        dtype=np.float64,
+    )
     pse_cur = None
     mask_cur = None
 
@@ -1669,13 +2025,15 @@ def _t_indequant_ds_act_golden(ifa_param):
             seq_end = i * s2Inner + tail
         k_cur = k_tensor_all[:, :, seq_start:seq_end, :]
         v_cur = v_tensor[:, :, seq_start:seq_end, :]
-        if ifa_param['p_flag']:
-            pse_cur = ifa_param['pse_cur'][:, :, :, seq_start:seq_end]
-        if ifa_param['m_flag']:
-            mask_tensor = ifa_param['mask_cur'].numpy()
+        if ifa_param["p_flag"]:
+            pse_cur = ifa_param["pse_cur"][:, :, :, seq_start:seq_end]
+        if ifa_param["m_flag"]:
+            mask_tensor = ifa_param["mask_cur"].numpy()
             mask_cur = mask_tensor[:, :, :, seq_start:seq_end]
 
-        qkBmmRes = np.matmul(q_tensor_all, k_cur.transpose(0, 1, 3, 2)).astype(np.float64)
+        qkBmmRes = np.matmul(q_tensor_all, k_cur.transpose(0, 1, 3, 2)).astype(
+            np.float64
+        )
         qkBmmRes = (qkBmmRes * scalar).astype(np.float64)
 
         if pse_cur is not None:
@@ -1691,7 +2049,9 @@ def _t_indequant_ds_act_golden(ifa_param):
 
         softmaxres = np.exp(qkBmmRes - rowMax).astype(np.float64)
         rowSum_A = softmaxres.sum(axis=3, keepdims=True).astype(np.float64)
-        rowMax_A = (np.exp(rowmax_tmp - rowMax) + np.finfo(float).eps).astype(np.float64)
+        rowMax_A = (np.exp(rowmax_tmp - rowMax) + np.finfo(float).eps).astype(
+            np.float64
+        )
         rowSum = update_mul * rowSum + rowSum_A
 
         quantScale = 127 / rowMax_A
@@ -1706,9 +2066,9 @@ def _t_indequant_ds_act_golden(ifa_param):
 
     O = O_flash / rowSum / 127
 
-    if ifa_param['m_flag']:
+    if ifa_param["m_flag"]:
         if mask_tensor is not None:
-            if ifa_param['sparse_mode'] == 3 or act_seq_q > 1:
+            if ifa_param["sparse_mode"] == 3 or act_seq_q > 1:
                 for i in range(mask_tensor.shape[2]):
                     if mask_tensor[:, :, i, :].all() == 1:
                         O[:, :, i, :] = 0
@@ -1832,46 +2192,64 @@ def _t_ifaattention_act(ifa_param, device="cpu"):
             bmm2Res, lse = _t_indequant_ds_act(ifa_param)
     else:
         if ifa_param["k_antiquant_flag"] and ifa_param["v_antiquant_flag"]:
-            k_cur, v_cur = kv_split_antiquant(k_cur, v_cur, ifa_param['k_antiquantScale_cur'],
-                                              ifa_param['k_antiquantOffset_cur'],
-                                              ifa_param['v_antiquantScale_cur'], ifa_param['v_antiquantOffset_cur'],
-                                              ifa_param['k_antiquant_mode'], ifa_param['v_antiquant_mode'],
-                                              lowprecision_flag, ifa_param['k_dtype'], ifa_param['q_dtype'])
+            k_cur, v_cur = kv_split_antiquant(
+                k_cur,
+                v_cur,
+                ifa_param["k_antiquantScale_cur"],
+                ifa_param["k_antiquantOffset_cur"],
+                ifa_param["v_antiquantScale_cur"],
+                ifa_param["v_antiquantOffset_cur"],
+                ifa_param["k_antiquant_mode"],
+                ifa_param["v_antiquant_mode"],
+                lowprecision_flag,
+                ifa_param["k_dtype"],
+                ifa_param["q_dtype"],
+            )
 
-        elif ifa_param['kv_quant_flag']:
-            k_cur, v_cur = antiquant(k_cur, v_cur, ifa_param['antiquantScale_cur'], ifa_param['antiquantOffset_cur'],
-                                     ifa_param['kv_quant_pto_flag'], lowprecision_flag, ifa_param['k_dtype'],ifa_param['q_dtype'])
+        elif ifa_param["kv_quant_flag"]:
+            k_cur, v_cur = antiquant(
+                k_cur,
+                v_cur,
+                ifa_param["antiquantScale_cur"],
+                ifa_param["antiquantOffset_cur"],
+                ifa_param["kv_quant_pto_flag"],
+                lowprecision_flag,
+                ifa_param["k_dtype"],
+                ifa_param["q_dtype"],
+            )
 
-        qkBmmRes = np.matmul(q_tensor, k_cur.astype(np.float32).transpose(0, 1, 3, 2), dtype=matmul_dtype)
-        if ifa_param['in_quant_flag'] and not ifa_param['deep_seek_flag']:
-            qkBmmRes = dequant(qkBmmRes, ifa_param['dequantScale1'], None)
+        qkBmmRes = np.matmul(
+            q_tensor, k_cur.astype(np.float32).transpose(0, 1, 3, 2), dtype=matmul_dtype
+        )
+        if ifa_param["in_quant_flag"] and not ifa_param["deep_seek_flag"]:
+            qkBmmRes = dequant(qkBmmRes, ifa_param["dequantScale1"], None)
         qkEleRes = qkBmmRes * scalar
 
-        if ifa_param['p_flag']:
+        if ifa_param["p_flag"]:
             if act_seq is None or act_seq == -1:
-                pse_cur = ifa_param['pse_cur']
+                pse_cur = ifa_param["pse_cur"]
             else:
-                if ifa_param['padding_flag']:
-                    pse_cur = ifa_param['pse_cur'][:, :, :, s_begin:s_end]
+                if ifa_param["padding_flag"]:
+                    pse_cur = ifa_param["pse_cur"][:, :, :, s_begin:s_end]
                 else:
-                    pse_cur = ifa_param['pse_cur'][:, :, :, : act_seq]
+                    pse_cur = ifa_param["pse_cur"][:, :, :, :act_seq]
             qkEleRes = qkEleRes + pse_cur
         mask_cur = None
-        if ifa_param['m_flag']:
-            mask_tensor = ifa_param['mask_cur'].numpy()
+        if ifa_param["m_flag"]:
+            mask_tensor = ifa_param["mask_cur"].numpy()
             if act_seq is None:
                 mask_cur = mask_tensor
             else:
-                if ifa_param['padding_flag']:
+                if ifa_param["padding_flag"]:
                     mask_cur = mask_tensor[:, :, :, s_begin:s_end]
                 else:
-                    mask_cur = mask_tensor[:, :, :, : act_seq]
+                    mask_cur = mask_tensor[:, :, :, :act_seq]
 
-            if m_dtype == 'float16':
+            if m_dtype == "float16":
                 qkEleRes = qkEleRes + mask_cur * -10000
             else:
                 qkEleRes[mask_cur.astype(np.bool_)] = -1000000000000
-        if ifa_param['in_quant_flag'] and not ifa_param['deep_seek_flag']:
+        if ifa_param["in_quant_flag"] and not ifa_param["deep_seek_flag"]:
             bmm2Res = np.zeros(q_tensor.shape, dtype=np.float16)  # B, S, N, D
             s_loop_times = int((kv_smax + sinner - 1) / sinner)
             if s_loop_times > 1:
@@ -1960,6 +2338,7 @@ def _t_ifaattention_act(ifa_param, device="cpu"):
                             lse[:, :, i, :] = np.inf
     return bmm2Res, lse
 
+
 def str_to_bool_list(s: str):
     bool_list = []
     for item in s:
@@ -1971,22 +2350,22 @@ def str_to_bool_list(s: str):
 
 
 def trans_input_dtype(input_dtype):
-    if input_dtype == 'fp16':
-        return 'float16'
-    elif input_dtype == 'int8':
-        return 'int8'
-    elif input_dtype == 'uint8':
-        return 'uint8'
-    elif input_dtype == 'bf16':
-        return 'bfloat16'
-    elif input_dtype == 'bool':
-        return 'bool'
-    elif input_dtype == 'int32':
-        return 'int32'
-    elif input_dtype == 'fp32':
-        return 'float32'
-    elif input_dtype == 'int4':
-        return 'int4'
+    if input_dtype == "fp16":
+        return "float16"
+    elif input_dtype == "int8":
+        return "int8"
+    elif input_dtype == "uint8":
+        return "uint8"
+    elif input_dtype == "bf16":
+        return "bfloat16"
+    elif input_dtype == "bool":
+        return "bool"
+    elif input_dtype == "int32":
+        return "int32"
+    elif input_dtype == "fp32":
+        return "float32"
+    elif input_dtype == "int4":
+        return "int4"
     else:
         return input_dtype
 
@@ -2021,14 +2400,18 @@ def _trans_antiparam_to_2n1d(shape, tensor, layout, numKeyValueHeads, d):
     # per channel
     elif len(shape) == 2:
         d_num = int(shape[1] / numKeyValueHeads)
-        print(f"[INFO]_trans_2h_to_2n1d: layout={layout}, h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+        print(
+            f"[INFO]_trans_2h_to_2n1d: layout={layout}, h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+        )
         new_tensor = tensor.reshape(2, 1, numKeyValueHeads, d_num).transpose(0, 2, 1, 3)
     elif len(shape) == 3:
         print(f"[INFO]_trans_2nd_to_2n1d : layout={layout}, n={shape[1]} ,d={shape[2]}")
         new_tensor = tensor.reshape(2, 1, shape[1], shape[2]).transpose(0, 2, 1, 3)
     elif len(shape) == 4:
         if shape[1] == 1:
-            print(f"[INFO]_trans_21nd_to_2n1d : layout={layout}, n={shape[2]} ,d={shape[3]}")
+            print(
+                f"[INFO]_trans_21nd_to_2n1d : layout={layout}, n={shape[2]} ,d={shape[3]}"
+            )
             new_tensor = tensor.transpose(0, 2, 1, 3)
         else:
             new_tensor = tensor
@@ -2039,7 +2422,7 @@ def _trans_antiparam_to_2n1d(shape, tensor, layout, numKeyValueHeads, d):
 
 
 def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
-    if mode == '0':
+    if mode == "0":
         # per tensor
         if shape == [1]:
             new_tensor = np.zeros((1, numKeyValueHeads, 1, d))
@@ -2048,26 +2431,38 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
         elif len(shape) == 1:
             h = shape[0]
             d_num = int(h / numKeyValueHeads)
-            print(f"[INFO]_trans_h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+            print(
+                f"[INFO]_trans_h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+            )
             new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
         elif len(shape) == 2:
             if shape[0] == 1:
                 h = shape[1]
                 d_num = int(h / numKeyValueHeads)
-                print(f"[INFO]_trans_1h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}")
-                new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
+                print(
+                    f"[INFO]_trans_1h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+                )
+                new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(
+                    1, 2
+                )
             else:
-                print(f"[INFO]_trans_nd_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[1]}")
+                print(
+                    f"[INFO]_trans_nd_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[1]}"
+                )
                 new_tensor = tensor.reshape(1, 1, shape[0], shape[1]).transpose(1, 2)
         elif len(shape) == 3:
             if shape[0] == 1:
                 new_tensor = tensor.reshape(1, 1, shape[1], shape[2]).transpose(1, 2)
             else:
-                print(f"[INFO]_trans_n1d_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[2]}")
+                print(
+                    f"[INFO]_trans_n1d_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[2]}"
+                )
                 new_tensor = tensor.reshape(1, 1, shape[0], shape[2]).transpose(1, 2)
         elif len(shape) == 4:
             if shape[1] == 1:
-                print(f"[INFO]_trans_11nd_to_1n1d : layout={layout}, n={shape[2]} ,d={shape[3]}")
+                print(
+                    f"[INFO]_trans_11nd_to_1n1d : layout={layout}, n={shape[2]} ,d={shape[3]}"
+                )
                 new_tensor = tensor.transpose(1, 2)
             else:
                 new_tensor = tensor
@@ -2075,7 +2470,7 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
             print(f"[ERROR]_trans_antiparam_to_1n1d : len(shape)({len(shape)}) > 4")
             new_tensor = tensor
         return new_tensor
-    elif mode == '2':
+    elif mode == "2":
         # pertensor-head
         print(f"shape is n:{numKeyValueHeads}")
         new_tensor = np.zeros((1, numKeyValueHeads, 1, d))
@@ -2094,35 +2489,39 @@ def broadcast_kv_dequant_tensor(tensor, numKeyValueHeads, numheads, dtype=np.flo
         factor = numheads // numKeyValueHeads
         shape = tensor.shape
         D = shape[3]
-        if 'bfloat16' in str(dtype):
+        if "bfloat16" in str(dtype):
             tensor_new = np.zeros([2, numheads, 1, D], dtype=tf.bfloat16.as_numpy_dtype)
         else:
             tensor_new = np.zeros([2, numheads, 1, D], dtype=dtype)
         for i in range(numheads):
             j = i // factor
-            tensor_new[:, i:i + 1, :, :] = tensor[:, j:j + 1, :, :]
+            tensor_new[:, i : i + 1, :, :] = tensor[:, j : j + 1, :, :]
         return tensor_new
 
 
-def broadcast_kv_split_dequant_tensor(tensor, numKeyValueHeads, numheads, dtype=np.float16):
+def broadcast_kv_split_dequant_tensor(
+    tensor, numKeyValueHeads, numheads, dtype=np.float16
+):
     if numKeyValueHeads == numheads:
         return tensor
     else:
         factor = numheads // numKeyValueHeads
         shape = tensor.shape
         D = shape[3]
-        if 'bfloat16' in str(dtype):
+        if "bfloat16" in str(dtype):
             tensor_new = np.zeros([1, numheads, 1, D], dtype=tf.bfloat16.as_numpy_dtype)
         else:
             tensor_new = np.zeros([1, numheads, 1, D], dtype=dtype)
         for i in range(numheads):
             j = i // factor
-            tensor_new[:, i:i + 1, :, :] = tensor[:, j:j + 1, :, :]
+            tensor_new[:, i : i + 1, :, :] = tensor[:, j : j + 1, :, :]
         return tensor_new
 
 
 # trans bns(kvn) -> bns(qn)
-def broadcast_kv_split_dequant_tensor_ptoh(tensor, numKeyValueHeads, numheads, dtype=np.float32):
+def broadcast_kv_split_dequant_tensor_ptoh(
+    tensor, numKeyValueHeads, numheads, dtype=np.float32
+):
     if numKeyValueHeads == numheads:
         return tensor
     else:
@@ -2694,6 +3093,7 @@ def get_param_fus(torch_tensor_list, params):
     #             ifa_param["softmaxV1_flag"] = True
     return ifa_param
 
+
 def cut_kvs_by_mask(tensor, mask):
     new_tensor = tensor.clone()
     b = tensor.shape[0]
@@ -2702,15 +3102,17 @@ def cut_kvs_by_mask(tensor, mask):
     mask = mask.squeeze()
     for maskBatch in range(b):
         s = 0
-        m_tensor_batch = mask[maskBatch:maskBatch + 1, :]
+        m_tensor_batch = mask[maskBatch : maskBatch + 1, :]
         for maskIndex in range(smax):
             maskOfsindex = m_tensor_batch[0][maskIndex]
             if not maskOfsindex:
-                new_tensor[maskBatch:maskBatch + 1, s:(s + 1), :, :] = tensor[maskBatch:maskBatch + 1,
-                                                                       maskIndex:(maskIndex + 1), :, :]
+                new_tensor[maskBatch : maskBatch + 1, s : (s + 1), :, :] = tensor[
+                    maskBatch : maskBatch + 1, maskIndex : (maskIndex + 1), :, :
+                ]
                 s += 1
         new_slist.append(s)
     return new_tensor, new_slist
+
 
 def get_min_list(list1, list2):
     new_list = [min(x, y) for x, y in zip(list1, list2)]
@@ -2725,7 +3127,9 @@ def left_padding_handler(tensor, act_list, padding_size):
         act_s = act_list[bindex]
         start_index = smax - padding_size - act_s
         end_index = smax - padding_size
-        new_tensor[bindex:bindex + 1, 0:act_s, :, :] = tensor[bindex:bindex + 1, start_index:end_index, :, :]
+        new_tensor[bindex : bindex + 1, 0:act_s, :, :] = tensor[
+            bindex : bindex + 1, start_index:end_index, :, :
+        ]
     return new_tensor
 
 
@@ -2791,10 +3195,15 @@ def trans_bb_2_1bs(input_tensor, tables, batch):
                 break
             if (block_base_index + 1) * block_size > max_seq:
                 lens = max_seq - block_base_index * block_size
-                output_tensor[0, bindex, block_base_index * block_size:max_seq] = input_tensor[block_index][0:lens]
+                output_tensor[0, bindex, block_base_index * block_size : max_seq] = (
+                    input_tensor[block_index][0:lens]
+                )
             else:
-                output_tensor[0, bindex, block_base_index * block_size:(block_base_index + 1) * block_size] = \
-                    input_tensor[block_index]
+                output_tensor[
+                    0,
+                    bindex,
+                    block_base_index * block_size : (block_base_index + 1) * block_size,
+                ] = input_tensor[block_index]
     return output_tensor
 
 
@@ -2957,7 +3366,9 @@ def trans_bnsd_to_dequant_layout(tensor, shape, layout, act_q=None):
             if act_s == 0:
                 continue
             for n_index in range(N):
-                output[t_start:t_end, n_index:n_index + 1] = tensor[b_index, n_index, :act_s]
+                output[t_start:t_end, n_index : n_index + 1] = tensor[
+                    b_index, n_index, :act_s
+                ]
             t_start += act_s
         return output
     else:
@@ -2966,9 +3377,11 @@ def trans_bnsd_to_dequant_layout(tensor, shape, layout, act_q=None):
 
 
 def trans_dequant_layout_to_bnsd(tensor, shape, layout, act_seq=None):
-    print(f"def trans_dequant_layout_to_bsnd(tensor, shape, layout({layout}), act_q=None):")
+    print(
+        f"def trans_dequant_layout_to_bsnd(tensor, shape, layout({layout}), act_q=None):"
+    )
     print("tensor.shape : ", tensor.shape)
-    if layout in ["BSND", 'BSND_NBSD',"BSH", 'BSH_NBSD']:
+    if layout in ["BSND", "BSND_NBSD", "BSH", "BSH_NBSD"]:
         B = tensor.shape[0]
         S = tensor.shape[1]
         N = tensor.shape[2]
@@ -3117,15 +3530,20 @@ def deepseek_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b, n:n + 1,
-                                                                            block_offset:(
-                                                                                    block_offset + blockSize),
-                                                                            :]
+                        k_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                            k_tensor_bnsd[
+                                b,
+                                n : n + 1,
+                                block_offset : (block_offset + blockSize),
+                                :,
+                            ]
+                        )
         kropen = k_rope_bnsd_shape[1]
         kropes = k_rope_bnsd_shape[2]
         kroped = k_rope_bnsd_shape[3]
-        k_rope_tensor_bnsd = np.zeros((q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)).astype(
-            k_np_dtype)
+        k_rope_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_rope_tensor_bnbd: {k_rope_tensor_bnsd.shape}")
         k_rope_tensor_bnsd[:, :, :kropes, :] = k_rope_bnsd_tensor[:, :, :, :]
 
@@ -3136,19 +3554,26 @@ def deepseek_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_rope_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_rope_tensor_bnsd[b, n:n + 1,
-                                                                                 block_offset:(
-                                                                                         block_offset + blockSize),
-                                                                                 :]
-    elif len(ifa_param['k_cache_shape']) == 5:
+                        k_rope_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                            k_rope_tensor_bnsd[
+                                b,
+                                n : n + 1,
+                                block_offset : (block_offset + blockSize),
+                                :,
+                            ]
+                        )
+    elif len(ifa_param["k_cache_shape"]) == 5:
         kvn = k_tensor_bnsd_list[0].shape[1]
         kvs = k_tensor_bnsd_list[0].shape[2]
         kvd = k_tensor_bnsd_list[0].shape[3]
-        k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(k_np_dtype)
+        k_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_tensor_bnbd: {k_tensor_bnsd.shape}")
         k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
         k_cache_tensor_bnbd = np.zeros((k_cache.shape[0], kvn, blockSize, kvd)).astype(
-            k_np_dtype)
+            k_np_dtype
+        )
 
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
@@ -3157,32 +3582,37 @@ def deepseek_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b,
-                                                                                        n:n + 1,
-                                                                                        block_offset:(
-                                                                                                block_offset + blockSize),
-                                                                                        :]
+                        k_cache_tensor_bnbd[
+                            kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                        ] = k_tensor_bnsd[
+                            b, n : n + 1, block_offset : (block_offset + blockSize), :
+                        ]
         # [block_num, N, block_size, D] -> [block_num, N, D/16, block_size, 16]
         print(f"[INFO]k_cache_tensor_bnbd BNBD: {k_cache_tensor_bnbd.shape}")
         if k_dtype == "int8":
             base = 32
         else:
             base = 16
-        k_cache = k_cache_tensor_bnbd.reshape(k_cache_tensor_bnbd.shape[0], k_cache_tensor_bnbd.shape[1],
-                                              k_cache_tensor_bnbd.shape[2],
-                                              k_cache_tensor_bnbd.shape[3] // base,
-                                              base).transpose(0, 1, 3, 2, 4)
+        k_cache = k_cache_tensor_bnbd.reshape(
+            k_cache_tensor_bnbd.shape[0],
+            k_cache_tensor_bnbd.shape[1],
+            k_cache_tensor_bnbd.shape[2],
+            k_cache_tensor_bnbd.shape[3] // base,
+            base,
+        ).transpose(0, 1, 3, 2, 4)
         print(f"[INFO]k_cache NZ: {k_cache.shape}")
 
         kropen = k_rope_bnsd_shape[1]
         kropes = k_rope_bnsd_shape[2]
         kroped = k_rope_bnsd_shape[3]
-        k_rope_tensor_bnsd = np.zeros((q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)).astype(
-            k_np_dtype)
+        k_rope_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_rope_tensor_bnbd: {k_rope_tensor_bnsd.shape}")
         k_rope_tensor_bnsd[:, :, :kropes, :] = k_rope_bnsd_tensor[:, :, :, :]
         k_rope_cache_tensor_bnbd = np.zeros(
-            (k_rope_cache.shape[0], kropen, blockSize, kroped)).astype(k_np_dtype)
+            (k_rope_cache.shape[0], kropen, blockSize, kroped)
+        ).astype(k_np_dtype)
         print(f"[INFO]k_rope_cache_tensor_bnbd: {k_rope_cache_tensor_bnbd.shape}")
 
         for b in range(q_bnsd_shape[0]):
@@ -3192,19 +3622,20 @@ def deepseek_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_rope_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_rope_tensor_bnsd[
-                                                                                             b, n:n + 1,
-                                                                                             block_offset:(
-                                                                                                     block_offset + blockSize),
-                                                                                             :]
+                        k_rope_cache_tensor_bnbd[
+                            kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                        ] = k_rope_tensor_bnsd[
+                            b, n : n + 1, block_offset : (block_offset + blockSize), :
+                        ]
         # [block_num, N, block_size, ROPE_D] -> [block_num, N, ROPE_D/16, block_size, 16]
         print(f"[INFO]k_rope_cache_tensor_bnbd BNBD: {k_rope_cache_tensor_bnbd.shape}")
-        k_rope_cache = k_rope_cache_tensor_bnbd.reshape(k_rope_cache_tensor_bnbd.shape[0],
-                                                        k_rope_cache_tensor_bnbd.shape[1],
-                                                        k_rope_cache_tensor_bnbd.shape[2],
-                                                        k_rope_cache_tensor_bnbd.shape[3] // base, base).transpose(0, 1,
-                                                                                                                   3, 2,
-                                                                                                                   4)
+        k_rope_cache = k_rope_cache_tensor_bnbd.reshape(
+            k_rope_cache_tensor_bnbd.shape[0],
+            k_rope_cache_tensor_bnbd.shape[1],
+            k_rope_cache_tensor_bnbd.shape[2],
+            k_rope_cache_tensor_bnbd.shape[3] // base,
+            base,
+        ).transpose(0, 1, 3, 2, 4)
         print(f"[INFO]k_rope_cache NZ: {k_rope_cache.shape}")
     else:
         print(f"[ERROR]Wrong input k_cache_shape: {ifa_param['k_cache_shape']}")
@@ -3283,15 +3714,20 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b, n:n + 1,
-                                                                            block_offset:(
-                                                                                    block_offset + blockSize),
-                                                                            :]
+                        k_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                            k_tensor_bnsd[
+                                b,
+                                n : n + 1,
+                                block_offset : (block_offset + blockSize),
+                                :,
+                            ]
+                        )
         kropen = k_rope_bnsd_shape[1]
         kropes = k_rope_bnsd_shape[2]
         kroped = k_rope_bnsd_shape[3]
-        k_rope_tensor_bnsd = np.zeros((q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)).astype(
-            k_rope_dtype)
+        k_rope_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)
+        ).astype(k_rope_dtype)
         print(f"[INFO]k_rope_tensor_bnbd: {k_rope_tensor_bnsd.shape}")
         k_rope_tensor_bnsd[:, :, :kropes, :] = k_rope_bnsd_tensor[:, :, :, :]
 
@@ -3302,18 +3738,26 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_rope_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_rope_tensor_bnsd[b, n:n + 1,
-                                                                                 block_offset:(
-                                                                                         block_offset + blockSize),
-                                                                                 :]
-    elif len(ifa_param['k_cache_shape']) == 5:
+                        k_rope_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                            k_rope_tensor_bnsd[
+                                b,
+                                n : n + 1,
+                                block_offset : (block_offset + blockSize),
+                                :,
+                            ]
+                        )
+    elif len(ifa_param["k_cache_shape"]) == 5:
         kvn = k_tensor_bnsd_list[0].shape[1]
         kvs = k_tensor_bnsd_list[0].shape[2]
         kvd = k_tensor_bnsd_list[0].shape[3]
-        k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd),dtype=k_np_dtype)
+        k_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd),
+            dtype=k_np_dtype,
+        )
         k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
         k_cache_tensor_bnbd = np.zeros((k_cache.shape[0], kvn, blockSize, kvd)).astype(
-            k_np_dtype)
+            k_np_dtype
+        )
 
         for b in range(q_bnsd_shape[0]):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
@@ -3322,24 +3766,34 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b,
-                                                                                        n:n + 1, block_offset:(
-                                    block_offset + blockSize), :]
+                        k_cache_tensor_bnbd[
+                            kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                        ] = k_tensor_bnsd[
+                            b, n : n + 1, block_offset : (block_offset + blockSize), :
+                        ]
         basek = 32
         basekrope = 16
-        k_cache = k_cache_tensor_bnbd.reshape(k_cache_tensor_bnbd.shape[0], k_cache_tensor_bnbd.shape[1],
-                                              k_cache_tensor_bnbd.shape[2], k_cache_tensor_bnbd.shape[3] // basek,
-                                              basek).transpose(0, 1, 3, 2, 4)
+        k_cache = k_cache_tensor_bnbd.reshape(
+            k_cache_tensor_bnbd.shape[0],
+            k_cache_tensor_bnbd.shape[1],
+            k_cache_tensor_bnbd.shape[2],
+            k_cache_tensor_bnbd.shape[3] // basek,
+            basek,
+        ).transpose(0, 1, 3, 2, 4)
         print(f"[INFO]k_cache NZ: {k_cache.shape}")
         kropen = k_rope_bnsd_shape[1]
         kropes = k_rope_bnsd_shape[2]
         kroped = k_rope_bnsd_shape[3]
-        k_rope_tensor_bnsd = np.zeros((q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)).astype(
-            k_rope_dtype)
-        print(f"[INFO]k_rope_tensor_bnbd: {k_rope_tensor_bnsd.shape} {kropes} {k_rope_bnsd_tensor.shape}")
+        k_rope_tensor_bnsd = np.zeros(
+            (q_bnsd_shape[0], kropen, blockTableShape[1] * blockSize, kroped)
+        ).astype(k_rope_dtype)
+        print(
+            f"[INFO]k_rope_tensor_bnbd: {k_rope_tensor_bnsd.shape} {kropes} {k_rope_bnsd_tensor.shape}"
+        )
         k_rope_tensor_bnsd[:, :, :kropes, :] = k_rope_bnsd_tensor[:, :, :, :]
         k_rope_cache_tensor_bnbd = np.zeros(
-            (k_rope_cache.shape[0], kropen, blockSize, kroped)).astype(k_rope_dtype)
+            (k_rope_cache.shape[0], kropen, blockSize, kroped)
+        ).astype(k_rope_dtype)
         print(f"[INFO]k_rope_cache_tensor_bnbd: {k_rope_cache_tensor_bnbd.shape}")
 
         for b in range(q_bnsd_shape[0]):
@@ -3349,14 +3803,18 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
                     continue
                 else:
                     for n in range(q_bnsd_shape[1]):
-                        k_rope_cache_tensor_bnbd[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_rope_tensor_bnsd[
-                                                                                             b, n:n + 1,
-                                                                                             block_offset:(
-                                                                                                     block_offset + blockSize),
-                                                                                             :]
+                        k_rope_cache_tensor_bnbd[
+                            kv_cache_blk_id, n : n + 1, 0:blockSize, :
+                        ] = k_rope_tensor_bnsd[
+                            b, n : n + 1, block_offset : (block_offset + blockSize), :
+                        ]
         k_rope_cache = k_rope_cache_tensor_bnbd.reshape(
-            k_rope_cache_tensor_bnbd.shape[0], k_rope_cache_tensor_bnbd.shape[1],
-            k_rope_cache_tensor_bnbd.shape[2], k_rope_cache_tensor_bnbd.shape[3] // basekrope, basekrope).transpose(0,1,3,2,4)
+            k_rope_cache_tensor_bnbd.shape[0],
+            k_rope_cache_tensor_bnbd.shape[1],
+            k_rope_cache_tensor_bnbd.shape[2],
+            k_rope_cache_tensor_bnbd.shape[3] // basekrope,
+            basekrope,
+        ).transpose(0, 1, 3, 2, 4)
         print(f"[INFO]k_rope_cache NZ: {k_rope_cache.shape}")
     else:
         print(f"[ERROR]Wrong input k_cache_shape: {ifa_param['k_cache_shape']}")
@@ -3365,33 +3823,43 @@ def deepseek_inquant_ds_pa_preprocessing(ifa_param, params):
     k_cache_index = 21
     v_cache_index = 22
     k_rope_cache_index = 25
-    if self.params['is_preprocess']:
-            self.params['input_data'].kwargs['k_cache'] = k_cache
-            self.params['input_data'].kwargs['v_cache'] = v_cache
-            self.params['input_data'].kwargs['k_rope_cache'] = k_rope_cache
+    if self.params["is_preprocess"]:
+        self.params["input_data"].kwargs["k_cache"] = k_cache
+        self.params["input_data"].kwargs["v_cache"] = v_cache
+        self.params["input_data"].kwargs["k_rope_cache"] = k_rope_cache
 
 
 def deepseek_inquant_preprocessing(ifa_param, params):
-    numHeads = ifa_param['numHeads']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
-    actualSeqLengths_q = ifa_param['actualSeqLengths_q']
-    actualSeqLengths = ifa_param['actualSeqLengths']
-    inputLayout = ifa_param['inputLayout']
-    kv_layout = ifa_param['kv_layout']
-    q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['q_rope_tensor'],ifa_param['q_rope_shape'],
-                                                                   inputLayout, numHeads, actualSeqLengths_q)
-    ifa_param['q_rope_bnsd_tensor'] = q_rope_bnsd_tensor
-    ifa_param['q_rope_shape_bnsd'] = q_rope_bnsd_shape
+    numHeads = ifa_param["numHeads"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
+    actualSeqLengths_q = ifa_param["actualSeqLengths_q"]
+    actualSeqLengths = ifa_param["actualSeqLengths"]
+    inputLayout = ifa_param["inputLayout"]
+    kv_layout = ifa_param["kv_layout"]
+    q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["q_rope_tensor"],
+        ifa_param["q_rope_shape"],
+        inputLayout,
+        numHeads,
+        actualSeqLengths_q,
+    )
+    ifa_param["q_rope_bnsd_tensor"] = q_rope_bnsd_tensor
+    ifa_param["q_rope_shape_bnsd"] = q_rope_bnsd_shape
 
-    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(ifa_param['k_rope_tensor'],ifa_param['k_rope_shape'],
-                                                                   kv_layout, numKeyValueHeads, actualSeqLengths)
-    ifa_param['k_rope_bnsd_tensor'] = k_rope_bnsd_tensor
-    ifa_param['k_rope_bnsd_shape'] = k_rope_bnsd_shape
-    q_bnsd_tensor = ifa_param['q_tensor_bnsd']
-    q_bnsd_shape = ifa_param['q_shape_bnsd']
-    k_tensor_list = ifa_param['k_tensor_list_bnsd']
+    k_rope_bnsd_tensor, k_rope_bnsd_shape = _n_trans_shape_to_bnsd(
+        ifa_param["k_rope_tensor"],
+        ifa_param["k_rope_shape"],
+        kv_layout,
+        numKeyValueHeads,
+        actualSeqLengths,
+    )
+    ifa_param["k_rope_bnsd_tensor"] = k_rope_bnsd_tensor
+    ifa_param["k_rope_bnsd_shape"] = k_rope_bnsd_shape
+    q_bnsd_tensor = ifa_param["q_tensor_bnsd"]
+    q_bnsd_shape = ifa_param["q_shape_bnsd"]
+    k_tensor_list = ifa_param["k_tensor_list_bnsd"]
 
-    v_tensor_list = ifa_param['v_tensor_list_bnsd']
+    v_tensor_list = ifa_param["v_tensor_list_bnsd"]
 
     rowMax_Qn = np.abs(q_bnsd_tensor).max(axis=(3), keepdims=True).astype(np.float32)
     tenMax_Kn = np.abs(k_tensor_list[0]).max(keepdims=False).astype(np.float32)
@@ -3413,29 +3881,48 @@ def deepseek_inquant_preprocessing(ifa_param, params):
     q_int8_bnsd_tensor = torch.from_numpy(q_int8_bnsd_tensor).to(torch.int8)
     k_int8_bnsd_tensor = torch.from_numpy(k_int8_bnsd_tensor).to(torch.int8)
 
-    ifa_param['q_tensor_bnsd'] = q_bnsd_tensor
-    print("ifa_param['q_tensor_bnsd'] = q_bnsd_tensor, q_bnsd_tensor : ", q_bnsd_tensor.shape, q_bnsd_tensor.dtype)
+    ifa_param["q_tensor_bnsd"] = q_bnsd_tensor
+    print(
+        "ifa_param['q_tensor_bnsd'] = q_bnsd_tensor, q_bnsd_tensor : ",
+        q_bnsd_tensor.shape,
+        q_bnsd_tensor.dtype,
+    )
 
-    ifa_param['dequantScale1'] = dequantScale1
-    print("ifa_param['dequantScale1'] = dequantScale1, dequantScale1 : ", dequantScale1.shape, dequantScale1.dtype)
-    ifa_param['dequantScale2'] = np.array([scaleK])
-    print("ifa_param['dequantScale2'] = np.array([scaleK]), np.array([scaleK]) : ", np.array([scaleK]),np.array([scaleK]).dtype)
+    ifa_param["dequantScale1"] = dequantScale1
+    print(
+        "ifa_param['dequantScale1'] = dequantScale1, dequantScale1 : ",
+        dequantScale1.shape,
+        dequantScale1.dtype,
+    )
+    ifa_param["dequantScale2"] = np.array([scaleK])
+    print(
+        "ifa_param['dequantScale2'] = np.array([scaleK]), np.array([scaleK]) : ",
+        np.array([scaleK]),
+        np.array([scaleK]).dtype,
+    )
 
     dequantScale1 = torch.from_numpy(dequantScale1).to(torch.float32)
     dequantScale2 = torch.from_numpy(np.array([scaleK])).to(torch.float32)
 
-    dequantScale1 = trans_bnsd_to_dequant_layout(dequantScale1, dequantScale1.shape, inputLayout, actualSeqLengths_q)
-    q_shape = ifa_param['q_shape']
-    k_shape = ifa_param['k_shape_list'][0]
-    q_int8_npu = trans_bnsd_to_input_layout(q_int8_bnsd_tensor, q_shape, inputLayout,
-                                            actualSeqLengths_q)
-    k_int8_npu = trans_bnsd_to_input_layout(k_int8_bnsd_tensor, k_shape, kv_layout, actualSeqLengths)
+    dequantScale1 = trans_bnsd_to_dequant_layout(
+        dequantScale1, dequantScale1.shape, inputLayout, actualSeqLengths_q
+    )
+    q_shape = ifa_param["q_shape"]
+    k_shape = ifa_param["k_shape_list"][0]
+    q_int8_npu = trans_bnsd_to_input_layout(
+        q_int8_bnsd_tensor, q_shape, inputLayout, actualSeqLengths_q
+    )
+    k_int8_npu = trans_bnsd_to_input_layout(
+        k_int8_bnsd_tensor, k_shape, kv_layout, actualSeqLengths
+    )
 
     dequantScaleQ = torch.from_numpy(scaleQ).to(torch.float32)
-    dequantScaleQ = trans_bnsd_to_dequant_layout(dequantScaleQ, dequantScaleQ.shape, inputLayout, actualSeqLengths_q)
+    dequantScaleQ = trans_bnsd_to_dequant_layout(
+        dequantScaleQ, dequantScaleQ.shape, inputLayout, actualSeqLengths_q
+    )
 
-    ifa_param['k_tensor_list_bnsd'] = k_tensor_list
-    ifa_param['v_tensor_list_bnsd'] = v_tensor_list
+    ifa_param["k_tensor_list_bnsd"] = k_tensor_list
+    ifa_param["v_tensor_list_bnsd"] = v_tensor_list
 
     print("k_tensor_list : ", k_tensor_list[0].shape, k_tensor_list[0].dtype)
     print("v_tensor_list : ", v_tensor_list[0].shape, v_tensor_list[0].dtype)
@@ -3444,22 +3931,27 @@ def deepseek_inquant_preprocessing(ifa_param, params):
 
 
 def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, params):
-    print("def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, params): enter")
+    print(
+        "def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, params): enter"
+    )
 
-    numHeads = ifa_param['numHeads']
-    numKeyValueHeads = ifa_param['numKeyValueHeads']
-    actualSeqLengths_q = ifa_param['actualSeqLengths_q']
-    actualSeqLengths = ifa_param['actualSeqLengths']
-    inputLayout = ifa_param['inputLayout']
-    kv_layout = ifa_param['kv_layout']
+    numHeads = ifa_param["numHeads"]
+    numKeyValueHeads = ifa_param["numKeyValueHeads"]
+    actualSeqLengths_q = ifa_param["actualSeqLengths_q"]
+    actualSeqLengths = ifa_param["actualSeqLengths"]
+    inputLayout = ifa_param["inputLayout"]
+    kv_layout = ifa_param["kv_layout"]
     dequantScale1 = torch_tensor_list[27] * torch_tensor_list[17]
-    dequantScale1_bnsd = trans_dequant_layout_to_bnsd(dequantScale1,
-                                                      dequantScale1.shape, ifa_param['inputLayout'],
-                                                      ifa_param['actualSeqLengths_q'])
+    dequantScale1_bnsd = trans_dequant_layout_to_bnsd(
+        dequantScale1,
+        dequantScale1.shape,
+        ifa_param["inputLayout"],
+        ifa_param["actualSeqLengths_q"],
+    )
 
     index = 28
-    rope_shape = ifa_param['q_rope_shape']
-    if len(params['shape_input'])==index:
+    rope_shape = ifa_param["q_rope_shape"]
+    if len(params["shape_input"]) == index:
         from libs.generate_tensor_data import gen_tensor_data
 
         params["shape_input"].append(params["shape_input"][23])
@@ -3730,7 +4222,9 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
             blockNumPerBlock.append(math.ceil(actual_seq / blockSize))
             block_num_min += math.ceil(actual_seq / blockSize)
         if block_num_min > blockNum:
-            print(f"[ERROR]Wrong input k_cache_shape: get blockNum = {blockNum}, but expect blockNum > {block_num_min}")
+            print(
+                f"[ERROR]Wrong input k_cache_shape: get blockNum = {blockNum}, but expect blockNum > {block_num_min}"
+            )
             exit(1)
         block_idx_list = np.arange(0, blockNum, 1)
         block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
@@ -3793,24 +4287,41 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                             continue
                         else:
                             for n in range(q_bnsd_shape[1]):
-                                k_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = k_tensor_bnsd[b, n:n + 1,
-                                                                                    block_offset:(
-                                                                                            block_offset + blockSize),
-                                                                                    :]
-                                v_cache[kv_cache_blk_id, n:n + 1, 0:blockSize, :] = v_tensor_bnsd[b, n:n + 1,
-                                                                                    block_offset:(
-                                                                                            block_offset + blockSize), :]
-            elif len(ifa_param['k_cache_shape']) == 5:  # NZ
+                                k_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                                    k_tensor_bnsd[
+                                        b,
+                                        n : n + 1,
+                                        block_offset : (block_offset + blockSize),
+                                        :,
+                                    ]
+                                )
+                                v_cache[kv_cache_blk_id, n : n + 1, 0:blockSize, :] = (
+                                    v_tensor_bnsd[
+                                        b,
+                                        n : n + 1,
+                                        block_offset : (block_offset + blockSize),
+                                        :,
+                                    ]
+                                )
+            elif len(ifa_param["k_cache_shape"]) == 5:  # NZ
                 kvn = k_tensor_bnsd_list[0].shape[1]
                 kvs = k_tensor_bnsd_list[0].shape[2]
                 kvd = k_tensor_bnsd_list[0].shape[3]
                 vd = v_tensor_bnsd_list[0].shape[3]
-                k_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)).astype(k_np_dtype)
-                v_tensor_bnsd = np.zeros((q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, vd)).astype(v_np_dtype)
+                k_tensor_bnsd = np.zeros(
+                    (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, kvd)
+                ).astype(k_np_dtype)
+                v_tensor_bnsd = np.zeros(
+                    (q_bnsd_shape[0], kvn, blockTableShape[1] * blockSize, vd)
+                ).astype(v_np_dtype)
                 k_tensor_bnsd[:, :, :kvs, :] = k_tensor_bnsd_list[0][:, :, :, :]
                 v_tensor_bnsd[:, :, :kvs, :] = v_tensor_bnsd_list[0][:, :, :, :]
-                k_cache_tensor_bnbd = np.zeros((k_cache.shape[0], kvn, blockSize, kvd)).astype(k_np_dtype)
-                v_cache_tensor_bnbd = np.zeros((k_cache.shape[0], kvn, blockSize, vd)).astype(k_np_dtype)
+                k_cache_tensor_bnbd = np.zeros(
+                    (k_cache.shape[0], kvn, blockSize, kvd)
+                ).astype(k_np_dtype)
+                v_cache_tensor_bnbd = np.zeros(
+                    (k_cache.shape[0], kvn, blockSize, vd)
+                ).astype(k_np_dtype)
                 for b in range(q_bnsd_shape[0]):
                     for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                         block_offset = block_i * blockSize
@@ -4100,12 +4611,12 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
         print("softmax_lse_flag:", ifa_param["softmax_lse_flag"])
         print("inputLayout:", inputLayout)
         if inputLayout != "TND":
-            lse = lse.astype('float64')
+            lse = lse.astype("float64")
             lse = torch.from_numpy(lse)
         elif inputLayout == "TND":
-            B = ifa_param['q_shape_bnsd'][0]
-            T = ifa_param['q_shape'][0]
-            N = ifa_param['q_shape'][1]
+            B = ifa_param["q_shape_bnsd"][0]
+            T = ifa_param["q_shape"][0]
+            N = ifa_param["q_shape"][1]
             lse_output = np.zeros((T, N, 1), dtype=lse.dtype)
             t_start = 0
             for b_index in range(B):
@@ -4114,7 +4625,9 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    lse_output[t_start:t_end, n_index, :] = lse[b_index, n_index, :act_s, :]
+                    lse_output[t_start:t_end, n_index, :] = lse[
+                        b_index, n_index, :act_s, :
+                    ]
                 t_start += act_s
             lse = lse_output
             lse = torch.from_numpy(lse.astype(np.float32))
@@ -4164,7 +4677,9 @@ def t_bsh_to_bsnd(tensor, bsh_shape, headnums, actSeqLength, inputLayout="BSH"):
                 acts = actSeqLength[i]
                 for j in range(acts):
                     print(sums + j)
-                    tmp[i:i + 1, j:j + 1] = tensor[sums + j:sums + j + 1, :].reshape(N, D)
+                    tmp[i : i + 1, j : j + 1] = tensor[
+                        sums + j : sums + j + 1, :
+                    ].reshape(N, D)
                 sums += acts
             return tmp, [B, S, N, D]
     elif inputLayout == "BSH":
@@ -4227,7 +4742,9 @@ def _t_trans_bsh_to_bnsd(tensor, bsh_shape, headnums, actSeqLength, inputLayout=
             for i in range(B):
                 acts = actSeqLength[i]
                 for j in range(acts):
-                    tmp[i:i + 1, j:j + 1] = tensor[sums + j:sums + j + 1, :].reshape(N, D)
+                    tmp[i : i + 1, j : j + 1] = tensor[
+                        sums + j : sums + j + 1, :
+                    ].reshape(N, D)
                 sums += acts
             return tmp.permute(0, 2, 1, 3), [B, N, S, D]
     elif inputLayout == "BSH":
@@ -4260,13 +4777,16 @@ def _t_trans_bsh_to_bnsd(tensor, bsh_shape, headnums, actSeqLength, inputLayout=
             if act_s == 0:
                 continue
             for n_index in range(N):
-                new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                new_tensor[b_index, n_index, 0:act_s, :] = tensor[
+                    t_start:t_end, n_index, :
+                ]
             t_start += act_s
         print(f"[TEMP]trans tnd 2 bnsd: {tensor.shape} -> {new_tensor.shape}")
         return new_tensor, [B, N, S, D]
     else:
         print("BNSD", tensor.shape)
         return tensor, bsh_shape
+
 
 def np_bsh_to_bnsd(tensor, bsh_shape, headnums, actSeqLength, inputLayout="BSH"):
     """
@@ -4292,7 +4812,9 @@ def np_bsh_to_bnsd(tensor, bsh_shape, headnums, actSeqLength, inputLayout="BSH")
             for i in range(B):
                 acts = actSeqLength[i]
                 for j in range(acts):
-                    tmp[i:i + 1, j:j + 1] = tensor[sums + j:sums + j + 1, :].reshape(N, D)
+                    tmp[i : i + 1, j : j + 1] = tensor[
+                        sums + j : sums + j + 1, :
+                    ].reshape(N, D)
                 sums += acts
             return tmp.transpose(0, 2, 1, 3), [B, N, S, D]
     elif inputLayout == "BSH":
@@ -4335,7 +4857,9 @@ def np_bsh_to_bnsd(tensor, bsh_shape, headnums, actSeqLength, inputLayout="BSH")
             if act_s == 0:
                 continue
             for n_index in range(N):
-                new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                new_tensor[b_index, n_index, 0:act_s, :] = tensor[
+                    t_start:t_end, n_index, :
+                ]
             t_start += act_s
         print(f"[TEMP]trans tnd 2 bnsd: {tensor.shape} -> {new_tensor.shape}")
         return new_tensor, [B, N, S, D]
@@ -4378,14 +4902,23 @@ def _np_broadcast_pseShift_n(pse_shift_tensor, pse_shift_shape, q_batch):  # pre
     else:
         B = q_batch
         # pse_res = np.zeros([B, pse_shift_shape[1],pse_shift_shape[2], pse_shift_shape[3]])
-        pse_res = np.zeros([B, pse_shift_tensor.shape[1], pse_shift_tensor.shape[2], pse_shift_tensor.shape[3]],
-                           dtype=np.float32)
+        pse_res = np.zeros(
+            [
+                B,
+                pse_shift_tensor.shape[1],
+                pse_shift_tensor.shape[2],
+                pse_shift_tensor.shape[3],
+            ],
+            dtype=np.float32,
+        )
         for i in range(B):
-            pse_res[i:i + 1] = pse_shift_tensor[0]
+            pse_res[i : i + 1] = pse_shift_tensor[0]
         return pse_res
 
 
-def _t_broadcast_pseShift_n(pse_shift_tensor, pse_shift_shape, q_batch):  # pre_shift, pre_shift_shape, q_bnsd_shape[0]
+def _t_broadcast_pseShift_n(
+    pse_shift_tensor, pse_shift_shape, q_batch
+):  # pre_shift, pre_shift_shape, q_bnsd_shape[0]
     print(f"broadcast_mask_n:mask shape:{pse_shift_shape} q_batch:{q_batch}")
     # 1nss or bnss
     B_m = pse_shift_shape[0]
@@ -4393,14 +4926,18 @@ def _t_broadcast_pseShift_n(pse_shift_tensor, pse_shift_shape, q_batch):  # pre_
         return pse_shift_tensor
     else:
         B = q_batch
-        pse_res = torch.zeros([B, pse_shift_shape[1], pse_shift_shape[2], pse_shift_shape[3]])
+        pse_res = torch.zeros(
+            [B, pse_shift_shape[1], pse_shift_shape[2], pse_shift_shape[3]]
+        )
         for i in range(B):
-            pse_res[i:i + 1] = pse_shift_tensor[0]
+            pse_res[i : i + 1] = pse_shift_tensor[0]
         return pse_res
 
 
 def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
-    print(f"broadcast_mask_n:mask shape:{m_shape} with numheads:{numheads} q_batch:{q_batch}")
+    print(
+        f"broadcast_mask_n:mask shape:{m_shape} with numheads:{numheads} q_batch:{q_batch}"
+    )
     mask_cur_shape = cpu_m_shape
     if len(m_shape) == 4:
         # b1ss
@@ -4415,7 +4952,7 @@ def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
             if B_m == 1:
                 mask_cur = m_tensor[:, :, :].reshape(mask_cur_shape)
             else:
-                mask_cur = m_tensor[i:i + 1, :, :, :].reshape(mask_cur_shape)
+                mask_cur = m_tensor[i : i + 1, :, :, :].reshape(mask_cur_shape)
             m_res.append(mask_cur)
         return m_res
     elif len(m_shape) == 3:
@@ -4431,7 +4968,7 @@ def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
             if B_m == 1:
                 mask_cur = m_tensor[:, :, :].reshape(mask_cur_shape)
             else:
-                mask_cur = m_tensor[i:i + 1, :, :].reshape(mask_cur_shape)
+                mask_cur = m_tensor[i : i + 1, :, :].reshape(mask_cur_shape)
             m_res.append(mask_cur)
         return m_res
     elif len(m_shape) == 2:
@@ -4444,6 +4981,7 @@ def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
     else:
         return m_tensor
 
+
 def npSoftmax(x):
     x_max = x.max(axis=-1, keepdims=True)
     x_sub = x - x_max
@@ -4451,6 +4989,7 @@ def npSoftmax(x):
     x_sum = y.sum(axis=-1, keepdims=True)
     ans = y / x_sum
     return ans, x_max, x_sum
+
 
 def npSoftmax_new(x, sinks=None):
     x_max = x.max(axis=-1, keepdims=True)
@@ -4464,6 +5003,7 @@ def npSoftmax_new(x, sinks=None):
         x_sum += sink_exp.sum(axis=-1, keepdims=True)
     ans = y
     return ans, x_max, x_sum
+
 
 def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=False):
     """
@@ -4491,7 +5031,9 @@ def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=Fals
         x_sub = x - x_max_tmp  # -> x
         x_exp = np.exp(x_sub)  # -> x
         x_sum = np.sum(x_exp, axis=-1, keepdims=True)  # tmp
-        x_max = np.max(np.concatenate((max_front, x_max_tmp), axis=-1), axis=-1, keepdims=True)  # ->x_max
+        x_max = np.max(
+            np.concatenate((max_front, x_max_tmp), axis=-1), axis=-1, keepdims=True
+        )  # ->x_max
         x_exp_new = np.exp(x_max_tmp - x_max)  # -> x_max_tmp
         exp_max = np.exp(max_front - x_max)  # -> exp_max
         # update sum
@@ -4592,7 +5134,9 @@ def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_ten
             o_i = o_i.astype(np.float32) * dequant_scale2
             max_front, sum_front, o_front = max_i, sum_i, o_i
         else:
-            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(qk_i, max_front, sum_front, update=True, is_fp16=True)
+            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(
+                qk_i, max_front, sum_front, update=True, is_fp16=True
+            )
             py_s_i = py_s_i * quant_scale1.astype(np.float16)
             py_s_i = np.around(py_s_i)
 
@@ -4614,9 +5158,8 @@ def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_ten
             max_front, sum_front, o_front = max_i, sum_i, o_i
 
     lse = None
-    if pfa_param['lseflag']:
+    if pfa_param["lseflag"]:
         lse = np.log(sum_front) + max_front
-
 
     o_front = o_front / sum_front.astype(np.float16)
     if mask_tensor is not None:
@@ -4638,20 +5181,36 @@ def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_ten
     else:
         o_front = o_front.astype(np.float16)
 
-    return o_front,lse
+    return o_front, lse
 
-def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq,
-                             preTokens, nextTokens, pfa_param,
-                             dequant_scale1=None,
-                             dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None,
-                             out_dtype="<class 'numpy.int8'>"):
+
+def _np_pfaattention_act_fp8(
+    q_tensor,
+    k_tensor,
+    v_tensor,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    pfa_param,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+    out_dtype="<class 'numpy.int8'>",
+):
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}"
+    )
     S = None
-    qs_begin = pfa_param['qs_begin']
-    qs_end = pfa_param['qs_end']
-    kvs_begin = pfa_param['kvs_begin']
-    kvs_end = pfa_param['kvs_end']
+    qs_begin = pfa_param["qs_begin"]
+    qs_end = pfa_param["qs_end"]
+    kvs_begin = pfa_param["kvs_begin"]
+    kvs_end = pfa_param["kvs_end"]
 
     q_tensor = q_tensor[:, :, qs_begin:qs_end, :]
 
@@ -4699,7 +5258,9 @@ def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tens
         qDtype = q_tensor.dtype
         print("qDtype:", qDtype)
         print("start matmul1")
-        qk_i = np.matmul(q_tensor.astype(np.float32), ki.transpose(0, 1, 3, 2).astype(np.float32))
+        qk_i = np.matmul(
+            q_tensor.astype(np.float32), ki.transpose(0, 1, 3, 2).astype(np.float32)
+        )
         # qk_i = qk_i.astype(np.float16) * dequant_scale1.astype(np.float16)
         qk_i = qk_i.astype(np.float32) * dequant_scale1
         print("end matmul1")
@@ -4752,7 +5313,7 @@ def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tens
             max_front, sum_front, o_front = max_i, sum_i, o_i
 
     lse = None
-    if pfa_param['lseflag']:
+    if pfa_param["lseflag"]:
         lse = np.log(sum_front) + max_front
 
     o_front = o_front / sum_front.astype(np.float32)
@@ -4762,9 +5323,8 @@ def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tens
                 o_front[:, :, i, :] = 0
                 if lse is not None:
                     lse[:, :, i, :] = np.inf
-    
+
     if str(out_dtype) == "<class 'numpy.int8'>":
-        
         o_front = o_front * quant_scale2.astype(np.float16)
         if quant_offset2 is not None:
             o_front += quant_offset2.astype(np.float16)
@@ -4778,22 +5338,38 @@ def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tens
 
     return o_front, lse
 
-def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, pse_tensor, mask_tensor, scalar, act_seq,
-                               act_kv_seq, preTokens, nextTokens, pfa_param,
-                               dequant_scale1=None,
-                               dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None,
-                               out_dtype="<class 'numpy.int8'>"):
+
+def _np_pfaattention_act_hifp8(
+    q_tensor_hifp8,
+    k_tensor_hifp8,
+    v_tensor_hifp8,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    pfa_param,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+    out_dtype="<class 'numpy.int8'>",
+):
     S = None
     q_tensor = trans_np_hifuint8_tensor_to_float32(q_tensor_hifp8).astype(np.float32)
     k_tensor = trans_np_hifuint8_tensor_to_float32(k_tensor_hifp8).astype(np.float32)
     v_tensor = trans_np_hifuint8_tensor_to_float32(v_tensor_hifp8).astype(np.float32)
 
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}")
-    qs_begin = pfa_param['qs_begin']
-    qs_end = pfa_param['qs_end']
-    kvs_begin = pfa_param['kvs_begin']
-    kvs_end = pfa_param['kvs_end']
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}"
+    )
+    qs_begin = pfa_param["qs_begin"]
+    qs_end = pfa_param["qs_end"]
+    kvs_begin = pfa_param["kvs_begin"]
+    kvs_end = pfa_param["kvs_end"]
 
     q_tensor = q_tensor[:, :, qs_begin:qs_end, :]
 
@@ -4840,7 +5416,9 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
         vi = v_tensor[:, :, data_start:data_end, :]  # [2, 2, 128, 128]
         qDtype = q_tensor.dtype
         print("start matmul1")
-        qk_i = np.matmul(q_tensor.astype(np.float32), ki.transpose(0, 1, 3, 2).astype(np.float32))
+        qk_i = np.matmul(
+            q_tensor.astype(np.float32), ki.transpose(0, 1, 3, 2).astype(np.float32)
+        )
 
         # qk_i = qk_i.astype(np.float16) * dequant_scale1.astype(np.float16)
         qk_i = qk_i.astype(np.float32) * dequant_scale1
@@ -4863,8 +5441,9 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
             print("start matmul2")
             py_s_i = py_s_i * quant_scale1.astype(np.float32)
 
-            py_s_i = trans_np_float_tensor_to_hifuint8(in_tensor=py_s_i, round_mode="hybrid",
-                                                       over_mode=True)
+            py_s_i = trans_np_float_tensor_to_hifuint8(
+                in_tensor=py_s_i, round_mode="hybrid", over_mode=True
+            )
             py_s_i = trans_np_hifuint8_tensor_to_float32(py_s_i).astype(np.float32)
 
             o_i = np.matmul(py_s_i.astype(np.float32), vi.astype(np.float32))
@@ -4873,7 +5452,9 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
             o_i = o_i.astype(np.float32) * dequant_scale2
             max_front, sum_front, o_front = max_i, sum_i, o_i
         else:
-            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(qk_i, max_front, sum_front, update=True, is_fp16=False)
+            py_s_i, max_i, sum_i, exp_max_i = softmax_flashv2(
+                qk_i, max_front, sum_front, update=True, is_fp16=False
+            )
             print("start matmul2")
             py_s_i = py_s_i * quant_scale1.astype(np.float32)
 
@@ -4891,7 +5472,7 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
             max_front, sum_front, o_front = max_i, sum_i, o_i
 
     lse = None
-    if pfa_param['lseflag']:
+    if pfa_param["lseflag"]:
         lse = np.log(sum_front) + max_front
 
     o_front = o_front / sum_front.astype(np.float32)
@@ -4916,11 +5497,27 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
 
     return o_front, lse
 
-def _t_pfaattention_act_innerprecise(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq,
-                                     preTokens, nextTokens, dequant_scale1=None,
-                                     dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None):
+
+def _t_pfaattention_act_innerprecise(
+    q_tensor,
+    k_tensor,
+    v_tensor,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+):
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}"
+    )
     if act_seq is not None:
         q_tensor = q_tensor[:, :, :act_seq, :]
     if act_kv_seq is not None:
@@ -4959,7 +5556,7 @@ def _t_pfaattention_act_innerprecise(q_tensor, k_tensor, v_tensor, pse_tensor, m
         # mask_t = torch.from_numpy(mask_tensor)
         # mask_tensor = mask_tensor.to(bool)
         # mask_tensor = mask_tensor.cuda().requires_grad_(False)
-        qkEleRes[mask_tensor.to(bool)] = -1.7 * 10 ** 38
+        qkEleRes[mask_tensor.to(bool)] = -1.7 * 10**38
         # qkEleRes += mask_tensor * (-1000000.0)
     softmax_res, x_max, x_sum = _t_softmax(qkEleRes)
     if q_tensor.shape[2] > k_tensor.shape[2] + preTokens:
@@ -4969,16 +5566,34 @@ def _t_pfaattention_act_innerprecise(q_tensor, k_tensor, v_tensor, pse_tensor, m
         ss1 = -nextTokens
         softmax_res[:, :, :ss1, :] = 0
     print("start matmul2")
-    bmm2Res = torch.matmul(softmax_res.to(torch.float16).to(torch.float32), v_tensor).cpu()
+    bmm2Res = torch.matmul(
+        softmax_res.to(torch.float16).to(torch.float32), v_tensor
+    ).cpu()
     print("end matmul2")
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res
 
-def _t_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens,
-                        nextTokens, dequant_scale1=None,
-                        dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None):
+
+def _t_pfaattention_act(
+    q_tensor,
+    k_tensor,
+    v_tensor,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+):
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq}"
+    )
     if act_seq is not None:
         q_tensor = q_tensor[:, :, :act_seq, :]
     if act_kv_seq is not None:
@@ -5017,7 +5632,7 @@ def _t_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, s
         # mask_t = torch.from_numpy(mask_tensor)
         # mask_tensor = mask_tensor.to(bool)
         # mask_tensor = mask_tensor.cuda().requires_grad_(False)
-        qkEleRes[mask_tensor.to(bool)] = -1.7 * 10 ** 38
+        qkEleRes[mask_tensor.to(bool)] = -1.7 * 10**38
         # qkEleRes += mask_tensor * (-1000000.0)
     softmax_res, x_max, x_sum = _t_softmax(qkEleRes)
     if q_tensor.shape[2] > k_tensor.shape[2] + preTokens:
@@ -5027,28 +5642,49 @@ def _t_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, s
         ss1 = -nextTokens
         softmax_res[:, :, :ss1, :] = 0
     print("start matmul2")
-    bmm2Res = torch.matmul(softmax_res.to(torch.bfloat16).to(torch.float32), v_tensor).cpu()
+    bmm2Res = torch.matmul(
+        softmax_res.to(torch.bfloat16).to(torch.float32), v_tensor
+    ).cpu()
     print("end matmul2")
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res
 
-def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens,
-                         nextTokens, pfa_param, quant_scale2=None, quant_offset2=None, antiquant_scale_k=None,
-                         antiquant_scale_v=None, antiquant_offset_k=None, antiquant_offset_v=None,
-                         out_dtype="<class 'numpy.int8'>", sinks=None):
+
+def _np_pfaattention_act(
+    q_tensor,
+    k_tensor,
+    v_tensor,
+    pse_tensor,
+    mask_tensor,
+    scalar,
+    act_seq,
+    act_kv_seq,
+    preTokens,
+    nextTokens,
+    pfa_param,
+    quant_scale2=None,
+    quant_offset2=None,
+    antiquant_scale_k=None,
+    antiquant_scale_v=None,
+    antiquant_offset_k=None,
+    antiquant_offset_v=None,
+    out_dtype="<class 'numpy.int8'>",
+    sinks=None,
+):
     print(
-        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq} preTokens:{preTokens}nextTokens:{nextTokens}")
+        f"q_shape:{q_tensor.shape} k_shape:{k_tensor.shape} v_shape:{v_tensor.shape} scalar:{scalar} act_seq:{act_seq} act_kv_seq:{act_kv_seq} preTokens:{preTokens}nextTokens:{nextTokens}"
+    )
 
     # qs_begin = 0
     # qs_end = q_tensor.shape[2]
     # kvs_begin = 0
     # kvs_end = k_tensor.shape[2]
-    qs_begin = pfa_param['qs_begin']
-    qs_end = pfa_param['qs_end']
-    kvs_begin = pfa_param['kvs_begin']
-    kvs_end = pfa_param['kvs_end']
+    qs_begin = pfa_param["qs_begin"]
+    qs_end = pfa_param["qs_end"]
+    kvs_begin = pfa_param["kvs_begin"]
+    kvs_end = pfa_param["kvs_end"]
 
-    qdtype = pfa_param['q_dtype']
+    qdtype = pfa_param["q_dtype"]
     q_tensor = q_tensor[:, :, qs_begin:qs_end, :]
 
     k_tensor = k_tensor[:, :, kvs_begin:kvs_end, :]
@@ -5059,14 +5695,22 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
         k_tensor = k_tensor.astype(np.float16)
         v_tensor = v_tensor.astype(np.float16)
         if antiquant_offset_k is not None:
-            if pfa_param['anti_or_kvanti'] == 2 and pfa_param['k_antiquant_mode'] == 1:
-                antiquant_offset_k = np.expand_dims(antiquant_offset_k[:, kvs_begin:kvs_end], axis=-1)
-                antiquant_offset_v = np.expand_dims(antiquant_offset_v[:, kvs_begin:kvs_end], axis=-1)
+            if pfa_param["anti_or_kvanti"] == 2 and pfa_param["k_antiquant_mode"] == 1:
+                antiquant_offset_k = np.expand_dims(
+                    antiquant_offset_k[:, kvs_begin:kvs_end], axis=-1
+                )
+                antiquant_offset_v = np.expand_dims(
+                    antiquant_offset_v[:, kvs_begin:kvs_end], axis=-1
+                )
             k_tensor += antiquant_offset_k
             v_tensor += antiquant_offset_v
-        if pfa_param['anti_or_kvanti'] == 2 and pfa_param['k_antiquant_mode'] == 1:
-            antiquant_scale_k = np.expand_dims(antiquant_scale_k[:, kvs_begin:kvs_end], axis=-1)
-            antiquant_scale_v = np.expand_dims(antiquant_scale_v[:, kvs_begin:kvs_end], axis=-1)
+        if pfa_param["anti_or_kvanti"] == 2 and pfa_param["k_antiquant_mode"] == 1:
+            antiquant_scale_k = np.expand_dims(
+                antiquant_scale_k[:, kvs_begin:kvs_end], axis=-1
+            )
+            antiquant_scale_v = np.expand_dims(
+                antiquant_scale_v[:, kvs_begin:kvs_end], axis=-1
+            )
         k_tensor *= antiquant_scale_k
         v_tensor *= antiquant_scale_v
     print("start matmul1")
@@ -5082,19 +5726,25 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
 
     if mask_tensor is not None:
         print(f"mask_shape:{mask_tensor.shape}")
-        if pfa_param['sparse'] == 2 or pfa_param['sparse'] == 3 or pfa_param['sparse'] == 4:
+        if (
+            pfa_param["sparse"] == 2
+            or pfa_param["sparse"] == 3
+            or pfa_param["sparse"] == 4
+        ):
             # actul_prefix = 0
             # if 'actualprefixKV' in pfa_param:
             #     actul_prefix =  pfa_param['actualprefixKV']
-            mask_tensor = mask_tensor[:, :, :(qs_end - qs_begin), :(kvs_end - kvs_begin)]
+            mask_tensor = mask_tensor[
+                :, :, : (qs_end - qs_begin), : (kvs_end - kvs_begin)
+            ]
         else:
             mask_tensor = mask_tensor[:, :, qs_begin:qs_end, kvs_begin:kvs_end]
-        qkEleRes[mask_tensor.astype(np.bool_)] = -1.7 * 10 ** 38
+        qkEleRes[mask_tensor.astype(np.bool_)] = -1.7 * 10**38
         # qkEleRes += mask_tensor * (-1000000.0)
     softmax_res, x_max, x_sum = npSoftmax_new(qkEleRes, sinks)
 
     lse = None
-    if 'lseflag' in pfa_param and pfa_param['lseflag']:
+    if "lseflag" in pfa_param and pfa_param["lseflag"]:
         lse = np.log(x_sum) + x_max
 
     print("start matmul2")
@@ -5103,7 +5753,9 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
     elif qdtype == np.float32:
         bmm2Res = np.matmul(softmax_res, v_tensor)
     else:
-        bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_tensor)
+        bmm2Res = np.matmul(
+            softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_tensor
+        )
     print("end matmul2")
 
     # /sum
@@ -5130,11 +5782,29 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res, lse
 
-def _t_promtattention_bnsd(q_tensor, q_shape, k_tensor, k_shape, v_tensor, v_shape, pse_tensor, mask_tensor, scale,
-                           actseqlens,
-                           actkvseqlens, preTokens, nextTokens, dequant_scale1=None, dequant_scale2=None,
-                           quant_scale1=None, quant_scale2=None,
-                           quant_offset2=None, out_dtype="<class 'numpy.int8'>", innerprecise=1):
+
+def _t_promtattention_bnsd(
+    q_tensor,
+    q_shape,
+    k_tensor,
+    k_shape,
+    v_tensor,
+    v_shape,
+    pse_tensor,
+    mask_tensor,
+    scale,
+    actseqlens,
+    actkvseqlens,
+    preTokens,
+    nextTokens,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+    out_dtype="<class 'numpy.int8'>",
+    innerprecise=1,
+):
     batch_value = q_shape[0]
     numhead_value = q_shape[1]
     actseqlens_size = len(actseqlens)
@@ -5158,24 +5828,84 @@ def _t_promtattention_bnsd(q_tensor, q_shape, k_tensor, k_shape, v_tensor, v_sha
         # bnsd
         for n_index in range(numhead_value):
             if len(q_shape) == 4 and len(k_shape) == 4 and len(v_shape) == 4:
-                q_tensor_cur = q_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
-                k_tensor_cur = k_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
-                v_tensor_cur = v_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                q_tensor_cur = q_tensor[
+                    b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                ]
+                k_tensor_cur = k_tensor[
+                    b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                ]
+                v_tensor_cur = v_tensor[
+                    b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                ]
                 if mask_tensor is None:
                     mask_cur = None
                 else:
-                    mask_cur = mask_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                    mask_cur = mask_tensor[
+                        b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                    ]
 
                 if pse_tensor is None:
                     pse_cur = None
                 else:
-                    pse_cur = pse_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                    pse_cur = pse_tensor[
+                        b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                    ]
 
                 if act_seq is None:
                     if innerprecise == 0:
-                        y[b_index:(b_index + 1), n_index:(n_index + 1), :, :] = _t_pfaattention_act_innerprecise(
-                            q_tensor_cur, k_tensor_cur, v_tensor_cur, pse_cur,
-                            mask_cur, scale,
+                        y[b_index : (b_index + 1), n_index : (n_index + 1), :, :] = (
+                            _t_pfaattention_act_innerprecise(
+                                q_tensor_cur,
+                                k_tensor_cur,
+                                v_tensor_cur,
+                                pse_cur,
+                                mask_cur,
+                                scale,
+                                act_seq,
+                                act_kv_seq,
+                                preTokens,
+                                nextTokens,
+                                dequant_scale1,
+                                dequant_scale2,
+                                quant_scale1,
+                                quant_scale2,
+                                quant_offset2,
+                            )
+                        )
+                    else:
+                        y[b_index : (b_index + 1), n_index : (n_index + 1), :, :] = (
+                            _t_pfaattention_act(
+                                q_tensor_cur,
+                                k_tensor_cur,
+                                v_tensor_cur,
+                                pse_cur,
+                                mask_cur,
+                                scale,
+                                act_seq,
+                                act_kv_seq,
+                                preTokens,
+                                nextTokens,
+                                dequant_scale1,
+                                dequant_scale2,
+                                quant_scale1,
+                                quant_scale2,
+                                quant_offset2,
+                            )
+                        )
+                else:
+                    if innerprecise == 0:
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            :act_seq,
+                            :,
+                        ] = _t_pfaattention_act_innerprecise(
+                            q_tensor_cur,
+                            k_tensor_cur,
+                            v_tensor_cur,
+                            pse_cur,
+                            mask_cur,
+                            scale,
                             act_seq,
                             act_kv_seq,
                             preTokens,
@@ -5184,53 +5914,62 @@ def _t_promtattention_bnsd(q_tensor, q_shape, k_tensor, k_shape, v_tensor, v_sha
                             dequant_scale2,
                             quant_scale1,
                             quant_scale2,
-                            quant_offset2)
+                            quant_offset2,
+                        )
                     else:
-                        y[b_index:(b_index + 1), n_index:(n_index + 1), :, :] = _t_pfaattention_act(q_tensor_cur,
-                                                                                                    k_tensor_cur,
-                                                                                                    v_tensor_cur,
-                                                                                                    pse_cur,
-                                                                                                    mask_cur, scale,
-                                                                                                    act_seq, act_kv_seq,
-                                                                                                    preTokens,
-                                                                                                    nextTokens,
-                                                                                                    dequant_scale1,
-                                                                                                    dequant_scale2,
-                                                                                                    quant_scale1,
-                                                                                                    quant_scale2,
-                                                                                                    quant_offset2)
-                else:
-                    if innerprecise == 0:
-                        y[b_index:(b_index + 1), n_index:(n_index + 1), :act_seq, :] = _t_pfaattention_act_innerprecise(
-                            q_tensor_cur, k_tensor_cur, v_tensor_cur, pse_cur, mask_cur, scale, act_seq, act_kv_seq,
-                            preTokens, nextTokens,
-                            dequant_scale1, dequant_scale2, quant_scale1, quant_scale2, quant_offset2)
-                    else:
-                        y[b_index:(b_index + 1), n_index:(n_index + 1), :act_seq, :] = _t_pfaattention_act(q_tensor_cur,
-                                                                                                           k_tensor_cur,
-                                                                                                           v_tensor_cur,
-                                                                                                           pse_cur,
-                                                                                                           mask_cur,
-                                                                                                           scale,
-                                                                                                           act_seq,
-                                                                                                           act_kv_seq,
-                                                                                                           preTokens,
-                                                                                                           nextTokens,
-                                                                                                           dequant_scale1,
-                                                                                                           dequant_scale2,
-                                                                                                           quant_scale1,
-                                                                                                           quant_scale2,
-                                                                                                           quant_offset2)
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            :act_seq,
+                            :,
+                        ] = _t_pfaattention_act(
+                            q_tensor_cur,
+                            k_tensor_cur,
+                            v_tensor_cur,
+                            pse_cur,
+                            mask_cur,
+                            scale,
+                            act_seq,
+                            act_kv_seq,
+                            preTokens,
+                            nextTokens,
+                            dequant_scale1,
+                            dequant_scale2,
+                            quant_scale1,
+                            quant_scale2,
+                            quant_offset2,
+                        )
 
     return y
 
-def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_tensor_list, v_shape_list,
-                            pse_bnsd_tensor, mask_tensor, scale, actseqlens,
-                            actkvseqlens, preTokens_list, nextTokens_list, sparse, pfa_param, dequant_scale1=None,
-                            dequant_scale2=None, quant_scale1=None, quant_scale2=None,
-                            quant_offset2=None, antiquant_scale=None, antiquant_offset=None,
-                            out_dtype="<class 'numpy.int8'>", q_dtype_origin="origin", sinks=None):
 
+def _np_promtattention_bnsd(
+    q_tensor,
+    q_shape,
+    k_tensor_list,
+    k_shape_list,
+    v_tensor_list,
+    v_shape_list,
+    pse_bnsd_tensor,
+    mask_tensor,
+    scale,
+    actseqlens,
+    actkvseqlens,
+    preTokens_list,
+    nextTokens_list,
+    sparse,
+    pfa_param,
+    dequant_scale1=None,
+    dequant_scale2=None,
+    quant_scale1=None,
+    quant_scale2=None,
+    quant_offset2=None,
+    antiquant_scale=None,
+    antiquant_offset=None,
+    out_dtype="<class 'numpy.int8'>",
+    q_dtype_origin="origin",
+    sinks=None,
+):
     batch_value = q_shape[0]
     numhead_value = q_shape[1]
     actseqlens_size = len(actseqlens)
@@ -5239,12 +5978,12 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
     outShape = copy.deepcopy(q_shape)
     outShape[-1] = v_shape_list[0][-1]
     y = np.zeros(outShape, dtype=np.float32)
-    lse = np.full(pfa_param['lseshape'], np.inf)
+    lse = np.full(pfa_param["lseshape"], np.inf)
     preTokens = preTokens_list
     nextTokens = nextTokens_list
     tensor_list_flag = len(k_tensor_list)
     if mask_tensor is not None:
-        mask_cur = np.zeros([1, 1, q_shape[2], len(mask_tensor[0][0])], dtype='uint8')
+        mask_cur = np.zeros([1, 1, q_shape[2], len(mask_tensor[0][0])], dtype="uint8")
     if tensor_list_flag == 1:
         k_tensor = k_tensor_list[0]
         k_shape = k_shape_list[0]
@@ -5273,56 +6012,82 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
         qs_end = q_tensor.shape[2]
         kvs_begin = 0
         kvs_end = k_tensor.shape[2]
-        if 'queryPaddingSize' in pfa_param:
-            qs_begin = int(q_tensor.shape[2] - act_seq - pfa_param['queryPaddingSize'][0])
-            qs_end = int(q_tensor.shape[2] - pfa_param['queryPaddingSize'][0])
+        if "queryPaddingSize" in pfa_param:
+            qs_begin = int(
+                q_tensor.shape[2] - act_seq - pfa_param["queryPaddingSize"][0]
+            )
+            qs_end = int(q_tensor.shape[2] - pfa_param["queryPaddingSize"][0])
             print(f"query_left padding--- s_begin:{qs_begin}, s_end:{qs_end}")
 
         else:
             if act_seq is not None:
                 qs_end = act_seq
-        if 'kvPaddingSize' in pfa_param:
-            kvs_begin = int(k_tensor.shape[2] - act_kv_seq - pfa_param['kvPaddingSize'][0])
-            kvs_end = int(k_tensor.shape[2] - pfa_param['kvPaddingSize'][0])
+        if "kvPaddingSize" in pfa_param:
+            kvs_begin = int(
+                k_tensor.shape[2] - act_kv_seq - pfa_param["kvPaddingSize"][0]
+            )
+            kvs_end = int(k_tensor.shape[2] - pfa_param["kvPaddingSize"][0])
             print(f"kv_left padding--- s_begin:{kvs_begin}, s_end:{kvs_end}")
         else:
             if act_kv_seq is not None:
                 kvs_end = act_kv_seq
-        pfa_param['qs_begin'] = qs_begin
-        pfa_param['qs_end'] = qs_end
-        pfa_param['kvs_begin'] = kvs_begin
-        pfa_param['kvs_end'] = kvs_end
-        if 'actualprefixKV' in pfa_param:
-            if pfa_param['actualprefixKV'] == 0:
-                pfa_param['kvs_end'] += pfa_param["shared_prefix_k"].shape[2]
+        pfa_param["qs_begin"] = qs_begin
+        pfa_param["qs_end"] = qs_end
+        pfa_param["kvs_begin"] = kvs_begin
+        pfa_param["kvs_end"] = kvs_end
+        if "actualprefixKV" in pfa_param:
+            if pfa_param["actualprefixKV"] == 0:
+                pfa_param["kvs_end"] += pfa_param["shared_prefix_k"].shape[2]
             else:
-                pfa_param['kvs_end'] += pfa_param['actualprefixKV']
-        pfa_param['sparse'] = sparse
+                pfa_param["kvs_end"] += pfa_param["actualprefixKV"]
+        pfa_param["sparse"] = sparse
 
         # bnsd
         if sparse == 4:
-            preTokens =  preTokens_list[b_index] if isinstance(preTokens_list, list) else preTokens_list
+            preTokens = (
+                preTokens_list[b_index]
+                if isinstance(preTokens_list, list)
+                else preTokens_list
+            )
         if sparse == 3 or sparse == 4:
-            nextTokens = nextTokens_list[b_index] if isinstance(nextTokens_list, list) else nextTokens_list
+            nextTokens = (
+                nextTokens_list[b_index]
+                if isinstance(nextTokens_list, list)
+                else nextTokens_list
+            )
 
         for n_index in range(numhead_value):
             if len(q_shape) == 4 and len(k_shape) == 4 and len(v_shape) == 4:
-                q_tensor_cur = q_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                q_tensor_cur = q_tensor[
+                    b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                ]
                 if tensor_list_flag == 1:
-                    k_tensor_cur = k_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
-                    v_tensor_cur = v_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                    k_tensor_cur = k_tensor[
+                        b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                    ]
+                    v_tensor_cur = v_tensor[
+                        b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                    ]
                 else:
-                    k_tensor_cur = k_tensor[:, n_index:(n_index + 1), :, :]
-                    v_tensor_cur = v_tensor[:, n_index:(n_index + 1), :, :]
+                    k_tensor_cur = k_tensor[:, n_index : (n_index + 1), :, :]
+                    v_tensor_cur = v_tensor[:, n_index : (n_index + 1), :, :]
 
                 if "shared_prefix_k" in pfa_param:
-                    actual_prefix_len = pfa_param['actualprefixKV']
+                    actual_prefix_len = pfa_param["actualprefixKV"]
                     if actual_prefix_len == 0:
-                        shared_prefix_k = pfa_param["shared_prefix_k"][:, n_index:(n_index + 1), :, :]
-                        shared_prefix_v = pfa_param["shared_prefix_v"][:, n_index:(n_index + 1), :, :]
+                        shared_prefix_k = pfa_param["shared_prefix_k"][
+                            :, n_index : (n_index + 1), :, :
+                        ]
+                        shared_prefix_v = pfa_param["shared_prefix_v"][
+                            :, n_index : (n_index + 1), :, :
+                        ]
                     else:
-                        shared_prefix_k = pfa_param["shared_prefix_k"][:, n_index:(n_index + 1), :actual_prefix_len, :]
-                        shared_prefix_v = pfa_param["shared_prefix_v"][:, n_index:(n_index + 1), :actual_prefix_len, :]
+                        shared_prefix_k = pfa_param["shared_prefix_k"][
+                            :, n_index : (n_index + 1), :actual_prefix_len, :
+                        ]
+                        shared_prefix_v = pfa_param["shared_prefix_v"][
+                            :, n_index : (n_index + 1), :actual_prefix_len, :
+                        ]
                     k_tensor_cur = np.append(shared_prefix_k, k_tensor_cur, axis=2)
                     v_tensor_cur = np.append(shared_prefix_v, v_tensor_cur, axis=2)
 
@@ -5335,7 +6100,9 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
                 if pse_bnsd_tensor is None:
                     pse_cur = None
                 else:
-                    pse_cur = pse_bnsd_tensor[b_index:(b_index + 1), n_index:(n_index + 1), :, :]
+                    pse_cur = pse_bnsd_tensor[
+                        b_index : (b_index + 1), n_index : (n_index + 1), :, :
+                    ]
 
                 quant_scale2_cur = None
                 quant_offset2_cur = None
@@ -5416,12 +6183,25 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
                         quant_scale1,
                         quant_scale2_cur,
                         quant_offset2_cur,
-                        out_dtype)
-                elif q_tensor.dtype == "float8_e5m2" or q_tensor.dtype == "float8_e4m3fn":
-                    y[b_index:(b_index + 1), n_index:(n_index + 1), qs_begin:qs_end, :], lse[b_index:(b_index + 1),
-                                                                                         n_index:(n_index + 1),
-                                                                                         qs_begin:qs_end,
-                                                                                         :] = _np_pfaattention_act_fp8(
+                        out_dtype,
+                    )
+                elif (
+                    q_tensor.dtype == "float8_e5m2" or q_tensor.dtype == "float8_e4m3fn"
+                ):
+                    (
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                        lse[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                    ) = _np_pfaattention_act_fp8(
                         q_tensor_cur,
                         k_tensor_cur,
                         v_tensor_cur,
@@ -5438,12 +6218,23 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
                         quant_scale1,
                         quant_scale2_cur,
                         quant_offset2_cur,
-                        out_dtype)
+                        out_dtype,
+                    )
                 elif q_dtype_origin == "hifloat8":
-                    y[b_index:(b_index + 1), n_index:(n_index + 1), qs_begin:qs_end, :], lse[b_index:(b_index + 1),
-                                                                                         n_index:(n_index + 1),
-                                                                                         qs_begin:qs_end,
-                                                                                         :] = _np_pfaattention_act_hifp8(
+                    (
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                        lse[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                    ) = _np_pfaattention_act_hifp8(
                         q_tensor_cur,
                         k_tensor_cur,
                         v_tensor_cur,
@@ -5460,17 +6251,29 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
                         quant_scale1,
                         quant_scale2_cur,
                         quant_offset2_cur,
-                        out_dtype)
+                        out_dtype,
+                    )
                 else:
-                    y[b_index:(b_index + 1), n_index:(n_index + 1), qs_begin:qs_end, :], lse[b_index:(b_index + 1),
-                                                                                         n_index:(n_index + 1),
-                                                                                         qs_begin:qs_end,
-                                                                                         :] = _np_pfaattention_act(
+                    (
+                        y[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                        lse[
+                            b_index : (b_index + 1),
+                            n_index : (n_index + 1),
+                            qs_begin:qs_end,
+                            :,
+                        ],
+                    ) = _np_pfaattention_act(
                         q_tensor_cur,
                         k_tensor_cur,
                         v_tensor_cur,
                         pse_cur,
-                        mask_cur, scale,
+                        mask_cur,
+                        scale,
                         act_seq,
                         act_kv_seq,
                         preTokens,
@@ -5483,9 +6286,11 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
                         antiquant_offset_k,
                         antiquant_offset_v,
                         out_dtype,
-                        sinks_cur)
+                        sinks_cur,
+                    )
 
     return y, lse
+
 
 def conv_float_to_u32(data_f):
     fp = ctypes.pointer(ctypes.c_float(data_f))
@@ -5517,6 +6322,7 @@ def qtensor_seqlength(q_shape, inputLayout):
         return q_shape[1]
     else:  # BNSD
         return q_shape[2]
+
 
 def kvantiquantmode(flagList, torch_tensor_list, params, v_end_index, numKeyValueHeads):
     antiquant_scale = None
@@ -5637,13 +6443,16 @@ def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
         s2 = npu_m_shape[3]
         return batch, numhead, s1, s2
 
+
 def _trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 4:  # 2N1D
         print("2N1D")
         return tensor
     elif len(shape) == 2:  # 2H
         d_num = shape[1] // numKeyValueHeads
-        print(f"[INFO]_n_trans_2h_to_2n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+        print(
+            f"[INFO]_n_trans_2h_to_2n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+        )
         new_tensor = tensor.reshape(2, 1, numKeyValueHeads, d_num).transpose(0, 2, 1, 3)
         return new_tensor
     elif len(shape) == 3:  # 2ND
@@ -5656,13 +6465,16 @@ def _trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
         print(f"[ERROR]_n_trans_2h_to_2n1d : len(shape):{len(shape)}")
         return tensor
 
+
 def _t_trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 4:  # 2N1D
         print("2N1D")
         return tensor
     elif len(shape) == 2:  # 2H
         d_num = shape[1] // numKeyValueHeads
-        print(f"[INFO]_n_trans_2h_to_2n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+        print(
+            f"[INFO]_n_trans_2h_to_2n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+        )
         new_tensor = tensor.reshape(2, 1, numKeyValueHeads, d_num).permute(0, 2, 1, 3)
         return new_tensor
     elif len(shape) == 3:  # 2ND
@@ -5675,13 +6487,16 @@ def _t_trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
         print(f"[ERROR]_n_trans_2h_to_2n1d : len(shape):{len(shape)}")
         return tensor
 
+
 def _trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 3:  # N1D
         print("N1D")
         return tensor
     elif len(shape) == 1:  # H
         d_num = shape[0] // numKeyValueHeads
-        print(f"[INFO]_n_trans_h_to_n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+        print(
+            f"[INFO]_n_trans_h_to_n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+        )
         new_tensor = tensor.reshape(1, numKeyValueHeads, d_num).transpose(1, 0, 2)
         return new_tensor
     elif len(shape) == 2:  # ND
@@ -5694,13 +6509,16 @@ def _trans_h_to_n1d(shape, tensor, numKeyValueHeads):
         print(f"[ERROR]_n_trans_1h_to_1n1d : len(shape):{len(shape)}")
         return tensor
 
+
 def _t_trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 3:  # N1D
         print("N1D")
         return tensor
     elif len(shape) == 1:  # H
         d_num = shape[0] // numKeyValueHeads
-        print(f"[INFO]_n_trans_h_to_n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}")
+        print(
+            f"[INFO]_n_trans_h_to_n1d : h={shape[1]}, n={numKeyValueHeads} ,d(h/n)={d_num}"
+        )
         new_tensor = tensor.reshape(1, numKeyValueHeads, d_num).permute(1, 0, 2)
         return new_tensor
     elif len(shape) == 2:  # ND
@@ -5712,6 +6530,7 @@ def _t_trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     else:
         print(f"[ERROR]_n_trans_1h_to_1n1d : len(shape):{len(shape)}")
         return tensor
+
 
 def _t_trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
     if len(shape) == 4:
@@ -5750,6 +6569,7 @@ def _t_trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
         print("[ERROR]trans_to_1n1d: Unknown input shape!")
         exit(1)
 
+
 def _trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
     if len(shape) == 4:
         # 1n1d->1n1d
@@ -5762,7 +6582,9 @@ def _trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
             n = shape[1]
             d = shape[2]
             return tensor.reshape(1, 1, n, d).transpose(0, 2, 1, 3)
-        elif inputLayout == "BNSD" or inputLayout == "NSD" or inputLayout == "BNSD_BSND":  # n,1,d -> 1,n,1,d
+        elif (
+            inputLayout == "BNSD" or inputLayout == "NSD" or inputLayout == "BNSD_BSND"
+        ):  # n,1,d -> 1,n,1,d
             n = shape[0]
             d = shape[2]
             return tensor.reshape(1, n, 1, d)
@@ -5786,6 +6608,7 @@ def _trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
     else:
         print("[ERROR]trans_to_1n1d: Unknown input shape!")
         exit(1)
+
 
 def gen_outshape(layout, qshape, vshape, numKeyValueHeads, numHeads):
     outshape = copy.deepcopy(qshape)
@@ -5894,19 +6717,25 @@ def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
                 block_offset = blockid_index * blockSize
                 if blockid_index == block_per_b - 1:
                     blocksize_left = actualSeqLengthsKV[b] - block_offset
-                    k_cache[blockid, 0:blocksize_left, :] = k_tensor_bsh_raw[b,
-                                                            block_offset:(block_offset + blocksize_left), :]
-                    v_cache[blockid, 0:blocksize_left, :] = v_tensor_bsh_raw[b,
-                                                            block_offset:(block_offset + blocksize_left), :]
-                    k_rope_cache[blockid, 0:blocksize_left, :] = k_rope_bsh_raw[b,
-                                                                 block_offset:(block_offset + blocksize_left), :]
+                    k_cache[blockid, 0:blocksize_left, :] = k_tensor_bsh_raw[
+                        b, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    v_cache[blockid, 0:blocksize_left, :] = v_tensor_bsh_raw[
+                        b, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    k_rope_cache[blockid, 0:blocksize_left, :] = k_rope_bsh_raw[
+                        b, block_offset : (block_offset + blocksize_left), :
+                    ]
                 else:
-                    k_cache[blockid, 0:blockSize, :] = k_tensor_bsh_raw[b,
-                                                       block_offset:(block_offset + blockSize), :]
-                    v_cache[blockid, 0:blockSize, :] = v_tensor_bsh_raw[b,
-                                                       block_offset:(block_offset + blockSize), :]
-                    k_rope_cache[blockid, 0:blockSize, :] = k_rope_bsh_raw[b,
-                                                       block_offset:(block_offset + blockSize), :]
+                    k_cache[blockid, 0:blockSize, :] = k_tensor_bsh_raw[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
+                    v_cache[blockid, 0:blockSize, :] = v_tensor_bsh_raw[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
+                    k_rope_cache[blockid, 0:blockSize, :] = k_rope_bsh_raw[
+                        b, block_offset : (block_offset + blockSize), :
+                    ]
     if k_cache.ndim == 4:
         # gen kv cache
         for b, block_per_b in enumerate(blockNumPerBlock):
@@ -5915,22 +6744,25 @@ def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
                 block_offset = blockid_index * blockSize
                 if blockid_index == block_per_b - 1:
                     blocksize_left = actualSeqLengthsKV[b] - block_offset
-                    k_cache[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blocksize_left),
-                                                               :]
-                    v_cache[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blocksize_left),
-                                                               :]
-                    k_rope_cache[blockid, :, 0:blocksize_left, :] = k_rope_bsh_raw[b, :,
-                                                               block_offset:(block_offset + blocksize_left),
-                                                               :]
+                    k_cache[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    v_cache[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
+                    k_rope_cache[blockid, :, 0:blocksize_left, :] = k_rope_bsh_raw[
+                        b, :, block_offset : (block_offset + blocksize_left), :
+                    ]
                 else:
-                    k_cache[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[b, :,
-                                                          block_offset:(block_offset + blockSize), :]
-                    v_cache[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[b, :,
-                                                          block_offset:(block_offset + blockSize), :]
-                    k_rope_cache[blockid, :, 0:blockSize, :] = k_rope_bsh_raw[b, :,
-                                                          block_offset:(block_offset + blockSize), :]
+                    k_cache[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
+                    v_cache[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
+                    k_rope_cache[blockid, :, 0:blockSize, :] = k_rope_bsh_raw[
+                        b, :, block_offset : (block_offset + blockSize), :
+                    ]
 
     if k_cache.ndim == 5:
         kd = k_tensor_bsh_raw.shape[3]
@@ -6271,20 +7103,20 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
         kvs += prefix_kvs
 
     pse_bnsd_tensor = None
-    pse_shift_shape = params['shape_input'][v_end_index + 1]  ##1nss or bnss
+    pse_shift_shape = params["shape_input"][v_end_index + 1]  ##1nss or bnss
     qs = q_bnsd_shape[2]
 
     if flagList[3] == 0 or 0 in pse_shift_shape:
         pse_bnsd_tensor = None
     else:
-        pse_dtype_torch = get_pt_dtype(params['dtype_input'][v_end_index + 1])
+        pse_dtype_torch = get_pt_dtype(params["dtype_input"][v_end_index + 1])
         pse_shift = None
         pse_shift_random_flag = True
         if action_type in gold:
             pse_shift = torch_tensor_list[3]
         else:
-            if 'prandom' in params:
-                if params['prandom'] != 0:
+            if "prandom" in params:
+                if params["prandom"] != 0:
                     pse_shift = torch_tensor_list[v_end_index + 1]
                 else:
                     pse_shift_random_flag = False
@@ -6299,17 +7131,19 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 pse_shift = npu_pse_shift.to(torch.float32).numpy().astype(np.float32)
         cpu_pse_shift = pse_shift[:, :, :qs, :kvs]
 
-        pse_bnsd_tensor = _np_broadcast_pseShift_n(cpu_pse_shift, pse_shift_shape, q_bnsd_shape[0])  # to bnsd
+        pse_bnsd_tensor = _np_broadcast_pseShift_n(
+            cpu_pse_shift, pse_shift_shape, q_bnsd_shape[0]
+        )  # to bnsd
     m_bnsd_tensor = None
-    npu_m_shape = params['shape_input'][v_end_index + 2]
-    m_dtype = get_np_dtype(params['dtype_input'][v_end_index + 2])
+    npu_m_shape = params["shape_input"][v_end_index + 2]
+    m_dtype = get_np_dtype(params["dtype_input"][v_end_index + 2])
 
     randoms = 0
     mrandom_type = "NORMAL"
-    if 'mrandomtype' in params:
-        mrandom_type = params['mrandomtype']
-        if mrandom_type == 'ones':
-            randoms = int(params['mrandom'])
+    if "mrandomtype" in params:
+        mrandom_type = params["mrandomtype"]
+        if mrandom_type == "ones":
+            randoms = int(params["mrandom"])
 
     if flagList[4] == 0 or 0 in npu_m_shape:
         preTokens = 214748647
@@ -6568,25 +7402,41 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                             block_offset = blockid_index * blockSize
                             if blockid_index == block_per_b - 1:
                                 blocksize_left = actualSeqLengthsKV[b] - block_offset
-                                k_cache[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[b, :,
-                                                                           block_offset:(block_offset + blocksize_left),
-                                                                           :]
-                                v_cache[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[b, :,
-                                                                           block_offset:(block_offset + blocksize_left),
-                                                                           :]
+                                k_cache[blockid, :, 0:blocksize_left, :] = (
+                                    k_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
+                                v_cache[blockid, :, 0:blocksize_left, :] = (
+                                    v_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
                             else:
-                                k_cache[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[b, :,
-                                                                      block_offset:(block_offset + blockSize), :]
-                                v_cache[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[b, :,
-                                                                      block_offset:(block_offset + blockSize), :]
+                                k_cache[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[
+                                    b, :, block_offset : (block_offset + blockSize), :
+                                ]
+                                v_cache[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[
+                                    b, :, block_offset : (block_offset + blockSize), :
+                                ]
 
                 if k_cache.ndim == 5:
                     k_tensor_bsh_raw = k_tensor_bnsd_list[0]
                     v_tensor_bsh_raw = v_tensor_bnsd_list[0]
                     kd = k_tensor_bsh_raw.shape[3]
                     vd = v_tensor_bsh_raw.shape[3]
-                    k_cache_bnsd = np.zeros((k_cache.shape[0], k_cache.shape[1], blockSize, kd))
-                    v_cache_bnsd = np.zeros((k_cache.shape[0], k_cache.shape[1], blockSize, vd))
+                    k_cache_bnsd = np.zeros(
+                        (k_cache.shape[0], k_cache.shape[1], blockSize, kd)
+                    )
+                    v_cache_bnsd = np.zeros(
+                        (k_cache.shape[0], k_cache.shape[1], blockSize, vd)
+                    )
                     # gen kv cache
                     for b, block_per_b in enumerate(blockNumPerBlock):
                         for blockid_index in range(block_per_b):
@@ -6594,65 +7444,112 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                             block_offset = blockid_index * blockSize
                             if blockid_index == block_per_b - 1:
                                 blocksize_left = actualSeqLengthsKV[b] - block_offset
-                                k_cache_bnsd[blockid, :, 0:blocksize_left, :] = k_tensor_bsh_raw[b, :,
-                                                                                block_offset:(
-                                                                                            block_offset + blocksize_left),
-                                                                                :]
-                                v_cache_bnsd[blockid, :, 0:blocksize_left, :] = v_tensor_bsh_raw[b, :,
-                                                                                block_offset:(
-                                                                                            block_offset + blocksize_left),
-                                                                                :]
+                                k_cache_bnsd[blockid, :, 0:blocksize_left, :] = (
+                                    k_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
+                                v_cache_bnsd[blockid, :, 0:blocksize_left, :] = (
+                                    v_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blocksize_left),
+                                        :,
+                                    ]
+                                )
                             else:
-                                k_cache_bnsd[blockid, :, 0:blockSize, :] = k_tensor_bsh_raw[b, :,
-                                                                           block_offset:(block_offset + blockSize), :]
-                                v_cache_bnsd[blockid, :, 0:blockSize, :] = v_tensor_bsh_raw[b, :,
-                                                                           block_offset:(block_offset + blockSize), :]
+                                k_cache_bnsd[blockid, :, 0:blockSize, :] = (
+                                    k_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blockSize),
+                                        :,
+                                    ]
+                                )
+                                v_cache_bnsd[blockid, :, 0:blockSize, :] = (
+                                    v_tensor_bsh_raw[
+                                        b,
+                                        :,
+                                        block_offset : (block_offset + blockSize),
+                                        :,
+                                    ]
+                                )
 
                         if k_dtype == "int8":
                             base = 32
                         else:
                             base = 16
-                        k_cache = k_cache_bnsd.reshape(k_cache_bnsd.shape[0],
-                                                       k_cache_bnsd.shape[1],
-                                                       k_cache_bnsd.shape[2],
-                                                       k_cache_bnsd.shape[3] // base,
-                                                       base).transpose(0, 1, 3, 2, 4)
-                        v_cache = v_cache_bnsd.reshape(v_cache_bnsd.shape[0],
-                                                       v_cache_bnsd.shape[1],
-                                                       v_cache_bnsd.shape[2],
-                                                       v_cache_bnsd.shape[3] // base,
-                                                       base).transpose(0, 1, 3, 2, 4)
+                        k_cache = k_cache_bnsd.reshape(
+                            k_cache_bnsd.shape[0],
+                            k_cache_bnsd.shape[1],
+                            k_cache_bnsd.shape[2],
+                            k_cache_bnsd.shape[3] // base,
+                            base,
+                        ).transpose(0, 1, 3, 2, 4)
+                        v_cache = v_cache_bnsd.reshape(
+                            v_cache_bnsd.shape[0],
+                            v_cache_bnsd.shape[1],
+                            v_cache_bnsd.shape[2],
+                            v_cache_bnsd.shape[3] // base,
+                            base,
+                        ).transpose(0, 1, 3, 2, 4)
                         print(f"[INFO]k_cache NZ: {k_cache.shape}")
                         print(f"[INFO]v_cache NZ: {v_cache.shape}")
 
-                kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+                kv_dtype = tools.get_np_dtype(params["dtype_input"][1])
 
                 if str(kv_dtype) == "<class 'bfloat16'>":
                     k_cache = torch.from_numpy(k_cache).to(torch.bfloat16)
                     v_cache = torch.from_numpy(v_cache).to(torch.bfloat16)
-                elif str(kv_dtype) != "<class 'float8_e5m2'>" and params['dtype_input'][1] != "hifloat8" and \
-                        params['dtype_input'][1] != "float8_e4m3fn":
+                elif (
+                    str(kv_dtype) != "<class 'float8_e5m2'>"
+                    and params["dtype_input"][1] != "hifloat8"
+                    and params["dtype_input"][1] != "float8_e4m3fn"
+                ):
                     k_cache = torch.from_numpy(k_cache.astype(kv_dtype))
                     v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
 
     if flagList[15]:
-        pfa_param['queryPaddingSize'] = torch_tensor_list[v_end_index + 11]
+        pfa_param["queryPaddingSize"] = torch_tensor_list[v_end_index + 11]
     if flagList[16]:
-        pfa_param['kvPaddingSize'] = torch_tensor_list[v_end_index + 12]
-    pfa_param['lseflag'] = params["softmax_lse_flag"]
-    pfa_param['lseshape'] = [q_bnsd_shape[0], q_bnsd_shape[1], q_bnsd_shape[2], 1]
+        pfa_param["kvPaddingSize"] = torch_tensor_list[v_end_index + 12]
+    pfa_param["lseflag"] = params["softmax_lse_flag"]
+    pfa_param["lseshape"] = [q_bnsd_shape[0], q_bnsd_shape[1], q_bnsd_shape[2], 1]
 
     if len(flagList) > 30:
         if flagList[30]:
             sinks = torch_tensor_list[28]
 
-    y_all, lse = _np_promtattention_bnsd(q_tensor, q_bnsd_shape, k_tensor_list, k_shape_bnsd_list, v_tensor_list,
-                                         v_shape_bnsd_list,
-                                         pse_bnsd_tensor,
-                                         m_bnsd_tensor, scaleValue, actualSeqLengths, actualSeqLengthsKV, preTokens,
-                                         nextTokens, sp_mode, pfa_param, dequant_scale1,
-                                         dequant_scale2, quant_scale1, quant_scale2, quant_offset2, antiquant_scale,
-                                         antiquant_offset, out_dtype, params['dtype_input'][0], sinks)
+    y_all, lse = _np_promtattention_bnsd(
+        q_tensor,
+        q_bnsd_shape,
+        k_tensor_list,
+        k_shape_bnsd_list,
+        v_tensor_list,
+        v_shape_bnsd_list,
+        pse_bnsd_tensor,
+        m_bnsd_tensor,
+        scaleValue,
+        actualSeqLengths,
+        actualSeqLengthsKV,
+        preTokens,
+        nextTokens,
+        sp_mode,
+        pfa_param,
+        dequant_scale1,
+        dequant_scale2,
+        quant_scale1,
+        quant_scale2,
+        quant_offset2,
+        antiquant_scale,
+        antiquant_offset,
+        out_dtype,
+        params["dtype_input"][0],
+        sinks,
+    )
     if inputLayout == "BSH":
         y_all = y_all.transpose(0, 2, 1, 3).reshape(out_shape)
     elif inputLayout == "NSD":
@@ -6691,7 +7588,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
             yNewAll = np.zeros((S, N * D))
             for i in range(B):
                 for j in range(actualSeqLengths[i]):
-                    yNewAll[sums + j, :] = y_all[i:i + 1, j].reshape(1, N * D)
+                    yNewAll[sums + j, :] = y_all[i : i + 1, j].reshape(1, N * D)
                 sums += actualSeqLengths[i]
             y_all = yNewAll.astype(np.float32)
     else:
@@ -6713,7 +7610,9 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    lse_output[t_start:t_end, n_index, :] = lse[b_index, n_index, :act_s, :]
+                    lse_output[t_start:t_end, n_index, :] = lse[
+                        b_index, n_index, :act_s, :
+                    ]
                 t_start += act_s
             lse = lse_output
         lse = torch.from_numpy(lse.astype(np.float32))
@@ -6724,6 +7623,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     # lse = torch.from_numpy(lse.astype(np.float32))
     # return y_all,lse
     return y_all
+
 
 # FIA
 seed = 1
@@ -6741,7 +7641,7 @@ FIA_ENABLE_FUNC_BEGIN_PRINT = False
 
 FIA_ALL_ONE_DEBUG = False
 
-_performance_data = defaultdict(lambda: {'total_time': 0.0, 'calls': 0})
+_performance_data = defaultdict(lambda: {"total_time": 0.0, "calls": 0})
 
 
 def timeit_decorator(func):
@@ -6818,8 +7718,17 @@ class StorageMode(Enum):
     TENSOR_LIST = 2
 
 
-class FiaTensor():
-    def __init__(self, data, shape, dtype, layout, head_nums=None, actual_seq_lens=None, name=None):
+class FiaTensor:
+    def __init__(
+        self,
+        data,
+        shape,
+        dtype,
+        layout,
+        head_nums=None,
+        actual_seq_lens=None,
+        name=None,
+    ):
         debug_str = f"FiaTensor {name} init, shape: {shape}, layout: {layout}, dtype: {dtype}, head_nums: {head_nums}"
         if actual_seq_lens is not None:
             debug_str += f", actual_seq_lens: {actual_seq_lens}"
@@ -6890,15 +7799,20 @@ class FiaTensor():
         return list(self._bsnd_data.shape)
 
     def _get_axis(self, axis_name):
-        if self.layout != 'BNDSD0' and len(self.layout) != len(self.shape):
+        if self.layout != "BNDSD0" and len(self.layout) != len(self.shape):
             raise RuntimeError(
-                f"{self._name} the length of layout {self.layout} and shape {self.shape} should be equal")
+                f"{self._name} the length of layout {self.layout} and shape {self.shape} should be equal"
+            )
 
-        if self.layout == 'BNDSD0' and len(self.shape) != 5:
-            raise RuntimeError(f"{self._name} layout is BNDSD0, len(self.shape) = {len(self.shape)} should be 5")
+        if self.layout == "BNDSD0" and len(self.shape) != 5:
+            raise RuntimeError(
+                f"{self._name} layout is BNDSD0, len(self.shape) = {len(self.shape)} should be 5"
+            )
 
         if axis_name not in self.layout:
-            raise RuntimeError(f"{self._name} layout {self.layout} do not have axis {axis_name}")
+            raise RuntimeError(
+                f"{self._name} layout {self.layout} do not have axis {axis_name}"
+            )
 
         return self.shape[self.layout.index(axis_name)]
 
@@ -6906,41 +7820,49 @@ class FiaTensor():
     def B(self):
         if self.is_tnd_like_layout():
             if not self._actual_seq_lens:
-                raise RuntimeError(f"{self._name} layout is {self.layout}, actual_seq_lens should be exists")
+                raise RuntimeError(
+                    f"{self._name} layout is {self.layout}, actual_seq_lens should be exists"
+                )
             return len(self._actual_seq_lens)
-        return self._get_axis('B')
+        return self._get_axis("B")
 
     @property
     def N(self):
-        if 'N' in self.layout:
-            return self._get_axis('N')
+        if "N" in self.layout:
+            return self._get_axis("N")
         return self._head_nums
 
     @property
     def S(self):
         if self.is_tnd_like_layout():
             if not self._actual_seq_lens:
-                raise RuntimeError(f"{self._name} layout is {self.layout}, actual_seq_lens should be exists")
+                raise RuntimeError(
+                    f"{self._name} layout is {self.layout}, actual_seq_lens should be exists"
+                )
             return max(self._actual_seq_lens)
-        return self._get_axis('S')
+        return self._get_axis("S")
 
     @property
     def D(self):
-        if 'H' in self.layout:
+        if "H" in self.layout:
             if self._head_nums is None:
-                raise ValueError(f"{self._name} layout is {self.layout}, head_nums should not be None")
+                raise ValueError(
+                    f"{self._name} layout is {self.layout}, head_nums should not be None"
+                )
             if self.H % self._head_nums != 0:
-                raise RuntimeError(f"H({self.H}) % head_nums({self._head_nums}) should be 0")
+                raise RuntimeError(
+                    f"H({self.H}) % head_nums({self._head_nums}) should be 0"
+                )
             return int(self.H // self._head_nums)
-        return self._get_axis('D')
+        return self._get_axis("D")
 
     @property
     def T(self):
-        return self._get_axis('T')
+        return self._get_axis("T")
 
     @property
     def H(self):
-        return self._get_axis('H')
+        return self._get_axis("H")
 
     def empty(self):
         return 0 in self.shape
@@ -6950,22 +7872,22 @@ class FiaTensor():
 
     @staticmethod
     def _get_dtype(input_dtype):
-        if input_dtype == 'fp16':
-            return 'float16'
-        elif input_dtype == 'int8':
-            return 'int8'
-        elif input_dtype == 'uint8':
-            return 'uint8'
-        elif input_dtype == 'bf16':
-            return 'bfloat16'
-        elif input_dtype == 'bool':
-            return 'bool'
-        elif input_dtype == 'int32':
-            return 'int32'
-        elif input_dtype == 'fp32':
-            return 'float32'
-        elif input_dtype == 'int4':
-            return 'int4'
+        if input_dtype == "fp16":
+            return "float16"
+        elif input_dtype == "int8":
+            return "int8"
+        elif input_dtype == "uint8":
+            return "uint8"
+        elif input_dtype == "bf16":
+            return "bfloat16"
+        elif input_dtype == "bool":
+            return "bool"
+        elif input_dtype == "int32":
+            return "int32"
+        elif input_dtype == "fp32":
+            return "float32"
+        elif input_dtype == "int4":
+            return "int4"
         else:
             return input_dtype
 
@@ -6995,21 +7917,31 @@ class FiaTensor():
             return torch.ones(size=shape, dtype=data.dtype)
         else:
             raise RuntimeError(f"Unsupported dtype {type(data)}")
-    
+
     def get_np_dtype(self, type_str):
         type_dict = {
-            'fp64': np.float64, 'fp32': np.float32, 'fp16': np.float16,
-            'int64': np.int64, 'int32': np.int32, 'int16': np.int16, 'int8': np.int8,
-            'uint64': np.uint64, 'uint32': np.uint32, 'uint16': np.uint16, 'uint8': np.uint8,
-            'bool': np.bool_, 'complex64': np.complex64, 'complex128': np.complex128,
-            'complex32': np.float16,
-            'bf16': tf.bfloat16.as_numpy_dtype,
-            'bfloat16': tf.bfloat16.as_numpy_dtype,
-            'float4_e2m1': np.uint8,
-            'float4_e1m2': np.uint8,
-            'float8_e8m0': np.uint8,
-            'hifloat8': np.uint8,
-            'fp4_e1m2': np.uint8,
+            "fp64": np.float64,
+            "fp32": np.float32,
+            "fp16": np.float16,
+            "int64": np.int64,
+            "int32": np.int32,
+            "int16": np.int16,
+            "int8": np.int8,
+            "uint64": np.uint64,
+            "uint32": np.uint32,
+            "uint16": np.uint16,
+            "uint8": np.uint8,
+            "bool": np.bool_,
+            "complex64": np.complex64,
+            "complex128": np.complex128,
+            "complex32": np.float16,
+            "bf16": tf.bfloat16.as_numpy_dtype,
+            "bfloat16": tf.bfloat16.as_numpy_dtype,
+            "float4_e2m1": np.uint8,
+            "float4_e1m2": np.uint8,
+            "float8_e8m0": np.uint8,
+            "hifloat8": np.uint8,
+            "fp4_e1m2": np.uint8,
             "fp4_e2m1": np.uint8,
             "fp8_e8m0": np.uint8,
             "float32": np.float32,
@@ -7020,16 +7952,19 @@ class FiaTensor():
             "qint16": np.int16,
             "uint1": np.uint8,
             "quint16": np.uint16,
-            "fp4_e2m1_as_fp32": np.float32
+            "fp4_e2m1_as_fp32": np.float32,
         }
         if type_str == "int4":
             from ml_dtypes import int4
+
             return int4
         elif type_str == "float8_e5m2":
             from ml_dtypes import float8_e5m2
+
             return float8_e5m2
         elif type_str == "float8_e4m3fn":
             from ml_dtypes import float8_e4m3fn
+
             return float8_e4m3fn
         else:
             return type_dict[type_str]
@@ -7038,16 +7973,24 @@ class FiaTensor():
         if self.layout == "BNSD":
             return self.data
         elif self.layout == "BSH":
-            return self.transpose(self.data.reshape(self.B, -1, self._head_nums, self.D), (0, 2, 1, 3))
+            return self.transpose(
+                self.data.reshape(self.B, -1, self._head_nums, self.D), (0, 2, 1, 3)
+            )
         elif self.layout == "BSND":
             return self.transpose(self.data, (0, 2, 1, 3))
         elif self.layout == "NBSD":
             return self.transpose(self.data, (1, 0, 2, 3))
         elif self.layout == "TND" or self.layout == "NTD":
             if self._actual_seq_lens is None:
-                raise RuntimeError(f"layout is {self.layout}, actual_seq_lens should not be None")
+                raise RuntimeError(
+                    f"layout is {self.layout}, actual_seq_lens should not be None"
+                )
             output_data = self.init_zeros(self.data, (self.B, self.N, self.S, self.D))
-            data = self.transpose(self.data, (1, 0, 2)) if self.layout == "NTD" else self.data
+            data = (
+                self.transpose(self.data, (1, 0, 2))
+                if self.layout == "NTD"
+                else self.data
+            )
             t_start = 0
             for b_idx in range(self.B):
                 act_s = self._actual_seq_lens[b_idx]
@@ -7055,7 +7998,9 @@ class FiaTensor():
                 if act_s == 0:
                     continue
                 for n_idx in range(self.N):
-                    output_data[b_idx, n_idx, 0:act_s, :] = data[t_start:t_end, n_idx, :]
+                    output_data[b_idx, n_idx, 0:act_s, :] = data[
+                        t_start:t_end, n_idx, :
+                    ]
                 t_start += act_s
             return output_data
         else:
@@ -7132,7 +8077,16 @@ class FiaTensor():
 
 
 class FiaTensorList(FiaTensor):
-    def __init__(self, data_list, shape_list, dtype, layout, head_nums=None, actual_seq_lens=None, name=None):
+    def __init__(
+        self,
+        data_list,
+        shape_list,
+        dtype,
+        layout,
+        head_nums=None,
+        actual_seq_lens=None,
+        name=None,
+    ):
         print()
         debug_str = f"FiaTensorList {name} init, shape_list: {shape_list}, layout: {layout}, dtype: {dtype}, head_nums: {head_nums}"
         if actual_seq_lens is not None:
@@ -7141,13 +8095,18 @@ class FiaTensorList(FiaTensor):
 
         if len(data_list) != len(shape_list):
             raise ValueError(
-                f"FiaTensorList {name} len(data_list) = {len(data_list)} should be equal to len(shape_list) = {len(shape_list)}")
+                f"FiaTensorList {name} len(data_list) = {len(data_list)} should be equal to len(shape_list) = {len(shape_list)}"
+            )
         if len(data_list) == 0:
             raise ValueError(f"FiaTensorList {name} len(data_list) should not be 0")
 
-        super().__init__(data_list[0], shape_list[0], dtype, layout, head_nums, actual_seq_lens, name)
-        self._tensor_list = [FiaTensor(d, s, dtype, layout, head_nums, actual_seq_lens, name) for d, s in
-                             zip(data_list, shape_list)]
+        super().__init__(
+            data_list[0], shape_list[0], dtype, layout, head_nums, actual_seq_lens, name
+        )
+        self._tensor_list = [
+            FiaTensor(d, s, dtype, layout, head_nums, actual_seq_lens, name)
+            for d, s in zip(data_list, shape_list)
+        ]
         self._data_list = data_list
         self._shape_list = shape_list
         self._bnsd_data_list = None
@@ -7230,15 +8189,11 @@ def concat_tensor(tensor1, tensor2):
 
     # Check if the layouts are the same
     if tensor1.layout != tensor2.layout:
-        raise ValueError(
-            f"Layout mismatch: {tensor1.layout} vs {tensor2.layout}"
-        )
+        raise ValueError(f"Layout mismatch: {tensor1.layout} vs {tensor2.layout}")
 
     # Check if the dtypes are the same
     if tensor1.dtype != tensor2.dtype:
-        raise ValueError(
-            f"Dtype mismatch: {tensor1.dtype} vs {tensor2.dtype}"
-        )
+        raise ValueError(f"Dtype mismatch: {tensor1.dtype} vs {tensor2.dtype}")
 
     # Check if the head numbers are the same
     if tensor1._head_nums != tensor2._head_nums:
@@ -7253,26 +8208,34 @@ def concat_tensor(tensor1, tensor2):
     actual_seq_lens = tensor1._actual_seq_lens
 
     # Concatenate based on the layout
-    if 'D' in layout:
+    if "D" in layout:
         # Concatenate along the 'D' axis
-        d_axis = layout.index('D')
+        d_axis = layout.index("D")
         concat_data = concat_common((tensor1.data, tensor2.data), d_axis)
         concat_shape = list(concat_data.shape)
-    elif layout == 'BSH':
+    elif layout == "BSH":
         # For 'BSH' layout, reshape to 4D and concatenate along the 4th dimension
         concat_shape = [
             tensor1.shape[0],
             tensor1.shape[1],
-            tensor1.shape[2] + tensor2.shape[2]
+            tensor1.shape[2] + tensor2.shape[2],
         ]
-        tensor1_data_tmp = tensor1.data.reshape(tensor1.B, tensor1.S, tensor1.N, tensor1.D)
-        tensor2_data_tmp = tensor2.data.reshape(tensor2.B, tensor2.S, tensor2.N, tensor2.D)
-        concat_data = concat_common((tensor1_data_tmp, tensor2_data_tmp), 3).reshape(concat_shape)
+        tensor1_data_tmp = tensor1.data.reshape(
+            tensor1.B, tensor1.S, tensor1.N, tensor1.D
+        )
+        tensor2_data_tmp = tensor2.data.reshape(
+            tensor2.B, tensor2.S, tensor2.N, tensor2.D
+        )
+        concat_data = concat_common((tensor1_data_tmp, tensor2_data_tmp), 3).reshape(
+            concat_shape
+        )
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
     # Create and return the concatenated tensor
-    return FiaTensor(concat_data, concat_shape, dtype, layout, head_nums, actual_seq_lens)
+    return FiaTensor(
+        concat_data, concat_shape, dtype, layout, head_nums, actual_seq_lens
+    )
 
 
 def concat_tensor_list(tensor_list1, tensor_list2):
@@ -7293,8 +8256,14 @@ def concat_tensor_list(tensor_list1, tensor_list2):
         tensor2 = tensor_list2
 
     tensor_concat = concat_tensor(tensor1, tensor2)
-    tensor_concat_list = FiaTensorList([tensor_concat.data], [tensor_concat.shape], tensor_concat.dtype,
-                                       tensor_concat.layout, tensor_concat._head_nums, tensor_concat._actual_seq_lens)
+    tensor_concat_list = FiaTensorList(
+        [tensor_concat.data],
+        [tensor_concat.shape],
+        tensor_concat.dtype,
+        tensor_concat.layout,
+        tensor_concat._head_nums,
+        tensor_concat._actual_seq_lens,
+    )
     return tensor_concat_list
 
 
@@ -7323,7 +8292,9 @@ def get_attention_mask_batch_num(npu_m_shape, is_bs):
 
 
 def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
-    print(f"broadcast_mask_n:mask shape:{m_shape} with numheads:{numheads} q_batch:{q_batch}")
+    print(
+        f"broadcast_mask_n:mask shape:{m_shape} with numheads:{numheads} q_batch:{q_batch}"
+    )
     mask_cur_shape = cpu_m_shape
     if len(m_shape) == 4:
         # b1ss
@@ -7338,7 +8309,7 @@ def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
             if B_m == 1:
                 mask_cur = m_tensor[:, :, :].reshape(mask_cur_shape)
             else:
-                mask_cur = m_tensor[i:i + 1, :, :, :].reshape(mask_cur_shape)
+                mask_cur = m_tensor[i : i + 1, :, :, :].reshape(mask_cur_shape)
             m_res.append(mask_cur)
         return m_res
     elif len(m_shape) == 3:
@@ -7354,7 +8325,7 @@ def _np_broadcast_mask_n(m_tensor, m_shape, cpu_m_shape, numheads, q_batch):
             if B_m == 1:
                 mask_cur = m_tensor[:, :, :].reshape(mask_cur_shape)
             else:
-                mask_cur = m_tensor[i:i + 1, :, :].reshape(mask_cur_shape)
+                mask_cur = m_tensor[i : i + 1, :, :].reshape(mask_cur_shape)
             m_res.append(mask_cur)
         return m_res
     elif len(m_shape) == 2:
@@ -7480,7 +8451,7 @@ class FiaSoftmax():
         return ans, x_max, x_sum
 
 
-class MaskGenerator():
+class MaskGenerator:
     @staticmethod
     def _random_fill_tensor(tensor, shape, random_number, value=0):
         for i in range(0, random_number):
@@ -7491,9 +8462,20 @@ class MaskGenerator():
         return tensor
 
     @classmethod
-    def _create_mask_right_down(cls, m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV,
-                                actualprefixKV,
-                                prefix_kvs, batch, numheads, kv_s_list, m_dtype):
+    def _create_mask_right_down(
+        cls,
+        m_shape,
+        pre_tokens,
+        next_tokens,
+        actualSeqLengths,
+        actualSeqLengthsKV,
+        actualprefixKV,
+        prefix_kvs,
+        batch,
+        numheads,
+        kv_s_list,
+        m_dtype,
+    ):
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
 
@@ -7534,19 +8516,19 @@ class MaskGenerator():
         npu_mask = None
         if m_shape[0] != npu_m_shape[0] or m_shape[1] != npu_m_shape[1]:
             pad_flag = True
-            npu_mask = np.ones(npu_m_shape, dtype='uint8')
+            npu_mask = np.ones(npu_m_shape, dtype="uint8")
         cpu_mask = cls._create_mask(m_shape, pre_tokens, next_tokens)
         if pad_flag:
             if batch is None:
                 cpu_mask = cls._random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
-                npu_mask[:cpu_mask.shape[0], :cpu_mask.shape[1]] = cpu_mask
+                npu_mask[: cpu_mask.shape[0], : cpu_mask.shape[1]] = cpu_mask
                 return cpu_mask, npu_mask
             for i in range(batch):
                 re_mask_num = []
                 re_mask_npu_num = []
                 re_mask = cls._random_fill_tensor(cpu_mask, m_shape, random_ones, 1)
 
-                npu_mask[:re_mask.shape[0], :re_mask.shape[1]] = re_mask
+                npu_mask[: re_mask.shape[0], : re_mask.shape[1]] = re_mask
                 if numheads:
                     # cpu
                     re_mask_num.append(re_mask)
@@ -7578,7 +8560,9 @@ class MaskGenerator():
             return cpu_mask, cpu_mask
 
     @classmethod
-    def _create_mask_left_up(cls, m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype, random_ones=0):
+    def _create_mask_left_up(
+        cls, m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype, random_ones=0
+    ):
         re_mask_batch = []
         attentionmask = cls._create_mask(m_shape, pre_tokens, next_tokens)
         for i in range(batch):
@@ -7586,8 +8570,20 @@ class MaskGenerator():
         return re_mask_batch
 
     @classmethod
-    def _create_mask_band(cls, m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV, actualprefixKV,
-                          prefix_kvs, batch, numheads, kv_s_list, m_dtype):
+    def _create_mask_band(
+        cls,
+        m_shape,
+        pre_tokens,
+        next_tokens,
+        actualSeqLengths,
+        actualSeqLengthsKV,
+        actualprefixKV,
+        prefix_kvs,
+        batch,
+        numheads,
+        kv_s_list,
+        m_dtype,
+    ):
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
 
@@ -7615,53 +8611,110 @@ class MaskGenerator():
         return re_mask_batch, pre_tokens_list, next_tokens_list
 
     @classmethod
-    def _create_random_mask_by_spars(cls, cpu_m_shape, npu_m_shape, m_dtype, pre_tokens, next_tokens, actualSeqLengths,
-                                     actualSeqLengthsKV, actualprefixKV, prefix_kvs, kv_s_list, batch=1, numheads=1,
-                                     sp_mode=0, random_ones=0):
+    def _create_random_mask_by_spars(
+        cls,
+        cpu_m_shape,
+        npu_m_shape,
+        m_dtype,
+        pre_tokens,
+        next_tokens,
+        actualSeqLengths,
+        actualSeqLengthsKV,
+        actualprefixKV,
+        prefix_kvs,
+        kv_s_list,
+        batch=1,
+        numheads=1,
+        sp_mode=0,
+        random_ones=0,
+    ):
         # mask shape [sq,skv]  #mshape  npu  fshape cpu
         print(
-            f"[_create_random_mask_by_spars] full_m_shape:{cpu_m_shape} m_shape:{npu_m_shape} datype:{m_dtype} pret:{pre_tokens} nextt:{next_tokens} sp_mode:{sp_mode}")
+            f"[_create_random_mask_by_spars] full_m_shape:{cpu_m_shape} m_shape:{npu_m_shape} datype:{m_dtype} pret:{pre_tokens} nextt:{next_tokens} sp_mode:{sp_mode}"
+        )
         if sp_mode == 0:
-            cpu_mask, npu_mask = cls._create_mask_no_sparse(cpu_m_shape, npu_m_shape, pre_tokens, next_tokens, batch,
-                                                            numheads,
-                                                            m_dtype, random_ones)
+            cpu_mask, npu_mask = cls._create_mask_no_sparse(
+                cpu_m_shape,
+                npu_m_shape,
+                pre_tokens,
+                next_tokens,
+                batch,
+                numheads,
+                m_dtype,
+                random_ones,
+            )
             return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
         if sp_mode == 1:
-            print(f"[_create_random_mask_by_spars] sp_mode is 1 return all zero mask")
+            print("[_create_random_mask_by_spars] sp_mode is 1 return all zero mask")
             pre_tokens = 214748647
             next_tokens = 214748647
-            cpu_mask, npu_mask = cls._create_mask_no_sparse(cpu_m_shape, npu_m_shape, pre_tokens, next_tokens, batch,
-                                                            numheads,
-                                                            m_dtype, random_ones)
+            cpu_mask, npu_mask = cls._create_mask_no_sparse(
+                cpu_m_shape,
+                npu_m_shape,
+                pre_tokens,
+                next_tokens,
+                batch,
+                numheads,
+                m_dtype,
+                random_ones,
+            )
             return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
 
         if sp_mode == 2:
             pre_tokens = 214748647
             next_tokens = 0
-            print(f"[_create_random_mask_by_spars] sp_mode is 2 npu mask shape:{npu_m_shape}")
+            print(
+                f"[_create_random_mask_by_spars] sp_mode is 2 npu mask shape:{npu_m_shape}"
+            )
             npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-            cpu_mask = cls._create_mask_left_up(cpu_m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype)
+            cpu_mask = cls._create_mask_left_up(
+                cpu_m_shape, pre_tokens, next_tokens, batch, numheads, m_dtype
+            )
             return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens
         if sp_mode == 3:  # rightdown
             pre_tokens = 214748647
-            print(f"[_create_random_mask_by_spars] sp_mode is 3 npu mask shape:{npu_m_shape}")
+            print(
+                f"[_create_random_mask_by_spars] sp_mode is 3 npu mask shape:{npu_m_shape}"
+            )
             npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-            cpu_mask, next_tokens_new = cls._create_mask_right_down(cpu_m_shape, pre_tokens, next_tokens,
-                                                                    actualSeqLengths,
-                                                                    actualSeqLengthsKV, actualprefixKV, prefix_kvs,
-                                                                    batch,
-                                                                    numheads, kv_s_list, m_dtype)
+            cpu_mask, next_tokens_new = cls._create_mask_right_down(
+                cpu_m_shape,
+                pre_tokens,
+                next_tokens,
+                actualSeqLengths,
+                actualSeqLengthsKV,
+                actualprefixKV,
+                prefix_kvs,
+                batch,
+                numheads,
+                kv_s_list,
+                m_dtype,
+            )
             return cpu_mask, npu_mask.astype(m_dtype), pre_tokens, next_tokens_new
         if sp_mode == 4:
             npu_mask = np.triu(np.ones(npu_m_shape), k=1)
-            cpu_mask, pre_tokens_new, next_tokens_new = cls._create_mask_band(cpu_m_shape, pre_tokens, next_tokens,
-                                                                              actualSeqLengths, actualSeqLengthsKV,
-                                                                              actualprefixKV, prefix_kvs, batch,
-                                                                              numheads, kv_s_list, m_dtype)
-            return np.array(cpu_mask, dtype=m_dtype), npu_mask.astype(m_dtype), pre_tokens_new, next_tokens_new
+            cpu_mask, pre_tokens_new, next_tokens_new = cls._create_mask_band(
+                cpu_m_shape,
+                pre_tokens,
+                next_tokens,
+                actualSeqLengths,
+                actualSeqLengthsKV,
+                actualprefixKV,
+                prefix_kvs,
+                batch,
+                numheads,
+                kv_s_list,
+                m_dtype,
+            )
+            return (
+                np.array(cpu_mask, dtype=m_dtype),
+                npu_mask.astype(m_dtype),
+                pre_tokens_new,
+                next_tokens_new,
+            )
 
 
-class FiaBoradCastTool():
+class FiaBoradCastTool:
     @classmethod
     def broadcast_kv_n2_to_n1(cls, num_heads, num_kv_heads, kv_tensor, input_dtype):
         factor = num_heads // num_kv_heads
@@ -7672,11 +8725,11 @@ class FiaBoradCastTool():
         kv_res = np.zeros([B, num_heads, S, D], dtype=input_dtype)
         for i in range(num_heads):
             j = i // factor
-            kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+            kv_res[:, i : i + 1, :, :] = kv_tensor[:, j : j + 1, :, :]
         return kv_res, kv_res.shape
 
 
-class FiaLayoutTool():
+class FiaLayoutTool:
     @classmethod
     def transpose(cls, data, dims):
         if isinstance(data, np.ndarray):
@@ -7724,14 +8777,16 @@ class FiaLayoutTool():
         elif target_layout == "BNSD":
             return tensor
         else:
-            raise RuntimeError(f"trans_bnsd_to_target does not support target_layout: {target_layout}")
+            raise RuntimeError(
+                f"trans_bnsd_to_target does not support target_layout: {target_layout}"
+            )
 
     @classmethod
     def trans_bnsd_to_bsh(cls, tensor, shape):
         return cls.trans_bnsd_to_target(tensor, shape, "BSH")
 
 
-class FiaOpParam():
+class FiaOpParam:
     _flag_list_index = {
         "query": 0,
         "key": 1,
@@ -7812,11 +8867,11 @@ class FiaOpParam():
         k_end_index = kv_num
         v_start_index = kv_num + 1
         v_end_index = kv_num + kv_num
-        if data_name == 'query':
+        if data_name == "query":
             return 0
-        elif data_name == 'key':
+        elif data_name == "key":
             return k_start_index, k_end_index + 1
-        elif data_name == 'value':
+        elif data_name == "value":
             return v_start_index, v_end_index + 1
         else:
             if data_name not in cls._param_index:
@@ -7835,30 +8890,30 @@ class FiaOpParam():
     def _get_data(self, data_name):
         index = self._get_param_index(data_name, self.kv_num)
         if isinstance(index, tuple):
-            return self.data_list[index[0]: index[1]]
+            return self.data_list[index[0] : index[1]]
         else:
             return self.data_list[index]
 
     def _get_range(self, range_name):
         index = self._get_param_index(range_name, self.kv_num)
         if isinstance(index, tuple):
-            return self.params['range_input'][index[0]]
+            return self.params["range_input"][index[0]]
         else:
-            return self.params['range_input'][index]
+            return self.params["range_input"][index]
 
     def _get_shape(self, shape_name):
         index = self._get_param_index(shape_name, self.kv_num)
         if isinstance(index, tuple):
-            return self.params['shape_input'][index[0]: index[1]]
+            return self.params["shape_input"][index[0] : index[1]]
         else:
-            return self.params['shape_input'][index]
+            return self.params["shape_input"][index]
 
     def _get_dtype(self, dtype_name):
         index = self._get_param_index(dtype_name, self.kv_num)
         if isinstance(index, tuple):
-            return self.params['dtype_input'][index[0]]
+            return self.params["dtype_input"][index[0]]
         else:
-            return self.params['dtype_input'][index]
+            return self.params["dtype_input"][index]
 
     def _debug_info(self):
         fia_debug(f"action_type: {self.action_type}")
@@ -7905,7 +8960,7 @@ class FiaOpParam():
         self.data_list = data_list
         self.params = params
 
-        self.flag_list = self.str_to_bool_list(self.params['flaglist'])
+        self.flag_list = self.str_to_bool_list(self.params["flaglist"])
 
         self.parse_basic_info()
         self.parse_flag_list()
@@ -7915,7 +8970,7 @@ class FiaOpParam():
         if len(actual_seq_lens) == 1 and self.batch > 1:
             return actual_seq_lens * self.batch
         elif len(actual_seq_lens) > self.batch:
-            return actual_seq_lens[:self.batch]
+            return actual_seq_lens[: self.batch]
         return actual_seq_lens
 
     @staticmethod
@@ -7953,14 +9008,19 @@ class FiaOpParam():
         self.num_kv_heads = self._get_num_kv_heads()
         self.rope_flag = self._get_flag("q_rope")
         self.storage_mode = self._get_storage_mode()
-        self.pa_flag = (self.storage_mode == StorageMode.PAGE_ATTENTION)
+        self.pa_flag = self.storage_mode == StorageMode.PAGE_ATTENTION
 
         self._parse_layout()
         self.actual_seq_lens_q_raw = self._get_actual_seq_lens_q_raw()
         self.actual_seq_lens_kv_raw = self._get_actual_seq_lens_kv_raw()
         if not self.tnd_flag:
-            self.batch = FiaTensor(self._get_data("query"), self._get_shape("query"),
-                                   self._get_dtype("query"), self.q_layout, name="dummy").B
+            self.batch = FiaTensor(
+                self._get_data("query"),
+                self._get_shape("query"),
+                self._get_dtype("query"),
+                self.q_layout,
+                name="dummy",
+            ).B
         else:
             self.batch = len(self.actual_seq_lens_q_raw)
         self.actual_seq_lens_q = self._get_actual_seq_lens_q()
@@ -8052,31 +9112,66 @@ class FiaOpParam():
         return StorageMode.CONTIGUOES
 
     def _parse_layout(self):
-        self.q_layout = self.params['inputlayout'].split("_")[0]
-        self.out_layout = self.params['inputlayout'].split("_")[-1]
-        self.kv_layout = "BNSD" if (
-                self.tnd_flag and (self.storage_mode == StorageMode.PAGE_ATTENTION)) else self.q_layout
+        self.q_layout = self.params["inputlayout"].split("_")[0]
+        self.out_layout = self.params["inputlayout"].split("_")[-1]
+        self.kv_layout = (
+            "BNSD"
+            if (self.tnd_flag and (self.storage_mode == StorageMode.PAGE_ATTENTION))
+            else self.q_layout
+        )
         self.lse_layout = "TND" if self.tnd_flag else "BNSD"
 
     def _parse_input_tensor(self):
-        self.query = FiaTensor(self._get_data("query"), self._get_shape("query"),
-                               self._get_dtype("query"), self.q_layout, self.num_heads, self.actual_seq_lens_q,
-                               name="query")
-        self.key = FiaTensorList(self._get_data("key"), self._get_shape("key"),
-                                 self._get_dtype("key"), self.kv_layout, self.num_kv_heads, self.actual_seq_lens_kv,
-                                 name="key")
-        self.value = FiaTensorList(self._get_data("value"), self._get_shape("value"),
-                                   self._get_dtype("value"), self.kv_layout, self.num_kv_heads, self.actual_seq_lens_kv,
-                                   name="value")
-        self.is_deepseek_mla = (self.query.D == 512) and (self.value.D == 512) and self.rope_flag
+        self.query = FiaTensor(
+            self._get_data("query"),
+            self._get_shape("query"),
+            self._get_dtype("query"),
+            self.q_layout,
+            self.num_heads,
+            self.actual_seq_lens_q,
+            name="query",
+        )
+        self.key = FiaTensorList(
+            self._get_data("key"),
+            self._get_shape("key"),
+            self._get_dtype("key"),
+            self.kv_layout,
+            self.num_kv_heads,
+            self.actual_seq_lens_kv,
+            name="key",
+        )
+        self.value = FiaTensorList(
+            self._get_data("value"),
+            self._get_shape("value"),
+            self._get_dtype("value"),
+            self.kv_layout,
+            self.num_kv_heads,
+            self.actual_seq_lens_kv,
+            name="value",
+        )
+        self.is_deepseek_mla = (
+            (self.query.D == 512) and (self.value.D == 512) and self.rope_flag
+        )
         if self.is_deepseek_mla:
-            self.value = FiaTensorList(self._get_data("key"), self._get_shape("key"),
-                                       self._get_dtype("key"), self.kv_layout, self.num_kv_heads,
-                                       self.actual_seq_lens_kv, name="value")
+            self.value = FiaTensorList(
+                self._get_data("key"),
+                self._get_shape("key"),
+                self._get_dtype("key"),
+                self.kv_layout,
+                self.num_kv_heads,
+                self.actual_seq_lens_kv,
+                name="value",
+            )
         else:
-            self.value = FiaTensorList(self._get_data("value"), self._get_shape("value"),
-                                       self._get_dtype("value"), self.kv_layout, self.num_kv_heads,
-                                       self.actual_seq_lens_kv, name="value")
+            self.value = FiaTensorList(
+                self._get_data("value"),
+                self._get_shape("value"),
+                self._get_dtype("value"),
+                self.kv_layout,
+                self.num_kv_heads,
+                self.actual_seq_lens_kv,
+                name="value",
+            )
 
         self.q_s = self.query.S
         self.kv_s = self.key.S
@@ -8088,21 +9183,24 @@ class FiaOpParam():
         kv_num = self.batch if (self.storage_mode == StorageMode.TENSOR_LIST) else 1
         if kv_num != self.kv_num:
             raise RuntimeError(
-                f"kv_num({kv_num}) calculate by batch is not equal to kv_num({self.kv_num}) calculate by data_list num")
+                f"kv_num({kv_num}) calculate by batch is not equal to kv_num({self.kv_num}) calculate by data_list num"
+            )
         if self.storage_mode == StorageMode.CONTIGUOES:
-            if (len(self.key) != 1 or len(self.value) != 1):
+            if len(self.key) != 1 or len(self.value) != 1:
                 raise RuntimeError(
                     f"In CONTIGUOES situation, len(key) = {len(self.key)} \
-                    and len(value) = {len(self.value)} should be equal to 1")
+                    and len(value) = {len(self.value)} should be equal to 1"
+                )
         if self.storage_mode == StorageMode.TENSOR_LIST:
             if self.key[0].B != 1 or self.value[0].B != 1:
                 raise RuntimeError(
                     f"In TENSOR_LIST situation, key[0].B = {self.key[0].B} \
-                    and value[0].B = {self.value[0].B} should be 1")
+                    and value[0].B = {self.value[0].B} should be 1"
+                )
         self._parse_page_attention_input()
 
     def _get_kv_cache_layout(self, k_cache_shape):
-        kv_cache_layout = 'BSH'
+        kv_cache_layout = "BSH"
         if len(k_cache_shape) == 1:
             fia_info("kv_cache shape is 1")
         elif len(k_cache_shape) == 3:
@@ -8112,26 +9210,48 @@ class FiaOpParam():
         elif len(k_cache_shape) == 5:
             kv_cache_layout = "BNDSD0"
         else:
-            raise ValueError(f"len(k_cache_shape) should be in 3/4/5, got {len(k_cache_shape)}")
+            raise ValueError(
+                f"len(k_cache_shape) should be in 3/4/5, got {len(k_cache_shape)}"
+            )
         return kv_cache_layout
 
     def _parse_page_attention_input(self):
-        self.block_table = FiaTensor(self._get_data("block_table"),
-                                     self._get_shape("block_table"), self._get_dtype("block_table"), "ND",
-                                     name="block_table")
+        self.block_table = FiaTensor(
+            self._get_data("block_table"),
+            self._get_shape("block_table"),
+            self._get_dtype("block_table"),
+            "ND",
+            name="block_table",
+        )
         k_cache_shape = self._get_shape("k_cache")
         v_cache_shape = self._get_shape("v_cache")
         if len(k_cache_shape) != len(v_cache_shape):
-            raise RuntimeError(f"len(k_cache_shape) = {len(k_cache_shape)} should be \
-                equal to len(v_cahce_shape) = {len(v_cache_shape)}")
+            raise RuntimeError(
+                f"len(k_cache_shape) = {len(k_cache_shape)} should be \
+                equal to len(v_cahce_shape) = {len(v_cache_shape)}"
+            )
         self.kv_cache_layout = self._get_kv_cache_layout(k_cache_shape)
-        self.k_cache = FiaTensor(self._get_data("k_cache"),
-                                 k_cache_shape, self._get_dtype("k_cache"), self.kv_cache_layout, name="k_cache")
-        self.v_cache = FiaTensor(self._get_data("v_cache"),
-                                 v_cache_shape, self._get_dtype("v_cache"), self.kv_cache_layout, name="v_cache")
+        self.k_cache = FiaTensor(
+            self._get_data("k_cache"),
+            k_cache_shape,
+            self._get_dtype("k_cache"),
+            self.kv_cache_layout,
+            name="k_cache",
+        )
+        self.v_cache = FiaTensor(
+            self._get_data("v_cache"),
+            v_cache_shape,
+            self._get_dtype("v_cache"),
+            self.kv_cache_layout,
+            name="v_cache",
+        )
         self.k_rope_cache = FiaTensor(
-            self._get_data("k_rope_cache"), self._get_shape("k_rope_cache"),
-            self._get_dtype("k_rope_cache"), self.kv_cache_layout, name="k_rope_cache")
+            self._get_data("k_rope_cache"),
+            self._get_shape("k_rope_cache"),
+            self._get_dtype("k_rope_cache"),
+            self.kv_cache_layout,
+            name="k_rope_cache",
+        )
 
     def _get_output_shape(self):
         if self.out_layout == "BSND":
@@ -8159,51 +9279,105 @@ class FiaOpParam():
 
     def _parse_output_tensor(self):
         output_shape = self._get_output_shape()
-        self.output = FiaTensor(np.zeros(output_shape), output_shape, self.params['dtype_output'][0], self.out_layout,
-                                self.num_heads, self.actual_seq_lens_q, name="output")
+        self.output = FiaTensor(
+            np.zeros(output_shape),
+            output_shape,
+            self.params["dtype_output"][0],
+            self.out_layout,
+            self.num_heads,
+            self.actual_seq_lens_q,
+            name="output",
+        )
         lse_shape = self._get_lse_shape()
-        self.lse = FiaTensor(np.full(lse_shape, np.inf), lse_shape, "fp32", self.lse_layout,
-                             self.num_heads, self.actual_seq_lens_q, name="lse")
+        self.lse = FiaTensor(
+            np.full(lse_shape, np.inf),
+            lse_shape,
+            "fp32",
+            self.lse_layout,
+            self.num_heads,
+            self.actual_seq_lens_q,
+            name="lse",
+        )
 
     def _parse_optional_tensor(self):
         self.q_rope = FiaTensor(
-            self._get_data("q_rope"), self._get_shape("q_rope"), self._get_dtype("q_rope"),
-            self.q_layout, self.num_heads, self.actual_seq_lens_q, name="q_rope")
+            self._get_data("q_rope"),
+            self._get_shape("q_rope"),
+            self._get_dtype("q_rope"),
+            self.q_layout,
+            self.num_heads,
+            self.actual_seq_lens_q,
+            name="q_rope",
+        )
 
         self.k_rope = FiaTensor(
-            self._get_data("k_rope"), self._get_shape("k_rope"), self._get_dtype("k_rope"),
-            self.kv_layout, self.num_kv_heads, self.actual_seq_lens_kv, name="k_rope")
+            self._get_data("k_rope"),
+            self._get_shape("k_rope"),
+            self._get_dtype("k_rope"),
+            self.kv_layout,
+            self.num_kv_heads,
+            self.actual_seq_lens_kv,
+            name="k_rope",
+        )
         self.pse_shift = FiaTensor(
-            self._get_data("pse_shift"), self._get_shape("pse_shift"),
-            self._get_dtype("pse_shift"), "ND", name="pse_shift")
+            self._get_data("pse_shift"),
+            self._get_shape("pse_shift"),
+            self._get_dtype("pse_shift"),
+            "ND",
+            name="pse_shift",
+        )
         self.atten_mask = FiaTensor(
-            self._get_data("atten_mask"), self._get_shape("atten_mask"),
-            self._get_dtype("atten_mask"), "ND", name="atten_mask")
+            self._get_data("atten_mask"),
+            self._get_shape("atten_mask"),
+            self._get_dtype("atten_mask"),
+            "ND",
+            name="atten_mask",
+        )
         self.k_shared_prefix = FiaTensor(
-            self._get_data("k_shared_prefix"), self._get_shape("k_shared_prefix"),
-            self._get_dtype("k_shared_prefix"), self.kv_layout, self.num_kv_heads, name="k_shared_prefix")
+            self._get_data("k_shared_prefix"),
+            self._get_shape("k_shared_prefix"),
+            self._get_dtype("k_shared_prefix"),
+            self.kv_layout,
+            self.num_kv_heads,
+            name="k_shared_prefix",
+        )
         self.v_shared_prefix = FiaTensor(
-            self._get_data("v_shared_prefix"), self._get_shape("v_shared_prefix"),
-            self._get_dtype("v_shared_prefix"), self.kv_layout, self.num_kv_heads, name="v_shared_prefix")
+            self._get_data("v_shared_prefix"),
+            self._get_shape("v_shared_prefix"),
+            self._get_dtype("v_shared_prefix"),
+            self.kv_layout,
+            self.num_kv_heads,
+            name="v_shared_prefix",
+        )
         self.sinks = FiaTensor(
-            self._get_data("sinks"), self._get_shape("sinks"),
-            self._get_dtype("sinks"), "ND", name = "sinks")
+            self._get_data("sinks"),
+            self._get_shape("sinks"),
+            self._get_dtype("sinks"),
+            "ND",
+            name="sinks",
+        )
 
     def _get_quant_scale_offset_layout(self, shape):
-        dim2layout = {1: 'H', 2: 'ND'}
-        return dim2layout.get(len(shape), '1N1D')
+        dim2layout = {1: "H", 2: "ND"}
+        return dim2layout.get(len(shape), "1N1D")
 
     def _parse_quant_info(self):
         self.quant_scale2 = FiaTensor(
-            self._get_data("quant_scale2"), self._get_shape("quant_scale2"),
+            self._get_data("quant_scale2"),
+            self._get_shape("quant_scale2"),
             self._get_dtype("quant_scale2"),
             self._get_quant_scale_offset_layout(self._get_shape("quant_scale2")),
-            self.num_heads, name="quant_scale2")
+            self.num_heads,
+            name="quant_scale2",
+        )
         self.quant_offset2 = FiaTensor(
-            self._get_data("quant_offset2"), self._get_shape("quant_offset2"),
+            self._get_data("quant_offset2"),
+            self._get_shape("quant_offset2"),
             self._get_dtype("quant_offset2"),
             self._get_quant_scale_offset_layout(self._get_shape("quant_offset2")),
-            self.num_heads, name="quant_offset2")
+            self.num_heads,
+            name="quant_offset2",
+        )
 
         self.out_quant_flag = self._get_flag("quant_scale2")
         self.out_quant_pc_flag = False
@@ -8244,7 +9418,7 @@ class FiaOpParam():
         if self.shared_prefix_flag:
             prefix_act_lens = self.k_shared_prefix.bnsd_shape[2]
             if self.prefix_act_flag:
-                prefix_act_lens = self.params['prefix_act_lens'][0]
+                prefix_act_lens = self.params["prefix_act_lens"][0]
         return prefix_act_lens
 
     def _parse_feature_flag(self):
@@ -8258,7 +9432,9 @@ class FiaOpParam():
         self.kv_padding_size_flag = self._get_flag("kv_padding_size")
         if self.kv_padding_size_flag:
             self.kv_padding_size = max(self._get_range("kv_padding_size")[0], 0)
-        self.shared_prefix_flag = self._get_flag("k_shared_prefix") or self._get_flag("v_shared_prefix")
+        self.shared_prefix_flag = self._get_flag("k_shared_prefix") or self._get_flag(
+            "v_shared_prefix"
+        )
         self.prefix_act_flag = self._get_flag("actual_shared_prefix_len")
         self.prefix_act_lens = self._get_prefix_act_lens()
         self.prefix_kvs = 0
@@ -8272,7 +9448,7 @@ class FiaOpParam():
         return [True if l else False for l in lst]
 
 
-class FiaOpPreprocess():
+class FiaOpPreprocess:
     def __init__(self, data_list, params, op_params):
         self.params = params
         self.data_list = data_list
@@ -8344,7 +9520,8 @@ class FiaOpPreprocess():
 
         if block_num_expect_min > block_num:
             raise RuntimeError(
-                f"[ERROR]Wrong input k_cache_shape: get block_num = {block_num}, but expect block_num > {block_num_expect_min}")
+                f"[ERROR]Wrong input k_cache_shape: get block_num = {block_num}, but expect block_num > {block_num_expect_min}"
+            )
 
         block_idx_list = np.arange(0, block_num, 1)
         block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
@@ -8354,14 +9531,17 @@ class FiaOpPreprocess():
         block_idx = 0
         for batch_idx, block_num_cur_batch in enumerate(block_num_each_batch):
             for block_num_cur_batch_idx in range(block_num_cur_batch):
-                block_table[batch_idx][block_num_cur_batch_idx] = (block_idx_list[block_idx])
+                block_table[batch_idx][block_num_cur_batch_idx] = block_idx_list[
+                    block_idx
+                ]
                 block_idx += 1
         self.op_params.block_table.data = block_table
-        if self.params['is_preprocess']:
-            self.params['input_data'].kwargs['block_table'] = block_table
+        if self.params["is_preprocess"]:
+            self.params["input_data"].kwargs["block_table"] = block_table
 
-
-    def _generate_cache(self, cache_shape, tensor_bnsd, shape_bnsd, src_dtype, dst_dtype):
+    def _generate_cache(
+        self, cache_shape, tensor_bnsd, shape_bnsd, src_dtype, dst_dtype
+    ):
         block_table_dim1 = self.op_params.block_table.shape[1]
         block_size = self.op_params.block_size
         block_table = self.op_params.block_table.data
@@ -8376,15 +9556,16 @@ class FiaOpPreprocess():
             if src_dtype == "int32":
                 H = int(H / 8)
             tensor_bsh = np.zeros((B, max_s_batch, H))
-            tensor_bsh[:, :tensor_bsh_raw.shape[1], :] = tensor_bsh_raw[:, :, :]
+            tensor_bsh[:, : tensor_bsh_raw.shape[1], :] = tensor_bsh_raw[:, :, :]
             for batch_idx in range(B):
                 for block_idx, cache_block_id in enumerate(block_table[batch_idx]):
                     block_offset = block_idx * block_size
                     if cache_block_id == -1:
                         continue
                     else:
-                        cache[cache_block_id, 0:block_size, :] = tensor_bsh[batch_idx,
-                                                                 block_offset:(block_offset + block_size), :]
+                        cache[cache_block_id, 0:block_size, :] = tensor_bsh[
+                            batch_idx, block_offset : (block_offset + block_size), :
+                        ]
         elif len(cache_shape) == 4:  # BNSD
             k_tensor_bnsd = np.zeros((B, N, max_s_batch, D))
             k_tensor_bnsd[:, :, :S, :] = tensor_bnsd[:, :, :, :]
@@ -8470,7 +9651,9 @@ class FiaOpPreprocess():
         if not need_gen_input(self.op_params.action_type):
             return
 
-        fia_info(f"[PageAtten]Input Kdtype:{self.params['dtype_input'][1]} Vdtype:{self.params['dtype_input'][2]}")
+        fia_info(
+            f"[PageAtten]Input Kdtype:{self.params['dtype_input'][1]} Vdtype:{self.params['dtype_input'][2]}"
+        )
         if not self.op_params.rope_flag:
             self._preprocess_kv_cache_no_rope()
         else:
@@ -8490,10 +9673,10 @@ class FiaOpPreprocess():
         q_shape_bnsd = self.op_params.query.bnsd_shape
         randoms = 0
         mrandom_type = "NORMAL"
-        if 'mrandomtype' in self.params:
-            mrandom_type = self.params['mrandomtype']
-            if mrandom_type == 'ones':
-                randoms = int(self.params['mrandom'])
+        if "mrandomtype" in self.params:
+            mrandom_type = self.params["mrandomtype"]
+            if mrandom_type == "ones":
+                randoms = int(self.params["mrandom"])
         if (not self.op_params.atten_mask_flag) or self.op_params.atten_mask.empty():
             self.op_params.pre_tokens = 214748647
             self.op_params.next_tokens = 214748647
@@ -8515,29 +9698,45 @@ class FiaOpPreprocess():
             if self.op_params.shared_prefix_flag:
                 kvs += self.op_params.prefix_act_lens
             cpu_m_shape = [q_s, kvs]  # cpu
-            cpu_m_tensor, npu_m_tensor, self.op_params.pre_tokens, self.op_params.next_tokens = \
-                MaskGenerator._create_random_mask_by_spars(cpu_m_shape, npu_m_shape_s,
-                                                           self.op_params.atten_mask.dtype, self.op_params.pre_tokens,
-                                                           self.op_params.next_tokens,
-                                                           self.op_params.actual_seq_lens_q,
-                                                           self.op_params.actual_seq_lens_kv,
-                                                           self.op_params.prefix_act_lens,
-                                                           self.op_params.prefix_act_lens,
-                                                           self.op_params.kv_s_list,
-                                                           batch,
-                                                           num_heads, sparse_mode,
-                                                           random_ones=randoms)
-            if mrandom_type == 'invalid' or mrandom_type == 'invaild':
-                randoms = int(self.params['mrandom'])
+            (
+                cpu_m_tensor,
+                npu_m_tensor,
+                self.op_params.pre_tokens,
+                self.op_params.next_tokens,
+            ) = MaskGenerator._create_random_mask_by_spars(
+                cpu_m_shape,
+                npu_m_shape_s,
+                self.op_params.atten_mask.dtype,
+                self.op_params.pre_tokens,
+                self.op_params.next_tokens,
+                self.op_params.actual_seq_lens_q,
+                self.op_params.actual_seq_lens_kv,
+                self.op_params.prefix_act_lens,
+                self.op_params.prefix_act_lens,
+                self.op_params.kv_s_list,
+                batch,
+                num_heads,
+                sparse_mode,
+                random_ones=randoms,
+            )
+            if mrandom_type == "invalid" or mrandom_type == "invaild":
+                randoms = int(self.params["mrandom"])
                 cpu_m_tensor[..., :randoms] = 1
                 npu_m_tensor[..., :randoms] = 1
             if self.op_params.is_mask_bs:
                 npu_m_tensor = npu_m_tensor.reshape(self.op_params.atten_mask.shape)
             atten_mask_index = FiaOpParam.get_param_index("atten_mask")
 
-            if (sparse_mode == 0 or sparse_mode == 1) and (not self.op_params.is_mask_bs):
-                m_tensor = _np_broadcast_mask_n(cpu_m_tensor, self.op_params.atten_mask.shape, cpu_m_shape,
-                                                self.op_params.num_heads, q_shape_bnsd[0])
+            if (sparse_mode == 0 or sparse_mode == 1) and (
+                not self.op_params.is_mask_bs
+            ):
+                m_tensor = _np_broadcast_mask_n(
+                    cpu_m_tensor,
+                    self.op_params.atten_mask.shape,
+                    cpu_m_shape,
+                    self.op_params.num_heads,
+                    q_shape_bnsd[0],
+                )
             else:
                 m_tensor = cpu_m_tensor
             self.op_params.atten_mask.data = np.array(m_tensor)
@@ -8548,15 +9747,23 @@ class FiaOpPreprocess():
             return
 
         if self.op_params.prefix_act_flag:
-            self.op_params.k_shared_prefix.data = \
-                self.op_params.k_shared_prefix.bnsd_data[:, :, :self.op_params.prefix_act_lens, :]
-            self.op_params.v_shared_prefix.data = \
-                self.op_params.v_shared_prefix.bnsd_data[:, :, :self.op_params.prefix_act_lens, :]
+            self.op_params.k_shared_prefix.data = (
+                self.op_params.k_shared_prefix.bnsd_data[
+                    :, :, : self.op_params.prefix_act_lens, :
+                ]
+            )
+            self.op_params.v_shared_prefix.data = (
+                self.op_params.v_shared_prefix.bnsd_data[
+                    :, :, : self.op_params.prefix_act_lens, :
+                ]
+            )
         else:
-            self.op_params.k_shared_prefix.data = \
+            self.op_params.k_shared_prefix.data = (
                 self.op_params.k_shared_prefix.bnsd_data
-            self.op_params.v_shared_prefix.data = \
+            )
+            self.op_params.v_shared_prefix.data = (
                 self.op_params.v_shared_prefix.bnsd_data
+            )
         fia_info(f"prefix_act_lens:{str(self.op_params.prefix_act_lens)}")
 
 
@@ -8564,7 +9771,7 @@ class FiaOpPreprocessTorch(FiaOpPreprocess):
     def __init__(self, data_list, params, op_params, device=None):
         super().__init__(data_list, params, op_params)
         if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = torch.device(device)
 
@@ -8572,7 +9779,7 @@ class FiaOpPreprocessTorch(FiaOpPreprocess):
         if self.op_params.rope_flag:
             self.concat_rope_tensor()
         else:
-            raise ValueError(f"G only supported rope")
+            raise ValueError("G only supported rope")
         self.preprocess_block_table()
 
     def preprocess_block_table(self):
@@ -8602,15 +9809,19 @@ class FiaOpPreprocessTorch(FiaOpPreprocess):
         fia_debug("block_table shape: block_table.shape")
         self.op_params.block_table = block_table.to(self.device)
         k_new_tensor = k_new_tensor.transpose(1, 2)
-        blocked_k = k_new_tensor.reshape(block_table.numel(), block_size, kv_head_nums, d)
+        blocked_k = k_new_tensor.reshape(
+            block_table.numel(), block_size, kv_head_nums, d
+        )
         fia_debug("k_cache shape: blocked_k.shape")
         for i in range(batch):
             if blocked_k.dtype == torch.int8:
-                blocked_k.view(batch, max_seqlen_pad, kv_head_nums, d)[i, self.op_params.cache_seqlens[i].item():] = (0)
+                blocked_k.view(batch, max_seqlen_pad, kv_head_nums, d)[
+                    i, self.op_params.cache_seqlens[i].item() :
+                ] = 0
             else:
-                blocked_k.view(batch, max_seqlen_pad, kv_head_nums, d)[i, self.op_params.cache_seqlens[i].item():] = (
-                    float("nan")
-                )
+                blocked_k.view(batch, max_seqlen_pad, kv_head_nums, d)[
+                    i, self.op_params.cache_seqlens[i].item() :
+                ] = float("nan")
         self.op_params.blocked_k = blocked_k.to(self.device)
 
 
@@ -8618,21 +9829,24 @@ class FiaOpPreprocessNumpy(FiaOpPreprocess):
     pass
 
 
-class FiaOpForward():
-    def __init__(self, data_list, params, mode='numpy', device=None):
-
+class FiaOpForward:
+    def __init__(self, data_list, params, mode="numpy", device=None):
         self.params = params
         self.data_list = data_list
         self.op_params = FiaOpParam(data_list, params)
         self.mode = mode
         if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = torch.device(device)
-        if mode == 'numpy':
-            self.fia_op_preprocess = FiaOpPreprocessNumpy(data_list, params, self.op_params)
+        if mode == "numpy":
+            self.fia_op_preprocess = FiaOpPreprocessNumpy(
+                data_list, params, self.op_params
+            )
         else:
-            self.fia_op_preprocess = FiaOpPreprocessTorch(data_list, params, self.op_params, device)
+            self.fia_op_preprocess = FiaOpPreprocessTorch(
+                data_list, params, self.op_params, device
+            )
         self.act_seq_kv = 0
         self.act_seq_q = 0
         self.lse_default_value = np.inf
@@ -8642,17 +9856,28 @@ class FiaOpForward():
         if self.op_params.out_quant_flag:
             if self.op_params.out_quant_pc_flag:
                 fia_debug_func_begin("begin FiaOpForward._post_quant quant_pc")
-                y = quant_pc(y, self.op_params.quant_scale2.data, self.op_params.quant_offset2.data, n1)
+                y = quant_pc(
+                    y,
+                    self.op_params.quant_scale2.data,
+                    self.op_params.quant_offset2.data,
+                    n1,
+                )
             else:
                 fia_debug_func_begin("begin FiaOpForward._post_quant quant")
-                y = quant(y, self.op_params.quant_scale2.data[0], self.op_params.quant_offset2.data[0])
+                y = quant(
+                    y,
+                    self.op_params.quant_scale2.data[0],
+                    self.op_params.quant_offset2.data[0],
+                )
         return y
 
     def _calculate_q_s_begin_end(self):
         q_s_begin = 0
         q_s_end = self.query.S
         if self.op_params.q_padding_size_flag:
-            q_s_begin = int(self.query.S - self.act_seq_q - self.op_params.q_padding_size)
+            q_s_begin = int(
+                self.query.S - self.act_seq_q - self.op_params.q_padding_size
+            )
             q_s_end = int(self.query.S - self.op_params.q_padding_size)
             fia_debug(f"query_left padding--- s_begin:{q_s_begin}, s_end:{q_s_end}")
         else:
@@ -8669,7 +9894,9 @@ class FiaOpForward():
         else:
             kv_s_end = self.key.S
         if self.op_params.kv_padding_size_flag:
-            kv_s_begin = int(kv_s_end - self.act_seq_kv - self.op_params.kv_padding_size)
+            kv_s_begin = int(
+                kv_s_end - self.act_seq_kv - self.op_params.kv_padding_size
+            )
             kv_s_end = int(kv_s_end - self.op_params.kv_padding_size)
             fia_debug(f"kv_left padding--- s_begin:{kv_s_begin}, s_end:{kv_s_end}")
         else:
@@ -8691,14 +9918,14 @@ class FiaOpForward():
     @timeit_decorator
     def _calculte_bmm1(self, q, k, matmul_dtype):
         qkBmmRes = np.matmul(q, k.transpose(0, 1, 3, 2), dtype=matmul_dtype)
-        fia_debug_data(f"mm1 output", qkBmmRes)
+        fia_debug_data("mm1 output", qkBmmRes)
         return qkBmmRes
 
     @timeit_decorator
     def _calculte_scale(self, qkBmmRes):
         scale_value = self.op_params.scale_value
         qkEleRes = qkBmmRes * scale_value
-        fia_debug_data(f"mm1*scale output", qkEleRes)
+        fia_debug_data("mm1*scale output", qkEleRes)
         return qkEleRes
 
     @timeit_decorator
@@ -8706,7 +9933,9 @@ class FiaOpForward():
         if not self.op_params.pse_shift_flag:
             return qkEleRes
 
-        pse_cur = self.pse_cur[:, :, self.q_s_begin:self.q_s_end, self.kv_s_begin:self.kv_s_end]
+        pse_cur = self.pse_cur[
+            :, :, self.q_s_begin : self.q_s_end, self.kv_s_begin : self.kv_s_end
+        ]
         np.add(qkEleRes, pse_cur, out=qkEleRes)
 
         fia_debug_data("calculate pse output", qkEleRes)
@@ -8719,20 +9948,27 @@ class FiaOpForward():
 
         fia_debug_func_begin("begin FiaOpForward._calculate_atten_mask")
         current_mask = self.mask_cur
-        fia_debug_data(f"_calculate_atten_mask mask", current_mask)
+        fia_debug_data("_calculate_atten_mask mask", current_mask)
 
         # Adjust mask dimensions based on sparse mode
         if self.op_params.sparse_mode in [2, 3, 4]:
-            current_mask = current_mask[:, :, :(self.q_s_end - self.q_s_begin), :(self.kv_s_end - self.kv_s_begin)]
+            current_mask = current_mask[
+                :,
+                :,
+                : (self.q_s_end - self.q_s_begin),
+                : (self.kv_s_end - self.kv_s_begin),
+            ]
         else:
-            current_mask = current_mask[:, :, self.q_s_begin:self.q_s_end, self.kv_s_begin:self.kv_s_end]
+            current_mask = current_mask[
+                :, :, self.q_s_begin : self.q_s_end, self.kv_s_begin : self.kv_s_end
+            ]
         # Apply mask to attention scores
-        if self.op_params.atten_mask.dtype == 'float16':
+        if self.op_params.atten_mask.dtype == "float16":
             qkEleRes = np.where(current_mask, qkEleRes - 10000, qkEleRes)
         else:
             qkEleRes[current_mask.astype(np.bool_)] = -1.7e38
 
-        fia_debug_data(f"_calculate_atten_mask output", qkEleRes)
+        fia_debug_data("_calculate_atten_mask output", qkEleRes)
         return qkEleRes, current_mask
 
     @timeit_decorator
@@ -8743,7 +9979,9 @@ class FiaOpForward():
     def _calculate_bmm2(self, softmax_res, softmax_sum, v_cur, matmul_dtype):
         assert isinstance(softmax_res, np.ndarray), "softmax_res must be a numpy array"
         assert isinstance(v_cur, np.ndarray), "v_cur must be a numpy array"
-        assert isinstance(softmax_sum, (np.ndarray, float)), "softmax_sum must be a numpy array or float"
+        assert isinstance(softmax_sum, (np.ndarray, float)), (
+            "softmax_sum must be a numpy array or float"
+        )
 
         if self.query.dtype == "float16":
             softmax_res = softmax_res.astype(np.float16)
@@ -8756,7 +9994,7 @@ class FiaOpForward():
             bmm2Res /= softmax_sum
         else:
             bmm2Res = bmm2Res / softmax_sum
-        fia_debug_data(f"bmm2 output", bmm2Res)
+        fia_debug_data("bmm2 output", bmm2Res)
 
         return bmm2Res
 
@@ -8786,32 +10024,32 @@ class FiaOpForward():
         fia_debug_data("lse output", lse)
 
         return lse
-    
+
     @staticmethod
     def _get_torch_dtype(dtype):
-        if dtype == 'bfloat16':
+        if dtype == "bfloat16":
             return torch.bfloat16
         else:
             return torch.float32
 
     def compute_once_bnsd(self, q, k, v, b_idx, n_idx, sinks=None):
         matmul_dtype = self._get_matmul_dtype()
-        fia_debug_data(f"q", q)
-        fia_debug_data(f"k", k)
-        fia_debug_data(f"v", v)
+        fia_debug_data("q", q)
+        fia_debug_data("k", k)
+        fia_debug_data("v", v)
 
         qkBmmRes = self._calculte_bmm1(q, k, matmul_dtype)
         qkEleRes = self._calculte_scale(qkBmmRes)
         qkEleRes = self._calculate_pse(qkEleRes, b_idx, n_idx)
         qkEleRes, mask_cur = self._calculate_atten_mask(qkEleRes)
         if self.op_params.sink_flag:
-            fia_debug_data(f"_t_ifaattention_act sink input", sinks)
+            fia_debug_data("_t_ifaattention_act sink input", sinks)
         softmax_res, softmax_sum, softmax_max = self._calculate_softmax(qkEleRes, sinks)
         bmm2Res = self._calculate_bmm2(softmax_res, softmax_sum, v, matmul_dtype)
         bmm2Res = self._calculate_bmm2_mask(bmm2Res, mask_cur, n_idx)
         lse = self._calculate_lse(softmax_sum, softmax_max, mask_cur)
         return bmm2Res, lse
-    
+
     @timeit_decorator
     def _get_atc_seq_qkv(self, b_idx, q_s):
         debug_parts = [f"b_idx:{b_idx}"]
@@ -8823,7 +10061,9 @@ class FiaOpForward():
             self.act_seq_q = q_s
             debug_parts.append(f"q_s:{self.act_seq_q}")
 
-        prefix_len = self.op_params.prefix_act_lens if self.op_params.shared_prefix_flag else 0
+        prefix_len = (
+            self.op_params.prefix_act_lens if self.op_params.shared_prefix_flag else 0
+        )
 
         if self.op_params.actual_seq_lens_kv_flag:
             self.act_seq_kv = self.op_params.actual_seq_lens_kv[b_idx]
@@ -8843,8 +10083,8 @@ class FiaOpForward():
         if self.op_params.shared_prefix_flag:
             k_shared_prefix = self.op_params.k_shared_prefix.data
             v_shared_prefix = self.op_params.v_shared_prefix.data
-            k_shared_prefix = k_shared_prefix[0:1, nidx:nidx + 1, :, :]
-            v_shared_prefix = v_shared_prefix[0:1, nidx:nidx + 1, :, :]
+            k_shared_prefix = k_shared_prefix[0:1, nidx : nidx + 1, :, :]
+            v_shared_prefix = v_shared_prefix[0:1, nidx : nidx + 1, :, :]
             if k_shared_prefix is None or v_shared_prefix is None:
                 raise ValueError("Shared prefix data is not available.")
             k = np.concatenate((k_shared_prefix, k), axis=2)
@@ -8856,10 +10096,19 @@ class FiaOpForward():
         mask_cur = None
         if self.op_params.atten_mask_flag:
             if self.op_params.prefix_act_flag or self.op_params.prefix_act_lens > 0:
-                mask_cur = np.zeros([1, 1, self.op_params.q_s, self.op_params.kv_s + self.op_params.prefix_act_lens],
-                                    dtype='uint8')
+                mask_cur = np.zeros(
+                    [
+                        1,
+                        1,
+                        self.op_params.q_s,
+                        self.op_params.kv_s + self.op_params.prefix_act_lens,
+                    ],
+                    dtype="uint8",
+                )
             else:
-                mask_cur = np.zeros([1, 1, self.op_params.q_s, self.op_params.kv_s], dtype='uint8')
+                mask_cur = np.zeros(
+                    [1, 1, self.op_params.q_s, self.op_params.kv_s], dtype="uint8"
+                )
             mask_cur[0, 0, :, :] = self.op_params.atten_mask.data[b_idx]
         return mask_cur
 
@@ -8898,21 +10147,27 @@ class FiaOpForward():
 
     def _get_q_by_idx(self, b_idx, q_s_begin, q_s_end, n_idx=None):
         if n_idx is None:
-            return self.op_params.query.bnsd_data[b_idx:(b_idx + 1), :, q_s_begin:q_s_end, :]
+            return self.op_params.query.bnsd_data[
+                b_idx : (b_idx + 1), :, q_s_begin:q_s_end, :
+            ]
         else:
-            return self.op_params.query.bnsd_data[b_idx:(b_idx + 1), n_idx:(n_idx + 1), q_s_begin:q_s_end, :]
+            return self.op_params.query.bnsd_data[
+                b_idx : (b_idx + 1), n_idx : (n_idx + 1), q_s_begin:q_s_end, :
+            ]
 
     def _get_from_list(self, data_list, b_idx, kv_s_begin, kv_s_end, n_idx=None):
         if n_idx is None:
             return data_list[b_idx][:, :, kv_s_begin:kv_s_end, :]
         else:
-            return data_list[b_idx][:, n_idx:(n_idx + 1), kv_s_begin:kv_s_end, :]
+            return data_list[b_idx][:, n_idx : (n_idx + 1), kv_s_begin:kv_s_end, :]
 
     def _get_from_tensor(self, tensor, b_idx, kv_s_begin, kv_s_end, n_idx=None):
         if n_idx is None:
-            return tensor[b_idx:(b_idx + 1), :, kv_s_begin:kv_s_end, :]
+            return tensor[b_idx : (b_idx + 1), :, kv_s_begin:kv_s_end, :]
         else:
-            return tensor[b_idx:(b_idx + 1), n_idx:(n_idx + 1), kv_s_begin:kv_s_end, :]
+            return tensor[
+                b_idx : (b_idx + 1), n_idx : (n_idx + 1), kv_s_begin:kv_s_end, :
+            ]
 
     def _get_kv_by_idx(self, fia_tensor, b_idx, kv_s_begin, kv_s_end, n_idx=None):
         storage_mode = self.op_params.storage_mode
@@ -8920,9 +10175,13 @@ class FiaOpForward():
             n_idx = n_idx // self.n_factor
 
         if storage_mode != StorageMode.TENSOR_LIST:
-            return self._get_from_tensor(fia_tensor.bnsd_data, b_idx, kv_s_begin, kv_s_end, n_idx)
+            return self._get_from_tensor(
+                fia_tensor.bnsd_data, b_idx, kv_s_begin, kv_s_end, n_idx
+            )
         else:
-            return self._get_from_list(fia_tensor.bnsd_data_list, b_idx, kv_s_begin, kv_s_end, n_idx)
+            return self._get_from_list(
+                fia_tensor.bnsd_data_list, b_idx, kv_s_begin, kv_s_end, n_idx
+            )
 
     def _get_k_by_idx(self, b_idx, kv_s_begin, kv_s_end, n_idx=None):
         return self._get_kv_by_idx(self.key, b_idx, kv_s_begin, kv_s_end, n_idx)
@@ -8933,7 +10192,9 @@ class FiaOpForward():
     def compute_bnsd(self):
         y = self.attention_out_bnsd.data
         lse = self.lse_bnsd.data
-        if (self.op_params.q_padding_size_flag or self.op_params.kv_padding_size_flag) and self.op_params.sparse_mode == 0:
+        if (
+            self.op_params.q_padding_size_flag or self.op_params.kv_padding_size_flag
+        ) and self.op_params.sparse_mode == 0:
             self.op_params.pre_tokens = 2147483647
             self.op_params.next_tokens = 2147483647
         for b_idx in range(self.op_params.batch):
@@ -8941,11 +10202,18 @@ class FiaOpForward():
             if act_seq_kv == 0 and self.op_params.q_s == 1:
                 for n_idx in range(self.op_params.num_heads):
                     if self.op_params.out_quant_flag:
-                        y[b_idx:(b_idx + 1), n_idx:(n_idx + 1), :, :] = self._post_quant(
-                            y[b_idx:(b_idx + 1), n_idx:(n_idx + 1), :, :], n_idx)
+                        y[b_idx : (b_idx + 1), n_idx : (n_idx + 1), :, :] = (
+                            self._post_quant(
+                                y[b_idx : (b_idx + 1), n_idx : (n_idx + 1), :, :], n_idx
+                            )
+                        )
                 continue
-            if act_seq_kv == 0 or act_seq_q == 0 or 0 in self._get_k_shape_by_idx(
-                    b_idx) or 0 in self._get_v_shape_by_idx(b_idx):
+            if (
+                act_seq_kv == 0
+                or act_seq_q == 0
+                or 0 in self._get_k_shape_by_idx(b_idx)
+                or 0 in self._get_v_shape_by_idx(b_idx)
+            ):
                 fia_debug("skip calc for actual seq 0 or kv shape has 0")
                 continue
             for n_idx in range(self.op_params.num_heads):
@@ -8962,9 +10230,20 @@ class FiaOpForward():
                 self.mask_cur = self._get_atten_mask_cur(b_idx)
                 self.pse_cur = self._get_pse_cur(b_idx, n_idx)
                 sinks = self._get_sink_cur(n_idx)
-                y[b_idx:(b_idx + 1), n_idx:(n_idx + 1), self.q_s_begin:self.q_s_end, :], \
-                    lse[b_idx:(b_idx + 1), n_idx:(n_idx + 1), self.q_s_begin:self.q_s_end, :] = \
-                    self.compute_once_bnsd(q, k, v, b_idx, n_idx, sinks)
+                (
+                    y[
+                        b_idx : (b_idx + 1),
+                        n_idx : (n_idx + 1),
+                        self.q_s_begin : self.q_s_end,
+                        :,
+                    ],
+                    lse[
+                        b_idx : (b_idx + 1),
+                        n_idx : (n_idx + 1),
+                        self.q_s_begin : self.q_s_end,
+                        :,
+                    ],
+                ) = self.compute_once_bnsd(q, k, v, b_idx, n_idx, sinks)
         self.attention_out_bnsd.data = y
         return y, lse
 
@@ -9006,16 +10285,18 @@ class FiaOpForward():
     def route_to_old_ifa(self):
         if self.op_params.sparse_mode == 4:
             self.op_params.sparse_mode = 0
-        
-        if (self.op_params.query.S == 1) or (self.op_params.rope_flag and self.op_params.query.D == 512) or \
-                (self.op_params.query.dtype != self.op_params.key.dtype):
+
+        if (
+            (self.op_params.query.S == 1)
+            or (self.op_params.rope_flag and self.op_params.query.D == 512)
+            or (self.op_params.query.dtype != self.op_params.key.dtype)
+        ):
             fia_debug("*********************************ROUTE TO IFA")
             return True
         fia_debug("*********************************ROUTE TO PFA")
         return False
 
     def forward_numpy_old(self):
-        
         if self.route_to_old_ifa():
             return aclnn_op_func_ifa_cpu(self.data_list, self.params)
         else:
@@ -9037,28 +10318,35 @@ class FiaOpForward():
         self.attention_out_bnsd = FiaTensor(
             np.zeros(self.op_params.output.bnsd_shape, dtype=np.float32),
             self.op_params.output.bnsd_shape,
-            "fp32", "BNSD", name="attention_out_bnsd"
+            "fp32",
+            "BNSD",
+            name="attention_out_bnsd",
         )
         self.lse_bnsd = FiaTensor(
             np.full(self.op_params.lse.bnsd_shape, self.lse_default_value),
             self.op_params.lse.bnsd_shape,
-            "fp32", "BNSD", name="lse_bnsd"
+            "fp32",
+            "BNSD",
+            name="lse_bnsd",
         )
 
         self.compute_bnsd()
 
-        y_all = self.attention_out_bnsd.to_layout(self.op_params.out_layout, self.op_params.actual_seq_lens_q)
-        fia_debug_data(f"final output", y_all)
+        y_all = self.attention_out_bnsd.to_layout(
+            self.op_params.out_layout, self.op_params.actual_seq_lens_q
+        )
+        fia_debug_data("final output", y_all)
 
         if self.op_params.softmax_lse_flag:
-            lse = self.lse_bnsd.to_layout(self.op_params.lse_layout, self.op_params.actual_seq_lens_q)
-            fia_debug_data(f"final lse output", lse)
+            lse = self.lse_bnsd.to_layout(
+                self.op_params.lse_layout, self.op_params.actual_seq_lens_q
+            )
+            fia_debug_data("final lse output", lse)
             return torch.from_numpy(y_all), torch.from_numpy(lse)
         else:
             return torch.from_numpy(y_all)
 
     def forward_torch(self):
-        
         print("flash_mla_with_kvcache...")
         from flash_mla import flash_mla_with_kvcache, get_mla_metadata
 
@@ -9077,11 +10365,15 @@ class FiaOpForward():
 
         q = self.op_params.query.bsnd_data
         tile_scheduler_metadata, num_splits = get_mla_metadata(
-            self.op_params.cache_seqlens, q_s * q_head_nums // kv_head_nums, kv_head_nums
+            self.op_params.cache_seqlens,
+            q_s * q_head_nums // kv_head_nums,
+            kv_head_nums,
         )
 
         def flash_mla():
-            fia_debug("*************************************start flash_mla_with_kvcache*************************")
+            fia_debug(
+                "*************************************start flash_mla_with_kvcache*************************"
+            )
             return flash_mla_with_kvcache(
                 q,
                 self.op_params.blocked_k,
@@ -9097,32 +10389,34 @@ class FiaOpForward():
         return out_flash.cpu()
 
     def forward(self):
-        if self.mode == 'numpy':
+        if self.mode == "numpy":
             return self.forward_numpy()
-        elif self.mode == 'torch':
+        elif self.mode == "torch":
             return self.forward_torch()
         else:
             raise ValueError(f"Unsupported mode {self.mode}")
 
+
 # SplitFuse
 
-IS_INF_FLAG=False
+IS_INF_FLAG = False
 SPARSE_MODE_INT_MAX = 2147483647
 
 dtypeMap = {
     torch.float16: np.float16,
     torch.bfloat16: bfloat16,
-    torch.float32: np.float32
+    torch.float32: np.float32,
 }
 
 maskTypeMap = {
     ## sparseMode : golden maskType
     0: 0,
     3: 1,
-    4: 2
+    4: 2,
 }
 
-class TestFIAV4SplitFuse():
+
+class TestFIAV4SplitFuse:
     @dataclass
     class AuxAttrs:
         preTokens: int
@@ -9143,7 +10437,6 @@ class TestFIAV4SplitFuse():
         sparseMode: int
         kv_storage_mode: str
 
-    
     @dataclass
     class AttentionInputs:
         query: any
@@ -9157,15 +10450,19 @@ class TestFIAV4SplitFuse():
         auxAttrs: any
 
     @classmethod
-    def group_matmul(cls, head, kv_head, left, right, high_prec = 1,is_benchmark_task=True):
+    def group_matmul(
+        cls, head, kv_head, left, right, high_prec=1, is_benchmark_task=True
+    ):
         group_num = head // kv_head
         score = None
         dtype = np.float32
         if is_benchmark_task:
             dtype = np.float64
         for i in range(kv_head):
-            group_score = np.matmul(left[i * group_num:(i + 1) * group_num, :, :].astype(dtype),
-                                    right[i:(i + 1), :, :].astype(dtype))
+            group_score = np.matmul(
+                left[i * group_num : (i + 1) * group_num, :, :].astype(dtype),
+                right[i : (i + 1), :, :].astype(dtype),
+            )
             if score is None:
                 score = group_score
             else:
@@ -9195,7 +10492,9 @@ class TestFIAV4SplitFuse():
 
         if sink_matrix is not None:
             sink_exp = np.exp(sink_matrix - row_max)
-            sink_exp_high = np.exp(sink_matrix.astype(np.float64) - row_max.astype(np.float64))
+            sink_exp_high = np.exp(
+                sink_matrix.astype(np.float64) - row_max.astype(np.float64)
+            )
             row_sum = row_sum + sink_exp
             row_sum_high = row_sum_high + sink_exp_high
 
@@ -9211,7 +10510,7 @@ class TestFIAV4SplitFuse():
         gm,
         is_kvs_last_loop,
         sink_matrix,
-        interm_dtype = np.float16
+        interm_dtype=np.float16,
     ):
         sim = qk_result.astype(interm_dtype)
         lm = np.max(sim, axis=-1, keepdims=True)
@@ -9241,47 +10540,64 @@ class TestFIAV4SplitFuse():
 
         sink_exp = None
         if sink_matrix is not None and is_kvs_last_loop:
-            sink_exp = np.exp((sink_matrix - hm).astype(interm_dtype)).astype(interm_dtype)
+            sink_exp = np.exp((sink_matrix - hm).astype(interm_dtype)).astype(
+                interm_dtype
+            )
 
         return sim_sub, row_sum, dm, gm, sink_exp
 
-
-    def qkMM1(
-        self,
-        query,
-        key,
-        is_benchmark_task
-    ):
+    def qkMM1(self, query, key, is_benchmark_task):
         result = None
         qk_k = key.shape[1]
         qk_k_split = 128
         qk_k_loop = (qk_k + 127) // 128
         for qk_k_loop_idx in range(qk_k_loop):
-            sub_k = 128 if qk_k_loop_idx != (qk_k_loop - 1) else (qk_k - qk_k_loop_idx * 128)
-            partial_Query = query[:, :, qk_k_loop_idx * 128: qk_k_loop_idx * 128 + sub_k]
-            partial_Key = key[:, qk_k_loop_idx * 128: qk_k_loop_idx * 128 + sub_k, :]
-            result_split = self.group_matmul(partial_Query.shape[0], partial_Key.shape[0], partial_Query, partial_Key, 0, is_benchmark_task)
+            sub_k = (
+                128
+                if qk_k_loop_idx != (qk_k_loop - 1)
+                else (qk_k - qk_k_loop_idx * 128)
+            )
+            partial_Query = query[
+                :, :, qk_k_loop_idx * 128 : qk_k_loop_idx * 128 + sub_k
+            ]
+            partial_Key = key[:, qk_k_loop_idx * 128 : qk_k_loop_idx * 128 + sub_k, :]
+            result_split = self.group_matmul(
+                partial_Query.shape[0],
+                partial_Key.shape[0],
+                partial_Query,
+                partial_Key,
+                0,
+                is_benchmark_task,
+            )
             if result is None:
                 result = result_split
             else:
                 result = result + result_split
         return result
-    
-    def pvMM2(
-        self,
-        p,
-        value,
-        is_benchmark_task
-    ):
+
+    def pvMM2(self, p, value, is_benchmark_task):
         result = None
         pv_k = value.shape[1]
         pv_k_split = 128
         pv_k_loop = (pv_k + 127) // 128
         for pv_k_loop_idx in range(pv_k_loop):
-            sub_k = 128 if pv_k_loop_idx != (pv_k_loop - 1) else (pv_k - pv_k_loop_idx * 128)
-            partial_P = p[:, :, pv_k_loop_idx * 128: pv_k_loop_idx * 128 + sub_k]
-            partial_Value = value[:, pv_k_loop_idx * 128: pv_k_loop_idx * 128 + sub_k, :]
-            result_split = self.group_matmul(partial_P.shape[0], partial_Value.shape[0], partial_P, partial_Value, 0, is_benchmark_task)
+            sub_k = (
+                128
+                if pv_k_loop_idx != (pv_k_loop - 1)
+                else (pv_k - pv_k_loop_idx * 128)
+            )
+            partial_P = p[:, :, pv_k_loop_idx * 128 : pv_k_loop_idx * 128 + sub_k]
+            partial_Value = value[
+                :, pv_k_loop_idx * 128 : pv_k_loop_idx * 128 + sub_k, :
+            ]
+            result_split = self.group_matmul(
+                partial_P.shape[0],
+                partial_Value.shape[0],
+                partial_P,
+                partial_Value,
+                0,
+                is_benchmark_task,
+            )
             if result is None:
                 result = result_split
             else:
@@ -9315,7 +10631,9 @@ class TestFIAV4SplitFuse():
         elif preToken != SPARSE_MODE_INT_MAX:
             leftPointPreToken = kvSeqlen - qSeqlen - preToken
             preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken
-            preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken
+            preTokenEndLen = (
+                qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken
+            )
             startIdx = max(0, preTokenStartLen) // MAX_KV_STACK_LEN
         else:
             startIdx = 0
@@ -9326,9 +10644,16 @@ class TestFIAV4SplitFuse():
         elif nextToken != SPARSE_MODE_INT_MAX:
             leftPointNextToken = kvSeqlen - qSeqlen + nextToken
             nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken
-            nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken
-            
-            noSkipKvS = min(kvSeqlen, (nextTokenEndLen + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN * MAX_KV_STACK_LEN)
+            nextTokenEndLen = (
+                qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken
+            )
+
+            noSkipKvS = min(
+                kvSeqlen,
+                (nextTokenEndLen + MAX_KV_STACK_LEN - 1)
+                // MAX_KV_STACK_LEN
+                * MAX_KV_STACK_LEN,
+            )
             noSkipKvS = kvSeqlen if noSkipKvS <= 0 else noSkipKvS
             kvSLoopNumTotal = (noSkipKvS + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN
         else:
@@ -9348,7 +10673,7 @@ class TestFIAV4SplitFuse():
         sink_matrix,
         batch_i,
         swa_auxAttrs: AuxAttrs,
-        is_benchmark_task
+        is_benchmark_task,
     ):
         data_type = attention_inputs.auxAttrs.dtype
         inner_prec = attention_inputs.auxAttrs.inner_prec
@@ -9501,23 +10826,35 @@ class TestFIAV4SplitFuse():
 
         query = np.transpose(query, (1, 0, 2))
         key = np.transpose(key, (1, 2, 0))
-        sim_high = self.group_matmul(query.shape[0], key.shape[0], query, key, 1, is_benchmark_task)  # (head_num, q_seqlen, k_seqlen)
+        sim_high = self.group_matmul(
+            query.shape[0], key.shape[0], query, key, 1, is_benchmark_task
+        )  # (head_num, q_seqlen, k_seqlen)
         sim_high = sim_high * scale
         if mask is not None:
             sim_high = sim_high + (
-                mask[:sim_high.shape[-2], :sim_high.shape[-1]]
-                ).astype(np.float32)
+                mask[: sim_high.shape[-2], : sim_high.shape[-1]]
+            ).astype(np.float32)
         p_high, lse_high, gm = self.softmax_numpy(sim_high, sink_matrix, batch_i)
         lse_high = lse_high.astype(np.float64)
         p = p_high.astype(query.dtype)
         p_high = p_high.astype(np.float32)
         value = np.transpose(value, (1, 0, 2))
-        
-        out_high = self.group_matmul(query.shape[0], key.shape[0], p_high, value, 1, is_benchmark_task)
+
+        out_high = self.group_matmul(
+            query.shape[0], key.shape[0], p_high, value, 1, is_benchmark_task
+        )
         out_high = np.transpose(out_high, (1, 0, 2))
         return out_high, lse_high
 
-    def ref_single_query_cached_kv_attention(self, attention_inputs: AttentionInputs, output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output, is_benchmark_task) -> None:
+    def ref_single_query_cached_kv_attention(
+        self,
+        attention_inputs: AttentionInputs,
+        output,
+        golden_gpu_output,
+        golden_lse_output,
+        golden_gpu_lse_output,
+        is_benchmark_task,
+    ) -> None:
         num_heads = attention_inputs.auxAttrs.num_heads
         kv_heads = attention_inputs.auxAttrs.kv_heads
         head_size_qk = attention_inputs.auxAttrs.head_size
@@ -9578,11 +10915,15 @@ class TestFIAV4SplitFuse():
                     if attention_inputs.auxAttrs.kv_storage_mode == "bnbd":
                         # BNBD layout: (numBlocks, kvHeads, blockSize, headSize)
                         k = attention_inputs.key_cache[block_number, :, block_offset, :]
-                        v = attention_inputs.value_cache[block_number, :, block_offset, :]
+                        v = attention_inputs.value_cache[
+                            block_number, :, block_offset, :
+                        ]
                     else:
                         # BBH layout: (numBlocks, blockSize, kvHeads, headSize)
                         k = attention_inputs.key_cache[block_number, block_offset, :, :]
-                        v = attention_inputs.value_cache[block_number, block_offset, :, :]
+                        v = attention_inputs.value_cache[
+                            block_number, block_offset, :, :
+                        ]
                     k = k.reshape(kv_heads, head_size_qk)
                     keys.append(k)
 
@@ -9592,16 +10933,24 @@ class TestFIAV4SplitFuse():
                 values = np.stack(values, axis=0)
             elif attention_inputs.auxAttrs.kv_dtype == 0:
                 if attention_inputs.auxAttrs.layout_dtype == 1:
-                    keys = attention_inputs.key_cache[kv_seqlen_now: kv_seqlen_now + k_seqlen, :, :]
-                    values = attention_inputs.value_cache[kv_seqlen_now: kv_seqlen_now + k_seqlen, :, :]
+                    keys = attention_inputs.key_cache[
+                        kv_seqlen_now : kv_seqlen_now + k_seqlen, :, :
+                    ]
+                    values = attention_inputs.value_cache[
+                        kv_seqlen_now : kv_seqlen_now + k_seqlen, :, :
+                    ]
                 else:
                     keys = attention_inputs.key_cache[i, :, :, :]
                     values = attention_inputs.value_cache[i, :, :, :]
-            
+
             if attention_inputs.auxAttrs.mask_type == 1:
-                mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
+                mask = attention_inputs.global_mask[
+                    cu_seqlen : (cu_seqlen + q_seqlen), :
+                ]
             elif attention_inputs.auxAttrs.mask_type == 2:
-                mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
+                mask = attention_inputs.global_mask[
+                    cu_seqlen : (cu_seqlen + q_seqlen), :
+                ]
             elif attention_inputs.auxAttrs.mask_type == 0:
                 mask = None
 
@@ -9700,7 +11049,7 @@ class TestFIAV4SplitFuse():
             golden_gpu_output,
             golden_lse_output,
             golden_gpu_lse_output,
-            is_benchmark_task
+            is_benchmark_task,
         )
 
         golden_lse_output = np.transpose(golden_lse_output, (1, 0))
@@ -9746,10 +11095,13 @@ def gen_list_from_cumSum(seqlenArray):
         preSeqSum = seqlenArray[i]
     return seqlenList
 
-def gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthskv, inputLayout, pagedAttentionFlag):
+
+def gen_actual_seqlen_list_golden(
+    actualseqlengths, actualseqlengthskv, inputLayout, pagedAttentionFlag
+):
     qSeqlenList = []
     kvSeqlenList = []
-    if inputLayout == 'TND':
+    if inputLayout == "TND":
         qSeqlenList = gen_list_from_cumSum(actualseqlengths)
         if pagedAttentionFlag:
             kvSeqlenList = list(actualseqlengthskv)
@@ -9759,6 +11111,7 @@ def gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthskv, inputLay
         qSeqlenList = list(actualseqlengths)
         kvSeqlenList = list(actualseqlengthskv)
     return qSeqlenList, kvSeqlenList
+
 
 def create_binary_matrix(qSeqlen, kvSeqlen, preToken, nextToken):
     preToken = kvSeqlen - qSeqlen - preToken
@@ -9770,14 +11123,15 @@ def create_binary_matrix(qSeqlen, kvSeqlen, preToken, nextToken):
             is_above_nexttoken_line = (-i + j) > nextToken
             if is_below_pretoken_line or is_above_nexttoken_line:
                 matrix[i][j] = 1
-    
+
     return np.array(matrix)
 
-def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_task):
+
+def aclnn_op_func_fia_split_fuse_golden(input_data: InputDataset, is_benchmark_task):
     input_data_dtype = input_data.kwargs["query"].dtype
 
     if input_data_dtype == torch.float16:
-         query = input_data.kwargs["query"].numpy()
+        query = input_data.kwargs["query"].numpy()
     elif input_data_dtype == torch.bfloat16:
         query = input_data.kwargs["query"].to(torch.float32).numpy().astype(bfloat16)
     else:
@@ -9810,7 +11164,9 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     for i in range(batch):
         actualseqlengths[i] = input_data.kwargs["actualSeqLengthsOptional"][i]
         actualseqlengthsKv[i] = input_data.kwargs["actualSeqLengthsKvOptional"][i]
-    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag)
+    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(
+        actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag
+    )
     maxKvSeqlen = max(kvSeqlenList)
     maxQSeqlen = max(qSeqlenList)
     totalQTokens = sum(qSeqlenList)
@@ -9818,8 +11174,15 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
     nextTokens = input_data.kwargs["nextTokens"]
     ## gen mask
     fullMask = None
-    pre_mask_factor = -3e38 if input_data_dtype == torch.bfloat16 or input_data_dtype == torch.float32 else -6e4
-    if input_data.kwargs["attenMaskOptional"] != None and input_data.kwargs["sparseMode"] == 3:
+    pre_mask_factor = (
+        -3e38
+        if input_data_dtype == torch.bfloat16 or input_data_dtype == torch.float32
+        else -6e4
+    )
+    if (
+        input_data.kwargs["attenMaskOptional"] != None
+        and input_data.kwargs["sparseMode"] == 3
+    ):
         maskDtype = dtypeMap[input_data_dtype]
         fullMask = np.zeros(shape=(totalQTokens, maxKvSeqlen)).astype(maskDtype)
         prevQseqlen = 0
@@ -9829,13 +11192,17 @@ def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_
             tri = np.ones((qSeqlen, qSeqlen))
             tri = np.triu(tri, 1)
             tri *= pre_mask_factor
-            fullMask[prevQseqlen : (prevQseqlen + qSeqlen), kSeqlen - qSeqlen : kSeqlen] = tri
+            fullMask[
+                prevQseqlen : (prevQseqlen + qSeqlen), kSeqlen - qSeqlen : kSeqlen
+            ] = tri
             prevQseqlen += qSeqlen
 
-    if  input_data.kwargs["sparseMode"] == 4:
+    if input_data.kwargs["sparseMode"] == 4:
         pre_mask_factor = -3e38
         maskDtype = bfloat16
-        print(f"ljl-totalQTokens:{totalQTokens},maxKvSeqlen:{maxKvSeqlen},{kvSeqlenList}")
+        print(
+            f"ljl-totalQTokens:{totalQTokens},maxKvSeqlen:{maxKvSeqlen},{kvSeqlenList}"
+        )
         fullMask = np.zeros(shape=(totalQTokens, maxKvSeqlen)).astype(maskDtype)
         prevQseqlen = 0
         for i in range(len(qSeqlenList)):
@@ -10031,107 +11398,333 @@ def load_kv_cache(input_data: InputDataset):
     block_table = input_data.kwargs.pop("block_table")
     k_cache = input_data.kwargs.pop("k_cache")
     v_cache = input_data.kwargs.pop("v_cache")
-    
-    k_cache_tensor = torch.tensor(k_cache, dtype=torch.float32).to(dtype=input_data.kwargs["key"][0].dtype).reshape(cache_shape).npu()
-    v_cache_tensor = torch.tensor(v_cache, dtype=torch.float32).to(dtype=input_data.kwargs["value"][0].dtype).reshape(cache_shape).npu()
-    
+
+    k_cache_tensor = (
+        torch.tensor(k_cache, dtype=torch.float32)
+        .to(dtype=input_data.kwargs["key"][0].dtype)
+        .reshape(cache_shape)
+        .npu()
+    )
+    v_cache_tensor = (
+        torch.tensor(v_cache, dtype=torch.float32)
+        .to(dtype=input_data.kwargs["value"][0].dtype)
+        .reshape(cache_shape)
+        .npu()
+    )
+
     input_data.kwargs["key"][0] = k_cache_tensor
     input_data.kwargs["value"][0] = v_cache_tensor
 
     block_table_tensor = torch.tensor(block_table, dtype=torch.int32)
-    input_data.kwargs["blockTableOptional"] = torch.tensor(block_table_tensor, dtype=torch.int32).reshape(blocktable_shape).npu()
+    input_data.kwargs["blockTableOptional"] = (
+        torch.tensor(block_table_tensor, dtype=torch.int32)
+        .reshape(blocktable_shape)
+        .npu()
+    )
 
     if input_data.kwargs["keyRopeOptional"] is not None:
         k_rope_cache = input_data.kwargs.pop("k_rope_cache")
-        k_rope_cache = torch.tensor(k_rope_cache, dtype=torch.float32).to(dtype=input_data.kwargs["keyRopeOptional"].dtype).reshape(k_rope_cache.shape).npu()
+        k_rope_cache = (
+            torch.tensor(k_rope_cache, dtype=torch.float32)
+            .to(dtype=input_data.kwargs["keyRopeOptional"].dtype)
+            .reshape(k_rope_cache.shape)
+            .npu()
+        )
         input_data.kwargs["keyRopeOptional"] = k_rope_cache
-    
+
     return
 
-def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_preprocess=False):
+
+def trans_input_to_params(
+    input_data: InputDataset, is_benchmark_task, is_preprocess=False
+):
     tensor_list = [None] * 29
     shape_input = [[1]] * 29
-    range_input = [['null', 'null']] * 29
-    dtype_input = ['fp16'] * 29
-    format_input = ['ND'] * 29
-    type_input = ['tensor'] * 29
+    range_input = [["null", "null"]] * 29
+    dtype_input = ["fp16"] * 29
+    format_input = ["ND"] * 29
+    type_input = ["tensor"] * 29
 
     params = {
-        'dtype_output': ['fp16'], 
-        'attr_1': 'actualseqlengths', 'actualseqlengths': [], 'required_actualseqlengths': 1, 
-        'attr_2': 'actualseqlengthskv', 'actualseqlengthskv': [], 'required_actualseqlengthskv': 1, 
-        'attr_3': 'prefix_act_lens', 'prefix_act_lens': [], 'required_prefix_act_lens': 1, 
-        'attr_4': 'numheads', 'numheads': 8, 'required_numheads': 1, 
-        'attr_5': 'scalevalue', 'scalevalue': 0.08838834764831843, 'required_scalevalue': 1, 
-        'attr_6': 'pretokens', 'pretokens': 2147483647, 'required_pretokens': 1, 
-        'attr_7': 'nexttokens', 'nexttokens': 2147483647, 'required_nexttokens': 1, 
-        'attr_8': 'inputlayout', 'inputlayout': 'BNSD', 'required_inputlayout': 1, 
-        'attr_9': 'numkeyvalueheads', 'numkeyvalueheads': 8, 'required_numkeyvalueheads': 1, 
-        'attr_10': 'sparsemode', 'sparsemode': 0, 'required_sparsemode': 1, 
-        'attr_11': 'innerprecise', 'innerprecise': 0, 'required_innerprecise': 1, 
-        'attr_12': 'blocksize', 'blocksize': 0, 'required_blocksize': 1, 
-        'attr_13': 'antiquant_mode', 'antiquant_mode': 0, 'required_antiquant_mode': 1, 
-        'attr_14': 'softmax_lse_flag', 'softmax_lse_flag': False, 'required_softmax_lse_flag': 1, 
-        'attr_15': 'k_antiquant_mode', 'k_antiquant_mode': 0, 'required_k_antiquant_mode': 1, 
-        'attr_16': 'v_antiquant_mode', 'v_antiquant_mode': 0, 'required_v_antiquant_mode': 1, 
-        'attr_17': 'query_quant_mode', 'query_quant_mode': 0, 'required_query_quant_mode': 1, 
-        'attr_18': 'fused_flag', 'fused_flag': 'yes', 'required_fused_flag': 1, 
-        'attr_19': 'mrandomtype', 'mrandomtype': 'Normal', 'required_mrandomtype': 1, 
-        'attr_20': 'mrandom', 'mrandom': 0, 'required_mrandom': 1, 
-        'attr_21': 'prandom', 'prandom': 0, 'required_prandom': 1, 
-        'attr_22': 'enablegpu', 'enablegpu': 'True', 'required_enablegpu': 1, 
-        'attr_23': 'flaglist', 'flaglist': [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0], 'required_flaglist': 1}
-    
+        "dtype_output": ["fp16"],
+        "attr_1": "actualseqlengths",
+        "actualseqlengths": [],
+        "required_actualseqlengths": 1,
+        "attr_2": "actualseqlengthskv",
+        "actualseqlengthskv": [],
+        "required_actualseqlengthskv": 1,
+        "attr_3": "prefix_act_lens",
+        "prefix_act_lens": [],
+        "required_prefix_act_lens": 1,
+        "attr_4": "numheads",
+        "numheads": 8,
+        "required_numheads": 1,
+        "attr_5": "scalevalue",
+        "scalevalue": 0.08838834764831843,
+        "required_scalevalue": 1,
+        "attr_6": "pretokens",
+        "pretokens": 2147483647,
+        "required_pretokens": 1,
+        "attr_7": "nexttokens",
+        "nexttokens": 2147483647,
+        "required_nexttokens": 1,
+        "attr_8": "inputlayout",
+        "inputlayout": "BNSD",
+        "required_inputlayout": 1,
+        "attr_9": "numkeyvalueheads",
+        "numkeyvalueheads": 8,
+        "required_numkeyvalueheads": 1,
+        "attr_10": "sparsemode",
+        "sparsemode": 0,
+        "required_sparsemode": 1,
+        "attr_11": "innerprecise",
+        "innerprecise": 0,
+        "required_innerprecise": 1,
+        "attr_12": "blocksize",
+        "blocksize": 0,
+        "required_blocksize": 1,
+        "attr_13": "antiquant_mode",
+        "antiquant_mode": 0,
+        "required_antiquant_mode": 1,
+        "attr_14": "softmax_lse_flag",
+        "softmax_lse_flag": False,
+        "required_softmax_lse_flag": 1,
+        "attr_15": "k_antiquant_mode",
+        "k_antiquant_mode": 0,
+        "required_k_antiquant_mode": 1,
+        "attr_16": "v_antiquant_mode",
+        "v_antiquant_mode": 0,
+        "required_v_antiquant_mode": 1,
+        "attr_17": "query_quant_mode",
+        "query_quant_mode": 0,
+        "required_query_quant_mode": 1,
+        "attr_18": "fused_flag",
+        "fused_flag": "yes",
+        "required_fused_flag": 1,
+        "attr_19": "mrandomtype",
+        "mrandomtype": "Normal",
+        "required_mrandomtype": 1,
+        "attr_20": "mrandom",
+        "mrandom": 0,
+        "required_mrandom": 1,
+        "attr_21": "prandom",
+        "prandom": 0,
+        "required_prandom": 1,
+        "attr_22": "enablegpu",
+        "enablegpu": "True",
+        "required_enablegpu": 1,
+        "attr_23": "flaglist",
+        "flaglist": [
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ],
+        "required_flaglist": 1,
+    }
+
     params["is_benchmark_task"] = is_benchmark_task
     params["is_preprocess"] = is_preprocess
     params["input_data"] = input_data
 
     if input_data.kwargs["query"].dtype == torch.int8:
-        tensor_list[0] = query = input_data.kwargs["query"].to(dtype=torch.int8).cpu().numpy()
-        tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
-        tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
+        tensor_list[0] = query = (
+            input_data.kwargs["query"].to(dtype=torch.int8).cpu().numpy()
+        )
+        tensor_list[1] = key = (
+            input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
+        )
+        tensor_list[2] = value = (
+            input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
+        )
     elif input_data.kwargs["antiquantScaleOptional"] is not None:
-        tensor_list[0] = query = input_data.kwargs["query"].to(dtype=torch.float32).cpu().numpy()
-        tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
-        tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
+        tensor_list[0] = query = (
+            input_data.kwargs["query"].to(dtype=torch.float32).cpu().numpy()
+        )
+        tensor_list[1] = key = (
+            input_data.kwargs["key"][0].to(dtype=torch.int8).cpu().numpy()
+        )
+        tensor_list[2] = value = (
+            input_data.kwargs["value"][0].to(dtype=torch.int8).cpu().numpy()
+        )
     else:
-        tensor_list[0] = query = input_data.kwargs["query"].to(dtype=torch.float16).cpu().numpy()
-        tensor_list[1] = key = input_data.kwargs["key"][0].to(dtype=torch.float16).cpu().numpy()
-        tensor_list[2] = value = input_data.kwargs["value"][0].to(dtype=torch.float16).cpu().numpy()
-        
-    tensor_list[3] = pse = input_data.kwargs["pseShiftOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["pseShiftOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[4] = attenmask = input_data.kwargs["attenMaskOptional"].to(dtype=torch.bool).cpu().numpy() if input_data.kwargs["attenMaskOptional"] is not None else np.array([], dtype=np.float32)
+        tensor_list[0] = query = (
+            input_data.kwargs["query"].to(dtype=torch.float16).cpu().numpy()
+        )
+        tensor_list[1] = key = (
+            input_data.kwargs["key"][0].to(dtype=torch.float16).cpu().numpy()
+        )
+        tensor_list[2] = value = (
+            input_data.kwargs["value"][0].to(dtype=torch.float16).cpu().numpy()
+        )
 
-    tensor_list[5] = dequantscale1 = input_data.kwargs["deqScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale1Optional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[6] = quantscale1 = input_data.kwargs["quantScale1Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale1Optional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[7] = dequantscale2 = input_data.kwargs["deqScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["deqScale2Optional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[3] = pse = (
+        input_data.kwargs["pseShiftOptional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["pseShiftOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[4] = attenmask = (
+        input_data.kwargs["attenMaskOptional"].to(dtype=torch.bool).cpu().numpy()
+        if input_data.kwargs["attenMaskOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
 
-    tensor_list[8] = quantscale2 = input_data.kwargs["quantScale2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantScale2Optional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[9] = quantoffset2 = input_data.kwargs["quantOffset2Optional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["quantOffset2Optional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[10] = antiquantscale = input_data.kwargs["antiquantScaleOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[11] = antiquantoffset = input_data.kwargs["antiquantOffsetOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["antiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[12] = blocktable = input_data.kwargs["blockTableOptional"].cpu().numpy() if input_data.kwargs["blockTableOptional"] is not None else np.array([], dtype=np.int32)
+    tensor_list[5] = dequantscale1 = (
+        input_data.kwargs["deqScale1Optional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["deqScale1Optional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[6] = quantscale1 = (
+        input_data.kwargs["quantScale1Optional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["quantScale1Optional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[7] = dequantscale2 = (
+        input_data.kwargs["deqScale2Optional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["deqScale2Optional"] is not None
+        else np.array([], dtype=np.float32)
+    )
 
-    tensor_list[13] = q_padding_size = input_data.kwargs["queryPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["queryPaddingSizeOptional"] is not None else np.array([], dtype=np.uint64)
-    tensor_list[14] = padding_size = input_data.kwargs["kvPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy() if input_data.kwargs["kvPaddingSizeOptional"] is not None else np.array([], dtype=np.uint64)
-    tensor_list[15] = k_antiquantscale = input_data.kwargs["keyAntiquantScaleOptional"].cpu() if input_data.kwargs["keyAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[16] = k_antiquantoffset = input_data.kwargs["keyAntiquantOffsetOptional"].cpu() if input_data.kwargs["keyAntiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[17] = v_antiquantscale = input_data.kwargs["valueAntiquantScaleOptional"].cpu() if input_data.kwargs["valueAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[8] = quantscale2 = (
+        input_data.kwargs["quantScale2Optional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["quantScale2Optional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[9] = quantoffset2 = (
+        input_data.kwargs["quantOffset2Optional"].to(dtype=torch.float32).cpu().numpy()
+        if input_data.kwargs["quantOffset2Optional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[10] = antiquantscale = (
+        input_data.kwargs["antiquantScaleOptional"]
+        .to(dtype=torch.float32)
+        .cpu()
+        .numpy()
+        if input_data.kwargs["antiquantScaleOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[11] = antiquantoffset = (
+        input_data.kwargs["antiquantOffsetOptional"]
+        .to(dtype=torch.float32)
+        .cpu()
+        .numpy()
+        if input_data.kwargs["antiquantOffsetOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[12] = blocktable = (
+        input_data.kwargs["blockTableOptional"].cpu().numpy()
+        if input_data.kwargs["blockTableOptional"] is not None
+        else np.array([], dtype=np.int32)
+    )
 
-    tensor_list[18] = v_antiquantoffset = input_data.kwargs["valueAntiquantOffsetOptional"].cpu() if input_data.kwargs["valueAntiquantOffsetOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[19] = k_prefix = input_data.kwargs["keySharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["keySharedPrefixOptional"] is not None else np.array([], dtype=np.int8)
-    tensor_list[20] = v_prefix = input_data.kwargs["valueSharedPrefixOptional"].to(dtype=torch.float32).cpu().numpy() if input_data.kwargs["valueSharedPrefixOptional"] is not None else np.array([], dtype=np.int8)
-    
-    tensor_list[23] = q_rope = input_data.kwargs["queryRopeOptional"].cpu().numpy() if input_data.kwargs["queryRopeOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[24] = k_rope = input_data.kwargs["keyRopeOptional"].cpu().numpy() if input_data.kwargs["keyRopeOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[13] = q_padding_size = (
+        input_data.kwargs["queryPaddingSizeOptional"]
+        .to(dtype=torch.int32)
+        .cpu()
+        .numpy()
+        if input_data.kwargs["queryPaddingSizeOptional"] is not None
+        else np.array([], dtype=np.uint64)
+    )
+    tensor_list[14] = padding_size = (
+        input_data.kwargs["kvPaddingSizeOptional"].to(dtype=torch.int32).cpu().numpy()
+        if input_data.kwargs["kvPaddingSizeOptional"] is not None
+        else np.array([], dtype=np.uint64)
+    )
+    tensor_list[15] = k_antiquantscale = (
+        input_data.kwargs["keyAntiquantScaleOptional"].cpu()
+        if input_data.kwargs["keyAntiquantScaleOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[16] = k_antiquantoffset = (
+        input_data.kwargs["keyAntiquantOffsetOptional"].cpu()
+        if input_data.kwargs["keyAntiquantOffsetOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[17] = v_antiquantscale = (
+        input_data.kwargs["valueAntiquantScaleOptional"].cpu()
+        if input_data.kwargs["valueAntiquantScaleOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
 
-    tensor_list[26] = k_rope_antiquantScale = input_data.kwargs["keyRopeAntiquantScaleOptional"].cpu().numpy() if input_data.kwargs["keyRopeAntiquantScaleOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[27] = dequantScale_query = input_data.kwargs["dequantScaleQueryOptional"].cpu().numpy() if input_data.kwargs["dequantScaleQueryOptional"] is not None else np.array([], dtype=np.float32)
-    tensor_list[28] = sinks = input_data.kwargs["learnableSinkOptional"].cpu().numpy() if input_data.kwargs["learnableSinkOptional"] is not None else np.array([], dtype=np.float32)
+    tensor_list[18] = v_antiquantoffset = (
+        input_data.kwargs["valueAntiquantOffsetOptional"].cpu()
+        if input_data.kwargs["valueAntiquantOffsetOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[19] = k_prefix = (
+        input_data.kwargs["keySharedPrefixOptional"]
+        .to(dtype=torch.float32)
+        .cpu()
+        .numpy()
+        if input_data.kwargs["keySharedPrefixOptional"] is not None
+        else np.array([], dtype=np.int8)
+    )
+    tensor_list[20] = v_prefix = (
+        input_data.kwargs["valueSharedPrefixOptional"]
+        .to(dtype=torch.float32)
+        .cpu()
+        .numpy()
+        if input_data.kwargs["valueSharedPrefixOptional"] is not None
+        else np.array([], dtype=np.int8)
+    )
+
+    tensor_list[23] = q_rope = (
+        input_data.kwargs["queryRopeOptional"].cpu().numpy()
+        if input_data.kwargs["queryRopeOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[24] = k_rope = (
+        input_data.kwargs["keyRopeOptional"].cpu().numpy()
+        if input_data.kwargs["keyRopeOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+
+    tensor_list[26] = k_rope_antiquantScale = (
+        input_data.kwargs["keyRopeAntiquantScaleOptional"].cpu().numpy()
+        if input_data.kwargs["keyRopeAntiquantScaleOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[27] = dequantScale_query = (
+        input_data.kwargs["dequantScaleQueryOptional"].cpu().numpy()
+        if input_data.kwargs["dequantScaleQueryOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
+    tensor_list[28] = sinks = (
+        input_data.kwargs["learnableSinkOptional"].cpu().numpy()
+        if input_data.kwargs["learnableSinkOptional"] is not None
+        else np.array([], dtype=np.float32)
+    )
 
     shape_input[0] = list(input_data.kwargs["query"].shape)
     dtype_input[0] = dtype_map[input_data.kwargs["query"].dtype]
-    params['dtype_output'][0] = dtype_map[input_data.kwargs["query"].dtype]
+    params["dtype_output"][0] = dtype_map[input_data.kwargs["query"].dtype]
 
     shape_input[1] = list(input_data.kwargs["key"][0].shape)
     dtype_input[1] = dtype_map[input_data.kwargs["key"][0].dtype]
@@ -10139,139 +11732,179 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
     dtype_input[2] = dtype_map[input_data.kwargs["value"][0].dtype]
 
     if input_data.kwargs["pseShiftOptional"] is not None:
-        params['flaglist'][3] = 1
+        params["flaglist"][3] = 1
         dtype_input[3] = dtype_map[input_data.kwargs["pseShiftOptional"].dtype]
         shape_input[3] = list(input_data.kwargs["pseShiftOptional"].shape)
 
     if input_data.kwargs["attenMaskOptional"] is not None:
-        params['flaglist'][4] = 1
+        params["flaglist"][4] = 1
         range_input[4][0] = [0, 1]
         dtype_input[4] = dtype_map[input_data.kwargs["attenMaskOptional"].dtype]
         shape_input[4] = list(input_data.kwargs["attenMaskOptional"].shape)
-    
+
     if input_data.kwargs["actualSeqLengthsOptional"][0] != arr_tuple_none:
         params["actualseqlengths"] = list(input_data.kwargs["actualSeqLengthsOptional"])
-        params['flaglist'][5] = 1
+        params["flaglist"][5] = 1
     else:
-        Q_S = shape_input[0][1] if input_data.kwargs["inputLayout"] in ['BSND', 'BSH'] else shape_input[0][2]
+        Q_S = (
+            shape_input[0][1]
+            if input_data.kwargs["inputLayout"] in ["BSND", "BSH"]
+            else shape_input[0][2]
+        )
         params["actualseqlengths"] = [Q_S]
 
     if input_data.kwargs["actualSeqLengthsKvOptional"][0] != arr_tuple_none:
-        params["actualseqlengthskv"] = list(input_data.kwargs["actualSeqLengthsKvOptional"])
-        params['flaglist'][6] = 1
+        params["actualseqlengthskv"] = list(
+            input_data.kwargs["actualSeqLengthsKvOptional"]
+        )
+        params["flaglist"][6] = 1
     else:
-        KV_S = shape_input[1][1] if input_data.kwargs["inputLayout"] in ['BSND', 'BSH'] else shape_input[1][2]
+        KV_S = (
+            shape_input[1][1]
+            if input_data.kwargs["inputLayout"] in ["BSND", "BSH"]
+            else shape_input[1][2]
+        )
         params["actualseqlengthskv"] = [KV_S]
 
     if input_data.kwargs["deqScale1Optional"] is not None:
-        params['flaglist'][7] = 1
+        params["flaglist"][7] = 1
         dtype_input[5] = dtype_map[input_data.kwargs["deqScale1Optional"].dtype]
         shape_input[5] = list(input_data.kwargs["deqScale1Optional"].shape)
 
     if input_data.kwargs["quantScale1Optional"] is not None:
-        params['flaglist'][8] = 1
+        params["flaglist"][8] = 1
         dtype_input[6] = dtype_map[input_data.kwargs["quantScale1Optional"].dtype]
         shape_input[6] = list(input_data.kwargs["quantScale1Optional"].shape)
 
     if input_data.kwargs["deqScale2Optional"] is not None:
-        params['flaglist'][9] = 1
+        params["flaglist"][9] = 1
         dtype_input[7] = dtype_map[input_data.kwargs["deqScale2Optional"].dtype]
         shape_input[7] = list(input_data.kwargs["deqScale2Optional"].shape)
 
     if input_data.kwargs["quantScale2Optional"] is not None:
-        params['flaglist'][10] = 1
+        params["flaglist"][10] = 1
         dtype_input[8] = dtype_map[input_data.kwargs["quantScale2Optional"].dtype]
         shape_input[8] = list(input_data.kwargs["quantScale2Optional"].shape)
-    
+
     if input_data.kwargs["quantOffset2Optional"] is not None:
-        params['flaglist'][11] = 1
+        params["flaglist"][11] = 1
         dtype_input[9] = dtype_map[input_data.kwargs["quantOffset2Optional"].dtype]
         shape_input[9] = list(input_data.kwargs["quantOffset2Optional"].shape)
 
     if input_data.kwargs["antiquantScaleOptional"] is not None:
-        params['flaglist'][12] = 1
+        params["flaglist"][12] = 1
         dtype_input[10] = dtype_map[input_data.kwargs["antiquantScaleOptional"].dtype]
         shape_input[10] = list(input_data.kwargs["antiquantScaleOptional"].shape)
-    
+
     if input_data.kwargs["antiquantOffsetOptional"] is not None:
-        params['flaglist'][13] = 1
+        params["flaglist"][13] = 1
         dtype_input[11] = dtype_map[input_data.kwargs["antiquantOffsetOptional"].dtype]
         shape_input[11] = list(input_data.kwargs["antiquantOffsetOptional"].shape)
-    
+
     if input_data.kwargs["blockTableOptional"] is not None:
-        params['flaglist'][14] = 1
+        params["flaglist"][14] = 1
         dtype_input[12] = dtype_map[input_data.kwargs["blockTableOptional"].dtype]
         shape_input[12] = list(input_data.kwargs["blockTableOptional"].shape)
-        actual_seq = key.shape[1] if input_data.kwargs["inputLayout"] in ["BSH", "BSND"] else key.shape[2]
-        headdim = key.shape[3] if input_data.kwargs["inputLayout"] in ["BSND", "BNSD"] else key.shape[2] / input_data.kwargs["numKeyValueHeads"]
+        actual_seq = (
+            key.shape[1]
+            if input_data.kwargs["inputLayout"] in ["BSH", "BSND"]
+            else key.shape[2]
+        )
+        headdim = (
+            key.shape[3]
+            if input_data.kwargs["inputLayout"] in ["BSND", "BNSD"]
+            else key.shape[2] / input_data.kwargs["numKeyValueHeads"]
+        )
         block_num = math.ceil(actual_seq / input_data.kwargs["blockSize"])
-        cache_shape = [block_num, input_data.kwargs["blockSize"], int(input_data.kwargs["numKeyValueHeads"] * headdim)]
+        cache_shape = [
+            block_num,
+            input_data.kwargs["blockSize"],
+            int(input_data.kwargs["numKeyValueHeads"] * headdim),
+        ]
         shape_input[21] = cache_shape
         shape_input[22] = cache_shape
-    
+
     if input_data.kwargs["queryPaddingSizeOptional"] is not None:
-        params['flaglist'][15] = 1
+        params["flaglist"][15] = 1
         range_input[15][0] = q_padding_size
         dtype_input[13] = dtype_map[input_data.kwargs["queryPaddingSizeOptional"].dtype]
         shape_input[13] = list(input_data.kwargs["queryPaddingSizeOptional"].shape)
-    
+
     if input_data.kwargs["kvPaddingSizeOptional"] is not None:
-        params['flaglist'][16] = 1
+        params["flaglist"][16] = 1
         range_input[16][0] = padding_size
         dtype_input[14] = dtype_map[input_data.kwargs["kvPaddingSizeOptional"].dtype]
         shape_input[14] = list(input_data.kwargs["kvPaddingSizeOptional"].shape)
 
     if input_data.kwargs["keyAntiquantScaleOptional"] is not None:
-        params['flaglist'][17] = 1
-        dtype_input[15] = dtype_map[input_data.kwargs["keyAntiquantScaleOptional"].dtype]
+        params["flaglist"][17] = 1
+        dtype_input[15] = dtype_map[
+            input_data.kwargs["keyAntiquantScaleOptional"].dtype
+        ]
         shape_input[15] = list(input_data.kwargs["keyAntiquantScaleOptional"].shape)
-    
+
     if input_data.kwargs["keyAntiquantOffsetOptional"] is not None:
-        params['flaglist'][18] = 1
-        dtype_input[16] = dtype_map[input_data.kwargs["keyAntiquantOffsetOptional"].dtype]
+        params["flaglist"][18] = 1
+        dtype_input[16] = dtype_map[
+            input_data.kwargs["keyAntiquantOffsetOptional"].dtype
+        ]
         shape_input[16] = list(input_data.kwargs["keyAntiquantOffsetOptional"].shape)
-    
+
     if input_data.kwargs["valueAntiquantScaleOptional"] is not None:
-        params['flaglist'][19] = 1
-        dtype_input[17] = dtype_map[input_data.kwargs["valueAntiquantScaleOptional"].dtype]
+        params["flaglist"][19] = 1
+        dtype_input[17] = dtype_map[
+            input_data.kwargs["valueAntiquantScaleOptional"].dtype
+        ]
         shape_input[17] = list(input_data.kwargs["valueAntiquantScaleOptional"].shape)
-    
+
     if input_data.kwargs["valueAntiquantOffsetOptional"] is not None:
-        params['flaglist'][20] = 1
-        dtype_input[18] = dtype_map[input_data.kwargs["valueAntiquantOffsetOptional"].dtype]
+        params["flaglist"][20] = 1
+        dtype_input[18] = dtype_map[
+            input_data.kwargs["valueAntiquantOffsetOptional"].dtype
+        ]
         shape_input[18] = list(input_data.kwargs["valueAntiquantOffsetOptional"].shape)
-    
+
     if input_data.kwargs["keySharedPrefixOptional"] is not None:
-        params['flaglist'][21] = 1
+        params["flaglist"][21] = 1
         dtype_input[19] = dtype_map[input_data.kwargs["keySharedPrefixOptional"].dtype]
         shape_input[19] = list(input_data.kwargs["keySharedPrefixOptional"].shape)
-    
+
     if input_data.kwargs["valueSharedPrefixOptional"] is not None:
-        params['flaglist'][22] = 1
-        dtype_input[20] = dtype_map[input_data.kwargs["valueSharedPrefixOptional"].dtype]
+        params["flaglist"][22] = 1
+        dtype_input[20] = dtype_map[
+            input_data.kwargs["valueSharedPrefixOptional"].dtype
+        ]
         shape_input[20] = list(input_data.kwargs["valueSharedPrefixOptional"].shape)
-    
+
     if input_data.kwargs["queryRopeOptional"] is not None:
-        params['flaglist'][26] = 1
+        params["flaglist"][26] = 1
         dtype_input[23] = dtype_map[input_data.kwargs["queryRopeOptional"].dtype]
         shape_input[23] = list(input_data.kwargs["queryRopeOptional"].shape)
-        
+
     if input_data.kwargs["keyRopeOptional"] is not None:
-        params['flaglist'][27] = 1
+        params["flaglist"][27] = 1
         dtype_input[24] = dtype_map[input_data.kwargs["keyRopeOptional"].dtype]
         shape_input[24] = list(input_data.kwargs["keyRopeOptional"].shape)
-        actual_seq = key.shape[1] if input_data.kwargs["inputLayout"] in ["BSH", "BSND"] else key.shape[2]
+        actual_seq = (
+            key.shape[1]
+            if input_data.kwargs["inputLayout"] in ["BSH", "BSND"]
+            else key.shape[2]
+        )
         block_num = math.ceil(actual_seq / input_data.kwargs["blockSize"])
         cache_shape = [block_num, input_data.kwargs["blockSize"], 64]
         dtype_input[25] = dtype_map[input_data.kwargs["keyRopeOptional"].dtype]
         shape_input[25] = cache_shape
-        tensor_list[25] = torch.zeros(cache_shape, dtype=input_data.kwargs["keyRopeOptional"].dtype)
+        tensor_list[25] = torch.zeros(
+            cache_shape, dtype=input_data.kwargs["keyRopeOptional"].dtype
+        )
 
     params["prefix_act_lens"] = list(input_data.kwargs["actualSharedPrefixLenOptional"])
     if input_data.kwargs["actualSharedPrefixLenOptional"][0] != arr_tuple_none:
-        params['flaglist'][23] = 1
-        params["prefix_act_lens"] = list(input_data.kwargs["actualSharedPrefixLenOptional"])
-        
+        params["flaglist"][23] = 1
+        params["prefix_act_lens"] = list(
+            input_data.kwargs["actualSharedPrefixLenOptional"]
+        )
+
     params["numheads"] = input_data.kwargs["numHeads"]
     params["scalevalue"] = input_data.kwargs["scaleValue"]
     params["pretokens"] = input_data.kwargs["preTokens"]
@@ -10288,27 +11921,33 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
     params["v_antiquant_mode"] = input_data.kwargs["valueAntiquantMode"]
     params["query_quant_mode"] = input_data.kwargs["queryQuantMode"]
     params["softmax_lse_flag"] = input_data.kwargs["softmaxLseFlag"]
-    params['shape_input'] = shape_input
-    params['dtype_input'] = dtype_input
-    params['range_input'] = range_input
-    params['format_input'] = format_input
-    params['type_input'] = type_input
-    params['action_type'] = 'bm'
+    params["shape_input"] = shape_input
+    params["dtype_input"] = dtype_input
+    params["range_input"] = range_input
+    params["format_input"] = format_input
+    params["type_input"] = type_input
+    params["action_type"] = "bm"
 
     return tensor_list, params
 
-def init_kv_cache(input_data : InputDataset, is_benchmark_task, is_preprocess=True):
-    tensor_list, params = trans_input_to_params(input_data, is_benchmark_task, is_preprocess)
+
+def init_kv_cache(input_data: InputDataset, is_benchmark_task, is_preprocess=True):
+    tensor_list, params = trans_input_to_params(
+        input_data, is_benchmark_task, is_preprocess
+    )
     if is_preprocess:
         FiaOpForward(tensor_list, params).forward()
-        return 
+        return
 
-def fill_useless_out(input_data : InputDataset):
+
+def fill_useless_out(input_data: InputDataset):
     input_data_dtype = input_data.kwargs["query"].cpu().dtype
     if input_data_dtype == torch.float16:
         query = input_data.kwargs["query"].cpu().numpy()
     elif input_data_dtype == torch.bfloat16:
-        query = input_data.kwargs["query"].cpu().to(torch.float32).numpy().astype(bfloat16)
+        query = (
+            input_data.kwargs["query"].cpu().to(torch.float32).numpy().astype(bfloat16)
+        )
     else:
         query = input_data.kwargs["query"].cpu().numpy()
     if input_data.kwargs["blockTableOptional"] != None:
@@ -10323,18 +11962,23 @@ def fill_useless_out(input_data : InputDataset):
     for i in range(batch):
         actualseqlengths[i] = input_data.kwargs["actualSeqLengthsOptional"][i]
         actualseqlengthsKv[i] = input_data.kwargs["actualSeqLengthsKvOptional"][i]
-    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag)
+    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(
+        actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag
+    )
     maxQSeqlen = max(qSeqlenList)
     totalQTokens = sum(qSeqlenList)
 
     if totalQTokens < query.shape[0]:
         attentionOut = input_data.kwargs["attentionOut"]
-        attentionOut[totalQTokens:,:, :] = 0
+        attentionOut[totalQTokens:, :, :] = 0
 
 
-def aclnn_op_func_fia_cpu(input_data : InputDataset, is_benchmark_task, is_preprocess=False):
-    
-    tensor_list, params = trans_input_to_params(input_data, is_benchmark_task, is_preprocess)
+def aclnn_op_func_fia_cpu(
+    input_data: InputDataset, is_benchmark_task, is_preprocess=False
+):
+    tensor_list, params = trans_input_to_params(
+        input_data, is_benchmark_task, is_preprocess
+    )
     if input_data.kwargs["softmaxLseFlag"]:
         output, output_lse = FiaOpForward(tensor_list, params).forward()
         output_lse = output_lse.to(dtype=torch.float32)
@@ -10389,7 +12033,7 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
 
     def gen_compressed_triU_mask(self, dim_num, mask_dtype):
         mask_shape_four_dims = (1, 1, 2048, 2048)
-        mask_four_dims = torch.zeros(mask_shape_four_dims, dtype = mask_dtype)
+        mask_four_dims = torch.zeros(mask_shape_four_dims, dtype=mask_dtype)
         mask_triU = torch.triu(torch.ones(2048, 2048), diagonal=1)
         mask_four_dims[:] = mask_triU
         if dim_num == 2:
@@ -10402,7 +12046,7 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
             print("invalid dim num, will provide a four dim mask anyway")
             return mask_four_dims
         return mask_four_dims[0][0]
-    
+
     def init_by_input_data(self, input_data: InputDataset):
         torch.npu.synchronize()
         self.split_fuse_flag = get_split_fuse_flag(input_data)

@@ -569,8 +569,7 @@ public:
                                                  static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetLse = tailLseBOffset + lseTokenOffset + tailQNStartIdx +
                                                    static_cast<uint64_t>(kvNIncreIdx * groupSize);
-                            uint64_t oWorkspaceIncreOffset =
-                                static_cast<uint64_t>(kvNIncreIdx) * rowNum * embedRoundV;
+                            uint64_t oWorkspaceIncreOffset = static_cast<uint64_t>(kvNIncreIdx) * rowNum * embedRoundV;
                             uint64_t gmOffsetOTmp =
                                 static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                 static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB +

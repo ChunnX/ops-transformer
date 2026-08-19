@@ -105,8 +105,8 @@ public:
     /// Destructor
     __aicore__ inline ~BlockMmad() {}
 
-    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop,
-                                         uint32_t &kvSeqlen, uint32_t &blockSize)
+    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop, uint32_t &kvSeqlen,
+                                         uint32_t &blockSize)
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1U) {
@@ -115,8 +115,9 @@ public:
         actualShape[COORD_DIM2] = nSplitSize;
     }
 
-    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t &nowNIdx,
-                                       uint32_t &strideKV, uint32_t &blockSize, uint64_t valueBnStride)
+    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset,
+                                       uint32_t &nowNIdx, uint32_t &strideKV, uint32_t &blockSize,
+                                       uint64_t valueBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
@@ -134,9 +135,8 @@ public:
                                       AscendC::GlobalTensor<ElementC> gC, AscendC::GlobalTensor<int32_t> gBlockTable,
                                       LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
                                       uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen,
-                                      uint32_t strideKV, uint32_t blockStackNum,
-                                      Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger,
-                                      uint64_t valueBnStride)
+                                      uint32_t strideKV, uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag,
+                                      uint32_t crossCoreSyncTrigger, uint64_t valueBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
@@ -199,7 +199,8 @@ public:
                         }
 
                         LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nL1Actual);
-                        MatrixCoord l1BTileCoord{kL1Idx * l1KDynamic + kL0Idx * L0TileShape::K, L0TileShape::N * nL1Idx};
+                        MatrixCoord l1BTileCoord{kL1Idx * l1KDynamic + kL0Idx * L0TileShape::K,
+                                                 L0TileShape::N * nL1Idx};
                         auto l1BTileTensor = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
