@@ -79,7 +79,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | `x2_scale_dtype` | int | 可选 | `x2_scale`的dtype wrapper覆盖值，默认值为-1；MX场景传293（e8m0）。 | int | - |
 | `y_dtype` | int | 可选 | 输出`y`的数据类型，默认值为-1；15表示BF16，5表示FP16。 | int | - |
 | `comm_mode` | str | 可选 | 通信模式，默认值为`None`；当前仅支持`"urma"`。 | string | - |
-| `precision_mode` | int | 可选 | 性能模式，默认值为0。0=REMOTE，1=L0c累加(DEFERRED_SYNC)，2=GM累加(atomicAdd)。 | int | - |
+| `precision_mode` | int | 可选 | 性能模式，默认值为0。0/1/2性能由低到高，精度由高到低。 | int | - |
 
 ## 返回值说明
 
