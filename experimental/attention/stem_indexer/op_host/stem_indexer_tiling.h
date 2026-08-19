@@ -189,7 +189,8 @@ public:
 
 class StemIndexerInfoParser {
 public:
-    explicit StemIndexerInfoParser(gert::TilingContext *context) : context_(context)
+    explicit StemIndexerInfoParser(gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~StemIndexerInfoParser() = default;
@@ -237,7 +238,8 @@ private:
 
 class StemIndexerTiling {
 public:
-    explicit StemIndexerTiling(gert::TilingContext *context) : context_(context)
+    explicit StemIndexerTiling(gert::TilingContext *context)
+        : context_(context)
     {
     }
     ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
