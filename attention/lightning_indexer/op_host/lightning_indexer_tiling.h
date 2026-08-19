@@ -72,6 +72,8 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t TOPK_MAX = 8192;
+constexpr uint32_t TOPK_MULTIPLE = 1024;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT = 64;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_64 = 64;

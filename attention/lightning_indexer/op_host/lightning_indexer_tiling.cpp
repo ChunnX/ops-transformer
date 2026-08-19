@@ -290,12 +290,13 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", std::string(opParamInfo_.layOut).c_str(),
                                                       "Layout_query only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
-                 *opParamInfo_.sparseCount % 1024 != 0) || (*opParamInfo_.sparseCount > 8192),
+    OP_CHECK_IF(*opParamInfo_.sparseCount <= 0 || *opParamInfo_.sparseCount > static_cast<int32_t>(TOPK_MAX) ||
+                    (*opParamInfo_.sparseCount > static_cast<int32_t>(SPARSE_LIMIT) &&
+                     *opParamInfo_.sparseCount % TOPK_MULTIPLE != 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "sparse_count", std::to_string(*opParamInfo_.sparseCount).c_str(),
                     "Sparse_count must > 0 and <= 8192."
-                    " And when sparse_count > 2048, sparse_count must be an interger multiple of 1024"),
+                    " And when sparse_count > 2048, sparse_count must be an integer multiple of 1024"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode", std::to_string(*opParamInfo_.sparseMode),
