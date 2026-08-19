@@ -274,7 +274,7 @@ public:
     {
         int64_t varlenCycleCoreNums = constInfo_.coreNum * 2;
         int64_t varlenCalcLoops =
-            constInfo_.totalSize / varlenCycleCoreNums;                             // 需要进行计算的循环次数(正序+倒序为一次循环)
+            constInfo_.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
         int64_t varlenCalcLoopsRemain = constInfo_.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
         varlenCalcTimes_ = varlenCalcLoops * 2;
         if (varlenCalcLoopsRemain >= constInfo_.aicIdx + 1) {
@@ -390,10 +390,7 @@ public:
         return s2Cur < constInfo_.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
-    {
-        return validTaskNum_ > 0;
-    }
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N]) { return validTaskNum_ > 0; }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {

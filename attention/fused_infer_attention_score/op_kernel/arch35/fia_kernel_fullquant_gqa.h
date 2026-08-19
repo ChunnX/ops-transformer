@@ -183,7 +183,7 @@ public:
         // GM Buffer
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock;                              // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
+                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
             int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
             // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
@@ -549,10 +549,7 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo); }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
