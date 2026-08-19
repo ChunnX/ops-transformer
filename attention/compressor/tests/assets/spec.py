@@ -104,15 +104,14 @@ def _get_compare_method():
     return None
 
 
-def _resolve_cross_check_params(dtype_str="float32"):
-    tolerance = {dtype_str: {"standard": "cross_check", "level": "L1"}}
-    standards = resolve_tolerance(tolerance, None, None, [dtype_str], "cross_check")
+def _resolve_cross_check_params(spec_tolerance, dtype_str):
+    standards = resolve_tolerance(spec_tolerance, None, None, [dtype_str], "cross_check")
     return standards[0].params
 
 
 def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, params):
     c = CrossCheckComparison(
-        npu_out, golden_out, idx, dtype_str, params, third_party=bench_out
+        npu_out, bench_out, idx, dtype_str, params, third_party=golden_out
     )
     precision_str, log, is_pass, metrics = c.compare()
     return {
@@ -213,7 +212,11 @@ def _run_ttk_cross_check_aclnn(outputs, kwargs, bench_outputs):
     npu_sub, golden_sub, bench_sub, names = _split_aclnn_outputs(
         outputs, kwargs, bench_outputs
     )
-    params = _resolve_cross_check_params("float32")
+    raw_dtype_str = kwargs.get("data_type")
+    if raw_dtype_str is None:
+        raw_dtype_str = "bfloat16"
+    raw_dtype_str = raw_dtype_str.split(".")[-1].rstrip("'>\" ")  # 归一化
+    params = _resolve_cross_check_params(AclnnCompressorSpec.tolerance, raw_dtype_str)
     results = []
     for idx in range(len(golden_sub)):
         name = names[idx] if idx < len(names) else f"output_{idx}"
@@ -317,7 +320,11 @@ def _run_ttk_cross_check_e2e(outputs, kwargs, bench_outputs):
     npu_sub, golden_sub, bench_sub, names = _split_e2e_outputs(
         outputs, kwargs, bench_outputs
     )
-    params = _resolve_cross_check_params("float32")
+    raw_dtype_str = kwargs.get("data_type")
+    if raw_dtype_str is None:
+        raw_dtype_str = "bfloat16"
+    raw_dtype_str = raw_dtype_str.split(".")[-1].rstrip("'>\" ")  # 归一化
+    params = _resolve_cross_check_params(CompressorSpec.tolerance, raw_dtype_str)
     results = []
     for idx in range(len(golden_sub)):
         name = names[idx] if idx < len(names) else f"output_{idx}"
