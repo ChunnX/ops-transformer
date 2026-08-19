@@ -26,31 +26,8 @@
 namespace topkb32 {
 using liTopkB32GatherCommon::FindKthVFImpl;
 using liTopkB32GatherCommon::FindIdxGTOutputVFImpl;
-__simd_callee__ inline void StoreHistogramResult(__ubuf__ uint32_t *histogramsBuf, MicroAPI::RegTensor<uint16_t> &cout0,
-                                                 MicroAPI::RegTensor<uint16_t> &cout1, MicroAPI::MaskReg &pregB16,
-                                                 MicroAPI::MaskReg &pregB32)
-{
-    MicroAPI::RegTensor<uint32_t> cout0U32Even;
-    MicroAPI::RegTensor<uint32_t> cout0U32Odd;
-    MicroAPI::RegTensor<uint32_t> cout1U32Even;
-    MicroAPI::RegTensor<uint32_t> cout1U32Odd;
-
-    static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {
-        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-
-    static constexpr MicroAPI::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {
-        MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-
-    MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
-    MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout0U32Odd, cout0, pregB16);
-    MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
-    MicroAPI::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
-
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf, cout0U32Even, cout0U32Odd,
-                                                                        pregB32);
-    MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(histogramsBuf + 128, cout1U32Even, cout1U32Odd,
-                                                                        pregB32);
-}
+using liTopkB32GatherCommon::StoreHistogramResult;
+using liTopkB32GatherCommon::HistogramsByteVFImpl;
 
 __simd_callee__ inline void FindTargetBinAndUpdateNextK(__ubuf__ uint32_t *idxBuf, __ubuf__ uint32_t *nkValueBuf,
                                                         __ubuf__ uint32_t *histogramsBuf,
@@ -106,43 +83,7 @@ template <typename T>
 __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf, uint16_t vfLoop,
                                        bool init)
 {
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-
-    // 计算直方图cout0 0-127 cout1 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
-
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
-
-    // 32bit 高16bit
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    // 32bit 低16bit
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
-
-    for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
-
-        MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t> &)vreg0U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg2U16);
-
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN0,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout0, vreg0, pregB8);
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg0, pregB8);
-    }
-
-    StoreHistogramResult(histogramsBuf, cout0, cout1, pregB16, pregB32);
+    HistogramsByteVFImpl<0>(histogramsBuf, inputBuf, nullptr, nullptr, nullptr, vfLoop, init);
 }
 
 __simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *nkValueBuf,
@@ -160,48 +101,7 @@ template <typename T>
 __simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf,
                                         __ubuf__ uint32_t *idx0Buf, uint16_t vfLoop, bool init)
 {
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-
-    // 计算直方图0-127 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
-
-    MicroAPI::RegTensor<uint32_t> idx0;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
-
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
-
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
-
-    for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
-
-        MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t> &)vreg0U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg2U16);
-
-        MicroAPI::MaskReg pregEQ = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ, vreg0, (MicroAPI::RegTensor<uint8_t> &)idx0, pregB8);
-
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN0,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout0, vreg1, pregEQ);
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg1, pregEQ);
-    }
-
-    StoreHistogramResult(histogramsBuf, cout0, cout1, pregB16, pregB32);
+    HistogramsByteVFImpl<1>(histogramsBuf, inputBuf, idx0Buf, nullptr, nullptr, vfLoop, init);
 }
 
 // kValue新的bottomK
@@ -221,57 +121,7 @@ __simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf_
                                        __ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *idx1Buf, uint16_t vfLoop,
                                        bool init)
 {
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-
-    // 计算直方图0-127 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
-
-    MicroAPI::RegTensor<uint32_t> idx0;
-    MicroAPI::RegTensor<uint32_t> idx1;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
-
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
-
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
-
-    for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
-
-        MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t> &)vreg0U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg2U16);
-        MicroAPI::DeInterleave(vreg3, vreg2, (MicroAPI::RegTensor<uint8_t> &)vreg1U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg3U16);
-
-        MicroAPI::MaskReg pregEQ0 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg pregEQ1 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ0, vreg0, (MicroAPI::RegTensor<uint8_t> &)idx0, pregB8);
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ1, vreg1, (MicroAPI::RegTensor<uint8_t> &)idx1, pregB8);
-
-        MicroAPI::MaskReg pregEQ = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::And(pregEQ, pregEQ0, pregEQ1, pregB8);
-
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN0,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout0, vreg2, pregEQ);
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg2, pregEQ);
-    }
-
-    StoreHistogramResult(histogramsBuf, cout0, cout1, pregB16, pregB32);
+    HistogramsByteVFImpl<2>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, nullptr, vfLoop, init);
 }
 
 __simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t *idx2Buf, __ubuf__ uint32_t *nkValueBuf,
@@ -290,63 +140,7 @@ __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
                                       __ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *idx1Buf,
                                       __ubuf__ uint32_t *idx2Buf, uint16_t vfLoop, bool init)
 {
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::RegTensor<uint32_t> idx0;
-    MicroAPI::RegTensor<uint32_t> idx1;
-    MicroAPI::RegTensor<uint32_t> idx2;
-    // 0x000000fc -> 0xfcfcfcfc
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx0, idx0Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx1, idx1Buf);
-    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_BRC_B8>(idx2, idx2Buf);
-
-    // 计算直方图0-127 128-255
-    MicroAPI::RegTensor<uint16_t> cout0;
-    MicroAPI::RegTensor<uint16_t> cout1;
-    MicroAPI::Duplicate(cout0, 0);
-    MicroAPI::Duplicate(cout1, 0);
-
-    MicroAPI::RegTensor<uint32_t> vreg0U16;
-    MicroAPI::RegTensor<uint32_t> vreg1U16;
-    MicroAPI::RegTensor<uint32_t> vreg2U16;
-    MicroAPI::RegTensor<uint32_t> vreg3U16;
-
-    MicroAPI::RegTensor<uint8_t> vreg0;
-    MicroAPI::RegTensor<uint8_t> vreg1;
-    MicroAPI::RegTensor<uint8_t> vreg2;
-    MicroAPI::RegTensor<uint8_t> vreg3;
-
-    for (uint16_t i = 0; i < vfLoop; ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16,
-                                                                           inputBuf + (i * 256) + 128);
-
-        MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t> &)vreg0U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg2U16);
-        MicroAPI::DeInterleave(vreg3, vreg2, (MicroAPI::RegTensor<uint8_t> &)vreg1U16,
-                               (MicroAPI::RegTensor<uint8_t> &)vreg3U16);
-
-        MicroAPI::MaskReg pregEQ0 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg pregEQ1 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg pregEQ2 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ0, vreg0, (MicroAPI::RegTensor<uint8_t> &)idx0, pregB8);
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ1, vreg1, (MicroAPI::RegTensor<uint8_t> &)idx1, pregB8);
-        MicroAPI::Compare<uint8_t, CMPMODE::EQ>(pregEQ2, vreg2, (MicroAPI::RegTensor<uint8_t> &)idx2, pregB8);
-
-        MicroAPI::MaskReg pregEQ0And1 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg pregEQAll = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::And(pregEQ0And1, pregEQ0, pregEQ1, pregB8);
-        MicroAPI::And(pregEQAll, pregEQ0And1, pregEQ2, pregB8);
-
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN0,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout0, vreg3, pregEQAll);
-        MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN1,
-                             MicroAPI::HistogramsType::ACCUMULATE>(cout1, vreg3, pregEQAll);
-    }
-
-    StoreHistogramResult(histogramsBuf, cout0, cout1, pregB16, pregB32);
+    HistogramsByteVFImpl<3>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, init);
 }
 
 __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint32_t *inputBuf, uint32_t beginIdx,
