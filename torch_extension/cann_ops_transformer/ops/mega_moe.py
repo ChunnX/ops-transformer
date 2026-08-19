@@ -425,7 +425,6 @@ class SymmBuffer:
         self.ccl_buffer_size = new_manager.ccl_buffer_size
         self.topo_type = new_manager.topo_type
         self.rank_num_per_server = new_manager.rank_num_per_server
-        self.mask_buffer = None
         old_manager.destroy()
 
 

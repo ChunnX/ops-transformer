@@ -409,7 +409,10 @@ private:
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool *>(params.ptrXActiveMask));
         maskBufferAddr = params.ptrMaskBuffer;
         if (maskBufferAddr != nullptr) {
-            rankMaskLocal = resource.ubBuf.template GetBufferByByte<int32_t>(RANK_MASK_UB_OFFSET);
+            uint32_t rankMaskBytes = AlignUp(params.EP * sizeof(int32_t), BYTE_PER_BLK);
+            uint32_t rankMaskUbOffset = ArchTag::UB_SIZE - rankMaskBytes;
+            rankMaskLocal = resource.ubBuf.template GetBufferByByte<int32_t>(rankMaskUbOffset);
+            rankMaskLocal.SetSize(rankMaskBytes / sizeof(int32_t));
             CopyRankMaskToLocal(params);
         }
 
@@ -1046,14 +1049,13 @@ private:
                 }
                 if (rankAvailable) {
                     AscendC::DataCopy(tmpBuffer, tokenPerExpert[tokenPerExpertLayout(dstEpIdx, 0, 0)], numPerCore);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                    AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
                 } else {
                     AscendC::Duplicate(tmpBuffer, 0, numPerCore);
                 }
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                if (rankAvailable) {
-                    AscendC::Adds(tmpBuffer, tmpBuffer, -0x800000, numPerCore);
-                }
+
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
@@ -1821,8 +1823,6 @@ private:
     uint32_t coreIdx;
     uint32_t coreNum;
     uint32_t nSyncSwiglu;
-
-    static constexpr uint32_t RANK_MASK_UB_OFFSET = ArchTag::UB_SIZE - 768 * sizeof(int32_t);
 
     Params params;
     WorkspaceInfo workspaceInfo;

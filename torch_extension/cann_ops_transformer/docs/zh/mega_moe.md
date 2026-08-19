@@ -652,7 +652,9 @@ shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表�
 元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。
 返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，
 必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
-`update_group` 使用新 group 完整重建通信链路，并将 `mask_buffer` 恢复为 `None`，旧通信链路的算子执行完成需要调用者保证。
+`update_group` 使用新 group 完整重建通信链路，并保留当前 `mask_buffer`；旧通信链路的算子执行完成
+以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用
+`clean_mask_buffer`。
 
 ## 参数说明
 
