@@ -28,11 +28,20 @@ from common import qfa_mxfp4_golden as golden_mod
 logger = logging.getLogger(__name__)
 
 
-# 环境变量 QFA_SKIP_GENERATE=1 时跳过 golden_mod.generate_data(),
-# 直接用 CSV/manual-data 传入的 tensor 拼装 data_dict。
-# manual-data replay (python3 -m ttk e2e --manual-data-dirs ...) 必须打开,
-# 否则 CSV 占位 tensor 是随机数据, 跑出来的结果无意义。
+# 环境变量 QFA_SKIP_GENERATE=1 时跳过 golden_mod.generate_data() 里的 FP32 生成 +
+# mxfp4 量化 (大 case 几百秒), 走 manual-data replay 分支: 仍执行 generate_data 的
+# layout 转换 / descale reshape, 把 bin 加载的 packed tensor rearrange 成算子需要的 layout。
+# 用途: python3 -m ttk e2e --manual-data-dirs ... 必须打开, 否则 CSV 占位 tensor 是随机
+# 数据, 跑出来的结果无意义。
 _SKIP_GENERATE = os.environ.get("QFA_SKIP_GENERATE", "").lower() in ("1", "true", "yes")
+
+# 环境变量 QFA_PASS_THROUGH=1 时完全跳过 golden_mod.generate_data() (含 _resolve_s /
+# transpose_qscale / rearrange_by_layout / v_descale.view 等所有会报错的步骤),
+# 直接用 CSV 定义的 tensor shape 透传给 NPU 算子, 由 op_host checker 拦截非法输入。
+# 用途: 异常用例测试 (s=0 / k v shape 不一致 / D 不支持 / descale 维度异常 / seq 缺失 等),
+#       在 CSV 里配异常 shape + 设 QFA_PASS_THROUGH=1 即可, 框架按 CSV shape 随机生成 tensor
+#       原样透传, 不进 golden。与 QFA_SKIP_GENERATE 互不干扰; 两者同时设时以本开关为准。
+_PASS_THROUGH = os.environ.get("QFA_PASS_THROUGH", "").lower() in ("1", "true", "yes")
 
 
 def _apply_golden_globals(attrs):
@@ -308,29 +317,17 @@ def npu_qfa_mxfp4(
         }
     )
 
-    # generate_data 失败 (任意异常: s=0 / k v shape 不一致 / D 不支持 / descale 维度奇数 /
-    # seq 缺失 / transpose reshape 等) 即回退到 CSV tensor 透传给 NPU, 让 op_host 拦截.
-    # 不做提前预检: golden 报错自然就是异常 case, 交给算子 checker 判定更准确.
-    if _SKIP_GENERATE:
-        _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
-    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
-    try:
-        data_dict = golden_mod.generate_data()
-        golden_mod._apply_csv_shape_override(
-            data_dict,
-            {
-                "q": q,
-                "k": k,
-                "v": v,
-                "q_descale": q_descale,
-                "k_descale": k_descale,
-                "v_descale": v_descale,
-            },
-        )
-    except Exception as e:
-        logger.warning(
-            "[WRAPPER] generate_data 失败: %s, 回退到 CSV tensor 透传给 NPU 让 op_host 拦截",
-            str(e),
+    # 数据准备分三种模式:
+    #   1) QFA_PASS_THROUGH=1: 完全跳过 generate_data, CSV tensor 原样透传给 NPU,
+    #      由 op_host 拦截非法输入. 用于异常用例 (s=0 / kv shape 不一致 / D 不支持 /
+    #      descale 维度异常 / seq 缺失 等), 在 CSV 配异常 shape + 设本开关即可.
+    #   2) QFA_SKIP_GENERATE=1: 走 generate_data 的 manual-data replay 分支,
+    #      跳过 FP32 量化但保留 layout 转换 / descale reshape, bin tensor 会被 rearrange.
+    #   3) 都不设: 走 generate_data 完整流程 (FP32 生成 + 量化 + rearrange).
+    # 模式 2/3 下 generate_data 任意异常也回退到 CSV tensor 透传 (try/except 兜底).
+    if _PASS_THROUGH:
+        logger.info(
+            "[WRAPPER] QFA_PASS_THROUGH=1, 跳过 generate_data, CSV tensor 直接透传给 NPU"
         )
         data_dict = _build_fallback_data_dict(
             q, k, v, q_descale, k_descale, v_descale, block_table,
@@ -340,12 +337,43 @@ def npu_qfa_mxfp4(
             softmax_scale, cu_seqlens_q, cu_seqlens_kv,
             max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
         )
-    finally:
-        golden_mod._clear_physical_s_override()
+    else:
         if _SKIP_GENERATE:
-            _clear_replay_qkv()
+            _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
+        golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+        try:
+            data_dict = golden_mod.generate_data()
+            golden_mod._apply_csv_shape_override(
+                data_dict,
+                {
+                    "q": q,
+                    "k": k,
+                    "v": v,
+                    "q_descale": q_descale,
+                    "k_descale": k_descale,
+                    "v_descale": v_descale,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "[WRAPPER] generate_data 失败: %s, 回退到 CSV tensor 透传给 NPU 让 op_host 拦截",
+                str(e),
+            )
+            data_dict = _build_fallback_data_dict(
+                q, k, v, q_descale, k_descale, v_descale, block_table,
+                B, N_q, N_kv, D, V_D,
+                act_seq_lens_q, act_seq_lens_kv,
+                input_layout, layout_kv, layout_out,
+                softmax_scale, cu_seqlens_q, cu_seqlens_kv,
+                max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+            )
+        finally:
+            golden_mod._clear_physical_s_override()
+            if _SKIP_GENERATE:
+                _clear_replay_qkv()
     logger.info(
-        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",
+        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, "
+        "skip_generate=%s, pass_through=%s",
         graph_path,
         input_layout,
         B,
@@ -353,6 +381,7 @@ def npu_qfa_mxfp4(
         N_kv,
         D,
         _SKIP_GENERATE,
+        _PASS_THROUGH,
     )
     try:
         atten_out, lse_out = golden_mod.npu_mxfp4_fa(data_dict)
