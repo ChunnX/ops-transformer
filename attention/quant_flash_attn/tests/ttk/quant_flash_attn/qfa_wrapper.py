@@ -91,6 +91,7 @@ def npu_qfa(
     data_range_v: float = 1.0,
     **kwargs,
 ):
+    input_layout = kwargs.get("layout_q") or input_layout
     torch_npu.npu.set_device(int(device_id))
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None:
