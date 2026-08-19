@@ -77,11 +77,11 @@ struct MegaMoeA2A3TilingData {
 
 struct MegaMoeTilingDataQuant {
     MegaMoeA2A3TilingData common;
-    MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+    MoeInitRoutingQuantV2TilingData moeInitRoutingTilingData;
 };
 
 struct MegaMoeTilingDataNonQuant {
     MegaMoeA2A3TilingData common;
-    MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+    MoeInitRoutingV2TilingData moeInitRoutingTilingData;
 };
 #endif

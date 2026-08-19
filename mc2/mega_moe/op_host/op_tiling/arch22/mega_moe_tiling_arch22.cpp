@@ -1400,7 +1400,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             expertTokensBeforeCapacityFlag, inuptXDtypeSize, quantModeRouting, scaleDim0, aivNum, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingQuantV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingQuantV2TilingBase.workspaceSize_;
-        quantTilingData->moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
+        quantTilingData->moeInitRoutingTilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
         quantTilingData->common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     } else {
         MegaMoeTilingDataNonQuant *nonQuantTilingData = context->GetTilingData<MegaMoeTilingDataNonQuant>();
@@ -1415,7 +1415,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                             inuptXDtypeSize, quantModeRouting, scaleDim0, aivNum, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingV2TilingBase.workspaceSize_;
-        nonQuantTilingData->moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
+        nonQuantTilingData->moeInitRoutingTilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
         nonQuantTilingData->common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     }
 

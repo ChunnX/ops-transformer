@@ -36,8 +36,6 @@
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 #include "utils/block_epilogue_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_row.hpp"
@@ -1263,11 +1261,6 @@ private:
         uint32_t n2 = params.problemShape.k();
 
         typename BlockEpilogue2::Params epilogueParams2{
-            static_cast<int32_t>(params.EP), static_cast<int32_t>(params.expertPerRank),
-            reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
-            static_cast<int32_t>(n2)};
-
-        typename BlockEpilogue3::Params epilogueParams3{
             static_cast<int32_t>(params.EP),
             static_cast<int32_t>(params.expertPerRank),
             runtimeRank,
@@ -1278,6 +1271,11 @@ private:
             shmem,
             peermemInfo.offsetD,
             tokenPerExpertLayout};
+
+        typename BlockEpilogue3::Params epilogueParams3{
+            static_cast<int32_t>(params.EP), static_cast<int32_t>(params.expertPerRank),
+            reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
+            static_cast<int32_t>(n2)};
 
         uint32_t n = params.problemShape.n();
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
@@ -1364,14 +1362,14 @@ private:
         blockEpilogue1.Finalize();
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-            blockEpilogue3.InitFlag();
-            CombineV2(params, blockEpilogue3);
+            blockEpilogue2.InitFlag();
+            CombineV2(params, blockEpilogue2);
         } else if (isCombineV1) {
-            blockEpilogue2.SetFlag();
-            CombineV1(params, blockEpilogue2);
+            blockEpilogue3.SetFlag();
+            CombineV1(params, blockEpilogue3);
         } else {
             CombineSetFlag();
-            CombineV2(params, blockEpilogue3);
+            CombineV2(params, blockEpilogue2);
         }
 
         AscendC::SyncAll<true>();
@@ -1430,7 +1428,7 @@ private:
 
     CATLASS_DEVICE
     // CombineV1: selected when ElementB == int8_t && m * topK > 4096.
-    void CombineV1(Params const &params, BlockEpilogue2 &blockEpilogue)
+    void CombineV1(Params const &params, BlockEpilogue3 &blockEpilogue)
     {
         uint32_t n2 = params.problemShape.k();
         int32_t prevGroupSum2 = 0;
@@ -1475,7 +1473,7 @@ private:
     CATLASS_DEVICE
     // CombineV2: selected when W4A8 (int4b_t), or ElementB == int8_t && m * topK <= 4096,
     //   or BF16/FP16 (all non-INT8 paths).
-    void CombineV2(Params const &params, BlockEpilogue3 &blockEpilogue)
+    void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;
