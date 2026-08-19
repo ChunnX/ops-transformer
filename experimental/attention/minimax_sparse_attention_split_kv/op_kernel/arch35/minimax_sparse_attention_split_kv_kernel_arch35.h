@@ -329,34 +329,44 @@ private:
     // i.e. packedRow 0=(b0,blk0), 1=(b1,blk0), 2=(b2,blk0), 3=(b0,blk1), ... -- NOT
     // "all of b0's blocks then all of b1's". Matches host _build_packed_row_map /
     // decode_packed_row (golden). For batch_=1 this collapses to packedRow=(0, packedRow).
-    // The (batchIdx, kvBlockIdx) decode is an incremental state machine persisted across
-    // the task loop: each core's packedRows are strided (taskIdx stride coreNum ->
-    // packedRow stride coreNum/kvHeads_), and AdvancePackedRowCoord steps the round-robin
-    // order forward. Seeded eagerly before the loop with packedRow=0 -> (batchIdx=0,
-    // kvBlockIdx=0) (valid for non-empty batch 0 -- the only supported config; an empty
-    // batch 0 would need a skip-while seed, but a batch with kvseqlen=0 is not a real input).
-    // A direct O(batch) decode would need rows_per_batch for ALL batches (no compile-time
-    // bound on batch_, up to 4096) -> 16KB UB scratch (the reverted G-piece1 path); the
-    // incremental walk is correct, scratch-free, and its cost is negligible.
+    // Padding requests pass q_len=kv_len=0 -> KvRowsPerBatch=0, so they occupy no packed
+    // rows. InitPackedRowCoord skips leading empty batches (packedRow 0 is the first
+    // non-empty batch at blk 0, not unconditionally (0,0)). Advance skips holes in the
+    // middle the same way. totalKvRows_==0 (all padding) never enters the decode loop.
     __aicore__ inline
     uint32_t KvRowsPerBatch(uint32_t batchIdx)
     {
         return CeilDiv(static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx)), blockSize_);
     }
 
+    // Advance past batches with no row at this kvBlockIdx (kv_len=0 => 0 rows).
+    __aicore__ inline
+    void SkipEmptyAtCurrentBlk(uint32_t &batchIdx, uint32_t kvBlockIdx)
+    {
+        while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
+            batchIdx++;
+        }
+    }
+
+    // packedRow 0 coordinate. Does not wrap to blk 1: that row only exists if some
+    // batch has kv_len>0 (then it sits at blk 0). All-empty is totalKvRows_==0.
+    __aicore__ inline
+    void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    {
+        batchIdx = 0;
+        kvBlockIdx = 0;
+        SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
+    }
+
     __aicore__ inline
     void AdvancePackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
     {
         batchIdx++;
-        while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
-            batchIdx++;
-        }
+        SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
         if (batchIdx >= batch_) {
             kvBlockIdx++;
             batchIdx = 0;
-            while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
-                batchIdx++;
-            }
+            SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
         }
     }
 
@@ -392,6 +402,10 @@ private:
     __aicore__ inline
     uint32_t CalcKvBlockValidSize(uint32_t kvSeqlenBatch, uint32_t numBlocksB, uint32_t localBlockIdx)
     {
+        // kv_len=0 => numBlocksB=0; unsigned (numBlocksB-1) would wrap and look like a tail block.
+        if (numBlocksB == 0U || localBlockIdx >= numBlocksB) {
+            return 0U;
+        }
         if (localBlockIdx == numBlocksB - 1) {
             return kvSeqlenBatch - localBlockIdx * blockSize_;
         }
@@ -407,10 +421,17 @@ private:
         uint32_t qToken, uint32_t validSize, uint32_t kvStartPos,
         uint32_t cumQStart, uint32_t qSeqlenBatch, uint32_t kvSeqlenBatch)
     {
+        // Padding request: q_len=kv_len=0 (or either side empty) has no causal overlap.
+        if (qSeqlenBatch == 0U || kvSeqlenBatch == 0U) {
+            return 0U;
+        }
         uint32_t localQIdx;
         if ((layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD ||
              layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) && qSeqLen_ > 0U) {
             localQIdx = qToken % qSeqLen_;
+            if (localQIdx >= qSeqlenBatch) {
+                return 0U;
+            }
         } else {
             localQIdx = qToken - cumQStart;
         }
@@ -420,6 +441,23 @@ private:
         }
         uint32_t maxLen = qPosition - kvStartPos + 1;
         return (maxLen < validSize) ? maxLen : validSize;
+    }
+
+    // BNSD/BSND keep padded S in the tensor; a dummy request is q_len=kv_len=0 (and
+    // tokens t>=q_len are intra-seq padding). TND is packed, so empty batches add
+    // no qTokens and Phase2 has nothing to skip.
+    __aicore__ inline
+    bool IsPaddingQToken(uint32_t qToken) const
+    {
+        if ((layoutType_ != MinimaxSaSplitKv::LAYOUT_BNSD &&
+             layoutType_ != MinimaxSaSplitKv::LAYOUT_BSND) || qSeqLen_ == 0U) {
+            return false;
+        }
+        uint32_t b = qToken / qSeqLen_;
+        uint32_t t = qToken - b * qSeqLen_;
+        uint32_t qLen = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
+        uint32_t kvLen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
+        return (qLen == 0U) || (kvLen == 0U) || (t >= qLen);
     }
 
     // GM offset of query[qToken, qHeadStart, 0:D).
@@ -722,6 +760,9 @@ private:
         // stops once both boundaries found) instead of materializing the full
         // 33-boundary array on every core. Deterministic -> no cross-core sync.
         uint32_t totalTasks = totalKvRows_ * kvHeads_;
+        if (totalKvRows_ == 0U) {
+            return;  // all requests padded (q_len=kv_len=0): no packed rows
+        }
         uint32_t headStride = totalKvRows_ + 1U;
         uint32_t activeCores = coreNum;
         uint32_t rowLo;
@@ -735,8 +776,8 @@ private:
         // Head-outer: packedRow = taskIdx % totalKvRows is per-head row r, which RESETS to 0 at
         // each head boundary, so the walker re-seeds at every head crossing. The (batchIdx,
         // kvBlockIdx) decode is head-INDEPENDENT (global packedRow r -> same coord for all heads),
-        // so a re-seed to (0,0,0) + forward walk to r reproduces the right coord. prevHead init
-        // = kvHeads_ (invalid) forces the first task to re-seed.
+        // so InitPackedRowCoord (skip leading kv_len=0 batches) + forward walk to r is enough.
+        // prevHead init = kvHeads_ (invalid) forces the first task to re-seed.
         int32_t curPackedRow = 0;
         uint32_t batchIdx = 0;
         uint32_t kvBlockIdx = 0;
@@ -747,8 +788,7 @@ private:
             uint32_t packedRow = taskIdx % totalKvRows_;
             if (kvHeadIdx != prevHead) {
                 curPackedRow = 0;
-                batchIdx = 0;
-                kvBlockIdx = 0;
+                InitPackedRowCoord(batchIdx, kvBlockIdx);
                 prevHead = kvHeadIdx;
             }
             // Incremental round-robin decode of packedRow -> (batchIdx, kvBlockIdx).
@@ -763,10 +803,16 @@ private:
             uint32_t cumQStart = 0;
             uint32_t qSeqlenBatch = 0;
             uint32_t cumKvStart = 0;
+            if (batchIdx >= batch_) {
+                continue;
+            }
             // Fetch per-batch scalars for the resolved batchIdx (Q/KV same batch ->
             // qBatch==batchIdx). cvl loop reuses these -> 0 GM GetValue per (bi,g).
             ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch,
                               cumKvStart);
+            if (numBlocksB == 0U) {
+                continue;
+            }
             uint32_t localBlockIdx = kvBlockIdx;
 
             uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
@@ -991,6 +1037,10 @@ private:
             coreNum = 1U;
         }
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
+            uint32_t qToken = taskIdx / kvHeads_;
+            if (IsPaddingQToken(qToken)) {
+                continue;  // dummy request (q_len=kv_len=0) or t>=q_len: leave O/LSE unwritten
+            }
             epilogueRescaleO.FlashDecodeCompute(
                 taskIdx, totalTaskNumP2_,
                 gO, gAccumOut, gSoftmaxMax, gSoftmaxSum, gSoftmaxLse,

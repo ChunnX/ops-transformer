@@ -177,6 +177,48 @@ class InnerPreciseTilingTest(unittest.TestCase):
         ok, reason = check_tiling(128, 64, 64, 4, 0)
         self.assertTrue(ok, reason)
 
+    def test_ceil_div_zero_seqlen_is_zero_packed_rows(self):
+        self.assertEqual(ceil_div(0, 128), 0)
+        self.assertEqual(ceil_div(0, 32), 0)
+        kv_lens = [0, 32, 0, 64]
+        self.assertEqual(sum(ceil_div(n, 32) for n in kv_lens), 3)
+
+    def test_packed_row_skips_zero_kv_len(self):
+        # Mirrors InitPackedRowCoord / AdvancePackedRowCoord with padding requests.
+        block_size = 32
+        kv_lens = [0, 32, 0, 64]  # rows: 0, 1, 0, 2
+
+        def rows(b):
+            return ceil_div(kv_lens[b], block_size)
+
+        batch = len(kv_lens)
+
+        def skip_empty(batch_idx, kv_block_idx):
+            while batch_idx < batch and kv_block_idx >= rows(batch_idx):
+                batch_idx += 1
+            return batch_idx
+
+        def init():
+            return skip_empty(0, 0), 0
+
+        def advance(batch_idx, kv_block_idx):
+            batch_idx += 1
+            batch_idx = skip_empty(batch_idx, kv_block_idx)
+            if batch_idx >= batch:
+                kv_block_idx += 1
+                batch_idx = skip_empty(0, kv_block_idx)
+            return batch_idx, kv_block_idx
+
+        coords = []
+        b, blk = init()
+        total = sum(rows(i) for i in range(batch))
+        for _ in range(total):
+            coords.append((b, blk))
+            b, blk = advance(b, blk)
+        self.assertEqual(coords, [(1, 0), (3, 0), (3, 1)])
+        # Leading dummy: packedRow 0 is the first real request, not batch 0.
+        self.assertEqual(coords[0], (1, 0))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
