@@ -73,11 +73,7 @@ for _p in (_ASSETS_DIR, _ASSETS_IMPL_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# gen_bins 原引用 `from common import quant_flash_attn_golden` (pytest 布局),
-# ttk 目录无 common 子包, 改为直接 import 同目录的 ttk golden 模块。
-# MXFP8 路径 → quant_flash_attn_golden (mxfp8), GQA FP8 路径 → quant_flash_attn_fp8_golden。
-import quant_flash_attn_golden as mxfp8_golden_mod  # noqa: E402
-import quant_flash_attn_fp8_golden as fp8_golden_mod  # noqa: E402
+from common import quant_flash_attn_golden as golden_mod  # noqa: E402
 
 
 def _load_impl_module(stem):
@@ -256,37 +252,38 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
     placeholder_tensors = _make_dummy_tensors(shapes, dtypes)
 
     # 2. 调用 inputs 生成函数 → 缓存到 golden_mod._cached_mxfp8_inputs
-    #    按 quant_mode 派发: 6=GQA FP8, 否则 MXFP8
     kwargs = _build_kwargs(attrs)
-    qm = kwargs.get("quant_mode", 1)
-    if qm == 6:
-        inputs_module.generate_qfa_gqa_fp8_inputs(
-            *placeholder_tensors[:8],  # q,k,v,deq_q,deq_k,deq_v,p_scale,block_table
+    quant_mode = attrs.get("quant_mode", 1)
+
+    if quant_mode == 7:
+        from common import quant_flash_attn_hif8_golden as hif8_golden_mod
+        inputs_module.generate_qfa_hif8_inputs(
+            *placeholder_tensors[:8],
             **kwargs,
         )
+        cached = getattr(hif8_golden_mod, "_cached_mxfp8_inputs", None)
+        if cached is None:
+            raise RuntimeError(
+                f"case {case_name}: hif8 inputs 生成后 _cached_mxfp8_inputs 仍为空"
+            )
     else:
         inputs_module.generate_qfa_mxfp8_inputs(
-            *placeholder_tensors[:8],  # q,k,v,deq_q,deq_k,deq_v,p_scale,block_table
+            *placeholder_tensors[:8],
             **kwargs,
         )
-    # _cached_mxfp8_inputs 可能由 inputs.py 注入到 mxfp8 或 fp8 golden 模块 (按 quant_mode)
-    cached = getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None) if qm == 6 else getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None)
-    if cached is None:
-        # 兜底: 检查另一个模块 (兼容旧 inputs.py 行为)
-        cached = getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None) if qm == 6 else getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None)
-    if cached is None:
-        raise RuntimeError(
-            f"case {case_name}: inputs 生成后 _cached_mxfp8_inputs 仍为空"
-        )
+        cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
+        if cached is None:
+            raise RuntimeError(
+                f"case {case_name}: mxfp8 inputs 生成后 _cached_mxfp8_inputs 仍为空"
+            )
 
-    # 3. 保存输入 bin：{case}_{mode}_cpu_{idx}.bin (mode 前缀避免 mxfp8/gqa_fp8 冲突)
+    # 3. 保存输入 bin：{case}_cpu_{idx}.bin
     # cached 顺序：q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table
-    mode_prefix = "gqafp8" if qm == 6 else "mxfp8"
     bin_input_paths = []
     for idx, tensor in enumerate(cached):
         if tensor is None:
             continue
-        path = os.path.join(output_dir, f"{case_name}_{mode_prefix}_cpu_{idx}.bin")
+        path = os.path.join(output_dir, f"{case_name}_cpu_{idx}.bin")
         _torch_to_bin(tensor, path)
         bin_input_paths.append(
             (idx, path, tuple(tensor.shape), _torch_dtype_name(tensor.dtype))
@@ -300,14 +297,13 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
         )
 
     # 4. 调用 golden 函数 + __bin_golden_out 保存 golden 输出
-    #    按 quant_mode 派发: 6=GQA FP8, 否则 MXFP8
     enable_lse = bool(attrs.get("enable_lse", 0))
     golden_out_paths = [
-        os.path.join(output_dir, f"{case_name}_{mode_prefix}_golden_{i}.bin")
+        os.path.join(output_dir, f"{case_name}_golden_{i}.bin")
         for i in range(2 if enable_lse else 1)
     ]
-    if qm == 6:
-        golden_module.cpu_qfa_gqa_fp8(
+    if quant_mode == 7:
+        golden_module.cpu_qfa_hif8(
             *placeholder_tensors[:8],
             **kwargs,
             __bin_golden_out=golden_out_paths,
