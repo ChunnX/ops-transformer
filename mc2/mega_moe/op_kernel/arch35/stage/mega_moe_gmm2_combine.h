@@ -316,6 +316,20 @@ __aicore__ inline QuantCombineBufferConfig CreateQuantCombineBufferConfig(uint32
     return {static_cast<int64_t>(singleTokenBytes * DOUBLE_BUFFER / sizeof(bfloat16_t)), quantTokenSizeBytes};
 }
 
+// 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
+__aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, uint32_t tokenCount,
+                                                     uint64_t expertRowPrefix)
+{
+    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
+        return {};
+    }
+    uint32_t firstOwnerJob = expertRowPrefix % job.totalJobs;
+    uint32_t logicalJobIndex = job.jobIndex >= firstOwnerJob ?
+                                   job.jobIndex - firstOwnerJob :
+                                   job.jobIndex + job.totalJobs - firstOwnerJob;
+    return GetBalancedTokenRange(tokenCount, logicalJobIndex, job.totalJobs);
+}
+
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
 template <uint8_t CombineMode>
 __aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount)
@@ -1119,10 +1133,8 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
                                                  uint32_t expertIdx, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-    // AIV0 不参与 wave Combine，仅 AIV1 取本专家 token 上分到的连续区间。
-    WorkRange currentCoreTokenRange = GetSubBlockIdx() != 1U ?
-                                          WorkRange{} :
-                                          GetBalancedTokenRange(currentExpertTokenNum, job.jobIndex, job.totalJobs);
+    WorkRange currentCoreTokenRange =
+        GetWaveCombineOwnedRange(job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
     if (currentCoreTokenRange.count != 0U) {
         WaitWaveGmm2Ready(job, params, expertIdx);
     }
