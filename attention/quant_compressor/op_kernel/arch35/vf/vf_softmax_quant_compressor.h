@@ -1709,7 +1709,7 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             uint16_t remOffset = uint16_t(ReduceSize / BASE_REDUCE_SIZE) * RowSize * BASE_REDUCE_SIZE;
             LoadAlign(vregF32_00, srcUb00 + remOffset +
                                       ReduceSize * RowSize * (loopSc + vScRealSize / BASE_DEAL_SIZE * BASE_DEAL_SIZE));
-            FusedExpSub(vregExp00, vregF32_00, max00, pregLHalf);
+            FusedExpSub(vregExp00, vregF32_00, max0, pregLHalf);
             Add(vregSum00, vregExp00, vregSum00, pregLHalf);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(
                 ((__ubuf__ T *&)srcUb00 + remOffset +
