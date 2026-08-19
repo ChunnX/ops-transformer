@@ -161,8 +161,6 @@ def check_valid_param(params):
             raise ValueError(
                 f"PA_BSND 场景 block_size({block_size}) 必须被 sparse_block_size({sparse_block_size}) 整除"
             )
-        if return_softmax_lse:
-            raise ValueError("PA_BSND 场景下 return_softmax_lse 不支持为 True")
         if block_num is None or int(block_num) <= 0:
             raise ValueError("PA_BSND 场景必须提供正整数 block_num")
         if actual_seq_kv is not None:

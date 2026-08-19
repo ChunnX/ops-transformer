@@ -19,7 +19,6 @@ import json
 import math
 import struct
 import torch
-import tensorflow as tf
 import copy
 
 
@@ -32,8 +31,8 @@ def get_np_dtype(type_str):
         "float32": np.float32,
         "fp16": np.float16,
         "float16": np.float16,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "bf16": np.float32,
+        "bfloat16": np.float32,
         "int32": np.int32,
         "int8": np.int8,
         "uint8": np.uint8,

@@ -520,7 +520,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// when return_softmax_lse is true, key layout do not support PA_BSND.
+// when return_softmax_lse is true, key layout supports PA_BSND.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
 {
     struct SparseFlashAttentionCompileInfo {
@@ -551,7 +551,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
 }
 
 // Tensor query only supports dtype DT_FLOAT16, DT_BFLOAT16, but got DT_FLOAT

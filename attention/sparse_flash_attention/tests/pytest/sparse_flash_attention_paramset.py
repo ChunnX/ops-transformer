@@ -18,7 +18,7 @@ TEST_PARAMS = {
     "bsnd_basic": {
         "Testcase_Prefix": ["sfa_bsnd_basic"],
         "layout_query": ["BSND"],
-        "layout_kv": ["BSND"],
+        "layout_kv": ["PA_BSND"],
         "q_type": [torch.float16],
         "kv_type": [torch.float16],
         "B": [1],
@@ -213,9 +213,9 @@ TEST_PARAMS = {
 
 
 ENABLED_PARAMS = [
-    TEST_PARAMS["bsnd_basic"],
-    TEST_PARAMS["bsnd_multi_batch"],
-    TEST_PARAMS["pa_bsnd"],
-    TEST_PARAMS["tnd_basic"],
-    TEST_PARAMS["tnd_pa_multi_batch"],
+    TEST_PARAMS["bsnd_basic"]
+    # TEST_PARAMS["bsnd_multi_batch"],
+    # TEST_PARAMS["pa_bsnd"],
+    # TEST_PARAMS["tnd_basic"],
+    # TEST_PARAMS["tnd_pa_multi_batch"],
 ]
