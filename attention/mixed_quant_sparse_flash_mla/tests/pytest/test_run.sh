@@ -14,6 +14,7 @@ set -euo pipefail
 QSMLA_PT_SAVE_SCRIPT="./batch/test_mixed_quant_sparse_flash_mla_pt_save.py"
 TEST_QSMLA_PT_BATCH_SCRIPT="test_mixed_quant_sparse_flash_mla_batch.py"
 TEST_QSMLA_PT_BATCH_GRAPH_SCRIPT="test_mixed_quant_sparse_flash_mla_batch_graph.py"
+TEST_QSMLA_BATCH_CONSISTENCY_SCRIPT="test_mixed_quant_sparse_flash_mla_batch_consistency.py"
 TEST_QSMLA_SINGLE_SCRIPT="test_mixed_quant_sparse_flash_mla_single.py"
 
 PT_SAVE_DIR="mqsmla_testcase"
@@ -23,6 +24,10 @@ KEEP_PT=false
 BATCH_TEST_MODE=1
 RESULT_PATH="./mqsmla_result.xlsx"
 DEVICE_ID=0
+CONSISTENCY_MODE="all"
+CONSISTENCY_SEED=20260806
+SPLIT_COUNT=2
+BATCH_GROUPS=""
 
 # ====================== 执行区 ======================
 
@@ -105,6 +110,35 @@ run_batch_exec_graph() {
     echo -e "\n===== batch_exec_graph 完成！====="
 }
 
+run_batch_consistency() {
+    echo "===== 执行batch_consistency：验证batch重排和拆分一致性 ====="
+
+    if [ ! -d "$PT_SAVE_DIR" ]; then
+        echo "错误: pt文件目录不存在: $PT_SAVE_DIR"
+        exit 1
+    fi
+
+    pt_count=$(find "$PT_SAVE_DIR" -maxdepth 1 -name '*.pt' | wc -l)
+    if [ "$pt_count" -eq 0 ]; then
+        echo "错误: 目录中没有找到.pt文件: $PT_SAVE_DIR"
+        exit 1
+    fi
+
+    export MQSMLA_PT_DIR="$PT_SAVE_DIR"
+    export MQSMLA_DEVICE_ID="$DEVICE_ID"
+    consistency_args=(
+        --consistency-mode "$CONSISTENCY_MODE"
+        --consistency-seed "$CONSISTENCY_SEED"
+        --split-count "$SPLIT_COUNT"
+    )
+    if [ -n "$BATCH_GROUPS" ]; then
+        consistency_args+=(--batch-groups "$BATCH_GROUPS")
+    fi
+    python3 -m pytest -rA -s $TEST_QSMLA_BATCH_CONSISTENCY_SCRIPT \
+        -v -m batch_consistency "${consistency_args[@]}" \
+        -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+}
+
 run_batch() {
     echo "===== 执行batch：从excel批量生成pt并执行NPU测试 ====="
 
@@ -139,6 +173,7 @@ show_help() {
     echo "  batch_save         从excel读取用例，golden计算并保存pt文件"
     echo "  batch_exec         批量读取pt文件并执行NPU测试(CI模式)"
     echo "  batch_exec_graph   批量读取pt文件并执行Graph模式NPU测试"
+    echo "  batch_consistency  验证batch顺序打乱和拆分后的逐字节一致性"
     echo "  batch              全流程：从excel生成pt + NPU测试"
     echo "  help               显示本帮助信息"
     echo ""
@@ -149,6 +184,10 @@ show_help() {
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
+    echo "  --consistency-mode <1|2|all>  1=换序, 2=拆分, all=两者"
+    echo "  --consistency-seed <整数>     换序/拆分随机种子"
+    echo "  --split-count <n>             随机拆分组数（默认: 2）"
+    echo "  --batch-groups <JSON>         显式拆分分组"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
     echo ""
     echo "环境变量（.py文件读取）："
@@ -168,6 +207,7 @@ show_help() {
     echo "  $0 batch_exec --mode 1 --excel ./excel/testcase.xlsx   # 按表格批跑"
     echo "  $0 batch_exec --pt-dir my_pt --result ./my_result.xlsx"
     echo "  $0 batch_exec_graph --mode 1                           # Graph模式按表格批跑"
+    echo "  $0 batch_consistency --pt-dir my_pt --consistency-mode all"
     echo "  $0 batch --keep-pt"
     echo "  $0 batch --excel my.xlsx --sheet decode --pt-dir my_pt --mode 1 --keep-pt"
 }
@@ -183,7 +223,7 @@ fi
 COMMAND="$1"
 shift
 
-if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ]; then
+if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch_consistency" ] || [ "$COMMAND" = "batch" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
             --excel)
@@ -234,6 +274,22 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                 BATCH_TEST_MODE="$2"
                 shift 2
                 ;;
+            --consistency-mode)
+                CONSISTENCY_MODE="$2"
+                shift 2
+                ;;
+            --consistency-seed)
+                CONSISTENCY_SEED="$2"
+                shift 2
+                ;;
+            --split-count)
+                SPLIT_COUNT="$2"
+                shift 2
+                ;;
+            --batch-groups)
+                BATCH_GROUPS="$2"
+                shift 2
+                ;;
             --keep-pt)
                 if [ "$COMMAND" != "batch" ]; then
                     echo "错误：--keep-pt 仅适用于 batch 命令"
@@ -263,6 +319,9 @@ case "$COMMAND" in
         ;;
     batch_exec_graph)
         run_batch_exec_graph
+        ;;
+    batch_consistency)
+        run_batch_consistency
         ;;
     batch)
         run_batch
