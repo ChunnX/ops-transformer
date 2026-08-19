@@ -516,10 +516,6 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.kvStrideParams.set_keyRopeBnStride(0);
     tilingData_.baseParams.set_needInit(fiaInfo_->needInit);
     tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
-    // The generic arch22 template does not consume cache view strides.
-    tilingData_.kvStrideParams.set_keyBnStride(0);
-    tilingData_.kvStrideParams.set_valueBnStride(0);
-    tilingData_.kvStrideParams.set_keyRopeBnStride(0);
 }
 
 void FiaTilingNonQuant::FillTilingPageAttenParams()
