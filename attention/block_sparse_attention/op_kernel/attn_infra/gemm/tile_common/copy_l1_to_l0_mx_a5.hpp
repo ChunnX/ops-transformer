@@ -13,7 +13,7 @@
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/arch/bsa_arch.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/tensor_bsa.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
 
 namespace NpuArch::Gemm::Tile {
