@@ -1977,11 +1977,6 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
                                                  "When layout_kv is PA_BSND, the shape dim of key must be 4");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(
-        *opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_key", SFALayoutToSerialString(kvLayout_).c_str(),
-                                              "When return_softmax_lse is true, layout_kv does not support PA_BSND"),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
