@@ -701,10 +701,10 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     constexpr uint32_t localMatmulDisabled = 0; // 不使用LOCAL前置, 默认为融合REMOTE模式
 
     if (isMxfp4_) {
-        Apace::QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     } else {
-        Apace::QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
     hcommTilingData_.localMatmul = localMatmulDisabled;
@@ -1026,7 +1026,7 @@ void MxQuantMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllTilingInfo &ti
  *
  * @param tilingInfo 目标结构体
  */
-void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(Apace::CommTilingData &tilingInfo) const
+void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingInfo) const
 {
     tilingInfo.splitAxisTileSize = inferredInfo.tileM;
     tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
