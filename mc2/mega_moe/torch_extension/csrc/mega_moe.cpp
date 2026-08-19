@@ -154,10 +154,7 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
 
-int64_t CeilAlign(int64_t val, int64_t align)
-{
-    return (val + align - 1) / align * align;
-}
+int64_t CeilAlign(int64_t val, int64_t align) { return (val + align - 1) / align * align; }
 
 // A2 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
@@ -229,6 +226,9 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t maskSlotSize = maskAlignSize + 32;
     int64_t maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
 
+    // Expert-major raw count table: [localExpert][sourceRank].
+    int64_t compactCountRecvSize = CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), 512);
+
     // quant_token_scale_size
     int64_t mxScaleNum = (hidden + 31) / 32;
     int64_t dataBytes = CeilAlign(hidden, 256);
@@ -242,8 +242,8 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes =
-        EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineOut;
+    int64_t totalBytes = EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + compactCountRecvSize +
+                         quantTokenScaleSize + combineOut;
 
     return totalBytes;
 }
