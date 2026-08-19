@@ -786,15 +786,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
         RunMoeExpertGmm2Stage<CombineQuantMode, QuantOutType, SwigluQuantOutType,
                               Weight1Type, QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
                               GMM1_TILE_M, TopkWeightsPrefetch, false, false>(
-            gmm2Config_, params_, gmm2AddrInfo, gmm2State, gmm2RuntimeState);
+            gmm2Config_, params_, gmm2AddrInfo, gmm2State, gmm2RuntimeState, &timer_, expertIdx);
         TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM2, expertIdx); });
         TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tok(AscendTimer::AIV_GMM2_PROLOGUE, expertIdx); });
-        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_COMBINE, expertIdx); });
         ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
             quantCombineConfig_, quantCombineBufferConfig_, params_, gmm2AddrInfo,
             static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape)),
             gmm2State.expertBeforeCnt, expertIdx);
-        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_COMBINE, expertIdx); });
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(gmm2RuntimeState.vecSetSyncCom, gmm2RuntimeState.pingpongIdx);

@@ -26,6 +26,7 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../AscendTimerV2_device.hpp"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -655,7 +656,8 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void Gmm2Aiv1EpilogueA8W4(
     Scheduler &scheduler, TensorC &l0cOutGm, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-    int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+    int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
+    AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -669,6 +671,8 @@ __aicore__ inline void Gmm2Aiv1EpilogueA8W4(
             while (AscendC::GetSystemCycle() - startCycle < 100) {
             }
         }
+        // 非量化 Combine 只统计 ready 之后的实际搬运和通信；同一专家的多个 tile 累加记录。
+        TIMER_BLOCK(if (timer != nullptr) { timer->Tik(AscendTimer::AIV_COMBINE, expertIdx); });
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto layoutL0cUB = MakeLayoutC{}(config.tileM, L1_TILE_N);
@@ -692,6 +696,9 @@ __aicore__ inline void Gmm2Aiv1EpilogueA8W4(
             nLoc, config.n, metaInfoTensor, l0cOutUbGMM2, actualShape, L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        TIMER_BLOCK(if (timer != nullptr) {
+            timer->Tok<TimerAccumulateTag>(AscendTimer::AIV_COMBINE, expertIdx);
+        });
         gmTileSequence = expectedReadySequence;
     }
 }
@@ -762,7 +769,8 @@ template <uint8_t CombineQuantMode, typename BlockMmad, typename BlockPrologue, 
           typename MakeLayoutC, bool IsShared, bool IsLayered = false, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(
     Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
-    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence)
+    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence,
+    AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -809,7 +817,8 @@ __aicore__ inline void Gmm2ExecA8W4(
         } else {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
                 Gmm2Aiv1EpilogueA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, params, gmmAddrInfo,
-                                                            gmTileSequence, config, startLoopIdx, tileNum);
+                                                            gmTileSequence, config, startLoopIdx, tileNum,
+                                                            timer, expertIdx);
             }
         }
     }
@@ -875,7 +884,7 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void RunGmm2A8W4(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
-    const BlockJobContext &blockJob)
+    const BlockJobContext &blockJob, AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -902,7 +911,7 @@ __aicore__ inline void RunGmm2A8W4(
 
     GmmKernel::Gmm2ExecA8W4<CombineQuantMode, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
                             GmmKernel::BlockScheduler, decltype(config)>(
-        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence);
+        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, timer, expertIdx);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -912,13 +921,14 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
           bool IsShared = false, bool IsLayered = false>
 __aicore__ inline void RunGmm2A8W4(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence)
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
+    AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2A8W4<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM,
                 TopkWeightsPrefetch, IsShared, IsLayered>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob);
+        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, timer, expertIdx);
 }
 
 __aicore__ inline Gmm2ExpertLoopState CreateGmm2ExpertLoopState(const Gmm2Config &context)
@@ -1073,13 +1083,14 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
           bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &params,
                                      const GMMAddrInfo &gmmAddrInfo, const Gmm2ExpertLoopState &state,
-                                     Gmm2RuntimeState &runtimeState)
+                                     Gmm2RuntimeState &runtimeState,
+                                     AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         RunGmm2A8W4<CombineMode, A8W4ElementA, WeightType, bfloat16_t, QuantScaleType,
                     QuantScaleType, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
             params, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.gmTileSequence,
-            context.blockJob);
+            context.blockJob, timer, expertIdx);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType,
@@ -1120,13 +1131,14 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA,
           bool IsGmm1Interleaved, bool IsWaveFlagGrained>
 __aicore__ inline void RunMoeExpertGmm2Stage(
     const Gmm2Config &context, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-    const Gmm2ExpertLoopState &state, Gmm2RuntimeState &runtimeState)
+    const Gmm2ExpertLoopState &state, Gmm2RuntimeState &runtimeState,
+    AscendTimerDevice *timer = nullptr, uint32_t expertIdx = 0U)
 {
     RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType,
                   QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
                   TopkWeightsPrefetch, false, IsGmm1Interleaved,
                   IsWaveFlagGrained>(
-        context, params, gmmAddrInfo, state, runtimeState);
+        context, params, gmmAddrInfo, state, runtimeState, timer, expertIdx);
 }
 
 template <typename GenericElementA, typename A8W4ElementA, typename WeightType,
