@@ -142,8 +142,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                int64_t gs1LoopStartIdx =
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+                int64_t gs1LoopStartIdx = skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
                 if (gs1LoopStartIdx > gS1StartIdx) {
                     runParam.gs1LoopStartIdx = gs1LoopStartIdx;
                 }
@@ -271,8 +270,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                if (runParam.s1oIdx <
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+                if (runParam.s1oIdx < skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
                     return true;
                 }
             }
@@ -355,8 +353,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
     runParam.s2OriLineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
         runParam.cubeSOuterOffset - runParam.preTokensPerBatchOri, 0, runParam.actualS2OriSize);
     runParam.s2OriLineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
-        runParam.cubeSOuterOffset + runParam.nextTokensPerBatchOri + runParam.s1RealSize, 0,
-        runParam.actualS2OriSize);
+        runParam.cubeSOuterOffset + runParam.nextTokensPerBatchOri + runParam.s1RealSize, 0, runParam.actualS2OriSize);
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         runParam.s2OriLineStartIdx = 0;
@@ -379,7 +376,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, runParam.actualS2CmpSize);
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+                         TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio, 0,
