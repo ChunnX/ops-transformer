@@ -500,7 +500,7 @@ public:
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTNoGS1Merge<T>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                   constInfo_.gSize, constInfo_.t1Size, );
+                                                   constInfo_.gSize, constInfo_.t1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
