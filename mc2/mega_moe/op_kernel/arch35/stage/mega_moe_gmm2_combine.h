@@ -285,6 +285,7 @@ struct WaveCombineBufferConfig {
     uint32_t quantRowStorageBytes = 0;
     uint32_t slotStrideBytes = 0;
     uint32_t quantTempElements = 0;
+    uint32_t rowBufferCount = 0;
 };
 
 struct WaveCombineScratch {
@@ -293,9 +294,12 @@ struct WaveCombineScratch {
     LocalTensor<float> quantTempTensor;
 };
 
-constexpr uint32_t WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
-constexpr uint32_t WAVE_COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
+constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
+constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
+// [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
+// The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
+constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
 constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
 /*
@@ -331,11 +335,8 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
 }
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
-template <uint8_t CombineMode>
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount)
+__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount, uint32_t rowBufferCount)
 {
-    constexpr uint32_t rowBufferCount =
-        CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
         WaitFlag<HardEvent::MTE3_MTE2>(
@@ -409,15 +410,11 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
     if (GetSubBlockIdx() != 1U || tokenCount == 0U) {
         return;
     }
-    if constexpr (CombineMode != COMBINE_NO_QUANT) {
-        AscendC::SetCtrlSpr<60, 60>(0);
-    }
     GlobalTensor<bfloat16_t> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmm2OutGlobal));
     uint64_t gmRemoteBaseOffset =
         static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
-    constexpr uint32_t rowBufferCount =
-        CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
+    uint32_t rowBufferCount = bufferConfig.rowBufferCount;
     uint32_t tokenIdxInSlice = 0U;
     uint32_t firstUseCount = rowSequence < rowBufferCount ? rowBufferCount - rowSequence : 0U;
     firstUseCount = firstUseCount < tokenCount ? firstUseCount : tokenCount;
@@ -1065,7 +1062,7 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
     }
 }
 
-constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
+constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
 constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES = MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
                                                         MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
                                                         ALIGN_512;

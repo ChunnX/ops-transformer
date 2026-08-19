@@ -409,9 +409,20 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitCombineBuffers()
         bufferConfig.quantTempElements =
             Ops::Base::CeilAlign(storedScaleBytes, static_cast<uint32_t>(ALIGN_32)) + storedScaleBytes / 2U;
     }
-    constexpr uint32_t rowBufferCount =
-        CombineQuantMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
-    uint32_t rowRingBytes = rowBufferCount * bufferConfig.slotStrideBytes;
+    bufferConfig.rowBufferCount = WAVE_COMBINE_MAX_ROW_BUFFER_COUNT;
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        // 量化临时区位于行环之后；剩余 Combine UB 尽量用于行槽，并受 6 个 event ID 上限约束。
+        uint32_t quantTempBytes = bufferConfig.quantTempElements * sizeof(float);
+        uint32_t rowRingBudgetBytes = WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE - quantTempBytes;
+        bufferConfig.rowBufferCount = rowRingBudgetBytes / bufferConfig.slotStrideBytes;
+        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount < WAVE_COMBINE_MIN_ROW_BUFFER_COUNT ?
+                                          WAVE_COMBINE_MIN_ROW_BUFFER_COUNT :
+                                          bufferConfig.rowBufferCount;
+        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount > WAVE_COMBINE_MAX_ROW_BUFFER_COUNT ?
+                                          WAVE_COMBINE_MAX_ROW_BUFFER_COUNT :
+                                          bufferConfig.rowBufferCount;
+    }
+    uint32_t rowRingBytes = bufferConfig.rowBufferCount * bufferConfig.slotStrideBytes;
     waveCombineScratch_.rowBufferTensor =
         LocalTensor<bfloat16_t>(TPosition::VECIN, WAVE_COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
     waveCombineScratch_.metaInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR,
@@ -830,7 +841,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                     params_, combineAddrInfo, combineState, combineState.expertIdx,
                                                     rowSequence);
     }
-    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
+    DrainWaveCombineRowRing(rowSequence, bufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
