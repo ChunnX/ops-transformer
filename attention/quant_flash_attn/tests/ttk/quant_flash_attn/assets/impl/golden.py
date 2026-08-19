@@ -988,7 +988,7 @@ def cpu_qfa_hif8(
             act_s = seq_lens[b]
             if act_s <= 0:
                 continue
-            result[b, :, :act_s, :] = tensor_bnsd[b, :act_s, :, :]
+            result[b, :, :act_s, :] = tensor_bnsd[b, :, :act_s, :]
         return result.contiguous()
 
     if str(input_layout).upper() == "BSND":
