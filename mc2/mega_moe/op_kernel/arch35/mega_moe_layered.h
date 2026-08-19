@@ -2001,8 +2001,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State, uint32_t expertIdx, uint32_t &startRankId,
     uint32_t &endRankId)
 {
-    // int64_t offset = ALIGN_512 + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
-    int64_t offset = ALIGN_512;
+    int64_t offset = ALIGN_512 + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+    // int64_t offset = ALIGN_512;
     uint32_t processRankNum = 0;
     SplitToCore(worldSize_, blockAivNum_, startRankId, endRankId, processRankNum);
     if (startRankId >= endRankId || processRankNum == 0) {
@@ -2065,7 +2065,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
         if (dr == rankId_) {
             continue;
         }
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(GetUrmaCommHandle(mc2Context_, dr, rankId_), GetRankWinAddrWithOffset(dr, 0),
+            nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+        hcomm_.Drain(activeBatchHandle);
         hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
 }
