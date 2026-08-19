@@ -93,7 +93,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
         OP_LOGE(context_, "D too big for UB"),
         return ge::GRAPH_FAILED);
     ubFactorB_ = std::min(blockFactorB_, numDAvail);
-    ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / HALF_COEF);
+    bool dHalfAligned = ((d_ / HALF_COEF) % (blockSize_ / typeSize)) == 0;
+    int64_t maxCopyB = dHalfAligned ? MAX_COPY_BLOCK_COUNT : MAX_COPY_BLOCK_COUNT / HALF_COEF;
+    ubFactorB_ = std::min(ubFactorB_, maxCopyB);
     return ge::GRAPH_SUCCESS;
 }
 
