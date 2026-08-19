@@ -19,7 +19,7 @@
 
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_mmad.h"
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #undef WINDOW_LEN
