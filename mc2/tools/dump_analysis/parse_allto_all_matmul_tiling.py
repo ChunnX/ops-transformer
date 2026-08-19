@@ -312,6 +312,10 @@ def parse_args_info(data: bytes) -> dict:
         args[f"[{i}] {name}"] = f"0x{ptrs[i]:016x}"
     args["_dumpFileSize"] = len(data)
     args["_validArgCount"] = num_ptrs
+    args["_note"] = (
+        f"dump 代码固定拷贝 min(devArgsLen, 256) 字节，AlltoAllMatmul 有效 args 为 {num_ptrs} 个。"
+        f" 实际 devArgsLen 请查看日志中 'Tiling dump start' 行的 devArgsLen 字段。"
+    )
     return args
 
 
@@ -367,7 +371,87 @@ def print_args_info(result: dict):
     logging.info("  dump 文件大小: %d bytes", dump_file_size)
     logging.info("  提示: tilingGM 应在 [12] 位置 (offset=96)")
     tiling_gm = result.get("[12] tilingGM", "N/A")
-    logging.info("  tilingGM = %s", tiling_gm)
+    logging.info("  [12] tilingGM = %s", tiling_gm)
+
+
+def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
+    """对比 dump 文件与 host 参考文件，逐字节验证。
+
+    dump 文件固定 2048B（含 padding），参考文件为结构体实际大小。
+    只对比参考文件长度范围内的字节。
+    """
+    ref_size = len(ref_data)
+    dump_size = len(dump_data)
+
+    logging.info("=" * 70)
+    logging.info("  Verify: dump vs host reference")
+    logging.info("=" * 70)
+    logging.info("  dump 文件: %d bytes (含 padding)", dump_size)
+    logging.info("  参考文件: %d bytes (结构体实际大小)", ref_size)
+
+    if dump_size < ref_size:
+        logging.error("dump 文件 %d < 参考文件 %d，dump 数据不完整", dump_size, ref_size)
+        return False
+
+    mismatch_count = 0
+    first_mismatch_offset = -1
+    field_ranges = [
+        (0, MC2_INIT_TILING_SIZE, "Mc2InitTiling"),
+        (MC2_INIT_TILING_SIZE, MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE, "Mc2CcTiling"),
+        (OFFSET_TILING_INFO, OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE, "AlltoAllMatmulTilingInfo"),
+        (OFFSET_TILE_MM_TILING, OFFSET_TILE_MM_TILING + max(MC2_MM_V3_TILING_DATA_SIZE, MC2_QUANT_BMM_TILING_PARAMS_SIZE), "TileMatmulTiling"),
+    ]
+
+    for i in range(ref_size):
+        if dump_data[i] != ref_data[i]:
+            mismatch_count += 1
+            if first_mismatch_offset < 0:
+                first_mismatch_offset = i
+
+    if mismatch_count == 0:
+        logging.info("")
+        logging.info("  结果: PASS - 全部 %d 字节完全一致", ref_size)
+        logging.info("  dump 文件尾部 %d 字节为 padding（不在对比范围内）", dump_size - ref_size)
+        return True
+
+    logging.error("")
+    logging.error("  结果: FAIL - %d/%d 字节不一致", mismatch_count, ref_size)
+    logging.error("  首个不一致偏移: %d (0x%x)", first_mismatch_offset, first_mismatch_offset)
+
+    for start, end, name in field_ranges:
+        if start <= first_mismatch_offset < end:
+            logging.error("  所属字段: %s (offset %d-%d)", name, start, end)
+            break
+
+    if mismatch_count <= 20:
+        logging.info("")
+        logging.info("  不一致字节明细:")
+        for i in range(ref_size):
+            if dump_data[i] != ref_data[i]:
+                field_name = "unknown"
+                for start, end, name in field_ranges:
+                    if start <= i < end:
+                        field_name = name
+                        break
+                logging.error("    offset %4d (0x%04x) [%s]: dump=0x%02x, ref=0x%02x",
+                              i, i, field_name, dump_data[i], ref_data[i])
+    else:
+        logging.warning("  不一致字节超过 20 个，仅显示前 20 个:")
+        shown = 0
+        for i in range(ref_size):
+            if dump_data[i] != ref_data[i]:
+                field_name = "unknown"
+                for start, end, name in field_ranges:
+                    if start <= i < end:
+                        field_name = name
+                        break
+                logging.error("    offset %4d (0x%04x) [%s]: dump=0x%02x, ref=0x%02x",
+                              i, i, field_name, dump_data[i], ref_data[i])
+                shown += 1
+                if shown >= 20:
+                    logging.error("    ... (剩余 %d 个省略)", mismatch_count - 20)
+                    break
+    return False
 
 
 def main():
@@ -379,11 +463,13 @@ def main():
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin
   python parse_allto_all_matmul_tiling.py args_info_AlltoAllMatmul.0.1.20260819.bin --args
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --json
+  python parse_allto_all_matmul_tiling.py tiling_data_*.bin --verify tiling_ref.bin
         """,
     )
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
+    parser.add_argument("--verify", metavar="REF_FILE", help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
@@ -402,6 +488,15 @@ def main():
         else:
             print_args_info(result)
         return
+
+    if args.verify:
+        if not os.path.isfile(args.verify):
+            logging.error("参考文件不存在: %s", args.verify)
+            sys.exit(1)
+        with open(args.verify, "rb") as f:
+            ref_data = f.read()
+        ok = verify_tiling_data(data, ref_data)
+        sys.exit(0 if ok else 1)
 
     is_quant = detect_quant_mode(data)
     if is_quant:

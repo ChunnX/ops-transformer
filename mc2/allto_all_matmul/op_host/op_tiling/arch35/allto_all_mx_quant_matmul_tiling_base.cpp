@@ -14,6 +14,10 @@
  */
 #include "allto_all_mx_quant_matmul_tiling_base.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
 #include "../allto_all_matmul_tiling_base.h"
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
@@ -770,6 +774,18 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
+
+    const char *dumpRefPath = std::getenv("MC2_TILING_DUMP_REF_PATH");
+    if (dumpRefPath != nullptr) {
+        FILE *fp = std::fopen(dumpRefPath, "wb");
+        if (fp != nullptr) {
+            std::fwrite(outTilingData, sizeof(AlltoAllQuantMatmulTilingData), 1, fp);
+            std::fclose(fp);
+            OP_LOGI(opName_, "Tiling reference dumped to %s (%zu bytes).", dumpRefPath, sizeof(AlltoAllQuantMatmulTilingData));
+        } else {
+            OP_LOGW(opName_, "Failed to open %s for tiling reference dump.", dumpRefPath);
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
