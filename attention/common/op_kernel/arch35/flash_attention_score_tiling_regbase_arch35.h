@@ -232,6 +232,8 @@ public:
     StridesParams keyStrides;
     StridesParams valueStrides;
     StridesParams kRopeStrides;
+    StridesParams kScaleStrides;
+    StridesParams vScaleStrides;
 
     int64_t get_bSize() const
     {

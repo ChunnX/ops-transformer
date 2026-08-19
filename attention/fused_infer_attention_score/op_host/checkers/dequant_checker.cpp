@@ -2183,8 +2183,89 @@ ge::graphStatus DequantChecker::CheckFeatureForAntiquant(const FiaTilingInfo &fi
     if (ge::GRAPH_SUCCESS != CheckFeatureLayoutForAntiquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureQuerySForAntiquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeaturePAForAntiquant(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckFeatureRopeForAntiquant(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckFeatureRopeForAntiquant(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckStrideForAntiquant(fiaInfo)) {
         return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!fiaInfo.hasViewStride) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const uint32_t keyDimNum = keyShape.GetDimNum();
+    const gert::Shape valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    const uint32_t valueDimNum = valueShape.GetDimNum();
+    int32_t dimIndex = 0;
+
+    if (!fiaInfo.pageAttentionFlag) {
+        if (CheckTensorContiguous(keyDimNum, keyShape, fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) {
+            OP_LOGE(fiaInfo.opName, "In non-PA antiquant scenarios, non-contiguous key is not supported.");
+            return ge::GRAPH_FAILED;
+        }
+        if (CheckTensorContiguous(valueDimNum, valueShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS) {
+            OP_LOGE(fiaInfo.opName, "In non-PA antiquant scenarios, non-contiguous value is not supported.");
+            return ge::GRAPH_FAILED;
+        }
+        if (fiaInfo.opParamInfo.keyAntiquantScale.tensor != nullptr) {
+            const auto &scaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+            if (CheckTensorContiguous(scaleShape.GetDimNum(), scaleShape, fiaInfo.kScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) {
+                OP_LOGE(fiaInfo.opName, "In non-PA antiquant scenarios, non-contiguous k_descale is not supported.");
+                return ge::GRAPH_FAILED;
+            }
+        }
+        if (fiaInfo.opParamInfo.valueAntiquantScale.tensor != nullptr) {
+            const auto &scaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+            if (CheckTensorContiguous(scaleShape.GetDimNum(), scaleShape, fiaInfo.vScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) {
+                OP_LOGE(fiaInfo.opName, "In non-PA antiquant scenarios, non-contiguous v_descale is not supported.");
+                return ge::GRAPH_FAILED;
+            }
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const bool isBbhLayout = (fiaInfo.kvLayout == FiaLayout::BnBsH);
+    auto checkStrideAllowed = [&](const char* tensorName, uint32_t dimNum, const gert::Shape& shape,
+                                  const gert::Stride* strides) -> ge::graphStatus {
+        if (strides == nullptr || strides->GetDimNum() == 0) {
+            return ge::GRAPH_SUCCESS;
+        }
+        if (CheckTensorContiguous(dimNum, shape, strides, dimIndex) != ge::GRAPH_SUCCESS) {
+            if (isBbhLayout) {
+                OP_LOGE(fiaInfo.opName,
+                    "In PA BBH antiquant scenarios, %s only supports non-contiguous in dimension 0, but got dimension %d.",
+                    tensorName, dimIndex);
+                return ge::GRAPH_FAILED;
+            } else if (dimIndex != 0 && dimIndex != 1) {
+                OP_LOGE(fiaInfo.opName,
+                    "In PA BNBD/NZ antiquant scenarios, %s only supports non-contiguous in dimensions 0/1, but got dimension %d.",
+                    tensorName, dimIndex);
+                return ge::GRAPH_FAILED;
+            }
+        }
+        return ge::GRAPH_SUCCESS;
+    };
+
+    if (checkStrideAllowed("key", keyDimNum, keyShape, fiaInfo.keyStrides) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (checkStrideAllowed("value", valueDimNum, valueShape, fiaInfo.valueStrides) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (fiaInfo.opParamInfo.keyAntiquantScale.tensor != nullptr) {
+        const auto &scaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+        if (checkStrideAllowed("k_descale", scaleShape.GetDimNum(), scaleShape, fiaInfo.kScaleStrides) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (fiaInfo.opParamInfo.valueAntiquantScale.tensor != nullptr) {
+        const auto &scaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+        if (checkStrideAllowed("v_descale", scaleShape.GetDimNum(), scaleShape, fiaInfo.vScaleStrides) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
