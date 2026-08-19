@@ -357,8 +357,8 @@ void AllToAllFpMatmulTilingBase::PrintMMV3TilingData(const std::string &opName, 
     OP_LOGD(opName, " MMtiling.nTailCnt %d", tiling.nTailCnt);
     OP_LOGD(opName, " MMtiling.kTailCnt %d", tiling.kTailCnt);
     OP_LOGD(opName, " MMtiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " MMtiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " MMtiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, " MMtiling.mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, " MMtiling.nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
     OP_LOGD(opName, " MMtiling.mTailMain %d", tiling.mTailMain);
     OP_LOGD(opName, " MMtiling.nTailMain %d", tiling.nTailMain);
     OP_LOGD(opName, " MMtiling.aswWindowLen %d", tiling.aswWindowLen);

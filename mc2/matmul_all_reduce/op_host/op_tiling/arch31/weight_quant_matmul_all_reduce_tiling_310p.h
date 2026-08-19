@@ -61,7 +61,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase {
             OP_LOGD(tilingProcesser_.opName_, " transA_ %d transB_ %d, hasBias_ %d, hasAntiQuantOffset_ %d, ",
                     weightQuantBatchMatmulInfo.transA, weightQuantBatchMatmulInfo.transB,
                     weightQuantBatchMatmulInfo.hasBias, weightQuantBatchMatmulInfo.hasAntiQuantOffset);
-            OP_LOGD(tilingProcesser_.opName_, "mSize_ %ld kSize_ %ldnSize_ %ld groupSize_ %ld",
+            OP_LOGD(tilingProcesser_.opName_, "mSize_ %ld kSize_ %ld nSize_ %ld groupSize_ %ld",
                     weightQuantBatchMatmulInfo.mSize, weightQuantBatchMatmulInfo.kSize,
                     weightQuantBatchMatmulInfo.nSize, weightQuantBatchMatmulInfo.groupSize);
             OP_LOGD(tilingProcesser_.opName_, "aDtype_ %d bDtype_ %d cDtype_ %d biasDtype_ %d",

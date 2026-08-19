@@ -677,7 +677,6 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(),
                                                           "The value of N of x2 cannot be 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(info.N == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2", std::to_string(info.N).c_str(), "The value of N of x2 cannot be 0"), return ge::GRAPH_FAILED);
     // CCL buffer数据区: m0 * pValue * N * sizeof(element) 必须小于 180MB / MAX_BLOCK_COUNT
     int32_t maxN = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / MAX_BLOCK_COUNT / ELEMENT_SIZE / DEFAULT_ROW;
     OP_TILING_CHECK(info.N > maxN,

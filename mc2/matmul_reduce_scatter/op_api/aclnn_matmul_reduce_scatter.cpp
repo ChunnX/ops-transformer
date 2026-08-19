@@ -232,7 +232,7 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(
         x1, x2, bias, const_cast<char *>(group), const_cast<char *>(reduce_op), transposeX1, transposeX2, commTurn,
         rankSize, output, workspaceSize, executor);
-    OP_LOGD("MatmulReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("MatmulReduceScatter, aclnnGetWorkspaceSize ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
