@@ -373,7 +373,7 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
             const uint64_t dTileNum = CeilDiv(totalD_, candidate);
             const uint64_t qL1BufferNum = dTileNum > 1U ? 2U : 1U;
             const uint64_t vL1BufferNum = dTileNum > 1U ? 2U : 1U;
-            // Two V UB regions are retained for the regular ping/pong path and the runtime N=1 Q/V fast path.
+            // Two V UB regions provide ping/pong buffering for the mixed AIC/AIV path.
             const uint64_t vUbBufferNum = 2U;
             const uint64_t qL1Elems = static_cast<uint64_t>(candidateSAlign) * baseDAlign;
             const uint64_t vL1Elems = static_cast<uint64_t>(nAlign_) * baseDAlign;
