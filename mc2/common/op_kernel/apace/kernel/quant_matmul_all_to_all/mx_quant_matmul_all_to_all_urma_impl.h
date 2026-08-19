@@ -125,7 +125,7 @@ private:
 
   // ---------------- 私有方法 ----------------
   __aicore__ inline void InitBaseParams(const MatmulAllToAllTilingData *td);
-  __aicore__ inline void SetupParams(const QuantBatchMatmulTilingData &mmTile,
+  __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile,
                       uint32_t batchSize, uint32_t batchRankOffset,
                       uint64_t origM, bool isLocal, Params &params);
   __aicore__ inline void RunRemoteMatmul();
@@ -218,7 +218,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
 
 template <typename AType, typename BType, typename CType, bool LocalDelay>
 __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::SetupParams(
-  const QuantBatchMatmulTilingData &mmTile,
+  const QuantMatmulTilingData &mmTile,
   uint32_t batchSize, uint32_t batchRankOffset,
   uint64_t origM, bool isLocal, Params &params)
 {
