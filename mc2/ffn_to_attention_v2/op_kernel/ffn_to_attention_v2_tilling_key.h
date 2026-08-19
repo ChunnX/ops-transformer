@@ -21,18 +21,25 @@ namespace Mc2Tiling {
 #define TILINGKEY_TPL_A2 0
 #define TILINGKEY_TPL_A3 1
 #define TILINGKEY_TPL_A5 2
+#define TILINGKEY_COMM_MTE 0
+#define TILINGKEY_COMM_URMA 1
 
 ASCENDC_TPL_ARGS_DECL(FFNToAttentionV2, ASCENDC_TPL_BOOL_DECL(TILINGKEY_RANK_TABLE_MODE, 0, 1), // RankTableMode
                       ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A2,
-                                            TILINGKEY_TPL_A3, TILINGKEY_TPL_A5), );
+                                            TILINGKEY_TPL_A3, TILINGKEY_TPL_A5),
+                      ASCENDC_TPL_UINT_DECL(COMM_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
+                                            TILINGKEY_COMM_MTE, TILINGKEY_COMM_URMA), );
 ASCENDC_TPL_SEL(
     // A5 tilingkey
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_RANK_TABLE_MODE, 0),
                          ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
+                         ASCENDC_TPL_UINT_SEL(COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_COMM_MTE,
+                                              TILINGKEY_COMM_URMA),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FFNToAttentionV2TilingData)),
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TILINGKEY_RANK_TABLE_MODE, 1),
                          ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
+                         ASCENDC_TPL_UINT_SEL(COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_COMM_MTE,
+                                              TILINGKEY_COMM_URMA),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FFNToAttentionV2TilingData)));
-} // namespace Mc2Tiling
 } // namespace Mc2Tiling
 #endif

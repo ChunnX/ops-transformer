@@ -128,12 +128,12 @@ class FFNToAttentionV2Arch35TilingTest : public testing::Test {};
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, NoRankTable)
 {
-    ExecuteTilingCase(BuildInputs(false), BuildAttrs(), ge::GRAPH_SUCCESS, 4UL);
+    ExecuteTilingCase(BuildInputs(false), BuildAttrs(), ge::GRAPH_SUCCESS, 12UL);
 }
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RankTable)
 {
-    ExecuteTilingCase(BuildInputs(true), BuildAttrs(), ge::GRAPH_SUCCESS, 5UL);
+    ExecuteTilingCase(BuildInputs(true), BuildAttrs(), ge::GRAPH_SUCCESS, 13UL);
 }
 
 class FFNToAttentionV2InvalidInputTest : public testing::TestWithParam<InvalidInput> {};

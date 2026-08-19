@@ -25,6 +25,7 @@
 #endif
 #include "../ffn_to_attention_v2_tiling.h"
 #include "../ffn_to_attention_v2_tilling_key.h"
+#include "../ffn_to_attention_urma.h"
 
 using namespace AscendC;
 using namespace FFNToAttentionImpl;
@@ -36,30 +37,34 @@ static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingD
               "FFNToAttention V1/V2 tiling data layout size mismatch");
 
 /*
- * A3 tilingkey说明
- * 5位的十进制数
- * 第1位（个位）：是否输入attnRankTable:
- *     0: 不输入, 1: 输入
- * 第2位（十位）：无实际意义:
- * 第3位（百位）：无实际意义:
- * 第4位（千位）：无实际意义:
- * 第5位（万位）：无实际意义
+ * A5 tiling key fields:
+ *   RankTableMode: whether attnRankTable is provided.
+ *   ArchTag: A5.
+ *   CommModeType: MTE or URMA.
  */
 
-template <bool RankTableMode, uint8_t ArchTag>
-__global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds,
-                                            GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
-                                            GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template <bool RankTableMode, uint8_t ArchTag, uint8_t CommModeType>
+__global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
+                                               GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
+                                               GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM,
+                                               GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(FFNToAttentionV2TilingData);
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(FFNToAttentionV2TilingData, tilingData, tilingGM);
-        const auto *v1TilingData = reinterpret_cast<const FFNToAttentionTilingData *>(&tilingData);
-        FFNToAttention<DTYPE_X, RankTableMode, FFNToAttentionContextType::MC2_CONTEXT> op;
-        op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, workspaceGM,
-                &pipe, v1TilingData);
-        op.Process();
+        if constexpr (CommModeType == TILINGKEY_COMM_MTE) {
+            const auto *v1TilingData = reinterpret_cast<const FFNToAttentionTilingData *>(&tilingData);
+            FFNToAttention<DTYPE_X, RankTableMode, FFNToAttentionContextType::MC2_CONTEXT> op;
+            op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
+                    workspaceGM, &pipe, v1TilingData);
+            op.Process();
+        } else if constexpr (CommModeType == TILINGKEY_COMM_URMA) {
+            FFNToAttentionUrma<DTYPE_X, RankTableMode> op;
+            op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
+                    workspaceGM, &pipe, &tilingData);
+            op.Process();
+        }
     }
 }
