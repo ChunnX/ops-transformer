@@ -556,7 +556,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         if constexpr (!std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
             logicalCoreCount *= 2U;
         }
-        groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
+        uint32_t syncExpertTokenCount = gmmAddrInfo.gmm2SyncExpertTokenCount == 0U ?
+            config.m : gmmAddrInfo.gmm2SyncExpertTokenCount;
+        groupSyncSlotLayout = CalcGroupSyncSlotLayout(syncExpertTokenCount, logicalCoreCount);
     }
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -596,7 +598,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+            uint32_t expertRowOffset = gmmAddrInfo.gmm2TileOffsetInExpert * COMBINE_TOKEN_GROUP_SIZE + mLoc;
+            NotifyCombineConsumersOfTileCompletion(
+                expertRowOffset, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
@@ -615,7 +619,9 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
     GroupSyncSlotLayout groupSyncSlotLayout{};
     if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
         uint32_t logicalCoreCount = config.blockNum;
-        groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
+        uint32_t syncExpertTokenCount = gmmAddrInfo.gmm2SyncExpertTokenCount == 0U ?
+            config.m : gmmAddrInfo.gmm2SyncExpertTokenCount;
+        groupSyncSlotLayout = CalcGroupSyncSlotLayout(syncExpertTokenCount, logicalCoreCount);
     }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -638,7 +644,9 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+            uint32_t expertRowOffset = gmmAddrInfo.gmm2TileOffsetInExpert * COMBINE_TOKEN_GROUP_SIZE + mLoc;
+            NotifyCombineConsumersOfTileCompletion(
+                expertRowOffset, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }

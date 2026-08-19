@@ -123,7 +123,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
     int32_t dstIdx, GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor, GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t copyStartIdx, int32_t copyIdx)
+    int32_t copyStartIdx, int32_t copyIdx, int32_t copyIndexStride = 1)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -134,7 +134,8 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx);
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
+            copyStartIdx + copyIdx * copyIndexStride);
         int32_t weightBits =
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(context.common.topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
@@ -149,6 +150,295 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
              INT32_PER_256B);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
+}
+
+// Wave Dispatch 的选中 token 和目标 row 都可能是等差序列。该版本仍复用原有
+// 2~6 槽 MTE2/MTE3 ring，只把 source ordinal 与 destination row 的步长显式化。
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void CopyStridedTokensAndMetaForDispatch(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, int32_t firstDstRow, int32_t remoteRankIdx,
+    int32_t firstBatchMatchIdx, int32_t tokenCount, int32_t sourceOrdinalStride,
+    int32_t destinationRowStride)
+{
+    if (tokenCount <= 0) {
+        return;
+    }
+    int32_t bufferCount = context.bufferConfig.bufferCount;
+    GlobalTensor<ActivationType> remoteRankGlobalTensor;
+    GlobalTensor<ActivationType> tokenRevGlobalTensor;
+    GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
+    GlobalTensor<int32_t> metaInfoGlobalTensor;
+    tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
+        params.workspaceInfo.dispatchRevDataPtr + firstDstRow * scratch.revTokenElemCnt));
+    scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType *>(
+        params.workspaceInfo.dispatchRevScalePtr + firstDstRow * scratch.revScaleElemCnt));
+    remoteRankGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
+        winRankAddr[remoteRankIdx] + context.quantWinOffset));
+    metaInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+        params.workspaceInfo.metaInfoPtr + firstDstRow * INT32_PER_256B * sizeof(int32_t)));
+
+    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(firstBatchMatchIdx);
+    FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+        context, scratch, 0, firstTopkIndex, remoteRankIdx, remoteRankGlobalTensor);
+
+    int32_t firstUseEnd = tokenCount < bufferCount ? tokenCount : bufferCount;
+    for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
+        int32_t copyIdx = issueIdx - 1;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
+            firstBatchMatchIdx + issueIdx * sourceOrdinalStride);
+        FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+            context, scratch, issueIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyIdx, copyIdx * destinationRowStride, tokenRevGlobalTensor,
+            scaleRevGlobalTensor, metaInfoGlobalTensor, firstBatchMatchIdx, copyIdx,
+            sourceOrdinalStride);
+    }
+    for (int32_t issueIdx = bufferCount; issueIdx < tokenCount; ++issueIdx) {
+        int32_t copyIdx = issueIdx - 1;
+        int32_t issueBufferIdx = issueIdx % bufferCount;
+        int32_t copyBufferIdx = copyIdx % bufferCount;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
+            firstBatchMatchIdx + issueIdx * sourceOrdinalStride);
+        FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
+            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyBufferIdx, copyIdx * destinationRowStride, tokenRevGlobalTensor,
+            scaleRevGlobalTensor, metaInfoGlobalTensor, firstBatchMatchIdx, copyIdx,
+            sourceOrdinalStride);
+    }
+    StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, scratch, (tokenCount - 1) % bufferCount,
+        (tokenCount - 1) * destinationRowStride, tokenRevGlobalTensor, scaleRevGlobalTensor,
+        metaInfoGlobalTensor, firstBatchMatchIdx, tokenCount - 1, sourceOrdinalStride);
+    for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
+        TEventID eventId = static_cast<TEventID>(bufferIdx);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
+}
+
+// 所有目标 row 已写回后，按 GMM1 的专家内 M-group 汇总发布 ready count。
+__aicore__ inline void PublishStridedGmm1TileReady(
+    const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
+    int32_t firstExpertRow, int32_t rowCount, int32_t rowStride, int32_t tileRowCount)
+{
+    if (rowCount <= 0) {
+        return;
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+    __gm__ int32_t *flagBase =
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
+        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+    int32_t lastExpertRow = firstExpertRow + (rowCount - 1) * rowStride;
+    int32_t firstTileIdx = firstExpertRow / tileRowCount;
+    int32_t lastTileIdx = lastExpertRow / tileRowCount;
+    for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
+        int32_t tileRowBegin = tileIdx * tileRowCount;
+        int32_t tileRowEnd = tileRowBegin + tileRowCount;
+        int32_t firstSelected = tileRowBegin <= firstExpertRow ? 0 :
+            Ops::Base::CeilDiv(tileRowBegin - firstExpertRow, rowStride);
+        int32_t selectedEnd = tileRowEnd <= firstExpertRow ? 0 :
+            Ops::Base::CeilDiv(tileRowEnd - firstExpertRow, rowStride);
+        firstSelected = firstSelected < rowCount ? firstSelected : rowCount;
+        selectedEnd = selectedEnd < rowCount ? selectedEnd : rowCount;
+        int32_t tileReadyRows = selectedEnd - firstSelected;
+        if (tileReadyRows > 0) {
+            AtomicAdd(flagBase + static_cast<int64_t>(tileIdx) * INT_CACHELINE, tileReadyRows);
+        }
+    }
+}
+
+// Wave 专用二层路由：第一层的 core stride 跨专家连续，不在专家边界重置；
+// 第二层在当前专家内按活跃 source rank 逐轮交织，rank 耗尽后从后续轮次移除。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM,
+          bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchWaveExpertSegmentInterleaved(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
+    int32_t expertGlobalRowBegin, int32_t expertRowBegin, int32_t expertRowEnd,
+    int32_t expertWaveLogicalRowBegin)
+{
+    if (expertRowBegin >= expertRowEnd || context.blockJob.totalJobs == 0U) {
+        return;
+    }
+    constexpr int32_t routeCacheStride = ALIGN_32 / sizeof(int32_t);
+    constexpr int32_t matchedCountSlot = 0;
+    constexpr int32_t tokenCountSlot = 1;
+    constexpr int32_t layerBaseSlot = 2;
+    constexpr int32_t lastSelectedSlot = 3;
+    constexpr int32_t ordinalEndSlot = 4;
+    constexpr int32_t firstSelectedSlot = 5;
+    constexpr int32_t ordinalStrideSlot = 6;
+    constexpr int32_t rowStrideSlot = 7;
+    int32_t coreCount = static_cast<int32_t>(context.blockJob.totalJobs);
+    int32_t coreLane = static_cast<int32_t>(context.blockJob.jobIndex);
+    int32_t maskSlotSize = static_cast<int32_t>(context.maskAlignSize + ALIGN_32);
+    int32_t routeItemsPerBatch = context.bufferConfig.routeItemsPerBatch;
+    int32_t routeBatchCount = context.bufferConfig.routeBatchCount;
+    uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+
+    int32_t completedRound = 0;
+    int32_t layerLogicalRowBegin = 0;
+    while (layerLogicalRowBegin < expertRowEnd) {
+        int32_t activeRankCount = 0;
+        int32_t nextRound = 0x7fffffff;
+        int32_t previousRankPrefix = expertGlobalRowBegin;
+        for (int32_t rankIdx = 0; rankIdx < static_cast<int32_t>(context.common.worldSize); ++rankIdx) {
+            int32_t rankPrefix = scratch.cumsumInfoTensor.GetValue(
+                localExpertId * context.common.worldSize + static_cast<uint32_t>(rankIdx));
+            int32_t rankTokenCount = rankPrefix - previousRankPrefix;
+            previousRankPrefix = rankPrefix;
+            if (rankTokenCount > completedRound) {
+                ++activeRankCount;
+                nextRound = rankTokenCount < nextRound ? rankTokenCount : nextRound;
+            }
+        }
+        if (activeRankCount == 0 || nextRound <= completedRound) {
+            break;
+        }
+        int32_t layerLogicalRowEnd = layerLogicalRowBegin +
+            (nextRound - completedRound) * activeRankCount;
+        int32_t segmentLayerBegin = expertRowBegin > layerLogicalRowBegin ?
+            expertRowBegin : layerLogicalRowBegin;
+        int32_t segmentLayerEnd = expertRowEnd < layerLogicalRowEnd ?
+            expertRowEnd : layerLogicalRowEnd;
+
+        if (segmentLayerEnd > segmentLayerBegin) {
+            int32_t activeRankPosition = 0;
+            previousRankPrefix = expertGlobalRowBegin;
+            for (int32_t rankIdx = 0; rankIdx < static_cast<int32_t>(context.common.worldSize); ++rankIdx) {
+                int32_t rankPrefix = scratch.cumsumInfoTensor.GetValue(
+                    localExpertId * context.common.worldSize + static_cast<uint32_t>(rankIdx));
+                int32_t rankTokenCount = rankPrefix - previousRankPrefix;
+                previousRankPrefix = rankPrefix;
+                int32_t cacheBase = rankIdx * routeCacheStride;
+                scratch.sendCntTensor.SetValue(cacheBase + tokenCountSlot, rankTokenCount);
+                scratch.sendCntTensor.SetValue(cacheBase + matchedCountSlot, 0);
+                scratch.sendCntTensor.SetValue(cacheBase + firstSelectedSlot, 0x7fffffff);
+                scratch.sendCntTensor.SetValue(cacheBase + ordinalEndSlot, 0);
+                if (rankTokenCount <= completedRound) {
+                    continue;
+                }
+                int32_t rankLayerLogicalBase = layerLogicalRowBegin + activeRankPosition++;
+                if (rankLayerLogicalBase >= segmentLayerEnd) {
+                    continue;
+                }
+                int32_t ordinalBegin = completedRound;
+                if (rankLayerLogicalBase < segmentLayerBegin) {
+                    ordinalBegin += Ops::Base::CeilDiv(
+                        segmentLayerBegin - rankLayerLogicalBase, activeRankCount);
+                }
+                int32_t ordinalEnd = completedRound + Ops::Base::CeilDiv(
+                    segmentLayerEnd - rankLayerLogicalBase, activeRankCount);
+                ordinalEnd = ordinalEnd < nextRound ? ordinalEnd : nextRound;
+                if (ordinalEnd <= ordinalBegin) {
+                    continue;
+                }
+                int32_t firstSelected = ordinalEnd;
+                int32_t probeEnd = ordinalBegin + coreCount;
+                probeEnd = probeEnd < ordinalEnd ? probeEnd : ordinalEnd;
+                for (int32_t ordinal = ordinalBegin; ordinal < probeEnd; ++ordinal) {
+                    int32_t expertLogicalRow = rankLayerLogicalBase +
+                        (ordinal - completedRound) * activeRankCount;
+                    int32_t waveLogicalRow = expertWaveLogicalRowBegin +
+                        expertLogicalRow - expertRowBegin;
+                    if (waveLogicalRow % coreCount == coreLane) {
+                        firstSelected = ordinal;
+                        break;
+                    }
+                }
+                if (firstSelected >= ordinalEnd) {
+                    continue;
+                }
+                int32_t gcdValue = activeRankCount;
+                int32_t gcdRemainder = coreCount;
+                while (gcdRemainder != 0) {
+                    int32_t nextRemainder = gcdValue % gcdRemainder;
+                    gcdValue = gcdRemainder;
+                    gcdRemainder = nextRemainder;
+                }
+                int32_t ordinalStride = coreCount / gcdValue;
+                int32_t expertRowStride = activeRankCount * ordinalStride;
+                int32_t lastSelected = firstSelected +
+                    ((ordinalEnd - 1 - firstSelected) / ordinalStride) * ordinalStride;
+                scratch.sendCntTensor.SetValue(cacheBase + layerBaseSlot, rankLayerLogicalBase);
+                scratch.sendCntTensor.SetValue(cacheBase + lastSelectedSlot, lastSelected);
+                scratch.sendCntTensor.SetValue(cacheBase + ordinalEndSlot, ordinalEnd);
+                scratch.sendCntTensor.SetValue(cacheBase + firstSelectedSlot, firstSelected);
+                scratch.sendCntTensor.SetValue(cacheBase + ordinalStrideSlot, ordinalStride);
+                scratch.sendCntTensor.SetValue(cacheBase + rowStrideSlot, expertRowStride);
+            }
+
+            for (int32_t batchIdx = 0; batchIdx < routeBatchCount; ++batchIdx) {
+                int32_t batchRouteBegin = batchIdx * routeItemsPerBatch;
+                bool isLastBatch = batchIdx == routeBatchCount - 1;
+                int32_t validRouteCount = routeItemsPerBatch;
+                int32_t maskSliceBytes = routeItemsPerBatch / 8;
+                if (isLastBatch) {
+                    validRouteCount = static_cast<int32_t>(sendTotalNum - batchRouteBegin);
+                    if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
+                        maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
+                    }
+                }
+                CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, routeItemsPerBatch);
+                for (int32_t rankIdx = 0; rankIdx < static_cast<int32_t>(context.common.worldSize); ++rankIdx) {
+                    int32_t cacheBase = rankIdx * routeCacheStride;
+                    int32_t rankTokenCount = scratch.sendCntTensor.GetValue(cacheBase + tokenCountSlot);
+                    int32_t firstSelected = scratch.sendCntTensor.GetValue(cacheBase + firstSelectedSlot);
+                    int32_t ordinalEnd = scratch.sendCntTensor.GetValue(cacheBase + ordinalEndSlot);
+                    if (rankTokenCount <= completedRound || firstSelected >= ordinalEnd) {
+                        continue;
+                    }
+                    int32_t matchedCount = scratch.sendCntTensor.GetValue(cacheBase + matchedCountSlot);
+                    int32_t lastSelected = scratch.sendCntTensor.GetValue(cacheBase + lastSelectedSlot);
+                    if (matchedCount > lastSelected) {
+                        continue;
+                    }
+                    GlobalTensor<uint8_t> rankMaskGm;
+                    rankMaskGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+                        params.peermemInfo.maskRecvPtr +
+                        (static_cast<uint64_t>(localExpertId) * context.common.worldSize +
+                         static_cast<uint32_t>(rankIdx)) * maskSlotSize + batchRouteBegin / 8));
+                    DataCopy(scratch.maskBatchTensor, rankMaskGm, static_cast<uint32_t>(maskSliceBytes));
+                    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+                    uint64_t batchMatchedCount = 0U;
+                    GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor,
+                               scratch.maskBatchU32Tensor, true, static_cast<uint32_t>(validRouteCount),
+                               {1, 1, 0, 0}, batchMatchedCount);
+                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+                    int32_t batchOrdinalBegin = matchedCount;
+                    int32_t batchOrdinalEnd = matchedCount + static_cast<int32_t>(batchMatchedCount);
+                    int32_t ordinalStride = scratch.sendCntTensor.GetValue(cacheBase + ordinalStrideSlot);
+                    int32_t expertRowStride = scratch.sendCntTensor.GetValue(cacheBase + rowStrideSlot);
+                    int32_t layerBase = scratch.sendCntTensor.GetValue(cacheBase + layerBaseSlot);
+                    if (firstSelected < batchOrdinalBegin) {
+                        firstSelected += Ops::Base::CeilDiv(
+                            batchOrdinalBegin - firstSelected, ordinalStride) * ordinalStride;
+                    }
+                    int32_t selectedEnd = ordinalEnd < batchOrdinalEnd ? ordinalEnd : batchOrdinalEnd;
+                    if (firstSelected < selectedEnd) {
+                        int32_t selectedCount = 1 +
+                            (selectedEnd - 1 - firstSelected) / ordinalStride;
+                        int32_t batchLocalMatchBegin = firstSelected - batchOrdinalBegin;
+                        int32_t firstExpertRow = layerBase +
+                            (firstSelected - completedRound) * activeRankCount;
+                        int32_t firstDstRow = expertGlobalRowBegin + firstExpertRow;
+                        CopyStridedTokensAndMetaForDispatch<ActivationType, QuantScaleType,
+                                                           TopkWeightsPrefetch>(
+                            context, params, winRankAddr, scratch, firstDstRow, rankIdx,
+                            batchLocalMatchBegin, selectedCount, ordinalStride, expertRowStride);
+                        PublishStridedGmm1TileReady(
+                            context, params, localExpertId, firstExpertRow, selectedCount,
+                            expertRowStride, static_cast<int32_t>(PipelineTileM));
+                    }
+                    scratch.sendCntTensor.SetValue(cacheBase + matchedCountSlot, batchOrdinalEnd);
+                }
+            }
+        }
+        layerLogicalRowBegin = layerLogicalRowEnd;
+        completedRound = nextRound;
+    }
 }
 
 // Prototype: MegaMoe::CopyGMToGMPerToken. Copies one dispatch shard and emits its metadata.

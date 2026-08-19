@@ -52,6 +52,10 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    // Wave GMM2 的局部 problem 从 tile 0 重新调度；该偏移映射回完整专家的 M-group。
+    uint32_t gmm2TileOffsetInExpert = 0U;
+    // Combine counter 的 group/slot 布局必须按完整专家行数计算，不能按当前 Wave segment 重排。
+    uint32_t gmm2SyncExpertTokenCount = 0U;
 };
 
 struct CombineCommParams {
