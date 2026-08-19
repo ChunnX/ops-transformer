@@ -160,7 +160,6 @@ private:
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
     uint16_t gmm2PingPongIdx_ = 0;
-    bool invalidMetaReported_ = false;
     // 共享专家相关成员
     uint32_t sharedExpertNum_ = 0;
     uint32_t moeExpertPerRank_ = 0;
@@ -1184,41 +1183,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
                     params_, waveCombineScratch_,
                     static_cast<uint64_t>(combineState.expertBeforeCnt) + processRowBegin,
                     processRowCount, 0U);
-                bool invalidMeta = false;
-                uint32_t invalidRankId = 0U;
-                uint32_t invalidTokenIdx = 0U;
-                uint32_t invalidTopkIdx = 0U;
-                uint32_t invalidRowOffset = 0U;
-                for (uint32_t rowOffset = 0U; rowOffset < processRowCount; ++rowOffset) {
-                    LocalTensor<int32_t> tokenMetaInfo =
-                        waveCombineScratch_.metaInfoTensor[rowOffset * META_INFO_SIZE];
-                    uint32_t toRankId = tokenMetaInfo.GetValue(RANK_ID);
-                    uint32_t tokenIdx = tokenMetaInfo.GetValue(TOKEN_ID);
-                    uint32_t topkIdx = tokenMetaInfo.GetValue(TOPK_INDEX);
-                    if (toRankId >= worldSize_ || tokenIdx >= params_.tilingData->bs ||
-                        topkIdx >= params_.tilingData->topK) {
-                        invalidMeta = true;
-                        invalidRankId = toRankId;
-                        invalidTokenIdx = tokenIdx;
-                        invalidTopkIdx = topkIdx;
-                        invalidRowOffset = rowOffset;
-                        break;
-                    }
-                }
-                if (invalidMeta) {
-                    if (!invalidMetaReported_ && GetBlockIdx() == 1U) {
-                        PipeBarrier<PIPE_ALL>();
-                        PRINTF("[WAVE_COMBINE_INVALID_META] expert=%u group=%u row=%u rank=%u token=%u topk=%u "
-                               "world=%u bs=%u topK=%u\n",
-                               expertIdx, groupIdx, processRowBegin + invalidRowOffset,
-                               invalidRankId, invalidTokenIdx, invalidTopkIdx,
-                               worldSize_, params_.tilingData->bs, params_.tilingData->topK);
-                        PipeBarrier<PIPE_ALL>();
-                        invalidMetaReported_ = true;
-                    }
-                    // Diagnostic build: avoid turning malformed routing metadata into an invalid remote GM address.
-                    continue;
-                }
                 CombineWaveTokenRange<CombineQuantMode>(
                     waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
                     combineAddrInfo.gmm2OutGlobal, processRowBegin, processRowCount, 0U,
