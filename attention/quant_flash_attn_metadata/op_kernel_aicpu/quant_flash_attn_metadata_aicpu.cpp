@@ -225,7 +225,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdTolerance = 300;
     param.fdOn = 0;
 
-    // 校验 v_descale: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
+    // 校验 v_descale: quantMode=1(MxFp8) 且 TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
     if (quantMode_ == 1 && vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
         const int64_t V_DESCALE_GROUP_SIZE = 64;
         bool isTndLayout = (layoutKv_ == "TND");

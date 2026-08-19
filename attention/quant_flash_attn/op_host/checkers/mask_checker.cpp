@@ -142,7 +142,7 @@ ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QfaTilingInf
                     return ge::GRAPH_FAILED);
     }
 
-    // mask_mode 不为 4 (SLIDING_WINDOW) 时，win_left 和 win_right 必须为 -1
+    // 非 maskMode = 4 (SLIDING_WINDOW) 场景下 winLeft 和 winRight 必须为 -1
     if (qfaInfo.maskMode != static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
         OP_CHECK_IF(qfaInfo.winLeft != -1 || qfaInfo.winRight != -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
