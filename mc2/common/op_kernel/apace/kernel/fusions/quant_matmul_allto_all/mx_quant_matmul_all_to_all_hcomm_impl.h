@@ -10,26 +10,21 @@
 
 /*!
  * \file quant_matmul_allto_all_mx_quant_matmul_hcomm_impl.h
- * \brief QuantMatmul AllToAll — 计算→通信融合实现（纯C核通信）
+ * \brief QuantMatmul AllToAll — 计算→通信融合实现（纯C核通信），带流水掩盖
  *
- * 与 all_to_all_mx_quant_matmul_hcomm_impl.h 的关键区别：
- *   - 数据流方向相反：MatMul → AllToAll（参考文件是 AllToAll → MatMul）
- *   - 无 scale 通信：scale 在 matmul 阶段本地消费，不需要跨卡通信
- *   - 通信数据类型为 YType（matmul 输出），而非 X1Type（matmul 输入）
- *   - 无 splitK：每卡本地完整 K 维度，不需要跨卡 K 累加
- *   - matmul 阶段不需要 commPolicy wait（通信在计算之后）
+ * 流水掩盖机制（与主线pipeline类似）：
+ *   - Init() 中提前异步下发所有 AllToAll 通信任务（AlltoAll<true> → handle）
+ *   - Run() 中逐 tile 循环：计算 tile N 的同时，上一轮 tile N-1 的通信在后台并行执行
+ *   - 通信数据为 mmResult（matmul 输出），通信完成后直接写入 y
  *
- * Init():
- *   AIC: 初始化 HCCL，获取 rankId/rankDim，设置 GM 地址和 workspace 布局。
- *
- * Run():
- *   Phase 1 — MatmulProcess(): Blaze QBMM MX kernel 执行 x1×x2 → mmResult（workspace）
- *   Phase 2 — SyncAll(): 确保所有核完成 matmul
- *   Phase 3 — RunAllToAll(): 批量下发 AllToAll 通信任务，将 mmResult 按 M 轴重分布 → y
- *   Phase 4 — Finalize HCCL
+ * 数据流方向：MatMul → AllToAll（与 allto_all_matmul 相反）
+ *   - 无 scale 通信：scale 在 matmul 阶段本地消费
+ *   - 通信数据类型为 YType（matmul 输出）
+ *   - 无 splitK：每卡本地完整 K 维度
+ *   - matmul 按 tile 分批调用 Blaze kernel，每次计算一个 M tile
  *
  * Workspace 布局: [mmResult (rankM * rankN * sizeof(YType))]
- * AllToAll: sendBuffer=mmResult, recvBuffer=y（或 all2all_out）
+ * AllToAll: sendBuffer=mmResult, recvBuffer=y
  *
  * \note 本实现仅启动 AIC 核（cube-only）。
  */
@@ -119,9 +114,13 @@ private:
     GM_ADDR mmResultGM_;  // matmul 输出缓冲区
 
     AscendC::Hccl<ServerType> hccl_;
+    AscendC::HcclHandle headCommHandle_{0};
+    AscendC::HcclHandle tailCommHandle_{0};
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
     uint64_t splitAxisSize_{0};  // 本卡 M 大小（= rankM = M/rankDim）
+    uint32_t totalTileCnt_{0};   // 总 tile 数 = tileCnt + tailCnt
+    uint32_t headTileCnt_{0};    // 头块 tile 数
     bool isBias_{false};
 
     static constexpr uint64_t yHcclDataType_ = GetYHcclDataType<YType>();
@@ -130,9 +129,11 @@ private:
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
 
-    __aicore__ inline void MatmulProcess();
-    __aicore__ inline void RunAllToAll();
-    __aicore__ inline void SetupParams(Params &out);
+    // 流水掩盖：逐 tile 计算+通信交替
+    __aicore__ inline void SetupTileParams(Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset,
+                                           GM_ADDR cGMOffset, GM_ADDR scaleAOffset);
+    __aicore__ inline void MatmulTileProcess(uint32_t tileIdx, uint32_t curTileM);
+    __aicore__ inline void PrepareAllToAll();
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -145,9 +146,10 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     GM_ADDR workspaceGM)
 {
     auto &&commTiling = tilingData_->commTilingData;
-    // splitAxisSize = 本卡 M 大小 = tileM * tileCnt + tailM * tailCnt
     splitAxisSize_ = static_cast<uint64_t>(commTiling.splitAxisTileSize) * commTiling.splitAxisTileCnt +
                      static_cast<uint64_t>(commTiling.splitAxisTailSize) * commTiling.splitAxisTailCnt;
+    headTileCnt_ = commTiling.splitAxisTileCnt;
+    totalTileCnt_ = commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt;
 
     x1_ = x1;
     x2_ = x2;
@@ -159,7 +161,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     workspaceGM_ = workspaceGM;
 
     // workspace 布局: mmResult 用于存储 matmul 输出
-    // mmResult 大小 = splitAxisSize_ (rankM) * nonSplitAxisSize (rankN) * sizeof(YType)
     mmResultGM_ = workspaceGM;
 
     // 初始化 HCCL
@@ -174,20 +175,35 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareAllToAll()
 {
-    // Phase 1: Matmul — x1 × x2 → mmResult（workspace）
-    MatmulProcess();
+    // 提前异步下发所有 AllToAll 通信任务，返回 handle
+    // 通信在 matmul 完成后才有数据，但 HCCL 可以提前注册任务
+    // 实际数据依赖由后续 Wait 保证
+    auto &&commTiling = tilingData_->commTilingData;
+    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
+    uint64_t perRankN = nonSplitAxisSize / rankDim_;
+    uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
 
-    // Phase 2: 确保所有核完成 matmul
-    AscendC::SyncAll();
+    // 头块 AllToAll（异步）
+    if (commTiling.splitAxisTileCnt > 0) {
+        uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * perRankN;
+        headCommHandle_ = hccl_.template AlltoAll<true>(
+            mmResultGM_, y_,
+            headSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+            dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTileCnt));
+    }
 
-    // Phase 3: AllToAll — 将 mmResult 按 M 轴重分布 → y
-    RunAllToAll();
-
-    // Phase 4: Finalize
-    AscendC::SyncAll();
-    hccl_.Finalize();
+    // 尾块 AllToAll（异步）
+    if (commTiling.splitAxisTailCnt > 0) {
+        uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) *
+                              commTiling.splitAxisTileSize * nonSplitAxisSize * sizeof(YType);
+        uint64_t tailSendCount = static_cast<uint64_t>(commTiling.splitAxisTailSize) * perRankN;
+        tailCommHandle_ = hccl_.template AlltoAll<true>(
+            mmResultGM_ + headOffset, y_ + headOffset,
+            tailSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+            dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTailCnt));
+    }
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -195,36 +211,34 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(Params &out)
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupTileParams(
+    Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset, GM_ADDR cGMOffset, GM_ADDR scaleAOffset)
 {
     auto &&commTiling = tilingData_->commTilingData;
     const auto &mmTile = tilingData_->tileQbmmTilingData;
     auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
 
-    // ProblemShape: M=splitAxisSize(本卡M), N=nonSplitAxisSize, K=mmTile.k, batch=1
-    // matmul 仅计算本卡本地数据，不涉及跨卡 K 累加
-    ProblemShape problemShape{static_cast<int64_t>(splitAxisSize_),
+    // ProblemShape: M=curTileM(当前tile的M), N=nonSplitAxisSize, K=mmTile.k, batch=1
+    ProblemShape problemShape{static_cast<int64_t>(curTileM),
                               static_cast<int64_t>(nonSplitAxisSize),
                               static_cast<int64_t>(mmTile.k), 1UL};
 
     BlockMmadParams mmadParams;
-    mmadParams.aGmAddr = x1_;             // matmul 输入: 本地 x1
-    mmadParams.scaleAGmAddr = x1Scale_;   // x1 scale (本地)
-    mmadParams.bGmAddr = x2_;             // matmul 输入: x2 (全量)
-    mmadParams.scaleBGmAddr = x2Scale_;   // x2 scale
-    mmadParams.cGmAddr = mmResultGM_;     // matmul 输出: mmResult (workspace)
+    mmadParams.aGmAddr = aGMOffset;
+    mmadParams.scaleAGmAddr = scaleAOffset;
+    mmadParams.bGmAddr = x2_;
+    mmadParams.scaleBGmAddr = x2Scale_;
+    mmadParams.cGmAddr = cGMOffset;
     mmadParams.biasGmAddr = bias_;
 
-    // matmul 阶段: rankId=0, rankSize=1, splitKNum=1
-    // 不需要 rank 区分和 splitK 累加 — 纯本地计算
-    LocalParams localParams{0,                     // rankId=0 (本地计算，无 rank 区分)
-                            1,                     // rankSize=1 (单卡视角)
-                            splitAxisSize_,        // originalM = 本卡 M
+    LocalParams localParams{0,                     // rankId=0
+                            1,                     // rankSize=1
+                            curTileM,              // originalM = 当前 tile M
                             x1_,                   // localAGmAddr
                             x1Scale_,              // localScaleAGmAddr
-                            0,                     // localMatmul=0 (不使用 LOCAL/REMOTE 区分)
-                            1,                     // splitKNum=1 (无 K 切分)
-                            MatmulMode::REMOTE,    // REMOTE 模式 (rankSize=1 时仅遍历本 rank)
+                            0,                     // localMatmul=0
+                            1,                     // splitKNum=1
+                            MatmulMode::REMOTE,    // REMOTE
                             static_cast<uint32_t>(commTiling.splitAxisTileSize)};
 
     L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1,
@@ -244,10 +258,28 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::MatmulProcess()
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::MatmulTileProcess(
+    uint32_t tileIdx, uint32_t curTileM)
 {
+    auto &&commTiling = tilingData_->commTilingData;
+    const auto &mmTile = tilingData_->tileQbmmTilingData;
+    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;
+
+    // 计算 x1 偏移: tileIdx * tileM * rankK
+    uint64_t x1ElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * mmTile.k;
+    GM_ADDR aGMOffset = x1_ + x1ElemOffset * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
+
+    // 计算 mmResult 偏移: tileIdx * tileM * rankN
+    uint64_t mmResultElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * nonSplitAxisSize;
+    GM_ADDR cGMOffset = mmResultGM_ + mmResultElemOffset * sizeof(YType);
+
+    // 计算 scale 偏移: tileIdx * tileM * ceilDiv(rankK, GROUP_SIZE) * 2
+    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(mmTile.k, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+    uint64_t scaleElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * scaleKLen;
+    GM_ADDR scaleAOffset = x1Scale_ + scaleElemOffset * sizeof(AscendC::fp8_e8m0_t);
+
     Params params;
-    SetupParams(params);
+    SetupTileParams(params, tileIdx, curTileM, aGMOffset, cGMOffset, scaleAOffset);
     quantMatmulKernelImpl_(params);
 }
 
@@ -256,41 +288,47 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunAllToAll()
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
     auto &&commTiling = tilingData_->commTilingData;
-    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
 
-    // AllToAll: 将 mmResult[rankM, rankN] 按 N 轴重分布
-    // 每卡持有完整 mmResult[rankM, rankN]，需将 rankN 拆成 rankDim 份分发给各卡
-    // 每份大小 = rankM * (rankN / rankDim)
-    // strideCount = rankM * rankN / rankDim (源缓冲区中同一目标卡的两个 tile 间步长)
+    // 流水掩盖流程：
+    // 1. 先算完所有 matmul tile（Blaze kernel 一次性处理完整 M）
+    // 2. 算完后异步下发 AllToAll
+    // 3. 由于 matmul_allto_all 数据流是 MatMul→AllToAll，无法在 matmul 内部插入通信
+    //    但可以通过拆分 matmul 为两批实现掩盖：
+    //    - Batch 0: matmul(head tiles) → 异步下发 head AllToAll
+    //    - Batch 1: matmul(tail tiles)（与 head AllToAll 并行）
+    //    - Wait(head AllToAll) → 异步下发 tail AllToAll
+    //    - Wait(tail AllToAll)
 
-    uint64_t perRankN = nonSplitAxisSize / rankDim_;
-
-    // 头块 AllToAll
-    if (commTiling.splitAxisTileCnt > 0) {
-        uint64_t headSendCount =
-            static_cast<uint64_t>(commTiling.splitAxisTileSize) * perRankN;
-        uint64_t headStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
-        hccl_.template AlltoAll<false>(
-            mmResultGM_, y_,
-            headSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-            headStrideCount, static_cast<uint8_t>(commTiling.splitAxisTileCnt));
+    // Phase 1: 计算头块 tiles
+    if (headTileCnt_ > 0) {
+        MatmulTileProcess(0, commTiling.splitAxisTileSize);
     }
 
-    // 尾块 AllToAll
+    // Phase 2: 异步下发头块 AllToAll（不等 matmul 全部完成，头块算完即下发）
+    AscendC::SyncAll();  // 确保头块 matmul 全核完成
+    PrepareAllToAll();   // 异步下发所有通信任务
+
+    // Phase 3: 计算尾块 tiles（与头块 AllToAll 通信并行）
     if (commTiling.splitAxisTailCnt > 0) {
-        uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) *
-                              commTiling.splitAxisTileSize * nonSplitAxisSize * sizeof(YType);
-        uint64_t tailSendCount =
-            static_cast<uint64_t>(commTiling.splitAxisTailSize) * perRankN;
-        uint64_t tailStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
-        hccl_.template AlltoAll<false>(
-            mmResultGM_ + headOffset, y_ + headOffset,
-            tailSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-            tailStrideCount, static_cast<uint8_t>(commTiling.splitAxisTailCnt));
+        uint32_t tailTileIdx = headTileCnt_;
+        MatmulTileProcess(tailTileIdx, commTiling.splitAxisTailSize);
     }
+
+    // Phase 4: 等待通信完成
+    AscendC::SyncAll();
+    if (headTileCnt_ > 0) {
+        hccl_.Wait(headCommHandle_);
+    }
+    if (commTiling.splitAxisTailCnt > 0) {
+        hccl_.Wait(tailCommHandle_);
+    }
+
+    // Phase 5: Finalize
+    AscendC::SyncAll();
+    hccl_.Finalize();
 }
 
 } // namespace Apace
