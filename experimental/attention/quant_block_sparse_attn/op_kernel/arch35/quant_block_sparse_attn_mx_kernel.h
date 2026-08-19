@@ -276,6 +276,7 @@ private:
         }
         rowInfo.actMSizeAlign32 = (rowInfo.actMSize + 31U) >> 5 << 5;
         rowInfo.actVecMSize = rowInfo.actMSize <= 16U ? rowInfo.actMSize : (rowInfo.actMSizeAlign32 >> 1U);
+        rowInfo.vecMbaseIdx = 0U;
         if (constInfo.subBlockIdx == 1U) {
             rowInfo.vecMbaseIdx = rowInfo.actVecMSize;
             rowInfo.actVecMSize = rowInfo.actMSize - rowInfo.actVecMSize;
