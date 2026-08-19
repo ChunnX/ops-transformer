@@ -10,6 +10,7 @@
 
 #include <set>
 #include <torch/extension.h>
+#include <torch/version.h>
 #include <cstring>
 #include "aclnn_common.h"
 
@@ -95,20 +96,25 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
 
     // gather_out / amax_out: REQUIRED/OPTIONAL output, 当前版本未实现，返回空 tensor。
     // gather_out 的 dtype 必须与 OpDef 定义（同 x1 有效 dtype）一致：x1 可能是 uint8 packed + x1Dtype
-    // override（如 fp4），此时不能用 x1.scalar_type()，需用 override 后的有效 acl dtype 反查 torch dtype
-    auto effectiveX1ScalarType = [&x1](aclDataType aclDtype) -> at::ScalarType {
-        switch (aclDtype) {
-            case ACL_FLOAT4_E2M1:
-                return at::ScalarType::Float4_e2m1fn_x2;
-            case ACL_FLOAT8_E4M3FN:
-                return at::ScalarType::Float8_e4m3fn;
-            case ACL_FLOAT8_E5M2:
-                return at::ScalarType::Float8_e5m2;
-            default:
-                return x1.scalar_type();
-        }
-    };
-    at::Tensor gatherOut = at::empty({0}, x1.options().dtype(effectiveX1ScalarType(x1AclDtype)));
+    // override（如 fp4），此时不能用 x1.scalar_type()，需用 override 后的有效 acl dtype 反查 torch dtype。
+    // 注意 Float4_e2m1fn_x2 ScalarType 仅 torch >= 2.8 才有，旧版本退化到 x1.scalar_type()。
+    at::ScalarType gatherOutScalarType = x1.scalar_type();
+#if TORCH_VERSION_MAJOR > 2 || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 8)
+    switch (x1AclDtype) {
+        case ACL_FLOAT4_E2M1:
+            gatherOutScalarType = at::ScalarType::Float4_e2m1fn_x2;
+            break;
+        case ACL_FLOAT8_E4M3FN:
+            gatherOutScalarType = at::ScalarType::Float8_e4m3fn;
+            break;
+        case ACL_FLOAT8_E5M2:
+            gatherOutScalarType = at::ScalarType::Float8_e5m2;
+            break;
+        default:
+            break;
+    }
+#endif
+    at::Tensor gatherOut = at::empty({0}, x1.options().dtype(gatherOutScalarType));
     at::Tensor amaxOut = at::empty({0}, x1.options().dtype(at::kFloat));
 
     const at::Tensor &x1ScaleReal = x1ScaleOptional.value_or(at::Tensor());
