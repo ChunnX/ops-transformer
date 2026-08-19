@@ -1,18 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer_common.h
- * \brief Common structures for PoolKeyIndexer kernel (arch22 + arch35).
- *        Adapted from lightning_indexer_common.h for poolSize=1 / quantMode=-1 simplified version.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef POOL_KEY_INDEXER_COMMON_H
 #define POOL_KEY_INDEXER_COMMON_H
@@ -50,8 +44,8 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1;  // L_orig (压缩前 token 总数)
-    int32_t poolTailK = 0;       // 当前 batch 的尾部 token 数
+    uint32_t actS2SizeOrig = 1; // L_orig (压缩前 token 总数)
+    int32_t poolTailK = 0;      // 当前 batch 的尾部 token 数
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
@@ -171,12 +165,12 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 } // namespace PkiCommon
 
-#define UB_BLOCK              32
-#define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
-#define UB_BANK_GROUP_STRIDE  UB_BLOCK
-#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)
+#define UB_BLOCK 32
+#define UB_BANK_GROUPS 8
+#define UB_BANKS 2
+#define UB_BANK_DEPTH 512
+#define UB_BANK_GROUP_STRIDE UB_BLOCK
+#define UB_BANK_STRIDE (UB_BANK_GROUPS * UB_BLOCK)
+#define UB_BANK_DEPTH_STRIDE (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)
 
 #endif // POOL_KEY_INDEXER_COMMON_H

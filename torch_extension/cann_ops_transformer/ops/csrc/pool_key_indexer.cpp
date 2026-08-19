@@ -1,19 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer.cpp
- * \brief PoolKeyIndexer torch extension C++ backend.
- *        Bridges PyTorch tensors to aclnnPoolKeyIndexer via ACLNN_CMD.
- *        Reference: ops/csrc/lightning_indexer.cpp (LIV2 non-quant path)
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
@@ -70,15 +63,15 @@ std::tuple<at::Tensor, at::Tensor> ConstructPoolKeyIndexerOutputTensor(
 
 std::tuple<at::Tensor, at::Tensor>
 PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Tensor &weights,
-              const at::Tensor &poolTailK,
-              const c10::optional<at::Tensor> &actualSeqQ,
-              const c10::optional<at::Tensor> &actualSeqK,
-              const c10::optional<at::Tensor> &blockTable,
-              const c10::optional<at::Tensor> &qDescale,
-              const c10::optional<at::Tensor> &kDescale,
-              c10::string_view layoutQ, c10::string_view layoutK,
-              int64_t topk, int64_t poolSize, int64_t maskMode,
-              int64_t quantMode, bool returnValue)
+               const at::Tensor &poolTailK,
+               const c10::optional<at::Tensor> &actualSeqQ,
+               const c10::optional<at::Tensor> &actualSeqK,
+               const c10::optional<at::Tensor> &blockTable,
+               const c10::optional<at::Tensor> &qDescale,
+               const c10::optional<at::Tensor> &kDescale,
+               c10::string_view layoutQ, c10::string_view layoutK,
+               int64_t topk, int64_t poolSize, int64_t maskMode,
+               int64_t quantMode, bool returnValue)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
     TORCH_CHECK(poolKey.numel() > 0, "Tensor pool_key is empty.")

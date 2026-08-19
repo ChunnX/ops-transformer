@@ -1,20 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer.cpp
- * \brief PoolKeyIndexer kernel dispatch entry.
- *        arch22 (A2/A3): Sort+MrgSort TopK, GM workspace, single-dst Fixpipe
- *        arch35 (A5/950): radix/histogram TopK, shared UB dual-dst Fixpipe
- *        Design ref: docs/design.md §5.4.7
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -28,14 +20,14 @@
 
 using namespace PkiKernel;
 
-#define INVOKE_PKI_OP_IMPL(templateClass, ...)                                                       \
-    do {                                                                                              \
-        templateClass<PkiType<__VA_ARGS__>> op;                                                       \
-        GET_TILING_DATA_WITH_STRUCT(PoolKeyIndexerTilingData, tiling_data_in, tiling);               \
-        const PoolKeyIndexerTilingData *__restrict tiling_data = &tiling_data_in;                    \
-        op.Init(query, poolKey, weights, poolTailK, actualSeqQ, actualSeqK, blockTable,              \
-                qDescale, kDescale, sparseIndices, sparseValues, user, tiling_data, &tPipe);         \
-        op.Process();                                                                                 \
+#define INVOKE_PKI_OP_IMPL(templateClass, ...) \
+    do { \
+        templateClass<PkiType<__VA_ARGS__>> op; \
+        GET_TILING_DATA_WITH_STRUCT(PoolKeyIndexerTilingData, tiling_data_in, tiling); \
+        const PoolKeyIndexerTilingData *__restrict tiling_data = &tiling_data_in; \
+        op.Init(query, poolKey, weights, poolTailK, actualSeqQ, actualSeqK, blockTable, \
+                qDescale, kDescale, sparseIndices, sparseValues, user, tiling_data, &tPipe); \
+        op.Process(); \
     } while (0)
 
 template <int DT_Q, int DT_K, int DT_OUT, int LAYOUT_Q, int LAYOUT_K,

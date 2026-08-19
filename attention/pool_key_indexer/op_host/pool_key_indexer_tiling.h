@@ -1,17 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer_tiling.h
- * \brief PoolKeyIndexer tiling data structures and tiling class
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef POOL_KEY_INDEXER_TILING_H
 #define POOL_KEY_INDEXER_TILING_H
@@ -27,8 +22,11 @@
 #include "op_host/tiling_util.h"
 
 namespace optiling {
-
-enum class PkiDataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
+enum class PkiDataLayout : uint32_t {
+    BSND = 0,
+    TND = 1,
+    PA_BBND = 2
+};
 
 // ------------------ Input/Output Index ------------------
 constexpr uint32_t PKI_QUERY_INDEX = 0;
@@ -60,6 +58,8 @@ constexpr uint32_t PKI_POOL_SIZE_LIMIT = 128;
 constexpr uint32_t PKI_BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t PKI_BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t PKI_TOPK_DEFAULT = 2048;
+// quant_mode host-side values (match def.cpp attribute defaults, may be negative)
+// Mapping to template values: tpl = host + 1 (see template_tiling_key.h PKI_TPL_QUANT_*)
 constexpr int32_t PKI_QUANT_NONE = -1;
 constexpr int32_t PKI_QUANT_FP8_PER_TOKEN = 0;
 constexpr int32_t PKI_QUANT_MXFP8 = 1;
@@ -87,7 +87,6 @@ constexpr uint32_t PKI_TOPK_2K = 2048;
 constexpr uint32_t PKI_TOPK_3K = 3072;
 constexpr uint32_t PKI_TOPK_4K = 4096;
 constexpr uint32_t PKI_TOPK_5K = 5120;
-constexpr uint32_t PKI_TOPK_6K = 6144;
 
 // ------------------ TilingData Definition ------------------
 BEGIN_TILING_DATA_DEF(PoolKeyIndexerTilingData)
@@ -159,7 +158,9 @@ struct PoolKeyIndexerTilingInfo {
 // ------------------ Tiling Class ------------------
 class PoolKeyIndexerTiling {
 public:
-    explicit PoolKeyIndexerTiling(gert::TilingContext *context) : context_(context) {}
+    explicit PoolKeyIndexerTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoTiling(PoolKeyIndexerTilingInfo *tilingInfo);
 
 private:

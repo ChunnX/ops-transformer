@@ -74,7 +74,7 @@ inputs:
   - name: poolTailK
     type: tensor
     dtypes:
-      values: [int32]
+      values: [int64]
     ranges:
       valid:
         values: [[0, 127]]
@@ -87,7 +87,7 @@ inputs:
   - name: actualSeqQ
     type: tensor
     dtypes:
-      values: [int32]
+      values: [int64]
     ranges:
       valid:
         values: [[1, 8192]]
@@ -100,7 +100,7 @@ inputs:
   - name: actualSeqK
     type: tensor
     dtypes:
-      values: [int32]
+      values: [int64]
     ranges:
       valid:
         values: [[1, 8192]]

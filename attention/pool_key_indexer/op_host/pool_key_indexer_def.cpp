@@ -1,17 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer_def.cpp
- * \brief PoolKeyIndexer operator definition
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <cstdint>
 #include "register/op_def_registry.h"
@@ -19,7 +14,8 @@
 namespace ops {
 class PoolKeyIndexer : public OpDef {
 public:
-    explicit PoolKeyIndexer(const char *name) : OpDef(name)
+    explicit PoolKeyIndexer(const char *name)
+        : OpDef(name)
     {
         // ---- Base config: A2/A3 (ascend910b, ascend910_93) ----
         this->Input("query")
@@ -39,19 +35,19 @@ public:
             .AutoContiguous();
         this->Input("pool_tail_k")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Input("actual_seq_q")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Input("actual_seq_k")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
             .AutoContiguous();
@@ -97,64 +93,44 @@ public:
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
 
-        // ---- 950 config: adds FP8 combinations ----
+        // ---- 950 config: override only the inputs that differ from base (FP8 combos) ----
+        //   4 combinations:
+        //   1) FP16  quant_mode=-1 (no quant)     : q/k/weights=FP16,    descale=FLOAT
+        //   2) BF16  quant_mode=-1 (no quant)     : q/k/weights=BF16,    descale=FLOAT
+        //   3) FP8   quant_mode=0  (per-token FP8) : q/k=FP8_E4M3FN, weights=FP16, descale=FLOAT
+        //   4) FP8   quant_mode=1  (mxFP8)         : q/k=FP8_E4M3FN, weights=FP16, descale=FLOAT8_E8M0
+        // Note: pool_tail_k / actual_seq_q / actual_seq_k (DT_INT64 + ValueDepend) and
+        //       block_table / outputs inherit from the top-level declaration; not
+        //       re-declared here. INT64 is the canonical host-value dtype required by
+        //       the ValueDepend convention (see fused_infer_attention_score et al.).
+        // Note: in FP8 combos weights is declared as FP16 (representative); tiling still
+        //       accepts BF16 weights at runtime.
         OpAICoreConfig aicoreConfig950;
         aicoreConfig950.Input("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("pool_key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.Input("weights")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        aicoreConfig950.Input("pool_tail_k")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .ValueDepend(OPTIONAL)
-            .AutoContiguous();
-        aicoreConfig950.Input("actual_seq_q")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .ValueDepend(OPTIONAL)
-            .AutoContiguous();
-        aicoreConfig950.Input("actual_seq_k")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .ValueDepend(OPTIONAL)
-            .AutoContiguous();
-        aicoreConfig950.Input("block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("q_descale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicoreConfig950.Input("k_descale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
-        aicoreConfig950.Output("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        aicoreConfig950.Output("sparse_values")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
         aicoreConfig950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

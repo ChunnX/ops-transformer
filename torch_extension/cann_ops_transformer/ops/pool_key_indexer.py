@@ -1,6 +1,15 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -43,6 +52,7 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def pool_key_indexer_meta(
             query,
@@ -73,7 +83,9 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
                 val_shape = [query.shape[0], values_len]
             sparse_indices = torch.empty(idx_shape, dtype=torch.int32, device="meta")
             if return_value:
-                sparse_values = torch.empty(val_shape, dtype=torch.float32, device="meta")
+                sparse_values = torch.empty(
+                    val_shape, dtype=torch.float32, device="meta"
+                )
             else:
                 sparse_values = torch.empty([0], dtype=torch.float32, device="meta")
             return (sparse_indices, sparse_values)

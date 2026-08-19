@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """
 Comparison utilities for PoolKeyIndexer output validation.
 
@@ -7,6 +16,7 @@ Two-step comparison strategy (adapted from LIV2 result_compare_method.py):
      check that the two sets overlap.
   2. Value-level rtol/atol comparison for the gathered scores.
 """
+
 import numpy as np
 import torch
 
@@ -21,7 +31,9 @@ def _atol_for_dtype(dt: torch.dtype) -> float:
     return ATOL_FP16
 
 
-def compare_indices(golden: torch.Tensor, npu: torch.Tensor, pct_thd: float = 0.995) -> bool:
+def compare_indices(
+    golden: torch.Tensor, npu: torch.Tensor, pct_thd: float = 0.995
+) -> bool:
     """Compare index tensors row by row using sorted-set equality.
 
     Both tensors have shape (B, S1, L) or (T1, L). Invalid positions are -1.
@@ -49,13 +61,17 @@ def compare_indices(golden: torch.Tensor, npu: torch.Tensor, pct_thd: float = 0.
                 pass_rows += 1
             else:
                 if g_valid.numel() != n_valid.numel():
-                    print(f"[FAIL] row ({b},{s}): valid count golden={g_valid.numel()} npu={n_valid.numel()}")
+                    print(
+                        f"[FAIL] row ({b},{s}): valid count golden={g_valid.numel()} npu={n_valid.numel()}"
+                    )
                 else:
                     diffs = (g_valid != n_valid).nonzero(as_tuple=True)[0]
                     print(f"[FAIL] row ({b},{s}): {len(diffs)} index differences")
                     if len(diffs) > 0:
                         idx = diffs[0].item()
-                        print(f"    first diff at pos {idx}: golden={g_valid[idx]} npu={n_valid[idx]}")
+                        print(
+                            f"    first diff at pos {idx}: golden={g_valid[idx]} npu={n_valid[idx]}"
+                        )
 
     ratio = pass_rows / total_rows if total_rows > 0 else 0
     if ratio >= pct_thd:
@@ -65,7 +81,9 @@ def compare_indices(golden: torch.Tensor, npu: torch.Tensor, pct_thd: float = 0.
     return False
 
 
-def compare_values(golden: torch.Tensor, npu: torch.Tensor, dt: torch.dtype, pct_thd: float = 0.995) -> bool:
+def compare_values(
+    golden: torch.Tensor, npu: torch.Tensor, dt: torch.dtype, pct_thd: float = 0.995
+) -> bool:
     """Compare value tensors row by row using sorted-set closeness.
 
     Both tensors have shape (B, S1, L) or (T1, L). Invalid positions are -inf.
@@ -95,9 +113,13 @@ def compare_values(golden: torch.Tensor, npu: torch.Tensor, dt: torch.dtype, pct
                     pass_rows += 1
                 else:
                     max_err = (g_valid - n_valid).abs().max().item()
-                    print(f"[FAIL] row ({b},{s}): value max_err={max_err:.6f} (rtol={RTOL}, atol={atol})")
+                    print(
+                        f"[FAIL] row ({b},{s}): value max_err={max_err:.6f} (rtol={RTOL}, atol={atol})"
+                    )
             else:
-                print(f"[FAIL] row ({b},{s}): valid count golden={g_valid.numel()} npu={n_valid.numel()}")
+                print(
+                    f"[FAIL] row ({b},{s}): valid count golden={g_valid.numel()} npu={n_valid.numel()}"
+                )
 
     ratio = pass_rows / total_rows if total_rows > 0 else 0
     if ratio >= pct_thd:

@@ -1,17 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ */
 
-/*!
- * \file pool_key_indexer_service_vector.h
- * \brief
- */
 #ifndef POOL_KEY_INDEXER_SERVICE_VECTOR_H
 #define POOL_KEY_INDEXER_SERVICE_VECTOR_H
 
@@ -34,15 +30,15 @@ constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
 // 主模板：Q_T必选，W_T可选（默认void），无论W_T传什么，默认weightsType=Q_T
-template<typename Q_T, typename W_T = void>
+template <typename Q_T, typename W_T = void>
 struct PkiTypeTraits {
-    using weightsType = Q_T;   // 默认：weightsType绑定Q_T
+    using weightsType = Q_T; // 默认：weightsType绑定Q_T
 };
 
 // 偏特化1：固定第二个参数W_T=float，Q_T保留泛型
-template<typename Q_T>
+template <typename Q_T>
 struct PkiTypeTraits<Q_T, float> {
-    using weightsType = float;  // W_T=float时，强制weightsType为float
+    using weightsType = float; // W_T=float时，强制weightsType为float
 };
 
 template <typename LIT>
@@ -55,7 +51,7 @@ public:
     using K_T = typename LIT::keyType;
     static constexpr PkiLayout LAYOUT_T = LIT::layout;
     using W_T = typename PkiTypeTraits<Q_T,
-                                         typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+                                       typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;
@@ -75,13 +71,13 @@ public:
     __aicore__ inline void InitLDBuffers(TPipe *pipe);
 
 private:
-    __aicore__ inline void ExpandAndAppendIndices(LocalTensor<int32_t>& poolIndices,
-                                                   LocalTensor<int32_t>& tokenIndices,
-                                                   LocalTensor<int32_t>& workBuf,
-                                                   uint32_t sparseCount, uint32_t poolSize,
-                                                   uint32_t validS2Len, int32_t poolTailK,
-                                                   int32_t L_orig, uint32_t curS1Idx,
-                                                   uint32_t curS1Size);
+    __aicore__ inline void ExpandAndAppendIndices(LocalTensor<int32_t> poolIndices,
+                                                  LocalTensor<int32_t> &tokenIndices,
+                                                  LocalTensor<int32_t> &workBuf,
+                                                  uint32_t sparseCount, uint32_t poolSize,
+                                                  uint32_t validS2Len, int32_t poolTailK,
+                                                  int32_t L_orig, uint32_t curS1Idx,
+                                                  uint32_t curS1Size);
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -151,12 +147,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     outNeedBufSize = reduceCacheSize > outNeedBufSize ? reduceCacheSize : outNeedBufSize;
     virTopK = constInfo_.isSparseCountOver2K ? constInfo_.sparseCount : BASE_TOPK;
 
-    pipe->InitBuffer(outQueue_, 1, outNeedBufSize);                                            // 32KB  extract
+    pipe->InitBuffer(outQueue_, 1, outNeedBufSize); // 32KB  extract
     // 68KB 在搬运cube核计算得到的结果和weight时，分成两块34KB，用于db；在mrgsort时，用作临时UB
     pipe->InitBuffer(tmpBuf_, (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float));
-    pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float));    // 64KB
-    pipe->InitBuffer(indexBuf_, s2BaseSize_ * sizeof(int32_t));                                // 2KB
-    pipe->InitBuffer(reduceOutBuf_, s2BaseSize_ * 2 * sizeof(float));                          // 4KB
+    pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float)); // 64KB
+    pipe->InitBuffer(indexBuf_, s2BaseSize_ * sizeof(int32_t));                           // 2KB
+    pipe->InitBuffer(reduceOutBuf_, s2BaseSize_ * 2 * sizeof(float));                     // 4KB
     pipe->InitBuffer(brcBuf_, groupInner_ * 8 * sizeof(float));
     pipe->InitBuffer(paramBuf_, LD_PARAM_NUM * sizeof(int64_t));
 
@@ -217,7 +213,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pi
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitParams(const struct PkiCommon::ConstInfo &constInfo,
-                                                 const PoolKeyIndexerTilingData *__restrict tilingData)
+                                                                    const PoolKeyIndexerTilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
     blockS2StartIdx_ = 0;
@@ -238,9 +234,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitParams(const struct
 template <typename LIT>
 __aicore__ inline void
 PoolKeyIndexerServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm,
-                                    GlobalTensor<float> vec1ResGm,
-                                    GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
-                                    GlobalTensor<int32_t> indiceOutGm, GlobalTensor<float> valueOutGm)
+                                                       GlobalTensor<float> vec1ResGm,
+                                                       GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
+                                                       GlobalTensor<int32_t> indiceOutGm, GlobalTensor<float> valueOutGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -268,9 +264,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::FreeEventID()
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
-    LocalTensor<int32_t>& poolIndices,
-    LocalTensor<int32_t>& tokenIndices,
-    LocalTensor<int32_t>& workBuf,
+    LocalTensor<int32_t> poolIndices,
+    LocalTensor<int32_t> &tokenIndices,
+    LocalTensor<int32_t> &workBuf,
     uint32_t sparseCount, uint32_t poolSize,
     uint32_t validS2Len, int32_t poolTailK,
     int32_t L_orig, uint32_t curS1Idx,
@@ -296,7 +292,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             Duplicate<int32_t>(tokenIndices[outOff], base, alignedPoolSize);
             PipeBarrier<PIPE_V>();
             Add<int32_t>(tokenIndices[outOff], tokenIndices[outOff],
-                          offsetTpl, alignedPoolSize);
+                         offsetTpl, alignedPoolSize);
             outOff += poolSize;
         }
     }
@@ -305,7 +301,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     if (validExpand < topk) {
         PipeBarrier<PIPE_V>();
         Duplicate<int32_t>(tokenIndices[validExpand], -1,
-            PkiCommon::Align(topk - validExpand, (uint32_t)8));
+                           PkiCommon::Align(topk - validExpand, (uint32_t)8));
         PipeBarrier<PIPE_V>();
     }
 
@@ -315,10 +311,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         if (constInfo_.maskMode == 0) {
             visibleTailK = poolTailK;
         } else {
-            int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size)
-                                 + static_cast<int32_t>(curS1Idx);
+            int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size) + static_cast<int32_t>(curS1Idx);
             visibleTailK = PkiCommon::Max(0,
-                PkiCommon::Min(poolTailK, globalPosQ - static_cast<int32_t>(topk) + 1));
+                                          PkiCommon::Min(poolTailK, globalPosQ - static_cast<int32_t>(topk) + 1));
         }
 
         if (visibleTailK > 0) {
@@ -330,10 +325,10 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             }
             PipeBarrier<PIPE_V>();
             Duplicate<int32_t>(tokenIndices[tailPos],
-                                L_orig - poolTailK, alignedVisibleTailK);
+                               L_orig - poolTailK, alignedVisibleTailK);
             PipeBarrier<PIPE_V>();
             Add<int32_t>(tokenIndices[tailPos], tokenIndices[tailPos],
-                          tailOffsetTpl, alignedVisibleTailK);
+                         tailOffsetTpl, alignedVisibleTailK);
         }
     }
 }
@@ -450,12 +445,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                 int64_t weightGmAllOffset = weightGmOffset + innerS1Idx * gSize_ + outerGidx * groupInner_;
 
                 PkiServiceVec::CopyIn(dbTmpUb, weightsInTUb, mm1ResGm, weightsGm, mmGmAllOffet, weightGmAllOffset,
-                                     procGnum, info.actualSingleProcessSInnerSizeAlign, mmUbStride);
+                                      procGnum, info.actualSingleProcessSInnerSizeAlign, mmUbStride);
 
                 SetFlag<HardEvent::MTE2_V>(pingpong);
                 WaitFlag<HardEvent::MTE2_V>(pingpong);
                 PkiServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], dbTmpUb, weightsInUb, weightsInTUb,
-                                      brcBuf, procGnum, s2BaseSize_, outerGidx);
+                                       brcBuf, procGnum, s2BaseSize_, outerGidx);
                 // confused reduceOp in DoScale
                 // neednot use PkiServiceVec::doReduce(mmInUb, reduceOutInner, procGnum, (s2BaseSize_+8));
                 SetFlag<HardEvent::V_MTE2>(pingpong);
@@ -485,11 +480,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
             if (info.actS1Size > 4 || constInfo_.isSparseCountOver2K) {
                 // info.actS1Size > 4 则单个vector核内处理的 s1>2，缓存方案无法处理
                 PkiServiceVec::SortAll(reduceOutBuff, tmpSortBuf,
-                                      cuS2LenVecAlign); //  cuS2LenVecAlign <= s2BaseSize_, fill -inf
+                                       cuS2LenVecAlign); //  cuS2LenVecAlign <= s2BaseSize_, fill -inf
                 PipeBarrier<PIPE_V>();
                 LocalTensor<float> UbTmpSort = constInfo_.isSparseCountOver2K ? tmpUb_ : tmpSortBuf;
                 PkiServiceVec::MergeSort(globalTopkUb_[innerS1Idx * virTopK * 2], virTopK, reduceOutBuff,
-                                        cuS2LenVecAlign, UbTmpSort);
+                                         cuS2LenVecAlign, UbTmpSort);
             } else {
                 int64_t globalTopkUbCacheIdx = (info.s2Idx - blockS2StartIdx_) % 4;
                 Sort<float, true>(
@@ -532,9 +527,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
 
             if (needCopyOutGm) {
                 int64_t offset = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? virTopK : constInfo_.sparseCount / 2;
-                int64_t copyLen = (constInfo_.sparseCount <= SPARSE_COUNT_4K)
-                                ? constInfo_.sparseCount
-                                : constInfo_.sparseCount / 2;
+                int64_t copyLen = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? constInfo_.sparseCount : constInfo_.sparseCount / 2;
                 int64_t copyNum = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? 1 : 2;
                 if (poolSize_ > 1) {
                     uint32_t alignedPoolSize = PkiCommon::Align(poolSize_, (uint32_t)8);
@@ -542,7 +535,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
                         LocalTensor<uint32_t> outIdxUb = outValueUb[offset].template ReinterpretCast<uint32_t>();
                         Extract(outValueUb, outIdxUb,
-                         globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset /32));
+                                globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset / 32));
 
                         PipeBarrier<PIPE_V>();
                         LocalTensor<int32_t> idxULocal1 = outValueUb[offset].template ReinterpretCast<int32_t>();
@@ -552,15 +545,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         if (constInfo_.returnValue) {
                             outQueue_.EnQue<float>(outValueUb);
                             outValueUb = outQueue_.DeQue<float>();
-                            PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx *
-                                                                 constInfo_.sparseCount + i * offset],
-                                            outValueUb, copyLen);
+                            PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                                                   outValueUb, copyLen);
                         }
                         outQueue_.FreeTensor(outValueUb);
                     }
                     PipeBarrier<PIPE_V>();
-                    uint32_t validS2Len = constInfo_.attenMaskFlag
-                        ? static_cast<uint32_t>(cuRealAcSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                    uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(cuRealAcSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
                     ExpandAndAppendIndices(workLocal_[alignedPoolSize], expandOutLocal_, workLocal_,
                                            constInfo_.sparseCount, poolSize_, validS2Len,
                                            info.poolTailK, static_cast<int32_t>(info.actS2SizeOrig),
@@ -572,31 +563,28 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                                 {1, static_cast<uint16_t>(outputLen_ * sizeof(int32_t)), 0, 0});
                     SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
                 } else {
-                for (int64_t i = 0; i < copyNum; i++) {
-                    LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
-                    LocalTensor<uint32_t> outIdxUb = outValueUb[offset].template ReinterpretCast<uint32_t>();
-                    Extract(outValueUb, outIdxUb,
-                     globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset /32));
+                    for (int64_t i = 0; i < copyNum; i++) {
+                        LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
+                        LocalTensor<uint32_t> outIdxUb = outValueUb[offset].template ReinterpretCast<uint32_t>();
+                        Extract(outValueUb, outIdxUb,
+                                globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset / 32));
 
+                        if (constInfo_.returnValue) {
+                            PipeBarrier<PIPE_V>();
+                        }
 
-                    if (constInfo_.returnValue) {
-                        PipeBarrier<PIPE_V>();
+                        LocalTensor<int32_t> idxULocal1 = outValueUb[offset].template ReinterpretCast<int32_t>();
+                        outQueue_.EnQue<float>(outValueUb);
+                        outValueUb = outQueue_.DeQue<float>();
+
+                        PkiServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                                               idxULocal1, copyLen);
+                        if (constInfo_.returnValue) {
+                            PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                                                   outValueUb, copyLen);
+                        }
+                        outQueue_.FreeTensor(outValueUb);
                     }
-
-                    LocalTensor<int32_t> idxULocal1 = outValueUb[offset].template ReinterpretCast<int32_t>();
-                    outQueue_.EnQue<float>(outValueUb);
-                    outValueUb = outQueue_.DeQue<float>();
-
-                    PkiServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx *
-                                                         constInfo_.sparseCount + i * offset],
-                                        idxULocal1, copyLen);
-                    if (constInfo_.returnValue) {
-                        PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx *
-                                                             constInfo_.sparseCount + i * offset],
-                                        outValueUb, copyLen);
-                    }
-                    outQueue_.FreeTensor(outValueUb);
-                }
                 }
             } else if (needCopyWsGm) {
                 // vec1Res Gm = [aic, s1BaseSize_, 2, 2, topkOut_] float32
@@ -846,8 +834,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             if (poolSize_ > 1) {
                 PipeBarrier<PIPE_V>();
-                uint32_t validS2Len = constInfo_.attenMaskFlag
-                    ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(),
                                        expandOutLocal_, workLocal_,
                                        constInfo_.sparseCount, poolSize_, validS2Len,
@@ -872,8 +859,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             if (poolSize_ > 1) {
-                uint32_t validS2Len = constInfo_.attenMaskFlag
-                    ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(),
                                        expandOutLocal_, workLocal_,
                                        constInfo_.sparseCount, poolSize_, validS2Len,

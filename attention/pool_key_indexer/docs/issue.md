@@ -154,9 +154,9 @@ $$
 | query | 输入 | 公式中的输入 Q，不支持空 tensor | FLOAT16、BFLOAT16、FLOAT8_E4M3FN(仅950) | ND | BSND: $(B,S_1,N_1,D)$ / TND: $(T_1,N_1,D)$ |
 | pool_key | 输入 | 公式中的输入 $K_{pool}$，支持 0 轴非连续，dtype 需与 query 一致 | FLOAT16、BFLOAT16、FLOAT8_E4M3FN(仅950) | ND | PA_BBND: $(blockNum,blockSize,N_2,D)$ / BSND: $(B,S_2,N_2,D)$ / TND: $(T_2,N_2,D)$ |
 | weights | 输入 | 公式中的输入 W，不支持空 tensor，dtype 需与 query 一致 | FLOAT16、BFLOAT16 | ND | BSND: $(B,S_1,N_1)$ / TND: $(T_1,N_1)$ |
-| pool_tail_k | 输入 | 每个 batch 尾部不完整 pool 的有效 token 数，取值 $[0, pool\_size-1]$，0 表示无尾部有效 token | INT32 | ND | $(B,)$ |
-| actual_seq_q | 可选输入 | 每个 batch 的 Query 有效 token 数；TND 必传且为前缀和 | INT32 | ND | $(B,)$ |
-| actual_seq_k | 可选输入 | 每个 batch 的 Key 有效 token 数；TND/PA 必传。TND 为前缀和，PA 为非前缀和 | INT32 | ND | $(B,)$ |
+| pool_tail_k | 输入 | 每个 batch 尾部不完整 pool 的有效 token 数，取值 $[0, pool\_size-1]$，0 表示无尾部有效 token | INT64 | ND | $(B,)$ |
+| actual_seq_q | 可选输入 | 每个 batch 的 Query 有效 token 数；TND 必传且为前缀和 | INT64 | ND | $(B,)$ |
+| actual_seq_k | 可选输入 | 每个 batch 的 Key 有效 token 数；TND/PA 必传。TND 为前缀和，PA 为非前缀和 | INT64 | ND | $(B,)$ |
 | block_table | 可选输入 | PageAttention block 映射表，PA 场景必传 | INT32 | ND | $(B, maxBlockNumPerSeq)$ |
 | q_descale | 可选输入 | Query 反量化系数，量化场景必传。quantMode=0 为 FLOAT，quantMode=1 为 FLOAT8_E8M0 | FLOAT、FLOAT8_E8M0 | ND | BSND: $(B,S_1,N_1)$ / TND: $(T_1,N_1)$ |
 | k_descale | 可选输入 | Key 反量化系数，量化场景必传 | FLOAT、FLOAT8_E8M0 | ND | BSND: $(B,S_2,N_2)$ / TND: $(T_2,N_2)$ / PA: $(blockNum,blockSize,N_2)$ |

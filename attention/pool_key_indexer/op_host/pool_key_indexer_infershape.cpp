@@ -1,17 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file pool_key_indexer_infershape.cpp
- * \brief PoolKeyIndexer infer shape and data type
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <string>
 #include <graph/utils/type_utils.h>
@@ -36,7 +31,6 @@ constexpr int64_t TOPK_MIN = 1;
 constexpr int64_t TOPK_MAX_CONTINUOUS = 2048;
 constexpr int64_t POOL_SIZE_MIN = 1;
 constexpr int64_t POOL_SIZE_MAX = 128;
-
 
 static ge::graphStatus InferShapePoolKeyIndexer(gert::InferShapeContext *context)
 {
@@ -81,48 +75,47 @@ static ge::graphStatus InferShapePoolKeyIndexer(gert::InferShapeContext *context
 
     OP_CHECK_IF(layoutQ != "BSND" && layoutQ != "TND",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "layout_q",
-                    layoutQ.c_str(), "layout_q should be BSND or TND"),
+                                                      layoutQ.c_str(), "layout_q should be BSND or TND"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "layout_k",
-                    layoutK.c_str(), "layout_k should be BSND, TND or PA_BBND"),
+                                                      layoutK.c_str(), "layout_k should be BSND, TND or PA_BBND"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(maskMode != 0 && maskMode != 3,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "mask_mode",
-                    std::to_string(maskMode).c_str(), "mask_mode should be 0 or 3"),
+                                                      std::to_string(maskMode).c_str(), "mask_mode should be 0 or 3"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(quantMode != -1 && quantMode != 0 && quantMode != 1,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "quant_mode",
-                    std::to_string(quantMode).c_str(), "quant_mode should be -1, 0 or 1"),
+                                                      std::to_string(quantMode).c_str(), "quant_mode should be -1, 0 or 1"),
                 return ge::GRAPH_FAILED);
 
     // poolSize constraints: [1, 128]
     OP_CHECK_IF(poolSize < POOL_SIZE_MIN || poolSize > POOL_SIZE_MAX,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "pool_size",
-                    std::to_string(poolSize).c_str(),
-                    "pool_size must be in [1, 128]"),
+                                                      std::to_string(poolSize).c_str(),
+                                                      "pool_size must be in [1, 128]"),
                 return ge::GRAPH_FAILED);
 
     // topk constraints: [1, 2048] or {3072, 4096, 5120, 6144, 7168, 8192}
     bool topkValid = (topk >= TOPK_MIN && topk <= TOPK_MAX_CONTINUOUS) ||
-                      topk == 3072 || topk == 4096 || topk == 5120 ||
-                      topk == 6144 || topk == 7168 || topk == 8192;
+                     topk == 3072 || topk == 4096 || topk == 5120 ||
+                     topk == 6144 || topk == 7168 || topk == 8192;
     OP_CHECK_IF(!topkValid,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "topk",
-                    std::to_string(topk).c_str(),
-                    "topk must be in [1, 2048] or one of {3072, 4096, 5120, 6144, 7168, 8192}"),
+                                                      std::to_string(topk).c_str(),
+                                                      "topk must be in [1, 2048] or one of {3072, 4096, 5120, 6144, 7168, 8192}"),
                 return ge::GRAPH_FAILED);
 
     // topk must be divisible by poolSize
     OP_CHECK_IF(poolSize == 0 || topk % poolSize != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "topk",
-                    std::to_string(topk).c_str(),
-                    "topk(%ld) must be divisible by pool_size(%ld)", topk, poolSize),
+                                                      std::to_string(topk).c_str(),
+                                                      "topk must be divisible by pool_size"),
                 return ge::GRAPH_FAILED);
-
 
     int64_t outLastDim = topk + poolSize - 1;
     int64_t valuesLastDim = topk / poolSize;

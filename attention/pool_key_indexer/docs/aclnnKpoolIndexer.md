@@ -247,7 +247,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>取值范围为[0, pool_size-1]，0表示无尾部有效token。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
       <td>√</td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>当layoutQueryOptional为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
       <td>√</td>
@@ -279,7 +279,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>当layoutKeyOptional为TND或PA_BBND时，该入参必须传入。layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值；layoutKeyOptional为PA_BBND时，该参数中每个元素的值表示当前batch的token数，非前缀和形式。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
       <td>√</td>
@@ -736,7 +736,7 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> poolKeyHostData(poolKeyShapeSize, 1);
     std::vector<float> weightsHostData(weightsShapeSize, 1);
-    std::vector<int32_t> poolTailKHostData(poolTailKShapeSize, 0);
+    std::vector<int64_t> poolTailKHostData(poolTailKShapeSize, 0);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
     std::vector<float> sparseValuesHostData(sparseValuesShapeSize, 1);
 
@@ -759,7 +759,7 @@ int InitializeTensors(TensorResources& resources) {
     }
 
     ret = CreateAclTensor(poolTailKHostData, poolTailKShape, &resources.poolTailKDeviceAddr,
-                          aclDataType::ACL_INT32, &resources.poolTailKTensor);
+                          aclDataType::ACL_INT64, &resources.poolTailKTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }

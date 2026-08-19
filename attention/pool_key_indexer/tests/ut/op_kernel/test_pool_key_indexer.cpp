@@ -1,21 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_pool_key_indexer.cpp
- * \brief Kernel UT for PoolKeyIndexer (non-quantized degraded scenario)
- *        Test cases:
- *          1. Degraded BSND FP16 maskMode=0 poolSize=1 (退化场景)
- *          2. Degraded BSND BF16 maskMode=3 poolSize=1 (因果掩码退化)
- *          3. poolSize>1 BSND FP16 maskMode=0 (pool展开)
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <array>
 #include <vector>
@@ -65,7 +56,8 @@ struct KernelTestConfig {
     uint32_t usedCoreNum;
 };
 
-void SetTilingData(optiling::PoolKeyIndexerTilingData *td, const KernelTestConfig &cfg) {
+void SetTilingData(optiling::PoolKeyIndexerTilingData *td, const KernelTestConfig &cfg)
+{
     td->bSize = cfg.bSize;
     td->gSize = cfg.n1;
     td->s1Size = cfg.s1;
@@ -94,17 +86,20 @@ void SetTilingData(optiling::PoolKeyIndexerTilingData *td, const KernelTestConfi
 }
 
 template <typename T>
-void FillTensor(vector<T> &data, int64_t count, T value) {
+void FillTensor(vector<T> &data, int64_t count, T value)
+{
     data.resize(count, value);
 }
 } // namespace
 
 class PoolKeyIndexerKernelTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         cout << "PoolKeyIndexerKernelTest SetUp" << endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         cout << "PoolKeyIndexerKernelTest TearDown" << endl;
     }
 };
@@ -113,7 +108,8 @@ protected:
 // query(1,128,8,128) poolKey(1,128,1,128) weights(1,128,8) poolTailK=[0]
 // topk=128 poolSize=1 maskMode=0 quantMode=-1 returnValue=true
 // Expected: sparseIndices(1,128,128) sparseValues(1,128,128)
-TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1) {
+TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1)
+{
     KernelTestConfig cfg = {};
     cfg.bSize = B_SIZE;
     cfg.n1 = N1;
@@ -122,17 +118,17 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1) {
     cfg.topk = 128;
     cfg.poolSize = 1;
     cfg.maskMode = 0;   // defaultMask
-    cfg.quantMode = -1;  // no quantization
+    cfg.quantMode = -1; // no quantization
     cfg.returnValue = true;
-    cfg.layoutQ = 0;     // BSND
-    cfg.layoutK = 0;     // BSND
-    cfg.dtQ = 1;         // FP16
-    cfg.dtK = 1;          // FP16
-    cfg.dtOut = 3;        // INT32
+    cfg.layoutQ = 0; // BSND
+    cfg.layoutK = 0; // BSND
+    cfg.dtQ = 1;     // FP16
+    cfg.dtK = 1;     // FP16
+    cfg.dtOut = 3;   // INT32
     cfg.usedCoreNum = 1;
 
-    uint32_t outputLen = cfg.topk + cfg.poolSize - 1;  // 128
-    uint32_t sparseCount = cfg.topk / cfg.poolSize;    // 128
+    uint32_t outputLen = cfg.topk + cfg.poolSize - 1; // 128
+    uint32_t sparseCount = cfg.topk / cfg.poolSize;   // 128
 
     int64_t querySize = cfg.bSize * cfg.s1 * cfg.n1 * HEAD_DIM;
     int64_t poolKeySize = cfg.bSize * cfg.s2 * N2 * HEAD_DIM;
@@ -144,7 +140,7 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1) {
     size_t queryBytes = querySize * sizeof(half);
     size_t poolKeyBytes = poolKeySize * sizeof(half);
     size_t weightsBytes = weightsSize * sizeof(half);
-    size_t poolTailKBytes = poolTailKSize * sizeof(int32_t);
+    size_t poolTailKBytes = poolTailKSize * sizeof(int64_t);
     size_t indicesBytes = indicesSize * sizeof(int32_t);
     size_t valuesBytes = valuesSize * sizeof(float);
     size_t tilingBytes = sizeof(optiling::PoolKeyIndexerTilingData);
@@ -173,8 +169,8 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1) {
     FillTensor(poolKeyData, poolKeySize, static_cast<half>(0.5f));
     vector<half> weightsData;
     FillTensor(weightsData, weightsSize, static_cast<half>(1.0f));
-    vector<int32_t> poolTailKData;
-    FillTensor(poolTailKData, poolTailKSize, static_cast<int32_t>(0));
+    vector<int64_t> poolTailKData;
+    FillTensor(poolTailKData, poolTailKSize, static_cast<int64_t>(0));
 
     memcpy(queryGm, queryData.data(), queryBytes);
     memcpy(poolKeyGm, poolKeyData.data(), poolKeyBytes);
@@ -221,7 +217,8 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_FP16_Mask0_PoolSize1) {
 // Test 2: Degraded scenario BSND BF16 maskMode=3 (causal) poolSize=1
 // query(1,64,8,128) poolKey(1,64,1,128) weights(1,64,8) poolTailK=[0]
 // topk=64 poolSize=1 maskMode=3 quantMode=-1 returnValue=true
-TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1) {
+TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1)
+{
     KernelTestConfig cfg = {};
     cfg.bSize = B_SIZE;
     cfg.n1 = N1;
@@ -229,14 +226,14 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1) {
     cfg.s2 = 64;
     cfg.topk = 64;
     cfg.poolSize = 1;
-    cfg.maskMode = 3;   // causal mask
+    cfg.maskMode = 3; // causal mask
     cfg.quantMode = -1;
     cfg.returnValue = true;
-    cfg.layoutQ = 0;     // BSND
-    cfg.layoutK = 0;     // BSND
-    cfg.dtQ = 27;        // BF16
-    cfg.dtK = 27;         // BF16
-    cfg.dtOut = 3;        // INT32
+    cfg.layoutQ = 0; // BSND
+    cfg.layoutK = 0; // BSND
+    cfg.dtQ = 27;    // BF16
+    cfg.dtK = 27;    // BF16
+    cfg.dtOut = 3;   // INT32
     cfg.usedCoreNum = 1;
 
     uint32_t outputLen = cfg.topk + cfg.poolSize - 1;
@@ -252,7 +249,7 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1) {
     size_t queryBytes = querySize * sizeof(bfloat16_t);
     size_t poolKeyBytes = poolKeySize * sizeof(bfloat16_t);
     size_t weightsBytes = weightsSize * sizeof(bfloat16_t);
-    size_t poolTailKBytes = poolTailKSize * sizeof(int32_t);
+    size_t poolTailKBytes = poolTailKSize * sizeof(int64_t);
     size_t indicesBytes = indicesSize * sizeof(int32_t);
     size_t valuesBytes = valuesSize * sizeof(float);
     size_t tilingBytes = sizeof(optiling::PoolKeyIndexerTilingData);
@@ -277,8 +274,8 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1) {
     FillTensor(poolKeyData, poolKeySize, static_cast<bfloat16_t>(0.5f));
     vector<bfloat16_t> weightsData;
     FillTensor(weightsData, weightsSize, static_cast<bfloat16_t>(1.0f));
-    vector<int32_t> poolTailKData;
-    FillTensor(poolTailKData, poolTailKSize, static_cast<int32_t>(0));
+    vector<int64_t> poolTailKData;
+    FillTensor(poolTailKData, poolTailKSize, static_cast<int64_t>(0));
 
     memcpy(queryGm, queryData.data(), queryBytes);
     memcpy(poolKeyGm, poolKeyData.data(), poolKeyBytes);
@@ -326,26 +323,27 @@ TEST_F(PoolKeyIndexerKernelTest, Degraded_BSND_BF16_MaskCausal_PoolSize1) {
 // query(1,64,8,128) poolKey(1,32,1,128) weights(1,64,8) poolTailK=[2]
 // topk=128 poolSize=4 maskMode=0 quantMode=-1 returnValue=true
 // Expected: sparseIndices(1,64,131) sparseValues(1,64,32)
-TEST_F(PoolKeyIndexerKernelTest, PoolSize4_BSND_FP16_Mask0) {
+TEST_F(PoolKeyIndexerKernelTest, PoolSize4_BSND_FP16_Mask0)
+{
     KernelTestConfig cfg = {};
     cfg.bSize = B_SIZE;
     cfg.n1 = N1;
     cfg.s1 = 64;
-    cfg.s2 = 32;   // 32 pools
+    cfg.s2 = 32; // 32 pools
     cfg.topk = 128;
     cfg.poolSize = 4;
     cfg.maskMode = 0;
     cfg.quantMode = -1;
     cfg.returnValue = true;
-    cfg.layoutQ = 0;     // BSND
-    cfg.layoutK = 0;     // BSND
-    cfg.dtQ = 1;         // FP16
-    cfg.dtK = 1;          // FP16
-    cfg.dtOut = 3;        // INT32
+    cfg.layoutQ = 0; // BSND
+    cfg.layoutK = 0; // BSND
+    cfg.dtQ = 1;     // FP16
+    cfg.dtK = 1;     // FP16
+    cfg.dtOut = 3;   // INT32
     cfg.usedCoreNum = 1;
 
-    uint32_t outputLen = cfg.topk + cfg.poolSize - 1;  // 131
-    uint32_t sparseCount = cfg.topk / cfg.poolSize;    // 32
+    uint32_t outputLen = cfg.topk + cfg.poolSize - 1; // 131
+    uint32_t sparseCount = cfg.topk / cfg.poolSize;   // 32
 
     int64_t querySize = cfg.bSize * cfg.s1 * cfg.n1 * HEAD_DIM;
     int64_t poolKeySize = cfg.bSize * cfg.s2 * N2 * HEAD_DIM;
@@ -357,7 +355,7 @@ TEST_F(PoolKeyIndexerKernelTest, PoolSize4_BSND_FP16_Mask0) {
     size_t queryBytes = querySize * sizeof(half);
     size_t poolKeyBytes = poolKeySize * sizeof(half);
     size_t weightsBytes = weightsSize * sizeof(half);
-    size_t poolTailKBytes = poolTailKSize * sizeof(int32_t);
+    size_t poolTailKBytes = poolTailKSize * sizeof(int64_t);
     size_t indicesBytes = indicesSize * sizeof(int32_t);
     size_t valuesBytes = valuesSize * sizeof(float);
     size_t tilingBytes = sizeof(optiling::PoolKeyIndexerTilingData);
@@ -382,8 +380,8 @@ TEST_F(PoolKeyIndexerKernelTest, PoolSize4_BSND_FP16_Mask0) {
     FillTensor(poolKeyData, poolKeySize, static_cast<half>(0.5f));
     vector<half> weightsData;
     FillTensor(weightsData, weightsSize, static_cast<half>(1.0f));
-    vector<int32_t> poolTailKData;
-    FillTensor(poolTailKData, poolTailKSize, static_cast<int32_t>(2));
+    vector<int64_t> poolTailKData;
+    FillTensor(poolTailKData, poolTailKSize, static_cast<int64_t>(2));
 
     memcpy(queryGm, queryData.data(), queryBytes);
     memcpy(poolKeyGm, poolKeyData.data(), poolKeyBytes);

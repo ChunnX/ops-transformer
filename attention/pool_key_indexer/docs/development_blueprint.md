@@ -879,9 +879,9 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 | query | FP16/BF16/FP8_E4M3FN(950) | BSND:(B,S1,N1,D) / TND:(T1,N1,D) | 不支持空tensor，N1≤64，headDim=128 |
 | poolKey | 同query | PA:(blockNum,blockSize,N2,D) / BSND:(B,S2,N2,D) / TND:(T2,N2,D) | 不支持空tensor，N2=1，支持0轴非连续 |
 | weights | FP16/BF16 | BSND:(B,S1,N1) / TND:(T1,N1) | 不支持空tensor |
-| poolTailK | INT32 | (B,) | 取值[0,pool_size-1] |
-| actualSeqLengthsQueryOptional | INT32 | (B,) | TND必传，前缀和 |
-| actualSeqLengthsKeyOptional | INT32 | (B,) | TND/PA必传，TND前缀和/PA非前缀和 |
+| poolTailK | INT64 | (B,) | 取值[0,pool_size-1] |
+| actualSeqLengthsQueryOptional | INT64 | (B,) | TND必传，前缀和 |
+| actualSeqLengthsKeyOptional | INT64 | (B,) | TND/PA必传，TND前缀和/PA非前缀和 |
 | blockTableOptional | INT32 | (B,maxBlockNumPerSeq) | PA必传 |
 | qDescaleOptional | FLOAT/FLOAT8_E8M0 | 同query维度/同key维度 | 量化必传 |
 | kDescaleOptional | 同上 | 同key维度 | 量化必传 |

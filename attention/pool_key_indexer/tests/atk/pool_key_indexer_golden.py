@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """
 PoolKeyIndexer CPU golden 标杆实现。
 
@@ -90,10 +99,15 @@ def _parse_dtype(dtype_str):
 
 def _construct_block_table(batch_size, act_seq_k, block_num, block_size):
     import numpy as np
+
     max_block_num_per_seq = 0
     block_num_per_batch = []
     for b in range(batch_size):
-        cur_k = int(act_seq_k[b].item()) if torch.is_tensor(act_seq_k) else int(act_seq_k[b])
+        cur_k = (
+            int(act_seq_k[b].item())
+            if torch.is_tensor(act_seq_k)
+            else int(act_seq_k[b])
+        )
         cur_blocks = math.ceil(cur_k / block_size) if cur_k > 0 else 0
         block_num_per_batch.append(cur_blocks)
         max_block_num_per_seq = max(max_block_num_per_seq, cur_blocks)
@@ -113,9 +127,21 @@ def _construct_block_table(batch_size, act_seq_k, block_num, block_size):
 class PKIGoldenRef:
     """PoolKeyIndexer CPU golden 参考实现。"""
 
-    def __init__(self, batch_size, q_seq, k_seq, q_head_num, k_head_num,
-                 head_dim, layout_query, layout_key, topk, pool_size,
-                 mask_mode, compute_dtype=torch.float32):
+    def __init__(
+        self,
+        batch_size,
+        q_seq,
+        k_seq,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        layout_query,
+        layout_key,
+        topk,
+        pool_size,
+        mask_mode,
+        compute_dtype=torch.float32,
+    ):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -134,7 +160,9 @@ class PKIGoldenRef:
         self.output_indices_len = topk + pool_size - 1
         self.output_values_len = self.sparse_count
 
-    def _trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None, is_weights=False):
+    def _trans_shape_to_bnsd(
+        self, tensor, layout, headnums=None, act_seq=None, is_weights=False
+    ):
         if layout == "BSND":
             B = tensor.shape[0]
             S = tensor.shape[1]
@@ -166,7 +194,9 @@ class PKIGoldenRef:
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                    new_tensor[b_index, n_index, 0:act_s, :] = tensor[
+                        t_start:t_end, n_index, :
+                    ]
                 t_start += act_s
             return new_tensor
         elif layout == "PA_BBND":
@@ -216,19 +246,32 @@ class PKIGoldenRef:
                 remaining = max_s2 - pos
                 copy_len = min(block_size, remaining)
                 if copy_len > 0:
-                    bnsd[b, :, pos:pos + copy_len, :] = key[block_id, :copy_len, :, :].permute(1, 0, 2)
+                    bnsd[b, :, pos : pos + copy_len, :] = key[
+                        block_id, :copy_len, :, :
+                    ].permute(1, 0, 2)
                 pos += block_size
         return bnsd
 
-    def _create_mask_right_down(self, m_shape, actualSeqLengthsQ, actualSeqLengthsK, batch,
-                                pool_size, pool_tail_k):
+    def _create_mask_right_down(
+        self,
+        m_shape,
+        actualSeqLengthsQ,
+        actualSeqLengthsK,
+        batch,
+        pool_size,
+        pool_tail_k,
+    ):
         """因果掩码: validS2Len = (L_orig - S1 + i + 1) / pool_size, L_orig = S2*pool_size + tail_k"""
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         masks = []
         for i_batch in range(batch):
             S1 = actualSeqLengthsQ[i_batch] if len(actualSeqLengthsQ) > 0 else mask_s_q
-            S2 = math.floor(actualSeqLengthsK[i_batch]) if len(actualSeqLengthsK) > 0 else mask_s_kv
+            S2 = (
+                math.floor(actualSeqLengthsK[i_batch])
+                if len(actualSeqLengthsK) > 0
+                else mask_s_kv
+            )
             cur_tail_k = int(pool_tail_k[i_batch]) if pool_tail_k is not None else 0
             L_orig = S2 * pool_size + cur_tail_k
             atten_mask = torch.zeros(mask_s_q, mask_s_kv, dtype=torch.uint8)
@@ -260,29 +303,40 @@ class PKIGoldenRef:
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    output[t_start:t_end, n_index, :] = tensor[b_index, n_index, :act_s, :]
+                    output[t_start:t_end, n_index, :] = tensor[
+                        b_index, n_index, :act_s, :
+                    ]
                 t_start += act_s
             return output
         else:
             return tensor
 
-    def _cal_atten_per_batch(self, cur_q, cur_k, cur_wt, cur_m, sparse_count, mask_mode,
-                             group_size, k_head_num, need_topk=True):
+    def _cal_atten_per_batch(
+        self,
+        cur_q,
+        cur_k,
+        cur_wt,
+        cur_m,
+        sparse_count,
+        mask_mode,
+        group_size,
+        k_head_num,
+        need_topk=True,
+    ):
         compute_dtype = self.compute_dtype
         cur_q = _safe_to_dtype(cur_q, compute_dtype)
         cur_k = _safe_to_dtype(cur_k, compute_dtype)
         cur_wt = _safe_to_dtype(cur_wt, compute_dtype)
 
         qk_bmm_res = torch.matmul(
-            cur_q.squeeze(0),
-            cur_k.permute(0, 1, 3, 2).squeeze(0)
+            cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
 
         qk_relu_out = _safe_to_dtype(qk_bmm_res, compute_dtype).clamp_min(0.0)
 
         brc_vmul = torch.bmm(
             _safe_to_dtype(cur_wt.permute(0, 2, 3, 1), compute_dtype).squeeze(0),
-            _safe_to_dtype(qk_relu_out.permute(0, 2, 1, 3), compute_dtype).squeeze(0)
+            _safe_to_dtype(qk_relu_out.permute(0, 2, 1, 3), compute_dtype).squeeze(0),
         ).unsqueeze(0)
 
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
@@ -291,7 +345,9 @@ class PKIGoldenRef:
 
         if mask_mode == 3 and cur_m is not None:
             cur_m_broadcasted = cur_m.reshape(1, 1, temp_s1, temp_s2)
-            cur_m_broadcasted = torch.broadcast_to(cur_m_broadcasted, (1, k_head_num, temp_s1, temp_s2))
+            cur_m_broadcasted = torch.broadcast_to(
+                cur_m_broadcasted, (1, k_head_num, temp_s1, temp_s2)
+            )
             reduce_sum[cur_m_broadcasted.to(dtype=torch.bool)] = -torch.inf
 
         to_be_sort_ele = reduce_sum.clone()
@@ -304,15 +360,25 @@ class PKIGoldenRef:
             row_ele = to_be_sort_ele[0, 0, i, :]
             indices = torch.arange(len(row_ele), device=row_ele.device)
             sorted_vals, sorted_idx = torch.sort(
-                torch.stack([-row_ele, indices], dim=1),
-                dim=0, stable=True
+                torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
             )
             b_sorted_indices[0, 0, i, :] = sorted_idx[:, 0]
         topk_indices = b_sorted_indices[..., :actual_selected_count]
         return topk_indices, to_be_sort_ele
 
-    def _expand_and_append(self, pool_indices, scores, sparse_count, pool_size,
-                           valid_s2_len, pool_tail_k, l_orig, s1, mask_mode, compute_dtype):
+    def _expand_and_append(
+        self,
+        pool_indices,
+        scores,
+        sparse_count,
+        pool_size,
+        valid_s2_len,
+        pool_tail_k,
+        l_orig,
+        s1,
+        mask_mode,
+        compute_dtype,
+    ):
         """展开 pool 索引为 token 索引, 追加尾块, 填充 -1.
 
         Args:
@@ -332,10 +398,16 @@ class PKIGoldenRef:
         output_len = topk + pool_size - 1
 
         token_indices = torch.full((s1, output_len), -1, dtype=torch.int32)
-        token_values = torch.full((s1, sparse_count), float('-inf'), dtype=compute_dtype)
+        token_values = torch.full(
+            (s1, sparse_count), float("-inf"), dtype=compute_dtype
+        )
 
         for i in range(s1):
-            v_len = int(valid_s2_len[i]) if hasattr(valid_s2_len, '__getitem__') else int(valid_s2_len)
+            v_len = (
+                int(valid_s2_len[i])
+                if hasattr(valid_s2_len, "__getitem__")
+                else int(valid_s2_len)
+            )
 
             # 展开: pool 索引 → token 索引
             out_off = 0
@@ -369,8 +441,19 @@ class PKIGoldenRef:
 
         return token_indices, token_values
 
-    def _canonical_rows_pool(self, ext_token_indices, scores, sparse_count, pool_size,
-                              valid_s2_len, pool_tail_k, l_orig, s1, mask_mode, compute_dtype):
+    def _canonical_rows_pool(
+        self,
+        ext_token_indices,
+        scores,
+        sparse_count,
+        pool_size,
+        valid_s2_len,
+        pool_tail_k,
+        l_orig,
+        s1,
+        mask_mode,
+        compute_dtype,
+    ):
         """归一化算子输出的 token 级索引: token→pool 转换 → gather scores → sort → cutoff → 重新展开.
 
         Args:
@@ -397,12 +480,13 @@ class PKIGoldenRef:
 
         # 2. token → pool 索引转换 (仅有效 token)
         valid_mask = (ext_pool_part >= 0) & (ext_pool_part < s2_len * pool_size)
-        pool_idx = torch.where(valid_mask, ext_pool_part // pool_size,
-                               torch.zeros_like(ext_pool_part))
+        pool_idx = torch.where(
+            valid_mask, ext_pool_part // pool_size, torch.zeros_like(ext_pool_part)
+        )
 
         # 3. Gather pool 级 scores
         gathered = torch.gather(scores, -1, pool_idx.clamp(0, s2_len - 1))
-        gathered = gathered.masked_fill(~valid_mask, float('-inf'))
+        gathered = gathered.masked_fill(~valid_mask, float("-inf"))
 
         # 4. Cutoff: 第 k 大的 score
         k_eff = max(1, min(s2_len, sparse_count))
@@ -417,19 +501,27 @@ class PKIGoldenRef:
         key = torch.gather(gathered, -1, order_by_idx)
         order_by_score = torch.argsort(key, dim=-1, descending=True, stable=True)
         final_order = torch.gather(order_by_idx, -1, order_by_score)
-        canon_pool = torch.gather(out_pool, -1, final_order).to(torch.int32)  # [S1, topk]
-        canon_scores = torch.gather(gathered, -1, final_order)                # [S1, topk]
+        canon_pool = torch.gather(out_pool, -1, final_order).to(
+            torch.int32
+        )  # [S1, topk]
+        canon_scores = torch.gather(gathered, -1, final_order)  # [S1, topk]
 
         # 7. 取前 sparse_count 个 pool
-        canon_pool = canon_pool[:, :sparse_count]    # [S1, sparse_count]
+        canon_pool = canon_pool[:, :sparse_count]  # [S1, sparse_count]
         canon_scores = canon_scores[:, :sparse_count]  # [S1, sparse_count]
 
         # 8. 重新展开 pool → token + 追加尾块
         token_indices = torch.full((s1, output_len), -1, dtype=torch.int32)
-        token_values = torch.full((s1, sparse_count), float('-inf'), dtype=compute_dtype)
+        token_values = torch.full(
+            (s1, sparse_count), float("-inf"), dtype=compute_dtype
+        )
 
         for i in range(s1):
-            v_len = int(valid_s2_len[i]) if hasattr(valid_s2_len, '__getitem__') else int(valid_s2_len)
+            v_len = (
+                int(valid_s2_len[i])
+                if hasattr(valid_s2_len, "__getitem__")
+                else int(valid_s2_len)
+            )
             out_off = 0
             for k in range(sparse_count):
                 pidx = int(canon_pool[i, k].item())
@@ -454,8 +546,18 @@ class PKIGoldenRef:
 
         return token_indices, token_values
 
-    def forward(self, query, key, weights, actual_seq_q, actual_seq_k,
-                block_table=None, pool_tail_k=None, ext_indices=None, ext_values=None):
+    def forward(
+        self,
+        query,
+        key,
+        weights,
+        actual_seq_q,
+        actual_seq_k,
+        block_table=None,
+        pool_tail_k=None,
+        ext_indices=None,
+        ext_values=None,
+    ):
         _saved_threads = torch.get_num_threads()
         if _saved_threads > 48:
             torch.set_num_threads(48)
@@ -478,12 +580,18 @@ class PKIGoldenRef:
         if layout_key == "TND":
             actual_seq_k = self._trans_tnd_actseq(actual_seq_k)
 
-        q_bnsd = self._trans_shape_to_bnsd(query, layout_query, q_head_num, actual_seq_q)
+        q_bnsd = self._trans_shape_to_bnsd(
+            query, layout_query, q_head_num, actual_seq_q
+        )
         if layout_key == "PA_BBND" and block_table is not None:
             k_bnsd = self._pa_bbnd_to_bnsd(key, block_table, actual_seq_k)
         else:
-            k_bnsd = self._trans_shape_to_bnsd(key, layout_key, k_head_num, actual_seq_k)
-        wt_bnsd = self._trans_shape_to_bnsd(weights, layout_query, q_head_num, actual_seq_q, is_weights=True)
+            k_bnsd = self._trans_shape_to_bnsd(
+                key, layout_key, k_head_num, actual_seq_k
+            )
+        wt_bnsd = self._trans_shape_to_bnsd(
+            weights, layout_query, q_head_num, actual_seq_q, is_weights=True
+        )
 
         m_shape = [q_bnsd.shape[2], k_bnsd.shape[2]]
         batch = q_bnsd.shape[0]
@@ -491,8 +599,9 @@ class PKIGoldenRef:
         m_tensor = []
         if mask_mode == 3:
             m_tensor = torch.from_numpy(
-                self._create_mask_right_down(m_shape, actual_seq_q, actual_seq_k, batch,
-                                             pool_size, pool_tail_k)
+                self._create_mask_right_down(
+                    m_shape, actual_seq_q, actual_seq_k, batch, pool_size, pool_tail_k
+                )
             )
 
         # 输出 shape: BSND (B, S1, output_len) / TND (T1, output_len)
@@ -504,27 +613,33 @@ class PKIGoldenRef:
             out_val_shape = [q_seq, self.output_values_len]
 
         y_indices = torch.full(out_idx_shape, -1, dtype=torch.int32)
-        y_values = torch.full(out_val_shape, float('-inf'), dtype=self.compute_dtype)
+        y_values = torch.full(out_val_shape, float("-inf"), dtype=self.compute_dtype)
 
         for b_idx in range(batch):
             curr_q = actual_seq_q[b_idx]
             curr_k = math.floor(actual_seq_k[b_idx])
-            cur_q = q_bnsd[b_idx:(b_idx + 1), :, :curr_q, :]
-            cur_k = k_bnsd[b_idx:(b_idx + 1), :, :curr_k, :]
-            cur_wt = wt_bnsd[b_idx:(b_idx + 1), :, :curr_q, :]
+            cur_q = q_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]
+            cur_k = k_bnsd[b_idx : (b_idx + 1), :, :curr_k, :]
+            cur_wt = wt_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]
 
             cur_m = None
             if mask_mode == 3:
-                cur_m = m_tensor[b_idx:(b_idx + 1), :curr_q, :curr_k]
+                cur_m = m_tensor[b_idx : (b_idx + 1), :curr_q, :curr_k]
 
             if curr_q == 0:
                 continue
 
             # 计算 scores (need_topk 取决于是否有 ext_indices)
             topk_pool_indices, scores = self._cal_atten_per_batch(
-                cur_q, cur_k, cur_wt, cur_m, sparse_count, mask_mode,
-                self.group_size, k_head_num,
-                need_topk=ext_indices is None
+                cur_q,
+                cur_k,
+                cur_wt,
+                cur_m,
+                sparse_count,
+                mask_mode,
+                self.group_size,
+                k_head_num,
+                need_topk=ext_indices is None,
             )
 
             # 统一取 scores 2D [S1, S2]
@@ -550,12 +665,19 @@ class PKIGoldenRef:
                     ext_2d = ext_indices[b_idx, :curr_q, :]  # [S1, output_len]
                 else:
                     t_start = int(sum(int(x) for x in actual_seq_q[:b_idx]))
-                    ext_2d = ext_indices[t_start:t_start + curr_q, :]
+                    ext_2d = ext_indices[t_start : t_start + curr_q, :]
 
                 token_idx, token_val = self._canonical_rows_pool(
-                    ext_2d, scores_2d, sparse_count, pool_size,
-                    valid_s2_len, cur_pool_tail_k, l_orig,
-                    s1_actual, mask_mode, self.compute_dtype
+                    ext_2d,
+                    scores_2d,
+                    sparse_count,
+                    pool_size,
+                    valid_s2_len,
+                    cur_pool_tail_k,
+                    l_orig,
+                    s1_actual,
+                    mask_mode,
+                    self.compute_dtype,
                 )
             else:
                 # Golden 标杆路径: pool 级 TopK → 展开 → 追加
@@ -563,15 +685,24 @@ class PKIGoldenRef:
 
                 if pool_idx_2d.shape[-1] < sparse_count:
                     pad = torch.full(
-                        pool_idx_2d.shape[:-1] + (sparse_count - pool_idx_2d.shape[-1],),
-                        -1, dtype=torch.int32
+                        pool_idx_2d.shape[:-1]
+                        + (sparse_count - pool_idx_2d.shape[-1],),
+                        -1,
+                        dtype=torch.int32,
                     )
                     pool_idx_2d = torch.cat([pool_idx_2d, pad], dim=-1)
 
                 token_idx, token_val = self._expand_and_append(
-                    pool_idx_2d, scores_2d, sparse_count, pool_size,
-                    valid_s2_len, cur_pool_tail_k, l_orig,
-                    s1_actual, mask_mode, self.compute_dtype
+                    pool_idx_2d,
+                    scores_2d,
+                    sparse_count,
+                    pool_size,
+                    valid_s2_len,
+                    cur_pool_tail_k,
+                    l_orig,
+                    s1_actual,
+                    mask_mode,
+                    self.compute_dtype,
                 )
 
             if layout_query == "BSND":
@@ -579,8 +710,8 @@ class PKIGoldenRef:
                 y_values[b_idx, :curr_q, :] = token_val
             else:
                 t_start = int(sum(int(x) for x in actual_seq_q[:b_idx]))
-                y_indices[t_start:t_start + curr_q, :] = token_idx
-                y_values[t_start:t_start + curr_q, :] = token_val
+                y_indices[t_start : t_start + curr_q, :] = token_idx
+                y_values[t_start : t_start + curr_q, :] = token_val
 
         if not COMPARE_INDICES:
             y_indices = torch.zeros_like(y_indices)

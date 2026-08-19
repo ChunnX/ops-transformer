@@ -1,5 +1,21 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """
 PoolKeyIndexer ATK PyAclnn 适配器 (AclnnBaseApi)。
 
@@ -58,6 +74,7 @@ def _recover_device(device_id):
         torch.npu.synchronize()
     except Exception:
         os._exit(1)
+
 
 _PARSE_TORCH_DTYPE = {
     "torch.int32": torch.int32,
@@ -143,13 +160,19 @@ class PKIAclnnApi(AclnnBaseApi):
         PKIApi._rerandomize_data(input_data, self.task_result)
 
         # 复检模式: 删除 operator 输出目录
-        if getattr(self.task_result, 'disable_id_seed', False):
-            import os, shutil
+        if getattr(self.task_result, "disable_id_seed", False):
+            import os
+            import shutil
+
             try:
                 out_dir = self.task_result.get_output_path()
-                case_id = getattr(self.task_result.case_config, 'id', 0)
-                save_name = getattr(self.task_result.case_config, 'save_name', 'all_pool_key_indexer')
-                op_dir = os.path.join(out_dir, "pyaclnn_operator", save_name, str(case_id))
+                case_id = getattr(self.task_result.case_config, "id", 0)
+                save_name = getattr(
+                    self.task_result.case_config, "save_name", "all_pool_key_indexer"
+                )
+                op_dir = os.path.join(
+                    out_dir, "pyaclnn_operator", save_name, str(case_id)
+                )
                 if os.path.exists(op_dir):
                     shutil.rmtree(op_dir)
             except Exception:
@@ -178,25 +201,42 @@ class PKIAclnnApi(AclnnBaseApi):
 
         # PA_BBND: 构造合法 block_table
         self._saved_block_table = None
-        if layout_key == "PA_BBND" and block_table is not None and \
-                hasattr(block_table, "shape") and block_table.shape[0] > 0:
+        if (
+            layout_key == "PA_BBND"
+            and block_table is not None
+            and hasattr(block_table, "shape")
+            and block_table.shape[0] > 0
+        ):
             block_num = key.shape[0]
             block_size = key.shape[1]
             if layout_query == "BSND":
                 B_bt = query.shape[0]
             else:
                 B_bt = len(act_seq_k) if act_seq_k is not None else 1
-            act_seq_k_bt = act_seq_k if act_seq_k is not None else \
-                torch.tensor([block_size] * B_bt, dtype=torch.int32)
-            block_table = _construct_block_table(B_bt, act_seq_k_bt, block_num, block_size)
+            act_seq_k_bt = (
+                act_seq_k
+                if act_seq_k is not None
+                else torch.tensor([block_size] * B_bt, dtype=torch.int32)
+            )
+            block_table = _construct_block_table(
+                B_bt, act_seq_k_bt, block_num, block_size
+            )
             self._saved_block_table = block_table
 
         # TND 前缀和归一化
-        if layout_query == "TND" and act_seq_q is not None and \
-                hasattr(act_seq_q, "shape") and act_seq_q.shape[0] > 0:
+        if (
+            layout_query == "TND"
+            and act_seq_q is not None
+            and hasattr(act_seq_q, "shape")
+            and act_seq_q.shape[0] > 0
+        ):
             act_seq_q = _normalize_prefix_seq(act_seq_q, query.shape[0])
-        if layout_key == "TND" and act_seq_k is not None and \
-                hasattr(act_seq_k, "shape") and act_seq_k.shape[0] > 0:
+        if (
+            layout_key == "TND"
+            and act_seq_k is not None
+            and hasattr(act_seq_k, "shape")
+            and act_seq_k.shape[0] > 0
+        ):
             act_seq_k = _normalize_prefix_seq(act_seq_k, key.shape[0])
 
         def _convert(tensor, name):
@@ -210,22 +250,38 @@ class PKIAclnnApi(AclnnBaseApi):
         input_args.append(_convert(key, "poolKey"))
         input_args.append(_convert(weights, "weights"))
 
-        if pool_tail_k is not None and hasattr(pool_tail_k, "shape") and pool_tail_k.shape[0] > 0:
+        if (
+            pool_tail_k is not None
+            and hasattr(pool_tail_k, "shape")
+            and pool_tail_k.shape[0] > 0
+        ):
             input_args.append(_convert(pool_tail_k, "poolTailK"))
         else:
             input_args.append(TensorPtr())
 
-        if act_seq_q is not None and hasattr(act_seq_q, "shape") and act_seq_q.shape[0] > 0:
+        if (
+            act_seq_q is not None
+            and hasattr(act_seq_q, "shape")
+            and act_seq_q.shape[0] > 0
+        ):
             input_args.append(_convert(act_seq_q, "actualSeqQ"))
         else:
             input_args.append(TensorPtr())
 
-        if act_seq_k is not None and hasattr(act_seq_k, "shape") and act_seq_k.shape[0] > 0:
+        if (
+            act_seq_k is not None
+            and hasattr(act_seq_k, "shape")
+            and act_seq_k.shape[0] > 0
+        ):
             input_args.append(_convert(act_seq_k, "actualSeqK"))
         else:
             input_args.append(TensorPtr())
 
-        if block_table is not None and hasattr(block_table, "shape") and block_table.shape[0] > 0:
+        if (
+            block_table is not None
+            and hasattr(block_table, "shape")
+            and block_table.shape[0] > 0
+        ):
             input_args.append(_convert(block_table, "blockTable"))
         else:
             input_args.append(TensorPtr())
@@ -250,14 +306,20 @@ class PKIAclnnApi(AclnnBaseApi):
             out = self.task_result.output_info_list[index]
             out_shape = out.shape if hasattr(out, "shape") else out.get("shape", [1])
             if index == 0:
-                torch_dtype = torch.int32   # sparseIndicesOut
+                torch_dtype = torch.int32  # sparseIndicesOut
             elif index == 1:
                 torch_dtype = torch.float32  # sparseValuesOut (固定 FLOAT)
             else:
-                out_dtype = out.dtype if hasattr(out, "dtype") else out.get("dtype", "torch.float32")
+                out_dtype = (
+                    out.dtype
+                    if hasattr(out, "dtype")
+                    else out.get("dtype", "torch.float32")
+                )
                 torch_dtype = _PARSE_TORCH_DTYPE.get(str(out_dtype), torch.float32)
 
-            pytensor = torch.empty(list(out_shape), dtype=torch_dtype, device=f"npu:{device_id}")
+            pytensor = torch.empty(
+                list(out_shape), dtype=torch_dtype, device=f"npu:{device_id}"
+            )
             acl_struct = self.backend.torch_tensor_to_acl(pytensor)
             self._saved_output_structs.append(acl_struct)
             output_packages.append(acl_struct)
@@ -266,13 +328,18 @@ class PKIAclnnApi(AclnnBaseApi):
         return input_args, output_packages
 
     def __call__(self, with_output: bool = False):
-        _dev = getattr(self, '_saved_device_id', 0)
+        _dev = getattr(self, "_saved_device_id", 0)
         torch.npu.set_device(_dev)
         try:
             super().__call__()
             torch.npu.synchronize()
         except RuntimeError as exc:
-            if "507015" in str(exc) or "EZ9999" in str(exc) or "EE9999" in str(exc) or "aicore" in str(exc).lower():
+            if (
+                "507015" in str(exc)
+                or "EZ9999" in str(exc)
+                or "EE9999" in str(exc)
+                or "aicore" in str(exc).lower()
+            ):
                 _recover_device(_dev)
             raise
 
@@ -308,11 +375,23 @@ class PKIAclnnApi(AclnnBaseApi):
         block_table = block_table_raw
         pool_tail_k = pool_tail_k_raw
 
-        if act_seq_q is not None and hasattr(act_seq_q, "shape") and act_seq_q.shape[0] == 0:
+        if (
+            act_seq_q is not None
+            and hasattr(act_seq_q, "shape")
+            and act_seq_q.shape[0] == 0
+        ):
             act_seq_q = None
-        if act_seq_k is not None and hasattr(act_seq_k, "shape") and act_seq_k.shape[0] == 0:
+        if (
+            act_seq_k is not None
+            and hasattr(act_seq_k, "shape")
+            and act_seq_k.shape[0] == 0
+        ):
             act_seq_k = None
-        if block_table is not None and hasattr(block_table, "shape") and block_table.shape[0] == 0:
+        if (
+            block_table is not None
+            and hasattr(block_table, "shape")
+            and block_table.shape[0] == 0
+        ):
             block_table = None
 
         if layout_query == "TND" and act_seq_q is not None:
@@ -322,22 +401,41 @@ class PKIAclnnApi(AclnnBaseApi):
 
         # 维度推导
         if layout_query == "BSND":
-            B = query.shape[0]; S1 = query.shape[1]; N1 = query.shape[2]; D = query.shape[3]
+            B = query.shape[0]
+            S1 = query.shape[1]
+            N1 = query.shape[2]
+            D = query.shape[3]
         else:
-            S1 = query.shape[0]; N1 = query.shape[1]; D = query.shape[2]
+            S1 = query.shape[0]
+            N1 = query.shape[1]
+            D = query.shape[2]
             B = len(act_seq_q) if act_seq_q is not None else 1
 
         if layout_key == "BSND":
-            S2 = key.shape[1]; N2 = key.shape[2]
+            S2 = key.shape[1]
+            N2 = key.shape[2]
         elif layout_key == "TND":
-            S2 = key.shape[0]; N2 = key.shape[1]
+            S2 = key.shape[0]
+            N2 = key.shape[1]
         else:
             N2 = key.shape[2]
             S2 = int(act_seq_k.max().item()) if act_seq_k is not None else key.shape[1]
 
-        act_seq_q_t = act_seq_q if act_seq_q is not None else torch.tensor([S1] * B, dtype=torch.int32)
-        act_seq_k_t = act_seq_k if act_seq_k is not None else torch.tensor([S2] * B, dtype=torch.int32)
-        pool_tail_k_t = pool_tail_k if pool_tail_k is not None else torch.tensor([0] * B, dtype=torch.int32)
+        act_seq_q_t = (
+            act_seq_q
+            if act_seq_q is not None
+            else torch.tensor([S1] * B, dtype=torch.int64)
+        )
+        act_seq_k_t = (
+            act_seq_k
+            if act_seq_k is not None
+            else torch.tensor([S2] * B, dtype=torch.int64)
+        )
+        pool_tail_k_t = (
+            pool_tail_k
+            if pool_tail_k is not None
+            else torch.tensor([0] * B, dtype=torch.int64)
+        )
 
         if layout_key == "PA_BBND" and block_table is not None:
             if self._saved_block_table is not None:
@@ -345,7 +443,9 @@ class PKIAclnnApi(AclnnBaseApi):
             else:
                 block_num = key.shape[0]
                 block_size = key.shape[1]
-                block_table = _construct_block_table(B, act_seq_k_t, block_num, block_size)
+                block_table = _construct_block_table(
+                    B, act_seq_k_t, block_num, block_size
+                )
 
         q_dtype = query.dtype if hasattr(query, "dtype") else torch.float16
         compute_dtype = _get_compute_dtype(q_dtype)
@@ -361,16 +461,29 @@ class PKIAclnnApi(AclnnBaseApi):
 
         ext_values = None
         golden = PKIGoldenRef(
-            batch_size=B, q_seq=S1, k_seq=S2,
-            q_head_num=N1, k_head_num=N2, head_dim=D,
-            layout_query=layout_query, layout_key=layout_key,
-            topk=topk, pool_size=pool_size,
-            mask_mode=mask_mode, compute_dtype=compute_dtype,
+            batch_size=B,
+            q_seq=S1,
+            k_seq=S2,
+            q_head_num=N1,
+            k_head_num=N2,
+            head_dim=D,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            topk=topk,
+            pool_size=pool_size,
+            mask_mode=mask_mode,
+            compute_dtype=compute_dtype,
         )
         norm_indices, norm_values = golden.forward(
-            query_cpu, key_cpu, weights_cpu, act_q_cpu, act_k_cpu,
-            block_table_cpu, pool_tail_k=ptk_cpu,
-            ext_indices=op_indices_cpu, ext_values=ext_values,
+            query_cpu,
+            key_cpu,
+            weights_cpu,
+            act_q_cpu,
+            act_k_cpu,
+            block_table_cpu,
+            pool_tail_k=ptk_cpu,
+            ext_indices=op_indices_cpu,
+            ext_values=ext_values,
         )
 
         # 写回归一化后的数据
@@ -384,16 +497,27 @@ class PKIAclnnApi(AclnnBaseApi):
             structs[1].pytensor = _safe_to_dtype(sanitized, torch.float32).to(val_dev)
 
         # 复检模式: 手动保存 output .pt 文件
-        if getattr(self.task_result, 'disable_id_seed', False):
+        if getattr(self.task_result, "disable_id_seed", False):
             import os
+
             try:
                 out_dir = self.task_result.get_output_path()
-                case_id = getattr(self.task_result.case_config, 'id', 0)
-                save_name = getattr(self.task_result.case_config, 'save_name', 'all_pool_key_indexer')
-                case_dir = os.path.join(out_dir, "pyaclnn_operator", save_name, str(case_id))
+                case_id = getattr(self.task_result.case_config, "id", 0)
+                save_name = getattr(
+                    self.task_result.case_config, "save_name", "all_pool_key_indexer"
+                )
+                case_dir = os.path.join(
+                    out_dir, "pyaclnn_operator", save_name, str(case_id)
+                )
                 os.makedirs(case_dir, exist_ok=True)
-                torch.save(_safe_to_cpu(structs[0].pytensor), os.path.join(case_dir, "output_0.pt"))
-                torch.save(_safe_to_cpu(structs[1].pytensor), os.path.join(case_dir, "output_1.pt"))
+                torch.save(
+                    _safe_to_cpu(structs[0].pytensor),
+                    os.path.join(case_dir, "output_0.pt"),
+                )
+                torch.save(
+                    _safe_to_cpu(structs[1].pytensor),
+                    os.path.join(case_dir, "output_1.pt"),
+                )
             except Exception:
                 pass
 
