@@ -28,6 +28,10 @@ using liTopkB32GatherCommon::FindKthVFImpl;
 using liTopkB32GatherCommon::FindIdxGTOutputVFImpl;
 using liTopkB32GatherCommon::StoreHistogramResult;
 using liTopkB32GatherCommon::HistogramsByteVFImpl;
+using liTopkB32GatherCommon::HistogramsFirstVFImpl;
+using liTopkB32GatherCommon::HistogramsSecondVFImpl;
+using liTopkB32GatherCommon::HistogramsThirdVFImpl;
+using liTopkB32GatherCommon::HistogramsLastVFImpl;
 
 __simd_callee__ inline void FindTargetBinAndUpdateNextK(__ubuf__ uint32_t *idxBuf, __ubuf__ uint32_t *nkValueBuf,
                                                         __ubuf__ uint32_t *histogramsBuf,
@@ -79,13 +83,6 @@ __simd_callee__ inline void FindTargetBinAndUpdateNextK(__ubuf__ uint32_t *idxBu
     MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(nkValueBuf, nextK, pregB32);
 }
 
-template <typename T>
-__simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf, uint16_t vfLoop,
-                                       bool init)
-{
-    HistogramsByteVFImpl<0>(histogramsBuf, inputBuf, nullptr, nullptr, nullptr, vfLoop, init);
-}
-
 __simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *nkValueBuf,
                                           __ubuf__ uint32_t *histogramsBuf, uint32_t bottomK)
 {
@@ -95,13 +92,6 @@ __simd_vf__ void FindFirstTargetBinVFImpl(__ubuf__ uint32_t *idx0Buf, __ubuf__ u
     MicroAPI::Duplicate(btmK, bottomK);
 
     FindTargetBinAndUpdateNextK(idx0Buf, nkValueBuf, histogramsBuf, btmK, pregB32);
-}
-
-template <typename T>
-__simd_vf__ void HistogramsSecondVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf,
-                                        __ubuf__ uint32_t *idx0Buf, uint16_t vfLoop, bool init)
-{
-    HistogramsByteVFImpl<1>(histogramsBuf, inputBuf, idx0Buf, nullptr, nullptr, vfLoop, init);
 }
 
 // kValue新的bottomK
@@ -116,14 +106,6 @@ __simd_vf__ void FindSecondTargetBinVFImpl(__ubuf__ uint32_t *idx1Buf, __ubuf__ 
     FindTargetBinAndUpdateNextK(idx1Buf, nkValueBuf, histogramsBuf, btmK1, pregB32);
 }
 
-template <typename T>
-__simd_vf__ void HistogramsThirdVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf,
-                                       __ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *idx1Buf, uint16_t vfLoop,
-                                       bool init)
-{
-    HistogramsByteVFImpl<2>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, nullptr, vfLoop, init);
-}
-
 __simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t *idx2Buf, __ubuf__ uint32_t *nkValueBuf,
                                           __ubuf__ uint32_t *kValue, __ubuf__ uint32_t *histogramsBuf)
 {
@@ -133,14 +115,6 @@ __simd_vf__ void FindThirdTargetBinVFImpl(__ubuf__ uint32_t *idx2Buf, __ubuf__ u
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(btmK2, kValue);
 
     FindTargetBinAndUpdateNextK(idx2Buf, nkValueBuf, histogramsBuf, btmK2, pregB32);
-}
-
-template <typename T>
-__simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf,
-                                      __ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *idx1Buf,
-                                      __ubuf__ uint32_t *idx2Buf, uint16_t vfLoop, bool init)
-{
-    HistogramsByteVFImpl<3>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, init);
 }
 
 __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint32_t *inputBuf, uint32_t beginIdx,
