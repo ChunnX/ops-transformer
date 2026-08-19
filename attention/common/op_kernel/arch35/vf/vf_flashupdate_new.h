@@ -447,7 +447,7 @@ __aicore__ inline void LastDivNew(const LocalTensor<T> &dstTensor, const LocalTe
     LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD, isMlaFullQuant>(dstUb, curUb, expSumUb, m, d, deScaleV);
 }
 
-template <typename T, uint32_t srcD, bool checkNegativeInf = false>
+template <typename T, uint32_t srcD>
 __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb, __ubuf__ T *maxUb, const uint16_t m,
                                             const uint16_t d, const T minValue, const T invalidValue)
 {
@@ -463,11 +463,7 @@ __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb
     Duplicate(vreg_invalid_value, invalidValue);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
-        if constexpr (checkNegativeInf) {
-            Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
-        } else {
-            Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
-        }
+        Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input, srcUb + i * d + j * floatRepSize);
             Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
@@ -477,7 +473,7 @@ __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb
     }
 }
 
-template <typename T, uint32_t srcD, bool checkNegativeInf = false>
+template <typename T, uint32_t srcD>
 __aicore__ inline void InvalidLineUpdate(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
                                          const LocalTensor<T> &maxTensor, const uint16_t m, const uint16_t d,
                                          const T minValue, const T invalidValue)
@@ -489,7 +485,7 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T> &dstTensor, const 
     constexpr uint16_t floatRepSize = 64;
     uint16_t dLoops = d >> 6;
 
-    InvalidLineUpdateVF<T, srcD, checkNegativeInf>(dstUb, srcUb, maxUb, m, d, minValue, invalidValue);
+    InvalidLineUpdateVF<T, srcD>(dstUb, srcUb, maxUb, m, d, minValue, invalidValue);
 }
 
 template <typename T>
