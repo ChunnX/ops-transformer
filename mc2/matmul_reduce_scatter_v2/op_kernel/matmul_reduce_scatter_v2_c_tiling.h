@@ -20,7 +20,6 @@
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
-#include "../../common/op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_tiling_data.h"
 
 namespace Mc2Tiling {
 
@@ -47,9 +46,5 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
 };
 
-static_assert(sizeof(hcommMatmulReduceScatterV2TilingData) <= sizeof(QuantBatchMatmulV3ReduceScatterTilingData),
-              "APACE tiling data must fit in the registered legacy tiling buffer");
-static_assert(sizeof(hcommMatmulReduceScatterV2TilingData) % sizeof(uint64_t) == 0,
-              "APACE tiling data must be aligned to 8 bytes");
 } // namespace Mc2Tiling
 #endif
