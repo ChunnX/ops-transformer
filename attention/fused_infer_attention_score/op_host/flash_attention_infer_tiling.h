@@ -292,6 +292,7 @@ uint64_t FAInferTiling::GetTilingKey()
     constexpr uint64_t COMP_SWA_MASK_KEY = 5;
     constexpr uint64_t FULL_MASK_KEY = 6;
     constexpr uint64_t KVCACHE_NZ_KEY = 10;
+    constexpr uint64_t KVCACHE_BNBD_KEY = 20;
     constexpr uint64_t LAYOUTQ_TND_KEY = 200000;
     constexpr uint64_t DTYPE_FP16_KEY = 100;
     constexpr uint64_t DTYPE_BF16_KEY = 200;
@@ -300,7 +301,6 @@ uint64_t FAInferTiling::GetTilingKey()
     constexpr uint64_t LEARNABLE_SINK_KEY = 100000000;
     constexpr uint64_t FLASH_DECODE_KEY = 100000000000000000;
     constexpr uint64_t DECODING_KEY = 200000000000000000;
-        constexpr uint64_t KVCACHE_BNBD_KEY = 20;
     uint64_t tilingKey = SPLIT_FUSE_BASE_KEY;
     if (faInfo_.pagedCacheFlag) {
         tilingKey += static_cast<uint64_t>(PAGED_CACHE_KEY);
