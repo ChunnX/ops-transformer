@@ -43,6 +43,7 @@
 #elif __has_include("../../../common/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/arch35/vf/vf_flash_decode_arch35.h"
 #endif
+#include "static_buffer.h"
 
 namespace AttentionCommon {
 
@@ -85,6 +86,30 @@ __aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe
     tPipe->InitBuffer(buffers.blockSum, maxSumTotal);
     tPipe->InitBuffer(buffers.lseExp, lseExpSize);
     tPipe->InitBuffer(buffers.partialO, partialOSize);
+}
+
+// 静态 tensor 版本的 FD buffer 初始化：不调用 tPipe->Reset()，从 ubBaseAddr 顺序排布。
+// FD 在主流程 SyncAll() 之后独立执行，可复用主流程 UB 地址空间。
+template <typename T, int64_t D_ALIGN>
+__aicore__ inline void InitFDBuffersStatic(const FdRunInfo &fdRunInfo, uint32_t ubBaseAddr,
+                                           FdBuffers<fa_base_matmul::StaticBuffer<uint8_t>> &buffers)
+{
+    uint32_t ubAddr = ubBaseAddr;
+    int64_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * FD_REDUCE_CHUNK_ROWS *
+                          FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    int64_t lseExpSize = FD_REDUCE_CHUNK_ROWS * FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    int64_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * D_ALIGN * sizeof(T);
+    int64_t partialOSize = FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
+
+    buffers.accumOut = {LocalTensor<uint8_t>(TPosition::VECIN, ubAddr, accumOutSize), 0};
+    ubAddr += accumOutSize;
+    buffers.blockMax = {LocalTensor<uint8_t>(TPosition::VECIN, ubAddr, maxSumTotal), 0};
+    ubAddr += maxSumTotal;
+    buffers.blockSum = {LocalTensor<uint8_t>(TPosition::VECIN, ubAddr, maxSumTotal), 0};
+    ubAddr += maxSumTotal;
+    buffers.lseExp = {LocalTensor<uint8_t>(TPosition::VECIN, ubAddr, lseExpSize), 0};
+    ubAddr += lseExpSize;
+    buffers.partialO = {LocalTensor<uint8_t>(TPosition::VECIN, ubAddr, partialOSize), 0};
 }
 
 // The three regions are contiguous: partial O, max, then sum.
