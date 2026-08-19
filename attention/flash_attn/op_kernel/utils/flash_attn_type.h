@@ -16,11 +16,13 @@
 #define FLASH_ATTN_TYPE_H_
 
 #include "flash_attn_common_def.h"
-#include "../arch35/memory_copy_arch35.h"
+
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #endif
 
 using namespace AscendC;
