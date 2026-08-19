@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "../quant_block_sparse_attn_host_ut_param.h"
-#include "quant_block_sparse_attn_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -92,7 +91,26 @@ static void SetFp8PaStrides(TensorDesc &key, TensorDesc &value, TensorDesc &kDes
     SetStride(value, paBlockStride, valueBlockSize * valueD, valueD, 1U);
 }
 
-static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo)
+enum class Fp8StrideFault {
+    NONE,
+    MISSING_KEY,
+    MISSING_VALUE,
+    MISSING_K_DESCALE,
+    KEY_RANK_3,
+    VALUE_RANK_3,
+    K_DESCALE_RANK_3,
+};
+
+static void ClearStride(TensorDesc &tensorDesc)
+{
+    tensorDesc.stride_.SetDimNum(0U);
+    tensorDesc.hasStride_ = false;
+}
+
+static void TruncateStride(TensorDesc &tensorDesc) { tensorDesc.stride_.SetDimNum(3U); }
+
+static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo,
+                        Fp8StrideFault strideFault = Fp8StrideFault::NONE)
 {
     TensorDesc key = NormalizeTd(param.key);
     TensorDesc value = NormalizeTd(param.value);
@@ -101,6 +119,19 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
     if (param.quant_mode == 1) {
         if (param.provideFp8Strides) {
             SetFp8PaStrides(key, value, kDescale);
+            if (strideFault == Fp8StrideFault::MISSING_KEY) {
+                ClearStride(key);
+            } else if (strideFault == Fp8StrideFault::MISSING_VALUE) {
+                ClearStride(value);
+            } else if (strideFault == Fp8StrideFault::MISSING_K_DESCALE) {
+                ClearStride(kDescale);
+            } else if (strideFault == Fp8StrideFault::KEY_RANK_3) {
+                TruncateStride(key);
+            } else if (strideFault == Fp8StrideFault::VALUE_RANK_3) {
+                TruncateStride(value);
+            } else if (strideFault == Fp8StrideFault::K_DESCALE_RANK_3) {
+                TruncateStride(kDescale);
+            }
             if (param.mismatchValueStride) {
                 value.stride_.SetStride(0U, value.stride_.GetStride(0U) + 1U);
             }
@@ -153,6 +184,24 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
 {
     auto param = GetParam();
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
+
+    if (param.case_name == "tiling_fp8_missing_kv_stride") {
+        param.provideFp8Strides = true;
+        TilingInfo missingKeyTilingInfo;
+        TilingInfo missingValueTilingInfo;
+        TilingInfo missingKDescaleTilingInfo;
+        TilingInfo keyRank3TilingInfo;
+        TilingInfo valueRank3TilingInfo;
+        TilingInfo kDescaleRank3TilingInfo;
+        EXPECT_FALSE(ExecuteCase(param, missingKeyTilingInfo, Fp8StrideFault::MISSING_KEY));
+        EXPECT_FALSE(ExecuteCase(param, missingValueTilingInfo, Fp8StrideFault::MISSING_VALUE));
+        EXPECT_FALSE(ExecuteCase(param, missingKDescaleTilingInfo, Fp8StrideFault::MISSING_K_DESCALE));
+        EXPECT_FALSE(ExecuteCase(param, keyRank3TilingInfo, Fp8StrideFault::KEY_RANK_3));
+        EXPECT_FALSE(ExecuteCase(param, valueRank3TilingInfo, Fp8StrideFault::VALUE_RANK_3));
+        EXPECT_FALSE(ExecuteCase(param, kDescaleRank3TilingInfo, Fp8StrideFault::K_DESCALE_RANK_3));
+        return;
+    }
+
     TilingInfo tilingInfo;
     bool ok = ExecuteCase(param, tilingInfo);
 
@@ -160,12 +209,6 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
         EXPECT_EQ(ok, true);
         EXPECT_GT(tilingInfo.blockNum, 0U);
         EXPECT_GT(tilingInfo.tilingDataSize, 0U);
-        if (param.case_name == "tiling_fp8_missing_kv_stride") {
-            ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnTilingData));
-            const auto *tilingData =
-                reinterpret_cast<const optiling::QuantBlockSparseAttnTilingData *>(tilingInfo.tilingData.get());
-            EXPECT_EQ(tilingData->paParams.get_paBlockStride(), 133120U);
-        }
     } else {
         EXPECT_EQ(ok, false);
     }

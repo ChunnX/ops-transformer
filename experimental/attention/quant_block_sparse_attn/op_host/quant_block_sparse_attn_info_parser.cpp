@@ -101,40 +101,43 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         return ge::GRAPH_FAILED;
     }
 
-    const bool canCalcFp8PaBlockStride = tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8 &&
-                                         valueShape.GetDimNum() == DIM_NUM_4 &&
-                                         kDescaleShape.GetDimNum() == DIM_NUM_4;
-    const uint64_t fp8PaBlockStride = canCalcFp8PaBlockStride ?
-        CalcPaBlockBytes(keyShape, sizeof(uint8_t)) + CalcPaBlockBytes(valueShape, sizeof(uint8_t)) +
-            CalcPaBlockBytes(kDescaleShape, sizeof(float)) :
-        0U;
-
     const size_t blockNumAxis = QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_NUM);
     const bool hasKeyBlockStride = keyStride != nullptr && keyStride->GetDimNum() > blockNumAxis;
     uint64_t paBlockStride = 0U;
-    if (context_->InputIsView(QBSA_KEY_INDEX) && hasKeyBlockStride) {
+    if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8) {
+        if (valueShape.GetDimNum() != DIM_NUM_4 || kDescaleShape.GetDimNum() != DIM_NUM_4) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                kOpName, "value/k_descale",
+                std::to_string(valueShape.GetDimNum()) + "D/" + std::to_string(kDescaleShape.GetDimNum()) + "D",
+                "4D/4D PA_BNSD tensors");
+            return ge::GRAPH_FAILED;
+        }
+        if (!context_->InputIsView(QBSA_KEY_INDEX) || !hasKeyBlockStride) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "key stride", "missing",
+                "A valid key view stride must be provided by the framework when quant_mode is 1.");
+            return ge::GRAPH_FAILED;
+        }
         tilingInfo.hasViewStride = true;
         paBlockStride = keyStride->GetStride(blockNumAxis);
-        if (canCalcFp8PaBlockStride) {
-            if (paBlockStride != fp8PaBlockStride) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    kOpName, "key stride[0]", std::to_string(paBlockStride),
-                    "Must be equal to K/V/k_descale concatenated physical block size " +
-                        std::to_string(fp8PaBlockStride));
-                return ge::GRAPH_FAILED;
-            }
+        const uint64_t expectedPaBlockStride =
+            CalcPaBlockBytes(keyShape, sizeof(uint8_t)) + CalcPaBlockBytes(valueShape, sizeof(uint8_t)) +
+            CalcPaBlockBytes(kDescaleShape, sizeof(float));
+        if (paBlockStride != expectedPaBlockStride) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "key stride[0]", std::to_string(paBlockStride),
+                "Must be equal to K/V/k_descale concatenated physical block size " +
+                    std::to_string(expectedPaBlockStride));
+            return ge::GRAPH_FAILED;
         }
+    } else if (context_->InputIsView(QBSA_KEY_INDEX) && hasKeyBlockStride) {
+        tilingInfo.hasViewStride = true;
+        paBlockStride = keyStride->GetStride(blockNumAxis);
     } else {
         tilingInfo.hasViewStride = false;
-        if (canCalcFp8PaBlockStride) {
-            paBlockStride = fp8PaBlockStride;
-            OP_LOGD(kOpName, "stride is unavailable, derive paBlockStride=%llu from K/V/k_descale shapes",
-                    static_cast<unsigned long long>(paBlockStride));
-        } else {
-            paBlockStride = CalcPaBlockBytes(keyShape, sizeof(uint8_t));
-            OP_LOGD(kOpName, "key stride is unavailable, derive paBlockStride=%llu from key shape",
-                    static_cast<unsigned long long>(paBlockStride));
-        }
+        paBlockStride = CalcPaBlockBytes(keyShape, sizeof(uint8_t));
+        OP_LOGD(kOpName, "key stride is unavailable, derive paBlockStride=%llu from key shape",
+                static_cast<unsigned long long>(paBlockStride));
     }
     if (paBlockStride == 0U || paBlockStride > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "key stride[0]", std::to_string(paBlockStride),
@@ -362,7 +365,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         return ge::GRAPH_FAILED;
     }
 
-    const gert::Stride *keyStrideForPa = opParamInfo.key.stride;
     if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8) {
         const QBSARequiredParaInfo *requiredInputs[] = {
             &opParamInfo.query,          &opParamInfo.key,          &opParamInfo.value,
@@ -395,21 +397,23 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
                 }
             }
         }
-        const bool hasKeyBlockStride =
-            opParamInfo.key.stride != nullptr && opParamInfo.key.stride->GetDimNum() > 0U;
-        const bool hasValueBlockStride =
-            opParamInfo.value.stride != nullptr && opParamInfo.value.stride->GetDimNum() > 0U;
-        const bool hasKDescaleBlockStride =
-            opParamInfo.kDescale.stride != nullptr && opParamInfo.kDescale.stride->GetDimNum() > 0U;
-        const bool hasCompleteViewStride = hasKeyBlockStride && hasValueBlockStride && hasKDescaleBlockStride &&
-                                           context_->InputIsView(QBSA_KEY_INDEX) &&
-                                           context_->InputIsView(QBSA_VALUE_INDEX) &&
+        const bool hasKeyViewStride = opParamInfo.key.stride != nullptr &&
+                                      opParamInfo.key.stride->GetDimNum() == DIM_NUM_4 &&
+                                      context_->InputIsView(QBSA_KEY_INDEX);
+        const bool hasValueViewStride = opParamInfo.value.stride != nullptr &&
+                                        opParamInfo.value.stride->GetDimNum() == DIM_NUM_4 &&
+                                        context_->InputIsView(QBSA_VALUE_INDEX);
+        const bool hasKDescaleViewStride = opParamInfo.kDescale.stride != nullptr &&
+                                           opParamInfo.kDescale.stride->GetDimNum() == DIM_NUM_4 &&
                                            context_->InputIsView(QBSA_K_DESCALE_INDEX);
+        const bool hasCompleteViewStride = hasKeyViewStride && hasValueViewStride && hasKDescaleViewStride;
         if (!hasCompleteViewStride) {
-            keyStrideForPa = nullptr;
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "key/value/k_descale stride", "missing or incomplete",
+                "All key, value and k_descale 4D view strides must be provided by the framework when quant_mode is 1.");
+            return ge::GRAPH_FAILED;
         }
-        if (hasCompleteViewStride &&
-            opParamInfo.key.stride->GetStride(0U) != opParamInfo.value.stride->GetStride(0U)) {
+        if (opParamInfo.key.stride->GetStride(0U) != opParamInfo.value.stride->GetStride(0U)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "key/value stride[0]",
                 std::to_string(opParamInfo.key.stride->GetStride(0U)) + "/" +
@@ -437,7 +441,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
     if (ParseQuery(tilingInfo, queryShape, sparseIndicesShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ParseKeyValue(tilingInfo, keyShape, valueShape, kDescaleShape, keyStrideForPa) != ge::GRAPH_SUCCESS) {
+    if (ParseKeyValue(tilingInfo, keyShape, valueShape, kDescaleShape, opParamInfo.key.stride) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (ParseSparseIndices(tilingInfo, sparseIndicesShape) != ge::GRAPH_SUCCESS) {
