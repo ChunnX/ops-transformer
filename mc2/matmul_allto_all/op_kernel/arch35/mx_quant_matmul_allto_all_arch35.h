@@ -54,7 +54,7 @@ class MxQuantMatmulAlltoAllArch35 {
 public:
     __aicore__ inline MxQuantMatmulAlltoAllArch35(SchedulerType *pipeLine, uint64_t yHcclDataType)
         : pipeLine_(pipeLine), yHcclDataType_(yHcclDataType){};
-    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
+    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
                                 GM_ADDR x1Scale, GM_ADDR x2Scale, GM_ADDR workspaceGM,
                                 MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe);
     __aicore__ inline void Process();
@@ -88,7 +88,7 @@ template <typename SchedulerType, typename SchedulerContextType, typename Matmul
           bool IsMxFp4>
 __aicore__ inline void
 MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, IsMxFp4>::Init(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1Scale, GM_ADDR x2Scale,
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1Scale, GM_ADDR x2Scale,
     GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe)
 {
     tilingData_ = tilingData;

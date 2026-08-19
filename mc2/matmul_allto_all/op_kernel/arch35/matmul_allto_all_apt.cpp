@@ -103,7 +103,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,                                    \
                                                 QuantMatmulAlltoAllTilingData, isMxFp4>                                \
             op(&SchedulerImpl, hcclDataType);                                                                          \
-        op.Init(x1, x2, bias, y, all2all_out, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                      \
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                      \
         op.Process();                                                                                                  \
     } while (0)
 #endif
@@ -112,7 +112,7 @@ template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALL
           bool USING_APACE_IMPL>
 __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1Scale, GM_ADDR x2Scale,
                                              GM_ADDR commScale, GM_ADDR x1Offset, GM_ADDR x2Offset, GM_ADDR y,
-                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                             GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     TPipe pipe;
     constexpr HcclServerType commServerType =
@@ -135,12 +135,12 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: all2all_out为空且卡数<=8时启用，MatMul→AllToAll顺序
+        // apace hcomm路径: 卡数<=8时启用，MatMul→AllToAll顺序
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, false>
             op(&tilingData);
-        op.Init(x1, x2, bias, y, all2all_out, x1Scale, x2Scale, workspaceGM);
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
         op.Run();
     } else {
         // arch35 主线路径: 使用通信+转置+计算 pipeline
@@ -153,12 +153,12 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
     if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: all2all_out为空且卡数<=8时启用，FP4场景 MatMul→AllToAll
+        // apace hcomm路径: 卡数<=8时启用，FP4场景 MatMul→AllToAll
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, true>
             op(&tilingData);
-        op.Init(x1, x2, bias, y, all2all_out, x1Scale, x2Scale, workspaceGM);
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
         op.Run();
     } else {
         // arch35 主线路径: FP4场景使用uint8作为通信数据类型

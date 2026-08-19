@@ -74,7 +74,7 @@ public:
         : tilingData_(tilingData)
     {}
 
-    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
+    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
                                 GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
@@ -141,7 +141,7 @@ template <typename X1Type, typename X2Type, typename YType,
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Init(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
     auto &&commTiling = tilingData_->commTilingData;
@@ -161,10 +161,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     // workspace 布局: mmResult 用于存储 matmul 输出
     // mmResult 大小 = splitAxisSize_ (rankM) * nonSplitAxisSize (rankN) * sizeof(YType)
     mmResultGM_ = workspaceGM;
-    // 若 all2all_out 有效，可作为 AllToAll 接收缓冲区；否则复用 workspace 后段
-    if (all2all_out != nullptr) {
-        y_ = all2all_out;  // AllToAll 接收到 all2all_out，后续由框架拷贝到 y
-    }
 
     // 初始化 HCCL
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));

@@ -143,9 +143,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
+    // 判断是否使用apace实现: 卡数<=8
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    usingApaceImpl_ = (!contextInfo.allToAllOutFlag) && (contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
+    usingApaceImpl_ = (contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -670,7 +670,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // hcomm 路径: all2all_out为空且卡数<=8，使用 Blaze tiling
+        // hcomm 路径: 卡数<=8，使用 Blaze tiling
         return DoHcommMxQuantMMTiling();
     }
     // arch35 主线路径: 使用 DequantBmm tiling
