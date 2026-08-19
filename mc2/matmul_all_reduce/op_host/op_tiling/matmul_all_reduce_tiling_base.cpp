@@ -210,7 +210,7 @@ uint8_t MatmulAllReduceTilingBase::CalcBufferTypeByWindowSize()
             std::string envStr(getenv(HCCL_BUFFSIZE));
             defaultWindowSize = std::stoi(envStr);
         } catch (...) {
-            OP_LOGE(opName_, "Unknown Exception encountered when parser env HCCL_BUFFERSIZE.");
+            OP_LOGE(opName_, "Unknown Exception encountered when parsing env HCCL_BUFFSIZE.");
         }
     }
     // 1024 * 1024表示1M

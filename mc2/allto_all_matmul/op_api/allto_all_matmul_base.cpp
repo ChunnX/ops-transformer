@@ -274,7 +274,7 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype,
         commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode, all2AllOutFlag, out, all2AllOutOptional,
         workspaceSize, executor);
-    OP_LOGD("AlltoAllMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("AlltoAllMatmul, aclnnInnerGetWorkspaceSize ret %d.", ret);
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,

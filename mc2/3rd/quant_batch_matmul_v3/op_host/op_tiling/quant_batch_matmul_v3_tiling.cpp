@@ -1012,12 +1012,12 @@ bool Mc2QuantBatchMatmulV3Tiling::SetBlockDimsAndSingleCore(AscendC::tiling::TCu
         tbeTiling_.k_dim == 1 ? singleCoreK : ops::CeilAlign(singleCoreK, static_cast<uint64_t>(ONE_BLK_SIZE));
     OP_TILING_CHECK(
         singleCoreM > static_cast<uint64_t>(std::numeric_limits<int>::max()),
-        OP_LOGE(inputParams_.opName, "Cache tiling inner error: singleCoreM exceeds the expression range of the int."),
+        OP_LOGE(inputParams_.opName, "Cache tiling failed: singleCoreM exceeds the expression range of int."),
         return false);
 
     OP_TILING_CHECK(
         singleCoreN > static_cast<uint64_t>(std::numeric_limits<int>::max()),
-        OP_LOGE(inputParams_.opName, "Cache tiling inner error: singleCoreN exceeds the expression range of the int."),
+        OP_LOGE(inputParams_.opName, "Cache tiling failed: singleCoreN exceeds the expression range of int."),
         return false);
     mt.singleCoreM = singleCoreM;
     mt.singleCoreN = singleCoreN;
@@ -1038,7 +1038,7 @@ bool Mc2QuantBatchMatmulV3Tiling::SetBlockDimsAndSingleCore(AscendC::tiling::TCu
     auto blockDim = mDim * nDim * batchDim * kDim;
     OP_TILING_CHECK(
         blockDim > static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
-        OP_LOGE(inputParams_.opName, "Cache tiling inner error: blockDim exceeds the expression range of the int."),
+        OP_LOGE(inputParams_.opName, "Cache tiling failed: blockDim exceeds the expression range of int."),
         return false);
     mt.usedCoreNum = std::min(blockDim, aicoreParams_.aicNum);
     return true;
@@ -1084,7 +1084,7 @@ bool Mc2QuantBatchMatmulV3Tiling::SetMatmulTilingFromTbeTiling()
 
     bool fallback = false;
     OP_TILING_CHECK(!CalcUsedL1AndUBSize(a1Length * mt.depthA1, b1Length * mt.depthB1, fallback),
-                    OP_LOGE(inputParams_.opName, "Cache tiling inner error"), return false);
+                    OP_LOGE(inputParams_.opName, "CalcUsedL1AndUBSize failed in cache tiling."), return false);
     if (!fallback) {
         OP_LOGD(inputParams_.opName, "SetMatmulTilingFromTbeTiling !fallback");
         mt.shareL0CSize = c1Length;

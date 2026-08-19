@@ -811,7 +811,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::SetWorkspace()
     size_t *workspace = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr, OP_LOGE(nodeName_, "get workspace failed"), return ge::GRAPH_FAILED);
     workspace[0] = static_cast<size_t>(SYSTEM_NEED_WORKSPACE) + SDMA_NEED_WORKSPACE; // 可能的URMA适配点
-    OP_LOGD(nodeName_, "workspce[0] size is %ld", workspace[0]);
+    OP_LOGD(nodeName_, "workspace[0] size is %lu", workspace[0]);
     return ge::GRAPH_SUCCESS;
 }
 
