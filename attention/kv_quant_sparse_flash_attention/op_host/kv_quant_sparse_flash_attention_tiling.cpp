@@ -1952,8 +1952,8 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
 
         if (kvLayout_ == QSFALayout::PA_BSND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
-            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) * static_cast<uint64_t>(keyShape_.GetDim(2)) *
-                        static_cast<uint64_t>(keyShape_.GetDim(3));
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) * static_cast<uint64_t>(keyShape_.GetDim(2U)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(3U));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
             shapeSize = static_cast<uint64_t>(context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize());
