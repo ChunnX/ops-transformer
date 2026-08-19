@@ -23,8 +23,8 @@
 #include "block_mmad_arch35_utils.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0_mx_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1_mx_scale_dn2nz_a5.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/layout_bsa.hpp"
+#include "../../../tla/tensor_bsa.hpp"
 
 namespace NpuArch::Gemm::Block {
 

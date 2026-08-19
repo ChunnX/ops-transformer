@@ -21,8 +21,8 @@
  #include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
  #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
  #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0_mx_a5.hpp"
- #include "../../../tla/layout.hpp"
- #include "../../../tla/tensor.hpp"
+ #include "../../../tla/layout_bsa.hpp"
+ #include "../../../tla/tensor_bsa.hpp"
  #include "block_mmad_arch35_utils.hpp"
  
  namespace NpuArch::Gemm::Block {

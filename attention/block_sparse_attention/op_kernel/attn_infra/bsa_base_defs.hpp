@@ -24,7 +24,7 @@
 #include "../attn_infra/detail/bsa_dependent_false.hpp"
 #include "../attn_infra/detail/bsa_macros.hpp"
 
-// [mx-scale] 启用 catlass 的 isMxScale* trait 块（tla/layout.hpp:325 的 #if CATLASS_ARCH_A5_ENABLED guard）。
+// [mx-scale] 启用 catlass 的 isMxScale* trait 块（tla/layout_bsa.hpp:325 的 #if CATLASS_ARCH_A5_ENABLED guard）。
 // 仅 A5(310) 构建定义——fp8_e8m0_t 等 mx 类型在 A5 才有；A2(220) 不定义，避免编译 A2 无关的 fp8 类型。
 #if (__CCE_AICORE__ == 310) && !defined(CATLASS_ARCH_A5_ENABLED)
 #define CATLASS_ARCH_A5_ENABLED
