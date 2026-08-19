@@ -53,6 +53,7 @@ _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
+_MXFP8_CV_COMPARE_MODULE = None
 
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
@@ -1414,7 +1415,9 @@ LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
 
 
-def _align_up_to_ln2(value, use_quant_matmul):
+def _align_up_to_ln2(value, use_quant_matmul, high_precision=False):
+    if high_precision:
+        return value
     value_fp32 = value.to(torch.float32).contiguous()
     if use_quant_matmul:
         value_fp32 = value_fp32.npu()
@@ -1422,10 +1425,22 @@ def _align_up_to_ln2(value, use_quant_matmul):
     return result.cpu() if use_quant_matmul else result
 
 
-def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
-    """CPU torch.matmul path: FP32 dequant + matmul."""
-    q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
-    k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
+def _qk_matmul_cpu(
+    q_block,
+    q_scale_block,
+    k_mat,
+    k_scale_mat,
+    head_dim,
+    softmax_scale,
+    computation_dtype=torch.float32,
+):
+    """CPU torch.matmul path with selectable accumulation precision."""
+    q_dequant = q_block.to(computation_dtype) * _expand_d_group_scale(
+        q_scale_block, head_dim, computation_dtype
+    )
+    k_dequant = k_mat.to(computation_dtype) * _expand_d_group_scale(
+        k_scale_mat, head_dim, computation_dtype
+    )
     return torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
 
 
@@ -1498,12 +1513,19 @@ def _qk_matmul(
     head_dim,
     softmax_scale,
     use_quant_matmul,
+    computation_dtype=torch.float32,
 ):
     """Dispatch C1 QK matmul to CPU or NPU path."""
     if use_quant_matmul:
         return _qk_matmul_npu(q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale)
     return _qk_matmul_cpu(
-        q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale
+        q_block,
+        q_scale_block,
+        k_mat,
+        k_scale_mat,
+        head_dim,
+        softmax_scale,
+        computation_dtype,
     )
 
 
@@ -1514,13 +1536,13 @@ def _npu_exp_sub(lhs, rhs):
     return torch.exp(lhs_npu - rhs_npu).cpu()
 
 
-def _exp_sub(lhs, rhs, use_quant_matmul):
+def _exp_sub(lhs, rhs, use_quant_matmul, computation_dtype=torch.float32):
     """Evaluate exp(lhs - rhs) on the selected golden backend."""
     if use_quant_matmul:
         return _npu_exp_sub(lhs, rhs)
-    lhs_fp32 = lhs.to(torch.float32)
-    rhs_fp32 = rhs.to(torch.float32)
-    return torch.exp(lhs_fp32 - rhs_fp32)
+    lhs_value = lhs.to(computation_dtype)
+    rhs_value = rhs.to(computation_dtype)
+    return torch.exp(lhs_value - rhs_value)
 
 
 def _npu_mxfp8_pv_matmul_impl(p_fp8, v_fp8, p_scale, v_scale):
@@ -1579,9 +1601,10 @@ def _pv_matmul_cpu(
     nq,
     head_dim,
     l_run,
+    computation_dtype=torch.float32,
 ):
     """CPU torch.matmul path for C2 PV accumulation."""
-    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
+    pv = torch.zeros((nq, head_dim), dtype=computation_dtype)
     round_sum = torch.zeros_like(l_run)
     for (
         subloop_start,
@@ -1609,9 +1632,9 @@ def _pv_matmul_cpu(
             2,
         )
         v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
-            torch.float32
+            computation_dtype
         )
-        v_dequant = v_mat * v_scale_mat
+        v_dequant = v_mat.to(computation_dtype) * v_scale_mat
         pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
         round_sum += p_subloop.sum(dim=-1) * subloop_rescale
     return pv, round_sum
@@ -1704,6 +1727,7 @@ def _pv_matmul(
     l_run,
     head_dim,
     use_quant_matmul,
+    computation_dtype=torch.float32,
 ):
     """Dispatch C2 PV matmul to CPU or NPU path."""
     if use_quant_matmul:
@@ -1729,6 +1753,7 @@ def _pv_matmul(
         nq,
         head_dim,
         l_run,
+        computation_dtype,
     )
 
 
@@ -1777,20 +1802,27 @@ def _positions_from_sparse(
     return all_task_positions
 
 
-def _expand_d_group_scale(scale, width):
-    return scale.to(torch.float32).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
+def _expand_d_group_scale(scale, width, dtype=torch.float32):
+    return scale.to(dtype).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
         ..., :width
     ]
 
 
 def _gather_q_block_and_scale(
-    q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
+    q_tensor,
+    q_scale,
+    cu_seqlens_q,
+    batch_idx,
+    q_start,
+    q_end,
+    head_idx,
+    dtype=torch.float32,
 ):
     """Gather one Q block from the only supported MXFP8 Q layout, TND."""
     base = int(cu_seqlens_q[batch_idx].item())
     q_block = q_tensor[base + q_start : base + q_end, head_idx]
     q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
-    return q_block.to(torch.float32), q_scale_block.to(torch.float32)
+    return q_block.to(dtype), q_scale_block.to(dtype)
 
 
 def _valid_mask_for_positions(q_indices, positions, q_len, kv_len):
@@ -1819,9 +1851,13 @@ def cpu_mxfp8_golden(
     sparse_indices,
     sparse_seq_len,
     block_table_torch,
-    use_quant_matmul=True,
+    use_quant_matmul=False,
+    high_precision=False,
 ):
-    """Reference-style CPU golden for MXFP8 block sparse attention."""
+    """Reference-style MXFP8 golden with low/high CPU precision modes."""
+    if high_precision and use_quant_matmul:
+        raise ValueError("high_precision golden only supports CPU torch.matmul")
+    computation_dtype = torch.float64 if high_precision else torch.float32
     layout_q = "TND"
     q_tensor = q_fp8
     q_scale = dequant_scale_q
@@ -1834,10 +1870,10 @@ def cpu_mxfp8_golden(
     # order ambiguity.
     block_table = torch.as_tensor(block_table_torch, dtype=torch.int32)
     _validate_direct_pa_kv_shapes(k_fp8, v_fp8, dequant_scale_k, dequant_scale_v)
-    k_tensor = k_fp8.to(torch.float32)
-    v_tensor = v_fp8.to(torch.float32)
-    k_scale = torch.as_tensor(dequant_scale_k, dtype=torch.float32)
-    v_scale = torch.as_tensor(dequant_scale_v, dtype=torch.float32)
+    k_tensor = k_fp8.to(computation_dtype)
+    v_tensor = v_fp8.to(computation_dtype)
+    k_scale = torch.as_tensor(dequant_scale_k).to(computation_dtype)
+    v_scale = torch.as_tensor(dequant_scale_v).to(computation_dtype)
 
     total_q = int(cu_seqlens_q[-1].item())
     batch = len(q_lengths)
@@ -1852,8 +1888,10 @@ def cpu_mxfp8_golden(
         p_scale_value = float(p_scale_fp32.reshape(-1)[0].item())
     ln_p_scale = 0.0 if p_scale_value == 1.0 else math.log(p_scale_value)
 
-    attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
-    softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
+    attention_out = torch.zeros((total_q, n1, head_dim), dtype=computation_dtype)
+    softmax_lse = torch.full(
+        (total_q, n1), EMPTY_LSE, dtype=computation_dtype
+    )
 
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
     neg_inf = float("-inf")
@@ -1862,7 +1900,8 @@ def cpu_mxfp8_golden(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
     logger.info(
-        "[CPU Golden] QK/C2 path: %s, MXFP8 group_size=%d",
+        "[CPU Golden] precision=%s, QK/C2 path=%s, MXFP8 group_size=%d",
+        "high-fp64" if high_precision else "low-hardware-sim",
         "npu_quant_matmul" if use_quant_matmul else "torch.matmul (CPU)",
         QUANT_GROUP_SIZE,
     )
@@ -1902,11 +1941,12 @@ def cpu_mxfp8_golden(
                     q_start,
                     q_end,
                     head_idx,
+                    computation_dtype,
                 )
 
-                m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
-                l_run = torch.zeros((nq,), dtype=torch.float32)
-                acc = torch.zeros((nq, head_dim), dtype=torch.float32)
+                m_run = torch.full((nq,), neg_inf, dtype=computation_dtype)
+                l_run = torch.zeros((nq,), dtype=computation_dtype)
+                acc = torch.zeros((nq, head_dim), dtype=computation_dtype)
                 any_valid = torch.zeros((nq,), dtype=torch.bool)
 
                 for task_chunks in all_task_chunks:
@@ -1945,6 +1985,7 @@ def cpu_mxfp8_golden(
                         head_dim,
                         softmax_scale,
                         use_quant_matmul,
+                        computation_dtype,
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
@@ -1981,7 +2022,9 @@ def cpu_mxfp8_golden(
                             # VF order: score max -> softmax scale -> ceil to
                             # an ln2 multiple -> merge with the online max.
                             local_max = masked_scores.max(dim=-1).values
-                            local_max = _align_up_to_ln2(local_max, use_quant_matmul)
+                            local_max = _align_up_to_ln2(
+                                local_max, use_quant_matmul, high_precision
+                            )
                             subloop_started = m_subloop != neg_inf
                             m_candidate = torch.where(
                                 subloop_started,
@@ -1998,13 +2041,18 @@ def cpu_mxfp8_golden(
                                 s_subloop,
                                 m_subloop.view(nq, 1) - ln_p_scale,
                                 use_quant_matmul,
+                                computation_dtype,
                             )
                             p_subloop = torch.where(
                                 vm_subloop & subloop_has.view(nq, 1),
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = (
+                                p_subloop
+                                if high_precision
+                                else p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            )
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -2018,7 +2066,10 @@ def cpu_mxfp8_golden(
                         m_new = m_subloop
                         run_started = m_before_round != neg_inf
                         history_rescale = _exp_sub(
-                            m_before_round, m_new, use_quant_matmul
+                            m_before_round,
+                            m_new,
+                            use_quant_matmul,
+                            computation_dtype,
                         )
                         history_rescale = torch.where(
                             run_started & torch.isfinite(m_new),
@@ -2043,6 +2094,7 @@ def cpu_mxfp8_golden(
                             l_run,
                             head_dim,
                             use_quant_matmul,
+                            computation_dtype,
                         )
 
                         acc = acc * history_rescale.view(nq, 1) + pv
@@ -2061,8 +2113,10 @@ def cpu_mxfp8_golden(
                     if not bool(any_valid[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
-                    attention_out[out_idx, head_idx] = attn[local_idx].to(
-                        torch.bfloat16
+                    attention_out[out_idx, head_idx] = (
+                        attn[local_idx]
+                        if high_precision
+                        else attn[local_idx].to(torch.bfloat16)
                     )
                     softmax_lse[out_idx, head_idx] = lse[local_idx]
 
@@ -2071,7 +2125,45 @@ def cpu_mxfp8_golden(
         attention_out.shape,
         softmax_lse.shape,
     )
-    return attention_out.contiguous(), softmax_lse.contiguous()
+    return (
+        attention_out.to(torch.float32).contiguous(),
+        softmax_lse.to(torch.float32).contiguous(),
+    )
+
+
+def cpu_mxfp8_golden_high_precision(
+    q_fp8,
+    k_fp8,
+    v_fp8,
+    dequant_scale_q,
+    dequant_scale_k,
+    dequant_scale_v,
+    p_scale,
+    q_lengths,
+    kv_lengths,
+    cu_seqlens_q,
+    sparse_indices,
+    sparse_seq_len,
+    block_table_torch,
+):
+    """FP64 mathematical benchmark for three-way precision comparison."""
+    return cpu_mxfp8_golden(
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        q_lengths,
+        kv_lengths,
+        cu_seqlens_q,
+        sparse_indices,
+        sparse_seq_len,
+        block_table_torch,
+        use_quant_matmul=False,
+        high_precision=True,
+    )
 
 
 # ==============================================================================
@@ -2761,6 +2853,72 @@ def _load_golden_cache():
     return golden_cache
 
 
+def _load_mxfp8_cv_compare_module():
+    """Reuse FIA's method-12 three-way precision implementation."""
+    global _MXFP8_CV_COMPARE_MODULE
+    if _MXFP8_CV_COMPARE_MODULE is not None:
+        return _MXFP8_CV_COMPARE_MODULE
+
+    relative_path = os.path.join(
+        "attention",
+        "fused_infer_attention_score",
+        "tests",
+        "pytest",
+        "fia_fullquant_mxfp8_test",
+        "common",
+        "precision_compare_v2.py",
+    )
+    search_root = CURRENT_DIR
+    module_path = None
+    while True:
+        candidate = os.path.join(search_root, relative_path)
+        if os.path.isfile(candidate):
+            module_path = candidate
+            break
+        parent = os.path.dirname(search_root)
+        if parent == search_root:
+            break
+        search_root = parent
+    if module_path is None:
+        raise ImportError(
+            "cannot locate FIA precision_compare_v2.py for QBSA three-way compare"
+        )
+
+    module_name = "_qbsa_fia_precision_compare_v2"
+    if module_name in sys.modules:
+        _MXFP8_CV_COMPARE_MODULE = sys.modules[module_name]
+        return _MXFP8_CV_COMPARE_MODULE
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load CV compare module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    original_basic_config = logging.basicConfig
+    logging.basicConfig = lambda *args, **kwargs: None
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        logging.basicConfig = original_basic_config
+    _MXFP8_CV_COMPARE_MODULE = module
+    return module
+
+
+def _mxfp8_cv_compare(golden, benchmark, actual, output_name, output_dtype):
+    module = _load_mxfp8_cv_compare_module()
+    report = module.compute_cv_report(
+        golden=golden,
+        benchmark=benchmark,
+        actual=actual,
+        test_name=output_name,
+        output_dtype=output_dtype,
+    )
+    module.display_cv_report(report)
+    return report
+
+
 def _cache_case_name(case_id, case_name_arg, total_case_num):
     safe_case_id = case_id.replace("/", "_")
     if case_name_arg is None:
@@ -2777,12 +2935,17 @@ def _cpu_golden_cache_name(case_name, p_scale):
     consumed the original FP32 P scale.
     """
     if p_scale is None or p_scale.numel() == 0:
-        return f"{case_name}__pse8_default"
+        return f"{case_name}__cv3_v1__pse8_default"
     p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "CPU cache P scale")
     raw = p_scale_e8m0.contiguous().view(torch.uint8).reshape(-1)
     if raw.numel() != 1:
         raise ValueError(f"P scale must contain one E8M0 value, got {raw.numel()}")
-    return f"{case_name}__pse8_{int(raw.item()):02x}"
+    return f"{case_name}__cv3_v1__pse8_{int(raw.item()):02x}"
+
+
+def _cpu_benchmark_cache_name(cpu_cache_name, use_quant_matmul):
+    backend = "quant_matmul" if use_quant_matmul else "torch_matmul"
+    return f"{cpu_cache_name}__{backend}"
 
 
 def _safe_debug_case_name(case_name):
@@ -2937,7 +3100,7 @@ def run_one_case(
     rdv_cache_dir=None,
     debug=False,
     graph=False,
-    use_quant_matmul=True,
+    use_quant_matmul=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -3043,7 +3206,11 @@ def run_one_case(
     if p_scale is not None and p_scale.numel() > 0:
         p_scale = fp32_to_e8m0fnu_safe(p_scale, "Shared P scale")
     cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale)
-    logger.info("[CACHE] CPU golden key=%s", cpu_cache_name)
+    benchmark_cache_name = _cpu_benchmark_cache_name(
+        cpu_cache_name, use_quant_matmul
+    )
+    logger.info("[CACHE] high-precision CPU golden key=%s", cpu_cache_name)
+    logger.info("[CACHE] low-precision CPU benchmark key=%s", benchmark_cache_name)
 
     _, mfu_time = _log_attention_compute_stats(
         case_id, q_lengths, kv_lengths, sparse_indices, sparse_seq_len
@@ -3055,8 +3222,14 @@ def run_one_case(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
 
-    if rdv and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir):
-        logger.info("\n[Step 2] 复用 CPU Golden")
+    if (
+        rdv
+        and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir)
+        and golden_cache.has_benchmark_output(
+            benchmark_cache_name, cache_dir=rdv_cache_dir
+        )
+    ):
+        logger.info("\n[Step 2] 复用高/低精度 CPU 结果")
         logger.info(
             "[RDV] 已找到 case=%s 的 CPU golden，跳过 CPU 生成",
             cpu_cache_name,
@@ -3064,14 +3237,32 @@ def run_one_case(
         cpu_out, cpu_lse = golden_cache.load_cpu_output(
             cpu_cache_name, cache_dir=rdv_cache_dir
         )
+        benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
+            benchmark_cache_name, cache_dir=rdv_cache_dir
+        )
     elif "cpu" in mode:
-        logger.info("\n[Step 2] CPU Golden")
+        logger.info("\n[Step 2] 高精度 CPU Golden + 低精度 CPU Benchmark")
         if rdv:
             logger.info(
                 "[RDV] 未找到 case=%s 的 CPU golden，按原流程生成",
                 cpu_cache_name,
             )
-        cpu_out, cpu_lse = cpu_mxfp8_golden(
+        cpu_out, cpu_lse = cpu_mxfp8_golden_high_precision(
+            q_fp8,
+            k_fp8,
+            v_fp8,
+            dequant_scale_q,
+            dequant_scale_k,
+            dequant_scale_v,
+            p_scale,
+            q_lengths,
+            kv_lengths,
+            cu_seqlens_q,
+            sparse_indices,
+            sparse_seq_len,
+            block_table_torch,
+        )
+        benchmark_out, benchmark_lse = cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
             v_fp8,
@@ -3090,9 +3281,18 @@ def run_one_case(
         golden_cache.save_cpu_output(
             cpu_cache_name, cpu_out, cpu_lse, cache_dir=cache_dir
         )
+        golden_cache.save_benchmark_output(
+            benchmark_cache_name,
+            benchmark_out,
+            benchmark_lse,
+            cache_dir=cache_dir,
+        )
     elif "compare" in mode:
         cpu_out, cpu_lse = golden_cache.load_cpu_output(
             cpu_cache_name, cache_dir=cache_dir
+        )
+        benchmark_out, benchmark_lse = golden_cache.load_benchmark_output(
+            benchmark_cache_name, cache_dir=cache_dir
         )
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
@@ -3135,7 +3335,15 @@ def run_one_case(
             case_id, "NpuDone", time.time() - start_time, mfu_time=mfu_time
         )
 
-    logger.info("\n[Step 4] Atten OUT 精度对比")
+    logger.info("\n[Step 4] Atten OUT 三方精度对比")
+    out_cv_report = _mxfp8_cv_compare(
+        cpu_out,
+        benchmark_out,
+        atten_out,
+        "qbsa_mxfp8_attention_out",
+        "bf16",
+    )
+    logger.info("[Simple] high-precision CPU vs NPU")
     out_result = result_compare_method.check_result(cpu_out, atten_out, debug=debug)
     if precision_dir is not None:
         result_compare_method.save_precision_map(
@@ -3147,8 +3355,17 @@ def run_one_case(
         )
 
     lse_result = None
+    lse_cv_report = None
     if ENABLE_LSE:
-        logger.info("\n[Step 5] LSE 精度对比")
+        logger.info("\n[Step 5] LSE 三方精度对比")
+        lse_cv_report = _mxfp8_cv_compare(
+            cpu_lse,
+            benchmark_lse,
+            lse_out,
+            "qbsa_mxfp8_softmax_lse",
+            "fp32",
+        )
+        logger.info("[Simple] high-precision CPU vs NPU")
         lse_result = result_compare_method.check_result(cpu_lse, lse_out, debug=debug)
         if precision_dir is not None:
             result_compare_method.save_precision_map(
@@ -3160,8 +3377,8 @@ def run_one_case(
             )
 
     status = "Pass"
-    if _result_status(out_result) != "Pass" or (
-        lse_result is not None and _result_status(lse_result) != "Pass"
+    if not out_cv_report.passed or (
+        lse_cv_report is not None and not lse_cv_report.passed
     ):
         status = "Failed"
     return _make_case_result(
@@ -3245,16 +3462,18 @@ if __name__ == "__main__":
         "例如 --case_range 100:200 跑第100到200行(含)的用例",
     )
     parser.add_argument(
-        "--matmul",
+        "--quant_matmul",
+        "--quant_mamtul",
+        dest="quant_matmul",
         action="store_true",
-        help="使用 CPU torch.matmul 而非 npu_quant_matmul 做 QK/PV 计算",
+        help="低精度 CPU benchmark 使用 npu_quant_matmul；默认使用 CPU torch.matmul",
     )
     args = parser.parse_args()
 
-    use_quant_matmul = not args.matmul
+    use_quant_matmul = args.quant_matmul
     logger.info(
-        "[Config] matmul backend: %s",
-        "torch.matmul (CPU)" if args.matmul else "npu_quant_matmul",
+        "[Config] low-precision benchmark matmul backend: %s",
+        "npu_quant_matmul" if use_quant_matmul else "torch.matmul (CPU)",
     )
 
     raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
