@@ -2,14 +2,14 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | × |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    ×    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
@@ -17,7 +17,6 @@
 
   - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 target_score=0 处 log(0) 导致 NaN。
   - **student 侧**（index_probs）：indexer softmax 后的概率分布，用 `+eps` 保住 index_probs→0 处的梯度。
-
 - 计算公式：
 
   $$
@@ -62,22 +61,23 @@ lightning_indexer_kl_loss(
 
 ## 参数说明
 
-| 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
-| :--- | :--- | :--- | :--- | :--- |
-| target_score | 必选输入 | teacher 侧压缩段原始未归一化主注意力分数，sum != 1。 | `float16`、`bfloat16`、`float32` | `(B, S, K)` 或 `(T, K)` |
-| index_probs | 必选输入 | student 侧 indexer softmax 后的概率分布。 | 与 `target_score` 一致 | 与 `target_score` 一致 |
-| eps | 可选属性 | 数值稳定常数，默认值为1e-9。 | `float` | - |
-| weight_type | 可选属性 | 外层权重选择。`'logits'`（默认）用原始 target_score 作为外层权重；`'probs'` 用归一化概率 P = target_score / sum(target_score) 作为外层权重。 | `str` | - |
+| 参数名       | 输入/输出 | 描述                                                                                                                                             | 数据类型                               | 维度                        |
+| :----------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------- | :-------------------------- |
+| target_score | 必选输入  | teacher 侧压缩段原始未归一化主注意力分数，sum != 1。                                                                                             | `float16`、`bfloat16`、`float32` | `(B, S, K)` 或 `(T, K)` |
+| index_probs  | 必选输入  | student 侧 indexer softmax 后的概率分布。                                                                                                        | 与`target_score` 一致                | 与`target_score` 一致     |
+| eps          | 可选属性  | 数值稳定常数，默认值为1e-9。                                                                                                                     | `float`                              | -                           |
+| weight_type  | 可选属性  | 外层权重选择。`'logits'`（默认）用原始 target_score 作为外层权重；`'probs'` 用归一化概率 P = target_score / sum(target_score) 作为外层权重。 | `str`                                | -                           |
 
 ## 返回值说明
 
-| 输出 | 描述 | 数据类型 | 维度 |
-| :--- | :--- | :--- | :--- |
-| loss | KL 散度标量损失。 | 与输入一致 | `(1,), 标量`|
+| 输出 | 描述              | 数据类型   | 维度           |
+| :--- | :---------------- | :--------- | :------------- |
+| loss | KL 散度标量损失。 | 与输入一致 | `(1,), 标量` |
 
 ## 约束说明
 
-- `target_score` 与 `index_probs` 的数据类型必须一致，维度相同（BSK 或 TKC），且最后一维 `K` 相等。
+- `target_score` 与 `index_probs` 的数据类型必须一致，且shape一致。
+- 支持 shape 为 (B, S, K) 或 (T, K)，B的取值范围为1\~512，最后一维 K 的取值范围为 1\~8192。
 - `eps` 必须大于 0。
 - `weight_type` 必须为 `'logits'` 或 `'probs'`。
 - `target_score` 与 `index_probs` 需在同一 NPU 设备上。
