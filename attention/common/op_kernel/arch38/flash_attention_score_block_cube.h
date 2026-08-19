@@ -125,6 +125,7 @@ public:
         UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, s1BaseSize == 64),
         (s2BaseSize == 256 && s1BaseSize == 64));
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
+    static constexpr uint8_t FIXP_DEFAULT_FIXED_SHIFT_VAL = 16;
     static constexpr FixpipeConfig BMM1_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true, !isInt8};
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub, !isInt8};
     static constexpr uint32_t l1BaseD =
@@ -580,6 +581,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
+        fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>()[gmNOffset], mm2ResL0C.GetTensor<T>(),
                                            fixpipeParams); // 将matmul结果从L0C搬运到UB
         mm2ResL0C.Set<HardEvent::FIX_M>();                 // 释放
@@ -677,6 +679,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outputBuf,
         fixpipeParams.params.dstNdStride = 0;
         fixpipeParams.quantPre = QuantMode_t::DEQF16;
         fixpipeParams.deqScalar = constInfo.deqScaleVValue;
+        fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
         Fixpipe<T, int32_t, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<int32_t>(),
                                                  fixpipeParams); // 将matmul结果从L0C搬运到UB
         mm2ResL0C.Set<HardEvent::FIX_M>();                       // 释放
@@ -869,6 +872,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(Buffer<BufferType::UB, SyncType
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
+    fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                  // 释放
@@ -973,6 +977,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(Buffer<BufferType::UB, SyncType:
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
+    fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
 
@@ -1084,6 +1089,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS
     fixpipeParams.params.dstNdStride = 0;
     fixpipeParams.quantPre = QuantMode_t::DEQF16;
     fixpipeParams.deqScalar = constInfo.deqScaleQKValue;
+    fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
     Fixpipe<T, L0C_TYPE, BMM1_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<L0C_TYPE>(),
                                               fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                        // 释放L0C
@@ -1199,6 +1205,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(Buffer<BufferType::UB, SyncTyp
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
+    fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                  // 释放
@@ -1302,6 +1309,7 @@ FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS
     fixpipeParams.params.dstNdStride = 0;
     fixpipeParams.quantPre = QuantMode_t::DEQF16;
     fixpipeParams.deqScalar = constInfo.deqScaleQKValue;
+    fixpipeParams.fixShiftVal = FIXP_DEFAULT_FIXED_SHIFT_VAL;
     Fixpipe<T, int32_t, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<int32_t>(),
                                               fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                        // 释放L0C
