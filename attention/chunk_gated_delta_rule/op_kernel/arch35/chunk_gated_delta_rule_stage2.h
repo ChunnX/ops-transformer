@@ -170,14 +170,14 @@ public:
     // Key change vs original: VPrime and AttnInter run back-to-back without CrossCore sync between them.
     // StateNew still waits for v_new_scaled (sync0x5), but overlaps with next chunk's AIV state_prep.
 
-    // CV pipeline AIV (FP32 path): merged gCum read, no vInner GM round-trip
-    //   Phase 1: state_prep + CalGCumExpAndD (merged) → sync0x3
-    //   Phase 2: wait sync0x2 → write vNewScaledGm only (for CalStateNew) → sync0x5
+    // CV pipeline AIV (FP32 path): 3-phase流水线
+    //   Phase 1: state_prep + state decay + d 向量计算 → sync0x3
+    //   Phase 2: wait sync0x2 → v_new cast+scale → sync0x5
     //   Phase 3: wait sync0x4
-    // Eliminated: CastGmToGmDual (AIC reads vInner_ directly for Stage3 via accum)
     __aicore__ inline void ProcessAivFp32(int64_t nvId, int64_t cId, int64_t length)
     {
         if (GetSubBlockIdx() == 0) {
+            // state CopyIn: FP32 state (Dv,Dk) GM → UB
             if (isFirstGroup_ && cId == 0) {
                 CopyIn<float>(sTP_->stateIn[nvId * stateStride1_], Dv_, Dk_);
             } else {
@@ -186,61 +186,67 @@ public:
             auto stateIn = inQueue_.DeQue<float>();
             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
             inQueue_.FreeTensor(stateIn);
+            // state_bf16 = Cast(state) → GM curStateBf16_ (供 AIC matmul)
             auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-            // CV: merged gCum read — state decay + d vector in one pass (eliminates duplicate gCum read)
+            // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取)
             CalGCumExpAndD(sTP_->gCum[nvId * Sp_ + length]);
             PipeBarrier<PIPE_MTE3>();
+            // state_out = state (含 decay) → GM stateOut_ (供下一 chunk / CalStateNew accum)
             auto fp32Local = outQueue_.AllocTensor<float>();
             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
             outQueue_.EnQue(fp32Local);
             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        CrossCoreWaitFlag(0x2);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3); // → AIC: state 就绪
+        CrossCoreWaitFlag(0x2);                 // ← AIC: v_new = v_inner + kcd@state^T 完成
         if (GetSubBlockIdx() == 0) {
-            // CV: write vInnerBf16_ (unscaled, for Stage3) + vNewScaledGm_ (scaled, for CalStateNew)
+            // vInnerBf16_ = Cast(v_new)           (unscaled, 供 Stage3: masked_qkt @ v_new)
+            // vNewScaledGm_ = Cast(v_new * d)     (scaled, 供 CalStateNew: state += v_new_scaled^T @ K)
+            //   单次 GM→UB 读取, 产出两份输出
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
             CastGmToGmDual<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
                                               vNewScaledGm_, curChunkSize_ * Dv_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: v_new_scaled 就绪
+        CrossCoreWaitFlag(0x4);                 // ← AIC: CalStateNew 完成
     }
 
-    // CV pipeline AIV (BF16 path): merged gCum read, vInner stays in GM for Stage3
-    //   Phase 1: state_prep + CalGCumExpAndD (merged) → sync0x3
-    //   Phase 2: wait sync0x2 → write vNewScaledGm_ only → sync0x5
+    // CV pipeline AIV (BF16 path): 3-phase流水线
+    //   Phase 1: state_prep + state decay + d 向量计算 → sync0x3
+    //   Phase 2: wait sync0x2 → v_new scale → sync0x5
     //   Phase 3: wait sync0x4
-    // Eliminated: CopyAndScaleVInnerBf16 (vInner_ stays as-is for Stage3, AIC reads scaled vNewScaledGm_)
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
         auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
+            // state CopyIn: BF16 state (Dv,Dk) GM → UB
             CopyIn(curState, Dv_, Dk_);
-            // CV: merged gCum read — state decay + d vector in one pass
+            // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取)
+            //   state decay: BF16→FP32→Muls(expGEnd)→BF16
             CalGCumExpBf16AndD(sTP_->gCum[nvId * Sp_ + length]);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        CrossCoreWaitFlag(0x2);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3); // → AIC: state 就绪
+        CrossCoreWaitFlag(0x2);                 // ← AIC: v_new = v_inner + kcd@state^T 完成
         if (GetSubBlockIdx() == 0) {
+            // state_out = state (含 decay) → GM stateOut_
             CopyOutState(finalState);
-            // CV: write vNewScaledGm_ only (for CalStateNew), vInner_ stays unscaled for Stage3
+            // vNewScaledGm_ = v_new * d[:,None]  (BF16→FP32→Scale→BF16, 供 CalStateNew)
+            //   vInner_ 保持不变 (供 Stage3 直接读)
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
             CastGmToGmWithScale<bfloat16_t, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
                                                          curChunkSize_ * Dv_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: v_new_scaled 就绪
+        CrossCoreWaitFlag(0x4);                 // ← AIC: CalStateNew 完成
     }
 
-    // CV pipeline AIC: VPrime+AttnInter fused (no mid-wait), StateNew after v_new ready
-    //   Phase 1: wait sync0x3 (AIV state ready) → VPrime + AttnInter → sync0x2
-    //   Phase 2: wait sync0x5 (AIV v_new_scaled ready) → StateNew → sync0x4
-    //   StateNew overlaps with next chunk's AIV Phase 1 (state_prep)
+    // CV pipeline AIC: 3 matmul, VPrime+AttnInter 融合 (无中间同步)
+    //   Phase 1: wait sync0x3 → v_new = v_inner + kcd@state^T (accum=1) + attn_inter = qPrime@state^T → sync0x2
+    //   Phase 2: wait sync0x5 → state += v_new_scaled^T @ K (accum=1) → sync0x4
     __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
     {
         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
@@ -248,16 +254,20 @@ public:
         auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
         GlobalTensor<bfloat16_t> stateForAic;
         if constexpr (kIsFp32) {
-            CrossCoreWaitFlag(0x3);
+            CrossCoreWaitFlag(0x3); // ← AIV: curStateBf16 就绪
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
             stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
-        // CV: VPrime + AttnInter fused — no sync between them
+        // v_new = v_inner + k_cumdecay @ state^T  (accum=1, 在 vInner_ 上叠加)
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
+        // attn_inter = qPrime @ state^T  (直接写最终输出 out_)
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-        CrossCoreWaitFlag(0x5);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2); // → AIV: VPrime+AttnInter 完成
+        CrossCoreWaitFlag(0x5);                 // ← AIV: v_new_scaled 就绪
+        // state += v_new_scaled^T @ K  (accum=1)
+        //   v_new_scaled = v_new * d[:,None] (从 vNewScaledGm_ 读)
+        //   K 从原始 GM (T,Nk,Dk) strided 读
         int64_t kStart = sTP_->cgStartPos + length;
         uint64_t kOffset = static_cast<uint64_t>(kStart) * Nk_ * Dk_ +
                            static_cast<uint64_t>(nvId) * (Nk_ / Nv_) * Dk_;
@@ -269,10 +279,13 @@ public:
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4); // → AIV: state 更新完成
     }
 
-    // CV: merged gCum read — compute exp(g[-1]) for state decay AND d[j]=exp(g[-1]-g_cum[j]) in one pass
+    // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取, FP32 path)
+    //   expGEnd = exp(gCum_[-1])
+    //   d = exp(gCum_[-1] - gCum_[0:C])
+    //   stateFp32Ub *= expGEnd
     __aicore__ inline void CalGCumExpAndD(GlobalTensor<float> gCumGm)
     {
         if constexpr (gOptional) {
@@ -318,6 +331,7 @@ public:
         }
     }
 
+    // state *= exp(g[-1])  (FP32 path, 仅 state decay, d 在 CalGCumExpAndD 中计算)
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
     {
         if constexpr (!gOptional) {
@@ -336,7 +350,9 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    // CV: merged CalGCumExpBf16 + CalD — state decay + d vector in one gCum read
+    // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取, BF16 path)
+    //   state decay: BF16→FP32→Muls(expGEnd)→BF16
+    //   d = exp(gCum_[-1] - gCum_[0:C])
     __aicore__ inline void CalGCumExpBf16AndD(GlobalTensor<float> gCum)
     {
         float expGEnd;
@@ -392,6 +408,7 @@ public:
         }
     }
 
+    // state *= exp(g[-1])  (BF16 path, 仅 state decay, d 在 CalGCumExpBf16AndD 中计算)
     __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
     {
         if constexpr (gOptional) {
@@ -446,12 +463,14 @@ public:
         mm->End();
     }
 
+    // attn_inter = qPrime @ state^T  (直接写 out_, M=C, N=Dv, K=Dk)
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime, GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
         RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out, curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
     }
 
+    // v_new = v_inner + k_cumdecay @ state^T  (accum=1, M=C, N=Dv, K=Dk)
     template <typename vInnerType>
     __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay, GlobalTensor<bfloat16_t> state,
                                      GlobalTensor<vInnerType> vPrime)
@@ -463,8 +482,8 @@ public:
         }
     }
 
-    // CalStateNew: state += v_new_scaled^T @ K, where v_new_scaled = v_new * d[:,None]
-    //   d[j] = exp(g[-1]-g_cum[j]) is applied in AIV (CastGmToGmWithScale/CopyAndScaleVInnerBf16 → vNewScaledGm_)
+    // state += v_new_scaled^T @ K  (accum=1, M=Dv, N=Dk, K=C, strided K)
+    //   v_new_scaled = v_new * d[:,None] (从 vNewScaledGm_ 读)
     template <typename stateOutType>
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> keyStridedGm,
                                        GlobalTensor<stateOutType> state, uint64_t kStride)
@@ -478,6 +497,7 @@ public:
         }
     }
 
+    // dstGm = Cast(srcGm)  (类型转换, 无缩放)
     template <typename srcType, typename dstType>
     __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm, int32_t count)
     {
@@ -510,7 +530,7 @@ public:
         outQueue_.FreeTensor(dstLocal);
     }
 
-    // R7: Compute d = exp(g[-1] - g_cum[0:curChunkSize]) from gCum_ GM
+    // d[j] = exp(g[-1]-g_cum[j])  (从 gCum_ 读取, C 维向量)
     __aicore__ inline void CalD(GlobalTensor<float> gCumGm)
     {
         if constexpr (!gOptional) {
@@ -538,7 +558,9 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    // R7: CastGmToGm with d row scaling (FP32→BF16, vInner *= d[:,None])
+    // dstGm = Cast(srcGm * d[:,None])  (类型转换 + d 行缩放)
+    //   FP32→BF16: Mul(srcLocal, d_broad) → Cast(BF16)
+    //   BF16→BF16: Cast(FP32) → Mul(d_broad) → Cast(BF16)
     template <typename srcType, typename dstType>
     __aicore__ inline void CastGmToGmWithScale(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
                                                int32_t count)
@@ -601,8 +623,9 @@ public:
         outQueue_.FreeTensor(dstLocal);
     }
 
-    // CV fusion: single GM→UB read, produce both unscaled (for Stage3) and scaled (for CalStateNew)
-    //   Replaces CastGmToGm + CastGmToGmWithScale (saves 1 GM→UB round-trip)
+    // 单次 GM→UB 读取, 产出两份输出:
+    //   dstUnscaledGm = Cast(srcGm)          (供 Stage3)
+    //   dstScaledGm = Cast(srcGm * d[:,None]) (供 CalStateNew)
     template <typename srcType, typename dstType>
     __aicore__ inline void CastGmToGmDual(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstUnscaledGm,
                                           GlobalTensor<dstType> dstScaledGm, int32_t count)

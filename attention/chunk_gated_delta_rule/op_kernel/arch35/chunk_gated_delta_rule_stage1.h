@@ -286,15 +286,15 @@ private:
 
     __aicore__ inline void ParaChunkAIC(int32_t curParaNum)
     {
-        // R2: KKT = K @ K^T, read directly from strided GM (no contiguous copy, no sync0 needed)
+        // KKT = K @ K^T, A=B=keyGm_(C,Dk) strided, result → kkWs (C,C)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             AICProcess(mmBf16_, keyGm_[qk_base], keyGm_[qk_base], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_, qkStride_, qkStride_}, true);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // → AIV: KKT 就绪
         }
 
-        // R2: QKT = Q @ K^T, read directly from strided GM
+        // QKT = Q @ K^T, A=queryGm_(C,Dk) strided, B=keyGm_(C,Dk) strided transB, result → qkt_ (C,C)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             AICProcess(mmBf16_, queryGm_[qk_base], keyGm_[qk_base],
@@ -303,27 +303,31 @@ private:
                         qkStride_, qkStride_},
                        true);
         }
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步5
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // → AIV: QKT 就绪
 
-        // 求逆左下角矩阵
+        // 求逆辅助: M_lower = M_lower - M_upper @ M_inv_diag @ M_lower (前代法左下角块)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x7); // 同步2
+            AscendC::CrossCoreWaitFlag(0x7); // ← AIV: 求逆 A 完成
             AttnInverseMMCompute(i * ccOffset_);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xB); // R4: 通知 AIV 可做列缩放
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xB); // → AIV: 可做列缩放
         }
 
-        // R4+R5: k_cumdecay = -A_beta_gexp @ K (读 attnWsNegGm_, K 从 strided GM)
+        // k_cumdecay = -(A @ diag(β) @ diag(g_exp)) @ K
+        //   A = attnWsNegGm_(C,C) [A_beta_gexp, 含负号], B = keyGm_(C,Dk) strided
+        //   等价: A @ (-K·β·g_exp), result → kCumDecay_ (C,Dk)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x6); // 同步3
+            AscendC::CrossCoreWaitFlag(0x6); // ← AIV: A_beta_gexp 就绪
             uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             AICProcess(mmBf16_, attnWsNegGm_[i * ccOffset_], keyGm_[qk_base],
                        outKCumdecayGm_[chunkRowBase_[i] * dk_],
                        {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
         }
 
-        // R4: vInner = A_beta @ V (读 attnWs_, V 从 strided GM)
+        // v_inner = (A @ diag(β)) @ V
+        //   A = attnWs_(C,C) [A_beta], B = valueGm_(C,Dv) strided
+        //   等价: A @ (V·β), result → vInner_ (C,Dv)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x5); // 同步4
+            AscendC::CrossCoreWaitFlag(0x5); // ← AIV: A_beta 就绪
             uint64_t vOffset = chunkStartRowBatch_[i] * vRowStride_ + nIdBatch_[i] * dv_;
             AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], valueGm_[vOffset],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
@@ -333,51 +337,53 @@ private:
 
     __aicore__ inline void ParaChunkAIV(int32_t curParaNum)
     {
-        // R2: QKPreProcess removed, AIC reads Q/K directly from strided GM
+        // g_cum = cumsum(g), g_cum_exp = exp(g_cum)
+        // gCum_ written to GM for Stage2/3
         if constexpr (gOptional) {
             for (uint32_t i = 0; i < curParaNum; ++i) {
-                // g_cum_exp = g.cumsum(dim=-1).exp()
                 GCumExpCompute(gGm_[bgOffsetBatch_[i]], outGCumExpGm_[chunkRowBase_[i]],
                                gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], validLenBatch_[i]);
-                // attn_1 = (g_cum_exp[:None] / g_cum_exp[None,:]) * mask
+                // gamma = exp(g_cum[:,None] - g_cum[None,:]) * tril_mask  (C,C decay matrix)
                 uint64_t gUbOffset = i * chunkSize_ * maxLen_;
                 GammaCompute(gBroadUbFloat_[gUbOffset], gammaUbFloat_[gUbOffset], gCumSumUbFloat_[i * chunkSize_]);
             }
         }
 
+        // beta → UB (strided copy from GM)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             uint64_t betaUbOffset = i * halfChunkSize_;
             BetaCopyInWithStride(betaGm_[bgOffsetBatch_[i]], betaUbFloat_[betaUbOffset], subValidLenBatch_[i]);
         }
 
+        // attn = kk * beta * gamma  →  A = (I - attn)^{-1}  (前代法, 对角块 INVERSE_SHAPE=32)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x8); // 同步1
-            // attn_1 = kkt * attn_1
+            AscendC::CrossCoreWaitFlag(0x8); // ← AIC: KKT 就绪
             KKBetaCompute(kkWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
-            // attn_1对角块求逆，对角块shape为INVERSE_SHAPE=32
             InverseCompute(attnWsGm_[i * ccOffset_], gammaUbFloat_[i * chunkSize_ * maxLen_]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // 同步2
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // → AIC: 求逆 A 完成
         }
 
-        // R4+R5 merged: per-chunk column scaling to preserve inverseRes_ across R4→R5
+        // A_beta = A @ diag(β)       (列缩放: 第 j 列乘 β[j])
+        // A_beta_gexp = A_beta @ diag(g_exp)  (列缩放: 第 j 列再乘 g_exp[j])
+        //   合并单循环: 每个 chunk 先 R4 再 R5, 保证 inverseRes_ 一致性
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0xB); // ← AIC: AttnInverseMMCompute 完成
             ColumnScaleBeta(attnWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4: A_beta 就绪
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: A_beta 就绪
             ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3: A_beta_gexp 就绪
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // → AIC: A_beta_gexp 就绪
         }
 
-        // q_prime = query * scale_ * g_cum_exp[:, None]  # (C, Dk)
+        // q_prime = Q * scale * g_cum_exp[:,None]  (C, Dk)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            // R2: read Q from strided GM instead of queryConGm_
             uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_], gCumSumUbFloat_[i * chunkSize_],
                           gCumExpUbFloat_[i * chunkSize_], queryGm_[qk_base + subOffset_ * qkStride_],
                           subValidLenBatch_[i], qkStride_);
         }
-        AscendC::CrossCoreWaitFlag(0xA); // 同步5
+        AscendC::CrossCoreWaitFlag(0xA); // ← AIC: QKT 就绪
     }
+    // g_cum = cumsum(g[chunk]), g_cum_exp = exp(g_cum), g_cum → GM gCum_
     __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<float> dst,
                                           LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat,
                                           uint32_t validLen)
@@ -407,6 +413,7 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    // gamma = exp(g_cum[:,None] - g_cum[None,:]) * tril_mask  (C×C decay matrix)
     __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat, LocalTensor<float> gammaUbFloat,
                                         LocalTensor<float> gCumSumUbFloat)
     {
@@ -436,6 +443,7 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    // attn = kk * beta[:,None]  (KK^T 乘以 beta 行广播)
     __aicore__ inline void KKBetaCompute(const GlobalTensor<bfloat16_t> src, LocalTensor<float> betaUbFloat)
     {
         // copy value
@@ -455,6 +463,8 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    // A = (I + attn * gamma)^{-1}  (attn = kk*beta, gamma = decay_mask; 前代法求逆, 对角块 INVERSE_SHAPE=32)
+    //   attn *= gamma → attn = -attn → 前代法 → A → Cast BF16 → GM attnWs
     __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, LocalTensor<float> gammaUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
@@ -489,8 +499,8 @@ private:
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
 
-    // R4: A_beta = A @ diag(beta) — column scaling (第 j 列乘 beta[j])
-    //   Read A (BF16 H×C) from attnWs GM → Cast FP32 → col-scale beta → Cast BF16 → write back attnWs
+    // A_beta = A @ diag(β)  (列缩放: A_beta[i,j] = A[i,j] * β[j])
+    //   Read A (BF16) from attnWs GM → Cast FP32 → col-scale β → Cast BF16 → write back attnWs
     __aicore__ inline void ColumnScaleBeta(const GlobalTensor<bfloat16_t> aWsGm, LocalTensor<float> betaUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
@@ -512,8 +522,8 @@ private:
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, aWsGm[subOffset_ * chunkSize_]);
     }
 
-    // R5: A_beta_gexp = A_beta @ diag(g_exp) — column scaling (第 j 列乘 g_exp[j])
-    //   A_beta still in inverseRes_ (UB), col-scale g_exp, negate, → Cast BF16 → write attnWsNegGm_
+    // -A_beta_gexp = -(A_beta @ diag(g_exp))  (列缩放: 第 j 列再乘 g_exp[j], 然后取负)
+    //   A_beta in inverseRes_ (UB), col-scale g_exp → negate → Cast BF16 → write attnWsNegGm_
     __aicore__ inline void ColumnScaleGExp(const GlobalTensor<bfloat16_t> negWsGm, LocalTensor<float> gCumExpUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
@@ -534,7 +544,7 @@ private:
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, negWsGm[subOffset_ * chunkSize_]);
     }
 
-    // R2: q_prime = query * scale * g_cum_exp[:, None], read Q from strided GM
+    // q_prime = Q * scale * g_cum_exp[:,None]  (C, Dk)
     __aicore__ inline void QPrimeCompute(const GlobalTensor<bfloat16_t> outQPrimeGm, LocalTensor<float> gCumSumUbFloat,
                                          LocalTensor<float> gCumExpUbFloat,
                                          const GlobalTensor<bfloat16_t> queryStridedGm, uint32_t subValidRows,
