@@ -94,7 +94,6 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 8;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 9;
 constexpr uint32_t QC_QR_SCALE_ATTR_INDEX = 10;
 constexpr uint32_t KC_SCALE_ATTR_INDEX = 11;
-constexpr uint32_t DO_ROPE_ATTR_INDEX = 12;
 
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_0 = 0;
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_1 = 1;
@@ -378,7 +377,7 @@ struct MlaPrologContext {
     uint64_t kvCacheStride0 = 0U;
     uint64_t krCacheStride0 = 0U;
 
-    bool doRopeValue = true;
+    bool doRopeValue = true; // RoPE 开关：由 ropeSin/ropeCos 是否为空 tensor 推导，V1/V2 默认开启
     const bool *doRope = nullptr;
 
     size_t *workSpaces;
@@ -455,7 +454,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
-    bool enableRope_ = true; // rope开关写入 tiling key ENABLE_ROPE；可由 do_rope attr 关闭（默认 true）
+    bool enableRope_ = true; // rope开关写入 tiling key ENABLE_ROPE；ropeSin/ropeCos 为空 tensor 时关闭（默认 true）
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

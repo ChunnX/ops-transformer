@@ -32,7 +32,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMlaPrologV3V1GetWorkspaceSize(
+extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
     const aclTensor *ropeSin, const aclTensor *ropeCos, aclTensor *kvCacheRef, aclTensor *krCacheRef,
@@ -43,12 +43,12 @@ extern aclnnStatus aclnnInnerMlaPrologV3V1GetWorkspaceSize(
     const aclTensor *actualSeqLenOptional, const aclTensor *kNopeClipAlphaOptional, double rmsnormEpsilonCq,
     double rmsnormEpsilonCkv, char *cacheModeOptional, bool queryNormFlag, int64_t weightQuantMode,
     int64_t kvCacheQuantMode, int64_t queryQuantMode, int64_t ckvkrRepoMode, int64_t quantScaleRepoMode,
-    int64_t tileSize, double qcQrScale, double kcScale, bool doRope, const aclTensor *queryOut,
-    const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut,
-    const aclTensor *dequantScaleQNormOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t tileSize, double qcQrScale, double kcScale, const aclTensor *queryOut, const aclTensor *queryRopeOut,
+    const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut, const aclTensor *dequantScaleQNormOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerMlaPrologV3V1(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           const aclrtStream stream);
+extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                         const aclrtStream stream);
 
 #ifdef __cplusplus
 }
@@ -231,19 +231,19 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     };
 
-    // do_rope 开关关闭时 ropeSin/ropeCos 必须同时为空（null 或 shapeSize==0 的空 tensor）；
-    // 关闭且为空时，利用 TensorHolder 将 null 转为空 tensor 传入 inner，规避 inner 空 tensor 校验。
+    // do_rope开启时 ropeSin/ropeCos 不允许为空（null 或空 tensor）；
+    // 关闭时 ropeSin/ropeCos 必须同时为空，并利用 TensorHolder 将 null 转为空 tensor 传入 inner，
     std::unique_ptr<TensorHolder> ropeSinHolder;
     std::unique_ptr<TensorHolder> ropeCosHolder;
     auto IsRopeInputEmpty = [](const aclTensor *rope) {
         return rope == nullptr || rope->GetViewShape().GetShapeSize() == 0;
     };
     if (doRope) {
-        if (ropeSin == nullptr) {
+        if (IsRopeInputEmpty(ropeSin)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
             return ge::GRAPH_FAILED;
         }
-        if (ropeCos == nullptr) {
+        if (IsRopeInputEmpty(ropeCos)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
             return ge::GRAPH_FAILED;
         }
@@ -302,20 +302,20 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
 
-    return aclnnInnerMlaPrologV3V1GetWorkspaceSize(
+    return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,
         dequantScaleWUqQrOptional, dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional,
         smoothScalesCqOptional, actualSeqLenOptional, kNopeClipAlphaOptional, rmsnormEpsilonCq, rmsnormEpsilonCkv,
         cacheModeOptional, queryNormFlag, weightQuantMode, kvCacheQuantMode, queryQuantMode, ckvkrRepoMode,
-        quantScaleRepoMode, tileSize, qcQrScale, kcScale, doRope, queryOut, queryRopeOut, dequantScaleQNopeOutOptional,
+        quantScaleRepoMode, tileSize, qcQrScale, kcScale, queryOut, queryRopeOut, dequantScaleQNopeOutOptional,
         queryNormOutOptional, dequantScaleQNormOutOptional, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMlaPrologV4WeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      const aclrtStream stream)
 {
-    return aclnnInnerMlaPrologV3V1(workspace, workspaceSize, executor, stream);
+    return aclnnInnerMlaPrologV3(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
