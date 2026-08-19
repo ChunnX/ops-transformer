@@ -878,17 +878,16 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
-    if ((tilingData->combineQuantMode == COMBINE_NO_QUANT &&
-         tilingData->topoType != TOPO_TYPE_URMA && !useMteA8W8Wave) ||
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT && tilingData->topoType != TOPO_TYPE_URMA ||
         tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
-    bool useAiv1OnlyWaveCombine = useMteA8W8Wave;
+    bool useAiv1OnlyWaveCombine =
+        tilingData->topoType == TOPO_TYPE_MTE &&
+        (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
@@ -909,8 +908,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
                   tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
     bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
     bool useGroupSyncCounters =
-        tilingData->topoType == TOPO_TYPE_URMA || useMteA8W8Wave ||
-        tilingData->combineQuantMode != COMBINE_NO_QUANT;
+        tilingData->topoType == TOPO_TYPE_URMA ||
+        (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
     uint64_t activationFlagSlotsPerExpert = useMteA8W8Wave ? waveFlagSlotsPerExpert : INT_CACHELINE;

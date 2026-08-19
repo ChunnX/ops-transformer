@@ -175,8 +175,8 @@ struct WorkspaceInfo {
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
         bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
         bool useGroupSyncCounters =
-            tilingData->topoType == TOPO_TYPE_URMA || useMteA8W8Wave ||
-            tilingData->combineQuantMode != COMBINE_NO_QUANT;
+            tilingData->topoType == TOPO_TYPE_URMA ||
+            (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
 
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
