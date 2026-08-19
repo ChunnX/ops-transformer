@@ -271,7 +271,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitTokenUnperm
 {
     uint32_t quantTokenSizeBytes = 0U;
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-        quantTokenSizeBytes = CreateQuantCombineBufferConfig(k_).quantTokenSizeBytes;
+        quantTokenSizeBytes = CreateQuantTokenBufferConfig(k_).quantTokenSizeBytes;
     }
     tokenUnpermuteConfig_ = {.common = commonConfig,
                              .job = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_},
@@ -428,72 +428,7 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CombineBufferConfig
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitCombineBuffers()
 {
-    CombineBufferConfig bufferConfig{};
-    if constexpr (g_coreType == AIC) {
-        return bufferConfig;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return bufferConfig;
-    }
-    bufferConfig.rowBytes = waveCombineConfig_.common.tokenHiddenDim * sizeof(bfloat16_t);
-    bufferConfig.rowStrideBytes = static_cast<uint32_t>(
-        Ops::Base::CeilAlign(static_cast<uint64_t>(bufferConfig.rowBytes), static_cast<uint64_t>(ALIGN_32)));
-    bufferConfig.slotStrideBytes = bufferConfig.rowStrideBytes;
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint32_t nScale =
-            Ops::Base::CeilDiv(waveCombineConfig_.common.tokenHiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
-        uint32_t tokenStorageBytes =
-            Ops::Base::CeilAlign(waveCombineConfig_.common.tokenHiddenDim, static_cast<uint32_t>(ALIGN_256));
-        uint32_t storedScaleBytes = Ops::Base::CeilAlign(nScale, 2U);
-        bufferConfig.quantRowStorageBytes =
-            Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<uint32_t>(ALIGN_32));
-        bufferConfig.quantRowElements = bufferConfig.quantRowStorageBytes;
-        bufferConfig.slotStrideBytes += bufferConfig.quantRowStorageBytes;
-        bufferConfig.quantTempElements =
-            Ops::Base::CeilAlign(storedScaleBytes, static_cast<uint32_t>(ALIGN_32)) + storedScaleBytes / 2U;
-    }
-    bufferConfig.rowBufferCount = WAVE_COMBINE_MAX_ROW_BUFFER_COUNT;
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        // 量化临时区位于行环之后；剩余 Combine UB 尽量用于行槽，并受 6 个 event ID 上限约束。
-        uint32_t quantTempBytes = bufferConfig.quantTempElements * sizeof(float);
-        uint32_t rowRingBudgetBytes = WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE - quantTempBytes;
-        bufferConfig.rowBufferCount = rowRingBudgetBytes / bufferConfig.slotStrideBytes;
-        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount < WAVE_COMBINE_MIN_ROW_BUFFER_COUNT ?
-                                          WAVE_COMBINE_MIN_ROW_BUFFER_COUNT :
-                                          bufferConfig.rowBufferCount;
-        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount > WAVE_COMBINE_MAX_ROW_BUFFER_COUNT ?
-                                          WAVE_COMBINE_MAX_ROW_BUFFER_COUNT :
-                                          bufferConfig.rowBufferCount;
-    }
-    uint32_t rowRingBytes = bufferConfig.rowBufferCount * bufferConfig.slotStrideBytes;
-    waveCombineScratch_.rowBufferTensor =
-        LocalTensor<bfloat16_t>(TPosition::VECIN, WAVE_COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
-    waveCombineScratch_.metaInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR,
-                                                              WAVE_COMBINE_META_INFO_TOKEN_CAPACITY * META_INFO_SIZE);
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        waveCombineScratch_.quantTempTensor =
-            LocalTensor<float>(TPosition::VECIN, WAVE_COMBINE_UB_BASE + rowRingBytes, bufferConfig.quantTempElements);
-    }
-    return bufferConfig;
-}
-
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitExpertTokenCountExportBuffers()
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U || tokenDispatchConfig_.blockJob.jobIndex != 0U) {
-        return;
-    }
-    uint32_t expertPerRank = tokenDispatchConfig_.common.moeExpertPerRank;
-    uint32_t stridedTensorBytes = expertPerRank * static_cast<uint32_t>(ALIGN_32);
-    expertTokenCountExportScratch_.stridedTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, 0U, stridedTensorBytes / sizeof(int32_t));
-    uint32_t compactTensorBytes =
-        Ops::Base::CeilAlign(static_cast<uint64_t>(expertPerRank * sizeof(int32_t)), static_cast<uint64_t>(ALIGN_32));
-    expertTokenCountExportScratch_.compactTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, stridedTensorBytes, compactTensorBytes / sizeof(int32_t));
+    return InitWaveCombineBuffers<CombineQuantMode>(waveCombineConfig_, waveCombineScratch_);
 }
 
 // ======================================================================================

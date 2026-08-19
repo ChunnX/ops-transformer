@@ -79,8 +79,7 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * rowElements;
 
-    AscendC::DataCopyExtParams ub2GmParams{
-        1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
+    AscendC::DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
     AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
 }
 
@@ -223,45 +222,9 @@ struct Gmm2RuntimeState {
     uint16_t &pingpongIdx;
 };
 
-struct QuantCombineBufferConfig {
-    int64_t combineUbElementCount;
+struct QuantTokenBufferConfig {
     uint32_t quantTokenSizeBytes;
 };
-
-struct QuantCombineConfig {
-    MoeStageCommonConfig common;
-    AivJobContext job;
-    bool participates;
-};
-
-struct QuantCombineTokenRange {
-    uint32_t tokenStart;
-    uint32_t tokenCount;
-    uint64_t metaInfoTokenOffset;
-    uint32_t expertIdx;
-};
-
-// 加载当前任务负责的 metadata，并完成一段连续 token 的量化 Combine 发送。
-template <uint8_t CombineMode>
-__aicore__ inline void CombineQuantizedTokenRange(const QuantCombineConfig &context,
-                                                  const QuantCombineBufferConfig &bufferConfig, const Params &params,
-                                                  const GMMAddrInfo &gmmAddrInfo,
-                                                  const QuantCombineTokenRange &tokenRange)
-{
-    AscendC::SetCtrlSpr<60, 60>(0);
-    int64_t ubOffset = 0;
-    LocalTensor<int32_t> metaInfoTensor(TPosition::VECIN, ubOffset, tokenRange.tokenCount * META_INFO_SIZE);
-    ubOffset += tokenRange.tokenCount * META_INFO_SIZE * sizeof(int32_t);
-    GlobalTensor<int32_t> metaInfoGm;
-    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        params.workspaceInfo.metaInfoPtr + tokenRange.metaInfoTokenOffset * META_INFO_SIZE * sizeof(int32_t)));
-    DataCopy(metaInfoTensor, metaInfoGm, tokenRange.tokenCount * META_INFO_SIZE);
-    PipeBarrier<PIPE_MTE2>();
-    CombineImpl::CombineTokenGroup<CombineMode, bfloat16_t>(
-        tokenRange.tokenStart, tokenRange.tokenCount, context.common.tokenHiddenDim, tokenRange.expertIdx,
-        context.common.rankId, gmmAddrInfo.gmm2OutGlobal, params, metaInfoTensor, bufferConfig.combineUbElementCount,
-        ubOffset, bufferConfig.quantTokenSizeBytes);
-}
 
 struct WaveCombineConfig {
     MoeStageCommonConfig common;
@@ -292,17 +255,68 @@ constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
 constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
-// 构造 Combine 与 Unpermute 共用的量化 token 记录布局。
-__aicore__ inline QuantCombineBufferConfig CreateQuantCombineBufferConfig(uint32_t tokenHiddenDim)
+// 非 layered 路径统一使用的 Combine 行环。Dispatch 阶段结束后，AIV1 才在同一 UB 区域构造这些视图。
+template <uint8_t CombineMode>
+__aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const WaveCombineConfig &context,
+                                                                 WaveCombineScratch &scratch)
 {
-    uint32_t nAlign32 = Ops::Base::CeilAlign(tokenHiddenDim, static_cast<uint32_t>(ALIGN_32));
+    WaveCombineBufferConfig bufferConfig{};
+    if constexpr (g_coreType == AIC) {
+        return bufferConfig;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return bufferConfig;
+    }
+    bufferConfig.rowBytes = context.common.tokenHiddenDim * sizeof(bfloat16_t);
+    bufferConfig.rowStrideBytes = static_cast<uint32_t>(
+        Ops::Base::CeilAlign(static_cast<uint64_t>(bufferConfig.rowBytes), static_cast<uint64_t>(ALIGN_32)));
+    bufferConfig.slotStrideBytes = bufferConfig.rowStrideBytes;
+    if constexpr (CombineMode != COMBINE_NO_QUANT) {
+        uint32_t nScale =
+            Ops::Base::CeilDiv(context.common.tokenHiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        uint32_t tokenStorageBytes =
+            Ops::Base::CeilAlign(context.common.tokenHiddenDim, static_cast<uint32_t>(ALIGN_256));
+        uint32_t storedScaleBytes = Ops::Base::CeilAlign(nScale, 2U);
+        bufferConfig.quantRowStorageBytes =
+            Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<uint32_t>(ALIGN_32));
+        bufferConfig.quantRowElements = bufferConfig.quantRowStorageBytes;
+        bufferConfig.slotStrideBytes += bufferConfig.quantRowStorageBytes;
+        bufferConfig.quantTempElements =
+            Ops::Base::CeilAlign(storedScaleBytes, static_cast<uint32_t>(ALIGN_32)) + storedScaleBytes / 2U;
+    }
+    bufferConfig.rowBufferCount = WAVE_COMBINE_MAX_ROW_BUFFER_COUNT;
+    if constexpr (CombineMode != COMBINE_NO_QUANT) {
+        uint32_t quantTempBytes = bufferConfig.quantTempElements * sizeof(float);
+        uint32_t rowRingBudgetBytes = WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE - quantTempBytes;
+        bufferConfig.rowBufferCount = rowRingBudgetBytes / bufferConfig.slotStrideBytes;
+        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount < WAVE_COMBINE_MIN_ROW_BUFFER_COUNT ?
+                                          WAVE_COMBINE_MIN_ROW_BUFFER_COUNT :
+                                          bufferConfig.rowBufferCount;
+        bufferConfig.rowBufferCount = bufferConfig.rowBufferCount > WAVE_COMBINE_MAX_ROW_BUFFER_COUNT ?
+                                          WAVE_COMBINE_MAX_ROW_BUFFER_COUNT :
+                                          bufferConfig.rowBufferCount;
+    }
+    uint32_t rowRingBytes = bufferConfig.rowBufferCount * bufferConfig.slotStrideBytes;
+    scratch.rowBufferTensor =
+        LocalTensor<bfloat16_t>(TPosition::VECIN, WAVE_COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
+    scratch.metaInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR,
+                                                  WAVE_COMBINE_META_INFO_TOKEN_CAPACITY * META_INFO_SIZE);
+    if constexpr (CombineMode != COMBINE_NO_QUANT) {
+        scratch.quantTempTensor =
+            LocalTensor<float>(TPosition::VECIN, WAVE_COMBINE_UB_BASE + rowRingBytes, bufferConfig.quantTempElements);
+    }
+    return bufferConfig;
+}
+
+// 构造量化 Unpermute 输入记录的单 token 存储布局。
+__aicore__ inline QuantTokenBufferConfig CreateQuantTokenBufferConfig(uint32_t tokenHiddenDim)
+{
     uint32_t nScale = Ops::Base::CeilDiv(tokenHiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
     uint32_t tokenStorageBytes = Ops::Base::CeilAlign(tokenHiddenDim, static_cast<uint32_t>(ALIGN_256));
     uint32_t storedScaleBytes = Ops::Base::CeilAlign(nScale, 2U);
     uint32_t quantTokenSizeBytes =
         Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<uint32_t>(ALIGN_32));
-    uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + quantTokenSizeBytes;
-    return {static_cast<int64_t>(singleTokenBytes * DOUBLE_BUFFER / sizeof(bfloat16_t)), quantTokenSizeBytes};
+    return {quantTokenSizeBytes};
 }
 
 // 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
@@ -558,8 +572,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 }
 
 // 执行 A8W4 GMM2 tile 循环。
-template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered = false, typename BlockMmad, typename Scheduler,
-          typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
+template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered, bool UseExternalCombine, typename BlockMmad,
+          typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
+          typename Config>
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                        int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx,
@@ -567,7 +582,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared && !UseExternalCombine) {
         uint32_t logicalCoreCount = config.blockNum;
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(expertTokenCount, logicalCoreCount);
     }
@@ -597,7 +612,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
-        if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+        if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared && !UseExternalCombine) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared) {
@@ -725,7 +740,7 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
 
 // 根据 GM 地址建立执行资源，并执行 A8W4 GMM2 阶段。
 template <uint8_t CombineQuantMode, typename BlockMmad, typename BlockPrologue, typename ElementC, typename MakeLayoutC,
-          bool IsShared, bool IsLayered = false, typename Scheduler, typename Config>
+          bool IsShared, bool IsLayered, bool UseExternalCombine, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                     const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                     int32_t &gmTileSequence, uint32_t expertTokenCount, uint32_t rowOffsetInExpert)
@@ -763,9 +778,9 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, 
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<CombineQuantMode, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
-                        decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                        std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+        Gmm2AicMmadA8W4<CombineQuantMode, IsShared, IsLayered, UseExternalCombine, BlockMmad,
+                        decltype(workSet.scheduler), decltype(workSet.gmA), decltype(workSet.gmScaleA),
+                        decltype(workSet.gmScaleB), std::remove_reference_t<decltype(workSet.gmC)>, Config>(
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
             gmTileSequence, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
     } else {
@@ -773,7 +788,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, 
             BlockPrologue blockPrologue;
             Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else {
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered && !UseExternalCombine) {
                 Gmm2Aiv1EpilogueA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, params, gmmAddrInfo,
                                                             gmTileSequence, config, startLoopIdx, tileNum);
             }
@@ -838,7 +853,8 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 // RunGmm2A8W4：执行 A8W4 prologue（W4→W8）、GMM2 和 Combine。
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false>
+          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false,
+          bool UseExternalCombine = false>
 __aicore__ inline void RunGmm2A8W4(const Params &params,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
@@ -868,9 +884,9 @@ __aicore__ inline void RunGmm2A8W4(const Params &params,
     }
 
     GmmKernel::Gmm2ExecA8W4<CombineQuantMode, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                            GmmKernel::BlockScheduler, decltype(config)>(scheduler, params, gmmAddrInfo, config,
-                                                                         startLoopIdx, tileNum, gmTileSequence,
-                                                                         expertTokenCount, rowOffsetInExpert);
+                            UseExternalCombine, GmmKernel::BlockScheduler, decltype(config)>(
+        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertTokenCount,
+        rowOffsetInExpert);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -995,7 +1011,8 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
 // 使用调用方传入的 block 任务执行 GMM2，并保持所选同步约定不变。
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          bool UseExternalCombine = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const Params &params,
                                      const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
                                      Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
@@ -1003,9 +1020,9 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         RunGmm2A8W4<CombineMode, A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
-                    TopkWeightsPrefetch, IsShared>(params, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-                                                   runtimeState.gmTileSequence, gmmConfig.blockJob,
-                                                   static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
+                    TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained, UseExternalCombine>(
+            params, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.gmTileSequence,
+            gmmConfig.blockJob, static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
     } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
@@ -1022,14 +1039,14 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
 
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved, bool IsWaveFlagGrained>
+          bool IsGmm1Interleaved, bool IsWaveFlagGrained, bool UseExternalCombine = false>
 __aicore__ inline void RunMoeExpertGmm2Stage(const GmmExecutionConfig &gmmConfig, const Params &params,
                                              const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
                                              Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
                                              bool allowWeightL2Bypass = false)
 {
     RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
-                  Gmm1TileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
+                  Gmm1TileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained, UseExternalCombine>(
         gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
 }
 
@@ -1056,66 +1073,6 @@ __aicore__ inline bool RunSharedExpertGmm2Stage(const MoeStageCommonConfig &comm
                   Gmm1TileM, TopkWeightsPrefetch, true, IsGmm1Interleaved, IsWaveFlagGrained>(
         gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
     return true;
-}
-
-// 调度当前 MoE 专家指定 token 范围的量化 Combine。
-template <uint8_t CombineMode>
-__aicore__ inline void ScheduleQuantizedMoeExpertCombine(const QuantCombineConfig &context,
-                                                         const QuantCombineBufferConfig &bufferConfig,
-                                                         const Params &params, const GMMAddrInfo &gmmAddrInfo,
-                                                         uint32_t expertTokenCount, uint32_t expertBeforeCnt,
-                                                         uint32_t expertIdx, uint32_t sliceTokenStart,
-                                                         uint32_t sliceTokenCount)
-{
-    if constexpr (g_coreType == AIC || CombineMode == COMBINE_NO_QUANT) {
-        return;
-    }
-    if (!context.participates || context.job.totalJobs == 0U || context.job.jobIndex >= context.job.totalJobs ||
-        expertTokenCount == 0U) {
-        return;
-    }
-    uint32_t groupCount = Ops::Base::CeilDiv(expertTokenCount, COMBINE_TOKEN_GROUP_SIZE);
-    uint32_t sliceGroupBegin = sliceTokenStart / COMBINE_TOKEN_GROUP_SIZE;
-    uint32_t sliceGroupEnd = Ops::Base::CeilDiv(sliceTokenStart + sliceTokenCount, COMBINE_TOKEN_GROUP_SIZE);
-    uint32_t firstGroup = 0U;
-    uint32_t groupStride = 0U;
-    uint32_t jobIndexWithinGroup = 0U;
-    uint32_t jobsAssignedToGroup = 0U;
-    uint32_t gmm2NTilesPerGroup = Ops::Base::CeilDiv(context.common.tokenHiddenDim, L1_TILE_N);
-    ComputeCombineGroupsForCore(context.job.jobIndex, groupCount, context.job.totalJobs, firstGroup, groupStride,
-                                jobIndexWithinGroup, jobsAssignedToGroup);
-    // 当前核只负责 firstGroup + k * groupStride，sliceGroupBegin 未必归属当前核。
-    // 因此保持原 group 序列，将起点推进到切片内第一个归属当前核的 group。
-    if (firstGroup < sliceGroupBegin) {
-        firstGroup += Ops::Base::CeilDiv(sliceGroupBegin - firstGroup, groupStride) * groupStride;
-    }
-    for (uint32_t groupIndex = firstGroup; groupIndex < sliceGroupEnd; groupIndex += groupStride) {
-        uint32_t syncSlotIndex = groupCount <= context.job.totalJobs ? context.job.jobIndex : groupIndex;
-        __gm__ int32_t *syncCounterAddress =
-            GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlotIndex);
-        while (AscendC::ReadGmByPassDCache(syncCounterAddress) != static_cast<int32_t>(gmm2NTilesPerGroup)) {
-            int64_t waitStartCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
-            }
-        }
-
-        uint32_t groupTokenStart = groupIndex * COMBINE_TOKEN_GROUP_SIZE;
-        uint32_t groupTokenCount = COMBINE_TOKEN_GROUP_SIZE < expertTokenCount - groupTokenStart ?
-                                       COMBINE_TOKEN_GROUP_SIZE :
-                                       expertTokenCount - groupTokenStart;
-        uint32_t tokensPerJob = Ops::Base::CeilDiv(groupTokenCount, jobsAssignedToGroup);
-        uint32_t tokenOffsetWithinGroup = jobIndexWithinGroup * tokensPerJob;
-        if (tokenOffsetWithinGroup >= groupTokenCount) {
-            continue;
-        }
-        uint32_t tokenCountForJob = groupTokenCount - tokenOffsetWithinGroup;
-        tokenCountForJob = tokenCountForJob < tokensPerJob ? tokenCountForJob : tokensPerJob;
-
-        QuantCombineTokenRange tokenRange{
-            groupTokenStart + tokenOffsetWithinGroup - sliceTokenStart, tokenCountForJob,
-            static_cast<uint64_t>(expertBeforeCnt) + groupTokenStart + tokenOffsetWithinGroup, expertIdx};
-        CombineQuantizedTokenRange<CombineMode>(context, bufferConfig, params, gmmAddrInfo, tokenRange);
-    }
 }
 
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
