@@ -20,4 +20,7 @@
 // innerPrecise==1: O_partial stored as bf16 (PV fixpipe F322BF16 + Phase2 regbase cast).
 #define MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING 20002
 
+// FP8 input, FP32 O_partial, BF16 output.
+#define MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING 20003
+
 #endif  // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILINGKEY_H

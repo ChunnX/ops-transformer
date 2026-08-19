@@ -33,7 +33,7 @@ public:
     using ElementS = bfloat16_t;
     using ElementP = typename BlockMmadPV::ElementP;
     using ElementV = typename BlockMmadPV::ElementV;
-    using ElementO = typename BlockMmadQK::ElementQ;
+    using ElementO = typename EpilogueRescaleO::ElementO;
     using ElementOTmp = float;
     // O_partial (workspace accumOut) dtype follows the PV block's ElementO (= REDtype):
     // float for the fp32 path, bfloat16_t for the innerPrecise==1 bf16 path.
@@ -58,6 +58,7 @@ public:
     static constexpr float WS_ROWSUM_INIT = 0.0f;
     static constexpr uint32_t WS_INIT_EVT = 5U;          // free V_MTE3/MTE3_V id on VEC
     static constexpr uint32_t WS_INIT_CHUNK = 4096U;      // fp32 elems per chunk (multiple of 8)
+    static constexpr uint32_t ELE_NUM_PER_C0_P = BYTE_PER_C0 / sizeof(ElementP);
 
     // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (see
     // reg_low_prec_bf16.hpp ctor). CopyPartialStatsToGm (MTE3) reads gmUb[ubSBufId]/
@@ -630,7 +631,8 @@ private:
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
             + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
-        uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
+        uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U)
+            * RoundUp(blockSize_, ELE_NUM_PER_C0_P) * sizeof(ElementP);
         AscendC::LocalTensor<ElementP> l1PBuf[P_L1_BUF_NUM];
         for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
             l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(

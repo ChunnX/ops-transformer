@@ -162,7 +162,7 @@ public:
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
         }
     }
-    
+
     // Batched softmax: M = batchM (up to 128 = BATCH_GROUPS * groupSize). The batched QK
     // produces one S[batchM, validSize]; the 8 qTokens in the batch share the same KV block
     // (same validSize) but each group g (groupSize rows) has its own causalValidLens[g].
@@ -241,7 +241,8 @@ public:
             __ubuf__ ElementInput *sSlice = sAddr + localOff * nRound;
             __ubuf__ float *maxSlice = nowMaxFloatAddr + statsOff;
             __ubuf__ float *sumSlice = nowSumAddr + statsOff;
-            __ubuf__ ElementOutput *pSlice = pAddr + localOff * ELE_NUM_PER_C0;
+            constexpr uint32_t P_C0 = FULL_QUANT_FP8 ? ELE_NUM_PER_C0_FP8 : ELE_NUM_PER_C0;
+            __ubuf__ ElementOutput *pSlice = pAddr + localOff * P_C0;
 
             uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
             if (kvBaseTileRegStages == 1) {
