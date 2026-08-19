@@ -499,8 +499,9 @@ public:
             // bN2Offset = n2Idx * G * T_total + prefixBS1, 内部按 gIdx * T_total + s1Idx 步进
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                             {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
+            DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(
+                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
+                {.gSize = constInfo_.realGSize, .t1Size = constInfo_.t1Size});
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);

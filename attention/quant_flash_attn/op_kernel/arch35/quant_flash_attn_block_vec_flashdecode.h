@@ -555,7 +555,7 @@ public:
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
                     DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(
                         softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
+                        {.gSize = constInfo_.realGSize, .t1Size = constInfo_.t1Size});
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
