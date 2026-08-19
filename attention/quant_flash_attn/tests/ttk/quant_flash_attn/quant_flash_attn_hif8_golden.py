@@ -889,7 +889,7 @@ def npu_hif8_fa(
     elif INPUT_LAYOUT and INPUT_LAYOUT != "TND":
         inferred_layout = INPUT_LAYOUT
     else:
-        inferred_layout = "BNSD"
+        inferred_layout = "BSND"
     if INPUT_LAYOUT in (None, "TND") and inferred_layout != "TND":
         INPUT_LAYOUT = inferred_layout
         logger.info("[NPU] npu_hif8_fa: 从q维度推断layout=%s, 已更新INPUT_LAYOUT", inferred_layout)
