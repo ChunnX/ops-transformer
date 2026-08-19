@@ -46,6 +46,7 @@ constexpr uint32_t BLOCK_SIZE = 32;         // copypad对齐块大小
 constexpr uint32_t BLOCK_FLOAT_NUM = 8;
 constexpr uint32_t BLOCK_BF16_NUM = 16;
 constexpr uint32_t TILE_LEN = 1024; // 1024 = 1kb，经测试1kb和10kb性能差异很小
+constexpr uint64_t PREFETCH_MTE2_V_EVENT = 4; // gCum 预取 MTE2→V 同步 (复用 ID 4, 与 MTE3_MTE2 不同事件类型)
 } // namespace ChunkGatedDeltaRule
 
 #endif // __CHUNK_GATED_DELTA_RULE_UTILS_H__

@@ -13,6 +13,7 @@ import os
 import pytest
 import torch
 import torch_npu  # noqa: F401
+import cann_ops_transformer  # noqa: F401
 
 _RESULT_ROWS = []
 _CURRENT_SEED = 0

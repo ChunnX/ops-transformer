@@ -53,6 +53,15 @@
   - ColumnScaleGExp 从 GM attnWs_ 重读 A_beta（代价：多 1 次 GM→UB 读取 ~4KB/chunk）
   - 消除 inverseRes_ 跨循环依赖，代码结构更清晰
 
+#### 阶段 6：Stage2 AIV 计算流程优化
+- O1: 修复 BF16 路径 gEnd 冗余 GM 标量读取（CalGCumExpBf16AndD 中 gEnd 被读取两次，第二次冗余）
+- O3: gCum 软件预取 — 在 AIV waitFlag(0x4) 空闲期预取下一 chunk 的 gCum
+  - 新增 `gCumPrefetchBuf_` TBuf（C×float, ~256B），MTE2 与 AIC CalStateNew 并行
+  - CalGCumExpAndD / CalGCumExpBf16AndD 中 `hasPrefetch_` 分支：预取命中时从 TBuf 读取，跳过 GM DataCopyPad
+  - 新增 `PREFETCH_MTE2_V_EVENT` 同步事件（ID=4, 与 MTE3_MTE2 不同事件类型）
+- O4: 删除 5 个死函数（CalGCumExpFp32, CalGCumExpBf16, CalD, CopyAndScaleVInnerBf16, CastGmToGm）
+  - 均已被合并函数取代，从未被调用
+
 #### 验证
 - 编译通过：ascend950 opkernel + ophost + opapi
 - 数学验证：Python 验证误差 < 1e-12
@@ -158,12 +167,26 @@ AIC:                              waitFlag(0x3) → VPrime+AttnInter(fused) → 
 
 | 函数 | 路径 | 说明 |
 |:-----|:-----|:-----|
-| `CalGCumExpAndD` | FP32 | 合并 CalGCumExpFp32 + CalD，单次 gCum 读 |
-| `CalGCumExpBf16AndD` | BF16 | 合并 CalGCumExpBf16 + CalD，单次 gCum 读 + state cast |
+| `CalGCumExpAndD` | FP32 | 合并 CalGCumExpFp32 + CalD，单次 gCum 读 + O3 预取支持 |
+| `CalGCumExpBf16AndD` | BF16 | 合并 CalGCumExpBf16 + CalD，单次 gCum 读 + state cast + O1/O3 |
 | `CastGmToGmDual` | FP32 | 单次 GM→UB 读取产出 unscaled + scaled 双输出 |
 | `CastGmToGmWithScale` | BF16→BF16 | 新增模板特化：BF16→FP32→Scale→BF16 |
 | `ColumnScaleBeta` | Stage1 | R4: A_beta = A * beta[None,:] (列缩放) |
 | `ColumnScaleGExp` | Stage1 | R5: -A_beta_gexp = -(A_beta * g_exp[None,:])，从 GM 重读 A_beta |
+
+### Stage2 AIV 计算流程优化
+
+**O1: BF16 gEnd 冗余读取修复**：
+- CalGCumExpBf16AndD 中 gEnd 从 GM 读取两次（state decay + d 向量各一次），第二次冗余
+- 修复：gEnd 声明提前，d 向量复用同一变量
+
+**O3: gCum 软件预取**：
+- AIV 在 waitFlag(0x4) 空闲期（等待 AIC CalStateNew）预取下一 chunk 的 gCum
+- 新增 gCumPrefetchBuf_ TBuf（C×float），DataCopyPad 在 waitFlag 前发出，MTE2 与 AIC 并行
+- CalGCumExpAndD/Bf16AndD 中 hasPrefetch_ 分支：命中时从 TBuf 读取 + WaitFlag MTE2_V
+
+**O4: 死代码清理**：
+- 删除 CalGCumExpFp32, CalGCumExpBf16, CalD, CopyAndScaleVInnerBf16, CastGmToGm（均已被合并函数取代）
 
 ### Stage1 AIC/AIV 流水线优化
 
