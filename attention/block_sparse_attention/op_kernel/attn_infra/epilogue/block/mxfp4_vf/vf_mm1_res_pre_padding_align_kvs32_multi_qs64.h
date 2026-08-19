@@ -25,7 +25,8 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T, uint16_t QsBase = 128>
-__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T *s, uint16_t actKvsTile, uint16_t kvsActBaseTileAlign32)
+__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T *s, uint16_t actKvsTile,
+                                                                      uint16_t kvsActBaseTileAlign32)
 {
     // ====================== 寄存器定义 ======================
     MaskReg mask_VL64_16b = CreateMask<uint16_t, MaskPattern::VL64>();
@@ -39,19 +40,18 @@ __simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T
     }
 
     for (uint16_t idx = kvsIdx; idx < kvsActBaseTileAlign32; ++idx) {
-        StoreAlign(s + (idx * QsBase )*2, padding_tensor, mask_VL64_16b);
+        StoreAlign(s + (idx * QsBase) * 2, padding_tensor, mask_VL64_16b);
     }
-
 }
 
 template <typename T>
-__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiQs64CallVF(const LocalTensor<T> &srcTensor, uint16_t actKvsTile, uint16_t kvsActBaseTileAlign32)
+__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiQs64CallVF(const LocalTensor<T> &srcTensor, uint16_t actKvsTile,
+                                                                 uint16_t kvsActBaseTileAlign32)
 {
-    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T *)srcTensor.GetPhyAddr();
 
-    mm1_res_pre_padding_align_kvs32_multi_qs64_vf<T>(
-        s_ub, actKvsTile, kvsActBaseTileAlign32);
+    mm1_res_pre_padding_align_kvs32_multi_qs64_vf<T>(s_ub, actKvsTile, kvsActBaseTileAlign32);
 }
 
-}
-#endif  // VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_H
+} // namespace NpuArch::Epilogue::Block::Mxfp4VF
+#endif // VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_QS64_H

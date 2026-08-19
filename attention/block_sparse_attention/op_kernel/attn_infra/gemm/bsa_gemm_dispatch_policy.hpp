@@ -14,8 +14,7 @@
 #include "../../attn_infra/bsa_base_defs.hpp"
 #include "../../attn_infra/arch/bsa_arch.hpp"
 
-namespace NpuArch::Gemm 
-{
+namespace NpuArch::Gemm {
 
 // Block Mmad Policies
 
@@ -48,18 +47,18 @@ struct MmadAtlasA2SFAIPV : public MmadAtlasA2 {
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
-struct MmadAtlasA5BsaQK : public MmadAtlasA5 {	 
-    static constexpr uint32_t L0_STAGES = 2;	 
-};	 
- 
+struct MmadAtlasA5BsaQK : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
 template <bool transposedMm1_ = false>
 struct MmadAtlasA5BsaQKMX : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
     static constexpr bool transposedMm1 = transposedMm1_;
 };
 
-struct MmadAtlasA5BsaPV : public MmadAtlasA5 {	 
-    static constexpr uint32_t L0_STAGES = 2;	 
+struct MmadAtlasA5BsaPV : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
 };
 
 template <bool transposedMm1_ = false>
@@ -72,6 +71,6 @@ struct CopyGlobalMaxL1ToUBBsa : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 
-}  // namespace NpuArch::Gemm
+} // namespace NpuArch::Gemm
 
-#endif  // GEMM_DISPATCH_POLICY_HPP
+#endif // GEMM_DISPATCH_POLICY_HPP
