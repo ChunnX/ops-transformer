@@ -29,9 +29,8 @@ struct CopyL1ToL0AMxA5 {
     // dAct  : embed 维（源 k → 转置后 L0A m）
     // s2Act : seq 维对齐 64（源 m → 转置后 L0A k）
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t dAct, uint32_t s2Act)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t dAct, uint32_t s2Act)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP4::NZ_C0_ELEMS;
         constexpr uint32_t FP4_C0 = Block::MXFP4::FP4_C0_ELEMS;
@@ -70,10 +69,9 @@ struct CopyL1ToL0BMxA5 {
     // actScaleSrcStride : 实际 scale srcStride（0 表示由 s2Base 推导）
     // s1Align64         : M 维对齐 64（源 k → 转置后 L0B n）
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t s2Align64, uint32_t dAct, uint32_t s2Base,
-        uint32_t actScaleSrcStride, uint32_t s1Align64)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t s2Align64, uint32_t dAct, uint32_t s2Base, uint32_t actScaleSrcStride,
+                                      uint32_t s1Align64)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP4::NZ_C0_ELEMS;
         constexpr uint32_t FP4_C0 = Block::MXFP4::FP4_C0_ELEMS;
@@ -109,10 +107,9 @@ struct CopyL1ToL0AMxQKA5 {
     // s2Align16Full : 整 tile 行 16 对齐
     // scaleK        : Ceil(D/64)*2，沿 D
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK,
-        uint32_t s2Align16Full, uint32_t scaleK)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK, uint32_t s2Align16Full,
+                                      uint32_t scaleK)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP4::NZ_C0_ELEMS;
         constexpr uint32_t FP4_C0 = Block::MXFP4::FP4_C0_ELEMS;
@@ -151,10 +148,9 @@ struct CopyL1ToL0BMxQKA5 {
     // scaleMAlignL1 : scale 的 M 维 L1 对齐
     // scaleK        : Ceil(D/64)*2，沿 D
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0,
-        uint32_t scaleMAlignL1, uint32_t scaleK)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0, uint32_t scaleMAlignL1,
+                                      uint32_t scaleK)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP4::NZ_C0_ELEMS;
         constexpr uint32_t FP4_C0 = Block::MXFP4::FP4_C0_ELEMS;
