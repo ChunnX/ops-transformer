@@ -60,7 +60,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
-    static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT =
@@ -273,25 +273,25 @@ public:
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                             runInfo.actVecMSize, constInfo, s1Size);
+            DataCopySoftmaxLseNTD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, s1Size,
+                                     constInfo.gSize, constInfo.n2Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseTNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                             runInfo.actVecMSize, constInfo);
+            DataCopySoftmaxLseTND<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo.gSize,
+                                     constInfo.n2Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, 0);
+            DataCopySoftmaxLseBSND<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo.s1Size,
+                                      constInfo.gSize);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, qActSeqLens, 0);
+            DataCopySoftmaxLseBNSD<T>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, qActSeqLens,
+                                      constInfo.s1Size);
         }
 
         softmaxLseQueue.FreeTensor(lseUb);
@@ -659,7 +659,8 @@ public:
     {
         // SOFTMAX的VF中max/sum/exp读写按256B对齐的, 实际使用需按256B向上对齐分配
         static constexpr uint32_t REG_BYTES = 256U;
-        static constexpr uint32_t SOFTMAX_BUF_BYTES = (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
+        static constexpr uint32_t SOFTMAX_BUF_BYTES =
+            (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
         static constexpr uint32_t ACT_BYTES = (SOFTMAX_BUF_BYTES + REG_BYTES - 1) / REG_BYTES * REG_BYTES;
 
         tPipe->InitBuffer(softmaxSumBuf[0], ACT_BYTES);
