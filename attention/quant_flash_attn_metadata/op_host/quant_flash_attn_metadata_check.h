@@ -162,7 +162,7 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int6
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
-    constexpr int64_t WINDOW_MASK = 4;
+    constexpr int64_t SLIDING_WINDOW = 4;
 
     static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK, WINDOW_MASK};
     CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
@@ -171,9 +171,9 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int6
     CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
 
     // 文档约束: maskMode为0(NO_MASK) 或 3(CAUSAL) 时 winLeft/winRight 必须为 -1
-    if (maskMode == NO_MASK || maskMode == CAUSAL_MASK) {
+    if (maskMode != SLIDING_WINDOW) {
         CHECK_COND(winLeft == -1 && winRight == -1, ACLNN_ERR_RUNTIME_ERROR,
-                   "When maskMode is 0 (NO_MASK) or 3 (CAUSAL), winLeft and winRight must be -1, "
+                   "When maskMode is not 4 (SLIDING_WINDOW), winLeft and winRight must be -1, "
                    "but got winLeft=%ld, winRight=%ld",
                    winLeft, winRight);
     }

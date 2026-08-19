@@ -129,7 +129,7 @@ ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QfaTilingInf
     // 文档约束:
     //   - mask_mode=0 (NO_MASK): 不支持传入 attn_mask
     //   - mask_mode=3 (CAUSAL):  必须传入 attn_mask 矩阵
-    //   - mask_mode=4 (SLIDING_WINDOW):    必须传入 attn_mask 矩阵
+    //   - mask_mode=4 (SLIDING_WINDOW):  必须传入 attn_mask 矩阵
     bool attnMaskExists =
         (qfaInfo.opParamInfo.attnMask.tensor != nullptr && qfaInfo.opParamInfo.attnMask.desc != nullptr);
     if (qfaInfo.maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
@@ -142,13 +142,12 @@ ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QfaTilingInf
                     return ge::GRAPH_FAILED);
     }
 
-    // mask_mode 为 0 (NO_MASK) 或 3 (CAUSAL) 时，win_left 和 win_right 必须为 -1
-    if (qfaInfo.maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
-        qfaInfo.maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+    // mask_mode 不为 4 (SLIDING_WINDOW) 时，win_left 和 win_right 必须为 -1
+    if (qfaInfo.maskMode != static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
         OP_CHECK_IF(qfaInfo.winLeft != -1 || qfaInfo.winRight != -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         qfaInfo.opName, MASK_MODE_NAME.c_str(), std::to_string(qfaInfo.maskMode).c_str(),
-                        ("When mask_mode is 0 (NO_MASK) or 3 (CAUSAL), win_left and win_right must be -1, "
+                        ("When mask_mode is not 4 (SLIDING_WINDOW), win_left and win_right must be -1, "
                          "but got win_left=" +
                          std::to_string(qfaInfo.winLeft) + ", win_right=" + std::to_string(qfaInfo.winRight))
                             .c_str()),
