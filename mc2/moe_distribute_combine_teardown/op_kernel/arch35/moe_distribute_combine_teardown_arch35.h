@@ -407,6 +407,13 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     // 循环，累加本卡状态区状态
     auto index = static_cast<uint64_t>(startRankId_) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+        // URMA 写入 GM 后需 DCCI，否则可能一直读到 cache 中的 0 导致死等
+        for (uint32_t rankIdx = 0U; rankIdx < sendRankNum_; ++rankIdx) {
+            const uint64_t slotIndex =
+                index + static_cast<uint64_t>(rankIdx) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                epStatusSpaceGlobal[slotIndex]);
+        }
         DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, 1,
@@ -483,6 +490,9 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
                             axisHExpandXTypeSize_ * static_cast<uint64_t>(indexCount); // 当前token的值对应的win区地址
 
             rowTmpGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)wAddr);
+            rowTmpGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            DataCacheCleanAndInvalid<ExpandXType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                rowTmpGlobal_);
             tmpUb = moeSumQueue_.AllocTensor<ExpandXType>();
             DataCopyPad(tmpUb, rowTmpGlobal_, copyParams, padParams);
             moeSumQueue_.EnQue(tmpUb);
