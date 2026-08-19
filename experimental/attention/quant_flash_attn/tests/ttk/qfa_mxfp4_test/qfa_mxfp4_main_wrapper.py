@@ -32,73 +32,6 @@ def _apply_golden_globals(attrs):
         setattr(golden_mod, k, v)
 
 
-def _is_abnormal_input(*tensors):
-    """检测 tensor 是否含异常 shape (0 维或 0 元素), 任一异常即返回 True.
-    异常 case 跳过 generate_data 直接走 NPU, 让 op_host 拦截非法输入。"""
-    for t in tensors:
-        if t is None:
-            continue
-        if not isinstance(t, torch.Tensor):
-            continue
-        if t.numel() == 0:
-            return True
-        if any(dim == 0 for dim in t.shape):
-            return True
-    return False
-
-
-def _is_abnormal_kv_shape(k, v):
-    """检测 k/v shape 是否不一致 (除最后一维 D/V_D 外的维度应一致).
-    B/N_kv/S 任一不一致即视为异常, 算子应拦截.
-    适用于 BNSD/BTND/BSH/BSND/TND 等 layout (最后一维都是 D 或 V_D)."""
-    if k is None or v is None:
-        return False
-    if not isinstance(k, torch.Tensor) or not isinstance(v, torch.Tensor):
-        return False
-    if k.ndim < 2 or v.ndim < 2:
-        return False
-    # 除最后一维外, 其他维应一致 (D 可不同, V_D 允许 != D)
-    return tuple(k.shape[:-1]) != tuple(v.shape[:-1])
-
-
-def _is_abnormal_head_dim(d, v_d):
-    """检测 head_dim (D/V_D) 是否不在算子支持列表内.
-    来源: op_host/checkers/quant_checker.cpp supportedHeadDims={128}.
-    异常 D 值 (如 130) 会导致 golden transpose_qscale reshape 失败 (n_blk_q 奇数),
-    应提前走 fallback 让 op_host checker 拦截 'MxFP4 only supports D=128'."""
-    supported = {128}
-    if d is not None and d not in supported:
-        return True
-    if v_d is not None and v_d not in supported:
-        return True
-    return False
-
-
-def _is_abnormal_seq_lens(
-    act_seq_lens_q, max_seqlen_q, act_seq_lens_kv, max_seqlen_kv, b_size
-):
-    """检测 seq_lens + max_seqlen 是否异常 (Q 或 KV 任一), True 表示算子应拦截.
-    异常条件:
-      - act_seq_lens 为空 且 max_seqlen < 0 (CSV 默认 -1 表示未传): seq 完全未指定
-      - act_seq_lens 长度 != B: 长度不匹配 (算子无法解析)
-    例: q/k/v shape 正常但 seq 信息缺失/不匹配, 算子应拒绝."""
-    # Q seq
-    if act_seq_lens_q:
-        if len(act_seq_lens_q) != b_size:
-            return True
-    else:
-        if max_seqlen_q is None or max_seqlen_q < 0:
-            return True
-    # KV seq
-    if act_seq_lens_kv:
-        if len(act_seq_lens_kv) != b_size:
-            return True
-    else:
-        if max_seqlen_kv is None or max_seqlen_kv < 0:
-            return True
-    return False
-
-
 def _build_fallback_data_dict(
     q, k, v, q_descale, k_descale, v_descale,
     block_table,
@@ -343,6 +276,7 @@ def run_main(
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
@@ -436,6 +370,14 @@ def run_main(
     )
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
 =======
+=======
+    # generate_data 失败 (任意异常: s=0 / k v shape 不一致 / D 不支持 / descale 维度奇数 /
+    # seq 缺失 / transpose reshape 等) 即回退到 CSV tensor 透传给 NPU, 让 op_host 拦截.
+    # 不做提前预检: golden 报错自然就是异常 case, 交给算子 checker 判定更准确.
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        data_dict = golden_mod.generate_data()
+>>>>>>> 187c94cca... 异常用例透传: 简化为 generate_data 失败即回退, 移除提前异常预检
         golden_mod._apply_csv_shape_override(
             data_dict,
             {
@@ -447,7 +389,25 @@ def run_main(
                 "v_descale": v_descale,
             },
         )
+<<<<<<< HEAD
 >>>>>>> 5b45d4f2d... 异常用例透传: 跳过 generate_data 直接走 NPU 让 op_host 拦截
+=======
+    except Exception as e:
+        logger.warning(
+            "[MAIN_WRAPPER] generate_data 失败: %s, 回退到 CSV tensor 透传给 NPU 让 op_host 拦截",
+            str(e),
+        )
+        data_dict = _build_fallback_data_dict(
+            q, k, v, q_descale, k_descale, v_descale, block_table,
+            B, N_q, N_kv, D, V_D,
+            act_seq_lens_q, act_seq_lens_kv,
+            input_layout, layout_kv, layout_out,
+            softmax_scale, cu_seqlens_q, cu_seqlens_kv,
+            max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+        )
+    finally:
+        golden_mod._clear_physical_s_override()
+>>>>>>> 187c94cca... 异常用例透传: 简化为 generate_data 失败即回退, 移除提前异常预检
     logger.info(
         "[MAIN_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
         graph_path,
