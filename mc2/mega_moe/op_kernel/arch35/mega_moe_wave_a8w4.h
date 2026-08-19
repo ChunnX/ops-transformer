@@ -123,14 +123,14 @@ private:
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline uint32_t MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
 {
-    uint32_t expertTokenCount = 0U;
-    ComputeExpertTokenCountAndNotify<ActivationType, true, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
-    if (expertTokenCount != 0U) {
-        DispatchExpertTokensByRankShard<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-            tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx);
+    WaveDispatchCoreRange dispatchCoreRange =
+        PlanWaveExpertDispatch(tokenDispatchConfig_, tokenDispatchScratch_, expertIdx);
+    if (HasWaveDispatchRows(dispatchCoreRange)) {
+        DispatchWaveExpertRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
+            dispatchCoreRange);
     }
-    return expertTokenCount;
+    return static_cast<uint32_t>(dispatchCoreRange.expertRowCount);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
@@ -306,7 +306,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process()
 {
-    // A8W4 Wave 与 A8W8 Wave 共用紧凑 count/cumsum。
+    // A8W4 Wave 与 A8W8 Wave 共用紧凑 count/cumsum 和跨专家滚动 Dispatch。
     sendMaskConfig_.publishCompactCountTable = true;
     tokenDispatchConfig_.useCompactExpertCountWorkspace = true;
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
