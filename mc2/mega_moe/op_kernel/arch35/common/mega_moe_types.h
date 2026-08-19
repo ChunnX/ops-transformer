@@ -32,6 +32,7 @@ struct ExpertLoopState {
     ProblemShape problemShape;
     int64_t globalTokenStartIndex = 0;
     uint32_t expertIdx = 0U;
+    bool expertCountTableReady = false;
 };
 
 // GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
