@@ -16,30 +16,62 @@ import re
 import argparse
 
 
+OP_DEF_PATTERN = re.compile(
+    r"(?P<comment>[ \t]*/\*\*?(?:[^*]|\*(?!/))*?\*/[ \t]*\n\s*)?"
+    r"(?P<guard>[ \t]*#\s*ifndef\s+\w+[^\n]*\n"
+    r"[ \t]*#\s*define\s+\w+[^\n]*\n\s*)?"
+    r"^\s*REG_OP\((?P<opname>.+?)\)"
+    r".*?OP_END_FACTORY_REG\((?P=opname)\)"
+    r"(?(guard)[^\n]*\n[ \t]*#\s*endif[^\n]*)",
+    re.DOTALL | re.MULTILINE,
+)
+
+
 def match_op_proto(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)", re.DOTALL)
-    match = op_def_pattern.search(content)
+    match = OP_DEF_PATTERN.search(content)
 
     if match:
-        op_name = match.group(1)
+        op_name = match.group("opname")
         op_def = match.group(0)
         return op_name, op_def
     else:
         return None, None
 
 
+# 收集 ops_proto_extend.h 中的原型定义，可能有多个，返回数组
+def match_op_proto_extend(file_path, ops):
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    matches = OP_DEF_PATTERN.finditer(content)
+
+    results = []
+    for match in matches:
+        op_name = match.group("opname")
+        if op_name in ops:
+            continue
+        op_def = match.group(0)
+        results.append((op_name, op_def))
+    return results
+
+
 def merge_op_proto(protos_path, output_file):
     op_defs = []
+    ops = []
     for proto_path in protos_path:
-        if not proto_path.endswith("_proto.h"):
-            continue
         print(f"proto_path: {proto_path}")
-        op_name, op_def = match_op_proto(proto_path)
-        if op_def:
-            op_defs.append(op_def)
+        if proto_path.endswith("_proto.h"):
+            op_name, op_def = match_op_proto(proto_path)
+            if op_def:
+                op_defs.append(op_def)
+                ops.append(op_name)
+        if proto_path.endswith("_proto_extend.h"):
+            results = match_op_proto_extend(proto_path, ops)
+            for _, op_def in results:
+                op_defs.append(op_def)
 
     # merge op_proto
     merged_content = f"""#ifndef OP_TRANSFORMER_PROTO_H_
@@ -72,6 +104,6 @@ def parse_args(argv):
 if __name__ == "__main__":
     args = parse_args(sys.argv)
 
-    protos_path = args.protos[1:]
+    protos_path = list(dict.fromkeys(args.protos[1:]))
     output_file = args.output_file[0]
     merge_op_proto(protos_path, output_file)
