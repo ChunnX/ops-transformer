@@ -46,6 +46,9 @@ struct CaseSpec {
     const char *name;
     bool pagedKv;
     LayoutKind layout = LayoutKind::TND;
+    // Dummy requests prepended with q_len=kv_len=0. TND/PA query T stays `seq`
+    // (packed); actual_seq_lengths becomes [0]*padBatches + [seq].
+    int64_t padBatches = 0;
 };
 
 const char *LayoutStr(const CaseSpec &spec)
@@ -349,10 +352,10 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
         qShape = {spec.seq, spec.numHeads, kHeadDim};
         kvShape = {spec.seq, spec.kvHeads, kHeadDim};
     }
-    const std::vector<int64_t> btShape = {1, 1};
+    const std::vector<int64_t> btShape = {1 + spec.padBatches, 1};
     const std::vector<int64_t> rowPtrShape = {spec.kvHeads, 2};
     const std::vector<int64_t> csrShape = {spec.kvHeads, spec.seq * spec.topK};
-    const std::vector<int64_t> seqShape = {1};
+    const std::vector<int64_t> seqShape = {1 + spec.padBatches};
 
     c.qHost.assign(static_cast<size_t>(GetShapeSize(qShape)), 0);
     c.kHost.assign(static_cast<size_t>(GetShapeSize(kvShape)), 0);
@@ -380,8 +383,9 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
             qIdx[static_cast<size_t>(h * spec.seq * spec.topK + i)] = i;
         }
     }
-    std::vector<int32_t> seqQ = {static_cast<int32_t>(spec.seq)};
-    std::vector<int32_t> seqKv = {static_cast<int32_t>(spec.seq)};
+    std::vector<int32_t> seqQ(static_cast<size_t>(spec.padBatches), 0);
+    seqQ.push_back(static_cast<int32_t>(spec.seq));
+    std::vector<int32_t> seqKv = seqQ;
 
     int ret = CreateAclTensor(c.qHost, qShape, &c.queryAddr, ACL_BF16, &c.query);
     CHECK_RET(ret == 0, return ret);
@@ -390,7 +394,7 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
     ret = CreateAclTensor(c.vHost, kvShape, &c.valueAddr, ACL_BF16, &c.value);
     CHECK_RET(ret == 0, return ret);
     if (spec.pagedKv) {
-        std::vector<int32_t> blockTable(1, 0);
+        std::vector<int32_t> blockTable(static_cast<size_t>(1 + spec.padBatches), 0);
         ret = CreateAclTensor(blockTable, btShape, &c.blockTableAddr, ACL_INT32, &c.blockTable);
         CHECK_RET(ret == 0, return ret);
     } else {
@@ -541,6 +545,9 @@ int main()
         {32, 32, 32, 2, 1, "tnd_gqa_h32_kv2", false},
         {32, 128, 16, 1, 1, "tnd_bs128_t32", false},
         {16, 64, 64, 4, 1, "tnd_prod_gqa_h64_kv4", false},
+        // TND/PA dummy request in front: q_len=kv_len=0 (packedRow 0 is the real batch)
+        {32, 32, 16, 1, 1, "pad0_pa_t32", true, LayoutKind::TND, 1},
+        {32, 32, 16, 1, 1, "pad0_tnd_t32", false, LayoutKind::TND, 1},
         // BNSD contiguous training: query/key/value [1, N, S, D], no block_table
         {32, 32, 16, 1, 1, "bnsd_t32_g16", false, LayoutKind::BNSD},
         {32, 32, 32, 2, 1, "bnsd_gqa_h32_kv2", false, LayoutKind::BNSD},

@@ -37,8 +37,8 @@ BNSD 与 BSND 都是 4 维，**不能只靠 shape 区分**（`N==S` 时 shape �
 | `k2q_row_ptr` | `[kvHeads, totalPackedRows + 1]` | int32 | Dense packed-row CSR 行指针；`totalPackedRows = sum(ceil(kv_seqlen/blockSize))`。 |
 | `k2q_q_indices` | `[kvHeads, totalQTokens * topK]` | int32 | CSR 列数据：global `qToken` id，按 head 分段存储。 |
 | `k2q_slot_indices` | `[kvHeads, totalQTokens * topK]` | int32 | 每条边在 workspace 中的 `slotK`，范围 `[0, topK)`。 |
-| `actual_seq_lengths` | `[batch]` | int32 | **必选**。每个 batch 的 Q sequence length。TND 模式下 `batch` 取该 tensor（或 `actual_seq_lengths_kv`）的长度。 |
-| `actual_seq_lengths_kv` | `[batch]` | int32 | **必选**。每个 batch 的 KV sequence length。 |
+| `actual_seq_lengths` | `[batch]` | int32 | **必选**。每个 batch 的 Q sequence length。允许 **0**：padding / dummy 请求。TND 模式下 `batch` 取该 tensor（或 `actual_seq_lengths_kv`）的长度。 |
+| `actual_seq_lengths_kv` | `[batch]` | int32 | **必选**。每个 batch 的 KV sequence length。允许 **0**，与 `actual_seq_lengths` 一起标识 dummy 请求。 |
 
 
 ### 2.2 反向索引输入约束
@@ -48,7 +48,7 @@ BNSD 与 BSND 都是 4 维，**不能只靠 shape 区分**（`N==S` 时 shape �
 语义约定：
 
 1. Host 侧 forward 选块为 `select_idx[kvHeads, totalQTokens, topK]`（可用 global logical id 表达，构建 CSR 时转为 batch-local q2k）与 `select_num_idx[kvHeads, totalQTokens]`。
-2. **`totalPackedRows`** = `sum_b ceil(kv_seqlen[b]/blockSize)`，与 MSA/CUDA `build_k2q_csr` 一致；未选中的块对应 CSR 空行（`row_ptr[r+1]==row_ptr[r]`）。
+2. **`totalPackedRows`** = `sum_b ceil(kv_seqlen[b]/blockSize)`，与 MSA/CUDA `build_k2q_csr` 一致；未选中的块对应 CSR 空行（`row_ptr[r+1]==row_ptr[r]`）。`kv_seqlen[b]=0` 的 padding 请求贡献 0 行，不进入 Phase1 packed row。
 3. Phase1 task：`taskIdx = packedRow * kvHeads + kvHeadIdx`，其中 `packedRow` 由 `(batch, local_kv_block)` 按 MSA 规则打包。
 4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §5.1 / §6.1），再按 PA/`block_table` 或 TND token 偏移取 K/V block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
 5. `csrStart = k2q_row_ptr[kvHeadIdx, packedRow]`，`csrEnd = k2q_row_ptr[kvHeadIdx, packedRow + 1]`，`numQTokens = csrEnd - csrStart`。
@@ -282,6 +282,8 @@ localQIdx = qToken % S
 `batchKvBlockOffset` 仍可用于 host 侧将 global logical block id 转为 batch-local id（构建 q2k/k2q CSR 时）。
 
 > **打包顺序澄清**：`batchKvBlockOffset` 是 host 侧 **row-major 累加**（按 batch 顺序累 `ceil(kv_seqlen/blockSize)`），仅用于 global logical block id ↔ batch-local id 互转，**不等于** Phase1 的 `packedRow`。Phase1 `packedRow` 采用 **column-major MSA 打包**：外层遍历 `localBlockIdx`，内层遍历 `batchIdx`，即顺序为 `(batch=0,blk=0), (batch=1,blk=0), ..., (batch=B-1,blk=0), (batch=0,blk=1), ...`。该顺序由 `InitPackedRowCoord` / `AdvancePackedRowCoord` 在 kernel 内增量步进实现，并与 golden `_build_packed_row_map` / `_init/_advance_packed_row_coord` 对齐。`totalPackedRows = sum_b ceil(kv_seqlen[b]/blockSize)` 与打包顺序无关，两种打包下总数一致。
+>
+> **`q_len=kv_len=0` 的 padding 请求**：`ceil(0/blockSize)=0`，该 batch **不占用 packed row**。`InitPackedRowCoord` 从 `(0,0)` 起跳过 `KvRowsPerBatch==0` 的 batch，因此 packedRow 0 是第一个非空请求，而不是无条件的 batch 0。中间的 dummy 由 `AdvancePackedRowCoord` 同样跳过。全 batch 都是 dummy 时 `totalPackedRows=0`，Phase1 不进任务循环。
 
 ### 5.2 Block 有效长度
 
@@ -296,6 +298,7 @@ validSize     = min(blockSize, tailRemain)   # tailRemain > 0 时有效
 - 非尾块：`validSize = blockSize`
 - 尾块：`validSize = kvSeqlenBatch % blockSize`；若整除则 `validSize = blockSize`
 - `tailRemain <= 0` 的 block 不应出现在有效 `numKvBlocks` 范围内
+- `kv_len=0`：`numBlocksB=0`，`validSize=0`，Phase1 `continue`（不读 K/V、不写 workspace）
 
 ## 6. Phase 1：KV-centric partial compute
 
@@ -363,7 +366,8 @@ qBatchIdx      = FindBatchForQToken(qToken)
 localQIdx      = qToken - batchQOffset[qBatchIdx]
 qPosition      = kv_seqlen[qBatchIdx] - q_seqlen[qBatchIdx] + localQIdx
 kvStartPos     = localBlockIdx * blockSize    # localBlockIdx 来自 packedRow 的 MSA coord
-causalValidLen = 0 if qPosition < kvStartPos
+causalValidLen = 0 if q_seqlen==0 or kv_seqlen==0 or (BNSD/BSND and localQIdx >= q_seqlen)
+                 else 0 if qPosition < kvStartPos
                  else min(validSize, qPosition - kvStartPos + 1)
 ```
 
@@ -443,6 +447,9 @@ Phase 2 分核（仅 `__DAV_VEC__` 执行）：
 coreIdx  = GetBlockIdx()   # VEC 线性 AIV id，范围 [0, GetBlockNum()*GetSubBlockNum())
 coreNum  = GetBlockNum() * GetSubBlockNum()   # GetBlockNum() 为 AIC block 数（AIV 数的一半）
 for taskIdx = coreIdx; taskIdx < totalTaskNumP2; taskIdx += coreNum:
+    qToken = taskIdx / kvHeads
+    if IsPaddingQToken(qToken):   # BNSD/BSND: q_len=kv_len=0 or t>=q_len
+        continue                  # 不写 attention_out / softmax_lse
     FlashDecodeCompute(taskIdx, totalTaskNumP2, ...)
 ```
 
