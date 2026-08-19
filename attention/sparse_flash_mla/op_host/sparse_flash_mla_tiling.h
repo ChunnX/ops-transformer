@@ -467,8 +467,7 @@ class SMLAInfoParser {
 public:
     explicit SMLAInfoParser(gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~SMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
