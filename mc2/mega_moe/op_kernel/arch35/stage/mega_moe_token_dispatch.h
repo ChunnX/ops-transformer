@@ -54,6 +54,7 @@ struct TokenDispatchScratch {
     int64_t revTokenElemCnt;
     int64_t revScaleElemCnt;
     uint64_t cumsumRevCntInRank;
+    uint32_t nextDispatchCoreIdx;
 };
 
 /** 表示当前 Dispatch core 在当前专家 row 空间中负责的相对 row range。 */
@@ -79,6 +80,72 @@ struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> stridedTensor;
     LocalTensor<int32_t> compactTensor;
 };
+
+// Wave Dispatch 将专家有效行在全部物理 AIV1 上连续均分，并跨专家滚动首核。
+struct WaveDispatchCoreRange {
+    uint64_t expertRowCount;
+    uint32_t expertGlobalRowBegin;
+    uint32_t localExpertRowBegin;
+    uint32_t localExpertRowEnd;
+};
+
+__aicore__ inline bool HasWaveDispatchRows(const WaveDispatchCoreRange &range)
+{
+    return range.localExpertRowBegin < range.localExpertRowEnd;
+}
+
+template <typename ActivationType>
+__aicore__ inline WaveDispatchCoreRange PlanWaveExpertDispatch(
+    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)
+{
+    uint32_t expertPrefixIndex = (localExpertId + 1U) * common.worldSize - 1U;
+    int32_t expertGlobalRowEndValue = scratch.cumsumInfoTensor.GetValue(expertPrefixIndex);
+    int32_t expertGlobalRowBeginValue = 0;
+    if (localExpertId != 0U) {
+        expertGlobalRowBeginValue = scratch.cumsumInfoTensor.GetValue(localExpertId * common.worldSize - 1U);
+    }
+
+    uint32_t expertGlobalRowBegin = static_cast<uint32_t>(expertGlobalRowBeginValue);
+    uint32_t expertGlobalRowEnd = static_cast<uint32_t>(expertGlobalRowEndValue);
+    uint64_t expertRowCount = expertGlobalRowEnd > expertGlobalRowBegin ?
+                                  static_cast<uint64_t>(expertGlobalRowEnd - expertGlobalRowBegin) :
+                                  0U;
+    WaveDispatchCoreRange range{expertRowCount, expertGlobalRowBegin, 0U, 0U};
+
+    uint32_t totalCoreCount = blockJob.totalJobs;
+    if (expertRowCount == 0U || totalCoreCount == 0U || expertGlobalRowBegin >= context.maxOutputSize) {
+        return range;
+    }
+
+    uint64_t validGlobalRowEnd =
+        expertGlobalRowEnd < context.maxOutputSize ? expertGlobalRowEnd : context.maxOutputSize;
+    uint32_t validExpertRowCount = static_cast<uint32_t>(validGlobalRowEnd - expertGlobalRowBegin);
+    uint32_t activeCoreCount = validExpertRowCount < totalCoreCount ? validExpertRowCount : totalCoreCount;
+
+    uint32_t firstPhysicalCoreIdx = scratch.nextDispatchCoreIdx;
+    uint32_t logicalCoreIdx = blockJob.jobIndex >= firstPhysicalCoreIdx ?
+                                  blockJob.jobIndex - firstPhysicalCoreIdx :
+                                  blockJob.jobIndex + totalCoreCount - firstPhysicalCoreIdx;
+    if (logicalCoreIdx < activeCoreCount) {
+        if (validExpertRowCount < totalCoreCount) {
+            range.localExpertRowBegin = logicalCoreIdx;
+            range.localExpertRowEnd = logicalCoreIdx + 1U;
+        } else {
+            uint32_t rowsPerCore = validExpertRowCount / totalCoreCount;
+            uint32_t extraRowCoreCount = validExpertRowCount % totalCoreCount;
+            range.localExpertRowBegin = logicalCoreIdx * rowsPerCore +
+                                        (logicalCoreIdx < extraRowCoreCount ? logicalCoreIdx : extraRowCoreCount);
+            range.localExpertRowEnd =
+                range.localExpertRowBegin + rowsPerCore + (logicalCoreIdx < extraRowCoreCount ? 1U : 0U);
+        }
+    }
+
+    uint32_t nextPhysicalCoreIdx = firstPhysicalCoreIdx + activeCoreCount;
+    scratch.nextDispatchCoreIdx =
+        nextPhysicalCoreIdx >= totalCoreCount ? nextPhysicalCoreIdx - totalCoreCount : nextPhysicalCoreIdx;
+    return range;
+}
 
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
@@ -507,6 +574,67 @@ __aicore__ inline void DispatchExpertTokensByRows(const TokenDispatchConfig &con
     DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, common, syncLayout, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin, expertRange,
         rankRange, gmm1TileRowCount);
+}
+
+template <typename ActivationType>
+__aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &common,
+                                                  const TokenDispatchScratch<ActivationType> &scratch,
+                                                  uint32_t localExpertId, uint32_t globalRowIdx)
+{
+    uint32_t expertRankBegin = localExpertId * common.worldSize;
+    uint32_t searchBegin = expertRankBegin;
+    uint32_t searchEnd = expertRankBegin + common.worldSize;
+    while (searchBegin < searchEnd) {
+        uint32_t middle = searchBegin + (searchEnd - searchBegin) / 2U;
+        uint32_t rankGlobalRowEnd = static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(middle));
+        if (rankGlobalRowEnd <= globalRowIdx) {
+            searchBegin = middle + 1U;
+        } else {
+            searchEnd = middle;
+        }
+    }
+    return searchBegin - expertRankBegin;
+}
+
+// Wave 专用路径：本核只扫描与连续专家行区间相交的 source rank，未分到行的核直接返回。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context,
+                                              const MoeStageCommonConfig &common,
+                                              const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                              GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
+                                              uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
+{
+    if (!HasWaveDispatchRows(coreRange)) {
+        return;
+    }
+
+    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    uint32_t coreGlobalRowBegin = coreRange.expertGlobalRowBegin + coreRange.localExpertRowBegin;
+    uint32_t coreGlobalRowEnd = coreRange.expertGlobalRowBegin + coreRange.localExpertRowEnd;
+    uint32_t sourceRankIdx = FindDispatchSourceRank(common, scratch, localExpertId, coreGlobalRowBegin);
+
+    while (sourceRankIdx < common.worldSize) {
+        uint32_t prefixIndex = localExpertId * common.worldSize + sourceRankIdx;
+        uint32_t rankGlobalRowEnd = static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex));
+        uint32_t rankGlobalRowBegin =
+            prefixIndex == 0U ? 0U : static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex - 1U));
+        if (rankGlobalRowBegin >= coreGlobalRowEnd) {
+            break;
+        }
+
+        uint32_t overlapGlobalRowBegin =
+            coreGlobalRowBegin > rankGlobalRowBegin ? coreGlobalRowBegin : rankGlobalRowBegin;
+        uint32_t overlapGlobalRowEnd = coreGlobalRowEnd < rankGlobalRowEnd ? coreGlobalRowEnd : rankGlobalRowEnd;
+        if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
+            DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, common, syncLayout, params, winRankAddr, scratch, localExpertId,
+                static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
+                static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
+                static_cast<int32_t>(overlapGlobalRowBegin - rankGlobalRowBegin),
+                static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin), gmm1TileRowCount);
+        }
+        ++sourceRankIdx;
+    }
 }
 
 // 每个寄存器内执行 Hillis-Steele int32 prefix-scan，再用 carry 串接相邻寄存器；随后提取
