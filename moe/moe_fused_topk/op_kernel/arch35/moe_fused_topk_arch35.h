@@ -117,6 +117,7 @@ private:
     uint32_t topkMaxValue_ = 0;
     uint32_t topkMinValue_ = 0;
     float floatNegativeInf_ = -3.4e38F;
+    bool allScoresNan_ = false;
 
     GlobalTensor<inputT> mGmX_;
     GlobalTensor<inputT> mGmAddNum_;
@@ -278,6 +279,15 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Co
                     xWorkspaceGroupCopyParams, xWorkspaceGroupPadParams);
     }
     AscendC::PipeBarrier<PIPE_ALL>();
+
+    // AICore sort does not define the ordering of NaN values.  The CPU
+    // reference orders them after valid routing scores, so normalize only
+    // the ranking copy to the existing minimum finite sentinel.  The sigmoid
+    // tensor itself remains untouched and is still used for the final output.
+    LocalTensor<uint8_t> validScoreMask = sortedBuf_.Get<uint8_t>();
+    Compare(validScoreMask, xLocal, xLocal, CMPMODE::EQ, secondDimSize_);
+    Select(xLocal, validScoreMask, xLocal, floatNegativeInf_, SELMODE::VSEL_TENSOR_SCALAR_MODE, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 template <typename inputT, typename calT, uint32_t enableExpertMapping>
@@ -343,6 +353,25 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Gr
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
     WaitFlag<HardEvent::V_S>(eventIdVToS);
+
+    // Stable CPU sorting orders an all-NaN score row by its original expert
+    // index.  Detect this rare IEEE-special case here; the final gather uses
+    // the same deterministic order below.  The normal path performs just one
+    // scalar read and retains the vector-only sorting fast path.
+    allScoresNan_ = false;
+    LocalTensor<uint32_t> scoreBits = sigmoidAddTensor.template ReinterpretCast<uint32_t>();
+    uint32_t firstScoreBits = scoreBits.GetValue(0);
+    if ((firstScoreBits & 0x7F800000U) == 0x7F800000U && (firstScoreBits & 0x007FFFFFU) != 0U) {
+        allScoresNan_ = true;
+        for (size_t scoreIndex = 1; scoreIndex < secondDimSize_; ++scoreIndex) {
+            uint32_t score = scoreBits.GetValue(scoreIndex);
+            if ((score & 0x7F800000U) != 0x7F800000U || (score & 0x007FFFFFU) == 0U) {
+                allScoresNan_ = false;
+                break;
+            }
+        }
+    }
+
     for (size_t i = 0; i < groupTopk_; i++) {
         int32_t selectedGroupIndex = dstOffset.GetValue(SORTED_COEF * i + 1);
         topkGroupValue.SetValue(selectedGroupIndex, float(1));
@@ -375,6 +404,16 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Gr
     Select(topkGroupValue, selectedGroupMask, sigmoidAddTensor, topkGroupValue, SELMODE::VSEL_TENSOR_TENSOR_MODE,
            secondDimSize_);
     AscendC::PipeBarrier<PIPE_V>();
+
+    // NumPy's stable descending argsort places NaN scores after finite
+    // candidates.  The hardware Sort has no such ordering guarantee, so
+    // normalize NaNs in the final ranking buffer as well.  This buffer is
+    // separate from sigmoidTensor, therefore output values keep their IEEE
+    // behavior while indices follow the reference ordering.
+    Compare(selectedGroupMask, topkGroupValue, topkGroupValue, CMPMODE::EQ, secondDimSize_);
+    Select(topkGroupValue, selectedGroupMask, topkGroupValue, floatNegativeInf_,
+           SELMODE::VSEL_TENSOR_SCALAR_MODE, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 template <typename inputT, typename calT, uint32_t enableExpertMapping>
@@ -388,6 +427,35 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Ga
     LocalTensor<uint32_t> assistLocal = assistBuf_.Get<uint32_t>();
     LocalTensor<int32_t> sortIndexInit = assistBuf_.Get<int32_t>();
     LocalTensor<float> tempTensor = tempBuf_.Get<float>();
+
+    if (allScoresNan_) {
+        // For an all-NaN row, NumPy stable argsort first emits the masked
+        // (zero-score) groups and then the selected NaN groups, both in their
+        // original order.  Build those raw expert indices directly and use
+        // the usual Gather/CopyOut flow so expert mapping and normalization
+        // remain unchanged.
+        event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventIdVToS);
+        WaitFlag<HardEvent::V_S>(eventIdVToS);
+        uint32_t deselectedExpertNum = (groupNum_ - groupTopk_) * groupEles_;
+        for (size_t kIndex = 0; kIndex < k_; ++kIndex) {
+            uint32_t expertIndex = 0;
+            if (kIndex < deselectedExpertNum) {
+                expertIndex = groupTopk_ * groupEles_ + kIndex;
+            } else {
+                expertIndex = kIndex - deselectedExpertNum;
+            }
+            indicesLocal.SetValue(kIndex, static_cast<int32_t>(expertIndex));
+        }
+        event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventIdSToV);
+        WaitFlag<HardEvent::S_V>(eventIdSToV);
+        Muls(sortedTensor.template ReinterpretCast<int32_t>(), indicesLocal, FLOAT_BYTES, k_);
+        AscendC::PipeBarrier<PIPE_V>();
+        Gather(yLocal, sigmoidTensor, sortedTensor.template ReinterpretCast<uint32_t>(), 0, k_);
+        AscendC::PipeBarrier<PIPE_V>();
+        return;
+    }
 
     // Sort/Extract stay entirely on vector hardware; no O(topK * expertNum)
     // scalar tie scan is allowed on the performance path.
