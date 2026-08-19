@@ -278,6 +278,9 @@ private:
         lseStatSize_ = tilingData->lseStatSize;
         isPageAttention_ = tilingData->isPageAttention;
         softmaxLseFlag_ = tilingData->softmaxLseFlag;
+        layoutType_ = tilingData->layoutType;
+        qSeqLen_ = tilingData->qSeqLen;
+        kvSeqLen_ = tilingData->kvSeqLen;
         slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
         slotStatElems_ = static_cast<uint64_t>(groupSize_);
     }
@@ -398,18 +401,41 @@ private:
     // qBatch == batchIdx (Q/KV same batch). cumQStart/qSeqlenBatch/kvSeqlenBatch are all
     // pre-fetched by ResolveBatchQSide (state machine resolved batchIdx) -> pure compute,
     // 0 GM GetValue in the cvl loop.
+    // BNSD/BSND CSR qToken is padded flatten b * S + t; TND qToken is packed flatten.
     __aicore__ inline
     uint32_t CalcCausalValidLen(
         uint32_t qToken, uint32_t validSize, uint32_t kvStartPos,
         uint32_t cumQStart, uint32_t qSeqlenBatch, uint32_t kvSeqlenBatch)
     {
-        uint32_t localQIdx = qToken - cumQStart;
+        uint32_t localQIdx;
+        if ((layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD ||
+             layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) && qSeqLen_ > 0U) {
+            localQIdx = qToken % qSeqLen_;
+        } else {
+            localQIdx = qToken - cumQStart;
+        }
         uint32_t qPosition = kvSeqlenBatch - qSeqlenBatch + localQIdx;
         if (qPosition < kvStartPos) {
             return 0U;
         }
         uint32_t maxLen = qPosition - kvStartPos + 1;
         return (maxLen < validSize) ? maxLen : validSize;
+    }
+
+    // GM offset of query[qToken, qHeadStart, 0:D).
+    // TND/BSND: token-major, consecutive heads of one token are D apart.
+    // BNSD: head-major S, consecutive heads of one token are S*D apart.
+    __aicore__ inline
+    uint64_t QTokenHeadOffset(uint32_t qToken, uint32_t qHeadStart) const
+    {
+        if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD && qSeqLen_ > 0U) {
+            uint32_t b = qToken / qSeqLen_;
+            uint32_t t = qToken - b * qSeqLen_;
+            return (static_cast<uint64_t>(b) * qHeads_ + qHeadStart) * qSeqLen_ * embed_
+                + static_cast<uint64_t>(t) * embed_;
+        }
+        return static_cast<uint64_t>(qToken) * qHeads_ * embed_
+            + static_cast<uint64_t>(qHeadStart) * embed_;
     }
 
     // Copies rowMax + rowSum for 1 or 2 groups (PAIR) from UB to GM in one DataCopyPad each
@@ -659,7 +685,12 @@ private:
                 EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM * sizeof(ElementS) * i);
         }
 
-        int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
+        int64_t strideKVRow = (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD)
+            ? static_cast<int64_t>(embed_)
+            : static_cast<int64_t>(kvHeads_) * embed_;
+        uint32_t qGmRowStride = (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD && qSeqLen_ > 0U)
+            ? (qSeqLen_ * embed_)
+            : embed_;
 #endif
 #ifdef __DAV_VEC__
         // Softmax self-allocates UB (lsUb/lpUb/gmUb/glUb; high-prec also tmpUb).
@@ -766,8 +797,9 @@ private:
 
 #ifdef __DAV_CUBE__
             // PA: [numPhysicalBlocks, blockSize, kvHeads, D], indexed by block_table.
-            // TND non-kvcache: [T_kv, kvHeads, D], tokens tightly packed by actual_seq_lengths_kv.
-            // Intra-block stride is kvHeads*D in both layouts.
+            // TND contiguous: [T_kv, kvHeads, D], tokens packed by actual_seq_lengths_kv.
+            // BNSD contiguous: [B, kvHeads, S, D], tokens of one head are contiguous (stride D).
+            // BSND contiguous: [B, S, kvHeads, D], same intra-block stride as TND (kvHeads*D).
             uint64_t kvBlockBase;
             if (isPageAttention_ == 1U) {
                 int64_t btOffset =
@@ -775,6 +807,15 @@ private:
                 int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
                 kvBlockBase =
                     static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_
+                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+            } else if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD) {
+                kvBlockBase =
+                    (static_cast<uint64_t>(batchIdx) * kvHeads_ + kvHeadIdx) * kvSeqLen_ * embed_
+                    + static_cast<uint64_t>(localBlockIdx) * blockSize_ * embed_;
+            } else if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) {
+                kvBlockBase =
+                    (static_cast<uint64_t>(batchIdx) * kvSeqLen_
+                     + static_cast<uint64_t>(localBlockIdx) * blockSize_) * kvHeads_ * embed_
                     + static_cast<uint64_t>(kvHeadIdx) * embed_;
             } else {
                 kvBlockBase =
@@ -805,10 +846,6 @@ private:
             // kvHead: perQTokenStride = kvHeads*topK*slotOElems, kvHeadBase = kvHeadIdx*topK*slotOElems.
             uint64_t perQTokenStride = static_cast<uint64_t>(kvHeads_) * topK_ * slotOElems_;
             uint64_t kvHeadBase = static_cast<uint64_t>(kvHeadIdx) * topK_ * slotOElems_;
-            // QK qBase arithmetic precomputes (== qToken*qHeads*embed + qHeadStart*embed),
-            // constant within this kvHead.
-            uint64_t perQTokenStrideQ = static_cast<uint64_t>(qHeads_) * embed_;
-            uint64_t qHeadStartBase = static_cast<uint64_t>(qHeadStart) * embed_;
 
             // qToken/slotK ring: batch bi's identity is filled at bi and consumed by PV at
             // bi+PRE_LAUNCH (reading the ring row, no GM re-read). PRE_LAUNCH+1 stages keep the
@@ -818,6 +855,9 @@ private:
             constexpr uint32_t BATCH_RING_STAGES = PRE_LAUNCH + 1U;
             uint32_t batchQToken[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
             uint32_t batchSlotK[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
+#ifdef __DAV_CUBE__
+            uint64_t batchQBase[MAX_BATCH_GROUPS] = {};
+#endif
 
             for (uint32_t bi = 0U; bi < numBatches + PRE_LAUNCH; bi++) {
                 uint32_t stage = bi % BATCH_RING_STAGES;
@@ -840,6 +880,9 @@ private:
                             gK2qQIndices.GetValue(csrDataBase + csrIdx));
                         batchSlotK[stage][g] = static_cast<uint32_t>(
                             gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+#ifdef __DAV_CUBE__
+                        batchQBase[g] = QTokenHeadOffset(batchQToken[stage][g], qHeadStart);
+#endif
 #ifdef __DAV_VEC__
                         cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos,
                                                        cumQStart, qSeqlenBatch, kvSeqlenBatch);
@@ -864,8 +907,8 @@ private:
                     }
                     auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mLayoutB, RoundUp(validSize, 16U));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
-                    blockMmadQK(gQ, batchQToken[stage], batchGroupCount, groupSize_,
-                                ubSTensorTla, validSize, embed_, perQTokenStrideQ, qHeadStartBase,
+                    blockMmadQK(gQ, batchQBase, batchGroupCount, groupSize_,
+                                ubSTensorTla, validSize, embed_, qGmRowStride,
                                 numBatches, bi, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
@@ -937,7 +980,8 @@ private:
             resource.ubBuf.template GetBufferByByte<float>(0);
 
         EpilogueRescaleO epilogueRescaleO;
-        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_, softmaxLseFlag_);
+        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_, softmaxLseFlag_,
+                                       layoutType_, qSeqLen_, qHeads_);
         // VEC: GetBlockIdx() is the linear AIV id in [0, GetBlockNum()*GetSubBlockNum());
         // GetBlockNum() is the AIC block count (half of AIV count). Stride must cover
         // all AIV sub-blocks, not blockNum alone.
@@ -977,6 +1021,9 @@ private:
     uint64_t slotStatElems_;
     uint32_t isPageAttention_;
     uint32_t softmaxLseFlag_;
+    uint32_t layoutType_;
+    uint32_t qSeqLen_;
+    uint32_t kvSeqLen_;
 
     AscendC::GlobalTensor<int32_t> gActualQseqlen_;
     AscendC::GlobalTensor<int32_t> gActualKvseqlen_;

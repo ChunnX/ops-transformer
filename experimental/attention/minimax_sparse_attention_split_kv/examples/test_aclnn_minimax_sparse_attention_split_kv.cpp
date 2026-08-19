@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * On-device smoke + golden check for MinimaxSparseAttentionSplitKv (innerPrecise=0/4).
- * Paged KV cache and TND contiguous. Dense local-block CSR, causal prefill.
+ * Paged KV cache, TND / BNSD / BSND contiguous. Dense local-block CSR, causal prefill.
  * softmaxLseFlag=false for the main suite; a smaller LSE suite checks fp32 lse.
  */
 
@@ -35,6 +35,8 @@ constexpr int64_t kHeadDim = 128;
 constexpr float kAbsTol = 2e-2f;
 constexpr float kRelTol = 2e-2f;
 
+enum class LayoutKind { TND, BNSD, BSND };
+
 struct CaseSpec {
     int64_t seq;
     int64_t blockSize;
@@ -43,7 +45,19 @@ struct CaseSpec {
     int64_t topK;
     const char *name;
     bool pagedKv;
+    LayoutKind layout = LayoutKind::TND;
 };
+
+const char *LayoutStr(const CaseSpec &spec)
+{
+    if (spec.layout == LayoutKind::BNSD) {
+        return "BNSD";
+    }
+    if (spec.layout == LayoutKind::BSND) {
+        return "BSND";
+    }
+    return "TND";
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -123,21 +137,31 @@ void FillRandom(std::vector<uint16_t> &dst, uint32_t seed)
 
 size_t QElem(const CaseSpec &spec, int64_t t, int64_t h, int64_t d)
 {
+    if (spec.layout == LayoutKind::BNSD) {
+        return static_cast<size_t>(((h * spec.seq + t) * kHeadDim) + d);
+    }
     return static_cast<size_t>(((t * spec.numHeads + h) * kHeadDim) + d);
 }
 
 size_t KvElem(const CaseSpec &spec, int64_t tok, int64_t kvh, int64_t d)
 {
+    if (spec.layout == LayoutKind::BNSD) {
+        return static_cast<size_t>(((kvh * spec.seq + tok) * kHeadDim) + d);
+    }
     return static_cast<size_t>(((tok * spec.kvHeads + kvh) * kHeadDim) + d);
 }
 
 size_t LseElem(const CaseSpec &spec, int64_t t, int64_t h)
 {
+    if (spec.layout == LayoutKind::BNSD) {
+        return static_cast<size_t>(h * spec.seq + t);
+    }
     return static_cast<size_t>(t * spec.numHeads + h);
 }
 
 // innerPrecise=0 golden: fp32 softmax, P rounded to bf16 before PV.
-// pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D].
+// pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D],
+// BNSD [1, kvHeads, seq, D], or BSND [1, seq, kvHeads, D].
 void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::vector<uint16_t> &k,
                const std::vector<uint16_t> &v, std::vector<float> &outFp32, std::vector<float> &lseFp32,
                float scale, bool roundPToBf16)
@@ -310,10 +334,21 @@ struct CaseTensors {
 
 int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
 {
-    const std::vector<int64_t> qShape = {spec.seq, spec.numHeads, kHeadDim};
-    const std::vector<int64_t> kvShape = spec.pagedKv
-        ? std::vector<int64_t>{1, spec.blockSize, spec.kvHeads, kHeadDim}
-        : std::vector<int64_t>{spec.seq, spec.kvHeads, kHeadDim};
+    std::vector<int64_t> qShape;
+    std::vector<int64_t> kvShape;
+    if (spec.pagedKv) {
+        qShape = {spec.seq, spec.numHeads, kHeadDim};
+        kvShape = {1, spec.blockSize, spec.kvHeads, kHeadDim};
+    } else if (spec.layout == LayoutKind::BNSD) {
+        qShape = {1, spec.numHeads, spec.seq, kHeadDim};
+        kvShape = {1, spec.kvHeads, spec.seq, kHeadDim};
+    } else if (spec.layout == LayoutKind::BSND) {
+        qShape = {1, spec.seq, spec.numHeads, kHeadDim};
+        kvShape = {1, spec.seq, spec.kvHeads, kHeadDim};
+    } else {
+        qShape = {spec.seq, spec.numHeads, kHeadDim};
+        kvShape = {spec.seq, spec.kvHeads, kHeadDim};
+    }
     const std::vector<int64_t> btShape = {1, 1};
     const std::vector<int64_t> rowPtrShape = {spec.kvHeads, 2};
     const std::vector<int64_t> csrShape = {spec.kvHeads, spec.seq * spec.topK};
@@ -374,7 +409,14 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
     CHECK_RET(ret == 0, return ret);
     ret = CreateAclTensor(c.outHost, qShape, &c.outAddr, ACL_BF16, &c.attentionOut);
     CHECK_RET(ret == 0, return ret);
-    const std::vector<int64_t> lseShape = {spec.seq, spec.numHeads, 1};
+    std::vector<int64_t> lseShape;
+    if (spec.layout == LayoutKind::BNSD) {
+        lseShape = {1, spec.numHeads, spec.seq, 1};
+    } else if (spec.layout == LayoutKind::BSND) {
+        lseShape = {1, spec.seq, spec.numHeads, 1};
+    } else {
+        lseShape = {spec.seq, spec.numHeads, 1};
+    }
     c.lseHost.assign(static_cast<size_t>(GetShapeSize(lseShape)), 0.0f);
     ret = CreateAclTensor(c.lseHost, lseShape, &c.lseAddr, ACL_FLOAT, &c.softmaxLse);
     CHECK_RET(ret == 0, return ret);
@@ -430,7 +472,7 @@ int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPr
     ret = aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
         c.query, c.key, c.value, c.blockTable, c.k2qRowPtr, c.k2qQIndices, c.k2qSlotIndices, c.actualSeqQ,
         c.actualSeqKv, spec.kvHeads, static_cast<double>(scale), spec.blockSize, spec.topK, innerPrecise,
-        softmaxLseFlag, c.attentionOut, softmaxLseFlag ? c.softmaxLse : nullptr, &c.workspaceSize, &executor);
+        softmaxLseFlag, LayoutStr(spec), c.attentionOut, softmaxLseFlag ? c.softmaxLse : nullptr, &c.workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[%s] GetWorkspaceSize failed. ERROR: %d\n", tag, ret); DestroyCase(c); return ret);
     LOG_PRINT("[%s] workspaceSize=%llu T=%ld BS=%ld Hq/Hkv=%ld/%ld lse=%d\n", tag,
@@ -499,6 +541,14 @@ int main()
         {32, 32, 32, 2, 1, "tnd_gqa_h32_kv2", false},
         {32, 128, 16, 1, 1, "tnd_bs128_t32", false},
         {16, 64, 64, 4, 1, "tnd_prod_gqa_h64_kv4", false},
+        // BNSD contiguous training: query/key/value [1, N, S, D], no block_table
+        {32, 32, 16, 1, 1, "bnsd_t32_g16", false, LayoutKind::BNSD},
+        {32, 32, 32, 2, 1, "bnsd_gqa_h32_kv2", false, LayoutKind::BNSD},
+        {16, 64, 64, 4, 1, "bnsd_prod_gqa_h64_kv4", false, LayoutKind::BNSD},
+        // BSND contiguous: query/key/value [1, S, N, D], no block_table
+        {32, 32, 16, 1, 1, "bsnd_t32_g16", false, LayoutKind::BSND},
+        {32, 32, 32, 2, 1, "bsnd_gqa_h32_kv2", false, LayoutKind::BSND},
+        {16, 64, 64, 4, 1, "bsnd_prod_gqa_h64_kv4", false, LayoutKind::BSND},
     };
 
     const char *ipEnv = std::getenv("MSA_INNER_PRECISE");
@@ -537,6 +587,8 @@ int main()
         {32, 32, 32, 2, 1, "gqa_h32_kv2", true},
         {32, 32, 16, 1, 1, "tnd_t32_g16", false},
         {16, 64, 64, 4, 1, "prod_gqa_h64_kv4", true},
+        {32, 32, 16, 1, 1, "bnsd_t32_g16", false, LayoutKind::BNSD},
+        {32, 32, 16, 1, 1, "bsnd_t32_g16", false, LayoutKind::BSND},
     };
     for (const auto &spec : kLseCases) {
         if (filter != nullptr && std::string(spec.name).find(filter) == std::string::npos) {

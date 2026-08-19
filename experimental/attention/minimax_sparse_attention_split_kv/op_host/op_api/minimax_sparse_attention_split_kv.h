@@ -33,6 +33,7 @@ std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
     int64_t topK,
     int64_t innerPrecise,
     bool softmaxLseFlag,
+    const char *inputLayout,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
     aclOpExecutor *executor);

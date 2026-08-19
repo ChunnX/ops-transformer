@@ -23,7 +23,8 @@ public:
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         // Optional: present => paged KV cache (4D key/value + block table).
-        // Absent  => non-kvcache TND key/value [T_kv, kvHeads, D], same layout family as query.
+        // Absent  => contiguous dense K/V matching query + inputLayout
+        // (TND / BNSD / BSND).
         this->Input("blockTable")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
@@ -70,6 +71,10 @@ public:
         // 0: fp32 softmax + fp32 O_partial; 1: bf16 softmax + bf16 O_partial;
         // 4 (default): bf16 softmax + fp32 O_partial.
         this->Attr("innerPrecise").AttrType(OPTIONAL).Int(4);
+        this->Attr("softmaxLseFlag").AttrType(OPTIONAL).Bool(false);
+        // Q/K/V layout: "TND" [T,N,D], "BNSD" [B,N,S,D], "BSND" [B,S,N,D].
+        // Rank must match. Paged KV cache requires TND query.
+        this->Attr("inputLayout").AttrType(OPTIONAL).String("TND");
 
         this->AICore().AddConfig("ascend950");
     }

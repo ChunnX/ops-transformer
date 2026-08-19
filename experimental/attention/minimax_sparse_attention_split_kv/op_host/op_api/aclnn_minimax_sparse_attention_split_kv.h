@@ -18,10 +18,12 @@
 extern "C" {
 #endif
 
-// blockTable: paged KV cache [batch, maxBlocksPerBatch]; pass nullptr for TND
-// non-kvcache key/value [T_kv, kvHeads, D] (same layout family as query).
-// softmaxLse: fp32 [T, N, 1] when softmaxLseFlag is true;
-// ignored (may be nullptr) when softmaxLseFlag is false.
+// blockTable: paged KV cache [batch, maxBlocksPerBatch]; pass nullptr for contiguous
+// dense K/V matching query + inputLayout.
+// inputLayout: "TND" [T, N, D], "BNSD" [B, N, S, D], "BSND" [B, S, N, D].
+// nullptr / empty defaults to "TND".
+// softmaxLse: fp32 [T, N, 1] (TND), [B, N, S, 1] (BNSD) or [B, S, N, 1] (BSND)
+// when softmaxLseFlag is true; ignored (may be nullptr) when false.
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -38,6 +40,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     int64_t topK,
     int64_t innerPrecise,
     bool softmaxLseFlag,
+    const char *inputLayout,
     aclTensor *attentionOut,
     aclTensor *softmaxLse,
     uint64_t *workspaceSize,

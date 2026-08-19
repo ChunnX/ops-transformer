@@ -85,13 +85,19 @@ public:
                        uint32_t groupSize,
                        uint32_t topK,
                        uint32_t kvHeads,
-                       uint32_t softmaxLseFlag)
+                       uint32_t softmaxLseFlag,
+                       uint32_t layoutType,
+                       uint32_t qSeqLen,
+                       uint32_t numHeads)
     {
         D_ = D;
         groupSize_ = groupSize;
         topK_ = topK;
         kvHeads_ = kvHeads;
         softmaxLseFlag_ = softmaxLseFlag;
+        layoutType_ = layoutType;
+        qSeqLen_ = qSeqLen;
+        numHeads_ = numHeads;
         headDimAlignFp32_ = RoundUp(D_, FP32_ONE_BLOCK_SIZE);
 
         // E: batched accumOut read. One 32K-float UB slot holds cap splits
@@ -146,10 +152,8 @@ public:
 
         uint32_t qToken = tmpBlockIdx / kvHeads;
         uint32_t kvHeadIdx = tmpBlockIdx % kvHeads;
-        uint64_t attenOutOffset = static_cast<uint64_t>(qToken) * kvHeads * groupSize_ * D_
-            + static_cast<uint64_t>(kvHeadIdx) * groupSize_ * D_;
         actualCombineLoopSize_ = topK_;
-        CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, gmO, gmAccumOut,
+        CombineSplitKVRes(qToken, kvHeadIdx, gmO, gmAccumOut,
                           gmSoftmaxMax, gmSoftmaxSum, gmSoftmaxLse);
     }
 
@@ -171,9 +175,37 @@ private:
     uint32_t topK_ = 0;
     uint32_t kvHeads_ = 0;
     uint32_t softmaxLseFlag_ = 0;
+    uint32_t layoutType_ = 0;
+    uint32_t qSeqLen_ = 0;
+    uint32_t numHeads_ = 0;
     uint32_t headDimAlignFp32_ = 0;
     uint32_t actualCombineLoopSize_ = 0;
     uint32_t splitsPerBuf_ = 0;   // E: splits read per ping-pong slot (batched contiguous read)
+
+    __aicore__ inline
+    uint64_t QHeadGmOffset(uint32_t qToken, uint32_t qHead) const
+    {
+        if (layoutType_ == 1U && qSeqLen_ > 0U) {  // LAYOUT_BNSD: heads of one token are S apart.
+            uint32_t b = qToken / qSeqLen_;
+            uint32_t t = qToken - b * qSeqLen_;
+            return (static_cast<uint64_t>(b) * numHeads_ + qHead) * qSeqLen_ * D_
+                + static_cast<uint64_t>(t) * D_;
+        }
+        return static_cast<uint64_t>(qToken) * numHeads_ * D_
+            + static_cast<uint64_t>(qHead) * D_;
+    }
+
+    __aicore__ inline
+    uint64_t LseGmOffset(uint32_t qToken, uint32_t qHead) const
+    {
+        if (layoutType_ == 1U && qSeqLen_ > 0U) {  // LAYOUT_BNSD: heads of one token are S apart.
+            uint32_t b = qToken / qSeqLen_;
+            uint32_t t = qToken - b * qSeqLen_;
+            return (static_cast<uint64_t>(b) * numHeads_ + qHead) * qSeqLen_
+                + static_cast<uint64_t>(t);
+        }
+        return static_cast<uint64_t>(qToken) * numHeads_ + qHead;
+    }
 
     __aicore__ inline
     static uint32_t RoundUp(uint32_t a, uint32_t b)
@@ -282,8 +314,20 @@ private:
     {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
-        uint64_t lseOffset =
-            (static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx) * groupSize_;
+        if (layoutType_ == 1U && qSeqLen_ > 0U) {  // LAYOUT_BNSD: heads of one token are S apart.
+            // BNSD [B, N, S, 1]: consecutive GQA heads of one token are S apart.
+            for (uint32_t gh = 0U; gh < dealRowCount; ++gh) {
+                AscendC::DataCopyExtParams copyParams;
+                copyParams.blockCount = 1;
+                copyParams.blockLen = sizeof(float);
+                copyParams.srcStride = 0;
+                copyParams.dstStride = 0;
+                uint64_t dst = LseGmOffset(qToken, kvHeadIdx * groupSize_ + gh);
+                AscendC::DataCopyPad(gmSoftmaxLse[dst], lseOutputUb[gh * FP32_ONE_BLOCK_SIZE], copyParams);
+            }
+            return;
+        }
+        uint64_t lseOffset = LseGmOffset(qToken, kvHeadIdx * groupSize_);
         AscendC::DataCopyExtParams copyParams;
         copyParams.blockCount = dealRowCount;
         copyParams.blockLen = sizeof(float);
@@ -448,29 +492,39 @@ private:
     }
 
     __aicore__ inline
-    void CopyFinalResOut(uint64_t attenOutOffset,
+    void CopyFinalResOut(uint32_t qToken,
+                         uint32_t kvHeadIdx,
                          AscendC::GlobalTensor<ElementO> &gmO,
                          AscendC::LocalTensor<TwsO> &accumOutLocal,
                          uint32_t dealRowCount)
     {
         AscendC::PipeBarrier<PIPE_V>();
+        const bool isBnsd = (layoutType_ == 1U && qSeqLen_ > 0U);  // LAYOUT_BNSD only; BSND is contiguous like TND.
         if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
-            // bf16 path: dst (dstBuf_) is already bf16 (the regbase reduce stored bf16
-            // directly). Plain copy to GM O — no Cast, no castOutBuf_ staging.
             uint32_t shapeArray[] = {dealRowCount, D_};
             accumOutLocal.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = dealRowCount;
-            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
-            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
-            dataCopyParams.dstStride = 0;
-            AscendC::DataCopyPad(gmO[attenOutOffset], accumOutLocal, dataCopyParams);
+            if (isBnsd) {
+                for (uint32_t gh = 0U; gh < dealRowCount; ++gh) {
+                    AscendC::DataCopyExtParams dataCopyParams;
+                    dataCopyParams.blockCount = 1;
+                    dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+                    dataCopyParams.srcStride = 0;
+                    dataCopyParams.dstStride = 0;
+                    uint64_t off = QHeadGmOffset(qToken, kvHeadIdx * groupSize_ + gh);
+                    AscendC::DataCopyPad(gmO[off], accumOutLocal[gh * headDimAlignFp32_], dataCopyParams);
+                }
+            } else {
+                uint64_t attenOutOffset = QHeadGmOffset(qToken, kvHeadIdx * groupSize_);
+                AscendC::DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = dealRowCount;
+                dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+                dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
+                dataCopyParams.dstStride = 0;
+                AscendC::DataCopyPad(gmO[attenOutOffset], accumOutLocal, dataCopyParams);
+            }
         } else {
-            // fp32 path (byte-identical to the verified binary): cast fp32 dst -> bf16
-            // out-of-place into castOutBuf_ (separate buffer; aliasing dstBuf_ corrupts),
-            // then copy. Identical for the fp32 path only.
             AscendC::LocalTensor<ElementO> castBuf = castOutBuf_.template ReinterpretCast<ElementO>();
             uint32_t shapeArray[] = {dealRowCount, D_};
             castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
@@ -481,18 +535,30 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
-            AscendC::DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = dealRowCount;
-            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
-            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
-            dataCopyParams.dstStride = 0;
-            AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
+            if (isBnsd) {
+                for (uint32_t gh = 0U; gh < dealRowCount; ++gh) {
+                    AscendC::DataCopyExtParams dataCopyParams;
+                    dataCopyParams.blockCount = 1;
+                    dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+                    dataCopyParams.srcStride = 0;
+                    dataCopyParams.dstStride = 0;
+                    uint64_t off = QHeadGmOffset(qToken, kvHeadIdx * groupSize_ + gh);
+                    AscendC::DataCopyPad(gmO[off], castBuf[gh * headDimAlignFp32_], dataCopyParams);
+                }
+            } else {
+                uint64_t attenOutOffset = QHeadGmOffset(qToken, kvHeadIdx * groupSize_);
+                AscendC::DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = dealRowCount;
+                dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+                dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
+                dataCopyParams.dstStride = 0;
+                AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
+            }
         }
     }
 
     __aicore__ inline
-    void CombineSplitKVRes(uint64_t attenOutOffset,
-                           uint32_t qToken,
+    void CombineSplitKVRes(uint32_t qToken,
                            uint32_t kvHeadIdx,
                            AscendC::GlobalTensor<ElementO> &gmO,
                            AscendC::GlobalTensor<TwsO> &gmAccumOut,
@@ -507,7 +573,7 @@ private:
         ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_, qToken, kvHeadIdx, gmSoftmaxLse);
         AscendC::LocalTensor<TwsO> dst = dstBuf_;
         ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, groupSize_, gmAccumOut);
-        CopyFinalResOut(attenOutOffset, gmO, dst, groupSize_);
+        CopyFinalResOut(qToken, kvHeadIdx, gmO, dst, groupSize_);
     }
 };
 

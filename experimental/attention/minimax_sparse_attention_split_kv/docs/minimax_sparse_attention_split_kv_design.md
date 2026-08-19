@@ -19,17 +19,21 @@
 
 ### 2.1 算子输入
 
-KV 支持两种存储：
+KV 支持四种存储（由 `block_table` 与 attr **`inputLayout`** 共同决定）：
 
-1. **Paged KV Cache**（`block_table` 非空）：`key`/`value` 为 4 维 `[num_physical_blocks, blockSize, kvHeads, D]`，用 `block_table` 把 logical block 映射到 physical block。
-2. **非 kvcache / TND**（`block_table` 为空）：`key`/`value` 与 `query` 同一套 layout，shape 为 `[total_kv_tokens, kvHeads, D]`。token 按 `actual_seq_lengths_kv` 在 T 轴紧密拼接；logical block `(batchIdx, localBlockIdx)` 的起始 token 为 `sum(kv_seqlen[0..batchIdx)) + localBlockIdx * blockSize`。`input_layout` 对 K/V 生效。
+1. **Paged KV Cache**（`block_table` 非空）：`key`/`value` 为 4 维 `[num_physical_blocks, blockSize, kvHeads, D]`。`query` 必须是 TND，`inputLayout="TND"`。
+2. **TND 连续内存**（`block_table` 为空，`inputLayout="TND"`）：`query`/`key`/`value` 为 `[T, N, D]`。token 按 `actual_seq_lengths*` 在 T 轴 packed。
+3. **BNSD 连续内存**（`block_table` 为空，`inputLayout="BNSD"`）：训练图常用。`query` `[B, Nq, S, D]`，`key`/`value` `[B, Nkv, S_kv, D]`。同一 head 的 token 连续（stride = D）；CSR 的 `qToken` 为 padded 展平 id `b * S + t`。
+4. **BSND 连续内存**（`block_table` 为空，`inputLayout="BSND"`）：`query` `[B, S, Nq, D]`，`key`/`value` `[B, S_kv, Nkv, D]`。同一 token 的 heads 连续（stride = D），Q gather 与 TND 相同；K/V 用 padded `b * S + tok` 寻址。
+
+BNSD 与 BSND 都是 4 维，**不能只靠 shape 区分**（`N==S` 时 shape 完全一样），必须传 `inputLayout`。
 
 | Tensor | Shape | Type | 说明 |
 | --- | --- | --- | --- |
-| `query` | `[total_q_tokens, num_q_heads, D]` | bf16/fp16 | TND 格式 Q。`qToken` 是跨 batch 展平后的 token 下标。 |
-| `key` | PA：`[num_physical_blocks, blockSize, kvHeads, D]`；TND：`[total_kv_tokens, kvHeads, D]` | bf16/fp16 | Paged K Cache，或非 kvcache TND。 |
-| `value` | 与 `key` 相同 | bf16/fp16 | Paged V Cache，或非 kvcache TND。 |
-| `block_table` | `[batch, maxBlocksPerBatch]` | int32 | **可选**。传入则为 PA；不传则为 TND 非 kvcache。PA 下第二维是寻址 stride，必须来自 shape，不能由 `kv_seqlen` 推导。 |
+| `query` | TND：`[T, Nq, D]`；BNSD：`[B, Nq, S, D]`；BSND：`[B, S, Nq, D]` | bf16/fp16 | 4D 的 `qToken` 是 `b * S + t`。 |
+| `key` | PA：`[num_physical_blocks, blockSize, kvHeads, D]`；TND：`[T_kv, kvHeads, D]`；BNSD：`[B, kvHeads, S_kv, D]`；BSND：`[B, S_kv, kvHeads, D]` | bf16/fp16 | 有 `block_table` 为 PA；否则与 `inputLayout` 一致。 |
+| `value` | 与 `key` 相同 | bf16/fp16 | 与 `key` 相同。 |
+| `block_table` | `[batch, maxBlocksPerBatch]` | int32 | **可选**。传入则为 PA（仅 TND query）；不传则为连续内存。 |
 | `k2q_row_ptr` | `[kvHeads, totalPackedRows + 1]` | int32 | Dense packed-row CSR 行指针；`totalPackedRows = sum(ceil(kv_seqlen/blockSize))`。 |
 | `k2q_q_indices` | `[kvHeads, totalQTokens * topK]` | int32 | CSR 列数据：global `qToken` id，按 head 分段存储。 |
 | `k2q_slot_indices` | `[kvHeads, totalQTokens * topK]` | int32 | 每条边在 workspace 中的 `slotK`，范围 `[0, topK)`。 |
@@ -57,10 +61,26 @@ KV 支持两种存储：
 
 | Tensor | Shape | Type | 说明 |
 | --- | --- | --- | --- |
-| `attention_out` | `[total_q_tokens, num_q_heads, D]` | bf16/fp16 | TND 格式输出。 |
-| `softmax_lse` | flag=true：`[T, Nq, 1]`；flag=false：`[0]` | fp32 | 与 FIA 一致：`softmaxLseFlag` 控制是否写出。公式 `lse = log(sum_k rowSum[k] * exp(rowMax[k] - max_k)) + max_k`，由 Phase2 `ComputeScaleValue_VF` 在 combine 时得到。 |
+| `attention_out` | 与 `query` 相同 | bf16/fp16 | TND `[T, Nq, D]` / BNSD `[B, Nq, S, D]` / BSND `[B, S, Nq, D]`。 |
+| `softmax_lse` | flag=true：TND `[T, Nq, 1]` / BNSD `[B, Nq, S, 1]` / BSND `[B, S, Nq, 1]`；flag=false：`[0]` | fp32 | 与 FIA 一致：`softmaxLseFlag` 控制是否写出。公式 `lse = log(sum_k rowSum[k] * exp(rowMax[k] - max_k)) + max_k`，由 Phase2 `ComputeScaleValue_VF` 在 combine 时得到。 |
 
 `softmaxLse` 是 IR 必选输出（与 FIA 相同）。`softmaxLseFlag=false` 时 infershape 为 `[0]`，aclnn 构造占位 tensor，kernel **不写** 该 GM。
+
+### 2.4 属性
+
+Attr 顺序必须与 `def.cpp` / infershape / tiling / L0 `OP_ATTR` 一致。
+
+| Attr | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `numKeyValueHeads` | int | `1` | KV head 数。 |
+| `scaleValue` | float | `0.0` | QK scale，通常 `1/sqrt(D)`。 |
+| `blockSize` | int | `128` | KV block token 数。 |
+| `topK` | int | `8` | 每个 Q token 选中的 KV block 数。 |
+| `innerPrecise` | int | `4` | `0` / `1` / `4`，见 §3.1.1。 |
+| `softmaxLseFlag` | bool | `false` | 是否写出 `softmax_lse`。 |
+| `inputLayout` | string | `"TND"` | `"TND"` / `"BNSD"` / `"BSND"`（大写，与 FA/FIA 一致）。`nullptr` 或空串按 `"TND"`。 |
+
+Rank 必须匹配：TND ↔ 3 维，BNSD/BSND ↔ 4 维。Paged KV（`block_table` 非空）只允许 `"TND"`。
 
 ## 3. Tiling 数据定义
 
@@ -68,17 +88,19 @@ KV 支持两种存储：
 
 | 字段 | 含义 |
 | --- | --- |
-| `batch` | batch 数。PA 来自 `block_table.shape[0]`；TND 非 kvcache 来自 `actual_seq_lengths_kv` 的长度。 |
-| `numHeads` | Q head 数，来自 `query.shape[1]`。 |
-| `kvHeads` | KV head 数，优先来自 attr，否则 PA 来自 `key.shape[2]`、TND 来自 `key.shape[1]`。 |
+| `batch` | batch 数。PA 来自 `block_table.shape[0]`；TND 非 kvcache 来自 `actual_seq_lengths_kv` 的长度；BNSD/BSND 来自 `query.shape[0]`。 |
+| `numHeads` | Q head 数。TND/BNSD：`query` 的 N 维；BSND：`query.shape[2]`。 |
+| `kvHeads` | KV head 数，优先来自 attr，否则 PA 来自 `key.shape[2]`、TND 来自 `key.shape[1]`、BNSD 来自 `key.shape[1]`、BSND 来自 `key.shape[2]`。 |
 | `groupSize` | `numHeads / kvHeads`，GQA 中一个 KV head 对应的 Q head 数。 |
 | `embeddingSize` | head size D。当前主目标为 D=128。 |
 | `blockSize` | KV block token 数，通常为 128。 |
 | `topK` | 每个 Q token 选择的 KV block 数（attr）。 |
-| `totalQTokens` | 所有 batch 的 Q token 总数，来自 `query.shape[0]`。 |
+| `totalQTokens` | Q token 总数。TND：`query.shape[0]`；BNSD/BSND：`B * S`（含 padding）。 |
 | `totalPackedRows` / `numKvBlocks` | `k2q_row_ptr.shape[1] - 1` = `sum_b ceil(kv_seqlen[b]/blockSize)`。tiling 字段名为 `numKvBlocks`。 |
 | `maxBlocksPerBatch` | PA：`block_table.shape[1]`，用于 `block_table` 行 stride。TND：0，不参与寻址。 |
-| `isPageAttention` | `1`：paged KV cache；`0`：TND 非 kvcache。 |
+| `isPageAttention` | `1`：paged KV cache；`0`：连续内存。 |
+| `layoutType` | `0`：TND；`1`：BNSD；`2`：BSND。来自 attr `inputLayout`。 |
+| `qSeqLen` / `kvSeqLen` | BNSD/BSND 的 padded S（来自 shape）；TND 为 0。 |
 | `softmaxLseFlag` | `1`：Phase2 写出 `softmax_lse`；`0`：跳过（输出 shape `[0]`）。 |
 | `k2qNnzUpperBound` | `k2q_q_indices.shape[1]`，CSR 数据区每 head 的上界，通常 `totalQTokens * topK`。 |
 | `totalTaskNumP1` | Phase 1 task 数，`totalPackedRows * kvHeads`。 |
@@ -221,16 +243,40 @@ for b in [0, batch):
 physicalBlock = block_table[batchIdx * maxBlocksPerBatch + localBlockIdx]
 kvBlockBase   = physicalBlock * blockSize * kvHeads * D + kvHeadIdx * D
 
-# TND 非 kvcache
+# TND 连续内存
 kvTokenStart  = sum(kv_seqlen[0..batchIdx)) + localBlockIdx * blockSize
 kvBlockBase   = kvTokenStart * kvHeads * D + kvHeadIdx * D
+
+# BNSD 连续内存
+kvBlockBase   = (batchIdx * kvHeads + kvHeadIdx) * S_kv * D + localBlockIdx * blockSize * D
+
+# BSND 连续内存
+kvBlockBase   = (batchIdx * S_kv + localBlockIdx * blockSize) * kvHeads * D + kvHeadIdx * D
 ```
 
-**Q token** 仍按展平 id 反查所属 batch（与 KV block 的 batch 可不同，causal 用 Q 侧 sequence length）：
+Q / `attention_out` / LSE 的 GM 偏移（`qToken` 为 CSR 给出的展平 id）：
 
 ```text
+# TND / BSND：同一 token 的 heads 连续
+qOffset = qToken * Nq * D + h * D
+# BNSD：同一 head 的 tokens 连续
+qOffset = (b * Nq + h) * S * D + t * D     # qToken = b * S + t
+
+# LSE
+TND  [T, N, 1]     offset = qToken * Nq + h
+BNSD [B, N, S, 1]  offset = (b * Nq + h) * S + t
+BSND [B, S, N, 1]  offset = qToken * Nq + h
+```
+
+**Q token** 反查所属 batch（causal 用 Q 侧 sequence length）。TND 的 `qToken` 是 packed flatten；BNSD/BSND 是 padded flatten `b * S + t`：
+
+```text
+# TND
 qBatchIdx = first b where qToken < batchQOffset[b + 1]
 localQIdx = qToken - batchQOffset[qBatchIdx]
+
+# BNSD / BSND
+localQIdx = qToken % S
 ```
 
 `batchKvBlockOffset` 仍可用于 host 侧将 global logical block id 转为 batch-local id（构建 q2k/k2q CSR 时）。
@@ -373,7 +419,7 @@ CopyLseIn(max, sum)
 各步骤说明：
 
 - **`CopyLseIn`**：从 GM 读当前 task 的 compact `softmaxMax` / `softmaxSum`（逻辑 shape `[topK, groupSize]`）。当前实现：对 `startRow=0` 且 `dealRowCount×topK` 连续段做 `DataCopyPad`，再 `Broadcast` 到 UB 布局 `[topK, dealRow, 8]`（32B 行对齐）。**当前实现仅支持 `loopCount == 1`（即 `groupSize <= gSplitSize`）**：`CopyLseIn` 中 `taskBase` 未加 `startRow` 偏移、`blockLen = dealRowCount * topK * sizeof(float)` 假设整段连续，当 `groupSize > gSplitSize` 分多片 combine 时既漏掉 `startRow` 之后的行、又跨 split 拼接错误数据。大 `groupSize` 分片 `startRow` gather 路径待实现（与 §9 item 3 一致），在完成前应避免 `groupSize > gSplitSize` 的 shape。
-- **`ComputeScaleValue_VF`**：输入 UB 中 `(rowMax, rowSum)`，输出 **scale 权重** 写回 `lseSum` UB（与 IFA 相同公式）。`softmaxLseFlag=true` 时额外计算 `lse = log(Σ_k rowSum[k] * exp(rowMax[k]-max)) + max`，UB 布局 `[groupSize, 8]`，再 `DataCopyPad` 到 `softmax_lse[qToken, kvHead*G : (kvHead+1)*G, 0]`（TND `[T,N,1]`，与 FIA `DataCopySoftmaxLseTNDArch35` 相同）。
+- **`ComputeScaleValue_VF`**：输入 UB 中 `(rowMax, rowSum)`，输出 **scale 权重** 写回 `lseSum` UB（与 IFA 相同公式）。`softmaxLseFlag=true` 时额外计算 `lse = log(Σ_k rowSum[k] * exp(rowMax[k]-max)) + max`，UB 布局 `[groupSize, 8]`，再 `DataCopyPad` 到 `softmax_lse`（TND/BSND 同一 token 的 heads 连续；BNSD 同一 token 的 heads 间隔 S）。
 - **`CopyAccumOutIn`**：按 split 索引 `j` 从 `accumOutGm` 读未归一化 `O_partial`；**必须从 `gmSoftmaxSum` 读取原始 `rowSum`**（因 `lseSum` UB 已被 scale 覆盖），对每 row 做 `O_norm = O_partial / rowSum`（当前 kernel 用 `Divs`；Golden 对 `rowSum<=0` 置 0）。
 - **`ReduceFinalRes_VF`**：对 topK 个 split 累加 `scale[j] * O_norm[j]` 到 `dst`。
 
