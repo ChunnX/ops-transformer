@@ -28,7 +28,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
-#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
