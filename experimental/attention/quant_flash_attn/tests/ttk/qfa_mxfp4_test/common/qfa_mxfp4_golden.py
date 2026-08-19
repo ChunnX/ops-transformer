@@ -826,8 +826,9 @@ def generate_data():
 >>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
         v_descale = rearrange_by_layout(v_descale, kv_layout, B, aligned_seq_lens_kv_v)
 
-        # V descale 最后再 view 出 (*shape, -1, 2) 末尾两维
-        v_descale = v_descale.view(*v_descale.shape[:-1], -1, 2)
+        # V descale 最后再 view 出 (*shape, V_D, 2) 末尾两维
+        # 用显式 V_D 替代 -1: s2=0 时 tensor 0 元素, -1 推断歧义会报错
+        v_descale = v_descale.view(*v_descale.shape[:-1], V_D, 2)
 
     # cu_seqlens (TND only): 表格传了就用表格的, 否则用有效长度自动推导
     cu_seqlens_q = (
