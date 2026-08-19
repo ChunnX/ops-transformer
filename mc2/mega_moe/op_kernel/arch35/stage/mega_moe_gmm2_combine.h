@@ -79,15 +79,9 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * rowElements;
 
-    constexpr uint32_t TRANSFER_BYTES = 512U;
-    constexpr uint32_t TILE_ELEMENTS = TRANSFER_BYTES / sizeof(Element);
-    AscendC::DataCopyExtParams ub2GmParams{1U, 0U, 0U, 0U, 0U};
-    for (uint32_t elementOffset = 0U; elementOffset < rowElements; elementOffset += TILE_ELEMENTS) {
-        uint32_t remainingElements = rowElements - elementOffset;
-        uint32_t currentElements = remainingElements < TILE_ELEMENTS ? remainingElements : TILE_ELEMENTS;
-        ub2GmParams.blockLen = currentElements * sizeof(Element);
-        AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset + elementOffset], rowTensor[elementOffset], ub2GmParams);
-    }
+    AscendC::DataCopyExtParams ub2GmParams{
+        1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
+    AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
 }
 
 // 通过本地 MTE 路径或远端 URMA 路径发送一个 layered 模板 token。
