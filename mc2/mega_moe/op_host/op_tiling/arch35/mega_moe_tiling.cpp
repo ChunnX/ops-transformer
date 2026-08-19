@@ -222,6 +222,8 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
     int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, static_cast<int64_t>(tilingData->moeExpertPerRank),
                                             static_cast<int64_t>(tilingData->epWorldSize));
+    int64_t compactCountRecvSize = CalcCompactCountRecvSize(static_cast<int64_t>(tilingData->moeExpertPerRank),
+                                                            static_cast<int64_t>(tilingData->epWorldSize));
     int64_t tokenScaleBytes =
         CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), 1U, static_cast<int64_t>(tilingData->topK),
                                  tilingData->topkWeightsPrefetch == 1);
@@ -234,10 +236,11 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", PEERMEM_DATA_OFFSET);
     OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    OP_LOGD(nodeName, "compactCountRecvSize: {%ld}\n", compactCountRecvSize);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            PEERMEM_DATA_OFFSET + maskRecvSize + compactCountRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
