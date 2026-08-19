@@ -439,8 +439,8 @@ aclnnStatus ParamsCheckSmlaL1Norm(const aclTensor *cuSeqLensQOptional, const acl
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencySmlaL1Norm(batchSize, cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional,
-                                     seqUsedKOptional, cmpResidualKOptional, topkLengthOptional, layoutQ,
-                                     layoutK, metadata);
+                                     seqUsedKOptional, cmpResidualKOptional, topkLengthOptional, layoutQ, layoutK,
+                                     metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
