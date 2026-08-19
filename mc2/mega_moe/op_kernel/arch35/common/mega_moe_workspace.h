@@ -209,9 +209,13 @@ struct WorkspaceInfo {
 
         if (useMteA8W8Wave) {
             gmm2ReadyPtr = base + workspaceSize;
-            // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
-            // 每个 AIC 到达标记独占一个 64B cache line。
-            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            // Wave 模式下 slotIdx 为全局 wave 序号。为避免大专家跨多个 wave
+            // 复用旧 ready 位，按每个专家的最坏 wave 数预留独立 slot。
+            int64_t maxWavesPerExpert =
+                Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
+                                   static_cast<int64_t>(L1_TILE_M_256));
+            workspaceSize += SIZE_INT_32 * moeExpertCount * maxWavesPerExpert *
+                             tilingData->aicNum * INT_CACHELINE;
         }
 
         if (useGroupSyncCounters) {

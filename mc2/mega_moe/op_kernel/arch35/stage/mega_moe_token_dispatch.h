@@ -444,7 +444,8 @@ template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTil
 __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount)
+    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount,
+    uint32_t expertRowOffset = 0U)
 {
     if (dispatchRowCount == 0U) {
         return;
@@ -463,7 +464,9 @@ __aicore__ inline void DispatchExpertTokensByRows(
         return;
     }
 
-    DispatchExpertRange expertRange{coreDispatchRowBegin, coreDispatchRowEnd};
+    DispatchExpertRange expertRange{
+        static_cast<int32_t>(expertRowOffset) + coreDispatchRowBegin,
+        static_cast<int32_t>(expertRowOffset) + coreDispatchRowEnd};
     DispatchExpertRankRange rankRange = FindDispatchExpertRankRange(
         context, scratch, localExpertId, expertGlobalRowBegin,
         expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
