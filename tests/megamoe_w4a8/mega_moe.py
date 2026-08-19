@@ -93,7 +93,7 @@ x_active_mask_dim = 0  # mask的维度，当前支持0,1,2
 graph_type = 0  # 0为单算子，1为静态图模式，2为动态图模式, 3为aclgraph
 is_graph = (graph_type != 0)
 quant_mode = 4  # 0为dispatch算子非量化场景，1为静态量化（当前不支持），2为动态量化
-comm_quant_mode = 4  # 0无量化，1则combine通信采用int12动态量化（不支持），2为int8动态量化, 3为e5m2, 4为e4m3
+comm_quant_mode = 0  # 0无量化，1则combine通信采用int12动态量化（不支持），2为int8动态量化, 3为e5m2, 4为e4m3
 ep_buffersize = 6000
 tp_buffersize = 1000
 
