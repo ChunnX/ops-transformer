@@ -64,8 +64,8 @@ cann_ops_transformer.all_to_all_quant_matmul(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x1` | Tensor | 必选 | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），需配合`x1_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | FP8：`(M_total, Ka)`<br>FP4：`(M_total, Ka/2)` |
-| `x2` | Tensor | 必选 | 右矩阵，对应公式中X2。MXFP4场景以uint8打包存储，需配合`x2_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | FP8：`(K_total, N)`<br>FP4：`(K_total/2, N)` |
+| `x1` | Tensor | 必选 | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`Ka/2`，需配合`x1_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(M_total, Ka)` |
+| `x2` | Tensor | 必选 | 右矩阵，对应公式中X2。MXFP4场景以uint8打包存储，实际传入的K轴大小为`K_total/2`，需配合`x2_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(K_total, N)` |
 | `group` | ProcessGroup | 必选 | torch.distributed通信域，用于All-to-All通信。 | - | - |
 | `bias` | Tensor | 可选 | 偏置项，矩阵乘后累加，默认值为`None`。 | `torch.float32` | `(N,)` |
 | `x1_scale` | Tensor | 可选 | `x1`的MX量化scale，默认值为`None`。 | `torch.float8_e8m0fnu` | `(M_total, ceil(Ka / 64), 2)` |
@@ -86,7 +86,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | `y` | Tensor | 必选 | 矩阵乘输出。 | 由`y_dtype`指定（BF16或FP16） | `(M_per_rank, N)` |
-| `all2all_out` | Tensor | 必选 | all-to-all通信中间输出，预留参数，暂不支持（返回空Tensor）。 | 与`x1`相同 | `(M_per_rank, K_total)` |
+| `all2all_out` | Tensor | 必选 | all-to-all通信中间输出，预留参数，暂不支持（返回空Tensor）。MXFP4场景与`x1`一致为uint8打包存储。 | 与`x1`相同 | `(M_per_rank, K_total)` |
 
 ## 约束说明
 
