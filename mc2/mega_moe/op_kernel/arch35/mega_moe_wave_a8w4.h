@@ -124,7 +124,6 @@ private:
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < waveMGroupTarget_;
     }
 
-    __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
@@ -136,20 +135,6 @@ private:
                                                    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount);
     __aicore__ inline void ProcessMoeExpertStages(int32_t &gmTileSequence);
 };
-
-// 计算当前专家的 token 数，并在非空时执行完整 Dispatch。
-template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline uint32_t MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
-{
-    WaveDispatchCoreRange dispatchCoreRange =
-        PlanWaveExpertDispatch(tokenDispatchConfig_, tokenDispatchScratch_, expertIdx);
-    if (HasWaveDispatchRows(dispatchCoreRange)) {
-        DispatchWaveExpertRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-            tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
-            dispatchCoreRange);
-    }
-    return static_cast<uint32_t>(dispatchCoreRange.expertRowCount);
-}
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
 template <TemplateMegaMoeA8W4WaveTypeClass>
@@ -219,15 +204,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
 }
 
 /*
- * 按 GMM1 调度负载将专家划分为动态 Wave。启动阶段先 Dispatch 第一个完整 Wave；稳态阶段由 AIV1
- * 交替执行下一 Wave 的一个专家 Dispatch 和当前 Wave 的一个专家 Activation，同时 AIC/AIV0 执行当前
- * Wave 的 GMM1。当前 Wave 完成后立即启动 GMM2/Combine，无需等待所有专家的 GMM1。
+ * 非 layered 路径先通过统一入口完成全部专家 Dispatch，再按 GMM1 调度负载划分动态 Wave。
+ * 当前 Wave 完成后立即启动 GMM2/Combine，无需等待所有专家的 GMM1。
  */
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
     DispatchBuffInit();
     PrepareMoeExpertTokenCountTable(tokenDispatchConfig_, params_, tokenDispatchScratch_);
+    RunAllWaveExpertDispatchStages<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_);
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
@@ -243,24 +229,6 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     waveMGroupTarget_ =
         Ops::Base::CeilDiv(A8W4_GMM1_TILES_PER_JOB_TARGET * gmmExecutionConfig_.blockJob.totalJobs, gmm1TilesPerMGroup);
 
-    ExpertTokenPosition dispatchPosition{};
-
-    // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U) {
-            uint32_t dispatchedWaveMGroupCount = 0U;
-            while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
-                uint32_t expertTokenCount =
-                    dispatchPosition.tokenIndexInExpert == 0U ?
-                        DispatchMoeExpert(dispatchPosition.expertIdx) :
-                        GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
-                                                         dispatchPosition.expertIdx);
-                AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, waveMGroupTarget_,
-                                                              dispatchedWaveMGroupCount, dispatchPosition);
-            }
-        }
-    }
-
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
         ExpertTokenPosition waveBeginPosition = gmm1Position;
@@ -268,44 +236,20 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         uint32_t currentWaveMGroupCount = 0U;
         bool currentWaveNeedsGmm1 = true;
 
-        uint32_t nextDispatchWaveMGroupCount = 0U;
-        bool nextWaveNeedsDispatch = false;
-        if constexpr (g_coreType == AIV) {
-            if (GetSubBlockIdx() == 1U) {
-                nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
+        while (currentWaveNeedsGmm1) {
+            if (gmm1Position.tokenIndexInExpert == 0U) {
+                PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
             }
-        }
-
-        while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
-            // AIV1 交替执行下一 Wave 的 Dispatch 与当前 Wave 的 Activation，避免集中突发 Dispatch。
-            if constexpr (g_coreType == AIV) {
-                if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    uint32_t expertTokenCount =
-                        dispatchPosition.tokenIndexInExpert == 0U ?
-                            DispatchMoeExpert(dispatchPosition.expertIdx) :
-                            GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                             countWorkspace_, dispatchPosition.expertIdx);
-                    AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, waveMGroupTarget_,
-                                                                  nextDispatchWaveMGroupCount, dispatchPosition);
-                    nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
-                }
+            uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
+            uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
+            uint32_t sliceTokenCount = AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(
+                expertTokenCount, waveMGroupTarget_, currentWaveMGroupCount, gmm1Position);
+            if (sliceTokenCount != 0U) {
+                RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, startBlockIdx, gmTileSequence,
+                                           sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
             }
-
-            if (currentWaveNeedsGmm1) {
-                if (gmm1Position.tokenIndexInExpert == 0U) {
-                    PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
-                }
-                uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
-                uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
-                uint32_t sliceTokenCount = AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(
-                    expertTokenCount, waveMGroupTarget_, currentWaveMGroupCount, gmm1Position);
-                if (sliceTokenCount != 0U) {
-                    RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, startBlockIdx, gmTileSequence,
-                                               sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
-                }
-                waveEndPosition = gmm1Position;
-                currentWaveNeedsGmm1 = IsPositionWithinWave(gmm1Position, currentWaveMGroupCount);
-            }
+            waveEndPosition = gmm1Position;
+            currentWaveNeedsGmm1 = IsPositionWithinWave(gmm1Position, currentWaveMGroupCount);
         }
         // 当前 Wave 完成后立即消费，使其 GMM2/Combine 与下一 Wave 的输入预取重叠。
         // Wave 在专家内结束时需包含该专家；在专家边界结束时，waveEndPosition 已指向下一专家。
@@ -333,9 +277,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process()
 {
-    // A8W4 Wave 与 A8W8 Wave 共用紧凑 count/cumsum 和跨专家滚动 Dispatch。
-    sendMaskConfig_.publishCompactCountTable = true;
-    tokenDispatchConfig_.useCompactExpertCountWorkspace = true;
+    // 非 layered 路径共用紧凑 count/cumsum 和跨专家滚动 Dispatch。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
