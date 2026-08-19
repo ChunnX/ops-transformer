@@ -167,6 +167,9 @@ def generate_qfa_mxfp4_inputs(
     cu_seqlens_q_dtype: str = None,
     cu_seqlens_kv_dtype: str = None,
     softmax_lse_dtype: str = None,
+    # metadata 伪 tensor 入参 (对齐 run_main 签名, PASS_THROUGH 时按表格构造)
+    metadata_shape: List[int] = None,
+    metadata_dtype: str = None,
     **kwargs,
 ):
     # 注入 golden 全局变量 (generate_data 读这些配置)
@@ -227,6 +230,8 @@ def generate_qfa_mxfp4_inputs(
             "CU_SEQLENS_Q_DTYPE": cu_seqlens_q_dtype,
             "CU_SEQLENS_KV_DTYPE": cu_seqlens_kv_dtype,
             "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
+            "METADATA_SHAPE": list(metadata_shape) if metadata_shape else [],
+            "METADATA_DTYPE": metadata_dtype,
         }
     )
 

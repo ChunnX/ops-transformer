@@ -107,6 +107,9 @@ def cpu_qfa_mxfp4(
     cu_seqlens_q_dtype: str = None,
     cu_seqlens_kv_dtype: str = None,
     softmax_lse_dtype: str = None,
+    # metadata 伪 tensor 入参 (对齐 run_main 签名, PASS_THROUGH 时按表格构造)
+    metadata_shape: List[int] = None,
+    metadata_dtype: str = None,
     **kwargs,
 ):
     _apply_golden_globals(
@@ -166,6 +169,8 @@ def cpu_qfa_mxfp4(
             "CU_SEQLENS_Q_DTYPE": cu_seqlens_q_dtype,
             "CU_SEQLENS_KV_DTYPE": cu_seqlens_kv_dtype,
             "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
+            "METADATA_SHAPE": list(metadata_shape) if metadata_shape else [],
+            "METADATA_DTYPE": metadata_dtype,
         }
     )
 
