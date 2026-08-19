@@ -33,6 +33,18 @@ struct TileCastFp8ToFp16Dequant {
     static_assert(std::is_same_v<LayoutDst, LayoutSrc>, "layout src and dst must be the same.");
 
     static const uint32_t Alignment = 256;
+    static constexpr uint32_t FP8_TO_FP16_RATIO = 2;
+    static constexpr uint32_t FLOAT_BYTES = 4;
+    static constexpr uint32_t HALF_BYTES = 2;
+    static constexpr uint32_t UB_BYTES = 32 * 1024;
+    static constexpr uint32_t VEC_MASK_ELEMS = 128;
+    static constexpr int32_t FP8_BIAS = 1024; // Adds<half> 需要有符号立即数，不能用 uint
+    static constexpr uint32_t SHIFT_EXP = 7;
+    static constexpr int32_t SHIFT_SCALE = 8;
+    static constexpr int16_t MASK_VEC1 = 0x4000;
+    static constexpr int16_t MASK_VEC2 = 0x3FFF;
+    static constexpr uint32_t AND_REPEAT_STRIDE = 8;
+    static constexpr uint32_t MASK_BUF_ELEMS = 256;
     // static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(int8_t);
 
     struct Params {
@@ -65,12 +77,12 @@ struct TileCastFp8ToFp16Dequant {
         for (uint32_t i = 0; i < BUFFER_NUM; i++) {
             outputBuffer[i] = (resource.ubBuf.template GetBufferByByte<ElementSrc>(bufferOffset * sizeof(ElementSrc)))
                                   .template ReinterpretCast<half>();
-            bufferOffset += COMPUTE_LENGTH * 2;
+            bufferOffset += COMPUTE_LENGTH * FP8_TO_FP16_RATIO;
         }
         for (uint32_t i = 0; i < BUFFER_NUM; i++) {
             workspace[i] = (resource.ubBuf.template GetBufferByByte<ElementSrc>(bufferOffset * sizeof(ElementSrc)))
                                .template ReinterpretCast<half>();
-            bufferOffset += COMPUTE_LENGTH * 2;
+            bufferOffset += COMPUTE_LENGTH * FP8_TO_FP16_RATIO;
         }
         InitLocalMaskVec(resource, bufferOffset);
     }
@@ -108,7 +120,7 @@ struct TileCastFp8ToFp16Dequant {
         uint32_t totalLoops = 0;
         uint32_t loopsPerTile, tilesInALoop;
         uint32_t tileLenRoundFp8 = RoundUp<Alignment, uint32_t>(tileLen);
-        if (tileLenRoundFp8 > COMPUTE_LENGTH / 2) {
+        if (tileLenRoundFp8 > COMPUTE_LENGTH / FP8_TO_FP16_RATIO) {
             // One signle tile length is bigger than COMPUTE_LENGTH, which should be clipped.
             loopsPerTile = CeilDiv(tileLen, COMPUTE_LENGTH);
             totalLoops = tilesPerAiv * loopsPerTile;
@@ -125,7 +137,7 @@ struct TileCastFp8ToFp16Dequant {
         //         srcStoreStride = tileLenRoundFp8, dstStoreStride = dstStride;
         for (int ldx = 0; ldx < totalLoops; ldx++) {
             // Dynamic compute length
-            if (tileLenRoundFp8 > COMPUTE_LENGTH / 2) {
+            if (tileLenRoundFp8 > COMPUTE_LENGTH / FP8_TO_FP16_RATIO) {
                 uint32_t fullTileRounds = ldx / loopsPerTile;
                 uint32_t residueTileRounds = ldx % loopsPerTile;
                 srcProcessOffset = taskSrcOffset + fullTileRounds * srcStride + residueTileRounds * COMPUTE_LENGTH;
@@ -194,14 +206,14 @@ struct TileCastFp8ToFp16Dequant {
 
         Arch::Resource<ArchTag> resource;
         int64_t bufferOffset = 0;
-        const int64_t CAST_LENGTH = 32 * 1024 / sizeof(half); // 一次处理16K个数据
+        const int64_t CAST_LENGTH = UB_BYTES / sizeof(half); // 一次处理16K个数据
         for (int i = 0; i < BUFFER_NUM; i++) {
             ubInTensor[i] = resource.ubBuf.template GetBufferByByte<float>(bufferOffset);
-            bufferOffset += CAST_LENGTH * 4; // float 4字节
+            bufferOffset += CAST_LENGTH * FLOAT_BYTES; // float 4字节
         }
         for (int i = 0; i < BUFFER_NUM; i++) {
             ubOutTensor[i] = resource.ubBuf.template GetBufferByByte<half>(bufferOffset);
-            bufferOffset += CAST_LENGTH * 2; // half 2字节
+            bufferOffset += CAST_LENGTH * HALF_BYTES; // half 2字节
         }
 
         uint32_t tilesNum, tileLen, srcStride, dstStride;
@@ -226,7 +238,7 @@ struct TileCastFp8ToFp16Dequant {
         uint32_t totalLoops = 0;
         uint32_t loopsPerTile, tilesInALoop;
         uint32_t tileLenRoundFp8 = RoundUp<Alignment, uint32_t>(tileLen);
-        if (tileLenRoundFp8 > COMPUTE_LENGTH / 2) {
+        if (tileLenRoundFp8 > COMPUTE_LENGTH / FP8_TO_FP16_RATIO) {
             // One signle tile length is bigger than COMPUTE_LENGTH, which should be clipped.
             loopsPerTile = CeilDiv(tileLen, COMPUTE_LENGTH);
             totalLoops = tilesPerAiv * loopsPerTile;
@@ -243,7 +255,7 @@ struct TileCastFp8ToFp16Dequant {
         //         srcStoreStride = tileLenRoundFp8, dstStoreStride = dstStride;
         for (int ldx = 0; ldx < totalLoops; ldx++) {
             // Dynamic compute length
-            if (tileLenRoundFp8 > COMPUTE_LENGTH / 2) {
+            if (tileLenRoundFp8 > COMPUTE_LENGTH / FP8_TO_FP16_RATIO) {
                 uint32_t fullTileRounds = ldx / loopsPerTile;
                 uint32_t residueTileRounds = ldx % loopsPerTile;
                 srcProcessOffset = taskSrcOffset + fullTileRounds * srcStride + residueTileRounds * COMPUTE_LENGTH;
@@ -300,18 +312,18 @@ private:
     CATLASS_DEVICE
     void InitLocalMaskVec(Arch::Resource<ArchTag> &resource, int64_t &bufferOffset)
     {
-        int16_t value_uint = 0x4000;
+        int16_t value_uint = MASK_VEC1;
         value_vector1 = (resource.ubBuf.template GetBufferByByte<ElementSrc>(bufferOffset * sizeof(ElementSrc)))
                             .template ReinterpretCast<int16_t>();
-        bufferOffset += 256;
-        AscendC::Duplicate<int16_t>(value_vector1, value_uint, 128);
+        bufferOffset += MASK_BUF_ELEMS;
+        AscendC::Duplicate<int16_t>(value_vector1, value_uint, VEC_MASK_ELEMS);
         AscendC::PipeBarrier<PIPE_V>();
         // AscendC::PipeBarrier<PIPE_V>();
-        value_uint = 0x3FFF;
+        value_uint = MASK_VEC2;
         value_vector2 = (resource.ubBuf.template GetBufferByByte<ElementSrc>(bufferOffset * sizeof(ElementSrc)))
                             .template ReinterpretCast<int16_t>();
-        bufferOffset += 256;
-        AscendC::Duplicate<int16_t>(value_vector2, value_uint, 128);
+        bufferOffset += MASK_BUF_ELEMS;
+        AscendC::Duplicate<int16_t>(value_vector2, value_uint, VEC_MASK_ELEMS);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
@@ -322,21 +334,22 @@ private:
     {
         pipe_barrier(PIPE_V);
         uint32_t num = COMPUTE_LENGTH;
-        num = (num + 128 - 1) / 128 * 128;
+        num = (num + VEC_MASK_ELEMS - 1) / VEC_MASK_ELEMS * VEC_MASK_ELEMS;
         AscendC::Cast<half, uint8_t>(dst.template ReinterpretCast<half>(), src.template ReinterpretCast<uint8_t>(),
                                      AscendC::RoundMode::CAST_NONE, num);
         pipe_barrier(PIPE_V);
 
-        AscendC::Adds<half>(dst, dst, 1024, num);
+        AscendC::Adds<half>(dst, dst, FP8_BIAS, num);
         pipe_barrier(PIPE_V);
 
         AscendC::ShiftLeft<uint16_t>(dst.template ReinterpretCast<uint16_t>(), dst.template ReinterpretCast<uint16_t>(),
-                                     7, num);
+                                     SHIFT_EXP, num);
         pipe_barrier(PIPE_V);
 
-        uint64_t mask = 128;
+        uint64_t mask = VEC_MASK_ELEMS;
         AscendC::And<int16_t>(workspace.template ReinterpretCast<int16_t>(), dst.template ReinterpretCast<int16_t>(),
-                              value_vector1, mask, num / 128, {1, 1, 1, 8, 8, 0});
+                              value_vector1, mask, num / VEC_MASK_ELEMS,
+                              {1, 1, 1, AND_REPEAT_STRIDE, AND_REPEAT_STRIDE, 0});
         pipe_barrier(PIPE_V);
 
         AscendC::ShiftLeft<uint16_t>(workspace.template ReinterpretCast<uint16_t>(),
@@ -344,14 +357,16 @@ private:
         pipe_barrier(PIPE_V);
 
         AscendC::And<int16_t>(dst.template ReinterpretCast<int16_t>(), dst.template ReinterpretCast<int16_t>(),
-                              value_vector2, mask, num / 128, {1, 1, 1, 8, 8, 0});
+                              value_vector2, mask, num / VEC_MASK_ELEMS,
+                              {1, 1, 1, AND_REPEAT_STRIDE, AND_REPEAT_STRIDE, 0});
         pipe_barrier(PIPE_V);
 
         AscendC::Or<int16_t>(dst.template ReinterpretCast<int16_t>(), dst.template ReinterpretCast<int16_t>(),
                              workspace.template ReinterpretCast<int16_t>(), num);
         pipe_barrier(PIPE_V);
 
-        AscendC::Muls<half>(dst.template ReinterpretCast<half>(), dst.template ReinterpretCast<half>(), 1 << 8, num);
+        AscendC::Muls<half>(dst.template ReinterpretCast<half>(), dst.template ReinterpretCast<half>(),
+                            1 << SHIFT_SCALE, num);
         pipe_barrier(PIPE_V);
 
         AscendC::Adds(dst, dst, params.zeroPoint, num);

@@ -15,6 +15,11 @@
 
 namespace Catlass {
 
+/// Rank of a Gemm (M, N, K) coordinate.
+static constexpr int GEMM_COORD_RANK = 3;
+/// Rank of a 2-D matrix coordinate (e.g. MN / MK / KN).
+static constexpr int GEMM_MAT_RANK = 2;
+
 /// Shape of a matrix multiply-add operation
 template <
     /// Rows of matrix product
@@ -37,26 +42,26 @@ struct GemmShape {
 
     /// Returns a Coord object
     CATLASS_HOST_DEVICE
-    static Coord<3> ToCoord() { return MakeCoord(M, N, K); }
+    static Coord<GEMM_COORD_RANK> ToCoord() { return MakeCoord(M, N, K); }
 
     CATLASS_HOST_DEVICE
-    static Coord<2> ToCoordMN() { return MakeCoord(M, N); }
+    static Coord<GEMM_MAT_RANK> ToCoordMN() { return MakeCoord(M, N); }
 
     CATLASS_HOST_DEVICE
-    static Coord<2> ToCoordMK() { return MakeCoord(M, K); }
+    static Coord<GEMM_MAT_RANK> ToCoordMK() { return MakeCoord(M, K); }
 
     CATLASS_HOST_DEVICE
-    static Coord<2> ToCoordKN() { return MakeCoord(K, N); }
+    static Coord<GEMM_MAT_RANK> ToCoordKN() { return MakeCoord(K, N); }
 };
 
-/// GemmCoord is a structure derived from Coord<3> that specifies a location within the
+/// GemmCoord is a structure derived from Coord<GEMM_COORD_RANK> that specifies a location within the
 /// coordinate space of a Gemm problem.
-struct GemmCoord : public Coord<3, uint32_t> {
+struct GemmCoord : public Coord<GEMM_COORD_RANK, uint32_t> {
     /// Integer-valued index
     using Index = uint32_t;
 
     /// Base type is a Coord of rank=3
-    using Base = Coord<3, Index>;
+    using Base = Coord<GEMM_COORD_RANK, Index>;
 
     /// Gemm M dimension - rows of the output C matrix
     static constexpr int M_INDEX = 0;
@@ -71,9 +76,9 @@ struct GemmCoord : public Coord<3, uint32_t> {
     CATLASS_HOST_DEVICE
     GemmCoord() {}
 
-    /// Constructs from Coord<3> and a batch
+    /// Constructs from Coord<GEMM_COORD_RANK> and a batch
     CATLASS_HOST_DEVICE
-    GemmCoord(Coord<3, Index> const &coord)
+    GemmCoord(Coord<GEMM_COORD_RANK, Index> const &coord)
         : Base(coord)
     {}
 

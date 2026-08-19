@@ -20,17 +20,24 @@
 
 namespace Catlass::Gemm::Tile {
 
+constexpr uint32_t CAST_INT4_DEFAULT_STAGES = 2;
+
 template <class ArchTag, class SrcType_, class DstType_,
           // Length of the compute elements
-          uint32_t COMPUTE_LEN_, uint32_t STAGES = 2>
+          uint32_t COMPUTE_LEN_, uint32_t STAGES_ = CAST_INT4_DEFAULT_STAGES>
 struct TileCastInt4ToInt8 {
     using ElementSrc = typename SrcType_::Element;
     using ElementDst = typename DstType_::Element;
     using LayoutSrc = typename SrcType_::Layout;
     using LayoutDst = typename DstType_::Layout;
 
+    static constexpr uint32_t STAGES = STAGES_;
+    static constexpr uint32_t INT4_PACK_RATIO = 2;
+    static constexpr uint32_t UB_CAPACITY_ELEMS = 24 * 1024;
+    static constexpr uint32_t TILES_PER_LOOP = 32;
+
     static constexpr uint32_t ELE_NUM_PER_BLK_INT8 = BYTE_PER_BLK / sizeof(ElementDst);
-    static constexpr uint32_t ELE_NUM_PER_BLK_INT4 = BYTE_PER_BLK / sizeof(ElementDst) * 2;
+    static constexpr uint32_t ELE_NUM_PER_BLK_INT4 = BYTE_PER_BLK / sizeof(ElementDst) * INT4_PACK_RATIO;
 
     static_assert(sizeof(ElementSrc) == sizeof(ElementDst), "Error: Src and Dst element sizes are equal (forbidden)");
 
@@ -38,7 +45,7 @@ struct TileCastInt4ToInt8 {
                   "Unsupported layout, only can be RowMajor, ColumnMajor or RowMajorInt4 or ColumnMajorInt4");
 
     static constexpr uint32_t COMPUTE_LEN = COMPUTE_LEN_;
-    static_assert(COMPUTE_LEN <= 24 * 1024, "COMPUTE_LEN cannot exceed 24 * 1024");
+    static_assert(COMPUTE_LEN <= UB_CAPACITY_ELEMS, "COMPUTE_LEN cannot exceed UB_CAPACITY_ELEMS");
 
     struct Params {};
 
@@ -48,7 +55,7 @@ struct TileCastInt4ToInt8 {
     {
         if constexpr (g_coreType == AscendC::AIV) {
             uint32_t ubOffset = 0;
-            uint32_t ubInSize = COMPUTE_LEN * sizeof(int8_t) / 2;
+            uint32_t ubInSize = COMPUTE_LEN * sizeof(int8_t) / INT4_PACK_RATIO;
             uint32_t ubOutSize = COMPUTE_LEN * sizeof(ElementDst);
             uint32_t ubWorkspaceSize = COMPUTE_LEN * sizeof(half);
             // Init buffers
@@ -107,7 +114,7 @@ struct TileCastInt4ToInt8 {
             taskOffsetSrc += (tilesNum % AscendC::GetSubBlockNum()) * tileStrideSrc;
             taskOffsetDst += (tilesNum % AscendC::GetSubBlockNum()) * tileStrideDst;
         }
-        uint32_t tilesPerLoop = 32;
+        uint32_t tilesPerLoop = TILES_PER_LOOP;
         uint32_t loops = CeilDiv(tilesPerAiv, tilesPerLoop);
         uint32_t pingpong = 0;
         for (uint32_t loopIdx = 0; loopIdx < loops; loopIdx++) {
@@ -116,8 +123,8 @@ struct TileCastInt4ToInt8 {
                 actualTiles = tilesPerAiv - loopIdx * tilesPerLoop;
             }
             uint64_t tileOffsetSrc = loopIdx * tilesPerLoop * tileStrideSrc;
-            AscendC::DataCopyExtParams dataCopyParamsIn(actualTiles, (tileLen + 1) / 2 * sizeof(int8_t),
-                                                        (tileStrideSrc - tileLen) * sizeof(int8_t) / 2,
+            AscendC::DataCopyExtParams dataCopyParamsIn(actualTiles, (tileLen + 1) / INT4_PACK_RATIO * sizeof(int8_t),
+                                                        (tileStrideSrc - tileLen) * sizeof(int8_t) / INT4_PACK_RATIO,
                                                         (tileLenRoundInt4 - tileLen) / ELE_NUM_PER_BLK_INT4, 0);
             AscendC::DataCopyPadExtParams<ElementSrc> padParams(false, 0, 0, 0);
 

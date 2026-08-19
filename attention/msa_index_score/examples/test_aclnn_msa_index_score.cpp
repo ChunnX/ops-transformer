@@ -17,17 +17,18 @@
  * 无效尾填充、bf16 / fp16 双 dtype、int8 key 前融合反量化、PA BNBD、TND packed key。
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <limits>
 #include <string>
 #include <vector>
 
 #include "acl/acl.h"
 #include "aclnnop/aclnn_msa_index_score.h"
+#include "securec.h"
 
 namespace {
 
@@ -37,6 +38,28 @@ constexpr int64_t SCORE_STRIDE_ALIGN = 16;
 constexpr float kNegInf = -3.4028234663852886e+38F;
 constexpr float kAtol = 1e-3F;
 constexpr float kRtol = 1e-3F;
+constexpr int64_t kSparseModeRightDown = 3;
+constexpr uint32_t kBf16Shift = 16;
+constexpr uint32_t kPrngMulA = 1664525U;
+constexpr uint32_t kPrngAddA = 1013904223U;
+constexpr uint32_t kPrngXorShiftA = 16;
+constexpr uint32_t kPrngMulB = 2246822519U;
+constexpr uint32_t kPrngXorShiftB = 13;
+constexpr uint32_t kPrngMod = 20000U;
+constexpr float kPrngDiv = 10000.0F;
+constexpr float kQueryAmp = 0.5F;
+constexpr float kFillCmpScale = 0.5F;
+constexpr float kBoostThr = 1.0e28F;
+constexpr float kInt8Scale = 64.0F;
+constexpr float kDeqScaleBase = 0.01F;
+constexpr float kDeqScaleSpan = 0.02F;
+constexpr uint32_t kKeySeedOff = 999983U;
+constexpr uint32_t kDeqSeedOff = 424242U;
+constexpr int64_t kBlockTableMulB = 7;
+constexpr int64_t kBlockTableMulK = 3;
+constexpr int64_t kTraceExtraTok = 2;
+constexpr int64_t kPrevDimOffset = 2; // 从末维向前推 stride 时的偏移
+constexpr size_t kLayoutKeyBufSize = 8;
 
 enum class KeyLayout {
     BBND = 0,
@@ -44,7 +67,7 @@ enum class KeyLayout {
     TND = 2,
 };
 
-const char *LayoutKeyName(KeyLayout layout)
+std::string LayoutKeyName(KeyLayout layout)
 {
     switch (layout) {
         case KeyLayout::TND:
@@ -58,7 +81,7 @@ const char *LayoutKeyName(KeyLayout layout)
 }
 
 struct TestCase {
-    const char *name;
+    std::string name;
     int64_t numQHeads;
     int64_t headDim;
     int64_t numPages;
@@ -66,8 +89,8 @@ struct TestCase {
     std::vector<int32_t> kvLen;    // 每个请求可见的 kv 长度
     std::vector<int32_t> startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     bool useBf16;
-    bool useInt8Key;        // true: key=int8，scale=[NP,N_kv,P] 或 TND [T2,N2]
-    int64_t sparseMode = 3; // 0 / 3
+    bool useInt8Key; // true: key=int8，scale=[NP,N_kv,P] 或 TND [T2,N2]
+    int64_t sparseMode = kSparseModeRightDown;
     KeyLayout keyLayout = KeyLayout::BBND;
 };
 
@@ -84,26 +107,32 @@ int64_t RoundUpI64(int64_t a, int64_t b) { return CeilDivI64(a, b) * b; }
 // 简单可复现的伪随机源，取值落在 [-1, 1)。
 float PseudoRandom(uint32_t seed)
 {
-    seed = seed * 1664525U + 1013904223U;
-    seed ^= seed >> 16;
-    seed = seed * 2246822519U;
-    seed ^= seed >> 13;
-    return static_cast<float>(seed % 20000U) / 10000.0F - 1.0F;
+    seed = seed * kPrngMulA + kPrngAddA;
+    seed ^= seed >> kPrngXorShiftA;
+    seed = seed * kPrngMulB;
+    seed ^= seed >> kPrngXorShiftB;
+    return static_cast<float>(seed % kPrngMod) / kPrngDiv - 1.0F;
 }
 
 // bf16 <-> fp32：截断低 16 位尾数（round-to-nearest-even 对本用例不必要）。
 uint16_t FloatToBf16(float v)
 {
     uint32_t bits = 0;
-    (void)memcpy(&bits, &v, sizeof(bits));
-    return static_cast<uint16_t>(bits >> 16);
+    const errno_t ret = memcpy_s(&bits, sizeof(bits), &v, sizeof(v));
+    if (ret != 0) {
+        return 0;
+    }
+    return static_cast<uint16_t>(bits >> kBf16Shift);
 }
 
 float Bf16ToFloat(uint16_t v)
 {
-    const uint32_t bits = static_cast<uint32_t>(v) << 16;
+    const uint32_t bits = static_cast<uint32_t>(v) << kBf16Shift;
     float out = 0.0F;
-    (void)memcpy(&out, &bits, sizeof(out));
+    const errno_t ret = memcpy_s(&out, sizeof(out), &bits, sizeof(bits));
+    if (ret != 0) {
+        return 0.0F;
+    }
     return out;
 }
 
@@ -137,7 +166,7 @@ public:
             return nullptr;
         }
         std::vector<int64_t> strides(shape.size(), 1);
-        for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
+        for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
             strides[i] = shape[i + 1] * strides[i + 1];
         }
         aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
@@ -194,7 +223,7 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen
         for (int32_t t = qBegin; t < qEnd; ++t) {
             const int32_t tOff = t - qBegin;
             int32_t visibleKeyEnd = kvLen;
-            if (tc.sparseMode == 3) {
+            if (tc.sparseMode == kSparseModeRightDown) {
                 visibleKeyEnd = kvLen - qLen + tOff + 1;
                 if (visibleKeyEnd < 0) {
                     visibleKeyEnd = 0;
@@ -246,9 +275,9 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen
     }
 }
 
-void PrintVec(const char *tag, const float *data, int64_t n)
+void PrintVec(const std::string &tag, const float *data, int64_t n)
 {
-    (void)printf("  %s[", tag);
+    (void)printf("  %s[", tag.c_str());
     for (int64_t i = 0; i < n; ++i) {
         (void)printf("%s%.6g", i == 0 ? "" : ", ", static_cast<double>(data[i]));
     }
@@ -261,7 +290,7 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSe
                         const std::vector<float> &queryF, const std::vector<float> &keyF,
                         const std::vector<float> &deqScale, const std::vector<float> &actual)
 {
-    (void)printf("\n======== HOST TRACE: %s (int8=%d) ========\n", tc.name, tc.useInt8Key ? 1 : 0);
+    (void)printf("\n======== HOST TRACE: %s (int8=%d) ========\n", tc.name.c_str(), tc.useInt8Key ? 1 : 0);
     (void)printf("shape: Hq=%ld D=%ld qLen=%d kvLen=%d startLoc=%d blockSize=%ld maxBlocks=%ld scoreStride=%ld\n",
                  tc.numQHeads, tc.headDim, tc.qLen[0], tc.kvLen[0], tc.startLoc[0], BLOCK_SIZE, maxBlocks, scoreStride);
     const int32_t page = blockTable[0];
@@ -273,7 +302,7 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSe
             PrintVec("Q", q, tc.headDim);
             const int32_t tOff = static_cast<int32_t>(t);
             int32_t visibleKeyEnd = tc.kvLen[0];
-            if (tc.sparseMode == 3) {
+            if (tc.sparseMode == kSparseModeRightDown) {
                 visibleKeyEnd = tc.kvLen[0] - tc.qLen[0] + tOff + 1;
                 if (visibleKeyEnd < 0) {
                     visibleKeyEnd = 0;
@@ -284,7 +313,7 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSe
             }
             float best = kNegInf;
             bool any = false;
-            for (int64_t n = 0; n < visibleKeyEnd + 2 && n < BLOCK_SIZE; ++n) {
+            for (int64_t n = 0; n < visibleKeyEnd + kTraceExtraTok && n < BLOCK_SIZE; ++n) {
                 const float *k = &keyF[static_cast<size_t>((page * BLOCK_SIZE + n) * tc.headDim)];
                 const float ds = tc.useInt8Key ? deqScale[static_cast<size_t>(page) * BLOCK_SIZE + n] : 1.0F;
                 float acc = 0.0F;
@@ -320,8 +349,8 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
     for (size_t i = 0; i < golden.size(); ++i) {
         const float g = golden[i];
         const float a = actual[i];
-        if (g <= kNegInf * 0.5F) { // 填充位：要求实测同样是极小值
-            if (!(a <= kNegInf * 0.5F)) {
+        if (g <= kNegInf * kFillCmpScale) { // 填充位：要求实测同样是极小值
+            if (!(a <= kNegInf * kFillCmpScale)) {
                 if (!hasBad) {
                     firstBad = i;
                     hasBad = true;
@@ -330,8 +359,8 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
             }
             continue;
         }
-        if (g >= 1.0e28F) { // local_mask 强制高分
-            if (!(a >= 1.0e28F)) {
+        if (g >= kBoostThr) { // local_mask 强制高分
+            if (!(a >= kBoostThr)) {
                 if (!hasBad) {
                     firstBad = i;
                     hasBad = true;
@@ -381,7 +410,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     std::vector<int32_t> blockTable(static_cast<size_t>(batch * maxBlocks), 0);
     for (int64_t b = 0; b < batch; ++b) {
         for (int64_t k = 0; k < maxBlocks; ++k) {
-            blockTable[b * maxBlocks + k] = static_cast<int32_t>((b * 7 + k * 3 + 1) % tc.numPages);
+            blockTable[b * maxBlocks + k] =
+                static_cast<int32_t>((b * kBlockTableMulB + k * kBlockTableMulK + 1) % tc.numPages);
         }
     }
 
@@ -404,7 +434,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     std::vector<aclFloat16> keyHf(keyF.size());
 
     for (size_t i = 0; i < queryF.size(); ++i) {
-        const float v = PseudoRandom(static_cast<uint32_t>(i) + 1U) * 0.5F;
+        const float v = PseudoRandom(static_cast<uint32_t>(i) + 1U) * kQueryAmp;
         if (tc.useBf16) {
             queryBf[i] = FloatToBf16(v);
             queryF[i] = Bf16ToFloat(queryBf[i]);
@@ -416,11 +446,11 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     for (size_t i = 0; i < keyF.size(); ++i) {
         if (tc.useInt8Key) {
             // int8 量化值：落在 [-64, 63]，golden 用同一整数值的 fp32。
-            const int8_t qv =
-                static_cast<int8_t>(static_cast<int>(PseudoRandom(static_cast<uint32_t>(i) + 999983U) * 64.0F));
+            const int8_t qv = static_cast<int8_t>(
+                static_cast<int>(PseudoRandom(static_cast<uint32_t>(i) + kKeySeedOff) * kInt8Scale));
             keyF[i] = static_cast<float>(qv);
         } else {
-            const float v = PseudoRandom(static_cast<uint32_t>(i) + 999983U) * 0.5F;
+            const float v = PseudoRandom(static_cast<uint32_t>(i) + kKeySeedOff) * kQueryAmp;
             if (tc.useBf16) {
                 keyBf[i] = FloatToBf16(v);
                 keyF[i] = Bf16ToFloat(keyBf[i]);
@@ -439,7 +469,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
             keyI8[i] = static_cast<int8_t>(keyF[i]);
         }
         for (size_t i = 0; i < deqScale.size(); ++i) {
-            deqScale[i] = 0.01F + 0.02F * (PseudoRandom(static_cast<uint32_t>(i) + 424242U) + 1.0F);
+            deqScale[i] = kDeqScaleBase + kDeqScaleSpan * (PseudoRandom(static_cast<uint32_t>(i) + kDeqSeedOff) + 1.0F);
         }
     }
 
@@ -481,7 +511,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     aclTensor *startLocT = buf.Create(tc.startLoc, {batch}, ACL_INT32);
     std::vector<int8_t> attenMaskHost(static_cast<size_t>(kAttenMaskSize * kAttenMaskSize), 0);
     aclTensor *attenMaskT = nullptr;
-    if (tc.sparseMode == 3) {
+    if (tc.sparseMode == kSparseModeRightDown) {
         attenMaskT = buf.Create(attenMaskHost, {kAttenMaskSize, kAttenMaskSize}, ACL_INT8);
     }
 
@@ -491,29 +521,36 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
 
     if (queryT == nullptr || keyT == nullptr || actualSeqQlenT == nullptr || actualSeqKlenT == nullptr ||
         startLocT == nullptr || scoreT == nullptr || (!isTnd && blockTableT == nullptr) ||
-        (tc.sparseMode == 3 && attenMaskT == nullptr)) {
-        (void)printf("  [%s] create tensor failed -> FAIL\n", tc.name);
+        (tc.sparseMode == kSparseModeRightDown && attenMaskT == nullptr)) {
+        (void)printf("  [%s] create tensor failed -> FAIL\n", tc.name.c_str());
+        return false;
+    }
+
+    const std::string layoutKey = LayoutKeyName(tc.keyLayout);
+    char layoutKeyBuf[kLayoutKeyBufSize] = {};
+    const errno_t cpyRet = memcpy_s(layoutKeyBuf, sizeof(layoutKeyBuf), layoutKey.c_str(), layoutKey.size() + 1);
+    if (cpyRet != 0) {
+        (void)printf("  [%s] memcpy_s layout_key failed -> FAIL\n", tc.name.c_str());
         return false;
     }
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    int ret =
-        aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT,
-                                           actualSeqKlenT, startLocT, const_cast<char *>(LayoutKeyName(tc.keyLayout)),
-                                           tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize, &executor);
+    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT,
+                                                 actualSeqKlenT, startLocT, layoutKeyBuf, tc.sparseMode, kInitBlocks,
+                                                 kLocalBlocks, scoreT, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
-        (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);
+        (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name.c_str(), ret);
         return false;
     }
     if (workspaceSize > 0ULL && aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
-        (void)printf("  [%s] malloc workspace failed -> FAIL\n", tc.name);
+        (void)printf("  [%s] malloc workspace failed -> FAIL\n", tc.name.c_str());
         return false;
     }
     ret = aclnnMsaIndexScore(workspaceAddr, workspaceSize, executor, stream);
     if (ret != ACL_SUCCESS) {
-        (void)printf("  [%s] aclnnMsaIndexScore failed, ERROR %d -> FAIL\n", tc.name, ret);
+        (void)printf("  [%s] aclnnMsaIndexScore failed, ERROR %d -> FAIL\n", tc.name.c_str(), ret);
         (void)aclrtFree(workspaceAddr);
         return false;
     }
@@ -529,7 +566,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     std::vector<float> golden;
     ComputeGolden(tc, actualSeqQlen, isTnd ? actualSeqKlenPrefix : tc.kvLen, blockTable, maxBlocks, scoreStride, totalQ,
                   queryF, keyF, deqScale, golden);
-    if (std::strstr(tc.name, "debug-trace") != nullptr) {
+    if (tc.name.find("debug-trace") != std::string::npos) {
         PrintTracePipeline(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
                            actual);
     }
@@ -572,11 +609,21 @@ int main()
         {"L1-heads-16", 16, 128, 8, {13}, {300}, {2}, false, false},
         {"L1-int8-dequant", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true},
         {"L2-tiny-kv", 8, 128, 4, {1, 1}, {1, 3}, {0, 0}, false, false},
-        {"L1-bnbd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, 3, KeyLayout::BNBD},
-        {"L1-bnbd-int8", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true, 3, KeyLayout::BNBD},
-        {"L1-tnd-unaligned", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, false, 3, KeyLayout::TND},
-        {"L1-tnd-int8", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, true, 3, KeyLayout::TND},
-        {"L0-tnd-tiny", 2, 16, 0, {2}, {5}, {16}, false, false, 3, KeyLayout::TND},
+        {"L1-bnbd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BNBD},
+        {"L1-bnbd-int8", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true, kSparseModeRightDown, KeyLayout::BNBD},
+        {"L1-tnd-unaligned",
+         8,
+         128,
+         0,
+         {32, 17},
+         {300, 130},
+         {2, 0},
+         false,
+         false,
+         kSparseModeRightDown,
+         KeyLayout::TND},
+        {"L1-tnd-int8", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, true, kSparseModeRightDown, KeyLayout::TND},
+        {"L0-tnd-tiny", 2, 16, 0, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::TND},
     };
 
     size_t passed = 0;
