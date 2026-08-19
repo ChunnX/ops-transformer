@@ -135,6 +135,12 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     auto sortedIndicesShape = sortedIndicesContiguous->GetViewShape();
     CHECK_RET(sortedIndicesShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
     int64_t activeNum = sortedIndicesShape.GetDim(0);
+    if (permuteTokensContiguous != nullptr) {
+        auto permuteTokensShape = permuteTokensContiguous->GetViewShape();
+        if (permuteTokensShape.GetDimNum() > 0 && permuteTokensShape.GetDim(0) < activeNum) {
+            activeNum = permuteTokensShape.GetDim(0);
+        }
+    }
 
     // 调用l0接口进行计算
     auto result = l0op::MoeFinalizeRoutingV2Grad(unpermutedTokensGradContiguous, sortedIndicesContiguous,
