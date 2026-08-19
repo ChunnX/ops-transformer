@@ -640,10 +640,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
         if (runInfo.s2LoopCount != 0) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
         }
-    }
-    if (this->tilingData->inputParamsRegbase.implMode ==
-        static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-        this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
+        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
+            if (this->tilingData->inputParamsRegbase.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
+            }
+        }
     }
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -1327,21 +1329,16 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
         return;
     }
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
-    if constexpr (!isFp8 && useDn) {
-        if (this->tilingData->inputParamsRegbase.implMode !=
-            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-            if constexpr (isInfer) {
-                if (constInfo.s2Size <= 128 && !constInfo.isRowInvalid && !POST_QUANT) { // 128: kv方向基本块大小
-                    ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf,
-                                              (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
-                    return;
-                }
-            } else {
-                if (constInfo.s2Size <= 128) { // 128: kv方向基本块大小
-                    ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf,
-                                              (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
-                    return;
-                }
+    if constexpr (implMode != ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION && !isFp8 && useDn) {
+        if constexpr (isInfer) {
+            if (constInfo.s2Size <= 128 && !constInfo.isRowInvalid && !POST_QUANT) { // 128: kv方向基本块大小
+                ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf, (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
+                return;
+            }
+        } else {
+            if (constInfo.s2Size <= 128) { // 128: kv方向基本块大小
+                ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf, (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
+                return;
             }
         }
     }
@@ -2038,7 +2035,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
+                      enableDataInvalidLineRepair) {
             if (this->tilingData->inputParamsRegbase.implMode ==
                 static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
@@ -2355,7 +2352,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         negativeScalar = *((float *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
+                      enableDataInvalidLineRepair) {
             if (this->tilingData->inputParamsRegbase.implMode ==
                 static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
@@ -2366,7 +2363,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
         uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
         negativeScalar = *((half *)&tmp1);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value ||
-                      (!isFp8 && useDn) || enableDataInvalidLineRepair) {
+                      enableDataInvalidLineRepair) {
             if (this->tilingData->inputParamsRegbase.implMode ==
                 static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                 uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;
