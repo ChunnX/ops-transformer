@@ -396,7 +396,7 @@ def read_state_page_cache(
     state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end, cache_mode=1
 ):
     result = np.zeros(
-        shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=np.float32
+        shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=state.dtype
     )
     block_size = state.shape[1]  # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
@@ -423,29 +423,6 @@ def read_state_page_cache(
         ]
         finish_cnt = finish_cnt + can_read_seq_cnt
     return result
-
-def read_state_page_cache_fp64(state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end, cache_mode=1):
-    result = np.zeros(shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=state.dtype)
-    block_size = state.shape[1]
-    seq_cnt = end_seq_idx - start_seq_idx
-    if cache_mode == 2:
-        block_id = block_table[b_idx]
-    finish_cnt = 0
-    while finish_cnt < seq_cnt:
-        cur_seq_id = start_seq_idx + finish_cnt
-        if cache_mode == 1:
-            block_id = block_table[b_idx][cur_seq_id // block_size]
-        block_start_seq_id = cur_seq_id % block_size
-        can_read_seq_cnt = block_size - block_start_seq_id
-        if can_read_seq_cnt > seq_cnt - finish_cnt:
-            can_read_seq_cnt = seq_cnt - finish_cnt
-        if cache_mode == 1 and block_id == 0:
-            print(f"Error Info: [read_state_page_cache_fp64] block_id of block_table is 0, b_idx={b_idx} cur_seq_id={cur_seq_id} block_size={block_size}")
-        result[finish_cnt:(finish_cnt + can_read_seq_cnt), :] = state[
-            block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_read_seq_cnt), d_start:d_end]
-        finish_cnt = finish_cnt + can_read_seq_cnt
-    return result
-
 
 def cpu_compressor_fp64(
     x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
@@ -544,8 +521,8 @@ def cpu_compressor_fp64(
                     if cnt_from_state > 0:
                         copy_start_seq_id = batch_start_pos - cnt_from_state
                         copy_end_seq_id = batch_start_pos
-                        sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache_fp64(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                        sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache_fp64(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                        sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                        sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                 sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = new_kv_state[start_offset:end_offset, d_start:d_end]
                 sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = new_score_state[start_offset:end_offset, d_start:d_end]
 
@@ -559,15 +536,15 @@ def cpu_compressor_fp64(
                         if batch_start_pos >= cmp_ratio:
                             copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio - cmp_ratio
                             copy_end_seq_id = copy_start_seq_id + cnt_from_state
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache_fp64(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                            sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache_fp64(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                     elif start_seq_idx - cmp_ratio < batch_start_pos:
                         cnt_from_state = batch_start_pos % cmp_ratio
                         if cnt_from_state > 0:
                             copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio
                             copy_end_seq_id = batch_start_pos
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache_fp64(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                            sc_score_state[coff_id, 0:cnt_from_state,:] = read_state_page_cache_fp64(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_score_state[coff_id, 0:cnt_from_state,:] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
                     if cnt_from_state < cmp_ratio:
                         pre_start_offset = start_offset - (cmp_ratio - cnt_from_state)
                         pre_end_offset = start_offset
