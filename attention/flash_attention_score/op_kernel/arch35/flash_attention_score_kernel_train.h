@@ -286,13 +286,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
             s2LoopLimit = CeilDiv(runParam.s2LineEndIdx - runParam.s2LineStartIdx, this->s2BaseSize) - 1;
         }
         if ASCEND_IS_AIV {
-            if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION ||
-                          IsSameType<INPUT_T, float>::value) {
-                if (this->sharedParams.implMode ==
-                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                    this->constInfo.softMaxCheckRes = true;
-                }
-            }
+            this->constInfo.softMaxCheckRes = true;
         }
         if (s2LoopLimit != -1) {
             realMultiCoreInnerIdxInS2++;
@@ -557,16 +551,11 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         }
     }
 
-    if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-        if (this->sharedParams.implMode ==
-            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-            if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
-                // s1baseSize行都无效时, 将startIdx设置为0, endIdx设置为S2realSize
-                if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
-                    runParam.s2LineStartIdx = 0;
-                    runParam.s2LineEndIdx = Min(this->constInfo.s2Size, 128L);
-                }
-            }
+    if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
+        // s1baseSize行都无效时, 将startIdx设置为0, endIdx设置为S2realSize
+        if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
+            runParam.s2LineStartIdx = 0;
+            runParam.s2LineEndIdx = Min(this->constInfo.s2Size, 128L);
         }
     }
     if constexpr (BaseClass::isFp8) {
