@@ -112,7 +112,7 @@ ge::graphStatus CommonParamCheck(const gert::InferShapeContext *context, const s
 ge::graphStatus AllGatherMatmulInferYShape(gert::InferShapeContext *context, CommParas &commParas)
 {
     OP_LOGE_IF(CommonParamCheck(context, AG_IS_TRANS_A, AG_IS_TRANS_B, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
-               context->GetNodeName(), "CommonParamCheck excute failed.");
+               context->GetNodeName(), "CommonParamCheck execute failed.");
     if (commParas.dimM == -1) {
         commParas.rankSize = 1;
     }
@@ -156,10 +156,10 @@ ge::graphStatus AllGatherMatmulCommonInferShape(gert::InferShapeContext *context
 {
     CommParas commParas;
     OP_LOGE_IF(AllGatherMatmulInferYShape(context, commParas) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
-               "InferShapeAllGatherMatmul inferYshape excute failed.");
+               "InferShapeAllGatherMatmul inferYshape execute failed.");
 
     OP_LOGE_IF(AllGatherMatmulInferGatherOutShape(context, commParas, gatherIndex) != GRAPH_SUCCESS, GRAPH_FAILED,
-               context->GetNodeName(), "InferShapeAllGatherMatmul inferYshape excute failed.");
+               context->GetNodeName(), "InferShapeAllGatherMatmul inferGatherOutShape execute failed.");
 
     return GRAPH_SUCCESS;
 }
@@ -168,7 +168,7 @@ ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext *context)
 {
     CommParas commParas;
     OP_LOGE_IF(CommonParamCheck(context, RS_IS_TRANS_A, RS_IS_TRANS_B, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
-               context->GetNodeName(), "CommonParamCheck excute failed.");
+               context->GetNodeName(), "CommonParamCheck execute failed.");
     if (commParas.dimM == -1) {
         commParas.rankSize = 1;
     }

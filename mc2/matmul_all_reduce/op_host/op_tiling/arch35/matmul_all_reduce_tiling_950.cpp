@@ -231,7 +231,7 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
 
 ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
 {
-    OP_LOGD(opName_, "Start to excute DoMatmulV3Tiling!");
+    OP_LOGD(opName_, "Start to execute DoMatmulV3Tiling!");
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Get platform info failed."), return ge::GRAPH_FAILED);

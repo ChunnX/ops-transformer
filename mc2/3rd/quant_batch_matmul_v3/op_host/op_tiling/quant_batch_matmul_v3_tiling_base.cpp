@@ -263,7 +263,7 @@ int8_t Mc2QuantBatchMatmulV3TilingBase::CheckFusionBatchA(const gert::Shape &x1S
         if (IsMicroScaling()) {
             return 0;
         }
-        OP_LOGD("Mc2QuantBatchMatmulV3", "CheckFusionBatchA success, start fusion batch A to m dimendion.");
+        OP_LOGD("Mc2QuantBatchMatmulV3", "CheckFusionBatchA success, start fusion batch A to m dimension.");
         return OUTPUT_INFER_SUCCESS;
     }
     return 0;

@@ -56,7 +56,7 @@ static graphStatus CheckDims(const gert::InferShapeContext *context, const gert:
         result = GRAPH_FAILED;
     } else if (splitItem != 0 && dimNumX != 2) { // 2 is minDimNumX
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                            "When splitItem = 0, only x with dim 2 is supported.");
+                                            "When splitItem != 0, only x with dim 2 is supported.");
         result = GRAPH_FAILED;
     }
     if (dimNumWeight != 2) { // 2 is required dimNumWeight
