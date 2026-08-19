@@ -48,7 +48,13 @@ class QuantBlockSparseAttnSpec:
 
     @staticmethod
     def golden(*args, **kwargs):
-        return _load_impl_module("golden").cpu_quant_block_sparse_attn(*args, **kwargs)
+        golden_impl = _load_impl_module("golden")
+        outputs = golden_impl.cpu_quant_block_sparse_attn(*args, **kwargs)
+        if int(kwargs.get("quant_mode", 1)) == 2:
+            _load_impl_module("compare").set_mxfp8_cv_benchmark(
+                golden_impl.consume_mxfp8_cv_benchmark()
+            )
+        return outputs
 
     @staticmethod
     def customize_inputs(*args, **kwargs):

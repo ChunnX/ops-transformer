@@ -15,6 +15,7 @@
 import importlib.util
 import math
 import sys
+import threading
 from pathlib import Path
 
 import torch
@@ -23,6 +24,7 @@ PYTEST_GOLDEN_MODULE = None
 PYTEST_MXFP8_GOLDEN_MODULE = None
 _MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
 _FP8_MODULE_NAME = "_qbsa_fp8_pytest_golden"
+_MXFP8_CV_STATE = threading.local()
 
 
 # ==================================================================================================
@@ -128,6 +130,7 @@ def cpu_quant_block_sparse_attn(
         **kwargs,
     }
     if int(quant_mode) == 2:
+        _MXFP8_CV_STATE.benchmark = None
         return _mxfp8_cpu_golden(
             query,
             key,
@@ -337,7 +340,22 @@ def _mxfp8_cpu_golden(
         data = cached["data"]
         module.set_active_case(case)
 
-    attention_out, softmax_lse = module.cpu_mxfp8_golden(
+    attention_out, softmax_lse = module.cpu_mxfp8_golden_high_precision(
+        data["query"],
+        data["key"],
+        data["value"],
+        data["q_descale"],
+        data["k_descale"],
+        data["v_descale"],
+        data["p_scale"],
+        data["q_lengths"],
+        data["kv_lengths"],
+        data["cu_seqlens_q"],
+        data["sparse_indices"],
+        data["sparse_seq_len"],
+        data["block_table"],
+    )
+    benchmark_out, benchmark_lse = module.cpu_mxfp8_golden(
         data["query"],
         data["key"],
         data["value"],
@@ -354,7 +372,19 @@ def _mxfp8_cpu_golden(
         use_quant_matmul=_as_bool(quant_matmul),
     )
     attention_out = attention_out.to(torch.bfloat16)
+    benchmark_out = benchmark_out.to(torch.bfloat16)
+    _MXFP8_CV_STATE.benchmark = [
+        benchmark_out,
+        benchmark_lse if return_softmax_lse else None,
+    ]
     return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)
+
+
+def consume_mxfp8_cv_benchmark():
+    """Return the low-precision CPU result paired with the latest MXFP8 golden."""
+    benchmark = getattr(_MXFP8_CV_STATE, "benchmark", None)
+    _MXFP8_CV_STATE.benchmark = None
+    return benchmark
 
 
 # ==================================================================================================

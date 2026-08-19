@@ -10,7 +10,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""NumPy precision comparison for quant_block_sparse_attn TTK adapters."""
+"""Two-way FP8 and method-12 three-way MXFP8 comparison for TTK."""
+
+import importlib.util
+import logging
+import os
+import sys
+import threading
 
 import numpy as np
 
@@ -22,6 +28,87 @@ _FAIL_RATIO_LIMIT = 0.005
 _MAX_NORMALIZED_ERROR = 10.0
 _NORMALIZATION_EPSILON = 1e-10
 _NORMALIZATION_FLOOR = (1.0 / (1 << 14)) / _FP32_RTOL
+_MXFP8_CV_STATE = threading.local()
+_MXFP8_CV_COMPARE_MODULE = None
+
+
+def set_mxfp8_cv_benchmark(outputs):
+    """Pair the latest low-precision MXFP8 CPU result with TTK outputs."""
+    _MXFP8_CV_STATE.benchmark_outputs = outputs
+
+
+def _take_mxfp8_cv_benchmark():
+    outputs = getattr(_MXFP8_CV_STATE, "benchmark_outputs", None)
+    _MXFP8_CV_STATE.benchmark_outputs = None
+    return outputs
+
+
+def _load_mxfp8_cv_compare_module():
+    """Load the FIA method-12 implementation used as the CV reference."""
+    global _MXFP8_CV_COMPARE_MODULE
+    if _MXFP8_CV_COMPARE_MODULE is not None:
+        return _MXFP8_CV_COMPARE_MODULE
+
+    relative_path = os.path.join(
+        "attention",
+        "fused_infer_attention_score",
+        "tests",
+        "pytest",
+        "fia_fullquant_mxfp8_test",
+        "common",
+        "precision_compare_v2.py",
+    )
+    search_root = os.path.dirname(os.path.abspath(__file__))
+    module_path = None
+    while True:
+        candidate = os.path.join(search_root, relative_path)
+        if os.path.isfile(candidate):
+            module_path = candidate
+            break
+        parent = os.path.dirname(search_root)
+        if parent == search_root:
+            break
+        search_root = parent
+    if module_path is None:
+        raise ImportError(
+            "cannot locate FIA precision_compare_v2.py for QBSA three-way compare"
+        )
+
+    module_name = "_qbsa_fia_precision_compare_v2"
+    if module_name in sys.modules:
+        _MXFP8_CV_COMPARE_MODULE = sys.modules[module_name]
+        return _MXFP8_CV_COMPARE_MODULE
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load CV compare module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    original_basic_config = logging.basicConfig
+    logging.basicConfig = lambda *args, **kwargs: None
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        logging.basicConfig = original_basic_config
+    _MXFP8_CV_COMPARE_MODULE = module
+    return module
+
+
+def _mxfp8_cv_report_metrics(report):
+    return {
+        "status": report.status,
+        "failure_reasons": list(report.failure_reasons),
+        "npu_diff_big_ratio_max": report.npu_diff_big_ratio_max,
+        "npu_diff_big_ratio_avg": report.npu_diff_big_ratio_avg,
+        "npu_diff_big_ratio_rmse": report.npu_diff_big_ratio_rmse,
+        "benchmark_diff_big_ratio_max": report.bench_diff_big_ratio_max,
+        "benchmark_diff_big_ratio_avg": report.bench_diff_big_ratio_avg,
+        "benchmark_diff_big_ratio_rmse": report.bench_diff_big_ratio_rmse,
+        "npu_err_h1_ratio": report.npu_err_h1_ratio,
+        "benchmark_err_h1_ratio": report.bench_err_h1_ratio,
+    }
 
 
 def _as_numpy(value):
@@ -51,7 +138,7 @@ def _compare_tolerance(npu_out, golden_out):
 
 
 def _numpy_compare(npu_out, golden_out, output_name):
-    """Compare one output with the unified NumPy precision protocol."""
+    """Compare one FP8 output with the original NumPy precision protocol."""
     npu = _as_numpy(npu_out)
     golden = _as_numpy(golden_out)
 
@@ -154,6 +241,74 @@ def attention_compare(npu_out, golden_out):
 
 def lse_compare(npu_out, golden_out):
     return _numpy_compare(npu_out, golden_out, "softmax_lse")
+
+
+def _mxfp8_cv_compare(
+    npu_out, golden_out, benchmark_out, output_name, output_dtype
+):
+    """Run FIA method-12 for one MXFP8 output only."""
+    direct_result = _numpy_compare(npu_out, golden_out, output_name)
+    if direct_result.get("precision") in {
+        "shape_mismatch",
+        "invalid",
+    }:
+        return direct_result
+
+    npu = _as_numpy(npu_out)
+    golden = _as_numpy(golden_out)
+    benchmark = _as_numpy(benchmark_out)
+    if npu.size == 0:
+        return direct_result
+    if benchmark.shape != golden.shape:
+        return {
+            "pass": False,
+            "precision": "benchmark_shape_mismatch",
+            "error_info": (
+                f"{output_name} benchmark shape mismatch: "
+                f"benchmark_shape={tuple(benchmark.shape)}, "
+                f"golden_shape={tuple(golden.shape)}"
+            ),
+        }
+
+    try:
+        cv_module = _load_mxfp8_cv_compare_module()
+        report = cv_module.compute_cv_report(
+            golden=golden,
+            benchmark=benchmark,
+            actual=npu,
+            test_name=f"qbsa_mxfp8_{output_name}",
+            output_dtype=output_dtype,
+        )
+        cv_module.display_cv_report(report)
+    except Exception as error:  # pylint: disable=broad-except
+        return {
+            "pass": False,
+            "precision": "cv_compare_error",
+            "error_info": f"{output_name} three-way compare failed: {error}",
+        }
+
+    direct_tolerance_pass = direct_result["pass"]
+    direct_result["pass"] = bool(report.passed)
+    direct_result["metrics"]["direct_tolerance_pass"] = direct_tolerance_pass
+    direct_result["metrics"]["cv"] = _mxfp8_cv_report_metrics(report)
+    direct_result["error_info"] = (
+        None
+        if report.passed
+        else f"{output_name} CV failed: {', '.join(report.failure_reasons)}"
+    )
+    return direct_result
+
+
+def _mxfp8_attention_compare(npu_out, golden_out, benchmark_out):
+    return _mxfp8_cv_compare(
+        npu_out, golden_out, benchmark_out, "attention_out", "bf16"
+    )
+
+
+def _mxfp8_lse_compare(npu_out, golden_out, benchmark_out):
+    return _mxfp8_cv_compare(
+        npu_out, golden_out, benchmark_out, "softmax_lse", "fp32"
+    )
 
 
 def _as_bool(value):
@@ -263,12 +418,119 @@ def _compare_outputs(outputs, *, return_softmax_lse=None):
     return results[0] if len(results) == 1 else results
 
 
+def _compare_mxfp8_outputs(
+    outputs, benchmark_outputs, *, return_softmax_lse=None
+):
+    """Compare MXFP8 high-CPU/low-CPU/NPU outputs without touching FP8."""
+    if len(outputs) < 2 or len(outputs) % 2 != 0:
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": f"MXFP8 compare expects even outputs, got {len(outputs)}",
+        }
+    if not benchmark_outputs:
+        return {
+            "pass": False,
+            "precision": "missing_mxfp8_benchmark",
+            "error_info": "MXFP8 three-way compare requires low-precision CPU outputs",
+        }
+
+    half = len(outputs) // 2
+    npu_outputs = outputs[:half]
+    golden_outputs = outputs[half:]
+    results = [
+        _mxfp8_attention_compare(
+            npu_outputs[0], golden_outputs[0], benchmark_outputs[0]
+        )
+    ]
+
+    npu_lse = npu_outputs[1] if half > 1 else None
+    golden_lse = golden_outputs[1] if half > 1 else None
+    benchmark_lse = benchmark_outputs[1] if len(benchmark_outputs) > 1 else None
+    if return_softmax_lse is None:
+        return_softmax_lse = not _is_absent_lse(golden_lse)
+
+    if not return_softmax_lse:
+        unexpected = []
+        if not _is_absent_lse(npu_lse):
+            unexpected.append(f"NPU shape={tuple(_as_numpy(npu_lse).shape)}")
+        if not _is_absent_lse(golden_lse):
+            unexpected.append(f"golden shape={tuple(_as_numpy(golden_lse).shape)}")
+        if benchmark_lse is not None and not _is_absent_lse(benchmark_lse):
+            unexpected.append(
+                f"benchmark shape={tuple(_as_numpy(benchmark_lse).shape)}"
+            )
+        if unexpected:
+            results.append(
+                {
+                    "pass": False,
+                    "precision": "unexpected_lse",
+                    "error_info": (
+                        "return_softmax_lse=False requires MXFP8 LSE outputs "
+                        f"to be absent; got {', '.join(unexpected)}"
+                    ),
+                }
+            )
+            return results
+        return results[0]
+
+    missing = []
+    if npu_lse is None:
+        missing.append("NPU")
+    if golden_lse is None:
+        missing.append("golden")
+    if benchmark_lse is None:
+        missing.append("benchmark")
+    if missing:
+        results.append(
+            {
+                "pass": False,
+                "precision": "missing_lse",
+                "error_info": (
+                    "return_softmax_lse=True requires all three MXFP8 LSE "
+                    f"outputs; missing {', '.join(missing)}"
+                ),
+            }
+        )
+        return results
+
+    invalid = []
+    for name, value in (
+        ("NPU", npu_lse),
+        ("golden", golden_lse),
+        ("benchmark", benchmark_lse),
+    ):
+        array = _as_numpy(value)
+        if array.ndim == 0 or array.size == 0:
+            invalid.append(f"{name} shape={tuple(array.shape)}")
+    if invalid:
+        results.append(
+            {
+                "pass": False,
+                "precision": "invalid_lse",
+                "error_info": (
+                    "return_softmax_lse=True requires non-scalar, non-empty "
+                    f"MXFP8 LSE outputs; invalid {', '.join(invalid)}"
+                ),
+            }
+        )
+        return results
+
+    results.append(_mxfp8_lse_compare(npu_lse, golden_lse, benchmark_lse))
+    return results
+
+
 def compare(*outputs, **kwargs):
-    """Compare FP8 and MXFP8 outputs with one NumPy precision protocol."""
+    """Keep FP8 two-way comparison separate from MXFP8 method-12."""
     return_softmax_lse = kwargs.get("return_softmax_lse")
-    return _compare_outputs(
-        outputs,
-        return_softmax_lse=(
-            None if return_softmax_lse is None else _as_bool(return_softmax_lse)
-        ),
+    return_softmax_lse = (
+        None if return_softmax_lse is None else _as_bool(return_softmax_lse)
     )
+    mxfp8_benchmark = _take_mxfp8_cv_benchmark()
+    if mxfp8_benchmark is not None:
+        return _compare_mxfp8_outputs(
+            outputs,
+            mxfp8_benchmark,
+            return_softmax_lse=return_softmax_lse,
+        )
+    return _compare_outputs(outputs, return_softmax_lse=return_softmax_lse)
