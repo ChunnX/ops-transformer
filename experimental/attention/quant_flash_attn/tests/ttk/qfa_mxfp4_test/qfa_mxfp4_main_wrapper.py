@@ -84,7 +84,8 @@ def _build_fallback_data_dict(
     # 可选 tensor: 透传 block_table; 按 golden 全局变量生成 p_scale/sinks/attn_mask
     # 这样 CSV 配的异常 shape (如 p_scale_shape=[2,3]) 也能传到算子被 checker 拦截
     block_table_t = block_table if block_table is not None else golden_mod._gen_opt_tensor(
-        golden_mod.BLOCK_TABLE_SHAPE, golden_mod.BLOCK_TABLE_DTYPE or "int32", None, seed=100
+        golden_mod.BLOCK_TABLE_SHAPE, golden_mod.BLOCK_TABLE_DTYPE or "int32",
+        golden_mod.BLOCK_TABLE_DATARANGE, seed=100,
     )
     if golden_mod.P_SCALE_VALUE is not None:
         p_scale_dt = golden_mod.get_dtype(golden_mod.P_SCALE_DTYPE) or torch.float32
@@ -207,12 +208,16 @@ def run_main(
     cu_seqlens_q_dtype: str = None,
     cu_seqlens_kv_dtype: str = None,
     softmax_lse_dtype: str = None,
+    # metadata 伪 tensor 入参 (表格 metadata_shape/metadata_dtype, 不传则 golden 用默认)
+    metadata_shape: List[int] = None,
+    metadata_dtype: str = None,
     **kwargs,
 ):
-    """重建 metadata 后调 quant_flash_attn 主算子, 返回 [atten_out, lse_out]。
+    """构造 metadata 后调 quant_flash_attn 主算子, 返回 [atten_out, lse_out]。
 
     分离测试入口: 验证主算子 + metadata 完整链路。
-    metadata 不跨 testcase 传递, 本函数内部重新调 metadata 算子重建。
+    metadata 不跨 testcase 传递, 本函数内部按表格 metadata_shape/metadata_dtype
+    构造伪 tensor 传入主算子。
     """
     torch_npu.npu.set_device(int(device_id))
 
@@ -278,8 +283,14 @@ def run_main(
             "CU_SEQLENS_Q_DTYPE": cu_seqlens_q_dtype,
             "CU_SEQLENS_KV_DTYPE": cu_seqlens_kv_dtype,
             "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
+            "METADATA_SHAPE": list(metadata_shape) if metadata_shape else [],
+            "METADATA_DTYPE": metadata_dtype,
         }
     )
+
+    # 表格全量透传列 (CSV attrs 里的 extra keys 走 kwargs) 注入 golden,
+    # QFA_PASS_THROUGH=1 时按表格值构造算子入参
+    golden_mod._apply_kwargs_globals(kwargs)
 
     # 数据准备分两种模式:
     #   1) QFA_PASS_THROUGH=1: 完全跳过 generate_data, CSV tensor 原样透传给 NPU 主算子,
