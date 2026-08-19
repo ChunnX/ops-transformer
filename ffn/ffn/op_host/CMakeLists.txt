@@ -22,5 +22,32 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
                     -Werror
     )
 else()
-    add_modules_sources(OPTYPE ffn ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE "ffn" ACLNNTYPE "aclnn_exclude")
+    # 官方 ops-nn mat_mul_v3 host tiling：只编 Basic ASWT 需要的 arch35 源
+    set(FFN_OFFICIAL_MM_TILING_SRCS
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_aswt_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_key.cpp
+    )
+    file(GLOB FFN_OFFICIAL_COMMON_TILING_SRCS
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/common/op_host/op_tiling/*.cpp
+    )
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ${FFN_OFFICIAL_MM_TILING_SRCS}
+        ${FFN_OFFICIAL_COMMON_TILING_SRCS}
+        # mc2 的 mat_mul_v3 host 源仍被 MC2_OPT 编入本 target，其引用
+        # Ops::Transformer::DebugTilingContext / TilingPrepareForOpCache / LegacyCommonMgr 等，
+        # 补编 mc2 对应实现使其可加载。
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/common/op_host/op_tiling/debug_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/op_cache_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/legacy_common_manager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/runtime_kb_api.cpp
+    )
+    target_include_directories(${OPHOST_NAME}_tiling_obj BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/op_host
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rd/common/inc
+    )
 endif()

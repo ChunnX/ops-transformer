@@ -161,8 +161,29 @@ static bool CheckDtypeValidForFFNOp(const aclTensor *x, const aclTensor *weight1
     return true;
 }
 
+static bool IsArch35Fused(const FFNParams &ffnParams)
+{
+    return GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950 &&
+           ffnParams.expertTokens == nullptr &&
+           (ffnParams.x->GetDataType() == DataType::DT_BF16 ||
+            ffnParams.x->GetDataType() == DataType::DT_FLOAT16) &&
+           (ffnParams.activationType == ActiveType::GELU || ffnParams.activationType == ActiveType::SILU ||
+            ffnParams.activationType == ActiveType::SWIGLU);
+}
+
+// arch35 fused gelu：weight1 末维 == x 末维时为 linear 布局 [N, K]（out, in），否则为 canonical [K, N]
+static bool IsLinearWeight(const FFNParams &ffnParams)
+{
+    if (!IsArch35Fused(ffnParams)) {
+        return false;
+    }
+    size_t xDimNum = ffnParams.x->GetViewShape().GetDimNum();
+    int64_t xKDimValue = ffnParams.x->GetViewShape().GetDim(xDimNum - 1);
+    return ffnParams.weight1->GetViewShape().GetDim(1) == xKDimValue;
+}
+
 static bool CheckBiasDimNum(const aclTensor *weight, const aclTensor *expertTokens, const aclTensor *bias,
-                            const char *biasName)
+                            const char *biasName, bool transposedWeight)
 {
     bool hasExperts = (expertTokens != nullptr);
     size_t weightSize = hasExperts ? DIM_NUM_THREE : DIM_NUM_TWO;
@@ -176,6 +197,10 @@ static bool CheckBiasDimNum(const aclTensor *weight, const aclTensor *expertToke
         return false;
     }
     size_t weightNDimIdx = weightSize - 1;
+    if (transposedWeight) {
+        // arch35 fused gelu：weight 为 [N, K]（out, in），bias 长度对应 weight 行数
+        weightNDimIdx = 0;
+    }
     int64_t weightNDimValue = weight->GetViewShape().GetDim(weightNDimIdx);
     size_t biasNDimIdx = biasSize - 1;
     int64_t biasNDimValue = bias->GetViewShape().GetDim(biasNDimIdx);
@@ -200,11 +225,14 @@ static bool CheckBias(const FFNParams &ffnParams)
 {
     bool bias1CheckResult = true;
     bool bias2CheckResult = true;
+    bool transposedWeight = IsLinearWeight(ffnParams);
     if (ffnParams.bias1 != nullptr) {
-        bias1CheckResult = CheckBiasDimNum(ffnParams.weight1, ffnParams.expertTokens, ffnParams.bias1, "bias1");
+        bias1CheckResult = CheckBiasDimNum(ffnParams.weight1, ffnParams.expertTokens, ffnParams.bias1, "bias1",
+                                           transposedWeight);
     }
     if (ffnParams.bias2 != nullptr) {
-        bias2CheckResult = CheckBiasDimNum(ffnParams.weight2, ffnParams.expertTokens, ffnParams.bias2, "bias2");
+        bias2CheckResult = CheckBiasDimNum(ffnParams.weight2, ffnParams.expertTokens, ffnParams.bias2, "bias2",
+                                           transposedWeight);
     }
     return bias1CheckResult && bias2CheckResult;
 }
@@ -258,6 +286,72 @@ static aclnnStatus CheckFmapWeightShape(const FFNParams &ffnParams)
                "kDimValue of weight1 "
                "%ld and weight2 %ld should both be equal to or less than 65535",
                weight1kDimValue, weight2kDimValue);
+
+    // arch35 fused gelu/silu/swiglu：支持 canonical [K, N] 与 PyTorch Linear 布局 [N, K]（out, in）
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950 && !hasExperts &&
+        (ffnParams.x->GetDataType() == DataType::DT_BF16 ||
+         ffnParams.x->GetDataType() == DataType::DT_FLOAT16) &&
+        (ffnParams.activationType == ActiveType::GELU || ffnParams.activationType == ActiveType::SILU ||
+         ffnParams.activationType == ActiveType::SWIGLU)) {
+        const int64_t w1Dim0 = ffnParams.weight1->GetViewShape().GetDim(0);
+        const int64_t w1Dim1 = ffnParams.weight1->GetViewShape().GetDim(1);
+        const int64_t w2Dim0 = ffnParams.weight2->GetViewShape().GetDim(0);
+        const int64_t w2Dim1 = ffnParams.weight2->GetViewShape().GetDim(1);
+        const bool isSwiglu = (ffnParams.activationType == ActiveType::SWIGLU);
+        // 布局识别与 infershape/tiling 同一套规则：
+        //  1) w1 非方阵：w1Dim1==xK → linear；w1Dim0==xK → canonical；
+        //  2) w1 方阵：用 w2 的布局一致性消歧（swiglu 的隐藏宽是 w1 行/列的一半）；
+        //  3) 全方阵/均不匹配：按 dtype 约定（BF16→linear，其余→canonical）。
+        bool layoutLinear = false;
+        if (w1Dim1 == xKDimValue && w1Dim0 != xKDimValue) {
+            layoutLinear = true;
+        } else if (w1Dim0 == xKDimValue && w1Dim1 != xKDimValue) {
+            layoutLinear = false;
+        } else if (w1Dim0 == xKDimValue && w1Dim1 == xKDimValue) {
+            const int64_t hiddenW = isSwiglu ? w1Dim0 / 2 : w1Dim0;
+            const int64_t hiddenW2 = isSwiglu ? w1Dim1 / 2 : w1Dim1;
+            if (w2Dim1 == hiddenW && w2Dim0 != hiddenW2) {
+                layoutLinear = true;
+            } else if (w2Dim0 == hiddenW2 && w2Dim1 != hiddenW) {
+                layoutLinear = false;
+            } else {
+                layoutLinear = (ffnParams.x->GetDataType() == DataType::DT_BF16);
+            }
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "weight1 shape [%ld, %ld] does not match x K=%ld (expect [K,N] or [N,K])", w1Dim0, w1Dim1,
+                    xKDimValue);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (layoutLinear) {
+            if (isSwiglu) {
+                // linear swiglu：w1 [2H, K]，w2 [N, H]
+                CHECK_COND(w1Dim0 % 2 == 0, ACLNN_ERR_PARAM_INVALID, "swiglu weight1 rows must be even");
+                CHECK_COND(w1Dim0 / 2 == w2Dim1, ACLNN_ERR_PARAM_INVALID,
+                           "swiglu weight1 rows/2[%ld] is not equal to weight2 last dim[%ld]", w1Dim0 / 2, w2Dim1);
+                CHECK_COND(w2Dim0 > 0 && w1Dim0 > 0, ACLNN_ERR_PARAM_INVALID, "weight dims should be positive");
+            } else {
+                // linear：w1 [N1, K]，w2 [N2, N1]
+                CHECK_COND(w1Dim0 == w2Dim1, ACLNN_ERR_PARAM_INVALID,
+                           "weight1 rows[%ld] is not equal to weight2 last dim[%ld]", w1Dim0, w2Dim1);
+                CHECK_COND(w2Dim0 > 0 && w1Dim0 > 0, ACLNN_ERR_PARAM_INVALID, "weight dims should be positive");
+            }
+        } else {
+            if (isSwiglu) {
+                // canonical swiglu：w1 [K, 2H]，w2 [H, N]
+                CHECK_COND(w1Dim1 % 2 == 0, ACLNN_ERR_PARAM_INVALID, "swiglu weight1 last dim must be even");
+                CHECK_COND(w1Dim1 / 2 == w2Dim0, ACLNN_ERR_PARAM_INVALID,
+                           "swiglu weight1 last dim/2[%ld] is not equal to weight2 rows[%ld]", w1Dim1 / 2, w2Dim0);
+                CHECK_COND(w2Dim1 > 0 && w1Dim1 > 0, ACLNN_ERR_PARAM_INVALID, "weight dims should be positive");
+            } else {
+                // canonical：w1 [K, N1]，w2 [N1, N2]
+                CHECK_COND(w1Dim1 == w2Dim0, ACLNN_ERR_PARAM_INVALID,
+                           "weight1 last dim[%ld] is not equal to weight2 rows[%ld]", w1Dim1, w2Dim0);
+                CHECK_COND(w2Dim1 > 0 && w1Dim1 > 0, ACLNN_ERR_PARAM_INVALID, "weight dims should be positive");
+            }
+        }
+        return ACLNN_SUCCESS;
+    }
 
     CHECK_COND(xKDimValue == weight1kDimValue, ACLNN_ERR_PARAM_INVALID,
                "x KDimValue[%ld] is not equal to weight1 kDimValue[%ld]", xKDimValue, weight1kDimValue);
@@ -441,8 +535,14 @@ static aclnnStatus CheckHighPrecisionBF16(const FFNParams &ffnParams)
                "Detected high precision, but quant inputs is not empty!");
     CHECK_COND(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Detected high precision, but antiquant inputs is not empty!");
-    CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, bias dtype is not right!");
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950) {
+        // arch35 fused gelu：bias 与 linear 对齐，支持 bf16 / float32
+        CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT, DataType::DT_BF16}) == ACLNN_SUCCESS,
+                   ACLNN_ERR_PARAM_INVALID, "Detected high precision, bias dtype is not right!");
+    } else {
+        CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "Detected high precision, bias dtype is not right!");
+    }
     CHECK_COND(ffnParams.activationType != ActiveType::GEGLU, ACLNN_ERR_PARAM_INVALID,
                "Detected high precision, GEGLU is not supported!");
     return ACLNN_SUCCESS;
@@ -678,7 +778,9 @@ static aclnnStatus CheckOptionalParams(FFNParams &ffnParams)
     OP_CHECK_DTYPE_NOT_SUPPORT(ffnParams.weight1, wSupportList, return ACLNN_ERR_PARAM_INVALID);
 
     if (static_cast<uint32_t>(ffnParams.activationType) >= static_cast<uint32_t>(ActiveType::GEGLU)) {
-        return CheckGlu(ffnParams); // glu, mixed operator
+        if (!IsArch35Fused(ffnParams)) {
+            return CheckGlu(ffnParams); // 老 glu 路径（fp16 专用）；arch35 走 fused 路径
+        }
     }
 
     if (xDtype == DataType::DT_BF16) {
@@ -814,6 +916,9 @@ static aclnnStatus OutputransFormat(const FFNParams &ffnParams, const aclTensor 
 
 static int64_t GetBatchSizeX(const aclTensor *x)
 {
+    if (x == nullptr || x->GetViewShape().GetDimNum() == 0) {
+        return 1;
+    }
     int64_t bs = 1;
     size_t xDimNum = x->GetViewShape().GetDimNum();
     if (xDimNum == 0) {
@@ -914,6 +1019,9 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = InputsContiguousAndTransFormat(ffnParams.weight2, reformatedWeight2, "weight2", uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    // arch35 fused gelu：接口与 linear 对齐（weight 为 [N, K]），不做图内转置，
+    // 由 FFN kernel 通过 mat_mul_v3 layout::ColumnMajor（transB）原生处理，避免额外转置算子。
 
     // when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
     // view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
