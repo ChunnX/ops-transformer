@@ -72,16 +72,16 @@ assert np.all(c[131072:] == 512.0)
 - **tensor_api submodule 权限**：WSL 下 `.git` 可能不可写，需 `sudo`
 - **链接 `dl`**：`dlopen` 需显式链接 `libdl`（已配置）
 
-## 待上板验证风险点
+## 风险点验证状态
 
-| 风险 | 说明 |
-|---|---|
-| P10 | AIC 写 CCU Variable 地址空间是否生效 |
-| P11 | AIC 使用 WriteGmByPassDCache/ReadGmByPassDCache/Nop 是否生效 |
-| P14 | CCU kernel 循环内 channel NotifyRecord/NotifyWait 多次调用 |
+| 风险 | 说明 | 状态 |
+|---|---|---|
+| P10 | AIC 写 CCU Variable 地址空间 | ✅ 上板验证通过 |
+| P11 | AIC 使用 WriteGmByPassDCache/ReadGmByPassDCache/Nop | ✅ 上板验证通过 |
+| P14 | CCU kernel 循环内 channel NotifyRecord/NotifyWait 多次调用 | ✅ 上板验证通过（GroupCopy Loop Entity 需每轮重建） |
 
 ## 验证记录
 
 - 2025-08-17：第一阶段 AllGather 通信验证 PASS
 - 2025-08-18：第二阶段 AllGather+Matmul 串联验证 PASS（编译修复后）
-- 2025-08-18：第三阶段通算并行流水，待上板验证
+- 2025-08-18：第三阶段通算并行流水验证 PASS（tile0=256.0, tile1=512.0，P10/P11/P14 全部通过）

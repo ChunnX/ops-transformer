@@ -276,6 +276,50 @@ assert np.all(c[131072:] == 512.0)   # tile1
 | 编号 | 风险 | 状态 |
 |---|---|---|
 | P9 | CKE Event 扩展（commTurn+1） | ✅ 已闭环（1 wake + commTurn done，无需重置） |
-| P10 | AIC 写 CCU Variable 地址空间 | ⏳ 上板验证 |
-| P11 | AIC 用 WriteGmByPassDCache/ReadGmByPassDCache/Nop | ⏳ 上板验证 |
-| P14 | CCU kernel 循环内 channel NotifyRecord/NotifyWait 多次调用 | ⏳ 上板验证 |
+| P10 | AIC 写 CCU Variable 地址空间 | ✅ 上板验证通过 |
+| P11 | AIC 用 WriteGmByPassDCache/ReadGmByPassDCache/Nop | ✅ 上板验证通过 |
+| P14 | CCU kernel 循环内 channel NotifyRecord/NotifyWait 多次调用 | ✅ 上板验证通过 |
+
+---
+
+## 12. 上板验证记录（2025-08-18）
+
+### 12.1 精度验证结果
+
+2 卡（rankSize=2），M=512，tileM=256，commTurn=2，K=N=256，FP16→BF16。
+
+- tile0（前 131072 元素）：全 256.0 ✅
+- tile1（后 131072 元素）：全 512.0 ✅
+
+### 12.2 编译问题修复
+
+| 问题 | 根因 | 修复 | 文件 |
+|---|---|---|---|
+| `unknown type name 'CcuMappedAddrs'` | include 顺序前向引用 | CcuMappedAddrs 前移到 include 之前 | `.asc` |
+| `no matching function for call to MatmulProcess` | `GM_ADDR` 与 `__gm__ void*` 类型不匹配 | MatmulProcess 参数改 `__gm__ void*`，内部两步 cast | `matmul_fusion_kernel.h` |
+| `ACLCHECK 返回 aclError 不能转 HcclResult` | PrepareAllGatherMatmul 返回 HcclResult，ACLCHECK 返回 aclError | 手动检查 aclError + 返回 HCCL_E_INTERNAL | `host_launcher.h` |
+
+### 12.3 运行时精度问题修复
+
+#### tile1 本 rank 数据缺失（全 0）
+
+**现象**：tile0 全 PASS；tile1 每张卡都是本 rank 数据为 0、peer rank 数据正确：
+- 0 卡 tile1：前 65536=0（rank0 缺失），后 65536=512（rank1 正确）
+- 1 卡 tile1：前 65536=512（rank0 正确），后 65536=0（rank1 缺失）
+
+**根因**：`InitGroupCopyResources` 中 Loop Entity 的 lambda 按值捕获 `loopSrc`/`loopDst`/`loopLen`。原代码仅在首次调用时创建 Loop Entity（`if (!IsLoopEntityRegistered)`），round 1 复用 round 0 的地址快照，导致本地拷贝 `GroupCopy` 写到 round 0 的位置而非 round 1。
+
+- `GroupCopy`（本地拷贝）受影响 → 本 rank tile1 数据未写到正确位置 → 0
+- `ccu::Write`（远程传输）不受 lambda 影响 → peer rank tile1 数据正常 → 512
+
+**修复**：去掉 `if (!IsLoopEntityRegistered)` 条件，每次调用都 erase 旧 Loop Entity 并重新创建，确保 lambda 捕获当前 round 的地址。
+
+**commit**：`377d17e8b`
+
+### 12.4 P10/P11/P14 验证结论
+
+| 风险 | 结论 |
+|---|---|
+| P10 | AIC 写 CCU Variable 地址空间 ✅ 正常工作，AIC block 0 预写 commTurn 组参数桥成功 |
+| P11 | AIC WriteGmByPassDCache/ReadGmByPassDCache/Nop ✅ 轮询 CKE done 正常，通信完成后 AIC 正确感知 |
+| P14 | CCU kernel 循环内 channel NotifyRecord/NotifyWait ✅ 多次调用正常，但 GroupCopy 的 Loop Entity 需每轮重建（lambda 捕获问题） |
