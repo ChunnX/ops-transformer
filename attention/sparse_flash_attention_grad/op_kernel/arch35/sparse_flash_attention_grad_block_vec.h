@@ -440,7 +440,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
     // copy ds from ub to l1
     LocalTensor<INPUT_TYPE> dsL1Tensor = dstBuffer.GetTensor<INPUT_TYPE>();
     CopyUB2L1<true>(constInfo, runInfo, dsL1Tensor, vecOutBuffer);
-    PipeBarrier<PIPE_ALL>();
+ 
     dSOutQue.FreeTensor(vecOutBuffer);
 }
  
