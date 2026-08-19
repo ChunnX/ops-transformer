@@ -312,18 +312,7 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xB); // → AIV: 可做列缩放
         }
 
-        // k_cumdecay = -(A @ diag(β) @ diag(g_exp)) @ K
-        //   A = attnWsNegGm_(C,C) [A_beta_gexp, 含负号], B = keyGm_(C,Dk) strided
-        //   等价: A @ (-K·β·g_exp), result → kCumDecay_ (C,Dk)
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x6); // ← AIV: A_beta_gexp 就绪
-            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
-            AICProcess(mmBf16_, attnWsNegGm_[i * ccOffset_], keyGm_[qk_base],
-                       outKCumdecayGm_[chunkRowBase_[i] * dk_],
-                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
-        }
-
-        // v_inner = (A @ diag(β)) @ V
+        // v_inner = (A @ diag(β)) @ V  (先做: AIV R4 完成即可启动, 与 AIV R5 并行)
         //   A = attnWs_(C,C) [A_beta], B = valueGm_(C,Dv) strided
         //   等价: A @ (V·β), result → vInner_ (C,Dv)
         for (uint32_t i = 0; i < curParaNum; ++i) {
@@ -332,6 +321,17 @@ private:
             AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], valueGm_[vOffset],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
                        {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_, 0, vRowStride_});
+        }
+
+        // k_cumdecay = -(A @ diag(β) @ diag(g_exp)) @ K  (后做: 等 AIV R5 完成)
+        //   A = attnWsNegGm_(C,C) [A_beta_gexp, 含负号], B = keyGm_(C,Dk) strided
+        //   等价: A @ (-K·β·g_exp), result → kCumDecay_ (C,Dk)
+        for (uint32_t i = 0; i < curParaNum; ++i) {
+            AscendC::CrossCoreWaitFlag(0x6); // ← AIV: A_beta_gexp 就绪
+            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
+            AICProcess(mmBf16_, attnWsNegGm_[i * ccOffset_], keyGm_[qk_base],
+                       outKCumdecayGm_[chunkRowBase_[i] * dk_],
+                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
         }
     }
 
@@ -363,14 +363,19 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // → AIC: 求逆 A 完成
         }
 
-        // A_beta = A @ diag(β)       (列缩放: 第 j 列乘 β[j])
-        // A_beta_gexp = A_beta @ diag(g_exp)  (列缩放: 第 j 列再乘 g_exp[j])
-        //   合并单循环: 每个 chunk 先 R4 再 R5, 保证 inverseRes_ 一致性
+        // A_beta = A @ diag(β)  (列缩放: 第 j 列乘 β[j])
+        //   拆分循环: R4 全部完成后再做 R5, AIC 可连续做 matmul5
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0xB); // ← AIC: AttnInverseMMCompute 完成
             ColumnScaleBeta(attnWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: A_beta 就绪
-            ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], gCumExpUbFloat_[i * chunkSize_]);
+        }
+
+        // -A_beta_gexp = -(A_beta @ diag(g_exp))  (列缩放: 第 j 列再乘 g_exp[j], 然后取负)
+        //   从 GM attnWs_ 重读 A_beta (不依赖 UB inverseRes_ 持久性)
+        for (uint32_t i = 0; i < curParaNum; ++i) {
+            ColumnScaleGExp(attnWsNegGm_[i * ccOffset_], attnWsGm_[i * ccOffset_],
+                            gCumExpUbFloat_[i * chunkSize_]);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // → AIC: A_beta_gexp 就绪
         }
 
@@ -523,10 +528,18 @@ private:
     }
 
     // -A_beta_gexp = -(A_beta @ diag(g_exp))  (列缩放: 第 j 列再乘 g_exp[j], 然后取负)
-    //   A_beta in inverseRes_ (UB), col-scale g_exp → negate → Cast BF16 → write attnWsNegGm_
-    __aicore__ inline void ColumnScaleGExp(const GlobalTensor<bfloat16_t> negWsGm, LocalTensor<float> gCumExpUbFloat)
+    //   从 GM attnWsGm_ 重读 A_beta → Cast FP32 → col-scale g_exp → negate → Cast BF16 → write attnWsNegGm_
+    __aicore__ inline void ColumnScaleGExp(const GlobalTensor<bfloat16_t> negWsGm,
+                                           const GlobalTensor<bfloat16_t> aWsGm,
+                                           LocalTensor<float> gCumExpUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
+        // 重读 A_beta from GM (拆分循环后不再依赖 UB inverseRes_ 持久性)
+        DataCopyInBf16(curVecLen, aWsGm[subOffset_ * chunkSize_]);
+        auto bf16Local = inQueue_.DeQue<bfloat16_t>();
+        Cast(inverseRes_, bf16Local, RoundMode::CAST_NONE, curVecLen);
+        PipeBarrier<PIPE_V>();
+        inQueue_.FreeTensor(bf16Local);
         if constexpr (gOptional) {
             uint32_t gExpShape[2] = {halfChunkSize_, 1};
             uint32_t aShape[2] = {halfChunkSize_, chunkSize_};

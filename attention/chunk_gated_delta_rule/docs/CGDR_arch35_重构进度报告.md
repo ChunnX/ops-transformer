@@ -31,7 +31,7 @@
 - R7 实现：d 移到 v_new 行缩放 `v_new *= d[:,None]`，删除 KgCompute，Stage2 CalStateNew 用 strided K
 
 #### 阶段 2：Bug 修复
-- Bug 1 修复：R4/R5 双循环 `inverseRes_` 串扰 → 合并为单循环
+- Bug 1 修复：R4/R5 `inverseRes_` 串扰 → ColumnScaleGExp 从 GM 重读 A_beta，拆分为两个独立循环
 - Bug 2 修复：Stage3 读到 d 缩放后的 v_new → 新增 `vNewScaledGm_` per-core buffer
 
 #### 阶段 3：CV 数据通路优化 (perf/cgdr-arch35-cv-pipeline 分支)
@@ -43,6 +43,15 @@
 #### 阶段 4：死 workspace 清理
 - 删除 `attnInter_`（从未被任何 Stage 读取，arch22 和 arch35 均为死代码）
 - 节省 ~48MB GM workspace
+
+#### 阶段 5：Stage1 AIC/AIV 流水线优化
+- AIC matmul5/matmul4 调换顺序：matmul5(v_inner) 先做（仅需 AIV R4 完成），matmul4(k_cumdecay) 后做（需 AIV R5 完成）
+  - AIC matmul5 与 AIV R5 并行执行，减少 AIC 空闲
+  - 安全性：R5 写 attnWsNegGm_，matmul5 读 attnWs_，不同 buffer 无冲突
+- AIV R4/R5 拆分为两个独立循环：R4 全部完成后再做 R5
+  - AIC 可连续做 paraNum 个 matmul5，再连续做 paraNum 个 matmul4，提高 Cube 利用率
+  - ColumnScaleGExp 从 GM attnWs_ 重读 A_beta（代价：多 1 次 GM→UB 读取 ~4KB/chunk）
+  - 消除 inverseRes_ 跨循环依赖，代码结构更清晰
 
 #### 验证
 - 编译通过：ascend950 opkernel + ophost + opapi
@@ -102,17 +111,17 @@ state_new diff:  1.39e-17
 | 用例 | Baseline (ms) | Refactored (ms) | 变化 |
 |:-----|:-------------|:----------------|:-----|
 | S=2048 nv=32 | 0.72 | 0.72 | +0.0% |
-| S=4096 nv=32 | 1.44 | 1.45 | +0.6% |
-| S=8192 nv=32 | 2.85 | 2.79 | -2.1% |
-| S=32768 nv=32 | 11.40 | 11.18 | -1.9% |
-| S=65536 nv=32 | 22.90 | 22.44 | -2.0% |
-| S=131072 nv=32 | 46.07 | 45.28 | -1.7% |
+| S=4096 nv=32 | 1.44 | 1.43 | -0.7% |
+| S=8192 nv=32 | 2.85 | 2.80 | -1.8% |
+| S=32768 nv=32 | 11.40 | 11.15 | -2.2% |
+| S=65536 nv=32 | 22.90 | 22.46 | -1.9% |
+| S=131072 nv=32 | 46.07 | 45.17 | -2.0% |
 | S=2048 nv=2 | 0.20 | 0.21 | +5.0% |
-| S=2048 nv=32 GQA | 0.72 | 0.71 | -1.4% |
-| S=10240 nv=64 GQA | 6.05 | 5.96 | -1.5% |
-| S=2048 nv=32 nog | 0.69 | 0.65 | -5.8% |
-| B=4 S=32768 nv=32 | 46.06 | 45.54 | -1.1% |
-| S=2048 FP32-state | 0.98 | 0.97 | -1.0% |
+| S=2048 nv=32 GQA | 0.72 | 0.70 | -2.8% |
+| S=10240 nv=64 GQA | 6.05 | 5.95 | -1.7% |
+| S=2048 nv=32 nog | 0.69 | 0.63 | -8.7% |
+| B=4 S=32768 nv=32 | 46.06 | 45.45 | -1.3% |
+| S=2048 FP32-state | 0.98 | 0.96 | -2.0% |
 
 **结论：** 性能与 baseline 持平（±3% 噪声范围，长序列场景有小幅改善趋势）。
 
@@ -154,13 +163,25 @@ AIC:                              waitFlag(0x3) → VPrime+AttnInter(fused) → 
 | `CastGmToGmDual` | FP32 | 单次 GM→UB 读取产出 unscaled + scaled 双输出 |
 | `CastGmToGmWithScale` | BF16→BF16 | 新增模板特化：BF16→FP32→Scale→BF16 |
 | `ColumnScaleBeta` | Stage1 | R4: A_beta = A * beta[None,:] (列缩放) |
-| `ColumnScaleGExp` | Stage1 | R5: A_beta_gexp = A_beta * g_exp[None,:] (列缩放) |
+| `ColumnScaleGExp` | Stage1 | R5: -A_beta_gexp = -(A_beta * g_exp[None,:])，从 GM 重读 A_beta |
+
+### Stage1 AIC/AIV 流水线优化
+
+**AIC matmul5/matmul4 调换顺序**：
+- 原：matmul4(k_cumdecay, wait 0x6) → matmul5(v_inner, wait 0x5)
+- 新：matmul5(v_inner, wait 0x5) → matmul4(k_cumdecay, wait 0x6)
+- AIV 产出顺序为 0x5(R4) → 0x6(R5)，调换后 AIC 先等 0x5 即可启动 matmul5，与 AIV R5 并行
+
+**AIV R4/R5 拆分为两个独立循环**：
+- 原：合并循环（每个 chunk 先 R4 再 R5，依赖 UB inverseRes_ 持久性）
+- 新：R4 循环（全部 chunk）→ R5 循环（全部 chunk），ColumnScaleGExp 从 GM 重读 A_beta
+- AIC 可连续做 paraNum 个 matmul5 再连续做 paraNum 个 matmul4，提高 Cube 利用率
 
 ### Bug 修复
 
 | Bug | 影响 | 修复 |
 |:-----|:-----|:-----|
-| R4/R5 双循环 inverseRes_ 串扰 | paraNum>1 时 3/4 chunk 的 k_cumdecay 数据错误 | 合并为单循环 |
+| R4/R5 inverseRes_ 串扰 | paraNum>1 时 chunk 间 A_beta 被覆写 | ColumnScaleGExp 从 GM 重读 A_beta，拆分循环 |
 | Stage3 读到 d 缩放后 v_new | masked_qkt @ (v_new*d) 而非 v_new | 新增 vNewScaledGm_ per-core buffer |
 
 ## 关键上下文

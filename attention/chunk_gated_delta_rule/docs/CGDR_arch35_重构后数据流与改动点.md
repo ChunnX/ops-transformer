@@ -95,14 +95,17 @@ for i in [0, curParaNum):
     InverseCompute(attnWs_[i*C*C], gammaUB)
     CrossCoreSetFlag<PIPE_MTE3>(0x7)               // → AIC: 求逆完成
 
-// ===== 步骤 4+5: R4+R5 合并循环 (列缩放) =====
-// 修复: 原 R4/R5 为两个独立循环, paraNum>1 时 inverseRes_ 被覆写
-//       合并为单循环, 每个 chunk 先 R4 再 R5, 保证 inverseRes_ 一致性
+// ===== 步骤 4: R4 列缩放 β → A_beta (独立循环, AIC matmul5 连续执行) =====
 for i in [0, curParaNum):
     CrossCoreWaitFlag(0xB)                         // ← AIC: AttnInverseMMCompute 完成
     ColumnScaleBeta(attnWs_[i*C*C], betaUB[i*H])   // R4: A_beta = A * beta[None,:]
     CrossCoreSetFlag<PIPE_MTE3>(0x5)               // → AIC: A_beta 就绪
-    ColumnScaleGExp(attnWsNegGm_[i*C*C], gCumExpUB[i*C])  // R5: A_beta_gexp = A_beta * g_exp[None,:]
+
+// ===== 步骤 5: R5 列缩放 g_exp → A_beta_gexp (独立循环, 从 GM 重读 A_beta) =====
+for i in [0, curParaNum):
+    ColumnScaleGExp(attnWsNegGm_[i*C*C], attnWs_[i*C*C], gCumExpUB[i*C])
+    //   从 GM attnWs_ 重读 A_beta (不依赖 UB inverseRes_)
+    //   R5: -A_beta_gexp = -(A_beta * g_exp[None,:])
     CrossCoreSetFlag<PIPE_MTE3>(0x6)               // → AIC: A_beta_gexp 就绪
 
 // ===== 步骤 6: q_prime (R2: Q 从 strided GM) =====
@@ -134,19 +137,23 @@ for i in [0, curParaNum):
     AttnInverseMMCompute(i*C*C)
     CrossCoreSetFlag<PIPE_FIX>(0xB)                // → AIV: 可做列缩放 (新增)
 
-// ===== matmul 4: k_cumdecay (R4+R5: 读 A_beta_gexp, K 从 strided GM) =====
-for i in [0, curParaNum):
-    CrossCoreWaitFlag(0x6)                         // ← AIV: A_beta_gexp 就绪
-    AICProcess(mmBf16_, attnWsNegGm_[i*C*C], keyGm_[qk_base], kCumDecayGm[...],
-               {M=C, N=Dk, K=C, Ka=0, Kb=Nk*Dk})
-    // k_cumdecay = -A_beta_gexp @ K = A@(-K·β·g_exp) ✓
-
-// ===== matmul 5: vInner (R4: 读 A_beta, V 从 strided GM) =====
+// ===== matmul 5: vInner (先做: AIV R4 完成即可启动, 与 AIV R5 并行) =====
+//   v_inner = (A @ diag(β)) @ V
+//   A = attnWs_(C,C) [A_beta], B = valueGm_(C,Dv) strided, result → vInner_ (C,Dv)
 for i in [0, curParaNum):
     CrossCoreWaitFlag(0x5)                         // ← AIV: A_beta 就绪
     AICProcess(mmVInner_, attnWs_[i*C*C], valueGm_[vOffset], vInnerGm[...],
                {M=C, N=Dv, K=C, Ka=0, Kb=Nv*Dv})
     // v_inner = A_beta @ V = A@(V·β) ✓
+
+// ===== matmul 4: k_cumdecay (后做: 等 AIV R5 完成) =====
+//   k_cumdecay = -(A @ diag(β) @ diag(g_exp)) @ K
+//   A = attnWsNegGm_(C,C) [A_beta_gexp, 含负号], B = keyGm_(C,Dk) strided, result → kCumDecay_ (C,Dk)
+for i in [0, curParaNum):
+    CrossCoreWaitFlag(0x6)                         // ← AIV: A_beta_gexp 就绪
+    AICProcess(mmBf16_, attnWsNegGm_[i*C*C], keyGm_[qk_base], kCumDecayGm[...],
+               {M=C, N=Dk, K=C, Ka=0, Kb=Nk*Dk})
+    // k_cumdecay = -A_beta_gexp @ K = A@(-K·β·g_exp) ✓
 ```
 
 ### 1.3 Stage1 同步关系图
@@ -154,24 +161,26 @@ for i in [0, curParaNum):
 ```
 AIV                                       AIC
 ────                                       ────
-[R2: 不再 QKPreProcess, 不再 SetFlag(0x9)]
 GCumExpCompute + GammaCompute (→ gCum_ GM)
 beta 搬入 (全量 C)
-                                            KKT matmul (strided GM → kkWs)  ← R2
+                                            KKT matmul (strided GM → kkWs)
                                             SetFlag(0x8) ──────────→ WaitFlag(0x8)
 KKBetaCompute (读 kkWs, 含 beta)
 InverseCompute (求逆 A → attnWs)
 SetFlag(0x7) ─────────────────────────→   WaitFlag(0x7)
                                             AttnInverseMMCompute (读/写 attnWs 的 A)
-                                            SetFlag(0xB) ──────────→ WaitFlag(0xB)  // 新增
-[R4+R5 合并循环: 每个 chunk 先 R4 再 R5]
+                                            SetFlag(0xB) ──────────→ WaitFlag(0xB)
+[R4 循环: 全部 chunk 连续做列缩放 β]
 读 A → 列缩放 β → A_beta → 写 attnWs
-SetFlag(0x5) ─────────────────────────→   WaitFlag(0x5) → matmul5: A_beta @ V (strided)
-A_beta (UB) → 列缩放 g_exp → A_beta_gexp → 写 attnWsNegGm_
-SetFlag(0x6) ─────────────────────────→   WaitFlag(0x6) → matmul4: -A_beta_gexp @ K (strided)
-                                            QKT matmul (strided GM → qkt_)  ← R2
+SetFlag(0x5) ─────────────────────────→   WaitFlag(0x5) → matmul5: A_beta @ V (连续执行)
+                                            [matmul5 batch ×paraNum]
+[R5 循环: 全部 chunk 连续做列缩放 g_exp]   ← matmul5 与 AIV R5 并行
+重读 A_beta from GM → 列缩放 g_exp → negate → 写 attnWsNegGm_
+SetFlag(0x6) ─────────────────────────→   WaitFlag(0x6) → matmul4: -A_beta_gexp @ K
+                                            [matmul4 batch ×paraNum]
+                                            QKT matmul (strided GM → qkt_)
                                             SetFlag(0xA) ──────────→ WaitFlag(0xA)
-QPrimeCompute (Q 从 strided GM)           ← R2
+QPrimeCompute (Q 从 strided GM)
 ```
 
 ### 1.4 Stage1 输出
@@ -507,11 +516,11 @@ stageWs: kkWs/attnWs/attnWsNeg (3 buffer) + vNewScaledGm_ (per-core C×Dv, 复�
 
 ## 6 Bug 修复记录
 
-### Bug 1: R4/R5 双循环 inverseRes_ 串扰
+### Bug 1: R4/R5 inverseRes_ 串扰
 
-**问题**：R4 和 R5 原为两个独立循环，`paraNum>1` 时 R4 循环遍历所有 chunk 覆写 `inverseRes_`，R5 循环从 chunk 0 重新开始但 `inverseRes_` 已被最后一个 chunk 的 A_beta 覆盖。
+**问题**：R4 和 R5 为两个独立循环时，R4 循环遍历所有 chunk 覆写 `inverseRes_`，R5 循环从 chunk 0 重新开始但 `inverseRes_` 已被最后一个 chunk 的 A_beta 覆盖。合并为单循环后修复了此问题，但牺牲了 AIC 连续执行 matmul 的能力。
 
-**修复**：合并 R4/R5 为单循环，每个 chunk 先 `ColumnScaleBeta` 再 `ColumnScaleGExp`，保证 `inverseRes_` 一致性。
+**最终修复**：将 R4/R5 重新拆分为两个独立循环，`ColumnScaleGExp` 从 GM `attnWsGm_` 重读 A_beta（不依赖 UB `inverseRes_` 持久性）。代价是多 1 次 GM→UB 读取（~4KB/chunk），收益是 AIC 可连续做 paraNum 个 matmul5 再连续做 paraNum 个 matmul4。
 
 ### Bug 2: Stage3 读到 d 缩放后的 v_new
 
