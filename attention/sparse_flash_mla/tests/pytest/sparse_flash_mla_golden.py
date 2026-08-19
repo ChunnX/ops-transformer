@@ -533,7 +533,9 @@ class GeneralizedSFA:
             if self.ori_win_right == -1:
                 right_bound = cur_ori_act_kv
             else:
-                right_bound = min(max(ori_threshold + self.ori_win_right, 0), cur_ori_act_kv)
+                right_bound = min(
+                    max(ori_threshold + self.ori_win_right, 0), cur_ori_act_kv
+                )
         elif mask_mode == 0:
             pass
         left_bound = min(left_bound, cur_ori_act_kv)
@@ -982,7 +984,9 @@ def gen_sparse_indices_bsnd(
                     if ori_win_right == -1:
                         right_bound = cur_act_kv
                     else:
-                        right_bound = min(max(ori_threshold + ori_win_right, 0), cur_act_kv)
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
                     left_bound = min(left_bound, cur_act_kv)
                     cur_valid_left = max(0, left_bound)
                     cur_valid_s2_max = max(0, right_bound - cur_valid_left)
@@ -1006,9 +1010,9 @@ def gen_sparse_indices_bsnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ] + cur_valid_left
+                sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 if topk_length is not None and topk_length_override is None:
                     if kv_topk_mode == "fullK":
@@ -1093,7 +1097,9 @@ def gen_sparse_indices_tnd(
                     if ori_win_right == -1:
                         right_bound = cur_act_kv
                     else:
-                        right_bound = min(max(ori_threshold + ori_win_right, 0), cur_act_kv)
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
                     left_bound = min(left_bound, cur_act_kv)
                     cur_valid_left = max(0, left_bound)
                     cur_valid_s2_max = max(0, right_bound - cur_valid_left)

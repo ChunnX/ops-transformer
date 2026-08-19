@@ -467,7 +467,9 @@ class GeneralizedSFAQuant:
             if self.ori_win_right == -1:
                 right_bound = cur_act_kv
             else:
-                right_bound = min(max(ori_threshold + self.ori_win_right, 0), cur_act_kv)
+                right_bound = min(
+                    max(ori_threshold + self.ori_win_right, 0), cur_act_kv
+                )
         elif self.ori_mask_mode == 0:
             pass
 
@@ -924,7 +926,9 @@ def gen_sparse_indices_bsnd(
                     if ori_win_right == -1:
                         right_bound = cur_act_kv
                     else:
-                        right_bound = min(max(ori_threshold + ori_win_right, 0), cur_act_kv)
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
                     left_bound = min(left_bound, cur_act_kv)
                     cur_valid_left = max(0, left_bound)
                     cur_valid_s2_max = max(0, right_bound - cur_valid_left)
@@ -947,9 +951,9 @@ def gen_sparse_indices_bsnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ] + cur_valid_left
+                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -1026,7 +1030,9 @@ def gen_sparse_indices_tnd(
                     if ori_win_right == -1:
                         right_bound = cur_act_kv
                     else:
-                        right_bound = min(max(ori_threshold + ori_win_right, 0), cur_act_kv)
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
                     left_bound = min(left_bound, cur_act_kv)
                     cur_valid_left = max(0, left_bound)
                     cur_valid_s2_max = max(0, right_bound - cur_valid_left)
@@ -1049,9 +1055,9 @@ def gen_sparse_indices_tnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ] + cur_valid_left
+                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -1375,8 +1381,8 @@ def gen_ori_kv(
     ori_sparse_indices_mode="full",
     ori_kv_topk_mode="no",
     ori_topk_length_override=None,
-    ori_win_left = -1,
-    ori_win_right = -1,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
@@ -1587,8 +1593,8 @@ def gen_ori_kv_quant_2_pa(
     ori_sparse_indices_mode="full",
     ori_kv_topk_mode="no",
     ori_topk_length_override=None,
-    ori_win_left = -1,
-    ori_win_right = -1,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     # 1. 生成并处理 Nope (448) 和 Rope (64) -> Feature (512)
     ori_k_nope_bnsd_npu = torch.tensor(
