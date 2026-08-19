@@ -554,102 +554,84 @@ public:
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-#if FIA_EXP_STAGE_C1 // [FIA_EXP] C1: bmm1 matmul 阶段开关
                 ComputeMm1(runInfo0);
-#else
-                ExpSyncC1(runInfo0);
-#endif
             } else {
-#if FIA_EXP_STAGE_V1 // [FIA_EXP] V1: AIV softmax 阶段开关
                 ComputeVec1(runInfo0);
-#else
-                ExpSyncV1(runInfo0);
-#endif
             }
         }
 
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
-#if FIA_EXP_STAGE_C2 // [FIA_EXP] C2: bmm2 matmul 阶段开关
                     ComputeMm2(runInfoNegN);
-#else
-                    ExpSyncC2(runInfoNegN);
-#endif
                 } else {
-#if FIA_EXP_STAGE_V2 // [FIA_EXP] V2: AIV 写回 阶段开关
                     ComputeVec2(runInfoNegN);
-#else
-                    ExpSyncV2(runInfoNegN);
-#endif
                 }
                 DisableTask(runInfoNegN);
             }
         }
     }
 
-    // [FIA_EXP] C1 关闭时的同步替身: 只保留核间同步 + kvp 释放链的必要消费端
-    // 唯一保留的 MTE1_MTE2 WaitFlag 是 C2 释放链(CrossCoreBufferInit 3次 + C2 每loop Set)的平衡对偶:
-    // eventID 资源必须被消费, 否则池满死锁 (实测删除后 RUN=124). MTE2_MTE1 自闭环链已删(Set端仅C1自身)
-    __aicore__ inline void ExpSyncC1(RunInfoX &runInfo)
+    // [FIA_EXP] C1 开关: 关闭时不做 matmul/拷贝, 仅保留核间同步 + kvp 释放链必要消费端
+    // WaitFlag<MTE1_MTE2> 是 C2 释放链(Init 3次+C2 每loop Set)的 eventID 平衡对偶, 删则池满死锁(实测 RUN=124)
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
+#if FIA_EXP_STAGE_C1
+        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), this->l1KvPBuffers_.Get(), runInfo);
+#else
         auto &b1 = bmm1Buffers_.Get();
         auto &kvp = l1KvPBuffers_.Get();
         b1.WaitCrossCore();
+#if FIA_EXP_STAGE_C2 // [FIA_EXP] 联合门控: 仅当 C2 开启(有释放 Set 源)才消费 MTE1_MTE2; C2 关时整链归零(Init/UnInit 自平衡)
         WaitFlag<HardEvent::MTE1_MTE2>(kvp.GetEventID<HardEvent::MTE1_MTE2>());
+#endif
         b1.SetCrossCore();
+#endif
     }
 
-    // [FIA_EXP] C2 关闭时的同步替身: 保留 IterateBmm2 的同步骨架(crosscore + kvp 释放链), 不做计算
-    // 与 ComputeMm2 一致使用 GetReused() (不轮转, 与 C1 同一块)
-    __aicore__ inline void ExpSyncC2(RunInfoX &runInfo)
+    // [FIA_EXP] C2 开关: 关闭时保留核间同步(crosscore)与 kvp 释放链(Set 端, C1/UnInit 依赖), 不做计算
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
+#if FIA_EXP_STAGE_C2
+        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1KvPBuffers_.GetReused(), runInfo);
+#else
         auto &kvp = l1KvPBuffers_.GetReused();
         auto &b2 = bmm2Buffers_.Get();
         kvp.WaitCrossCore();
         b2.WaitCrossCore();
+#if FIA_EXP_STAGE_C1 // [FIA_EXP] 联合门控: 仅当 C1 开启(有 Wait 消费方)才发释放 Set
         SetFlag<HardEvent::MTE1_MTE2>(kvp.GetEventID<HardEvent::MTE1_MTE2>());
+#endif
         b2.SetCrossCore();
+#endif
     }
 
-    // [FIA_EXP] V1 关闭时的同步替身: 只保留核间同步(与 AIC C1/C2 配对), 不做 softmax 计算
-    // b1.Wait/Set 与 AIC ExpSyncC1/IterateBmm1 配对; kvp.Set 与 AIC C2 的 kvp.Wait 配对 (原版语义: V1 从不 Wait kvp)
-    __aicore__ inline void ExpSyncV1(RunInfoX &runInfo)
+    // [FIA_EXP] V1 开关: 关闭时不 softmax, 仅保留与 AIC 的 crosscore 配对
+    // b1 Wait/Set 与 AIC 侧配对; kvp.Set 是 AIC C2 kvp.Wait 的源 (V1 从不 Wait kvp)
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
+#if FIA_EXP_STAGE_V1
+        // c v都会独立get，所以mm1和vec1能一致
+        vecFaBlock_.ProcessVec1(this->l1KvPBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
+#else
         auto &b1 = bmm1Buffers_.Get();
         auto &kvp = l1KvPBuffers_.Get();
         b1.WaitCrossCore();
         b1.SetCrossCore();
         kvp.SetCrossCore();
+#endif
     }
 
-    // [FIA_EXP] V2 关闭时的同步替身: 保留 ProcessVec2 的 crosscore 配对, 不做更新/写回
-    __aicore__ inline void ExpSyncV2(RunInfoX &runInfo)
+    // [FIA_EXP] V2 开关: 关闭时不更新/写回, 仅保留与 AIC 的 crosscore 配对
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
+#if FIA_EXP_STAGE_V2
+        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+#else
         auto &b2 = bmm2Buffers_.Get();
         b2.WaitCrossCore();
         b2.SetCrossCore();
-    }
-
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), this->l1KvPBuffers_.Get(), runInfo);
-    }
-
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1KvPBuffers_.GetReused(), runInfo);
-    }
-
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        // c v都会独立get，所以mm1和vec1能一致
-        vecFaBlock_.ProcessVec1(this->l1KvPBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
-    }
-
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
-    {
-        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+#endif
     }
 
     __aicore__ inline void EnableTask(RunInfoX &runInfo)
