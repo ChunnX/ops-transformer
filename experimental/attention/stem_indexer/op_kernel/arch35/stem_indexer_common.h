@@ -88,7 +88,6 @@ __aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
     return (lane == 0U) ? value4.v0 : ((lane == 1U) ? value4.v1 : ((lane == 2U) ? value4.v2 : value4.v3));
 }
 
-
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, const int TOPK_SCORE_PRECISION = 1,
           typename... Args>
 struct SIType {

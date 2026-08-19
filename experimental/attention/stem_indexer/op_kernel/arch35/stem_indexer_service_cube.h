@@ -86,7 +86,7 @@ protected:
     __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx,
                                 uint32_t l0cSlot);
     __aicore__ inline void ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
-                                     bool needMBarrier);
+                                      bool needMBarrier);
     __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
                                                  uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset,

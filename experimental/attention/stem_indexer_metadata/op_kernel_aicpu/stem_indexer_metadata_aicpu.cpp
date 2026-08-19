@@ -26,7 +26,7 @@ namespace aicpu {
 namespace {
 constexpr uint32_t STEM_M_BASE_SIZE = 64U;
 constexpr uint32_t STEM_S2_BASE_SIZE = 256U;
-}
+} // namespace
 
 uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
@@ -78,54 +78,48 @@ std::vector<int64_t> StemIndexerMetadataCpuKernel::GetTensorDataAsInt64(Tensor *
     void *data = tensor->GetData();
 
     switch (dataType) {
-        case DT_INT32:
-            {
-                int32_t *ptr = static_cast<int32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+        case DT_INT32: {
+            int32_t *ptr = static_cast<int32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_INT64:
-            {
-                int64_t *ptr = static_cast<int64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = ptr[i];
-                }
-                break;
+            break;
+        }
+        case DT_INT64: {
+            int64_t *ptr = static_cast<int64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = ptr[i];
             }
-        case DT_INT16:
-            {
-                int16_t *ptr = static_cast<int16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_INT16: {
+            int16_t *ptr = static_cast<int16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT32:
-            {
-                uint32_t *ptr = static_cast<uint32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT32: {
+            uint32_t *ptr = static_cast<uint32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT64:
-            {
-                uint64_t *ptr = static_cast<uint64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT64: {
+            uint64_t *ptr = static_cast<uint64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT16:
-            {
-                uint16_t *ptr = static_cast<uint16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT16: {
+            uint16_t *ptr = static_cast<uint16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
+            break;
+        }
         default:
             break;
     }
@@ -219,7 +213,7 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
 
     sliMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, result.sectionNum);
 
-    load_balance::SectionStreamKFaResult dummyHead { static_cast<uint32_t>(aicCoreNum_) };
+    load_balance::SectionStreamKFaResult dummyHead{static_cast<uint32_t>(aicCoreNum_)};
     for (uint32_t secIdx = 0; secIdx < result.sectionNum; ++secIdx) {
         auto &faRes = result.sectionFaResult[secIdx];
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
