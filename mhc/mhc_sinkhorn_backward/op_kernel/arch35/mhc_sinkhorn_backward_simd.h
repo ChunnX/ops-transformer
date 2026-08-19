@@ -74,7 +74,7 @@ private:
     __aicore__ inline void CopyInGradY(const uint64_t gradYOffset, const uint32_t gradYProcessNum);
     __aicore__ inline void CopyInNorm(const uint64_t normOffset, const uint32_t normProcessNum);
     __aicore__ inline void CopyOut(const uint64_t gradInputOffset, const uint32_t gradInputProcessNum);
-    
+
     __aicore__ inline void CalcCol(uint32_t repeatSize, uint16_t repeatTimes,
                                    int64_t colOffset, int64_t loopIdx, uint32_t perloopSize);
     __aicore__ inline void CalcRow(uint32_t repeatSize, uint16_t repeatTimes,
@@ -119,7 +119,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
     // num_iters = 1;
     nSize_ = tilingData_.nSize;
     nAlignSize_ = tilingData_.nAlignSize;
-    
+
     // 如果是主核的话
     loop_ = tilingData_.normCoreTLoops; // 循环次数
     loopTSize_ = tilingData_.normCorePerLoopTSize;  // 主块T
@@ -139,8 +139,10 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
                      tilingData_.normCorePerLoopTSize * nSize_ * nSize_ * sizeof(float));
     pipe_.InitBuffer(inputNormQue_, DOUBLE_BUFFER,
                      tilingData_.normCorePerLoopTSize * nSize_ * nAlignSize_ * sizeof(float));
-    pipe_.InitBuffer(inputSumQue_, DOUBLE_BUFFER,
-                     tilingData_.normCorePerLoopTSize * nAlignSize_ * sizeof(float));
+    int64_t sumFlatSize = tilingData_.normCorePerLoopTSize * nAlignSize_;
+    int64_t sumPadSize = nSize_ * Ceil(tilingData_.normCorePerLoopTSize, INDEX_BLOCK_LEN) * INDEX_BLOCK_LEN;
+    int64_t sumBufSize = sumFlatSize > sumPadSize ? sumFlatSize : sumPadSize;
+    pipe_.InitBuffer(inputSumQue_, DOUBLE_BUFFER, sumBufSize * sizeof(float));
     pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER,
                      tilingData_.normCorePerLoopTSize * nSize_ * nSize_ * sizeof(float));
 }
@@ -190,7 +192,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
                 MicroAPI::Gather(sumBrcbReg, sumGradYReg, (MicroAPI::RegTensor<uint32_t> &)(broadcastReg));
                 MicroAPI::Sub(dotProdReg, gradYReg, sumBrcbReg, CalcMaskReg);
                 MicroAPI::Div(dotProdReg, dotProdReg, sumReg, CalcMaskReg);
-                
+
                 MicroAPI::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
                     dotProdReg, (MicroAPI::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
             }
@@ -221,7 +223,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(
         MicroAPI::RegTensor<int32_t> indexReg;
 
         MicroAPI::LoadAlign(indexReg, indexAddr); // VL
-        
+
         for (uint16_t j = 0; j < repeatTimes; j++) {
             uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
             uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
@@ -317,7 +319,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CopyInNormAndSumPad(const uint64
 {
     LocalTensor<float> normLocal = inputNormQue_.AllocTensor<float>();
     LocalTensor<float> sumLocal = inputSumQue_.AllocTensor<float>();
-    
+
     DataCopyPadExtParams<float> normPadExtParams{false, 0, 0, 0};
     DataCopyExtParams normParams{1, static_cast<uint32_t>(normProcessNum * sizeof(float)), 0, 0, 0};
     uint8_t padNum = static_cast<uint8_t>(INDEX_BLOCK_LEN - perloopSize % INDEX_BLOCK_LEN);
@@ -339,7 +341,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CopyInNormAndSum(const uint64_t 
 {
     LocalTensor<float> normLocal = inputNormQue_.AllocTensor<float>();
     LocalTensor<float> sumLocal = inputSumQue_.AllocTensor<float>();
-    
+
     DataCopyPadExtParams<float> PadExtParams{false, 0, 0, 0};
     DataCopyExtParams normParams{1, static_cast<uint32_t>(normProcessNum * sizeof(float)), 0, 0, 0};
     DataCopyExtParams sumParams{1, static_cast<uint32_t>(sumProcessNum * sizeof(float)), 0, 0, 0};

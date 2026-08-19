@@ -62,7 +62,10 @@ int64_t MhcSinkhornBaseTiling::BackwardCalOccupySize(int64_t ubFactor, int64_t n
     int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
     int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nSize * nSize, dataBlockNum);
     int64_t normOutSize = Ops::Base::CeilAlign(2 * ubFactor * nSize * nAlignSize, dataBlockNum);
-    int64_t sumOutSize = Ops::Base::CeilAlign(2 * ubFactor * nAlignSize, dataBlockNum);
+    int64_t sumFlatSize = ubFactor * nAlignSize;
+    int64_t sumPadSize = nSize * Ops::Base::CeilAlign(ubFactor, dataBlockNum);
+    int64_t sumMaxPerBuf = sumFlatSize > sumPadSize ? sumFlatSize : sumPadSize;
+    int64_t sumOutSize = Ops::Base::CeilAlign(2 * sumMaxPerBuf, dataBlockNum);
     int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumOutSize) * xDtypeSize;
     return occupySize;
 }
@@ -125,7 +128,7 @@ void MhcSinkhornBaseTiling::ForwardSplitCore(uint64_t ubSize, int64_t totalCoreN
     splitInfo.tTailCore = tSize - splitInfo.tNormCore * (splitInfo.usedCoreNum - 1);
     auto ubSizeUsed = ubSize - MASK_BUFFER - MAX_BUFFER_FORWARD;
     auto availableUbSize = ubSizeUsed / DOUBLE_SIZE;
-    
+
     splitInfo.tUbFactor = Ops::Base::CeilAlign(splitInfo.tNormCore, static_cast<int64_t>(8));
     int64_t occupySize = ForwardCalOccupySize(splitInfo.tUbFactor, nSize, xDtypeSize, outFlag);
     if (occupySize > availableUbSize) {
