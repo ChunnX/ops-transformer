@@ -76,21 +76,21 @@ public:
     // ROW_MAJOR使能NZ2ND并输出ND格式；true表示目的地址位于UB。
     static constexpr FixpipeConfig SI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
 
-    static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
-    static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
-    static constexpr uint64_t L0A_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
-    static constexpr uint64_t L0B_BUFFER_OFFSET = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
-    static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK * S2_BASIC_BLOCK;
+    static constexpr int64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
+    static constexpr int64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
+    static constexpr int64_t L0A_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
+    static constexpr int64_t L0B_BUFFER_OFFSET = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
+    static constexpr int64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx, uint32_t l0cSlot);
-    __aicore__ inline void ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
+    __aicore__ inline void ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
                                       bool needMBarrier);
-    __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
-                                                 uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue);
-    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset,
+    __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, int64_t l1RowOffset,
+                                                 uint64_t l1RowAlign, int64_t gmOffset, uint64_t nValue);
+    __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, int64_t s1gL1Offset, int64_t kGmOffset,
                                       uint32_t queryL1Slot, const SICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, uint32_t keyL1Slot,
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, int64_t s2GmOffset, int64_t kGmOffset, uint32_t keyL1Slot,
                                     const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
@@ -187,9 +187,14 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
 
     // s2轴循环
     WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cSlot);
-    for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
-        const uint64_t s2L1RealSize =
-            s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
+    const int64_t s2ProcessSizeI64 = static_cast<int64_t>(s2ProcessSize);
+    const int64_t kProcessSizeI64 = static_cast<int64_t>(kProcessSize);
+    for (int64_t s2GmOffset = 0LL; s2GmOffset < s2ProcessSizeI64;
+         s2GmOffset += static_cast<int64_t>(S2_BASIC_BLOCK_L1)) {
+        const uint64_t s2L1RealSize = static_cast<uint64_t>(
+            s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) > s2ProcessSizeI64 ?
+                s2ProcessSizeI64 - s2GmOffset :
+                static_cast<int64_t>(S2_BASIC_BLOCK_L1));
         const uint32_t nBlockNum = static_cast<uint32_t>(CeilDiv(s2L1RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
         LoadData2DParamsV2 keyLoadParams;
         keyLoadParams.mStartPosition = 0U;
@@ -203,10 +208,12 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
         mm1Params.n = s2L1RealSize;
         const bool needMBarrier =
             (mBlockNum * (static_cast<uint32_t>(s2L1RealSize) / BLOCK_CUBE)) < PIPE_M_BARRIER_THRESHOLD;
-        const uint64_t l0cOffset = l0cSlot * L0C_BUFFER_OFFSET + s2GmOffset * mAlignSize;
+        const int64_t l0cOffset =
+            static_cast<int64_t>(l0cSlot) * L0C_BUFFER_OFFSET + s2GmOffset * static_cast<int64_t>(mAlignSize);
 
         uint32_t dL1Idx = 0U;
-        for (uint64_t kGmOffset = 0; kGmOffset < kProcessSize; kGmOffset += D_BASIC_BLOCK_L1, ++dL1Idx) {
+        for (int64_t kGmOffset = 0LL; kGmOffset < kProcessSizeI64;
+             kGmOffset += static_cast<int64_t>(D_BASIC_BLOCK_L1), ++dL1Idx) {
             const uint32_t keyL1Slot = keyL1BufIdx_ & (KEY_BUF_NUM - 1U);
             const uint32_t queryL1Slot = dL1Idx & (QUERY_BUF_NUM - 1U);
             WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
@@ -221,16 +228,19 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             }
 
-            for (uint64_t kL1Offset = 0; kL1Offset < D_BASIC_BLOCK_L1; kL1Offset += D_BASIC_BLOCK_L0) {
+            for (int64_t kL1Offset = 0LL; kL1Offset < static_cast<int64_t>(D_BASIC_BLOCK_L1);
+                 kL1Offset += static_cast<int64_t>(D_BASIC_BLOCK_L0)) {
                 const uint32_t l0Slot = l0BufIdx_ & (L0A_BUF_NUM - 1U);
                 const uint32_t kStartPosition = static_cast<uint32_t>(kL1Offset / BLOCK_CUBE);
                 queryLoadParams.kStartPosition = kStartPosition;
                 keyLoadParams.kStartPosition = kStartPosition;
 
                 WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
-                LoadData(queryL0_[l0Slot * L0A_BUFFER_OFFSET], queryL1_[queryL1Slot * QUERY_BUFFER_OFFSET],
+                LoadData(queryL0_[static_cast<int64_t>(l0Slot) * L0A_BUFFER_OFFSET],
+                         queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET],
                          queryLoadParams);
-                LoadData(keyL0_[l0Slot * L0B_BUFFER_OFFSET], keyL1_[keyL1Slot * KEY_BUFFER_OFFSET], keyLoadParams);
+                LoadData(keyL0_[static_cast<int64_t>(l0Slot) * L0B_BUFFER_OFFSET],
+                         keyL1_[static_cast<int64_t>(keyL1Slot) * KEY_BUFFER_OFFSET], keyLoadParams);
 
                 SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                 WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -240,7 +250,8 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
                 l0BufIdx_++;
             }
-            if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
+            if (s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) >= s2ProcessSizeI64 &&
+                runInfo.isLastS2InnerLoop) {
                 SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Slot);
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
@@ -256,7 +267,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset,
+__aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, int64_t s2GmOffset, int64_t kGmOffset,
                                                uint32_t keyL1Slot, const SICommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
@@ -269,14 +280,15 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(keyL1_[keyL1Slot * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim + kGmOffset], nd2nzPara);
+    DataCopy(keyL1_[static_cast<int64_t>(keyL1Slot) * KEY_BUFFER_OFFSET],
+             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * static_cast<int64_t>(constInfo_.headDim) + kGmOffset],
+             nd2nzPara);
 }
 
 // batch, n2, g, s1, d
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
-                                                            uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue)
+__aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, int64_t l1RowOffset,
+                                                            uint64_t l1RowAlign, int64_t gmOffset, uint64_t nValue)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -287,42 +299,47 @@ __aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> que
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
-    DataCopy(queryL1Base[l1RowOffset * BLOCK_CUBE], queryGm_[gmOffset], nd2nzPara);
+    DataCopy(queryL1Base[l1RowOffset * static_cast<int64_t>(BLOCK_CUBE)], queryGm_[gmOffset], nd2nzPara);
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, uint64_t kGmOffset,
+__aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, int64_t s1gGmOffset, int64_t kGmOffset,
                                                  uint32_t queryL1Slot, const SICommon::RunInfo &runInfo)
 {
-    LocalTensor<Q_T> queryL1Base = queryL1_[queryL1Slot * QUERY_BUFFER_OFFSET];
+    LocalTensor<Q_T> queryL1Base = queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET];
     uint64_t l1RowAlign = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE);
-    uint64_t logicalMStart = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo_.mBaseSize + s1gGmOffset;
-    uint64_t queryBaseOffset = runInfo.tensorQueryOffset;
+    int64_t logicalMStart = static_cast<int64_t>(runInfo.gS1Idx) * static_cast<int64_t>(constInfo_.mBaseSize) +
+                            s1gGmOffset;
+    int64_t queryBaseOffset = runInfo.tensorQueryOffset;
     if (runInfo.actS1Size == constInfo_.qSeqSize) {
         CopyQuerySegmentNd2Nz(queryL1Base, 0, l1RowAlign,
-                              queryBaseOffset + logicalMStart * constInfo_.headDim + kGmOffset, s1gL1RealSize);
+                              queryBaseOffset + logicalMStart * static_cast<int64_t>(constInfo_.headDim) + kGmOffset,
+                              s1gL1RealSize);
         return;
     }
 
-    uint64_t copiedRows = 0;
-    uint64_t logicalMEnd = logicalMStart + s1gL1RealSize;
+    int64_t copiedRows = 0LL;
+    int64_t logicalMEnd = logicalMStart + static_cast<int64_t>(s1gL1RealSize);
+    const int64_t actS1Size = static_cast<int64_t>(runInfo.actS1Size);
+    const int64_t qSeqSize = static_cast<int64_t>(constInfo_.qSeqSize);
+    const int64_t headDim = static_cast<int64_t>(constInfo_.headDim);
     while (logicalMStart < logicalMEnd) {
-        uint64_t globalGIdx = logicalMStart / runInfo.actS1Size;
-        uint64_t globalS1Idx = logicalMStart % runInfo.actS1Size;
-        uint64_t copyRows = Min(logicalMEnd - logicalMStart, static_cast<uint64_t>(runInfo.actS1Size) - globalS1Idx);
-        uint64_t gmOffset =
-            queryBaseOffset + (globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.headDim + kGmOffset;
-        CopyQuerySegmentNd2Nz(queryL1Base, copiedRows, l1RowAlign, gmOffset, copyRows);
+        int64_t globalGIdx = logicalMStart / actS1Size;
+        int64_t globalS1Idx = logicalMStart % actS1Size;
+        int64_t copyRows = Min(logicalMEnd - logicalMStart, actS1Size - globalS1Idx);
+        int64_t gmOffset = queryBaseOffset + (globalGIdx * qSeqSize + globalS1Idx) * headDim + kGmOffset;
+        CopyQuerySegmentNd2Nz(queryL1Base, copiedRows, l1RowAlign, gmOffset, static_cast<uint64_t>(copyRows));
         logicalMStart += copyRows;
         copiedRows += copyRows;
     }
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeL0c(uint64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
+__aicore__ inline void SIMatmul<SIT>::ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
                                                  bool needMBarrier)
 {
-    Mmad(cL0_[l0cOffset], queryL0_[l0Slot * L0A_BUFFER_OFFSET], keyL0_[l0Slot * L0B_BUFFER_OFFSET], mmadParams);
+    Mmad(cL0_[l0cOffset], queryL0_[static_cast<int64_t>(l0Slot) * L0A_BUFFER_OFFSET],
+         keyL0_[static_cast<int64_t>(l0Slot) * L0B_BUFFER_OFFSET], mmadParams);
     if (needMBarrier) {
         PipeBarrier<PIPE_M>();
     }
@@ -346,8 +363,10 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gRealSize, uint64_t s2Real
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
     // 将matmul结果从L0C搬运到UB。
-    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[mm1BufferIdx * (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))],
-                                              cL0_[l0cSlot * L0C_BUFFER_OFFSET], fixpipeParams);
+    const int64_t mm1ResOffset =
+        static_cast<int64_t>(mm1BufferIdx) * static_cast<int64_t>(SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T));
+    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[mm1ResOffset],
+                                              cL0_[static_cast<int64_t>(l0cSlot) * L0C_BUFFER_OFFSET], fixpipeParams);
 }
 
 template <typename SIT>

@@ -61,11 +61,11 @@ protected:
     TPipe *pipe = nullptr;
 
     // offset
-    uint64_t queryCoreOffset = 0ULL;
-    uint64_t keyCoreOffset = 0ULL;
-    uint64_t vbiasCoreOffset = 0ULL;
-    uint64_t indiceOutCoreOffset = 0ULL;
-    uint64_t indiceLenCoreOffset = 0ULL;
+    int64_t queryCoreOffset = 0LL;
+    int64_t keyCoreOffset = 0LL;
+    int64_t vbiasCoreOffset = 0LL;
+    int64_t indiceOutCoreOffset = 0LL;
+    int64_t indiceLenCoreOffset = 0LL;
     uint32_t cachedBIdx = UINT32_MAX;
     uint32_t cachedActS1Size = 0U;
     uint32_t cachedActS2Size = 0U;
@@ -432,16 +432,19 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
 
-    queryCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim +
-                      tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim;
-    keyCoreOffset = tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize * constInfo.headDim +
-                    tempLoopInfo.n2Idx * constInfo.kSeqSize * constInfo.headDim;
-    vbiasCoreOffset =
-        tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize + tempLoopInfo.n2Idx * constInfo.kSeqSize;
-    indiceOutCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize +
-                          tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.kSeqSize;
-    indiceLenCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
-                          tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+    const int64_t bIdx = static_cast<int64_t>(tempLoopInfo.bIdx);
+    const int64_t n2Idx = static_cast<int64_t>(tempLoopInfo.n2Idx);
+    const int64_t qHeadNum = static_cast<int64_t>(constInfo.qHeadNum);
+    const int64_t kvHeadNum = static_cast<int64_t>(constInfo.kvHeadNum);
+    const int64_t gSize = static_cast<int64_t>(constInfo.gSize);
+    const int64_t qSeqSize = static_cast<int64_t>(constInfo.qSeqSize);
+    const int64_t kSeqSize = static_cast<int64_t>(constInfo.kSeqSize);
+    const int64_t headDim = static_cast<int64_t>(constInfo.headDim);
+    queryCoreOffset = bIdx * qHeadNum * qSeqSize * headDim + n2Idx * gSize * qSeqSize * headDim;
+    keyCoreOffset = bIdx * kvHeadNum * kSeqSize * headDim + n2Idx * kSeqSize * headDim;
+    vbiasCoreOffset = bIdx * kvHeadNum * kSeqSize + n2Idx * kSeqSize;
+    indiceOutCoreOffset = bIdx * qHeadNum * qSeqSize * kSeqSize + n2Idx * gSize * qSeqSize * kSeqSize;
+    indiceLenCoreOffset = bIdx * qHeadNum * qSeqSize + n2Idx * gSize * qSeqSize;
 }
 
 template <typename SIT>
@@ -474,7 +477,9 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.indiceLenOffset = indiceLenCoreOffset;
 
-    runInfo.tensorKeyOffset = keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.headDim;
+    runInfo.tensorKeyOffset = keyCoreOffset + static_cast<int64_t>(runInfo.s2Idx) *
+                                                 static_cast<int64_t>(constInfo.s2BaseSize) *
+                                                 static_cast<int64_t>(constInfo.headDim);
 
     runInfo.tensorVBiasOffset = vbiasCoreOffset;
 }

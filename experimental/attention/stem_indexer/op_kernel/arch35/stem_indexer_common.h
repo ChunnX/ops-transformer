@@ -138,19 +138,19 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
 
-    uint64_t tensorQueryOffset;
-    uint64_t tensorKeyOffset;
-    uint64_t tensorKeyScaleOffset;
-    uint64_t tensorWeightsOffset;
-    uint64_t tensorVBiasOffset;
-    uint64_t indiceOutOffset;
-    uint64_t indiceLenOffset;
+    int64_t tensorQueryOffset;
+    int64_t tensorKeyOffset;
+    int64_t tensorKeyScaleOffset;
+    int64_t tensorWeightsOffset;
+    int64_t tensorVBiasOffset;
+    int64_t indiceOutOffset;
+    int64_t indiceLenOffset;
     uint32_t promptLen;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isNeedLD = false;
-    uint32_t saveWorkSpaceIdx = 0;
+    int64_t saveWorkSpaceIdx = 0LL;
 };
 
 struct ConstInfo {
@@ -196,7 +196,7 @@ struct ConstInfo {
 
 struct LdSplitCoreInfo {
     bool isLdCoreEnable = false;    // 当前核是否参与规约任务
-    uint32_t saveWorkSpaceIdx = 0U; // 存放LD参数的地址
+    int64_t saveWorkSpaceIdx = 0LL; // 存放LD参数的地址
     uint32_t bn2Idx = 0U;           // 归约任务
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
@@ -205,7 +205,7 @@ struct LdSplitCoreInfo {
     uint32_t workspaceNum = 0U; // 当前AIV核上规约任务的S2切分数量
     uint32_t mStart = 0U;
     uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U; // 最终输出索引搬出Topk的初始偏移地址
+    int64_t indiceOutCoreOffset = 0LL; // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {
