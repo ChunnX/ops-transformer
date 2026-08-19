@@ -553,8 +553,8 @@ public:
                     // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTNoGS1Merge<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                           actualGSplitSize, constInfo_.gSize, constInfo_.t1Size);
+                    DataCopySoftmaxLseTNDtoNT<T>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                 constInfo_.realGSize, constInfo_.t1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
                     uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);

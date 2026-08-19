@@ -290,39 +290,11 @@ __aicore__ inline void DataCopySoftmaxLseTND(GlobalTensor<float> softmaxLseGm, L
     }
 }
 
-template <typename T>
-__aicore__ inline void DataCopySoftmaxLseTNDNoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                       uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                       uint32_t gSize, uint32_t n2Size)
-{
-    uint32_t startS1Idx = mOffset / gSize;
-    uint32_t startGIdx = mOffset % gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
-
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + s1Idx * n2Size * gSize + startGIdx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount = gSize - startGIdx;
-        } else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
-
-// TND layout LSE 输出转成 N-major 排布 (非 NoGS1Merge 版本, 用 gSize/n2Size)
-// 与 DataCopySoftmaxLseTNDtoNTNoGS1Merge 同语义, 仅把 realGSize 换成 gSize
+// TND layout LSE 输出转成 N-major (N 在外, T 在内) 排布: [N2*G, T]
+// bN2Offset = n2Idx * realGSize * t1Size + prefixBS1
+// 单次写入: outOffset = bN2Offset + gIdx * t1Size + s1Idx
+//         = n2Idx * realGSize * t1Size + prefixBS1 + gIdx * t1Size + s1Idx
+// 即最终 GM 排布为 [N2, G, T], 与 host infershape 声明的 (N, T) 对齐 (N=N2*G)
 template <typename T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNT(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                  uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
@@ -347,43 +319,6 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNT(GlobalTensor<float> softmaxLseG
         dataCopyParams.blockCount = curDealRowCount;
         dataCopyParams.blockLen = sizeof(float);
         dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (t1Size - 1) * sizeof(float);
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
-
-// TND layout LSE 输出转成 N-major (N 在外, T 在内) 排布: [N2*G, T]
-// bN2Offset = n2Idx * realGSize * t1Size + prefixBS1
-// 单次写入: outOffset = bN2Offset + gIdx * t1Size + s1Idx
-//         = n2Idx * realGSize * t1Size + prefixBS1 + gIdx * t1Size + s1Idx
-// 即最终 GM 排布为 [N2, G, T], 与 host infershape 声明的 (N, T) 对齐 (N=N2*G)
-template <typename T>
-__aicore__ inline void DataCopySoftmaxLseTNDtoNTNoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                           uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                           uint32_t gSize, uint64_t t1Size)
-{
-    uint32_t startS1Idx = mOffset / gSize;
-    uint32_t startGIdx = mOffset % gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
-
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + startGIdx * t1Size + s1Idx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount = gSize - startGIdx;
-        } else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        // 每写一个 float, 跳到下一个 gIdx 对应的 T 行起点: stride = (t1Size - 1) * sizeof(float)
         dataCopyParams.dstStride = (t1Size - 1) * sizeof(float);
         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         startGIdx = 0;
