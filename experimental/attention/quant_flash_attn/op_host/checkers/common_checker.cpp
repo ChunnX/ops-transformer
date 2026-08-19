@@ -177,6 +177,19 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QuantFlashAttnTilin
                     return ge::GRAPH_FAILED);
     }
 
+    const gert::Tensor *metadataTensor = qfaInfo.opParamInfo.metadata.tensor;
+    if (metadataTensor != nullptr) {
+        uint32_t dimNum = metadataTensor->GetStorageShape().GetDimNum();
+        OP_CHECK_IF(dimNum != DIM_NUM_1,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, METADATA_NAME.c_str(),
+                                                 (std::to_string(dimNum) + "D").c_str(), "1D"),
+                    return ge::GRAPH_FAILED);
+
+        int64_t dim0 = metadataTensor->GetStorageShape().GetDim(0);
+        OP_CHECK_IF(dim0 <= 0, OP_LOGE(qfaInfo.opName, "metadata shape dim0(%ld) must be greater than 0", dim0),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
