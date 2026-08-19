@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_matmul_allto_all_mx_quant_matmul_hcomm_impl.h
+ * \file mx_quant_matmul_all_to_all_hcomm_impl.h
  * \brief QuantMatmul AllToAll — 计算→通信融合实现（纯C核通信），带流水掩盖
  *
  * 流水掩盖机制（与主线pipeline类似）：
