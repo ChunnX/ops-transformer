@@ -24,6 +24,7 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
     __gm__ uint8_t* actualSeqLengths,
     __gm__ uint8_t* actualSeqLengthsKv,
     __gm__ uint8_t* attentionOut,
+    __gm__ uint8_t* softmaxLse,
     __gm__ uint8_t* workspace,
     __gm__ uint8_t* tiling)
 {
@@ -39,7 +40,7 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING
@@ -49,7 +50,7 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
         TILING_KEY_IS(MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING);
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING
@@ -59,7 +60,7 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 #endif
     }

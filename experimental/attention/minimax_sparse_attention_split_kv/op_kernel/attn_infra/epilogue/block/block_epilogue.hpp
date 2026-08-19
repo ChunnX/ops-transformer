@@ -84,12 +84,14 @@ public:
                        uint32_t D,
                        uint32_t groupSize,
                        uint32_t topK,
-                       uint32_t kvHeads)
+                       uint32_t kvHeads,
+                       uint32_t softmaxLseFlag)
     {
         D_ = D;
         groupSize_ = groupSize;
         topK_ = topK;
         kvHeads_ = kvHeads;
+        softmaxLseFlag_ = softmaxLseFlag;
         headDimAlignFp32_ = RoundUp(D_, FP32_ONE_BLOCK_SIZE);
 
         // E: batched accumOut read. One 32K-float UB slot holds cap splits
@@ -122,6 +124,8 @@ public:
         for (uint32_t i = 0U; i < ACCUM_OUT_STAGES; ++i) {
             accumOutBuf[i] = ubBase[off + BUF_32K_FLOATS * i].template ReinterpretCast<TwsO>();
         }
+        // Dedicated LSE staging, after existing 176KB layout so flag-off offsets stay unchanged.
+        lseOutBuf_ = ubBase[off + BUF_32K_FLOATS * ACCUM_OUT_STAGES];
     }
 
     __aicore__ inline
@@ -131,6 +135,7 @@ public:
                             AscendC::GlobalTensor<TwsO> &gmAccumOut,
                             AscendC::GlobalTensor<T> &gmSoftmaxMax,
                             AscendC::GlobalTensor<T> &gmSoftmaxSum,
+                            AscendC::GlobalTensor<T> &gmSoftmaxLse,
                             uint32_t numHeads,
                             uint32_t kvHeads)
     {
@@ -141,12 +146,11 @@ public:
 
         uint32_t qToken = tmpBlockIdx / kvHeads;
         uint32_t kvHeadIdx = tmpBlockIdx % kvHeads;
-        // IFA: bIdx * kvHeadNum * gSize * headDim + n2Idx * gSize * headDim
         uint64_t attenOutOffset = static_cast<uint64_t>(qToken) * kvHeads * groupSize_ * D_
             + static_cast<uint64_t>(kvHeadIdx) * groupSize_ * D_;
-
         actualCombineLoopSize_ = topK_;
-        CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, gmO, gmAccumOut, gmSoftmaxMax, gmSoftmaxSum);
+        CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, gmO, gmAccumOut,
+                          gmSoftmaxMax, gmSoftmaxSum, gmSoftmaxLse);
     }
 
 private:
@@ -160,11 +164,13 @@ private:
     AscendC::LocalTensor<TwsO> accumOutBuf[ACCUM_OUT_STAGES];
     AscendC::LocalTensor<T> broadCastTmpBuf_;
     AscendC::LocalTensor<T> castOutBuf_;
+    AscendC::LocalTensor<T> lseOutBuf_;
 
     uint32_t D_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t topK_ = 0;
     uint32_t kvHeads_ = 0;
+    uint32_t softmaxLseFlag_ = 0;
     uint32_t headDimAlignFp32_ = 0;
     uint32_t actualCombineLoopSize_ = 0;
     uint32_t splitsPerBuf_ = 0;   // E: splits read per ping-pong slot (batched contiguous read)
@@ -241,18 +247,49 @@ private:
     __aicore__ inline
     void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal,
                            AscendC::LocalTensor<T> &lseSumLocal,
-                           uint32_t dealRowCount)
+                           uint32_t dealRowCount,
+                           uint32_t qToken,
+                           uint32_t kvHeadIdx,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse)
     {
         AscendC::LocalTensor<bfloat16_t> tmpSinkUb;
-        bool softmaxLseFlag = false;
         bool learnableSinkFlag = false;
-        // AscendC::DumpTensor(lseMaxLocal, 123, 64);
-        // AscendC::DumpTensor(lseSumLocal, 456, 64);
-        FaVectorApi::ComputeScaleValue_VF(
-            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0].template ReinterpretCast<T>(),
-            dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
-        // AscendC::DumpTensor(lseSumLocal, 789, 64);
-        AscendC::PipeBarrier<PIPE_V>();
+        if (softmaxLseFlag_ == 1U) {
+            FaVectorApi::ComputeScaleValue_VF(
+                tmpSinkUb, lseMaxLocal, lseSumLocal, lseOutBuf_,
+                dealRowCount, actualCombineLoopSize_, true, learnableSinkFlag);
+            AscendC::PipeBarrier<PIPE_V>();
+            CopySoftmaxLseOut(qToken, kvHeadIdx, dealRowCount, gmSoftmaxLse, lseOutBuf_);
+        } else {
+            // Flag-off: same dummy lseOutputUb as the original verified path.
+            FaVectorApi::ComputeScaleValue_VF(
+                tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0].template ReinterpretCast<T>(),
+                dealRowCount, actualCombineLoopSize_, false, learnableSinkFlag);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+    }
+
+    // TND softmax LSE GM layout [T, N, 1]: one fp32 per (qToken, qHead).
+    // UB from ComputeScaleValue_VF is [dealRowCount, 8] (32B-aligned rows).
+    // DataCopyPad blockLen=4, srcStride=0 copies the first float of each 32B row
+    // (same as IFA FlashDecode / DataCopySoftmaxLseTNDArch35).
+    __aicore__ inline
+    void CopySoftmaxLseOut(uint32_t qToken,
+                           uint32_t kvHeadIdx,
+                           uint32_t dealRowCount,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse,
+                           AscendC::LocalTensor<T> &lseOutputUb)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+        uint64_t lseOffset =
+            (static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx) * groupSize_;
+        AscendC::DataCopyExtParams copyParams;
+        copyParams.blockCount = dealRowCount;
+        copyParams.blockLen = sizeof(float);
+        copyParams.srcStride = 0;
+        copyParams.dstStride = 0;
+        AscendC::DataCopyPad(gmSoftmaxLse[lseOffset], lseOutputUb, copyParams);
     }
 
     __aicore__ inline
@@ -460,13 +497,14 @@ private:
                            AscendC::GlobalTensor<ElementO> &gmO,
                            AscendC::GlobalTensor<TwsO> &gmAccumOut,
                            AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                           AscendC::GlobalTensor<T> &gmSoftmaxSum)
+                           AscendC::GlobalTensor<T> &gmSoftmaxSum,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse)
     {
         // groupSize <= 16 fits every UB buffer (lse 8K cap, dst/accumOut/castOut 32K slots)
         // for topK <= 16, D <= 512, so a single chunk covers the whole group.
         CopyLseIn(qToken, kvHeadIdx, groupSize_,
                   gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
-        ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_);
+        ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_, qToken, kvHeadIdx, gmSoftmaxLse);
         AscendC::LocalTensor<TwsO> dst = dstBuf_;
         ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, groupSize_, gmAccumOut);
         CopyFinalResOut(attenOutOffset, gmO, dst, groupSize_);

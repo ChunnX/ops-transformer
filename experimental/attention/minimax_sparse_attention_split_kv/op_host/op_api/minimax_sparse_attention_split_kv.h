@@ -12,11 +12,12 @@
 #ifndef MINIMAX_SPARSE_ATTENTION_SPLIT_KV_L0OP_H_
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_L0OP_H_
 
+#include <tuple>
 #include "opdev/op_executor.h"
 
 namespace l0op {
 
-const aclTensor *MinimaxSparseAttentionSplitKv(
+std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
@@ -31,6 +32,9 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
+    const aclTensor *attentionOut,
+    const aclTensor *softmaxLse,
     aclOpExecutor *executor);
 
 } // namespace l0op

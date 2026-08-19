@@ -54,6 +54,7 @@ constexpr int ATTR_SCALE_VALUE_INDEX = 1;
 constexpr int ATTR_BLOCK_SIZE_INDEX = 2;
 constexpr int ATTR_TOP_K_INDEX = 3;
 constexpr int ATTR_INNER_PRECISE_INDEX = 4;
+constexpr int ATTR_SOFTMAX_LSE_FLAG_INDEX = 5;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -111,6 +112,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
     blockSize_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_BLOCK_SIZE_INDEX));
     topK_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_TOP_K_INDEX));
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
+    const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    softmaxLseFlag_ = (softmaxLsePtr != nullptr && *softmaxLsePtr) ? 1U : 0U;
     if (innerPrecise_ != INNER_PRECISE_ALL_HIGH &&
         innerPrecise_ != INNER_PRECISE_ALL_LOW &&
         innerPrecise_ != INNER_PRECISE_MIXED) {
@@ -435,6 +438,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
     }
     tilingData_->set_tilingKey(tilingKeyVal);
     tilingData_->set_isPageAttention(isPageAttention_);
+    tilingData_->set_softmaxLseFlag(softmaxLseFlag_);
     context->SetTilingKey(tilingKeyVal);
     return ge::GRAPH_SUCCESS;
 }

@@ -215,6 +215,10 @@ public:
         gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        AscendC::GlobalTensor<float> gSoftmaxLse;
+        if (softmaxLseFlag_ == 1U) {
+            gSoftmaxLse.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
+        }
 
         uint64_t wsOffset = 0U;
         AscendC::GlobalTensor<ElementWorkspaceO> gAccumOut;
@@ -247,7 +251,7 @@ public:
             gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll<false>();
 #ifdef __DAV_VEC__
-        Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+        Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum, gSoftmaxLse);
 #endif
         ReleaseSyncFlags();
     }
@@ -273,6 +277,7 @@ private:
         accumOutSize_ = tilingData->accumOutSize;
         lseStatSize_ = tilingData->lseStatSize;
         isPageAttention_ = tilingData->isPageAttention;
+        softmaxLseFlag_ = tilingData->softmaxLseFlag;
         slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
         slotStatElems_ = static_cast<uint64_t>(groupSize_);
     }
@@ -924,14 +929,15 @@ private:
         AscendC::GlobalTensor<ElementO> &gO,
         AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
         AscendC::GlobalTensor<float> &gSoftmaxMax,
-        AscendC::GlobalTensor<float> &gSoftmaxSum)
+        AscendC::GlobalTensor<float> &gSoftmaxSum,
+        AscendC::GlobalTensor<float> &gSoftmaxLse)
     {
 #ifdef __DAV_VEC__
         AscendC::LocalTensor<float> ubBase =
             resource.ubBuf.template GetBufferByByte<float>(0);
 
         EpilogueRescaleO epilogueRescaleO;
-        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_);
+        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_, softmaxLseFlag_);
         // VEC: GetBlockIdx() is the linear AIV id in [0, GetBlockNum()*GetSubBlockNum());
         // GetBlockNum() is the AIC block count (half of AIV count). Stride must cover
         // all AIV sub-blocks, not blockNum alone.
@@ -943,7 +949,7 @@ private:
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
             epilogueRescaleO.FlashDecodeCompute(
                 taskIdx, totalTaskNumP2_,
-                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum, gSoftmaxLse,
                 qHeads_, kvHeads_);
         }
 #endif
@@ -970,6 +976,7 @@ private:
     uint64_t slotOElems_;
     uint64_t slotStatElems_;
     uint32_t isPageAttention_;
+    uint32_t softmaxLseFlag_;
 
     AscendC::GlobalTensor<int32_t> gActualQseqlen_;
     AscendC::GlobalTensor<int32_t> gActualKvseqlen_;

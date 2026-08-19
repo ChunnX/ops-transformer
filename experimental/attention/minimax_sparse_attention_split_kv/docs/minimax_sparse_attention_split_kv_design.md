@@ -58,8 +58,9 @@ KV 支持两种存储：
 | Tensor | Shape | Type | 说明 |
 | --- | --- | --- | --- |
 | `attention_out` | `[total_q_tokens, num_q_heads, D]` | bf16/fp16 | TND 格式输出。 |
+| `softmax_lse` | flag=true：`[T, Nq, 1]`；flag=false：`[0]` | fp32 | 与 FIA 一致：`softmaxLseFlag` 控制是否写出。公式 `lse = log(sum_k rowSum[k] * exp(rowMax[k] - max_k)) + max_k`，由 Phase2 `ComputeScaleValue_VF` 在 combine 时得到。 |
 
-当前 kernel 接口没有独立 `softmax_lse` 输出；如后续需要 LSE，应新增输出或复用额外 workspace/GM 输出，不应隐式写入当前 workspace。
+`softmaxLse` 是 IR 必选输出（与 FIA 相同）。`softmaxLseFlag=false` 时 infershape 为 `[0]`，aclnn 构造占位 tensor，kernel **不写** 该 GM。
 
 ## 3. Tiling 数据定义
 
@@ -78,6 +79,7 @@ KV 支持两种存储：
 | `totalPackedRows` / `numKvBlocks` | `k2q_row_ptr.shape[1] - 1` = `sum_b ceil(kv_seqlen[b]/blockSize)`。tiling 字段名为 `numKvBlocks`。 |
 | `maxBlocksPerBatch` | PA：`block_table.shape[1]`，用于 `block_table` 行 stride。TND：0，不参与寻址。 |
 | `isPageAttention` | `1`：paged KV cache；`0`：TND 非 kvcache。 |
+| `softmaxLseFlag` | `1`：Phase2 写出 `softmax_lse`；`0`：跳过（输出 shape `[0]`）。 |
 | `k2qNnzUpperBound` | `k2q_q_indices.shape[1]`，CSR 数据区每 head 的上界，通常 `totalQTokens * topK`。 |
 | `totalTaskNumP1` | Phase 1 task 数，`totalPackedRows * kvHeads`。 |
 | `totalTaskNumP2` | Phase 2 task 数，`totalQTokens * kvHeads`。 |
@@ -287,7 +289,7 @@ for taskIdx = blockIdx; taskIdx < totalTaskNumP1; taskIdx += blockDim
    - Q 在 GM 中可能非连续，必须逐行搬运；搬入后在片上整理成连续矩阵 `Q_tile[M, D]`，其中 `M = qTile * groupSize`。
 7. Cube 执行 `S = Q_tile[groupSize, D] × K[D, validSize]`（QK 按 block 全长 `validSize` 计分）。
 8. Vector softmax / PV 的有效 KV 长度为 `causalValidLen`（见 §6.4）：对 `S` 的前 `causalValidLen` 列做 online softmax（**当前实现以有效列长截断**，非显式写 `-inf` mask；Golden 对越界列显式置 `-inf`）。
-9. Vector 对每 row 计算 `rowMax`、`rowSum`（**不**合并为 LSE；`softmaxLseFlag=false`）。
+9. Vector 对每 row 计算 `rowMax`、`rowSum`（跨 block 的 LSE 在 Phase2 `ComputeScaleValue_VF` 中按 `softmaxLseFlag` 合并写出）。
 10. Vector 得到 `P = exp(S - rowMax)`（未除 `rowSum`），cast bf16 供 PV。
 11. Cube 执行 `O_partial = P[groupSize, causalValidLen] × V[causalValidLen, D]`，fixpipe 写 GM（**不做** `/rowSum`）。
 12. Vector 将 `rowMax`、`rowSum` 写入 workspace；`O_partial` 由 Cube PV 写入。
@@ -362,7 +364,7 @@ Phase 2 实现与 `incre_flash_attention` 的 `FlashDecodeCompute` / `CombineSpl
 
 ```text
 CopyLseIn(max, sum)
-  -> ComputeScaleValue_VF   # lseSum UB 覆写为 scale；softmaxLseFlag=false，不算 LSE
+  -> ComputeScaleValue_VF   # lseSum UB 覆写为 scale；softmaxLseFlag=true 时同时写 LSE 到独立 UB 并 DataCopyPad 到 softmaxLse GM [T,N,1]
   -> CopyAccumOutIn         # 读 O_partial，从 gmSoftmaxSum 读 rowSum，O_norm = O / rowSum
   -> ReduceFinalRes_VF      # out += scale[k] * O_norm[k]
   -> CopyFinalResOut
@@ -371,7 +373,7 @@ CopyLseIn(max, sum)
 各步骤说明：
 
 - **`CopyLseIn`**：从 GM 读当前 task 的 compact `softmaxMax` / `softmaxSum`（逻辑 shape `[topK, groupSize]`）。当前实现：对 `startRow=0` 且 `dealRowCount×topK` 连续段做 `DataCopyPad`，再 `Broadcast` 到 UB 布局 `[topK, dealRow, 8]`（32B 行对齐）。**当前实现仅支持 `loopCount == 1`（即 `groupSize <= gSplitSize`）**：`CopyLseIn` 中 `taskBase` 未加 `startRow` 偏移、`blockLen = dealRowCount * topK * sizeof(float)` 假设整段连续，当 `groupSize > gSplitSize` 分多片 combine 时既漏掉 `startRow` 之后的行、又跨 split 拼接错误数据。大 `groupSize` 分片 `startRow` gather 路径待实现（与 §9 item 3 一致），在完成前应避免 `groupSize > gSplitSize` 的 shape。
-- **`ComputeScaleValue_VF`**：输入 UB 中 `(rowMax, rowSum)`，输出 **scale 权重** 写回 `lseSum` UB（与 IFA 相同公式，**不使用 LSE**）。
+- **`ComputeScaleValue_VF`**：输入 UB 中 `(rowMax, rowSum)`，输出 **scale 权重** 写回 `lseSum` UB（与 IFA 相同公式）。`softmaxLseFlag=true` 时额外计算 `lse = log(Σ_k rowSum[k] * exp(rowMax[k]-max)) + max`，UB 布局 `[groupSize, 8]`，再 `DataCopyPad` 到 `softmax_lse[qToken, kvHead*G : (kvHead+1)*G, 0]`（TND `[T,N,1]`，与 FIA `DataCopySoftmaxLseTNDArch35` 相同）。
 - **`CopyAccumOutIn`**：按 split 索引 `j` 从 `accumOutGm` 读未归一化 `O_partial`；**必须从 `gmSoftmaxSum` 读取原始 `rowSum`**（因 `lseSum` UB 已被 scale 覆盖），对每 row 做 `O_norm = O_partial / rowSum`（当前 kernel 用 `Divs`；Golden 对 `rowSum<=0` 置 0）。
 - **`ReduceFinalRes_VF`**：对 topK 个 split 累加 `scale[j] * O_norm[j]` 到 `dst`。
 
@@ -407,7 +409,7 @@ for taskIdx = coreIdx; taskIdx < totalTaskNumP2; taskIdx += coreNum:
 对每个 `(qToken, kvHeadIdx, gh)`，在 topK 个 partial 上：
 
 ```text
-# Step A: ComputeScaleValue_VF（IFA split-KV，softmaxLseFlag=false）
+# Step A: ComputeScaleValue_VF（IFA split-KV；softmaxLseFlag 控制是否写 LSE）
 max_global = max_k(rowMax[k])
 
 scale[k] = rowSum[k] * exp(rowMax[k] - max_global)
@@ -462,7 +464,7 @@ Phase 2 必须全在 Vector 侧完成，不再触发 Cube 计算。
 | coord | `Init/AdvancePackedRowCoord` inline | `_init/_advance_packed_row_coord` inline |
 | Phase1 partial | `accumOut` + `softmaxMax` + `softmaxSum` 三块 GM | `ws_o / ws_max / ws_sum`，shape `[T,kvH,topK,...]` |
 | Phase1 O | 未归一化 `P×V` fp32 | 同左 |
-| Phase2 scale | `ComputeScaleValue_VF`（`softmaxLseFlag=false`） | `_compute_scale_weights` |
+| Phase2 scale | `ComputeScaleValue_VF`（`softmaxLseFlag` 来自 tiling） | `_compute_scale_weights` |
 | Phase2 O/rowSum | `CopyAccumOutIn` 从 `gmSoftmaxSum` 读 rowSum 再 `Divs` | `o_norm = o_partial / rowSum`（`rowSum<=0` 置 0） |
 | Phase2 combine | `ReduceFinalRes_VF` | `sum(scale * o_norm)` |
 | QK/SM 中间精度 | 由 `innerPrecise` 决定：`0` 为 QK fp32 S + Vector fp32 softmax + P cast bf16；`4` 为 bf16 S softmax + fp32 `O_partial`；`1` 为 bf16 S + bf16 `O_partial` | fp32 softmax；P cast bf16 供 PV（对齐 `innerPrecise=0`） |

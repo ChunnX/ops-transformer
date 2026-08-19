@@ -25,7 +25,7 @@ __global__ __aicore__ void MinimaxSaSplitKvInferIntf(
     GM_ADDR k2qRowPtr, GM_ADDR k2qQIndices,
     GM_ADDR k2qSlotIndices,
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR o, GM_ADDR softmaxLse, GM_ADDR workspace, GM_ADDR tiling)
 {
     using KernelBlockMmadQK = Gemm::Block::BlockMmadQKSplitKvArch35<InDtype, InDtype, SMDtype>;
     using LayoutS = layout::RowMajor;
@@ -50,7 +50,7 @@ __global__ __aicore__ void MinimaxSaSplitKvInferIntf(
         q, k, v, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualQseqlen, actualKvseqlen,
-        o, workspace, tiling};
+        o, softmaxLse, workspace, tiling};
     MinimaxSaSplitKvKernel minimaxSaSplitKvKernel;
     minimaxSaSplitKvKernel(params);
 }

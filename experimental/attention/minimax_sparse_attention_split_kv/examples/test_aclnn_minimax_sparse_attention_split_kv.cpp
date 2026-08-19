@@ -1,7 +1,8 @@
 /**
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * On-device smoke + golden check for MinimaxSparseAttentionSplitKv (innerPrecise=0/4).
- * Paged KV cache and TND non-kvcache. Dense local-block CSR, causal prefill.
+ * Paged KV cache and TND contiguous. Dense local-block CSR, causal prefill.
+ * softmaxLseFlag=false for the main suite; a smaller LSE suite checks fp32 lse.
  */
 
 #include <algorithm>
@@ -120,13 +121,30 @@ void FillRandom(std::vector<uint16_t> &dst, uint32_t seed)
     }
 }
 
+size_t QElem(const CaseSpec &spec, int64_t t, int64_t h, int64_t d)
+{
+    return static_cast<size_t>(((t * spec.numHeads + h) * kHeadDim) + d);
+}
+
+size_t KvElem(const CaseSpec &spec, int64_t tok, int64_t kvh, int64_t d)
+{
+    return static_cast<size_t>(((tok * spec.kvHeads + kvh) * kHeadDim) + d);
+}
+
+size_t LseElem(const CaseSpec &spec, int64_t t, int64_t h)
+{
+    return static_cast<size_t>(t * spec.numHeads + h);
+}
+
 // innerPrecise=0 golden: fp32 softmax, P rounded to bf16 before PV.
 // pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D].
 void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::vector<uint16_t> &k,
-               const std::vector<uint16_t> &v, std::vector<float> &outFp32, float scale, bool roundPToBf16)
+               const std::vector<uint16_t> &v, std::vector<float> &outFp32, std::vector<float> &lseFp32,
+               float scale, bool roundPToBf16)
 {
     const int64_t groupSize = spec.numHeads / spec.kvHeads;
     outFp32.assign(static_cast<size_t>(spec.seq * spec.numHeads * kHeadDim), 0.0f);
+    lseFp32.assign(static_cast<size_t>(spec.seq * spec.numHeads), 0.0f);
     for (int64_t t = 0; t < spec.seq; ++t) {
         const int64_t causalLen = t + 1;
         for (int64_t h = 0; h < spec.numHeads; ++h) {
@@ -137,9 +155,8 @@ void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::
                 float s = 0.0f;
                 const int64_t kvTok = spec.pagedKv ? (0 * spec.blockSize + c) : c;
                 for (int64_t d = 0; d < kHeadDim; ++d) {
-                    float qv = Bf16ToFloat(q[static_cast<size_t>((t * spec.numHeads + h) * kHeadDim + d)]);
-                    float kv = Bf16ToFloat(k[static_cast<size_t>(
-                        (kvTok * spec.kvHeads + kvh) * kHeadDim + d)]);
+                    float qv = Bf16ToFloat(q[QElem(spec, t, h, d)]);
+                    float kv = Bf16ToFloat(k[KvElem(spec, kvTok, kvh, d)]);
                     s += qv * kv;
                 }
                 s *= scale;
@@ -155,15 +172,15 @@ void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::
                 scores[static_cast<size_t>(c)] = p;
                 rowSum += p;
             }
+            lseFp32[LseElem(spec, t, h)] = std::log(rowSum) + rowMax;
             for (int64_t d = 0; d < kHeadDim; ++d) {
                 float o = 0.0f;
                 for (int64_t c = 0; c < causalLen; ++c) {
                     const int64_t kvTok = spec.pagedKv ? (0 * spec.blockSize + c) : c;
-                    float vv = Bf16ToFloat(v[static_cast<size_t>(
-                        (kvTok * spec.kvHeads + kvh) * kHeadDim + d)]);
+                    float vv = Bf16ToFloat(v[KvElem(spec, kvTok, kvh, d)]);
                     o += scores[static_cast<size_t>(c)] * vv;
                 }
-                outFp32[static_cast<size_t>((t * spec.numHeads + h) * kHeadDim + d)] = o / rowSum;
+                outFp32[QElem(spec, t, h, d)] = o / rowSum;
             }
         }
     }
@@ -230,6 +247,35 @@ int CompareOut(const CaseSpec &spec, const std::vector<uint16_t> &got, const std
     return (mismatch == 0 && nanCount == 0) ? 0 : 1;
 }
 
+int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::vector<float> &golden,
+               const char *tag)
+{
+    int64_t n = spec.seq * spec.numHeads;
+    int64_t mismatch = 0;
+    float maxAbs = 0.0f;
+    int64_t nanCount = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        float g = got[static_cast<size_t>(i)];
+        if (!std::isfinite(g) || !std::isfinite(golden[static_cast<size_t>(i)])) {
+            ++nanCount;
+            ++mismatch;
+            continue;
+        }
+        float diff = std::fabs(g - golden[static_cast<size_t>(i)]);
+        maxAbs = std::max(maxAbs, diff);
+        if (!CloseEnough(g, golden[static_cast<size_t>(i)])) {
+            ++mismatch;
+            if (mismatch <= 8) {
+                LOG_PRINT("  lse mismatch[%ld] got=%f golden=%f abs=%f\n", i, g,
+                          golden[static_cast<size_t>(i)], diff);
+            }
+        }
+    }
+    LOG_PRINT("[%s] lse elems=%ld mismatch=%ld nan/inf=%ld maxAbsErr=%f first3=[%f, %f, %f]\n", tag, n,
+              mismatch, nanCount, maxAbs, got[0], got[1], got[2]);
+    return (mismatch == 0 && nanCount == 0) ? 0 : 1;
+}
+
 struct CaseTensors {
     aclTensor *query = nullptr;
     aclTensor *key = nullptr;
@@ -241,6 +287,7 @@ struct CaseTensors {
     aclTensor *actualSeqQ = nullptr;
     aclTensor *actualSeqKv = nullptr;
     aclTensor *attentionOut = nullptr;
+    aclTensor *softmaxLse = nullptr;
     void *queryAddr = nullptr;
     void *keyAddr = nullptr;
     void *valueAddr = nullptr;
@@ -251,12 +298,14 @@ struct CaseTensors {
     void *seqQAddr = nullptr;
     void *seqKvAddr = nullptr;
     void *outAddr = nullptr;
+    void *lseAddr = nullptr;
     void *workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
     std::vector<uint16_t> qHost;
     std::vector<uint16_t> kHost;
     std::vector<uint16_t> vHost;
     std::vector<uint16_t> outHost;
+    std::vector<float> lseHost;
 };
 
 int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
@@ -325,6 +374,10 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
     CHECK_RET(ret == 0, return ret);
     ret = CreateAclTensor(c.outHost, qShape, &c.outAddr, ACL_BF16, &c.attentionOut);
     CHECK_RET(ret == 0, return ret);
+    const std::vector<int64_t> lseShape = {spec.seq, spec.numHeads, 1};
+    c.lseHost.assign(static_cast<size_t>(GetShapeSize(lseShape)), 0.0f);
+    ret = CreateAclTensor(c.lseHost, lseShape, &c.lseAddr, ACL_FLOAT, &c.softmaxLse);
+    CHECK_RET(ret == 0, return ret);
     return 0;
 }
 
@@ -342,6 +395,9 @@ void DestroyCase(CaseTensors &c)
     aclDestroyTensor(c.actualSeqQ);
     aclDestroyTensor(c.actualSeqKv);
     aclDestroyTensor(c.attentionOut);
+    if (c.softmaxLse != nullptr) {
+        aclDestroyTensor(c.softmaxLse);
+    }
     aclrtFree(c.queryAddr);
     aclrtFree(c.keyAddr);
     aclrtFree(c.valueAddr);
@@ -354,12 +410,16 @@ void DestroyCase(CaseTensors &c)
     aclrtFree(c.seqQAddr);
     aclrtFree(c.seqKvAddr);
     aclrtFree(c.outAddr);
+    if (c.lseAddr != nullptr) {
+        aclrtFree(c.lseAddr);
+    }
     if (c.workspaceAddr != nullptr) {
         aclrtFree(c.workspaceAddr);
     }
 }
 
-int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPrecise, const char *tag)
+int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPrecise, bool softmaxLseFlag,
+            const char *tag)
 {
     CaseTensors c;
     int ret = BuildCase(spec, c, ones);
@@ -370,11 +430,12 @@ int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPr
     ret = aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
         c.query, c.key, c.value, c.blockTable, c.k2qRowPtr, c.k2qQIndices, c.k2qSlotIndices, c.actualSeqQ,
         c.actualSeqKv, spec.kvHeads, static_cast<double>(scale), spec.blockSize, spec.topK, innerPrecise,
-        c.attentionOut, &c.workspaceSize, &executor);
+        softmaxLseFlag, c.attentionOut, softmaxLseFlag ? c.softmaxLse : nullptr, &c.workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[%s] GetWorkspaceSize failed. ERROR: %d\n", tag, ret); DestroyCase(c); return ret);
-    LOG_PRINT("[%s] workspaceSize=%llu T=%ld BS=%ld Hq/Hkv=%ld/%ld\n", tag,
-              static_cast<unsigned long long>(c.workspaceSize), spec.seq, spec.blockSize, spec.numHeads, spec.kvHeads);
+    LOG_PRINT("[%s] workspaceSize=%llu T=%ld BS=%ld Hq/Hkv=%ld/%ld lse=%d\n", tag,
+              static_cast<unsigned long long>(c.workspaceSize), spec.seq, spec.blockSize, spec.numHeads, spec.kvHeads,
+              softmaxLseFlag ? 1 : 0);
 
     if (c.workspaceSize > 0) {
         ret = aclrtMalloc(&c.workspaceAddr, c.workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -391,8 +452,15 @@ int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPr
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy out failed. ERROR: %d\n", ret); DestroyCase(c); return ret);
 
     std::vector<float> golden;
-    CpuGolden(spec, c.qHost, c.kHost, c.vHost, golden, scale, innerPrecise == 0);
+    std::vector<float> goldenLse;
+    CpuGolden(spec, c.qHost, c.kHost, c.vHost, golden, goldenLse, scale, innerPrecise == 0);
     int cmp = CompareOut(spec, c.outHost, golden, tag);
+    if (softmaxLseFlag) {
+        auto lseBytes = static_cast<size_t>(spec.seq * spec.numHeads) * sizeof(float);
+        ret = aclrtMemcpy(c.lseHost.data(), lseBytes, c.lseAddr, lseBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy lse failed. ERROR: %d\n", ret); DestroyCase(c); return ret);
+        cmp |= CompareLse(spec, c.lseHost, goldenLse, tag);
+    }
     DestroyCase(c);
     return cmp;
 }
@@ -447,19 +515,43 @@ int main()
         if (run4) {
             char tag[128];
             std::snprintf(tag, sizeof(tag), "%s_ones_p4", spec.name);
-            fail |= RunOnce(stream, spec, true, 4, tag);
+            fail |= RunOnce(stream, spec, true, 4, false, tag);
             ++ran;
             std::snprintf(tag, sizeof(tag), "%s_rand_p4", spec.name);
-            fail |= RunOnce(stream, spec, false, 4, tag);
+            fail |= RunOnce(stream, spec, false, 4, false, tag);
             ++ran;
         }
         if (run0) {
             char tag[128];
             std::snprintf(tag, sizeof(tag), "%s_ones_p0", spec.name);
-            fail |= RunOnce(stream, spec, true, 0, tag);
+            fail |= RunOnce(stream, spec, true, 0, false, tag);
             ++ran;
             std::snprintf(tag, sizeof(tag), "%s_rand_p0", spec.name);
-            fail |= RunOnce(stream, spec, false, 0, tag);
+            fail |= RunOnce(stream, spec, false, 0, false, tag);
+            ++ran;
+        }
+    }
+
+    const CaseSpec kLseCases[] = {
+        {32, 32, 16, 1, 1, "base_t32_g16", true},
+        {32, 32, 32, 2, 1, "gqa_h32_kv2", true},
+        {32, 32, 16, 1, 1, "tnd_t32_g16", false},
+        {16, 64, 64, 4, 1, "prod_gqa_h64_kv4", true},
+    };
+    for (const auto &spec : kLseCases) {
+        if (filter != nullptr && std::string(spec.name).find(filter) == std::string::npos) {
+            continue;
+        }
+        if (run4) {
+            char tag[128];
+            std::snprintf(tag, sizeof(tag), "%s_rand_p4_lse", spec.name);
+            fail |= RunOnce(stream, spec, false, 4, true, tag);
+            ++ran;
+        }
+        if (run0) {
+            char tag[128];
+            std::snprintf(tag, sizeof(tag), "%s_ones_p0_lse", spec.name);
+            fail |= RunOnce(stream, spec, true, 0, true, tag);
             ++ran;
         }
     }

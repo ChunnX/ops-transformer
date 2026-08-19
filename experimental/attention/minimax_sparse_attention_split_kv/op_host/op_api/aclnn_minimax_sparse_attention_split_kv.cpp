@@ -20,6 +20,8 @@
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
 #include <acl/acl.h>
+#include <tuple>
+#include <vector>
 
 using namespace op;
 
@@ -89,7 +91,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclTensor *attentionOut,
+    aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
@@ -104,6 +108,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (softmaxLseFlag) {
+        CHECK_RET(softmaxLse != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    }
     if (innerPrecise != 0 && innerPrecise != 1 && innerPrecise != 4) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "innerPrecise must be 0, 1 or 4, got %ld.", innerPrecise);
@@ -114,8 +121,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
                    DFX_IN(query, key, value, blockTable,
                           k2qRowPtr, k2qQIndices, k2qSlotIndices,
                           actualSeqLengths, actualSeqLengthsKv,
-                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise),
-                   DFX_OUT(attentionOut));
+                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag),
+                   DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -128,13 +135,35 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    auto output = l0op::MinimaxSparseAttentionSplitKv(
+
+    const aclTensor *tempTensor = nullptr;
+    const aclTensor *lsePlaceHolder = nullptr;
+    int64_t dummyLseAddr = 0xff;
+    if (softmaxLseFlag == false) {
+        std::vector<int64_t> shape = {0};
+        tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
+                                     shape.data(), shape.size(), static_cast<void *>(&dummyLseAddr));
+        lsePlaceHolder = tempTensor;
+    } else {
+        lsePlaceHolder = softmaxLse;
+    }
+    if (lsePlaceHolder == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "softmaxLse placeholder is nullptr.");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+
+    auto outputs = l0op::MinimaxSparseAttentionSplitKv(
         query, key, value, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengths, actualSeqLengthsKv,
-        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
-        executorImpl);
-    if (output == nullptr) {
+        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag,
+        attentionOut, lsePlaceHolder, executorImpl);
+    auto output = std::get<0>(outputs);
+    auto lseOut = std::get<1>(outputs);
+    if (softmaxLseFlag == false) {
+        aclDestroyTensor(const_cast<aclTensor *>(tempTensor));
+    }
+    if (output == nullptr || lseOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                 "MinimaxSparseAttentionSplitKv returned nullptr output.");
         return ACLNN_ERR_INNER_NULLPTR;
@@ -142,6 +171,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
 
     auto viewCopyResult = l0op::ViewCopy(output, attentionOut, executorImpl);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (softmaxLseFlag) {
+        auto lseViewCopy = l0op::ViewCopy(lseOut, softmaxLse, executorImpl);
+        CHECK_RET(lseViewCopy != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     *workspaceSize = executorImpl->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
