@@ -12,8 +12,7 @@
 #   EXTRA_ARGS="--dtype e5m2 --ydtype fp16" bash run_cases.sh 1
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# CSV_FILE="${SCRIPT_DIR}/cases.csv"
-CSV_FILE="${SCRIPT_DIR}/cases_kehu.csv"
+CSV_FILE="${SCRIPT_DIR}/cases.csv"
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,7 +56,7 @@ for row in "${SELECTED_ROWS[@]}"; do
 
     echo ""
     echo "########## row ${row}/${TOTAL_LINES}: M=$M K=$K N=$N rank=$RANK ##########"
-    OUT=$(qrun -n task -t 1200 "python3 test_golden_allgathermm.py --m $M --k $K --n $N --rank-per-dev $RANK ${EXTRA_ARGS:-}" 2>&1)
+    OUT=$(python3 test_golden_allgathermm.py --m $M --k $K --n $N --rank-per-dev $RANK ${EXTRA_ARGS:-} 2>&1)
     RC=$?
     echo "$OUT" | tail -8
     if [ $RC -eq 0 ] && echo "$OUT" | grep -q "\[PASS\] all ranks matched golden!"; then
