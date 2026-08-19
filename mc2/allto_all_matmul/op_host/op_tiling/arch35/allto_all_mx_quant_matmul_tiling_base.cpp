@@ -807,6 +807,7 @@ void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.commLen = inferredInfo_.commLen;
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
+    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.hcclDataType =
         (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geCType))); // hccl数据类型
     tilingInfo.dynamicExtraSpace = 0UL;
