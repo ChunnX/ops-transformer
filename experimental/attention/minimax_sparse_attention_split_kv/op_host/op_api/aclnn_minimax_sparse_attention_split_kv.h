@@ -20,6 +20,8 @@ extern "C" {
 
 // blockTable: paged KV cache [batch, maxBlocksPerBatch]; pass nullptr for TND
 // non-kvcache key/value [T_kv, kvHeads, D] (same layout family as query).
+// softmaxLse: fp32 [T, N, 1] when softmaxLseFlag is true;
+// ignored (may be nullptr) when softmaxLseFlag is false.
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -35,7 +37,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclTensor *attentionOut,
+    aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

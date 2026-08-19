@@ -56,6 +56,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
+        // Same as FusedInferAttentionScore: required IR output, fp32.
+        // When softmaxLseFlag is false, infershape is [0] and kernel skips the write.
+        this->Output("softmaxLse")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);
         this->Attr("scaleValue").AttrType(OPTIONAL).Float(0.0);
