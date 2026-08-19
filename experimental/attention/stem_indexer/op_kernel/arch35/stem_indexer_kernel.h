@@ -478,8 +478,8 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.indiceLenOffset = indiceLenCoreOffset;
 
     runInfo.tensorKeyOffset = keyCoreOffset + static_cast<int64_t>(runInfo.s2Idx) *
-                                                 static_cast<int64_t>(constInfo.s2BaseSize) *
-                                                 static_cast<int64_t>(constInfo.headDim);
+                                                  static_cast<int64_t>(constInfo.s2BaseSize) *
+                                                  static_cast<int64_t>(constInfo.headDim);
 
     runInfo.tensorVBiasOffset = vbiasCoreOffset;
 }

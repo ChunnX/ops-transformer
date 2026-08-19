@@ -86,8 +86,8 @@ protected:
     __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx, uint32_t l0cSlot);
     __aicore__ inline void ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
                                       bool needMBarrier);
-    __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, int64_t l1RowOffset,
-                                                 uint64_t l1RowAlign, int64_t gmOffset, uint64_t nValue);
+    __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, int64_t l1RowOffset, uint64_t l1RowAlign,
+                                                 int64_t gmOffset, uint64_t nValue);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, int64_t s1gL1Offset, int64_t kGmOffset,
                                       uint32_t queryL1Slot, const SICommon::RunInfo &runInfo);
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, int64_t s2GmOffset, int64_t kGmOffset, uint32_t keyL1Slot,
@@ -191,10 +191,10 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     const int64_t kProcessSizeI64 = static_cast<int64_t>(kProcessSize);
     for (int64_t s2GmOffset = 0LL; s2GmOffset < s2ProcessSizeI64;
          s2GmOffset += static_cast<int64_t>(S2_BASIC_BLOCK_L1)) {
-        const uint64_t s2L1RealSize = static_cast<uint64_t>(
-            s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) > s2ProcessSizeI64 ?
-                s2ProcessSizeI64 - s2GmOffset :
-                static_cast<int64_t>(S2_BASIC_BLOCK_L1));
+        const uint64_t s2L1RealSize =
+            static_cast<uint64_t>(s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) > s2ProcessSizeI64 ?
+                                      s2ProcessSizeI64 - s2GmOffset :
+                                      static_cast<int64_t>(S2_BASIC_BLOCK_L1));
         const uint32_t nBlockNum = static_cast<uint32_t>(CeilDiv(s2L1RealSize, static_cast<uint64_t>(BLOCK_CUBE)));
         LoadData2DParamsV2 keyLoadParams;
         keyLoadParams.mStartPosition = 0U;
@@ -237,8 +237,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
 
                 WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
                 LoadData(queryL0_[static_cast<int64_t>(l0Slot) * L0A_BUFFER_OFFSET],
-                         queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET],
-                         queryLoadParams);
+                         queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET], queryLoadParams);
                 LoadData(keyL0_[static_cast<int64_t>(l0Slot) * L0B_BUFFER_OFFSET],
                          keyL1_[static_cast<int64_t>(keyL1Slot) * KEY_BUFFER_OFFSET], keyLoadParams);
 
@@ -250,8 +249,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
                 l0BufIdx_++;
             }
-            if (s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) >= s2ProcessSizeI64 &&
-                runInfo.isLastS2InnerLoop) {
+            if (s2GmOffset + static_cast<int64_t>(S2_BASIC_BLOCK_L1) >= s2ProcessSizeI64 && runInfo.isLastS2InnerLoop) {
                 SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Slot);
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
@@ -308,8 +306,8 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, int64_t
 {
     LocalTensor<Q_T> queryL1Base = queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET];
     uint64_t l1RowAlign = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE);
-    int64_t logicalMStart = static_cast<int64_t>(runInfo.gS1Idx) * static_cast<int64_t>(constInfo_.mBaseSize) +
-                            s1gGmOffset;
+    int64_t logicalMStart =
+        static_cast<int64_t>(runInfo.gS1Idx) * static_cast<int64_t>(constInfo_.mBaseSize) + s1gGmOffset;
     int64_t queryBaseOffset = runInfo.tensorQueryOffset;
     if (runInfo.actS1Size == constInfo_.qSeqSize) {
         CopyQuerySegmentNd2Nz(queryL1Base, 0, l1RowAlign,

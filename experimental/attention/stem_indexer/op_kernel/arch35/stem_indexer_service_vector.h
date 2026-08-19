@@ -369,12 +369,11 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, int
         if (mInnerIdx >= curAivGS1ProcNum) {
             break;
         }
-        DataCopyPad(sparseSeqLenGm[baseLenOffset + static_cast<int64_t>(gIdx) *
-                                                      static_cast<int64_t>(constInfo_.qSeqSize)],
-                    indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
         DataCopyPad(
-            sparseIndicesGm[baseOutOffset + static_cast<int64_t>(gIdx) *
-                                                static_cast<int64_t>(constInfo_.qSeqSize) *
+            sparseSeqLenGm[baseLenOffset + static_cast<int64_t>(gIdx) * static_cast<int64_t>(constInfo_.qSeqSize)],
+            indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
+        DataCopyPad(
+            sparseIndicesGm[baseOutOffset + static_cast<int64_t>(gIdx) * static_cast<int64_t>(constInfo_.qSeqSize) *
                                                 static_cast<int64_t>(constInfo_.kSeqSize)],
             indicesOutLocal.ReinterpretCast<int32_t>(), copyOut);
     }
@@ -414,25 +413,21 @@ __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(const SICommon::RunIn
         uint32_t globalS1Idx = static_cast<uint32_t>(globalGS1Idx % info.actS1Size);
         uint32_t segmentRowNum = Min(rowNum - localRowStart, info.actS1Size - globalS1Idx);
         int64_t baseOutOffset =
-            info.indiceOutOffset +
-            (static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
-             static_cast<int64_t>(globalS1Idx)) *
-                static_cast<int64_t>(constInfo_.kSeqSize);
+            info.indiceOutOffset + (static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
+                                    static_cast<int64_t>(globalS1Idx)) *
+                                       static_cast<int64_t>(constInfo_.kSeqSize);
         int64_t baseLenOffset = info.indiceLenOffset +
                                 static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
                                 static_cast<int64_t>(globalS1Idx);
-        const int64_t mrgValueOffset =
-            static_cast<int64_t>(localRowStart) * static_cast<int64_t>(mrgRowStride_);
+        const int64_t mrgValueOffset = static_cast<int64_t>(localRowStart) * static_cast<int64_t>(mrgRowStride_);
         const int64_t indiceLenLocalOffset =
             static_cast<int64_t>(localRowStart) * static_cast<int64_t>(INDICE_LEN_ROW_STRIDE);
 
         packedCopyParams.blockCount = static_cast<uint16_t>(segmentRowNum);
-        DataCopyPad(sparseIndicesGm[baseOutOffset],
-                    mrgValueLocal_[mrgValueOffset].template ReinterpretCast<int32_t>(),
+        DataCopyPad(sparseIndicesGm[baseOutOffset], mrgValueLocal_[mrgValueOffset].template ReinterpretCast<int32_t>(),
                     packedCopyParams);
         packedLenCopyParams.blockCount = static_cast<uint16_t>(segmentRowNum);
-        DataCopyPad(sparseSeqLenGm[baseLenOffset],
-                    indiceLenLocal_[indiceLenLocalOffset].ReinterpretCast<int32_t>(),
+        DataCopyPad(sparseSeqLenGm[baseLenOffset], indiceLenLocal_[indiceLenLocalOffset].ReinterpretCast<int32_t>(),
                     packedLenCopyParams);
         localRowStart += segmentRowNum;
     }
@@ -457,9 +452,8 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &
     uint32_t inputOffset = isFirstS2InnerLoop ? TOPK_ALIGN_SIZE : 0U;
     uint32_t validLen = isFirstS2InnerLoop ? SICommon::TRUNK_LEN_256 : (TOPK_ALIGN_SIZE + SICommon::TRUNK_LEN_256);
 
-    const int64_t reuseMm1ResOffset =
-        static_cast<int64_t>(info.loop % SICommon::MM1_RES_BUFFER_NUM) *
-        static_cast<int64_t>(SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T));
+    const int64_t reuseMm1ResOffset = static_cast<int64_t>(info.loop % SICommon::MM1_RES_BUFFER_NUM) *
+                                      static_cast<int64_t>(SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T));
     LocalTensor<uint32_t> reuseMm1ResLocal = resMm1Local_[reuseMm1ResOffset].ReinterpretCast<uint32_t>();
     PipeBarrier<PIPE_V>();
 
@@ -555,10 +549,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
                     if (mInnerIdx >= curAivGS1ProcNum) {
                         break;
                     }
-                    int64_t mrgValueOffset =
-                        static_cast<int64_t>(mInnerIdx) * static_cast<int64_t>(mrgRowStride_);
-                    int64_t globalIndexOffset =
-                        static_cast<int64_t>(mInnerIdx) * static_cast<int64_t>(MAX_TOPK_COUNT);
+                    int64_t mrgValueOffset = static_cast<int64_t>(mInnerIdx) * static_cast<int64_t>(mrgRowStride_);
+                    int64_t globalIndexOffset = static_cast<int64_t>(mInnerIdx) * static_cast<int64_t>(MAX_TOPK_COUNT);
                     LocalTensor<uint32_t> packedRow =
                         mrgValueLocal_[mrgValueOffset].template ReinterpretCast<uint32_t>();
                     TopkUtils::PackSparseIndicesU32VF(packedRow, globalIndexLocal_[globalIndexOffset], packedOutputLen,
@@ -620,8 +612,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t actMBaseSize = tempLoopInfo.actMBaseSize;
         uint32_t actS1Size = tempLoopInfo.actS1Size;
         uint32_t actS2Size = tempLoopInfo.actS2Size;
-        int64_t qFlatBase = static_cast<int64_t>(tempLoopInfo.bIdx) *
-                                static_cast<int64_t>(constInfo_.qSeqSize) *
+        int64_t qFlatBase = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo_.qSeqSize) *
                                 static_cast<int64_t>(constInfo_.qHeadNum) +
                             static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo_.gSize) *
                                 static_cast<int64_t>(constInfo_.qSeqSize);
@@ -662,10 +653,9 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
                                     static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
                                     static_cast<int64_t>(globalS1Idx);
             int64_t baseOutOffset =
-                indiceOutOffset +
-                (static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
-                 static_cast<int64_t>(globalS1Idx)) *
-                    static_cast<int64_t>(constInfo_.kSeqSize);
+                indiceOutOffset + (static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
+                                   static_cast<int64_t>(globalS1Idx)) *
+                                      static_cast<int64_t>(constInfo_.kSeqSize);
             if (constInfo_.attenMaskFlag) {
                 int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
                                             static_cast<int32_t>(globalS1Idx) + 1;
