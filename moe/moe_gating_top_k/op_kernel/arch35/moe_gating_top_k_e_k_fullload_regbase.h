@@ -190,21 +190,13 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::ComputeX()
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = MicroAPI::UpdateMask<float>(size);
-            if (hasBias_) {
-                ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
-                                               i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
-            } else {
-                ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
-            }
+            ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
+                                           i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
             MicroAPI::Muls(vreg1, vregInFp32, static_cast<float>(-1), preg0);
             MicroAPI::Exp(vreg2, vreg1, preg0);
             MicroAPI::Adds(vreg3, vreg2, static_cast<float>(1), preg0);
             MicroAPI::Div<float, &EK_DIV_MODE>(vregSigmoidResult, vregOne, vreg3, preg0);
-            if (hasBias_) {
-                MicroAPI::Add(vregBiasResult, vregSigmoidResult, vregBiasFp32, preg0);
-            } else {
-                vregBiasResult = vregSigmoidResult;
-            }
+            MicroAPI::Add(vregBiasResult, vregSigmoidResult, vregBiasFp32, preg0);
             MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
             MicroAPI::DataCopy(sigmoidOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
             MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
