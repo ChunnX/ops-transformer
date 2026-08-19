@@ -32,23 +32,37 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 # ====== 结构体大小常量（与 arch35 C++ 定义保持一致）======
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
-ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 88
+ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 96  # 10*u32(40) + quantMode(4) + reserved(4) + 6*u64(48) = 96
 TCUBE_TILING_SIZE = 200
 MC2_MM_V3_TILING_DATA_SIZE = 236  # TCubeTiling(200) + 9*uint32(36)
 MC2_QUANT_BMM_TILING_PARAMS_SIZE = 360  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(8)
 
-ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1136  # 非量化
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1384  # 量化
+ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1144  # 非量化: 64+512+96+236+236
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1392  # 量化: 64+512+96+360+360
 TILING_DUMP_SIZE = 2048  # dump 固定大小
+
+# 量化模式枚举（x1QuantMode / x2QuantMode，与 op_proto.h 保持一致）
+# x1QuantMode: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
+# x2QuantMode: 0=非量化, 2=perchannel量化(KC), 6=MX量化
+X1_QUANT_MODE_MAP = {
+    0: "NON_QUANT",
+    7: "KC_DYNAMIC_PERTOKEN",
+    6: "MX_QUANT",
+}
+X2_QUANT_MODE_MAP = {
+    0: "NON_QUANT",
+    2: "KC_PERCHANNEL",
+    6: "MX_QUANT",
+}
 
 # ====== 偏移量常量 ======
 OFFSET_MC2_INIT_TILING = 0
 OFFSET_MC2_CC_TILING = MC2_INIT_TILING_SIZE  # 64
 OFFSET_TILING_INFO = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 664
-OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 900
-OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 664
-OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1024
+OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 672
+OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 908
+OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 672
+OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1032
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -151,11 +165,13 @@ def parse_mc2_cc_tiling_inner(data: bytes, offset: int) -> dict:
 
 
 def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
-    """解析 AlltoAllMatmulTilingInfo（88B）。"""
+    """解析 AlltoAllMatmulTilingInfo（96B）。"""
     if offset + ALLTO_ALL_MATMUL_TILING_INFO_SIZE > len(data):
         return {"error": "data too short for AlltoAllMatmulTilingInfo"}
-    fields = struct.unpack_from("<10I 6Q", data, offset)
-    hccl_dt = fields[12]
+    fields = struct.unpack_from("<12I 6Q", data, offset)
+    x1_qm = fields[10]
+    x2_qm = fields[11]
+    hccl_dt = fields[14]
     return {
         "rankDim": fields[0],
         "tileM": fields[1],
@@ -167,13 +183,17 @@ def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
         "rankN": fields[7],
         "rankK": fields[8],
         "aicCoreNum": fields[9],
-        "commLen": fields[10],
-        "permuteLen": fields[11],
+        "x1QuantMode": x1_qm,
+        "x1QuantModeName": X1_QUANT_MODE_MAP.get(x1_qm, f"UNKNOWN({x1_qm})"),
+        "x2QuantMode": x2_qm,
+        "x2QuantModeName": X2_QUANT_MODE_MAP.get(x2_qm, f"UNKNOWN({x2_qm})"),
+        "commLen": fields[12],
+        "permuteLen": fields[13],
         "hcclDataType": hccl_dt,
         "hcclDataTypeName": HCCL_DATA_TYPE_MAP.get(hccl_dt, f"UNKNOWN({hccl_dt})"),
-        "x1ScaleOptionalLen": fields[13],
-        "dynamicExtraSpace": fields[14],
-        "x1QuantDtype": fields[15],
+        "x1ScaleOptionalLen": fields[15],
+        "dynamicExtraSpace": fields[16],
+        "x1QuantDtype": fields[17],
     }
 
 
@@ -280,25 +300,19 @@ def parse_quant_tiling_data(data: bytes) -> dict:
 
 
 def detect_quant_mode(data: bytes) -> bool:
-    """自动检测量化/非量化模式。
+    """通过 x1QuantMode / x2QuantMode 字段检测量化/非量化模式。
 
-    检测依据：AlltoAllMatmulTilingInfo 中的量化专属字段。
-    非量化场景下 x1ScaleOptionalLen / dynamicExtraSpace / x1QuantDtype 均为 0，
-    量化场景下至少一个非零。
-
-    字段偏移（基于 AlltoAllMatmulTilingInfo 起始 offset=576）:
-      x1ScaleOptionalLen  offset=640 (576+64), u64
-      dynamicExtraSpace   offset=648 (576+72), u64
-      x1QuantDtype        offset=656 (576+80), u64
+    x1QuantMode / x2QuantMode 位于 AlltoAllMatmulTilingInfo offset=576+40=616, 各 u32:
+      x1QuantMode: 0=非量化, 7=KC动态pertoken量化, 6=MX量化
+      x2QuantMode: 0=非量化, 2=KC perchannel量化, 6=MX量化
+    两者均为 0 时为非量化，否则为量化。
     """
     if len(data) < OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE:
         return False
     info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
     if "error" in info:
         return False
-    return (info.get("x1ScaleOptionalLen", 0) != 0 or
-            info.get("dynamicExtraSpace", 0) != 0 or
-            info.get("x1QuantDtype", 0) != 0)
+    return info.get("x1QuantMode", 0) != 0 or info.get("x2QuantMode", 0) != 0
 
 
 def parse_args_info(data: bytes) -> dict:
@@ -499,10 +513,15 @@ def main():
         sys.exit(0 if ok else 1)
 
     is_quant = detect_quant_mode(data)
+    info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
+    x1_qm = info.get("x1QuantMode", 0) if "error" not in info else 0
+    x2_qm = info.get("x2QuantMode", 0) if "error" not in info else 0
+    x1_qm_name = X1_QUANT_MODE_MAP.get(x1_qm, f"UNKNOWN({x1_qm})")
+    x2_qm_name = X2_QUANT_MODE_MAP.get(x2_qm, f"UNKNOWN({x2_qm})")
     if is_quant:
-        logging.info("解析模式: 量化 (x1ScaleOptionalLen/dynamicExtraSpace/x1QuantDtype 非零)")
+        logging.info("解析模式: 量化 (x1QuantMode=%d/%s, x2QuantMode=%d/%s)", x1_qm, x1_qm_name, x2_qm, x2_qm_name)
     else:
-        logging.info("解析模式: 非量化 (x1ScaleOptionalLen/dynamicExtraSpace/x1QuantDtype 均为零)")
+        logging.info("解析模式: 非量化 (x1QuantMode=0, x2QuantMode=0)")
 
     struct_size = ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE if is_quant else ALLTO_ALL_MATMUL_TILING_DATA_SIZE
     if len(data) < struct_size:

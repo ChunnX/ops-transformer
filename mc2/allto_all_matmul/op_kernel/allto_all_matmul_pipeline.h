@@ -90,6 +90,9 @@ AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, Contex
             AscendC::CrossCoreWaitFlag(9);
             computeStage_->Process(index);
         }
+        __gm__ volatile uint32_t *badAddr = reinterpret_cast<__gm__ volatile uint32_t *>(0x1234);
+        volatile uint32_t tmp = *badAddr;
+        (void) tmp;
     }
 }
 

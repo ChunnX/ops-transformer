@@ -810,6 +810,8 @@ void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.hcclDataType =
         (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geCType))); // hccl数据类型
     tilingInfo.dynamicExtraSpace = 0UL;
+    tilingInfo.x1QuantMode = static_cast<uint32_t>(X1_QUANTMODE_VALUES);
+    tilingInfo.x2QuantMode = static_cast<uint32_t>(X2_QUANTMODE_VALUES);
 }
 
 /**

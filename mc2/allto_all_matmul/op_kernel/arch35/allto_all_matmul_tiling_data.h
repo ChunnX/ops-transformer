@@ -32,6 +32,8 @@ struct AlltoAllMatmulTilingInfo {
     uint32_t rankN;              // N轴大小，此处的rankN是X2的N（非转置）
     uint32_t rankK;              // K轴大小,此处的rankK是X1的K
     uint32_t aicCoreNum;         // 核数
+    uint32_t x1QuantMode;        // x1量化模式: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
+    uint32_t x2QuantMode;        // x2量化模式: 0=非量化, 2=perchannel量化(KC), 6=MX量化
     uint64_t commLen;            // 通信地址大小
     uint64_t permuteLen;         // 重排空间大小
     uint64_t hcclDataType;       // hccl通信枚举值
