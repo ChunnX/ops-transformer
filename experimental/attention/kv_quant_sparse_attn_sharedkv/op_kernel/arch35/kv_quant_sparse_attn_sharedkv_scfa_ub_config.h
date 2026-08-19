@@ -27,13 +27,11 @@ constexpr uint32_t V0_PROCESS_ROW_NUM = 16U;
 constexpr uint32_t CV_RATIO = 2U;
 constexpr uint32_t UB_ALIGN_SIZE = 64U;
 
-constexpr uint32_t D_TEMPLATE_ALIGN64 =
-    (D_TEMPLATE_SIZE + UB_ALIGN_SIZE - 1U) / UB_ALIGN_SIZE * UB_ALIGN_SIZE;
+constexpr uint32_t D_TEMPLATE_ALIGN64 = (D_TEMPLATE_SIZE + UB_ALIGN_SIZE - 1U) / UB_ALIGN_SIZE * UB_ALIGN_SIZE;
 
 template <typename T>
 struct TypedBufferSize {
-    static constexpr uint32_t STAGE0_OUT =
-        D_INPUT_SIZE * (V0_PROCESS_ROW_NUM + 1U) * static_cast<uint32_t>(sizeof(T));
+    static constexpr uint32_t STAGE0_OUT = D_INPUT_SIZE * (V0_PROCESS_ROW_NUM + 1U) * static_cast<uint32_t>(sizeof(T));
     static constexpr uint32_t STAGE2_OUT =
         (S1_BASE_SIZE / CV_RATIO) * D_TEMPLATE_ALIGN64 * static_cast<uint32_t>(sizeof(T));
 };
