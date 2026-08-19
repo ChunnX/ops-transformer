@@ -179,7 +179,7 @@ struct WorkspaceInfo {
                                               tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE))) *
                                           static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
         int64_t expertCountWorkspaceBytes =
-            legacyExpertCountBytes > compactExpertCountBytes ? legacyExpertCountBytes : compactExpertCountBytes;
+            tilingData->topoType == TOPO_TYPE_MTE ? compactExpertCountBytes : legacyExpertCountBytes;
         workspaceSize += Ops::Base::CeilAlign(expertCountWorkspaceBytes, ALIGN_512);
 
         metaInfoPtr = base + workspaceSize;
@@ -248,19 +248,19 @@ struct WorkspaceInfo {
         // A8W4 / Combine 量化路径的条件 workspace 分配。
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
-        // 仅 A8W4 使用：cumsum GM 备份和 GMM1 中间结果。
+        // layered A8W4 仍需跨 expert 保存 cumsum；MTE 已统一使用紧凑 count 表。
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || tilingData->topkWeightsPrefetch == 1) {
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 && tilingData->topoType == TOPO_TYPE_URMA) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
-            if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
-                cumsumInfoPtr = base + workspaceSize;
-                workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 * tilingData->moeExpertPerRank *
-                                                                           tilingData->epWorldSize),
-                                                      ALIGN_32) *
-                                 tilingData->aicNum;
-            }
+            cumsumInfoPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 * tilingData->moeExpertPerRank *
+                                                                       tilingData->epWorldSize),
+                                                  ALIGN_32) *
+                             tilingData->aicNum;
+        }
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || tilingData->topkWeightsPrefetch == 1) {
             // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
