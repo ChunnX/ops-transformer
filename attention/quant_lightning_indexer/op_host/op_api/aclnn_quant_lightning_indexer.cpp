@@ -62,7 +62,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
         auto keyShape = key->GetViewShape();
         bool isPaBsnd = (layoutKeyOptional != nullptr && std::string(layoutKeyOptional) == "PA_BSND");
         size_t checkStartIdx = isPaBsnd ? 1 : 0;
-        if (keyShape.GetDimNum() == 4) {
+        if (keyShape.GetDimNum() == 4U) {
             int64_t expected = 1;
             for (int64_t i = 3; i >= static_cast<int64_t>(checkStartIdx); --i) {
                 if (keyStride[i] != expected) {
@@ -82,7 +82,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
         auto scaleShape = keyDequantScale->GetViewShape();
         bool isPaBsnd = (layoutKeyOptional != nullptr && std::string(layoutKeyOptional) == "PA_BSND");
         size_t checkStartIdx = isPaBsnd ? 1 : 0;
-        if (scaleShape.GetDimNum() == 3) {
+        if (scaleShape.GetDimNum() == 3U) {
             int64_t expected = 1;
             for (int64_t i = 2; i >= static_cast<int64_t>(checkStartIdx); --i) {
                 if (scaleStride[i] != expected) {

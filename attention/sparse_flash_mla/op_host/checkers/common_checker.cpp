@@ -143,18 +143,18 @@ ge::graphStatus CommonChecker::CheckQueryAxes(const CheckContext &context) const
                                                               .c_str(),
                                                           "Batch and sequence dimensions must be greater than 0"),
                     return ge::GRAPH_FAILED);
-        qHeads = GetDim(context.q, 2);
-        qDim = GetDim(context.q, 3);
+        qHeads = GetDim(context.q, 2U);
+        qDim = GetDim(context.q, 3U);
     } else {
         OP_CHECK_IF(qSeq <= 0, OP_LOGE_FOR_INVALID_SHAPESIZE(Op(context), "q_t", std::to_string(qSeq).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
         qHeads = GetDim(context.q, 1);
-        qDim = GetDim(context.q, 2);
+        qDim = GetDim(context.q, 2U);
     }
-    OP_CHECK_IF(qHeads <= 0 || qHeads > 128,
+    OP_CHECK_IF(qHeads <= 0 || qHeads > 128U,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q_n", std::to_string(qHeads).c_str(), "[1, 128]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qDim != 512,
+    OP_CHECK_IF(qDim != 512U,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q head dimension", std::to_string(qDim).c_str(), "512"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -169,18 +169,18 @@ ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const Te
     int64_t headDim = -1;
     if (context.kvLayout == Layout::TND) {
         numHeads = GetDim(kv, 1);
-        headDim = GetDim(kv, 2);
+        headDim = GetDim(kv, 2U);
     } else {
-        numHeads = GetDim(kv, 2);
-        headDim = GetDim(kv, 3);
+        numHeads = GetDim(kv, 2U);
+        headDim = GetDim(kv, 3U);
     }
     OP_CHECK_IF(numHeads != 1,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " kv_n").c_str(),
                                           std::to_string(numHeads).c_str(), "1"),
                 return ge::GRAPH_FAILED);
-    int64_t expectedDim = 512;
+    int64_t expectedDim = 512U;
     if (context.variant == OperatorVariant::MIXED_QUANT) {
-        expectedDim = context.quantMode == 1 ? 608 : 584;
+        expectedDim = context.quantMode == 1 ? 608U : 584U;
     }
     OP_CHECK_IF(headDim != expectedDim,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " head dimension").c_str(),
