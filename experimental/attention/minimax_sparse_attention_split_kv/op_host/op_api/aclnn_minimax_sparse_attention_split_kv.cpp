@@ -20,6 +20,7 @@
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
 #include <acl/acl.h>
+#include <cstring>
 #include <tuple>
 #include <vector>
 
@@ -92,6 +93,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     int64_t topK,
     int64_t innerPrecise,
     bool softmaxLseFlag,
+    const char *inputLayout,
     aclTensor *attentionOut,
     aclTensor *softmaxLse,
     uint64_t *workspaceSize,
@@ -116,12 +118,19 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
                 "innerPrecise must be 0, 1 or 4, got %ld.", innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    const char *layout = (inputLayout == nullptr || inputLayout[0] == '\0') ? "TND" : inputLayout;
+    if (strcmp(layout, "TND") != 0 && strcmp(layout, "BNSD") != 0 && strcmp(layout, "BSND") != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "inputLayout must be TND, BNSD or BSND, got %s.", layout);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     L2_DFX_PHASE_1(aclnnMinimaxSparseAttentionSplitKv,
                    DFX_IN(query, key, value, blockTable,
                           k2qRowPtr, k2qQIndices, k2qSlotIndices,
                           actualSeqLengths, actualSeqLengthsKv,
-                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag),
+                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
+                          softmaxLseFlag, layout),
                    DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -156,7 +165,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
         query, key, value, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengths, actualSeqLengthsKv,
-        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag,
+        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag, layout,
         attentionOut, lsePlaceHolder, executorImpl);
     auto output = std::get<0>(outputs);
     auto lseOut = std::get<1>(outputs);

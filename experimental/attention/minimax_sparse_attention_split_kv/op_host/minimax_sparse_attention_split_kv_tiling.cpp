@@ -44,6 +44,20 @@ constexpr int TND_DIM_T = 0;
 constexpr int TND_DIM_N = 1;
 constexpr int TND_DIM_D = 2;
 
+constexpr int BNSD_DIM_B = 0;
+constexpr int BNSD_DIM_N = 1;
+constexpr int BNSD_DIM_S = 2;
+constexpr int BNSD_DIM_D = 3;
+
+constexpr int BSND_DIM_B = 0;
+constexpr int BSND_DIM_S = 1;
+constexpr int BSND_DIM_N = 2;
+constexpr int BSND_DIM_D = 3;
+
+constexpr uint32_t LAYOUT_TND = 0;
+constexpr uint32_t LAYOUT_BNSD = 1;
+constexpr uint32_t LAYOUT_BSND = 2;
+
 constexpr int BLOCKED_KV_DIM_BLOCK_NUM = 0;
 constexpr int BLOCKED_KV_DIM_BLOCK_SIZE = 1;
 constexpr int BLOCKED_KV_DIM_KV_HEAD = 2;
@@ -55,6 +69,7 @@ constexpr int ATTR_BLOCK_SIZE_INDEX = 2;
 constexpr int ATTR_TOP_K_INDEX = 3;
 constexpr int ATTR_INNER_PRECISE_INDEX = 4;
 constexpr int ATTR_SOFTMAX_LSE_FLAG_INDEX = 5;
+constexpr int ATTR_INPUT_LAYOUT_INDEX = 6;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -114,6 +129,19 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     softmaxLseFlag_ = (softmaxLsePtr != nullptr && *softmaxLsePtr) ? 1U : 0U;
+    const char *layoutStr = attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX);
+    if (layoutStr == nullptr || layoutStr[0] == '\0' || strcmp(layoutStr, "TND") == 0) {
+        layoutType_ = LAYOUT_TND;
+    } else if (strcmp(layoutStr, "BNSD") == 0) {
+        layoutType_ = LAYOUT_BNSD;
+    } else if (strcmp(layoutStr, "BSND") == 0) {
+        layoutType_ = LAYOUT_BSND;
+    } else {
+        OP_LOGE(context->GetNodeName(),
+                "inputLayout must be TND, BNSD or BSND, got %s.",
+                layoutStr);
+        return ge::GRAPH_FAILED;
+    }
     if (innerPrecise_ != INNER_PRECISE_ALL_HIGH &&
         innerPrecise_ != INNER_PRECISE_ALL_LOW &&
         innerPrecise_ != INNER_PRECISE_MIXED) {
@@ -133,15 +161,56 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         OP_LOGE(context->GetNodeName(), "query shape is null.");
         return ge::GRAPH_FAILED;
     }
-    if (qShape->GetStorageShape().GetDimNum() != 3U) {
-        OP_LOGE(context->GetNodeName(),
-                "query must be TND [T, N, D], got dimNum=%zu.",
-                qShape->GetStorageShape().GetDimNum());
-        return ge::GRAPH_FAILED;
+    const size_t qDimNum = qShape->GetStorageShape().GetDimNum();
+    if (layoutType_ == LAYOUT_TND) {
+        if (qDimNum != 3U) {
+            OP_LOGE(context->GetNodeName(),
+                    "inputLayout TND requires query [T, N, D] rank 3, got dimNum=%zu.",
+                    qDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        totalQTokens_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_T));
+        numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
+        embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
+        qSeqLen_ = 0U;
+    } else if (layoutType_ == LAYOUT_BNSD) {
+        if (qDimNum != 4U) {
+            OP_LOGE(context->GetNodeName(),
+                    "inputLayout BNSD requires query [B, N, S, D] rank 4, got dimNum=%zu.",
+                    qDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        batch_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_B));
+        numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_N));
+        qSeqLen_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_S));
+        embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_D));
+        if (batch_ == 0U || qSeqLen_ == 0U) {
+            OP_LOGE(context->GetNodeName(),
+                    "BNSD query [B, N, S, D] requires B>0 and S>0, got B=%u S=%u.",
+                    batch_, qSeqLen_);
+            return ge::GRAPH_FAILED;
+        }
+        totalQTokens_ = batch_ * qSeqLen_;
+    } else {
+        // BSND [B, S, N, D]
+        if (qDimNum != 4U) {
+            OP_LOGE(context->GetNodeName(),
+                    "inputLayout BSND requires query [B, S, N, D] rank 4, got dimNum=%zu.",
+                    qDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        batch_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_B));
+        qSeqLen_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_S));
+        numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_N));
+        embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_D));
+        if (batch_ == 0U || qSeqLen_ == 0U) {
+            OP_LOGE(context->GetNodeName(),
+                    "BSND query [B, S, N, D] requires B>0 and S>0, got B=%u S=%u.",
+                    batch_, qSeqLen_);
+            return ge::GRAPH_FAILED;
+        }
+        totalQTokens_ = batch_ * qSeqLen_;
     }
-    totalQTokens_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_T));
-    numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
-    embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
 
     auto kShape = context->GetInputShape(KEY_INDEX);
     auto vShape = context->GetInputShape(VALUE_INDEX);
@@ -157,11 +226,17 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         return ge::GRAPH_FAILED;
     }
 
-    // block_table present => paged KV cache; absent => TND non-kvcache.
+    // block_table present => paged KV cache; absent => contiguous dense K/V.
     const gert::StorageShape *btShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     isPageAttention_ = (btShape != nullptr) ? 1U : 0U;
 
     if (isPageAttention_ == 1U) {
+        if (layoutType_ != LAYOUT_TND) {
+            OP_LOGE(context->GetNodeName(),
+                    "paged KV cache requires TND query; do not pass block_table "
+                    "with BNSD/BSND.");
+            return ge::GRAPH_FAILED;
+        }
         if (kDimNum != 4U) {
             OP_LOGE(context->GetNodeName(),
                     "paged KV cache requires key/value rank 4 "
@@ -181,12 +256,83 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         }
         batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
         maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
+        kvSeqLen_ = 0U;
+    } else if (layoutType_ == LAYOUT_BNSD || layoutType_ == LAYOUT_BSND) {
+        // Training contiguous: key/value rank 4 matching query layout.
+        if (kDimNum != 4U) {
+            OP_LOGE(context->GetNodeName(),
+                    "%s query requires key/value rank 4, got rank %zu.",
+                    (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND",
+                    kDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        uint32_t keyB;
+        uint32_t keyHeads;
+        uint32_t keyD;
+        uint32_t valueB;
+        uint32_t valueHeads;
+        uint32_t valueS;
+        uint32_t valueD;
+        if (layoutType_ == LAYOUT_BNSD) {
+            keyB = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BNSD_DIM_B));
+            keyHeads = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BNSD_DIM_N));
+            kvSeqLen_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BNSD_DIM_S));
+            keyD = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BNSD_DIM_D));
+            valueB = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BNSD_DIM_B));
+            valueHeads = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BNSD_DIM_N));
+            valueS = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BNSD_DIM_S));
+            valueD = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BNSD_DIM_D));
+        } else {
+            keyB = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BSND_DIM_B));
+            kvSeqLen_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BSND_DIM_S));
+            keyHeads = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BSND_DIM_N));
+            keyD = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BSND_DIM_D));
+            valueB = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BSND_DIM_B));
+            valueS = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BSND_DIM_S));
+            valueHeads = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BSND_DIM_N));
+            valueD = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(BSND_DIM_D));
+        }
+        if (kvHeads_ == 0U) {
+            kvHeads_ = keyHeads;
+        }
+        const char *layoutName = (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND";
+        if (keyB != batch_ || keyHeads != kvHeads_ || keyD != embeddingSize_ || kvSeqLen_ == 0U) {
+            OP_LOGE(context->GetNodeName(),
+                    "%s key must match query B=%u kvHeads=%u embeddingSize=%u with S>0, "
+                    "got B=%u N=%u S=%u D=%u.",
+                    layoutName, batch_, kvHeads_, embeddingSize_,
+                    keyB, keyHeads, kvSeqLen_, keyD);
+            return ge::GRAPH_FAILED;
+        }
+        if (valueB != keyB || valueHeads != keyHeads || valueS != kvSeqLen_ || valueD != keyD) {
+            OP_LOGE(context->GetNodeName(),
+                    "%s value must match key shape.", layoutName);
+            return ge::GRAPH_FAILED;
+        }
+        auto seqQShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX);
+        auto seqKvShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_KV_INDEX);
+        if (seqQShape == nullptr || seqKvShape == nullptr) {
+            OP_LOGE(context->GetNodeName(),
+                    "actual_seq_lengths and actual_seq_lengths_kv are required for %s.",
+                    layoutName);
+            return ge::GRAPH_FAILED;
+        }
+        uint32_t seqQBatch = static_cast<uint32_t>(seqQShape->GetStorageShape().GetShapeSize());
+        uint32_t seqKvBatch = static_cast<uint32_t>(seqKvShape->GetStorageShape().GetShapeSize());
+        if (seqQBatch != batch_ || seqKvBatch != batch_) {
+            OP_LOGE(context->GetNodeName(),
+                    "%s actual_seq_lengths length (%u, %u) must equal query B=%u.",
+                    layoutName, seqQBatch, seqKvBatch, batch_);
+            return ge::GRAPH_FAILED;
+        }
+        maxBlocksPerBatch_ = 0U;
     } else {
-        // Non-kvcache: key/value share query's TND layout [T_kv, kvHeads, D].
+        // Contiguous TND: key/value [T_kv, kvHeads, D].
         if (kDimNum != 3U) {
             OP_LOGE(context->GetNodeName(),
-                    "non-kvcache input requires key/value TND [T, kvHeads, D] "
-                    "(rank 3), got rank %zu. Pass block_table for paged KV cache.",
+                    "TND contiguous input requires key/value [T, kvHeads, D] "
+                    "(rank 3), got rank %zu. Pass block_table for paged KV cache, "
+                    "or set inputLayout to BNSD/BSND for rank-4 contiguous K/V.",
                     kDimNum);
             return ge::GRAPH_FAILED;
         }
@@ -212,11 +358,12 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         auto seqKvShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_KV_INDEX);
         if (seqKvShape == nullptr) {
             OP_LOGE(context->GetNodeName(),
-                    "actual_seq_lengths_kv is required for non-kvcache TND input.");
+                    "actual_seq_lengths_kv is required for contiguous TND input.");
             return ge::GRAPH_FAILED;
         }
         batch_ = static_cast<uint32_t>(seqKvShape->GetStorageShape().GetShapeSize());
         maxBlocksPerBatch_ = 0U;
+        kvSeqLen_ = 0U;
     }
     groupSize_ = (kvHeads_ > 0U) ? (numHeads_ / kvHeads_) : 1U;
 
@@ -439,6 +586,9 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
     tilingData_->set_tilingKey(tilingKeyVal);
     tilingData_->set_isPageAttention(isPageAttention_);
     tilingData_->set_softmaxLseFlag(softmaxLseFlag_);
+    tilingData_->set_layoutType(layoutType_);
+    tilingData_->set_qSeqLen(qSeqLen_);
+    tilingData_->set_kvSeqLen(kvSeqLen_);
     context->SetTilingKey(tilingKeyVal);
     return ge::GRAPH_SUCCESS;
 }

@@ -36,6 +36,7 @@ std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
     int64_t topK,
     int64_t innerPrecise,
     bool softmaxLseFlag,
+    const char *inputLayout,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
     aclOpExecutor *executor)
@@ -43,7 +44,8 @@ std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
     L0_DFX(MinimaxSparseAttentionSplitKv, query, key, value, blockTable,
            k2qRowPtr, k2qQIndices, k2qSlotIndices,
            actualSeqLengths, actualSeqLengthsKv,
-           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag);
+           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag,
+           inputLayout);
 
     if (executor == nullptr || attentionOut == nullptr || softmaxLse == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
@@ -71,7 +73,8 @@ std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
                                    static_cast<int64_t>(blockSize),
                                    static_cast<int64_t>(topK),
                                    static_cast<int64_t>(innerPrecise),
-                                   softmaxLseFlag));
+                                   softmaxLseFlag,
+                                   inputLayout));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "MinimaxSparseAttentionSplitKv infer shape failed.");
@@ -88,7 +91,8 @@ std::tuple<const aclTensor *, const aclTensor *> MinimaxSparseAttentionSplitKv(
                                         static_cast<int64_t>(blockSize),
                                         static_cast<int64_t>(topK),
                                         static_cast<int64_t>(innerPrecise),
-                                        softmaxLseFlag));
+                                        softmaxLseFlag,
+                                        inputLayout));
 
     return {attentionOutTensor, softmaxLseTensor};
 }

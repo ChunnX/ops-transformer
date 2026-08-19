@@ -31,7 +31,14 @@ struct MinimaxSparseAttentionSplitKvTilingData {
     uint64_t tilingKey;
     uint32_t isPageAttention;
     uint32_t softmaxLseFlag;
+    uint32_t layoutType;
+    uint32_t qSeqLen;
+    uint32_t kvSeqLen;
 };
+
+constexpr uint32_t LAYOUT_TND = 0;
+constexpr uint32_t LAYOUT_BNSD = 1;
+constexpr uint32_t LAYOUT_BSND = 2;
 
 }  // namespace MinimaxSaSplitKv
 
