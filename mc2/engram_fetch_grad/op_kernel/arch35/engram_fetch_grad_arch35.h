@@ -683,48 +683,48 @@ __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
     }
 
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-    uint32_t dstRank = aivId_ % numRanks_;
-    uint32_t senderIdx = aivId_ / numRanks_;
-    if (senderIdx >= sendersPerRank_) {
-        return;
+    uint32_t totalSendWorkUnits = numRanks_ * sendersPerRank_;
+    for (uint32_t wIdx = aivId_; wIdx < totalSendWorkUnits; wIdx += numSendCores_) {
+        uint32_t dstRank = wIdx % numRanks_;
+        uint32_t senderIdx = wIdx / numRanks_;
+
+        GM_ADDR sSlot = sendCountsGM_ + dstRank * UB_ALIGN;
+        GlobalTensor<int32_t> sSlotGM;
+        sSlotGM.SetGlobalBuffer((__gm__ int32_t *)sSlot);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sSlotGM);
+        int32_t totalSendCount = sSlotGM.GetValue(0);
+
+        GM_ADDR sDisplSlot = sdisplsGM_ + dstRank * UB_ALIGN;
+        GlobalTensor<int64_t> sDisplSlotGM;
+        sDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sDisplSlot);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sDisplSlotGM);
+        int64_t sdispl = sDisplSlotGM.GetValue(0);
+
+        int32_t baseShare = totalSendCount / static_cast<int32_t>(sendersPerRank_);
+        int32_t mySendCount = baseShare;
+        int64_t mySdispl = sdispl + static_cast<int64_t>(senderIdx) * baseShare;
+        if (senderIdx == sendersPerRank_ - 1U) {
+            mySendCount = totalSendCount - static_cast<int32_t>(senderIdx) * baseShare;
+        }
+
+        if (mySendCount <= 0) {
+            continue;
+        }
+
+        if (dstRank == rankId_) {
+            GM_ADDR rDisplSlot = rdisplsGM_ + rankId_ * UB_ALIGN;
+            GlobalTensor<int64_t> rDisplSlotGM;
+            rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
+            DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
+            int64_t rdispl = rDisplSlotGM.GetValue(0);
+            int64_t myRdispl = rdispl + static_cast<int64_t>(senderIdx) * baseShare;
+            LocalCopySlice(recvGradGM_ + myRdispl * hiddenBytes_, gradSortedGM_ + mySdispl * hiddenBytes_,
+                           static_cast<uint64_t>(mySendCount) * hiddenBytes_);
+            continue;
+        }
+
+        SendGradRemote(dstRank, senderIdx, mySendCount, mySdispl, localWinBase);
     }
-
-    GM_ADDR sSlot = sendCountsGM_ + dstRank * UB_ALIGN;
-    GlobalTensor<int32_t> sSlotGM;
-    sSlotGM.SetGlobalBuffer((__gm__ int32_t *)sSlot);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sSlotGM);
-    int32_t totalSendCount = sSlotGM.GetValue(0);
-
-    GM_ADDR sDisplSlot = sdisplsGM_ + dstRank * UB_ALIGN;
-    GlobalTensor<int64_t> sDisplSlotGM;
-    sDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sDisplSlot);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sDisplSlotGM);
-    int64_t sdispl = sDisplSlotGM.GetValue(0);
-
-    int32_t baseShare = totalSendCount / static_cast<int32_t>(sendersPerRank_);
-    int32_t mySendCount = baseShare;
-    int64_t mySdispl = sdispl + static_cast<int64_t>(senderIdx) * baseShare;
-    if (senderIdx == sendersPerRank_ - 1U) {
-        mySendCount = totalSendCount - static_cast<int32_t>(senderIdx) * baseShare;
-    }
-
-    if (mySendCount <= 0) {
-        return;
-    }
-
-    if (dstRank == rankId_) {
-        GM_ADDR rDisplSlot = rdisplsGM_ + rankId_ * UB_ALIGN;
-        GlobalTensor<int64_t> rDisplSlotGM;
-        rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
-        DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
-        int64_t rdispl = rDisplSlotGM.GetValue(0);
-        int64_t myRdispl = rdispl + static_cast<int64_t>(senderIdx) * baseShare;
-        LocalCopySlice(recvGradGM_ + myRdispl * hiddenBytes_, gradSortedGM_ + mySdispl * hiddenBytes_,
-                       static_cast<uint64_t>(mySendCount) * hiddenBytes_);
-        return;
-    }
-
-    SendGradRemote(dstRank, senderIdx, mySendCount, mySdispl, localWinBase);
 }
 
 __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, uint32_t senderIdx,
@@ -787,100 +787,102 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
     uint32_t recvIdx = aivId_ - numSendCores_;
     uint32_t totalWorkUnits = (numRanks_ - 1U) * sendersPerRank_;
-    if (recvIdx >= totalWorkUnits) {
+    if (totalWorkUnits == 0U) {
         return;
     }
 
-    uint32_t adjustedSrcRank = recvIdx / sendersPerRank_;
-    uint32_t srcRank = (adjustedSrcRank >= rankId_) ? (adjustedSrcRank + 1U) : adjustedSrcRank;
-    uint32_t si = recvIdx % sendersPerRank_;
+    for (uint32_t wIdx = recvIdx % totalWorkUnits; wIdx < totalWorkUnits; wIdx += numRecvCores_) {
+        uint32_t adjustedSrcRank = wIdx / sendersPerRank_;
+        uint32_t srcRank = (adjustedSrcRank >= rankId_) ? (adjustedSrcRank + 1U) : adjustedSrcRank;
+        uint32_t si = wIdx % sendersPerRank_;
 
-    GM_ADDR rSlot = recvCountsGM_ + srcRank * sizeof(int32_t);
-    GlobalTensor<int32_t> rSlotGM;
-    rSlotGM.SetGlobalBuffer((__gm__ int32_t *)rSlot);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rSlotGM);
-    int32_t recvCount = rSlotGM.GetValue(0);
+        GM_ADDR rSlot = recvCountsGM_ + srcRank * sizeof(int32_t);
+        GlobalTensor<int32_t> rSlotGM;
+        rSlotGM.SetGlobalBuffer((__gm__ int32_t *)rSlot);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rSlotGM);
+        int32_t recvCount = rSlotGM.GetValue(0);
 
-    GM_ADDR rDisplSlot = rdisplsGM_ + srcRank * UB_ALIGN;
-    GlobalTensor<int64_t> rDisplSlotGM;
-    rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
-    int64_t rdispl = rDisplSlotGM.GetValue(0);
+        GM_ADDR rDisplSlot = rdisplsGM_ + srcRank * UB_ALIGN;
+        GlobalTensor<int64_t> rDisplSlotGM;
+        rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
+        int64_t rdispl = rDisplSlotGM.GetValue(0);
 
-    int32_t baseShare = recvCount / static_cast<int32_t>(sendersPerRank_);
-    uint32_t senderRecvCount = (si == sendersPerRank_ - 1U) ? static_cast<uint32_t>(recvCount - static_cast<int32_t>(si) * baseShare) : static_cast<uint32_t>(baseShare);
-    if (senderRecvCount == 0) {
-        return;
-    }
-
-    int64_t senderBase = rdispl + static_cast<int64_t>(si) * baseShare;
-    uint32_t slotsPerSender = NUM_SLOTS / sendersPerRank_;
-    if (slotsPerSender == 0U) {
-        slotsPerSender = 1U;
-    }
-    uint64_t slotAreaBase = tokenDataOffset_ + static_cast<uint64_t>(srcRank) * NUM_SLOTS * tokenSlotSize_;
-
-    uint32_t senderReceived = 0;
-    uint32_t localReadCnt = 0;
-
-    while (senderReceived < senderRecvCount) {
-        uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
-        int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
-        while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
-            remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
-            TimeoutCheck(startTime);
+        int32_t baseShare = recvCount / static_cast<int32_t>(sendersPerRank_);
+        uint32_t senderRecvCount = (si == sendersPerRank_ - 1U) ? static_cast<uint32_t>(recvCount - static_cast<int32_t>(si) * baseShare) : static_cast<uint32_t>(baseShare);
+        if (senderRecvCount == 0) {
+            continue;
         }
 
-        uint32_t availSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
-        uint32_t remaining = senderRecvCount - senderReceived;
-        uint32_t remainingChunks = (remaining + maxTokensPerSlot_ - 1U) / maxTokensPerSlot_;
-        uint32_t localSlotIdx = localReadCnt % slotsPerSender;
-        uint32_t maxBatchFromHere = slotsPerSender - localSlotIdx;
-
-        uint32_t batchSlots = availSlots;
-        if (batchSlots > remainingChunks) {
-            batchSlots = remainingChunks;
+        int64_t senderBase = rdispl + static_cast<int64_t>(si) * baseShare;
+        uint32_t slotsPerSender = NUM_SLOTS / sendersPerRank_;
+        if (slotsPerSender == 0U) {
+            slotsPerSender = 1U;
         }
-        if (batchSlots > maxBatchFromHere) {
-            batchSlots = maxBatchFromHere;
-        }
+        uint64_t slotAreaBase = tokenDataOffset_ + static_cast<uint64_t>(srcRank) * NUM_SLOTS * tokenSlotSize_;
 
-        uint32_t slotsRead = 0;
-        uint32_t tokensRead = 0;
-        if (batchSlots < remainingChunks) {
-            uint32_t totalTokens = batchSlots * maxTokensPerSlot_;
-            uint32_t firstSegIdx = localReadCnt % slotsPerSender;
-            uint32_t firstSlotIdx = si * slotsPerSender + firstSegIdx;
-            uint64_t firstSlotOffset = slotAreaBase + static_cast<uint64_t>(firstSlotIdx) * tokenSlotSize_;
+        uint32_t senderReceived = 0;
+        uint32_t localReadCnt = 0;
 
-            LocalCopySlice(recvGradGM_ + (senderBase + senderReceived) * hiddenBytes_,
-                           localWinBase + firstSlotOffset,
-                           static_cast<uint64_t>(totalTokens) * hiddenBytes_);
-            slotsRead = batchSlots;
-            tokensRead = totalTokens;
-        } else {
-            while (slotsRead < batchSlots) {
-                uint32_t segIdx = (localReadCnt + slotsRead) % slotsPerSender;
-                uint32_t slotGlobalIdx = si * slotsPerSender + segIdx;
-                uint64_t slotOffset = slotAreaBase + static_cast<uint64_t>(slotGlobalIdx) * tokenSlotSize_;
-
-                uint32_t thisTokens = maxTokensPerSlot_;
-                if (tokensRead + thisTokens > remaining) {
-                    thisTokens = remaining - tokensRead;
-                }
-
-                LocalCopySlice(recvGradGM_ + (senderBase + senderReceived + tokensRead) * hiddenBytes_,
-                               localWinBase + slotOffset,
-                               static_cast<uint64_t>(thisTokens) * hiddenBytes_);
-
-                tokensRead += thisTokens;
-                slotsRead++;
+        while (senderReceived < senderRecvCount) {
+            uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
+            int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
+            while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
+                remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
+                TimeoutCheck(startTime);
             }
-        }
 
-        localReadCnt += slotsRead;
-        senderReceived += tokensRead;
-        WriteRemoteCounter(srcRank, tokenReadOffset_, static_cast<int32_t>(localReadCnt), si);
+            uint32_t availSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
+            uint32_t remaining = senderRecvCount - senderReceived;
+            uint32_t remainingChunks = (remaining + maxTokensPerSlot_ - 1U) / maxTokensPerSlot_;
+            uint32_t localSlotIdx = localReadCnt % slotsPerSender;
+            uint32_t maxBatchFromHere = slotsPerSender - localSlotIdx;
+
+            uint32_t batchSlots = availSlots;
+            if (batchSlots > remainingChunks) {
+                batchSlots = remainingChunks;
+            }
+            if (batchSlots > maxBatchFromHere) {
+                batchSlots = maxBatchFromHere;
+            }
+
+            uint32_t slotsRead = 0;
+            uint32_t tokensRead = 0;
+            if (batchSlots < remainingChunks) {
+                uint32_t totalTokens = batchSlots * maxTokensPerSlot_;
+                uint32_t firstSegIdx = localReadCnt % slotsPerSender;
+                uint32_t firstSlotIdx = si * slotsPerSender + firstSegIdx;
+                uint64_t firstSlotOffset = slotAreaBase + static_cast<uint64_t>(firstSlotIdx) * tokenSlotSize_;
+
+                LocalCopySlice(recvGradGM_ + (senderBase + senderReceived) * hiddenBytes_,
+                               localWinBase + firstSlotOffset,
+                               static_cast<uint64_t>(totalTokens) * hiddenBytes_);
+                slotsRead = batchSlots;
+                tokensRead = totalTokens;
+            } else {
+                while (slotsRead < batchSlots) {
+                    uint32_t segIdx = (localReadCnt + slotsRead) % slotsPerSender;
+                    uint32_t slotGlobalIdx = si * slotsPerSender + segIdx;
+                    uint64_t slotOffset = slotAreaBase + static_cast<uint64_t>(slotGlobalIdx) * tokenSlotSize_;
+
+                    uint32_t thisTokens = maxTokensPerSlot_;
+                    if (tokensRead + thisTokens > remaining) {
+                        thisTokens = remaining - tokensRead;
+                    }
+
+                    LocalCopySlice(recvGradGM_ + (senderBase + senderReceived + tokensRead) * hiddenBytes_,
+                                   localWinBase + slotOffset,
+                                   static_cast<uint64_t>(thisTokens) * hiddenBytes_);
+
+                    tokensRead += thisTokens;
+                    slotsRead++;
+                }
+            }
+
+            localReadCnt += slotsRead;
+            senderReceived += tokensRead;
+            WriteRemoteCounter(srcRank, tokenReadOffset_, static_cast<int32_t>(localReadCnt), si);
+        }
     }
 }
 
