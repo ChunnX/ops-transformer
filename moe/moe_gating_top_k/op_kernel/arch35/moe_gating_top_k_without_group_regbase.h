@@ -56,12 +56,15 @@ private:
 
     __aicore__ inline void ProcessSingleExpert();
 
-    template <bool NEED_RENORM>
-    __aicore__ inline void SelectTop1AndScoreImpl(LocalTensor<T> yOutTensor,
-                                                  LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch);
+    __aicore__ inline void SelectTop1AndScoreNoNorm(LocalTensor<T> yOutTensor,
+                                                    LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch);
+    __aicore__ inline void SelectTop1AndScoreWithNorm(LocalTensor<T> yOutTensor,
+                                                      LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch);
 
-    template <int32_t NORM_TYPE, bool NEED_RENORM, bool OUT_FLAG>
-    __aicore__ inline void ProcessSingleExpertImpl(int64_t batchSize, int64_t numBatches);
+    __aicore__ inline void ProcessSingleExpertSigmoid(int64_t batchSize, int64_t numBatches);
+    __aicore__ inline void ProcessSingleExpertSoftMaxRenorm(int64_t batchSize, int64_t numBatches);
+    __aicore__ inline void ProcessSingleExpertSoftMaxNoRenorm(int64_t batchSize, int64_t numBatches);
+    __aicore__ inline void ProcessSingleExpertSoftplus(int64_t batchSize, int64_t numBatches);
 
 private:
     TPipe *pipe_;
@@ -284,10 +287,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::CopyOutXNorm(int64_t
 }
 
 template <typename T>
-template <bool NEED_RENORM>
 __aicore__ inline void
-MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreImpl(LocalTensor<T> yOutTensor,
-                                                            LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch)
+MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreNoNorm(LocalTensor<T> yOutTensor,
+                                                              LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch)
 {
     LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
     LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
@@ -325,18 +327,61 @@ MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreImpl(LocalTensor<T> yOutT
         MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
                                                                            (__local_mem__ uint32_t *)sortedAddr);
         MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg0);
+        MicroAPI::Muls(vregOutput, vreg2, routedScalingFactor_, preg0);
 
-        if constexpr (NEED_RENORM) {
-            RegTensor<float> vreg3;
-            RegTensor<float> vreg4;
-            MicroAPI::ReduceSum(vreg3, vreg2, preg0);
-            MicroAPI::Adds(vreg3, vreg3, eps_, preg0);
-            MicroAPI::Duplicate(vreg4, vreg3, preg0);
-            MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
-            MicroAPI::Muls(vregOutput, vreg4, routedScalingFactor_, preg0);
-        } else {
-            MicroAPI::Muls(vregOutput, vreg2, routedScalingFactor_, preg0);
-        }
+        ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
+        MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
+    }
+}
+
+template <typename T>
+__aicore__ inline void
+MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreWithNorm(LocalTensor<T> yOutTensor,
+                                                                LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch)
+{
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
+
+    uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+    __local_mem__ float *xNormWithBiasAddr = (__local_mem__ float *)xNormWithBiasTensor.GetPhyAddr();
+    __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormTensor.GetPhyAddr();
+    __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedScore.GetPhyAddr();
+    __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr() + rowInBatch * kStride_;
+    __local_mem__ uint32_t *expertIdxAddr =
+        (__local_mem__ uint32_t *)expertIdxOut.GetPhyAddr() + rowInBatch * kStride_;
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> valueAndIndexReg;
+        MicroAPI::MaskReg maskForVL2 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::VL2>();
+        MicroAPI::MaskReg maskForExpertCount = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
+
+        MicroAPI::DataCopy(valueAndIndexReg, xNormWithBiasAddr);
+        MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
+        MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
+    }
+
+    __VEC_SCOPE__
+    {
+        RegTensor<uint32_t> vreg0;
+        RegTensor<uint32_t> vreg1;
+        RegTensor<float> vreg2;
+        RegTensor<float> vreg3;
+        RegTensor<float> vreg4;
+        RegTensor<float> vregOutput;
+
+        uint32_t kU32 = static_cast<uint32_t>(k_);
+        MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(kU32);
+
+        MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                           (__local_mem__ uint32_t *)sortedAddr);
+        MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg0);
+        MicroAPI::ReduceSum(vreg3, vreg2, preg0);
+        MicroAPI::Adds(vreg3, vreg3, eps_, preg0);
+        MicroAPI::Duplicate(vreg4, vreg3, preg0);
+        MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
+        MicroAPI::Muls(vregOutput, vreg4, routedScalingFactor_, preg0);
 
         ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
         MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
@@ -349,9 +394,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScore(L
                                                                                int64_t rowInBatch)
 {
     if (noNorm_) {
-        SelectTop1AndScoreImpl<false>(yOutTensor, expertIdxOut, rowInBatch);
+        SelectTop1AndScoreNoNorm(yOutTensor, expertIdxOut, rowInBatch);
     } else {
-        SelectTop1AndScoreImpl<true>(yOutTensor, expertIdxOut, rowInBatch);
+        SelectTop1AndScoreWithNorm(yOutTensor, expertIdxOut, rowInBatch);
     }
 }
 
@@ -377,9 +422,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::CopyOutBatch(int64_t
 }
 
 template <typename T>
-template <int32_t NORM_TYPE, bool NEED_RENORM, bool OUT_FLAG>
 __aicore__ inline void
-MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertImpl(int64_t batchSize, int64_t numBatches)
+MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertSigmoid(int64_t batchSize, int64_t numBatches)
 {
     DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
 
@@ -398,71 +442,84 @@ MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertImpl(int64_t batchSize, 
         LocalTensor<T> xInTensor = xInQueue_.DeQue<T>();
         LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
         LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+        LocalTensor<float> outOutTensor;
+        if (outFlag_) {
+            outOutTensor = outOutQueue_.AllocTensor<float>();
+        }
 
         __local_mem__ T *inputAddr = (__local_mem__ T *)xInTensor.GetPhyAddr();
         __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
         __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxOut.GetPhyAddr();
+        __local_mem__ float *outAddr = outFlag_ ? (__local_mem__ float *)outOutTensor.GetPhyAddr() : nullptr;
 
         uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
         uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
 
-        LocalTensor<float> outOutTensor;
-        __local_mem__ float *outAddr = nullptr;
-        if constexpr (OUT_FLAG) {
-            outOutTensor = outOutQueue_.AllocTensor<float>();
-            outAddr = (__local_mem__ float *)outOutTensor.GetPhyAddr();
-        }
+        if (outFlag_) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregOne;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+                MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
-        __VEC_SCOPE__
-        {
-            RegTensor<float> vregIn;
-            RegTensor<float> vregNorm;
-            RegTensor<float> vregOut;
-            RegTensor<float> vregOne;
-            RegTensor<float> vregTmp1;
-            RegTensor<float> vregTmp2;
-            RegTensor<float> vregTmp3;
-            RegTensor<int32_t> vregZeroIdx;
-            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
-
-            for (uint16_t i = 0; i < vfLoopNum; i++) {
-                preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
-                ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
-
-                if constexpr (NORM_TYPE == 1) {
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
                     MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), preg0);
                     MicroAPI::Exp(vregTmp2, vregTmp1, preg0);
                     MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
                     MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
-                } else if constexpr (NORM_TYPE == 0) {
-                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
-                } else {
-                    MicroAPI::Exp(vregTmp1, vregIn, preg0);
-                    MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), preg0);
-                    MicroAPI::Ln(vregTmp3, vregTmp2, preg0);
-                    MicroAPI::Sqrt(vregNorm, vregTmp3, preg0);
-                }
-
-                if constexpr (NEED_RENORM) {
                     RegTensor<float> vregSum;
                     MicroAPI::ReduceSum(vregSum, vregNorm, preg0);
                     MicroAPI::Adds(vregSum, vregSum, eps_, preg0);
                     RegTensor<float> vregSumBcast;
                     MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
                     MicroAPI::Div(vregOut, vregNorm, vregSumBcast, preg0);
-                } else {
-                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
-                }
-                MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
-
-                MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
-
-                ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
-                MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
-
-                if constexpr (OUT_FLAG) {
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
                     MicroAPI::DataCopy(outAddr + i * WG_VL_FLOAT_SIZE, vregNorm, preg0);
+                }
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregOne;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+                MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Muls(vregTmp1, vregIn, static_cast<float>(-1), preg0);
+                    MicroAPI::Exp(vregTmp2, vregTmp1, preg0);
+                    MicroAPI::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
+                    MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
+                    RegTensor<float> vregSum;
+                    MicroAPI::ReduceSum(vregSum, vregNorm, preg0);
+                    MicroAPI::Adds(vregSum, vregSum, eps_, preg0);
+                    RegTensor<float> vregSumBcast;
+                    MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+                    MicroAPI::Div(vregOut, vregNorm, vregSumBcast, preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
                 }
             }
         }
@@ -471,23 +528,339 @@ MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertImpl(int64_t batchSize, 
         expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
         yOutTensor = yOutQueue_.DeQue<T>();
         expertIdxOut = expertIdxOutQueue_.DeQue<int32_t>();
-
         DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(T)), 0, 0, 0};
         DataCopyPad(yGm_[gmOffset], yOutTensor, yCopyParams);
         DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(int32_t)), 0, 0, 0};
         DataCopyPad(expertIdxGm_[gmOffset], expertIdxOut, idxCopyParams);
-
         yOutQueue_.FreeTensor(yOutTensor);
         expertIdxOutQueue_.FreeTensor(expertIdxOut);
 
-        if constexpr (OUT_FLAG) {
+        if (outFlag_) {
             outOutQueue_.EnQue<float>(outOutTensor);
             outOutTensor = outOutQueue_.DeQue<float>();
             DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(float)), 0, 0, 0};
             DataCopyPad(outGm_[gmOffset], outOutTensor, outCopyParams);
             outOutQueue_.FreeTensor(outOutTensor);
         }
+        xInQueue_.FreeTensor(xInTensor);
+    }
+}
 
+template <typename T>
+__aicore__ inline void
+MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertSoftMaxRenorm(int64_t batchSize, int64_t numBatches)
+{
+    DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
+
+    for (int64_t batch = 0; batch < numBatches; batch++) {
+        int64_t rowsInBatch = Min(batchSize, curCoreRowCount_ - batch * batchSize);
+        int64_t gmOffset = batch * batchSize;
+
+        if (batch + 1 < numBatches) {
+            int64_t nextRows = Min(batchSize, curCoreRowCount_ - (batch + 1) * batchSize);
+            LocalTensor<T> xNextTensor = xInQueue_.AllocTensor<T>();
+            DataCopyExtParams nextCopyParams{1, static_cast<uint32_t>(nextRows * sizeof(T)), 0, 0, 0};
+            DataCopyPad(xNextTensor, xGm_[(batch + 1) * batchSize], nextCopyParams, dataCopyPadParams);
+            xInQueue_.EnQue(xNextTensor);
+        }
+
+        LocalTensor<T> xInTensor = xInQueue_.DeQue<T>();
+        LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
+        LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+        LocalTensor<float> outOutTensor;
+        if (outFlag_) {
+            outOutTensor = outOutQueue_.AllocTensor<float>();
+        }
+
+        __local_mem__ T *inputAddr = (__local_mem__ T *)xInTensor.GetPhyAddr();
+        __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
+        __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxOut.GetPhyAddr();
+        __local_mem__ float *outAddr = outFlag_ ? (__local_mem__ float *)outOutTensor.GetPhyAddr() : nullptr;
+
+        uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
+
+        if (outFlag_) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
+                    RegTensor<float> vregSum;
+                    MicroAPI::ReduceSum(vregSum, vregNorm, preg0);
+                    MicroAPI::Adds(vregSum, vregSum, eps_, preg0);
+                    RegTensor<float> vregSumBcast;
+                    MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+                    MicroAPI::Div(vregOut, vregNorm, vregSumBcast, preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                    MicroAPI::DataCopy(outAddr + i * WG_VL_FLOAT_SIZE, vregNorm, preg0);
+                }
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
+                    RegTensor<float> vregSum;
+                    MicroAPI::ReduceSum(vregSum, vregNorm, preg0);
+                    MicroAPI::Adds(vregSum, vregSum, eps_, preg0);
+                    RegTensor<float> vregSumBcast;
+                    MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+                    MicroAPI::Div(vregOut, vregNorm, vregSumBcast, preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                }
+            }
+        }
+
+        yOutQueue_.EnQue(yOutTensor);
+        expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
+        yOutTensor = yOutQueue_.DeQue<T>();
+        expertIdxOut = expertIdxOutQueue_.DeQue<int32_t>();
+        DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(T)), 0, 0, 0};
+        DataCopyPad(yGm_[gmOffset], yOutTensor, yCopyParams);
+        DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(expertIdxGm_[gmOffset], expertIdxOut, idxCopyParams);
+        yOutQueue_.FreeTensor(yOutTensor);
+        expertIdxOutQueue_.FreeTensor(expertIdxOut);
+
+        if (outFlag_) {
+            outOutQueue_.EnQue<float>(outOutTensor);
+            outOutTensor = outOutQueue_.DeQue<float>();
+            DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(float)), 0, 0, 0};
+            DataCopyPad(outGm_[gmOffset], outOutTensor, outCopyParams);
+            outOutQueue_.FreeTensor(outOutTensor);
+        }
+        xInQueue_.FreeTensor(xInTensor);
+    }
+}
+
+template <typename T>
+__aicore__ inline void
+MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertSoftMaxNoRenorm(int64_t batchSize, int64_t numBatches)
+{
+    DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
+
+    for (int64_t batch = 0; batch < numBatches; batch++) {
+        int64_t rowsInBatch = Min(batchSize, curCoreRowCount_ - batch * batchSize);
+        int64_t gmOffset = batch * batchSize;
+
+        if (batch + 1 < numBatches) {
+            int64_t nextRows = Min(batchSize, curCoreRowCount_ - (batch + 1) * batchSize);
+            LocalTensor<T> xNextTensor = xInQueue_.AllocTensor<T>();
+            DataCopyExtParams nextCopyParams{1, static_cast<uint32_t>(nextRows * sizeof(T)), 0, 0, 0};
+            DataCopyPad(xNextTensor, xGm_[(batch + 1) * batchSize], nextCopyParams, dataCopyPadParams);
+            xInQueue_.EnQue(xNextTensor);
+        }
+
+        LocalTensor<T> xInTensor = xInQueue_.DeQue<T>();
+        LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
+        LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+        LocalTensor<float> outOutTensor;
+        if (outFlag_) {
+            outOutTensor = outOutQueue_.AllocTensor<float>();
+        }
+
+        __local_mem__ T *inputAddr = (__local_mem__ T *)xInTensor.GetPhyAddr();
+        __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
+        __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxOut.GetPhyAddr();
+        __local_mem__ float *outAddr = outFlag_ ? (__local_mem__ float *)outOutTensor.GetPhyAddr() : nullptr;
+
+        uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
+
+        if (outFlag_) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                    MicroAPI::DataCopy(outAddr + i * WG_VL_FLOAT_SIZE, vregNorm, preg0);
+                }
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Duplicate(vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                }
+            }
+        }
+
+        yOutQueue_.EnQue(yOutTensor);
+        expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
+        yOutTensor = yOutQueue_.DeQue<T>();
+        expertIdxOut = expertIdxOutQueue_.DeQue<int32_t>();
+        DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(T)), 0, 0, 0};
+        DataCopyPad(yGm_[gmOffset], yOutTensor, yCopyParams);
+        DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(expertIdxGm_[gmOffset], expertIdxOut, idxCopyParams);
+        yOutQueue_.FreeTensor(yOutTensor);
+        expertIdxOutQueue_.FreeTensor(expertIdxOut);
+
+        if (outFlag_) {
+            outOutQueue_.EnQue<float>(outOutTensor);
+            outOutTensor = outOutQueue_.DeQue<float>();
+            DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(float)), 0, 0, 0};
+            DataCopyPad(outGm_[gmOffset], outOutTensor, outCopyParams);
+            outOutQueue_.FreeTensor(outOutTensor);
+        }
+        xInQueue_.FreeTensor(xInTensor);
+    }
+}
+
+template <typename T>
+__aicore__ inline void
+MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertSoftplus(int64_t batchSize, int64_t numBatches)
+{
+    DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
+
+    for (int64_t batch = 0; batch < numBatches; batch++) {
+        int64_t rowsInBatch = Min(batchSize, curCoreRowCount_ - batch * batchSize);
+        int64_t gmOffset = batch * batchSize;
+
+        if (batch + 1 < numBatches) {
+            int64_t nextRows = Min(batchSize, curCoreRowCount_ - (batch + 1) * batchSize);
+            LocalTensor<T> xNextTensor = xInQueue_.AllocTensor<T>();
+            DataCopyExtParams nextCopyParams{1, static_cast<uint32_t>(nextRows * sizeof(T)), 0, 0, 0};
+            DataCopyPad(xNextTensor, xGm_[(batch + 1) * batchSize], nextCopyParams, dataCopyPadParams);
+            xInQueue_.EnQue(xNextTensor);
+        }
+
+        LocalTensor<T> xInTensor = xInQueue_.DeQue<T>();
+        LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
+        LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+        LocalTensor<float> outOutTensor;
+        if (outFlag_) {
+            outOutTensor = outOutQueue_.AllocTensor<float>();
+        }
+
+        __local_mem__ T *inputAddr = (__local_mem__ T *)xInTensor.GetPhyAddr();
+        __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
+        __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxOut.GetPhyAddr();
+        __local_mem__ float *outAddr = outFlag_ ? (__local_mem__ float *)outOutTensor.GetPhyAddr() : nullptr;
+
+        uint32_t rowsInBatchU32 = static_cast<uint32_t>(rowsInBatch);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(rowsInBatchU32, WG_VL_FLOAT_SIZE));
+
+        if (outFlag_) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Exp(vregTmp1, vregIn, preg0);
+                    MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), preg0);
+                    MicroAPI::Ln(vregTmp3, vregTmp2, preg0);
+                    MicroAPI::Sqrt(vregNorm, vregTmp3, preg0);
+                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                    MicroAPI::DataCopy(outAddr + i * WG_VL_FLOAT_SIZE, vregNorm, preg0);
+                }
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregIn;
+                RegTensor<float> vregNorm;
+                RegTensor<float> vregOut;
+                RegTensor<float> vregTmp1;
+                RegTensor<float> vregTmp2;
+                RegTensor<float> vregTmp3;
+                RegTensor<int32_t> vregZeroIdx;
+                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+                for (uint16_t i = 0; i < vfLoopNum; i++) {
+                    preg0 = MicroAPI::UpdateMask<float>(rowsInBatchU32);
+                    ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::Exp(vregTmp1, vregIn, preg0);
+                    MicroAPI::Adds(vregTmp2, vregTmp1, static_cast<float>(1), preg0);
+                    MicroAPI::Ln(vregTmp3, vregTmp2, preg0);
+                    MicroAPI::Sqrt(vregNorm, vregTmp3, preg0);
+                    MicroAPI::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
+                    MicroAPI::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                    MicroAPI::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
+                    ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * WG_VL_FLOAT_SIZE);
+                    MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vregZeroIdx, preg0);
+                }
+            }
+        }
+
+        yOutQueue_.EnQue(yOutTensor);
+        expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
+        yOutTensor = yOutQueue_.DeQue<T>();
+        expertIdxOut = expertIdxOutQueue_.DeQue<int32_t>();
+        DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(T)), 0, 0, 0};
+        DataCopyPad(yGm_[gmOffset], yOutTensor, yCopyParams);
+        DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(expertIdxGm_[gmOffset], expertIdxOut, idxCopyParams);
+        yOutQueue_.FreeTensor(yOutTensor);
+        expertIdxOutQueue_.FreeTensor(expertIdxOut);
+
+        if (outFlag_) {
+            outOutQueue_.EnQue<float>(outOutTensor);
+            outOutTensor = outOutQueue_.DeQue<float>();
+            DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(rowsInBatch * sizeof(float)), 0, 0, 0};
+            DataCopyPad(outGm_[gmOffset], outOutTensor, outCopyParams);
+            outOutQueue_.FreeTensor(outOutTensor);
+        }
         xInQueue_.FreeTensor(xInTensor);
     }
 }
@@ -506,31 +879,15 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
     xInQueue_.EnQue(xInTensor);
 
     if (normType_ == 1) {
-        if (outFlag_) {
-            ProcessSingleExpertImpl<1, true, true>(batchSize, numBatches);
-        } else {
-            ProcessSingleExpertImpl<1, true, false>(batchSize, numBatches);
-        }
+        ProcessSingleExpertSigmoid(batchSize, numBatches);
     } else if (normType_ == 0) {
         if (renorm_ == 0) {
-            if (outFlag_) {
-                ProcessSingleExpertImpl<0, false, true>(batchSize, numBatches);
-            } else {
-                ProcessSingleExpertImpl<0, false, false>(batchSize, numBatches);
-            }
+            ProcessSingleExpertSoftMaxNoRenorm(batchSize, numBatches);
         } else {
-            if (outFlag_) {
-                ProcessSingleExpertImpl<0, true, true>(batchSize, numBatches);
-            } else {
-                ProcessSingleExpertImpl<0, true, false>(batchSize, numBatches);
-            }
+            ProcessSingleExpertSoftMaxRenorm(batchSize, numBatches);
         }
     } else {
-        if (outFlag_) {
-            ProcessSingleExpertImpl<2, false, true>(batchSize, numBatches);
-        } else {
-            ProcessSingleExpertImpl<2, false, false>(batchSize, numBatches);
-        }
+        ProcessSingleExpertSoftplus(batchSize, numBatches);
     }
 }
 
