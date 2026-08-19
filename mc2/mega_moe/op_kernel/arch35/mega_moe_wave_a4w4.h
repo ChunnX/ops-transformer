@@ -105,6 +105,11 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
     uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
+    uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
+    uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
+    if (SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
+        return;
+    }
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
     UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true,
                                     configureCombineCounter, true>(gmmExecutionConfig_, syncWorkspaceLayout_,

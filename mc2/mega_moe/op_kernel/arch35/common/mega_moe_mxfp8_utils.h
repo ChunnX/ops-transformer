@@ -32,8 +32,7 @@ __aicore__ inline void ComputeFp8Token(__ubuf__ InputType *srcAddr, __ubuf__ uin
 {
     Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen);
     Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleAddr, halfScaleAddr, scaleNum);
-    Quant::ComputeFp8Data<InputType, Fp8Type, AscendC::RoundMode::CAST_TRUNC,
-                          AscendC::RoundMode::CAST_RINT>(
+    Quant::ComputeFp8Data<InputType, Fp8Type, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
         srcAddr, halfScaleAddr, outDataAddr, processLen);
 }
 
@@ -42,7 +41,6 @@ template <uint8_t QuantMode, typename ExpandXType>
 __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTensor<ExpandXType> &inLocal,
                                   LocalTensor<float> &floatTemp, int32_t processLen)
 {
-    PipeBarrier<PIPE_V>();
     uint32_t mxScaleNum = Align2(Ceil32(processLen));
     using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
     LocalTensor<Fp8Type> castFp8LocalTensor = outLocal.template ReinterpretCast<Fp8Type>();
@@ -53,8 +51,8 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTenso
     uint32_t tokenStorageElementCount = Align256<uint32_t>(static_cast<uint32_t>(processLen));
     __ubuf__ uint16_t *mxScaleLocalAddr =
         (__ubuf__ uint16_t *)castFp8LocalTensor[tokenStorageElementCount].GetPhyAddr();
-    ComputeFp8Token<ExpandXType, Fp8Type>(srcAddr, maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr,
-                                          outLocalAddr, static_cast<uint32_t>(processLen), mxScaleNum);
+    ComputeFp8Token<ExpandXType, Fp8Type>(srcAddr, maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, outLocalAddr,
+                                          static_cast<uint32_t>(processLen), mxScaleNum);
 }
 
 // 将一条 MXFP8 token 记录反量化为 FP32，供 Unpermute 累加。
