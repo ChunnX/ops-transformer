@@ -265,17 +265,18 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
     auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
 
-    // AllToAll: 将 mmResult 按 M 轴重分布
-    // 每卡持有 mmResult[rankM, rankN]，需将 rankM 拆成 rankDim 份分发给各卡
-    // 每份大小 = (rankM / rankDim) * rankN
-    // strideCount = rankM * rankN / rankDim (同一目标卡的 tile 间步长)
+    // AllToAll: 将 mmResult[rankM, rankN] 按 N 轴重分布
+    // 每卡持有完整 mmResult[rankM, rankN]，需将 rankN 拆成 rankDim 份分发给各卡
+    // 每份大小 = rankM * (rankN / rankDim)
+    // strideCount = rankM * rankN / rankDim (源缓冲区中同一目标卡的两个 tile 间步长)
+
+    uint64_t perRankN = nonSplitAxisSize / rankDim_;
 
     // 头块 AllToAll
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount =
-            static_cast<uint64_t>(commTiling.splitAxisTileSize) * nonSplitAxisSize;
-        uint64_t headStrideCount =
-            static_cast<uint64_t>(splitAxisSize_) * nonSplitAxisSize / rankDim_;
+            static_cast<uint64_t>(commTiling.splitAxisTileSize) * perRankN;
+        uint64_t headStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
         hccl_.template AlltoAll<false>(
             mmResultGM_, y_,
             headSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
@@ -287,9 +288,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) *
                               commTiling.splitAxisTileSize * nonSplitAxisSize * sizeof(YType);
         uint64_t tailSendCount =
-            static_cast<uint64_t>(commTiling.splitAxisTailSize) * nonSplitAxisSize;
-        uint64_t tailStrideCount =
-            static_cast<uint64_t>(splitAxisSize_) * nonSplitAxisSize / rankDim_;
+            static_cast<uint64_t>(commTiling.splitAxisTailSize) * perRankN;
+        uint64_t tailStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
         hccl_.template AlltoAll<false>(
             mmResultGM_ + headOffset, y_ + headOffset,
             tailSendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),

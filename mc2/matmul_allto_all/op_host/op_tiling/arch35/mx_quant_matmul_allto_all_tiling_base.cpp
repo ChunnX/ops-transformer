@@ -1032,7 +1032,7 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(Apace::CommTilingData &
     tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
     tilingInfo.splitAxisTailSize = inferredInfo.tailM;
     tilingInfo.splitAxisTailCnt = inferredInfo.tailCnt;
-    tilingInfo.nonSplitAxisSize = contextInfo.args_.kValue * contextInfo.args_.rankDim;
+    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue;
 }
 
 /**
