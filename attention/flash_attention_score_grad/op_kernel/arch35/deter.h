@@ -1550,6 +1550,7 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
     j -= 1;
     r -= 1;
     coordinateInfo.batchId = -1;
+    int64_t n1 = n2 * g;
     for (int64_t bIdx = 0; bIdx < b; bIdx++) {
         if (r < tndS2BlockPrefixSum[bIdx + 1]) {
             int64_t actualS1Len = 0;
@@ -1557,7 +1558,8 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
             GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, actualS1Len, actualS2Len);
             int64_t s1OuterTmp = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
             int64_t s2OuterTmp = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
-            int64_t delta = r - tndS2BlockPrefixSum[bIdx] + deltaCnt;
+            int64_t batchPrefix = static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]);
+            int64_t delta = r - batchPrefix + deltaCnt;
             // 更正delta
             if (delta < 0) {
                 deltaCnt += (-delta);
@@ -1565,12 +1567,18 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
             }
             // delta / s1OuterTmp表示在此bIdx下，s2的绝对idx
             int64_t s2IdxTmp = delta / s1OuterTmp * k + j;
-            if (s2IdxTmp >= s2OuterTmp * n2 * g) {
+            if (s2IdxTmp >= s2OuterTmp * n1) {
                 continue;
             }
-            int64_t n1Idx = s2IdxTmp / s2OuterTmp;
-            int64_t s2Idx = s2IdxTmp % s2OuterTmp;
-            int64_t s1Idx = (s2Idx + delta) % s1OuterTmp;
+            int64_t n1Idx = s2IdxTmp % n1;
+            int64_t s2Idx = s2IdxTmp / n1;
+            // 每个head使用固定的核槽位，同一轮内映射到不同的S1 block；batchRound仅用于轮转槽位。
+            // host保证k能被n1整除且每个batch的S1 block数不少于k / n1。
+            int64_t batchRound = r - batchPrefix;
+            int64_t s1Idx = (j / n1 + batchRound) % s1OuterTmp;
+            if (s1Idx < 0) {
+                s1Idx += s1OuterTmp;
+            }
             coordinateInfo.actualS1Len = actualS1Len;
             coordinateInfo.actualS2Len = actualS2Len;
             coordinateInfo.s1Outer = s1OuterTmp;
