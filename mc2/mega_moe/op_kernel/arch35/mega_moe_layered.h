@@ -135,12 +135,13 @@ private:
     __aicore__ inline void DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                               uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline bool PrepareDispatchData(uint32_t targetServerForSender, uint32_t peerRank,
-                                               HcommBatchHandle &activeBatchHandle, int32_t slot);
-    __aicore__ inline bool PrepareDispatchFlag(uint32_t targetServerForSender, uint32_t peerRank,
-                                               HcommBatchHandle &activeBatchHandle, int32_t slot, bool firstFlag);
+                                               HcommBatchHandle &activeBatchHandle, int32_t slot, int32_t &tokenIdx);
+    __aicore__ inline void PrepareDispatchFlag(uint32_t peerRank, HcommBatchHandle &activeBatchHandle,
+                                               int32_t tokenIdx, bool firstFlag);
     __aicore__ inline void CommitPreparedDispatchBatch(uint32_t targetServerForSender, uint32_t peerRank,
-                                                       HcommBatchHandle &activeBatchHandle, int32_t scanStart,
-                                                       int32_t scanEnd);
+                                                       HcommBatchHandle &activeBatchHandle,
+                                                       const LocalTensor<int32_t> &preparedDescTensor,
+                                                       uint32_t preparedDataCount);
     __aicore__ inline int32_t UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor, int32_t endCount);
     __aicore__ inline bool DispatchSyncWithCompute(uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void LoadTokenFromLocalRelay(uint32_t srcServer, uint32_t tokenIndex, int32_t bufferIdx,
@@ -332,10 +333,13 @@ private:
     static constexpr uint32_t HCOMM_BATCH_CAPACITY = 512;
     static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
     static constexpr uint32_t DISPATCH_BATCH_COMMIT_SIZE = 256;
-    // Local send-slot protocol: producer READY -> sender DATA_PREPARED -> FLAG_PREPARED -> DONE.
+    static constexpr uint32_t DISPATCH_PREPARED_DESC_INTS = 2;
+    static_assert(DISPATCH_BATCH_COMMIT_SIZE * DISPATCH_PREPARED_DESC_INTS * sizeof(int32_t) <=
+                      SEND_DEDUP_MASK_UB_BYTES,
+                  "Dispatch prepared descriptors exceed sender scratch UB");
+    // Local send-slot protocol: producer READY -> sender DATA_PREPARED -> DONE.
     static constexpr int32_t DISPATCH_SLOT_READY = 1;
     static constexpr int32_t DISPATCH_SLOT_DATA_PREPARED = 2;
-    static constexpr int32_t DISPATCH_SLOT_FLAG_PREPARED = 3;
     static constexpr int32_t DISPATCH_SLOT_DONE = 4;
 
     using BlockEpilogue =
@@ -1123,7 +1127,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDispatchData(
-    uint32_t targetServerForSender, uint32_t peerRank, HcommBatchHandle &activeBatchHandle, int32_t slot)
+    uint32_t targetServerForSender, uint32_t peerRank, HcommBatchHandle &activeBatchHandle, int32_t slot,
+    int32_t &tokenIdx)
 {
     uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
                           static_cast<uint64_t>(slot) * sendWorkspaceMetaBytes_;
@@ -1132,7 +1137,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDi
     if (ReadGmByPassDCache(srcMetaPtr + 1) != DISPATCH_SLOT_READY) {
         return false;
     }
-    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
+    tokenIdx = ReadGmByPassDCache(srcMetaPtr);
     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     GM_ADDR srcAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + relayOffset;
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
@@ -1142,18 +1147,9 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDi
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDispatchFlag(
-    uint32_t targetServerForSender, uint32_t peerRank, HcommBatchHandle &activeBatchHandle, int32_t slot,
-    bool firstFlag)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDispatchFlag(
+    uint32_t peerRank, HcommBatchHandle &activeBatchHandle, int32_t tokenIdx, bool firstFlag)
 {
-    uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                          static_cast<uint64_t>(slot) * sendWorkspaceMetaBytes_;
-    __gm__ int32_t *srcMetaPtr =
-        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
-    if (ReadGmByPassDCache(srcMetaPtr + 1) != DISPATCH_SLOT_DATA_PREPARED) {
-        return false;
-    }
-    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
     uint64_t flagOffset = RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     GM_ADDR localFlagAddr = GetRankWinAddrWithOffset(rankId_, dispatchFlagWinOffset_) + flagOffset;
     GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(peerRank, dispatchFlagWinOffset_) + flagOffset;
@@ -1163,38 +1159,29 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDi
     } else {
         hcomm_.WriteNbi<DISPATCH_FLAG_WQE_CONFIG>(activeBatchHandle, remoteFlagAddr, localFlagAddr, sizeof(uint64_t));
     }
-    WriteGmByPassDCache(srcMetaPtr + 1, DISPATCH_SLOT_FLAG_PREPARED);
-    return true;
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CommitPreparedDispatchBatch(
-    uint32_t targetServerForSender, uint32_t peerRank, HcommBatchHandle &activeBatchHandle, int32_t scanStart,
-    int32_t scanEnd)
+    uint32_t targetServerForSender, uint32_t peerRank, HcommBatchHandle &activeBatchHandle,
+    const LocalTensor<int32_t> &preparedDescTensor, uint32_t preparedDataCount)
 {
     // All DATA_PREPARED WQEs are submitted before any ready-flag WQE is added to this channel.
     hcomm_.BatchCommit(activeBatchHandle);
 
-    bool firstFlag = true;
-    uint32_t preparedFlagCount = 0;
-    for (int32_t slot = scanStart; slot < scanEnd; ++slot) {
-        bool prepared = PrepareDispatchFlag(targetServerForSender, peerRank, activeBatchHandle, slot, firstFlag);
-        preparedFlagCount += static_cast<uint32_t>(prepared);
-        firstFlag = firstFlag && !prepared;
-    }
-    if (preparedFlagCount == 0U) {
-        return;
+    for (uint32_t descIdx = 0; descIdx < preparedDataCount; ++descIdx) {
+        int32_t tokenIdx = preparedDescTensor.GetValue(descIdx * DISPATCH_PREPARED_DESC_INTS + 1U);
+        PrepareDispatchFlag(peerRank, activeBatchHandle, tokenIdx, descIdx == 0U);
     }
 
     hcomm_.BatchCommit(activeBatchHandle);
-    for (int32_t slot = scanStart; slot < scanEnd; ++slot) {
+    for (uint32_t descIdx = 0; descIdx < preparedDataCount; ++descIdx) {
+        int32_t slot = preparedDescTensor.GetValue(descIdx * DISPATCH_PREPARED_DESC_INTS);
         uint64_t metaOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
                               static_cast<uint64_t>(slot) * sendWorkspaceMetaBytes_;
         __gm__ int32_t *srcMetaPtr =
             reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr + metaOffset);
-        if (ReadGmByPassDCache(srcMetaPtr + 1) == DISPATCH_SLOT_FLAG_PREPARED) {
-            WriteGmByPassDCache(srcMetaPtr + 1, DISPATCH_SLOT_DONE);
-        }
+        WriteGmByPassDCache(srcMetaPtr + 1, DISPATCH_SLOT_DONE);
     }
 }
 
@@ -1247,9 +1234,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
         PipeBarrier<PIPE_ALL>();
+        // Sender cores do not use the dispatch-compute dedup mask. Reuse its first bytes for compact
+        // {slot, tokenIdx} descriptors so this optimization does not increase the UB high-water mark.
+        LocalTensor<int32_t> preparedDescTensor = sendDedupMaskTensor_.template ReinterpretCast<int32_t>();
         int32_t scanCursor = cursor;
-        int32_t preparedScanStart = cursor;
-        int32_t preparedScanEnd = cursor;
         // SEND_SCAN_WINDOW only bounds each polling pass; keep the batch open across windows until it is full.
         uint32_t preparedDataCount = 0;
         while (true) {
@@ -1263,14 +1251,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             }
             int32_t slot = scanCursor;
             while (slot < scanEnd && preparedDataCount < DISPATCH_BATCH_COMMIT_SIZE) {
-                if (PrepareDispatchData(targetServerForSender, peerRank, activeBatchHandle, slot)) {
-                    if (preparedDataCount == 0U) {
-                        preparedScanStart = slot;
-                        preparedScanEnd = slot + 1;
-                    } else {
-                        preparedScanStart = (slot < preparedScanStart) ? slot : preparedScanStart;
-                        preparedScanEnd = (slot + 1 > preparedScanEnd) ? slot + 1 : preparedScanEnd;
-                    }
+                int32_t tokenIdx = 0;
+                if (PrepareDispatchData(targetServerForSender, peerRank, activeBatchHandle, slot, tokenIdx)) {
+                    uint32_t descOffset = preparedDataCount * DISPATCH_PREPARED_DESC_INTS;
+                    preparedDescTensor.SetValue(descOffset, slot);
+                    preparedDescTensor.SetValue(descOffset + 1U, tokenIdx);
                     ++preparedDataCount;
                 }
                 ++slot;
@@ -1285,8 +1270,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             bool batchFull = preparedDataCount == DISPATCH_BATCH_COMMIT_SIZE;
             bool tailBatchReady = preparedDataCount != 0U && computeDone && scannedToEnd;
             if (batchFull || tailBatchReady) {
-                CommitPreparedDispatchBatch(targetServerForSender, peerRank, activeBatchHandle, preparedScanStart,
-                                            preparedScanEnd);
+                CommitPreparedDispatchBatch(targetServerForSender, peerRank, activeBatchHandle, preparedDescTensor,
+                                            preparedDataCount);
                 preparedDataCount = 0;
             }
 
@@ -1294,10 +1279,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-            }
-            if (preparedDataCount == 0U) {
-                preparedScanStart = cursor;
-                preparedScanEnd = cursor;
             }
             if (computeDone && preparedDataCount == 0U && cursor == ReadGmByPassDCache(countPtr)) {
                 break;
