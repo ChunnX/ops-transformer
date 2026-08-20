@@ -363,6 +363,8 @@ public:
             ASCEND_LOGI("Layer %u all support UB_MEM, rankNumPerUbDomain_: %u", layerList[layerIndex],
                         rankNumPerUbDomain_);
         }
+        ASCEND_LOGI("check protocol UB_MEM support Failed, Now check if cross super node rankNumPerUbDomain_ is %u", rankNumPerUbDomain_);
+        TORCH_CHECK(false, "rankNumPerUbDomain_ is %u, rankSize is %u", rankNumPerUbDomain_, rankSize);
         // 跨超场景判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
         if (rankNumPerUbDomain_ != 0 && rankNumPerUbDomain_ < rankSize) {
             TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
