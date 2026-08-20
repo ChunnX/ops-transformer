@@ -114,7 +114,6 @@ private:
     GM_ADDR mmResultGM_;  // matmul 输出缓冲区
 
     AscendC::Hccl<ServerType> hccl_;
-    AscendC::HcclHandle *tileCommHandles_{nullptr};
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
     uint64_t splitAxisSize_{0};  // 本卡 M 大小（= rankM = M/rankDim）
@@ -132,10 +131,8 @@ private:
     __aicore__ inline void SetupTileParams(Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset,
                                            GM_ADDR cGMOffset, GM_ADDR scaleAOffset);
     __aicore__ inline void MatmulTileProcess(uint32_t tileIdx, uint32_t curTileM);
-    // 逐tile异步下发通信
-    __aicore__ inline void PrepareAllToAll();
-    __aicore__ inline void PrepareTileAllToAll(uint32_t tileIdx, uint32_t curTileM);
-    __aicore__ inline void RunTileAllToAll(uint32_t tileIdx, uint32_t curTileM);
+    // 逐tile异步下发通信，返回handle
+    __aicore__ inline AscendC::HcclHandle PrepareTileAllToAll(uint32_t tileIdx, uint32_t curTileM);
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -162,12 +159,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     x2Scale_ = x2_scale;
     workspaceGM_ = workspaceGM;
 
-    // workspace 布局: [tileCommHandles (totalTileCnt * sizeof(HcclHandle))] [mmResult]
-    // handle数组放在workspace开头，mmResult紧跟其后
-    tileCommHandles_ = reinterpret_cast<AscendC::HcclHandle *>(workspaceGM);
-    uint64_t handleArraySize = static_cast<uint64_t>(totalTileCnt_) * sizeof(AscendC::HcclHandle);
-    handleArraySize = (handleArraySize + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM; // 512对齐
-    mmResultGM_ = workspaceGM + handleArraySize;
+    // workspace 布局: mmResult 用于存储 matmul 输出
+    mmResultGM_ = workspaceGM;
 
     // 初始化 HCCL
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
@@ -179,17 +172,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void
-QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareAllToAll()
-{
-    // 空实现，逐tile通信在Run中通过PrepareTileAllToAll下发
-}
-
-template <typename X1Type, typename X2Type, typename YType,
-          typename QuantMatmulAllToAllTilingDataType,
-          AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void
+__aicore__ inline AscendC::HcclHandle
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareTileAllToAll(
     uint32_t tileIdx, uint32_t curTileM)
@@ -203,7 +186,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     uint64_t tileOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize;
     uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
 
-    tileCommHandles_[tileIdx] = hccl_.template AlltoAll<true>(
+    return hccl_.template AlltoAll<true>(
         mmResultGM_ + tileOffset * nonSplitAxisSize * sizeof(YType),
         y_ + tileOffset * perRankN * sizeof(YType),
         sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
@@ -308,31 +291,26 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     // Phase 1: 逐tile交替计算+通信
     // tile 0: 先计算（无前序通信可等）
+    AscendC::HcclHandle handles[64];
     if (totalTileCnt_ > 0) {
         uint32_t curTileM = (0 < headTileCnt_) ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
         MatmulTileProcess(0, curTileM);
-    }
-
-    // tile 1~N-1: Wait前序通信 → 计算当前tile → 异步下发当前tile通信
-    // 但首个tile通信需要在计算完成后下发（数据依赖）
-    if (totalTileCnt_ > 0) {
         AscendC::SyncAll(); // 确保tile0计算全核完成
-        PrepareTileAllToAll(0, (0 < headTileCnt_) ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize);
+        handles[0] = PrepareTileAllToAll(0, curTileM);
     }
 
+    // tile 1~N-1: 计算当前tile（与前一个tile的通信并行）→ 异步下发当前tile通信
     for (uint32_t tileIdx = 1; tileIdx < totalTileCnt_; tileIdx++) {
         uint32_t curTileM = (tileIdx < headTileCnt_) ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
-        // 计算当前tile（与前一个tile的通信并行）
         MatmulTileProcess(tileIdx, curTileM);
         AscendC::SyncAll(); // 确保当前tile计算全核完成
-        // 异步下发当前tile的通信
-        PrepareTileAllToAll(tileIdx, curTileM);
+        handles[tileIdx] = PrepareTileAllToAll(tileIdx, curTileM);
     }
 
     // Phase 2: 等待所有tile通信完成
     AscendC::SyncAll();
     for (uint32_t tileIdx = 0; tileIdx < totalTileCnt_; tileIdx++) {
-        hccl_.Wait(tileCommHandles_[tileIdx]);
+        hccl_.Wait(handles[tileIdx]);
     }
 
     // Phase 3: Finalize
