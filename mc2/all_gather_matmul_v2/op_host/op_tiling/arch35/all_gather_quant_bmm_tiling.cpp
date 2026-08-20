@@ -551,6 +551,17 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+void AllGatherQuantBmmTiling::SetHcommTilingInfo()
+{
+    auto &param = MutableRCSTilingDataA5();
+    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
+    hcommTilingData_.commTile.splitAxisTileSize = tileM;
+    hcommTilingData_.commTile.splitAxisTileCnt = param.tileCnt;
+    hcommTilingData_.commTile.splitAxisTailSize = param.tailM;
+    hcommTilingData_.commTile.splitAxisTailCnt = param.tailCnt;
+    hcommTilingData_.commTile.nonSplitAxisSize = args_.kValue;
+}
+
 ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
 {
     auto &param = MutableRCSTilingDataA5();
@@ -569,19 +580,19 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue,
                                    false, args_.isBTrans,
-                                   allGatherMatmulTilingDataFp8_->mmTile);
+                                   hcommTilingData_.mmTile);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue,
                                    false, args_.isBTrans,
-                                   allGatherMatmulTilingDataFp8_->mmTile);
+                                   hcommTilingData_.mmTile);
     }
 
     OP_LOGI(opName_, "DoApaceMatmulTiling: isFp4=%d, totalLogicalM=%u, n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
             isFp4_, totalLogicalM, args_.nValue, args_.kValue, args_.isBTrans,
-            allGatherMatmulTilingDataFp8_->mmTile.usedCoreNum);
+            hcommTilingData_.mmTile.usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -710,6 +721,31 @@ void Mc2PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cach
 
 ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 {
+    if (quantMmMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) {
+        // Hcomm 路径: 填充 hcommAllGatherMatmulTilingData 并输出
+        SetHcommTilingInfo();
+        hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
+        hcommTilingData_.mc2CcTiling = allGatherMatmulTilingDataFp8_->mc2CcTiling;
+        hcommAllGatherMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllGatherMatmulTilingData>();
+        OP_TILING_CHECK(outTilingData == nullptr,
+                        OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
+        OP_TILING_CHECK(tilingBufCap < sizeof(hcommTilingData_),
+                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
+                                tilingBufCap, sizeof(hcommTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+        OP_TILING_CHECK(ret != EOK,
+                        OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret),
+                        return ge::GRAPH_FAILED);
+        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllGatherMatmulTilingData));
+        context_->SetBlockDim(args_.aicCoreNum);
+        context_->SetScheduleMode(1);
+        OP_LOGI(opName_, "PostTiling: output hcommAllGatherMatmulTilingData, size=%zu.", sizeof(hcommTilingData_));
+        return ge::GRAPH_SUCCESS;
+    }
+
     OP_LOGD(opName_, "The final tiling data size=%zu and context capacity size=%zu ",
             sizeof(AllGatherMatmulTilingDataFp8), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));

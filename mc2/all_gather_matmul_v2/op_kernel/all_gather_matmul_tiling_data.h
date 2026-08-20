@@ -19,7 +19,6 @@
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
 
 namespace Mc2Tiling {
 
@@ -43,7 +42,6 @@ struct AllGatherMatmulTilingDataFp8 {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3LocalTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
-    QuantMatmulTilingData mmTile;          // Apace Hcomm 路径 matmul tiling
 };
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
