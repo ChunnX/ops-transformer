@@ -1241,6 +1241,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
         int32_t scanCursor = cursor;
         // SEND_SCAN_WINDOW only bounds each polling pass; keep the batch open across windows until it is full.
         uint32_t preparedDataCount = 0;
+        bool computeDone = false;
         while (true) {
             int32_t endCount = ReadGmByPassDCache(countPtr);
             if (scanCursor < cursor || scanCursor >= endCount) {
@@ -1267,7 +1268,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 scanCursor = cursor;
             }
 
-            bool computeDone = DispatchSyncWithCompute(realComputeCoreNum, roundTag);
+            if (!computeDone && scannedToEnd) {
+                computeDone = DispatchSyncWithCompute(realComputeCoreNum, roundTag);
+            }
             bool batchFull = preparedDataCount == DISPATCH_BATCH_COMMIT_SIZE;
             bool tailBatchReady = preparedDataCount != 0U && computeDone && scannedToEnd;
             if (batchFull || tailBatchReady) {
