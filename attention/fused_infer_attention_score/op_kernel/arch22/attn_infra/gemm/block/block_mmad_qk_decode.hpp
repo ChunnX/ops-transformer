@@ -159,8 +159,6 @@ public:
                 if constexpr (BNBD_FLAG) {
                 // BNBD: token stride within block is embed
                     kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * embed;
-                } else {
-                    kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
                 }
             } else {
                 if constexpr (BNBD_FLAG) {
