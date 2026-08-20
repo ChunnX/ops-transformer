@@ -38,7 +38,6 @@
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
-#include "quant_matmul_all_to_all_tiling_data.h"
 
 namespace Apace {
 
