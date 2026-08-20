@@ -37,7 +37,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
-#include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "apace/block/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "common/mega_moe_mxfp8_utils.h"
@@ -50,6 +50,7 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+using Apace::Gemm::Block::BlockEpilogueActivationMxQuant;
 
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t HALF_TO_FP32 = 2U;

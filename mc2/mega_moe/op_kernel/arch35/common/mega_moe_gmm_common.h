@@ -17,9 +17,9 @@
 #include "mega_moe_types.h"
 #include "mega_moe_utils.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "../blaze/gemm/block/block_scheduler_swizzle.h"
-#include "../blaze/gemm/block/block_mmad_mx_fp8fp4.h"
-#include "../blaze/prologue/block_prologue_mx_fp8fp4.h"
+#include "apace/block/scheduler/block_scheduler_swizzle.h"
+#include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
+#include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
 namespace MegaMoeImpl {
 

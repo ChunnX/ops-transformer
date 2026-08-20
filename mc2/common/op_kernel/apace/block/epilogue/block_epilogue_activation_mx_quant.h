@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
-#define BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
+#ifndef APACE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
+#define APACE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
 
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
@@ -22,8 +22,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_constants.h"
-#include "../../common/mega_moe_utils.h"
+#include "apace/utils/gmm_constants.h"
+#include "apace/utils/tuple_utils.h"
 #include "gated_activation.h"
 
 namespace ActivationQuantMsg {
@@ -42,8 +42,8 @@ enum class QuantDtype : uint8_t {
     FP8_E5M2 = 0x1U << 1,
 };
 
-using ActMode = MegaMoeImpl::MegaMoeActMode;
-using ActSubMode = MegaMoeImpl::MegaMoeActSubMode;
+using ActMode = Apace::Gemm::ActMode;
+using ActSubMode = Apace::Gemm::ActSubMode;
 
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
@@ -104,7 +104,9 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     AscendC::RoundMode::CAST_RINT};
 } // namespace ActivationQuantMsg
 
-namespace MegaMoeImpl {
+namespace Apace {
+namespace Gemm {
+namespace Block {
 
 using namespace AscendC;
 using namespace ActivationQuantMsg;
@@ -760,7 +762,9 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
 }
 
-} // namespace MegaMoeImpl
+} // namespace Block
+} // namespace Gemm
+} // namespace Apace
 
 #endif // defined(__DAV_C310__)
-#endif // BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H
+#endif // APACE_BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H

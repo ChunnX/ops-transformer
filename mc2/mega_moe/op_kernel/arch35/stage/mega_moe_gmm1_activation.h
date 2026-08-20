@@ -18,12 +18,13 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
-#include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "apace/block/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+using Apace::Gemm::Block::BlockEpilogueActivationMxQuant;
 
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;

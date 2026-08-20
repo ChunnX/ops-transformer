@@ -10,12 +10,12 @@
 
 /*!
  * \file gated_activation.h
- * \brief A5（arch35）BlockEpilogueActivationMxQuant 门控激活实现。
+ * \brief Gated activation implementations for GMM epilogue.
  *
  */
 
-#ifndef MEGA_MOE_ARCH35_GATED_ACTIVATION_H
-#define MEGA_MOE_ARCH35_GATED_ACTIVATION_H
+#ifndef APACE_BLOCK_EPILOGUE_GATED_ACTIVATION_H
+#define APACE_BLOCK_EPILOGUE_GATED_ACTIVATION_H
 
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
@@ -23,9 +23,10 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_utils.h"
+#include "apace/utils/gmm_constants.h"
 
-namespace MegaMoeImpl {
+namespace Apace {
+namespace Gemm {
 namespace ActivationImpl {
 
 constexpr uint32_t VF_LEN_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
@@ -541,7 +542,8 @@ __aicore__ inline void RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, co
 #undef ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH
 
 } // namespace ActivationImpl
-} // namespace MegaMoeImpl
+} // namespace Gemm
+} // namespace Apace
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_ARCH35_GATED_ACTIVATION_H
+#endif // APACE_BLOCK_EPILOGUE_GATED_ACTIVATION_H
