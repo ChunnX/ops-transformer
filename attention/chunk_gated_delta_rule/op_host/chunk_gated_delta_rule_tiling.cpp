@@ -56,7 +56,7 @@ constexpr uint32_t MATMUL_BASE_K = 128;
 constexpr uint32_t MATMUL_BASE_N = 128;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
-constexpr uint32_t STAGE_ONE_THREE = 3;
+constexpr uint32_t STAGE_ONE_THREE = 1; // R4+R5: attnWsNeg (3rd C×C buffer, was gBKWs C×Dk)
 constexpr uint32_t STAGE_ONE_PARA_NUM = 4;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
@@ -138,20 +138,19 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
         tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
     }
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
-    } else {
+    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
         tilingData_.interWorkspaceSz +=
-            sizeHigh * tilingData_.b * nv * dv * dk; // stateFp32Wk (arch35 BF16-state FP32-intermediate path)
+            sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
-    // stage1 临时变量空间: 3 C×Dk (gBKWs/queryCon/keyCon) + 2 C×C (kkWs/attnWs) + 1 C×Dv (vBetaWs)
-    tilingData_.stageWorkspaceSz =
-        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+    // R4+R5: stage1 WS = 3 C×C buffers (kkWs + attnWs + attnWsNeg), removed gBKWs/vBetaWs
+    constexpr uint32_t STAGE_ONE_WS_CC_COUNT = 3;
+    tilingData_.stageWorkspaceSz = sizeLow * c * c * STAGE_ONE_WS_CC_COUNT * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();

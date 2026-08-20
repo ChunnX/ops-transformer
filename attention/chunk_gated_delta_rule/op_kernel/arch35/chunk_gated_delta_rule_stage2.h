@@ -40,8 +40,11 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> curStateBf16; // (Nv, Dv, Dk) BF16 state for AIC
     GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
-    GlobalTensor<bfloat16_t> kg;
+    GlobalTensor<bfloat16_t> kg;           // R7: unused, kept for compat
+    GlobalTensor<bfloat16_t> keyGm;        // R7: original K (T, Nk, Dk) for CalStateNew strided read
+    GlobalTensor<bfloat16_t> vNewScaledGm; // per-core (C×Dv) scaled v_new for CalStateNew (vInner stays unscaled for Stage3)
     GlobalTensor<bfloat16_t> out;
+    int64_t cgStartPos;                    // R7: chunk group start position in T
     GM_ADDR ws;
     StageTwoMT *mm1Bf16;
     StageTwoMTFp32C *mm1Fp32;
@@ -79,6 +82,12 @@ public:
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         isFirstGroup_ = sTP_->isFirstGroup;
+        coreId_ = GetBlockIdx();
+        if ASCEND_IS_AIV {
+            coreId_ /= AIC_AIV_1_1;
+        }
+        vNewScaledGm_ = sTP_->vNewScaledGm[coreId_ * chunkSize_ * Dv_];
+        hasPrefetch_ = false;
         InitLocalBuffers();
     }
 
@@ -87,6 +96,8 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
+        // O3: gCum prefetch buffer (C×float, ~256B for C=64)
+        pipe_->InitBuffer(gCumPrefetchBuf_, chunkSize_ * sizeof(float));
         if constexpr (kIsFp32) {
             uint64_t inSize = Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(float);
             uint64_t vInnerCastInSize = chunkSize_ * Dv_ * sizeof(float);
@@ -94,23 +105,29 @@ public:
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max(inSize, vInnerCastInSize));
             uint64_t outSize = Std::max(inSize, vInnerCastOutSize);
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outSize);
-            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
+            // R7: extra chunkSize for dUb_ (exp(g[-1]-g_cum) row scale vector)
+            pipe_->InitBuffer(tmpBuff_, (Dv_ * curDk_ + BLOCK_FLOAT_NUM + chunkSize_) * sizeof(float));
             uint32_t buffOffset = 0;
             stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+            buffOffset += Ceil(NUM_ONE * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            dUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_), buffOffset);
         } else {
             pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE,
                               Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
             uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                              (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) *
-                                            sizeof(float));
+            // R7: extra chunkSize for dUb_
+            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM +
+                                          chunkSize_) * sizeof(float));
             uint32_t buffOffset = 0;
             tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+            buffOffset += Ceil(NUM_ONE * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            dUb_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_), buffOffset);
         }
     }
 
@@ -146,9 +163,24 @@ public:
         }
     }
 
+    // CV pipeline: fuse AIC VPrime+AttnInter (remove mid-sync), keep state overlap.
+    // Sync reduced from 4 CrossCore round-trips to 3.
+    //
+    // Phase layout:
+    //   AIV: state_prep → setFlag(0x3) → waitFlag(0x2) → v_new_scale → setFlag(0x5) → waitFlag(0x4)
+    //   AIC:              waitFlag(0x3) → VPrime+AttnInter(fused) → setFlag(0x2) → waitFlag(0x5) → StateNew → setFlag(0x4)
+    //
+    // Key change vs original: VPrime and AttnInter run back-to-back without CrossCore sync between them.
+    // StateNew still waits for v_new_scaled (sync0x5), but overlaps with next chunk's AIV state_prep.
+
+    // CV pipeline AIV (FP32 path): 3-phase流水线
+    //   Phase 1: state_prep + state decay + d 向量计算 → sync0x3
+    //   Phase 2: wait sync0x2 → v_new cast+scale → sync0x5
+    //   Phase 3: wait sync0x4
     __aicore__ inline void ProcessAivFp32(int64_t nvId, int64_t cId, int64_t length)
     {
         if (GetSubBlockIdx() == 0) {
+            // state CopyIn: FP32 state (Dv,Dk) GM → UB
             if (isFirstGroup_ && cId == 0) {
                 CopyIn<float>(sTP_->stateIn[nvId * stateStride1_], Dv_, Dk_);
             } else {
@@ -157,44 +189,91 @@ public:
             auto stateIn = inQueue_.DeQue<float>();
             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
             inQueue_.FreeTensor(stateIn);
+            // state_bf16 = Cast(state) → GM curStateBf16_ (供 AIC matmul)
             auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
-            CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
+            // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取)
+            CalGCumExpAndD(sTP_->gCum[nvId * Sp_ + length]);
             PipeBarrier<PIPE_MTE3>();
+            // state_out = state (含 decay) → GM stateOut_ (供下一 chunk / CalStateNew accum)
             auto fp32Local = outQueue_.AllocTensor<float>();
             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
             outQueue_.EnQue(fp32Local);
             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        CrossCoreWaitFlag(0x2);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3); // → AIC: state 就绪
+        CrossCoreWaitFlag(0x2);                 // ← AIC: v_new = v_inner + kcd@state^T 完成
         if (GetSubBlockIdx() == 0) {
-            PipeBarrier<PIPE_MTE3>();
+            // vInnerBf16_ = Cast(v_new)           (unscaled, 供 Stage3: masked_qkt @ v_new)
+            // vNewScaledGm_ = Cast(v_new * d)     (scaled, 供 CalStateNew: state += v_new_scaled^T @ K)
+            //   单次 GM→UB 读取, 产出两份输出
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1], curChunkSize_ * Dv_);
+            CastGmToGmDual<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
+                                              vNewScaledGm_, curChunkSize_ * Dv_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: v_new_scaled 就绪
+        // O3: Prefetch gCum for next chunk (MTE2 overlaps with AIC CalStateNew during waitFlag(0x4))
+        hasPrefetch_ = false;
+        if (GetSubBlockIdx() == 0 && cId + 1 < chunkNum_) {
+            if constexpr (gOptional) {
+                int64_t nextLength = (cId + 1) * chunkSize_;
+                DataCopyExtParams pfParams{1, static_cast<uint32_t>(chunkSize_ * sizeof(float)), 0, 0, 0};
+                DataCopyPadExtParams<float> pfPadParams{true, 0, 0, 0};
+                DataCopyPad(gCumPrefetchBuf_.Get<float>(), sTP_->gCum[nvId * Sp_ + nextLength], pfParams, pfPadParams);
+                SetFlag<HardEvent::MTE2_V>(PREFETCH_MTE2_V_EVENT);
+                hasPrefetch_ = true;
+            }
+        }
+        CrossCoreWaitFlag(0x4);                 // ← AIC: CalStateNew 完成
     }
 
+    // CV pipeline AIV (BF16 path): 3-phase流水线
+    //   Phase 1: state_prep + state decay + d 向量计算 → sync0x3
+    //   Phase 2: wait sync0x2 → v_new scale → sync0x5
+    //   Phase 3: wait sync0x4
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
         auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
+            // state CopyIn: BF16 state (Dv,Dk) GM → UB
             CopyIn(curState, Dv_, Dk_);
-            CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
+            // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取)
+            //   state decay: BF16→FP32→Muls(expGEnd)→BF16
+            CalGCumExpBf16AndD(sTP_->gCum[nvId * Sp_ + length]);
         }
-        CrossCoreWaitFlag(0x2);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3); // → AIC: state 就绪
+        CrossCoreWaitFlag(0x2);                 // ← AIC: v_new = v_inner + kcd@state^T 完成
         if (GetSubBlockIdx() == 0) {
+            // state_out = state (含 decay) → GM stateOut_
             CopyOutState(finalState);
+            // vNewScaledGm_ = v_new * d[:,None]  (BF16→FP32→Scale→BF16, 供 CalStateNew)
+            //   vInner_ 保持不变 (供 Stage3 直接读)
+            uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+            CastGmToGmWithScale<bfloat16_t, bfloat16_t>(sTP_->vInner[mm_offset1], vNewScaledGm_,
+                                                         curChunkSize_ * Dv_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // → AIC: v_new_scaled 就绪
+        // O3: Prefetch gCum for next chunk (MTE2 overlaps with AIC CalStateNew during waitFlag(0x4))
+        hasPrefetch_ = false;
+        if (GetSubBlockIdx() == 0 && cId + 1 < chunkNum_) {
+            if constexpr (gOptional) {
+                int64_t nextLength = (cId + 1) * chunkSize_;
+                DataCopyExtParams pfParams{1, static_cast<uint32_t>(chunkSize_ * sizeof(float)), 0, 0, 0};
+                DataCopyPadExtParams<float> pfPadParams{true, 0, 0, 0};
+                DataCopyPad(gCumPrefetchBuf_.Get<float>(), sTP_->gCum[nvId * Sp_ + nextLength], pfParams, pfPadParams);
+                SetFlag<HardEvent::MTE2_V>(PREFETCH_MTE2_V_EVENT);
+                hasPrefetch_ = true;
+            }
+        }
+        CrossCoreWaitFlag(0x4);                 // ← AIC: CalStateNew 完成
     }
 
+    // CV pipeline AIC: 3 matmul, VPrime+AttnInter 融合 (无中间同步)
+    //   Phase 1: wait sync0x3 → v_new = v_inner + kcd@state^T (accum=1) + attn_inter = qPrime@state^T → sync0x2
+    //   Phase 2: wait sync0x5 → state += v_new_scaled^T @ K (accum=1) → sync0x4
     __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
     {
         uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
@@ -202,57 +281,117 @@ public:
         auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
         GlobalTensor<bfloat16_t> stateForAic;
         if constexpr (kIsFp32) {
-            CrossCoreWaitFlag(0x3);
+            CrossCoreWaitFlag(0x3); // ← AIV: curStateBf16 就绪
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
             stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
+        // v_new = v_inner + k_cumdecay @ state^T  (accum=1, 在 vInner_ 上叠加)
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
+        // attn_inter = qPrime @ state^T  (直接写最终输出 out_)
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-        CrossCoreWaitFlag(0x5);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2); // → AIV: VPrime+AttnInter 完成
+        CrossCoreWaitFlag(0x5);                 // ← AIV: v_new_scaled 就绪
+        // state += v_new_scaled^T @ K  (accum=1)
+        //   v_new_scaled = v_new * d[:,None] (从 vNewScaledGm_ 读)
+        //   K 从原始 GM (T,Nk,Dk) strided 读
+        int64_t kStart = sTP_->cgStartPos + length;
+        uint64_t kOffset = static_cast<uint64_t>(kStart) * Nk_ * Dk_ +
+                           static_cast<uint64_t>(nvId) * (Nk_ / Nv_) * Dk_;
+        uint64_t kStride = static_cast<uint64_t>(Nk_) * Dk_;
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
         } else {
-            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(vNewScaledGm_, sTP_->keyGm[kOffset], stateOut, kStride);
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4); // → AIV: state 更新完成
     }
 
-    __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
-    {
-        if constexpr (!gOptional) {
-            return;
-        }
-        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-        float gVal = gCum.GetValue(curChunkSize_ - 1);
-        lastGCum_.SetValue(0, gVal);
-        SetFlag<HardEvent::S_V>(S_V_EVENT);
-        WaitFlag<HardEvent::S_V>(S_V_EVENT);
-        Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-        float tmpFloat = lastGCum_.GetValue(0);
-        SetFlag<HardEvent::S_V>(S_V_EVENT);
-        WaitFlag<HardEvent::S_V>(S_V_EVENT);
-        Muls(stateFp32Ub_, stateFp32Ub_, tmpFloat, Dv_ * curDk_);
-        PipeBarrier<PIPE_V>();
-    }
-
-    __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
+    // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取, FP32 path)
+    //   expGEnd = exp(gCum_[-1])
+    //   d = exp(gCum_[-1] - gCum_[0:C])
+    //   stateFp32Ub *= expGEnd
+    //   O3: gCum 支持预取 (hasPrefetch_ 时从 TBuf 读取, MTE2 与 AIC CalStateNew 并行)
+    __aicore__ inline void CalGCumExpAndD(GlobalTensor<float> gCumGm)
     {
         if constexpr (gOptional) {
             DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                gCum[curChunkSize_ - 1]);
-            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, tmpFloat);
+                gCumGm[curChunkSize_ - 1]);
+            float gEnd = gCumGm.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, gEnd);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            float expGEnd = lastGCum_.GetValue(0);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+
+            // Read g_cum[0:curChunkSize]: prefetched (TBuf) or from GM (inQueue)
+            LocalTensor<float> gLocal;
+            if (hasPrefetch_) {
+                WaitFlag<HardEvent::MTE2_V>(PREFETCH_MTE2_V_EVENT);
+                gLocal = gCumPrefetchBuf_.Get<float>();
+            } else {
+                DataCopyExtParams inParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+                DataCopyPadExtParams<float> inPadParams{true, 0, 0, 0};
+                gLocal = inQueue_.AllocTensor<float>();
+                DataCopyPad(gLocal, gCumGm, inParams, inPadParams);
+                inQueue_.EnQue(gLocal);
+                gLocal = inQueue_.DeQue<float>();
+            }
+
+            // d = exp(gEnd - g_cum) = expGEnd * exp(-g_cum), but direct Sub+Exp is more numerically stable
+            Duplicate(dUb_, gEnd, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Sub(dUb_, dUb_, gLocal, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            if (!hasPrefetch_) {
+                inQueue_.FreeTensor(gLocal);
+            }
+            Exp<float, 0, true>(dUb_, dUb_, chunkSize_);
+            PipeBarrier<PIPE_V>();
+
+            // Apply state decay: state *= expGEnd
+            if constexpr (kIsFp32) {
+                Muls(stateFp32Ub_, stateFp32Ub_, expGEnd, Dv_ * curDk_);
+                PipeBarrier<PIPE_V>();
+            }
         } else {
             lastGCum_.SetValue(0, 1.0f);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Duplicate(dUb_, 1.0f, chunkSize_);
+            PipeBarrier<PIPE_V>();
         }
-        float tmpFloat = lastGCum_.GetValue(0);
+    }
+
+    // state *= exp(g[-1]), d[j] = exp(g[-1]-g_cum[j])  (合并单次 gCum 读取, BF16 path)
+    //   state decay: BF16→FP32→Muls(expGEnd)→BF16
+    //   d = exp(gCum_[-1] - gCum_[0:C])
+    //   O1: gEnd 复用 (消除冗余 GM 标量读取)
+    //   O3: gCum 支持预取 (hasPrefetch_ 时从 TBuf 读取)
+    __aicore__ inline void CalGCumExpBf16AndD(GlobalTensor<float> gCum)
+    {
+        float expGEnd;
+        float gEnd = 0.0f;
+        if constexpr (gOptional) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                gCum[curChunkSize_ - 1]);
+            gEnd = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, gEnd);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            expGEnd = lastGCum_.GetValue(0);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+        } else {
+            expGEnd = 1.0f;
+        }
+
+        // State decay: cast BF16→FP32, scale by expGEnd, cast back
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
@@ -260,12 +399,40 @@ public:
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
-        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
+        Muls(tmpBuffer1_, tmpBuffer1_, expGEnd, Dv_ * curDk_);
         Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         outQueue_.EnQue(stateOut);
         inQueue_.FreeTensor(stateIn);
+
+        // Compute d vector
+        if constexpr (gOptional) {
+            LocalTensor<float> gLocal;
+            if (hasPrefetch_) {
+                WaitFlag<HardEvent::MTE2_V>(PREFETCH_MTE2_V_EVENT);
+                gLocal = gCumPrefetchBuf_.Get<float>();
+            } else {
+                DataCopyExtParams inParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+                DataCopyPadExtParams<float> inPadParams{true, 0, 0, 0};
+                gLocal = inQueue_.AllocTensor<float>();
+                DataCopyPad(gLocal, gCum, inParams, inPadParams);
+                inQueue_.EnQue(gLocal);
+                gLocal = inQueue_.DeQue<float>();
+            }
+            Duplicate(dUb_, gEnd, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Sub(dUb_, dUb_, gLocal, chunkSize_);
+            PipeBarrier<PIPE_V>();
+            if (!hasPrefetch_) {
+                inQueue_.FreeTensor(gLocal);
+            }
+            Exp<float, 0, true>(dUb_, dUb_, chunkSize_);
+            PipeBarrier<PIPE_V>();
+        } else {
+            Duplicate(dUb_, 1.0f, chunkSize_);
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     template <typename MMType, typename AT, typename BT, typename CT>
@@ -293,12 +460,14 @@ public:
         mm->End();
     }
 
+    // attn_inter = qPrime @ state^T  (直接写 out_, M=C, N=Dv, K=Dk)
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime, GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
         RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out, curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
     }
 
+    // v_new = v_inner + k_cumdecay @ state^T  (accum=1, M=C, N=Dv, K=Dk)
     template <typename vInnerType>
     __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay, GlobalTensor<bfloat16_t> state,
                                      GlobalTensor<vInnerType> vPrime)
@@ -310,47 +479,139 @@ public:
         }
     }
 
+    // state += v_new_scaled^T @ K  (accum=1, M=Dv, N=Dk, K=C, strided K)
+    //   v_new_scaled = v_new * d[:,None] (从 vNewScaledGm_ 读)
     template <typename stateOutType>
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<stateOutType> state)
+    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> keyStridedGm,
+                                       GlobalTensor<stateOutType> state, uint64_t kStride)
     {
         if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Fp32, vInner, true, keyStridedGm, false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Bf16, vInner, true, keyStridedGm, false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         }
     }
 
+    // dstGm = Cast(srcGm * d[:,None])  (类型转换 + d 行缩放)
+    //   FP32→BF16: Mul(srcLocal, d_broad) → Cast(BF16)
+    //   BF16→BF16: Cast(FP32) → Mul(d_broad) → Cast(BF16)
     template <typename srcType, typename dstType>
-    __aicore__ inline void CastGmToGm(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm, int32_t count)
+    __aicore__ inline void CastGmToGmWithScale(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstGm,
+                                               int32_t count)
     {
+        int32_t rowCnt = curChunkSize_;
+        int32_t colCnt = Dv_;
         int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
         int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
         int32_t srcPadded = Ceil(count, srcAlign) * srcAlign;
         int32_t padding = srcPadded - count;
-
         auto srcLocal = inQueue_.AllocTensor<srcType>();
         if (paddedCount > srcPadded) {
             Duplicate<srcType>(srcLocal, static_cast<srcType>(0), paddedCount);
             SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
         }
-        DataCopyExtParams inParams{1, static_cast<uint32_t>(count * sizeof(srcType)), 0, 0, 0};
+        DataCopyExtParams inParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(srcType)),
+                                   0, 0, 0};
         DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
         DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
         inQueue_.EnQue(srcLocal);
-
         srcLocal = inQueue_.DeQue<srcType>();
         auto dstLocal = outQueue_.AllocTensor<dstType>();
-        Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
-        inQueue_.FreeTensor(srcLocal);
+        if constexpr (std::is_same_v<srcType, float> && std::is_same_v<dstType, bfloat16_t>) {
+            // FP32→BF16 with scale
+            if constexpr (gOptional) {
+                uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+                uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+                Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
+                PipeBarrier<PIPE_V>();
+                Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
+                PipeBarrier<PIPE_V>();
+            }
+            Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        } else if constexpr (std::is_same_v<srcType, bfloat16_t> && std::is_same_v<dstType, bfloat16_t>) {
+            // BF16→BF16 with scale: cast to FP32, scale, cast back
+            Cast(tmpBuffer1_, srcLocal, RoundMode::CAST_NONE, paddedCount);
+            inQueue_.FreeTensor(srcLocal);
+            if constexpr (gOptional) {
+                uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+                uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+                LocalTensor<float> dBroad = tmpBuff_.GetWithOffset<float>(
+                    static_cast<uint32_t>(rowCnt * colCnt), 0);
+                Broadcast<float, BROADCAST_AXIS, 1>(dBroad, dUb_, vShape, dShape);
+                PipeBarrier<PIPE_V>();
+                Mul(tmpBuffer1_, tmpBuffer1_, dBroad, rowCnt * colCnt);
+                PipeBarrier<PIPE_V>();
+            }
+            Cast(dstLocal, tmpBuffer1_, RoundMode::CAST_RINT, paddedCount);
+        } else {
+            Cast(dstLocal, srcLocal, RoundMode::CAST_RINT, paddedCount);
+            inQueue_.FreeTensor(srcLocal);
+        }
         outQueue_.EnQue(dstLocal);
-
         dstLocal = outQueue_.DeQue<dstType>();
-        DataCopyExtParams outParams{1, static_cast<uint32_t>(count * sizeof(dstType)), 0, 0, 0};
+        DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(dstType)), 0,
+                                    0, 0};
         DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
         DataCopyPad(dstGm, dstLocal, outParams);
         outQueue_.FreeTensor(dstLocal);
+    }
+
+    // 单次 GM→UB 读取, 产出两份输出:
+    //   dstUnscaledGm = Cast(srcGm)          (供 Stage3)
+    //   dstScaledGm = Cast(srcGm * d[:,None]) (供 CalStateNew)
+    template <typename srcType, typename dstType>
+    __aicore__ inline void CastGmToGmDual(GlobalTensor<srcType> srcGm, GlobalTensor<dstType> dstUnscaledGm,
+                                          GlobalTensor<dstType> dstScaledGm, int32_t count)
+    {
+        int32_t rowCnt = curChunkSize_;
+        int32_t colCnt = Dv_;
+        int32_t paddedCount = Ceil(count, BLOCK_SIZE / sizeof(dstType)) * (BLOCK_SIZE / sizeof(dstType));
+        int32_t srcAlign = BLOCK_SIZE / sizeof(srcType);
+        int32_t srcPadded = Ceil(count, srcAlign) * srcAlign;
+        int32_t padding = srcPadded - count;
+        auto srcLocal = inQueue_.AllocTensor<srcType>();
+        if (paddedCount > srcPadded) {
+            Duplicate<srcType>(srcLocal, static_cast<srcType>(0), paddedCount);
+            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+        }
+        DataCopyExtParams inParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(srcType)),
+                                   0, 0, 0};
+        DataCopyPadExtParams<srcType> inPadParams{true, 0, static_cast<uint8_t>(padding), 0};
+        DataCopyPad(srcLocal, srcGm, inParams, inPadParams);
+        inQueue_.EnQue(srcLocal);
+        srcLocal = inQueue_.DeQue<srcType>();
+
+        // Write unscaled copy (for Stage3)
+        auto dstUnscaled = outQueue_.AllocTensor<dstType>();
+        Cast(dstUnscaled, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        outQueue_.EnQue(dstUnscaled);
+        dstUnscaled = outQueue_.DeQue<dstType>();
+        DataCopyExtParams outParams{static_cast<uint16_t>(rowCnt), static_cast<uint32_t>(colCnt * sizeof(dstType)), 0,
+                                    0, 0};
+        DataCopyPadExtParams<dstType> outPadParams{false, 0, 0, 0};
+        DataCopyPad(dstUnscaledGm, dstUnscaled, outParams);
+        outQueue_.FreeTensor(dstUnscaled);
+
+        // Write scaled copy (for CalStateNew) — reuse same srcLocal
+        if constexpr (gOptional) {
+            uint32_t dShape[2] = {static_cast<uint32_t>(rowCnt), 1};
+            uint32_t vShape[2] = {static_cast<uint32_t>(rowCnt), static_cast<uint32_t>(colCnt)};
+            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, dUb_, vShape, dShape);
+            PipeBarrier<PIPE_V>();
+            Mul(srcLocal, srcLocal, tmpBuffer1_, rowCnt * colCnt);
+            PipeBarrier<PIPE_V>();
+        }
+        auto dstScaled = outQueue_.AllocTensor<dstType>();
+        Cast(dstScaled, srcLocal, RoundMode::CAST_RINT, paddedCount);
+        inQueue_.FreeTensor(srcLocal);
+        outQueue_.EnQue(dstScaled);
+        dstScaled = outQueue_.DeQue<dstType>();
+        DataCopyPad(dstScaledGm, dstScaled, outParams);
+        outQueue_.FreeTensor(dstScaled);
     }
 
     template <typename inType>
@@ -424,6 +685,11 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
+    LocalTensor<float> dUb_; // R7: d = exp(g[-1]-g_cum) for v_new row scaling
+    GlobalTensor<bfloat16_t> vNewScaledGm_; // per-core (C×Dv) scaled v_new for CalStateNew
+    TBuf<TPosition::VECCALC> gCumPrefetchBuf_; // O3: gCum prefetch buffer (C×float)
+    bool hasPrefetch_; // O3: true when gCum for current chunk was prefetched
+    int64_t coreId_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;

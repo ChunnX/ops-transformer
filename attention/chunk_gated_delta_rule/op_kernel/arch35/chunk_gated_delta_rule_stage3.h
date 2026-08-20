@@ -127,11 +127,13 @@ public:
         }
     }
 
+    // masked_qkt = qkt * scale * decay_mask * tril_mask  (C,C)
+    //   decay_mask = exp(g_cum[:,None] - g_cum[None,:]) * tril
     __aicore__ inline void CalMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
     {
-        // chunkSize 大小进行自动补齐
+        // decay_mask = exp(g_cum[:,None] - g_cum[None,:]) * tril_mask  (C,C)
         if constexpr (gOptional) {
-            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_); // 自动补齐
+            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);
             auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
@@ -151,14 +153,13 @@ public:
             PipeBarrier<PIPE_V>();
         }
 
-        // qkt
+        // masked_qkt = qkt * scale * decay_mask * tril_mask  → Cast BF16 → GM
         AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, curChunkSize_);
         auto qkt = inQueue_.DeQue<bfloat16_t>();
         auto scale_qkt = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmpBuffer2_, qkt, RoundMode::CAST_NONE, curChunkSize_ * chunkSize_);
         Muls(tmpBuffer2_, tmpBuffer2_, sTP_->scale, curChunkSize_ * chunkSize_);
         Mul(tmpBuffer2_, tmpBuffer2_, tmpBuffer1_, curChunkSize_ * chunkSize_);
-        // mask
         Mul(tmpBuffer2_, tmpBuffer2_, maskBuffer_, curChunkSize_ * chunkSize_);
         Cast(scale_qkt, tmpBuffer2_, RoundMode::CAST_RINT, curChunkSize_ * chunkSize_);
         outQueue_.EnQue(scale_qkt);
@@ -166,10 +167,10 @@ public:
         inQueue_.FreeTensor(qkt);
     }
 
+    // attn_out = attn_inter + masked_qkt @ v_new  (accum=1, 直接在 out_ 上叠加)
     __aicore__ inline void AICProcess(GlobalTensor<bfloat16_t> tmpGM, GlobalTensor<bfloat16_t> vInner,
                                       GlobalTensor<bfloat16_t> attnInter)
     {
-        // masked_qkt @ v_inner
         sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_); // MNK
         sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_);                        // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);

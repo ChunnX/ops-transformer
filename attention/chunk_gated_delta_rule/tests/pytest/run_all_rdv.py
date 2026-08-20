@@ -9,11 +9,6 @@ import cann_ops_transformer
 from chunk_gated_delta_rule_main import run_chunk_gated_delta_rule_eager
 from test_chunk_gated_delta_rule_paramset_rdv import ENABLED_PARAMS_RDV
 
-FIXED_SEED = int(os.environ.get("TORCH_SEED", "0"))
-if FIXED_SEED:
-    torch.manual_seed(FIXED_SEED)
-    torch_npu.npu.manual_seed(FIXED_SEED)
-
 OUTPUT_DIR = "output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 csv_path = os.path.join(OUTPUT_DIR, "rdv_report_r4_r5_r7.csv")
@@ -40,10 +35,6 @@ for idx, params in enumerate(ENABLED_PARAMS_RDV):
 
     desc = f"B={B} S={seqlen} nk={nk} nv={nv} dk={dk} dv={dv} g={has_g} {str(dt).split('.')[-1]}/{str(sdt).split('.')[-1]} c={contig}"
     print(f"\n[{idx+1}/{total}] {name}: {desc}", flush=True)
-
-    if FIXED_SEED:
-        torch.manual_seed(FIXED_SEED + idx)
-        torch_npu.npu.manual_seed(FIXED_SEED + idx)
 
     t0 = time.time()
     try:
