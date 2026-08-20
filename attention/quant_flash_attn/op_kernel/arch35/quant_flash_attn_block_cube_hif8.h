@@ -18,17 +18,19 @@
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 #else
 #include "../../common/op_kernel/offset_calculator.h"
 #include "../../common/op_kernel/matmul.h"
 #include "../../common/op_kernel/FixpipeOut.h"
-#include "../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "../../common/op_kernel/arch35/util_regbase.h"
 #endif
-#include "memory_copy_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "memory_copy_arch35_quant_flash_attn.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -255,8 +257,7 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -355,8 +356,7 @@ public:
 
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr_, bIdx);
         keyGm_.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSize);
-        keyGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
+        keyGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSize, *this->kvSeqParserPtr_);
     }
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
@@ -365,8 +365,7 @@ public:
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr_, bIdx);
         valueGm_.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSizeV);
-        valueGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
+        valueGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSizeV, *this->kvSeqParserPtr_);
     }
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
