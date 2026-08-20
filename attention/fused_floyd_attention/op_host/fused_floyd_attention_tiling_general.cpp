@@ -1540,7 +1540,7 @@ protected:
 
     bool IsCapable() override
     {
-        if (s2Size > s2sizeSpecial) {
+        if (s2Size >= s2sizeSpecial) {
             return true;
         }
         return false;
