@@ -157,8 +157,9 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                     return ge::GRAPH_FAILED);
     // mxfp4: N must be even when x2 is not transposed
     OP_TILING_CHECK((!args_.isBTrans) && (args_.nValue % EVEN_ALIGN != 0),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nValue", std::to_string(args_.nValue).c_str(),
-                                                          "The value of N must be even when x2 is not transposed in mxfp4 scene"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "nValue", std::to_string(args_.nValue).c_str(),
+                        "The value of N must be even when x2 is not transposed in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
