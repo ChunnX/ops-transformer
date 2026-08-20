@@ -695,9 +695,16 @@ actual_seq_k = torch.tensor([k // 16 for k in k_lens], dtype=torch.int64).cumsum
 | LIV2 同包回归 | 无影响 |
 | 官方 pytest `test_pool_key_indexer.py` | 9/12 通过（历史 0/12） |
 
-## 遗留事项
+## 遗留事项（已全部解决）
 
-3 个 TND 用例失败在 **golden 脚本侧**（`tests/atk/pool_key_indexer_golden.py` 的 `_make_actual_seq(k_lens)` 同样误用 token 数构造 `actual_seq_k`，与 simple_test.py 属同类语义问题）。注意 golden 内部同时需要 token 长度（causal mask 语义）与 pool 长度（TND 解包），建议由测试维护者按此拆分修正，不应简单替换。
+3 个 TND 用例失败在测试侧 `actual_seq_k` 语义错误（与 simple_test.py 同类）：`test_pool_key_indexer.py` 的 `_build_tnd_inputs` 误用 **token 长度** 构造 `actual_seq_k`，而 host 校验（TND 下 last 必须等于 pool_key 的 T 维）与 golden 内部（key 解包、causal mask 的 `L_orig = S2*pool_size + tail`）均按 **累计 pool 数** 解释。修正为：
+
+```python
+k_pool_lens = [kl // pool_size for kl in k_lens]
+actual_seq_k = _make_actual_seq(k_pool_lens)   # 原： _make_actual_seq(k_lens)
+```
+
+修正后 pytest **12/12 全部通过**（修复前 0/12，workspace 修复后 9/12）。
 
 ## 经验教训
 

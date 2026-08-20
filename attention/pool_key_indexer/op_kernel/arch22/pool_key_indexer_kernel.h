@@ -378,6 +378,8 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerKernel<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
+        // poolSize>1 时 indices 输出行宽为 outputLen(见 CalcRunInfo 中 idxOutStride 说明)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         if (constInfo.outputLayout == PkiLayout::TND) {
             uint32_t tSize = static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1));
             uint32_t tBase = bIdx == 0 ? 0 : static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(bIdx - 1));
@@ -385,16 +387,16 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::DealActSeqLenIsZero(uint32_t b
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 uint64_t indiceOutOffset =
-                    (tBase + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount + // T轴、s1轴偏移
-                    n2Idx * constInfo.sparseCount;                                 // N2轴偏移
+                    (tBase + s1Idx) * constInfo.kHeadNum * idxOutStride + // T轴、s1轴偏移
+                    n2Idx * idxOutStride;                                 // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         } else if (constInfo.outputLayout == PkiLayout::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
-                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
-                                           s1Idx * constInfo.kHeadNum * constInfo.sparseCount + // B轴、S1轴偏移
-                                           n2Idx * constInfo.sparseCount;                       // N2轴偏移
+                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * idxOutStride +
+                                           s1Idx * constInfo.kHeadNum * idxOutStride + // B轴、S1轴偏移
+                                           n2Idx * idxOutStride;                       // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
@@ -535,6 +537,9 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.actS1Size = tempLoopInfo.actS1Size;
     runInfo.actS2Size = tempLoopInfo.actS2Size;
     runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+    // 当前 batch 的尾部 token 数(ExpandAndAppendIndices 尾块追加与 LD 参数均依赖,
+    // 此前漏赋值恒为 0, 导致 pool_size>1 时尾块永不输出)
+    runInfo.poolTailK = hasPoolTailK_ ? static_cast<int32_t>(poolTailKGm_.GetValue(tempLoopInfo.bIdx)) : 0;
     // 计算实际基本块size
     runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
     runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
@@ -568,8 +573,12 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
         // B,S1,N1(N2,G)/T,N1(N2,G)
         weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
         // B,S1,N2,k/T,N2,k
-        indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
-                              runInfo.n2Idx * constInfo.sparseCount;
+        // 注意: poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
+        // 而非 sparseCount(仅 poolSize==1 时二者相等), 否则 batch>0 的行基址错位,
+        // 写入会跨界覆盖相邻行(参照 ProcessVec 的 idxStride 处理)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
+        indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * idxOutStride +
+                              runInfo.n2Idx * idxOutStride;
     }
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
@@ -594,8 +603,10 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
+        // poolSize>1 时 indices 输出行宽为 outputLen(见 CalcRunInfo 中 idxOutStride 说明)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * idxOutStride;
         uint64_t singleCoreSize =
             PkiCommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;

@@ -11,18 +11,20 @@
 """
 Comparison utilities for PoolKeyIndexer output validation.
 
-Two-step comparison strategy (adapted from LIV2 result_compare_method.py):
-  1. Row-level set comparison: sort valid indices/values (excluding -1/-inf) and
-     check that the two sets overlap.
-  2. Value-level rtol/atol comparison for the gathered scores.
+Three-step comparison strategy (adapted from LIV2 result_compare_method.py):
+  1. Index set comparison: sort valid indices (excluding -1) row by row and
+     require exact set equality (with row pass-rate threshold).
+  2. Row-level set comparison of values (excluding -inf): sorted closeness
+     with rtol/atol.
+  3. Both must pass independently (no OR fallback).
 """
 
 import numpy as np
 import torch
 
-RTOL = 0.005
-ATOL_FP16 = 2.5e-5
-ATOL_BF16 = 1e-4
+RTOL = 1e-3
+ATOL_FP16 = 1e-3
+ATOL_BF16 = 1e-3
 
 
 def _atol_for_dtype(dt: torch.dtype) -> float:

@@ -653,7 +653,12 @@ class PKIGoldenRef:
 
             # 获取当前 batch 的参数
             cur_pool_tail_k = int(pool_tail_k[b_idx]) if pool_tail_k is not None else 0
-            l_orig = curr_k * pool_size + cur_pool_tail_k
+            # TND: actual_seq_k 为累计 pool 数, L_orig = pools*ps + tail;
+            # BSND: 无 actual_seq_k, k_seq 已是 token 数, L_orig = tokens + tail
+            if actual_seq_k is not None:
+                l_orig = curr_k * pool_size + cur_pool_tail_k
+            else:
+                l_orig = curr_k + cur_pool_tail_k
 
             # 计算 valid_s2_len
             s1_actual = curr_q

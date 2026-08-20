@@ -317,18 +317,17 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         }
 
         if (visibleTailK > 0) {
-            uint32_t alignedVisibleTailK =
-                PkiCommon::Align(static_cast<uint32_t>(visibleTailK), (uint32_t)8);
-            LocalTensor<int32_t> tailOffsetTpl = workBuf;
+            // 先清空整个尾区, 再精确写入 visibleTailK 个尾 token;
+            // 不可按 Align(visibleTailK,8) 对齐写, 否则会越出 tail 容量(ps-1)
+            // 污染行尾/相邻行(实测 ps=8 tail=5 时写 8 个导致整行有效)
+            Duplicate<int32_t>(tokenIndices[tailPos], -1,
+                               PkiCommon::Align(totalOut - tailPos, (uint32_t)8));
+            PipeBarrier<PIPE_V>();
             for (int32_t t = 0; t < visibleTailK; t++) {
-                tailOffsetTpl.SetValue(t, t);
+                tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
             }
-            PipeBarrier<PIPE_V>();
-            Duplicate<int32_t>(tokenIndices[tailPos],
-                               L_orig - poolTailK, alignedVisibleTailK);
-            PipeBarrier<PIPE_V>();
-            Add<int32_t>(tokenIndices[tailPos], tokenIndices[tailPos],
-                         tailOffsetTpl, alignedVisibleTailK);
+            // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
         }
     }
 }

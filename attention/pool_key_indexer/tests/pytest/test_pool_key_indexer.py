@@ -45,6 +45,12 @@ from pool_key_indexer_golden import (
 sys.path.insert(0, os.path.dirname(__file__))
 from result_compare import compare_indices, compare_values
 
+# Force golden to emit real indices (default False zeroes them out,
+# which defeats index set comparison)
+import pool_key_indexer_golden as _pki_golden_mod
+
+_pki_golden_mod.COMPARE_INDICES = True
+
 # Import torch extension
 from cann_ops_transformer import pool_key_indexer
 
@@ -88,7 +94,9 @@ def _build_tnd_inputs(q_lens, k_lens, n1, pool_size, dtype, seed=42):
     weights = torch.randn(total_q, n1, dtype=dt)
     pool_tail_k = torch.randint(0, pool_size, (len(q_lens),), dtype=torch.int64)
     actual_seq_q = _make_actual_seq(q_lens)
-    actual_seq_k = _make_actual_seq(k_lens)
+    # actual_seq_k 语义为累计 pool 数（与 pool_key 的 T 维一致，host 校验
+    # last == key T2；golden 内部 L_orig = S2*pool_size + tail 同样按 pool 数解释）
+    actual_seq_k = _make_actual_seq(k_pool_lens)
     return query, pool_key, weights, pool_tail_k, actual_seq_q, actual_seq_k
 
 
@@ -522,15 +530,21 @@ def test_pool_key_indexer(
     )
 
     # ---- Compare ----
-    # Indices: compare golden-raw vs npu (after canonicalization both should match)
-    # Since COMPARE_INDICES=False in golden, indices are zeroed; we compare values instead
-    ok_values = compare_values(canon_values_g, canon_indices_npu, dtype)
+    # 1) Index set comparison (mandatory, all cases): golden-raw vs NPU-raw.
+    #    Row-level sorted-set equality with 0.995 pass-rate threshold.
+    ok_idx = compare_indices(g_indices, npu_indices)
+    assert ok_idx, (
+        f"Indices set comparison failed for {layout_q} ps={pool_size} mask={mask_mode}"
+    )
 
+    # 2) Values comparison (return_value=True): normalized channel must pass
+    #    on its own; raw channel is informational only (no OR fallback).
     if return_value:
-        # Compare raw NPU values against golden values (sorted per row)
+        ok_values = compare_values(canon_values_g, canon_indices_npu, dtype)
         ok_raw_vals = compare_values(g_values, npu_values, dtype)
-        assert ok_values or ok_raw_vals, (
-            f"Values comparison failed for {layout_q} ps={pool_size} mask={mask_mode}"
+        assert ok_values, (
+            f"Normalized values comparison failed for {layout_q} ps={pool_size} "
+            f"mask={mask_mode} (raw channel: {'PASS' if ok_raw_vals else 'FAIL'})"
         )
     else:
         # return_value=False: NPU values should be empty
