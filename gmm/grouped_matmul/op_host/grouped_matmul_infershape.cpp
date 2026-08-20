@@ -52,21 +52,16 @@ struct GmmPlatformCache {
     std::string shortSocVersion;
 };
 
-static const GmmPlatformCache& GetGmmPlatformCache()
+static const GmmPlatformCache& GetGmmPlatformCache(const bool refresh = false)
 {
     static GmmPlatformCache cache;
-    static bool initialized = false;
-    if (!initialized) {
-        fe::PlatFormInfos platformInfo;
-        fe::OptionalInfos optionalInfo;
+    if (refresh) {
+        fe::PlatformInfo platformInfo;
+        fe::OptionalInfo optionalInfo;
         cache.ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(
             platformInfo, optionalInfo);
         if (cache.ret == GRAPH_SUCCESS) {
-            platformInfo.GetPlatformRes(
-                "version", "Short_SoC_version", cache.shortSocVersion);
-            initialized = true;
-            OP_LOGD("GetGmmPlatformCache", "Platform cache initialized, short_soc_version=%s.",
-                cache.shortSocVersion.c_str());
+            cache.shortSocVersion = optionalInfo.soc_version;
         } else {
             OP_LOGD("GetGmmPlatformCache", "Platform cache initialization failed, platform_ret=%d.",
                 cache.ret);
@@ -1505,7 +1500,7 @@ static graphStatus IsDavidQuantGMMByShape(T context) {
 
 static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context) {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    const auto& platformInfo = GetGmmPlatformCache();
+    const auto& platformInfo = GetGmmPlatformCache(true);
     auto ret = platformInfo.ret;
     if (ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.shortSocVersion) > 0) {
         if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
@@ -1770,7 +1765,7 @@ static graphStatus InferDtype4DavidQuantGMM(gert::InferDataTypeContext* context)
 
 static graphStatus InferDataType4GroupedMatmul(gert::InferDataTypeContext *context){
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    const auto& platformInfo = GetGmmPlatformCache();
+    const auto& platformInfo = GetGmmPlatformCache(true);
     auto ret = platformInfo.ret;
     if (ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.shortSocVersion) > 0) {
         if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
