@@ -16,7 +16,7 @@
 #define FLASH_ATTN_BLOCK_VEC_DN_H_
 
 #include <limits>
-
+#include "adv_api/activation/softmax.h"
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -26,6 +26,9 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -35,9 +38,10 @@
 #include "../../common/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../common/vector_common.h"
 #include "../../common/init_output.h"
+#include "../../common/memcopy/fa_gm_tensor.h"
+#include "../../common/memcopy/copy_gm_to_l1.h"
+#include "../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #endif
-
-#include "memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -234,17 +238,11 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
-    __aicore__ inline void AllocEventID()
-    {
-    }
+    __aicore__ inline void AllocEventID() {}
 
-    __aicore__ inline void FreeEventID()
-    {
-    }
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {
@@ -345,20 +343,22 @@ public:
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
-                                                           runInfo.actVecMSize, constInfo_);
+            DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>()>(
+                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-            uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                        constInfo_);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
+                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
                                  runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                        constInfo_, qActSeqLens);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
+                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
         }
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
@@ -392,9 +392,9 @@ public:
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-            runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-            static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
+            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue),
+            descaleQK, negativeFloatScalar_, 0.0F, false);
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -486,9 +486,8 @@ public:
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-        uint64_t gmOffset =
-            runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
-            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
+        uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
+                            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
@@ -528,9 +527,8 @@ public:
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
                         1.0, 1.0);
                 } else {
-                    LocalTensor<float> sumUb =
-                        softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
-                                       (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+                    LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
+                                                              (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
                         dTemplateAlign64, 1.0, 1.0);

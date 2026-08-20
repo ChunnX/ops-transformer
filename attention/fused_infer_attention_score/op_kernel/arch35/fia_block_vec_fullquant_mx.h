@@ -247,10 +247,7 @@ public:
         }
     }
 
-    __aicore__ inline bool IsInitAttentionOutGm()
-    {
-        return constInfo.isExistRowInvalid;
-    }
+    __aicore__ inline bool IsInitAttentionOutGm() { return constInfo.isExistRowInvalid; }
 
     __aicore__ inline void InitOutputSingleCore()
     {
@@ -343,29 +340,29 @@ public:
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         } else {
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         }
         bmm1ResBuf.SetCrossCore();
@@ -484,30 +481,31 @@ public:
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset =
                 prefixBS1 * constInfo.realN2Size * constInfo.realGSize + runInfo.realN2Idx * constInfo.realGSize;
-            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                                 gmDealRowCount, constInfo);
+            DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
+                {.gSize = constInfo.realGSize, .n2Size = constInfo.realN2Size});
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                       constInfo, s1Size);
+            DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
+                {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.n2Size});
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                        constInfo, s1LeftPaddingSize);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
+                {.s1Size = constInfo.s1Size, .gSize = constInfo.gSize});
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                        constInfo, qActSeqLens, s1LeftPaddingSize);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
+                {.s1Size = constInfo.s1Size, .qActSeqLens = qActSeqLens});
         }
-
         softmaxLseQueue.FreeTensor(lseUb);
     }
 

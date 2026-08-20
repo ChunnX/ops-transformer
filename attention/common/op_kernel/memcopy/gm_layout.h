@@ -49,6 +49,9 @@ enum class GmFormat {
     TND2 = 22, // VSCALE, 尾轴2
     PA_NZ_K_SCALE = 23,
     NGT = 24,
+    LSE_TN2G = 25,
+    LSE_N2GT = 26,
+    LSE_BN2GS1 = 27
 };
 
 template <GmFormat FORMAT>
@@ -506,4 +509,52 @@ struct GmLayout<GmFormat::SBND> {
     }
 };
 
+template <>
+struct GmLayout<GmFormat::LSE_TN2G> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n2, uint32_t g)
+    {
+        shape = AscendC::MakeShape(t, n2, g);
+        uint64_t gStride = 1;
+        uint64_t n2Stride = gStride * g;
+        uint64_t tStride = n2Stride * n2;
+        stride = AscendC::MakeStride(tStride, n2Stride, gStride);
+    }
+};
+
+template <>
+struct GmLayout<GmFormat::LSE_N2GT> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t n2, uint32_t g, uint32_t t)
+    {
+        shape = AscendC::MakeShape(n2, g, t);
+        uint64_t tStride = 1;
+        uint64_t gStride = tStride * t;
+        uint64_t n2Stride = gStride * g;
+        stride = AscendC::MakeStride(n2Stride, gStride, tStride);
+    }
+};
+
+template <>
+struct GmLayout<GmFormat::LSE_BN2GS1> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1)
+    {
+        shape = AscendC::MakeShape(b, n2, g, s1);
+        uint64_t s1Stride = 1;
+        uint64_t gStride = s1Stride * s1;
+        uint64_t n2Stride = gStride * g;
+        uint64_t bStride = n2Stride * n2;
+        stride = AscendC::MakeStride(bStride, n2Stride, gStride, s1Stride);
+    }
+};
 #endif

@@ -290,28 +290,32 @@ public:
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
             // [MTE3] DataCopySoftmaxLseNTDArch35: MTE3 写回本块 lse 到 GM (NTD 布局)
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                             runInfo.actVecMSize, constInfo, s1Size);
+            DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.n2Size});
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
             // [MTE3] DataCopySoftmaxLseTNDArch35: MTE3 写回本块 lse 到 GM (TND 布局)
-            DataCopySoftmaxLseTNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                             runInfo.actVecMSize, constInfo);
+            DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.gSize = constInfo.gSize, .n2Size = constInfo.n2Size});
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             // [MTE3] DataCopySoftmaxLseBSNDArch35: MTE3 写回本块 lse 到 GM (BSND 布局)
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, 0);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.s1Size = constInfo.s1Size, .gSize = constInfo.gSize});
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             // [MTE3] DataCopySoftmaxLseBNSDArch35: MTE3 写回本块 lse 到 GM (BNSD 布局, 本用例实际走此分支)
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                              runInfo.actVecMSize, constInfo, qActSeqLens, 0);
+            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                {.s1Size = constInfo.s1Size, .qActSeqLens = qActSeqLens});
         }
 
         softmaxLseQueue.FreeTensor(lseUb);
