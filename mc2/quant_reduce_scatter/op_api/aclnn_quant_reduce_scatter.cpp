@@ -89,12 +89,12 @@ static bool CheckAllDtypesValid(const aclTensor *x, const aclTensor *scales, con
     bool isAllDtypesValid = false;
     isAllDtypesValid = CheckKGAllDtypesValid(x, scales, output) || CheckMXAllDtypesValid(x, scales, output);
     if (!isAllDtypesValid) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnQuantReduceScatter", "x/scales/output",
-                                              (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
-                                               op::ToString(scales->GetDataType()).GetString() + "/" +
-                                               op::ToString(output->GetDataType()).GetString())
-                                                  .c_str(),
-                                              "The dtypes of x, scales and output must be valid");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "aclnnQuantReduceScatter", "x/scales/output",
+            (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
+             op::ToString(scales->GetDataType()).GetString() + "/" + op::ToString(output->GetDataType()).GetString())
+                .c_str(),
+            "The dtypes of x, scales and output must be valid");
     }
     return isAllDtypesValid;
 }
