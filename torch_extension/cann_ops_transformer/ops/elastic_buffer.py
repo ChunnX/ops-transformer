@@ -921,9 +921,7 @@ class ElasticBuffer:
         num_tokens = handle.topk_idx.shape[0]
         hidden = x.shape[1]
         topk = handle.topk_idx.shape[1]
-        combined_x = torch.empty(
-            (num_tokens, hidden), dtype=x.dtype, device=x.device
-        )
+        combined_x = torch.empty((num_tokens, hidden), dtype=x.dtype, device=x.device)
         combined_topk_weights = (
             None
             if topk_weights is None
@@ -942,17 +940,15 @@ class ElasticBuffer:
             handle.num_max_tokens_per_rank,
         )
 
-        combined_x, combined_topk_weights = (
-            self._runtime.moe_ep_combine_epilogue(
-                handle.topk_idx,
-                topk_weights,
-                self._ep_world_size,
-                self._rank_id,
-                handle.num_experts,
-                handle.num_max_tokens_per_rank,
-                combined_x,
-                combined_topk_weights,
-            )
+        combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
+            handle.topk_idx,
+            topk_weights,
+            self._ep_world_size,
+            self._rank_id,
+            handle.num_experts,
+            handle.num_max_tokens_per_rank,
+            combined_x,
+            combined_topk_weights,
         )
         return combined_x, combined_topk_weights
 
