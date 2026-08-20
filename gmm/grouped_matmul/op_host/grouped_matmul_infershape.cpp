@@ -54,8 +54,8 @@ struct GmmPlatformCache {
 
 static const GmmPlatformCache& GetGmmPlatformCache()
 {
-    static thread_local GmmPlatformCache cache;
-    static thread_local bool initialized = false;
+    static GmmPlatformCache cache;
+    static bool initialized = false;
     if (!initialized) {
         fe::PlatFormInfos platformInfo;
         fe::OptionalInfos optionalInfo;
