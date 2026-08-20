@@ -208,7 +208,10 @@ __aicore__ inline GM_ADDR EngramFetchTrainArch35::GetRemoteWinAddr(uint32_t dstR
 
 __aicore__ inline uint64_t EngramFetchTrainArch35::GetCommHandle(uint32_t dstRank)
 {
-    uint32_t channelIdx = isSender_ ? SENDER_CHANNEL_IDX : RECEIVER_CHANNEL_IDX;
+    uint32_t channelIdx = aivId_ / numRanks_ + 1U;
+    if (channelIdx >= channelsPerRank_) {
+        channelIdx = 1U;
+    }
     return ctxPtr_->hcommHandle[dstRank * channelsPerRank_ + channelIdx];
 }
 
