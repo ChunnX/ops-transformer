@@ -73,7 +73,10 @@ public:
         }
         groupName_ = std::string(groupName);
     }
-    const char *GetGroupName() { return groupName_.empty() ? nullptr : groupName_.c_str(); }
+    const char *GetGroupName()
+    {
+        return groupName_.empty() ? nullptr : groupName_.c_str();
+    }
 
 private:
     MC2GroupNameManager() = default;
