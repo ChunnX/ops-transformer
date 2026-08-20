@@ -360,10 +360,11 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j / LN2) * LN2
+    m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
     m_block_j = torch.max(mi, m_block_j)
+    m_block_j_copy = m_block_j - ln_p_scale
 
-    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
+    P_ij_raw = torch.exp(S_ij - m_block_j_copy)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = hif8_cast_p(P_ij_raw)
 
@@ -388,7 +389,8 @@ def cpu_hif8_golden(
     HIF8: S1=128, S2=256, 每轮 C1V1 处理 1 个 K block (256) + 1 个 V block (256)
     """
     EPSILON = 1e-20
-    LN2 = math.log(2.0)
+    LN2 = 0.6931471824645996
+    INV_LN2 = 1.4426950216293335
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 256
@@ -1206,4 +1208,10 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _get_seqused_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
-        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        fill_tnd_padding(
+            cpu_lse_tnd_torch, _get_seqused_q(), CU_SEQLENS_Q, fill_value=float("inf")
+        )
+        # NPU LSE 输出为 N-major 排布 (N, T): N 在外, T 在内
+        # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+        cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
+        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)
