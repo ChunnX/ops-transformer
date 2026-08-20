@@ -14,7 +14,7 @@ from test_k_pool_public_npu import _load_manifest_cases, _make_case_inputs
 
 
 def _to_npu_inputs(inputs):
-    hidden_states, wk, gate_weight, ape, state_cache, block_table, start_pos, seq_lens = inputs
+    hidden_states, wk, gate_weight, ape, state_cache, block_table, start_pos, cu_seqlens = inputs
     return (
         hidden_states.npu(),
         wk.npu(),
@@ -23,12 +23,12 @@ def _to_npu_inputs(inputs):
         state_cache.npu(),
         block_table.npu(),
         start_pos.npu(),
-        None if seq_lens is None else seq_lens.npu(),
+        None if cu_seqlens is None else cu_seqlens.npu(),
     )
 
 
 def _measure_fused(inputs, case, warmup: int, repeat: int):
-    hidden_states, wk, gate_weight, ape, state_cache, block_table, start_pos, seq_lens = _to_npu_inputs(inputs)
+    hidden_states, wk, gate_weight, ape, state_cache, block_table, start_pos, cu_seqlens = _to_npu_inputs(inputs)
 
     print(f"[{case.name}] fused warmup", flush=True)
     for _ in range(warmup):
@@ -41,7 +41,7 @@ def _measure_fused(inputs, case, warmup: int, repeat: int):
             cache,
             block_table,
             start_pos,
-            seq_lens=seq_lens,
+            cu_seqlens=cu_seqlens,
             cmp_ratio=case.cmp_ratio,
         )
     torch.npu.synchronize()
@@ -60,7 +60,7 @@ def _measure_fused(inputs, case, warmup: int, repeat: int):
             cache,
             block_table,
             start_pos,
-            seq_lens=seq_lens,
+            cu_seqlens=cu_seqlens,
             cmp_ratio=case.cmp_ratio,
         )
         torch.npu.synchronize()

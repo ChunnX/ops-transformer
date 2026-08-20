@@ -23,6 +23,8 @@ def test_k_pool_public_schema_and_meta():
         "cache_block_table",
         "start_pos",
     ]
+    assert "cu_seqlens" in parameters
+    assert "seqused" in parameters
 
     hidden_states = torch.empty((2, 4, 4096), dtype=torch.bfloat16, device="meta")
     wk = torch.empty((128, 4096), dtype=torch.bfloat16, device="meta")
@@ -94,4 +96,48 @@ def test_k_pool_public_accepts_layer_norm_and_rejects_rope():
             start_pos,
             cos=torch.empty((1, 1, 64), dtype=torch.bfloat16, device="meta"),
             sin=torch.empty((1, 1, 64), dtype=torch.bfloat16, device="meta"),
+        )
+
+
+def test_k_pool_public_th_cu_seqlens_and_seqused_contract():
+    torch_npu = pytest.importorskip("torch_npu")
+    load_k_pool_public_api()
+
+    hidden_states = torch.empty((5, 4096), dtype=torch.bfloat16, device="meta")
+    wk = torch.empty((128, 4096), dtype=torch.bfloat16, device="meta")
+    gate_weight = torch.empty_like(wk)
+    ape = torch.empty((4, 128), dtype=torch.float32, device="meta")
+    state_cache = torch.empty((8, 16, 256), dtype=torch.float32, device="meta")
+    cache_block_table = torch.empty((2, 4), dtype=torch.int32, device="meta")
+    start_pos = torch.empty((2,), dtype=torch.int32, device="meta")
+    cu_seqlens = torch.tensor([0, 2, 5], dtype=torch.int32, device="meta")
+
+    output = torch_npu.k_pool_npu(
+        hidden_states,
+        wk,
+        gate_weight,
+        ape,
+        state_cache,
+        cache_block_table,
+        start_pos,
+        cu_seqlens=cu_seqlens,
+    )
+    assert output.shape == (2, 16, 128)
+
+    with pytest.raises(ValueError, match="cu_seqlens is required"):
+        torch_npu.k_pool_npu(
+            hidden_states, wk, gate_weight, ape, state_cache, cache_block_table, start_pos
+        )
+
+    with pytest.raises(ValueError, match="seqused"):
+        torch_npu.k_pool_npu(
+            hidden_states,
+            wk,
+            gate_weight,
+            ape,
+            state_cache,
+            cache_block_table,
+            start_pos,
+            cu_seqlens=cu_seqlens,
+            seqused=torch.empty((2,), dtype=torch.int32, device="meta"),
         )

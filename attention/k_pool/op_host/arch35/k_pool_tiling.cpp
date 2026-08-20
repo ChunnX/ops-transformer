@@ -69,8 +69,10 @@ void KPoolTiling::ConvertOptionalParams(gert::TilingContext &context, KPoolConte
     k_poolContext.cos.shape = context.GetOptionalInputShape(COS_INPUT_INDEX);
     k_poolContext.sin.desc = context.GetOptionalInputDesc(SIN_INPUT_INDEX);
     k_poolContext.sin.shape = context.GetOptionalInputShape(SIN_INPUT_INDEX);
-    k_poolContext.seqLens.desc = context.GetOptionalInputDesc(SEQ_LENS_INPUT_INDEX);
-    k_poolContext.seqLens.shape = context.GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);
+    k_poolContext.seqLens.desc = context.GetOptionalInputDesc(CU_SEQLENS_INPUT_INDEX);
+    k_poolContext.seqLens.shape = context.GetOptionalInputShape(CU_SEQLENS_INPUT_INDEX);
+    k_poolContext.seqUsed.desc = context.GetOptionalInputDesc(SEQUSED_INPUT_INDEX);
+    k_poolContext.seqUsed.shape = context.GetOptionalInputShape(SEQUSED_INPUT_INDEX);
 }
 
 ge::graphStatus KPoolTiling::ConvertContext(gert::TilingContext &context, KPoolContext &k_poolContext)
@@ -381,7 +383,8 @@ ge::graphStatus KPoolTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaGateWeight() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
         ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaNormWeight() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNormBias() || ge::GRAPH_SUCCESS != CheckSingleParaCacheBlockTable() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSeqLens() || ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSeqLens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqUsed() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
         ge::GRAPH_SUCCESS != CheckSingleParaPooledKey() || ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio()) {
         return ge::GRAPH_FAILED;
     }
@@ -592,8 +595,8 @@ ge::graphStatus KPoolTiling::CheckSingleParaSeqLens() const
     if (context_->seqLens.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqLens.desc, SEQ_LENS_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqLens.shape, SEQ_LENS_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqLens.desc, CU_SEQLENS_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqLens.shape, CU_SEQLENS_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -601,13 +604,9 @@ ge::graphStatus KPoolTiling::CheckSingleParaSeqLens() const
 
 ge::graphStatus KPoolTiling::CheckSingleParaSeqUsed() const
 {
-    if (context_->seqUsed.desc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqUsed.desc, SEQ_USED_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqUsed.shape, SEQ_USED_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(context_->seqUsed.desc != nullptr || context_->seqUsed.shape != nullptr,
+                OP_LOGE(context_->opName, "seqused is reserved and must be nullptr in this stage"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

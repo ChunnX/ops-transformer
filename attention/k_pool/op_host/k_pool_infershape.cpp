@@ -25,7 +25,7 @@ namespace ops {
     constexpr uint32_t STATE_CACHE_INPUT_INDEX = 4;
     constexpr uint32_t CACHE_BLOCK_TABLE_INPUT_INDEX = 5;
     constexpr uint32_t START_POS_INPUT_INDEX = 6;
-    constexpr uint32_t SEQ_LENS_INPUT_INDEX = 11;
+    constexpr uint32_t CU_SEQLENS_INPUT_INDEX = 11;
 
     // ATTR
     constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
@@ -73,8 +73,8 @@ ge::graphStatus GetKPoolShapeDim(const gert::InferShapeContext* context, KPoolPr
     auto cacheBlockTableShape = context->GetRequiredInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cacheBlockTableShape);
     if (hiddenStatesShape->GetDimNum() == DIM_NUM_2) {
-        auto seqLensShape = context->GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);    // (B+1,)
-        OP_CHECK_NULL_WITH_CONTEXT(context, seqLensShape);
+        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQLENS_INPUT_INDEX);    // (B+1,)
+        OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
     }
     auto startPosShape = context->GetRequiredInputShape(START_POS_INPUT_INDEX);    // (B,)
     OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
@@ -92,8 +92,8 @@ ge::graphStatus GetKPoolShapeDim(const gert::InferShapeContext* context, KPoolPr
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
-        auto seqLensShape = context->GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);
-        shapeParam.B = seqLensShape->GetDim(DIM_INDEX_0);
+        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQLENS_INPUT_INDEX);
+        shapeParam.B = cuSeqlensShape->GetDim(DIM_INDEX_0) - 1;
         shapeParam.Sr = (cacheBlockTableShape->GetDim(DIM_INDEX_1) * stateCacheShape->GetDim(DIM_INDEX_1) +
             cmpRatio - 1) / cmpRatio;
         shapeParam.T = hiddenStatesShape->GetDim(DIM_INDEX_0);

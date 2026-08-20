@@ -50,7 +50,8 @@ constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 7;
 constexpr uint32_t NORM_BIAS_INPUT_INDEX = 8;
 constexpr uint32_t COS_INPUT_INDEX = 9;
 constexpr uint32_t SIN_INPUT_INDEX = 10;
-constexpr uint32_t SEQ_LENS_INPUT_INDEX = 11;
+constexpr uint32_t CU_SEQLENS_INPUT_INDEX = 11;
+constexpr uint32_t SEQUSED_INPUT_INDEX = 12;
 
 // ATTR
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
@@ -87,8 +88,8 @@ static const std::string GATE_WEIGHT_NAME = "gate_weight";
 static const std::string STATE_CACHE_NAME = "state_cache";
 static const std::string APE_NAME = "ape";
 static const std::string CACHE_BLOCK_TABLE_NAME = "cache_block_table";
-static const std::string SEQ_LENS_NAME = "seq_lens";
-static const std::string SEQ_USED_NAME = "seq_used";
+static const std::string CU_SEQLENS_NAME = "cu_seqlens";
+static const std::string SEQUSED_NAME = "seqused";
 static const std::string START_POS_NAME = "start_pos";
 static const std::string NORM_WEIGHT_NAME = "norm_weight";
 static const std::string NORM_BIAS_NAME = "norm_bias";
@@ -108,8 +109,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {STATE_CACHE_NAME, {ge::DT_FLOAT}},
     {APE_NAME, {ge::DT_FLOAT}},
     {CACHE_BLOCK_TABLE_NAME, {ge::DT_INT32}},
-    {SEQ_LENS_NAME, {ge::DT_INT32}},
-    {SEQ_USED_NAME, {ge::DT_INT32}},
+    {CU_SEQLENS_NAME, {ge::DT_INT32}},
+    {SEQUSED_NAME, {ge::DT_INT32}},
     {START_POS_NAME, {ge::DT_INT32}},
     {NORM_WEIGHT_NAME, {ge::DT_FLOAT}},
     {NORM_BIAS_NAME, {ge::DT_FLOAT}},
@@ -124,8 +125,8 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {STATE_CACHE_NAME, {K_POOL_DIM_NUM_3}},
     {APE_NAME, {K_POOL_DIM_NUM_2}},
     {CACHE_BLOCK_TABLE_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_1}},
-    {SEQ_LENS_NAME, {K_POOL_DIM_NUM_1}},
-    {SEQ_USED_NAME, {K_POOL_DIM_NUM_1}},
+    {CU_SEQLENS_NAME, {K_POOL_DIM_NUM_1}},
+    {SEQUSED_NAME, {K_POOL_DIM_NUM_1}},
     {START_POS_NAME, {K_POOL_DIM_NUM_1}},
     {NORM_WEIGHT_NAME, {K_POOL_DIM_NUM_1}},
     {NORM_BIAS_NAME, {K_POOL_DIM_NUM_1}},

@@ -20,7 +20,7 @@ def _run_repeated(case_name: str, norm_on: bool, repeats: int = 10):
         state_cache,
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
     ) = _make_case_inputs(case)
     norm_weight = norm_bias = None
     if norm_on:
@@ -38,7 +38,7 @@ def _run_repeated(case_name: str, norm_on: bool, repeats: int = 10):
             state_cache.clone(),
             cache_block_table,
             start_pos,
-            seq_lens,
+            cu_seqlens,
             case.cmp_ratio,
             norm_weight,
             norm_bias,

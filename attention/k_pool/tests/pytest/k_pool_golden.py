@@ -24,21 +24,31 @@ def _as_list(value: torch.Tensor) -> list[int]:
 
 def _split_hidden(
     hidden_states: torch.Tensor,
-    seq_lens: Optional[torch.Tensor],
+    cu_seqlens: Optional[torch.Tensor],
+    batch_size: int,
 ) -> Tuple[list[torch.Tensor], list[int]]:
     if hidden_states.dim() == 3:
-        if seq_lens is not None:
-            raise ValueError("seq_lens must be absent for BSH")
+        if cu_seqlens is not None:
+            raise ValueError("cu_seqlens must be absent for BSH")
         return [hidden_states[index] for index in range(hidden_states.size(0))], [
             int(hidden_states.size(1))
         ] * hidden_states.size(0)
     if hidden_states.dim() != 2:
         raise ValueError("hidden_states rank must be 2 (TH) or 3 (BSH)")
-    if seq_lens is None:
-        raise ValueError("seq_lens is required for TH")
-    lengths = _as_list(seq_lens)
-    if sum(lengths) != hidden_states.size(0):
-        raise ValueError("sum(seq_lens) must equal hidden_states.shape[0]")
+    if cu_seqlens is None:
+        raise ValueError("cu_seqlens is required for TH")
+    if cu_seqlens.dtype != torch.int32 or cu_seqlens.dim() != 1:
+        raise ValueError("cu_seqlens must be a rank-1 INT32 tensor")
+    offsets = _as_list(cu_seqlens)
+    if len(offsets) != batch_size + 1:
+        raise ValueError("cu_seqlens shape must be [B+1]")
+    if offsets[0] != 0:
+        raise ValueError("cu_seqlens[0] must be 0")
+    if any(next_offset < offset for offset, next_offset in zip(offsets, offsets[1:])):
+        raise ValueError("cu_seqlens must be nondecreasing")
+    if offsets[-1] != hidden_states.size(0):
+        raise ValueError("cu_seqlens[-1] must equal hidden_states.shape[0]")
+    lengths = [next_offset - offset for offset, next_offset in zip(offsets, offsets[1:])]
     chunks = []
     offset = 0
     for length in lengths:
@@ -59,7 +69,8 @@ def validate_inputs(
     norm_bias: Optional[torch.Tensor] = None,
     cos: Optional[torch.Tensor] = None,
     sin: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    seqused: Optional[torch.Tensor] = None,
     cmp_ratio: int = 4,
     norm_eps: float = DEFAULT_NORM_EPS,
     rotary_mode: int = 1,
@@ -113,9 +124,11 @@ def validate_inputs(
         if cos.shape != sin.shape:
             raise ValueError("cos and sin must have the same shape")
         raise NotImplementedError("KPool RoPE is reserved but not implemented in v1")
-    if seq_lens is not None and seq_lens.dtype != torch.int32:
-        raise TypeError("seq_lens must be INT32")
-    batch_hidden, lengths = _split_hidden(hidden_states, seq_lens)
+    if seqused is not None:
+        raise ValueError("seqused is reserved and must be None in this stage")
+    batch_hidden, lengths = _split_hidden(
+        hidden_states, cu_seqlens, cache_block_table.size(0)
+    )
     if cache_block_table.size(0) != len(batch_hidden):
         raise ValueError("cache_block_table batch does not match hidden_states")
     if any(int(value) < 0 for value in _as_list(start_pos)):
@@ -230,7 +243,8 @@ def run_k_pool_golden(
     norm_bias: Optional[torch.Tensor] = None,
     cos: Optional[torch.Tensor] = None,
     sin: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    seqused: Optional[torch.Tensor] = None,
     cmp_ratio: int = 4,
     norm_eps: float = DEFAULT_NORM_EPS,
     rotary_mode: int = 1,
@@ -239,10 +253,12 @@ def run_k_pool_golden(
     """Reference implementation using scalar logical Cache traversal."""
     validate_inputs(
         hidden_states, wk, gate_weight, ape, state_cache, cache_block_table, start_pos,
-        norm_weight, norm_bias, cos, sin, seq_lens, cmp_ratio, norm_eps, rotary_mode,
+        norm_weight, norm_bias, cos, sin, cu_seqlens, seqused, cmp_ratio, norm_eps, rotary_mode,
         enforce_model_dims,
     )
-    batch_hidden, lengths = _split_hidden(hidden_states, seq_lens)
+    batch_hidden, lengths = _split_hidden(
+        hidden_states, cu_seqlens, cache_block_table.size(0)
+    )
     k_parts = []
     gate_parts = []
     for hidden in batch_hidden:
@@ -281,7 +297,8 @@ def run_k_pool_oracle(
     norm_bias: Optional[torch.Tensor] = None,
     cos: Optional[torch.Tensor] = None,
     sin: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    seqused: Optional[torch.Tensor] = None,
     cmp_ratio: int = 4,
     norm_eps: float = DEFAULT_NORM_EPS,
     rotary_mode: int = 1,
@@ -290,10 +307,12 @@ def run_k_pool_oracle(
     """Independent vectorized Pool read/softmax implementation."""
     validate_inputs(
         hidden_states, wk, gate_weight, ape, state_cache, cache_block_table, start_pos,
-        norm_weight, norm_bias, cos, sin, seq_lens, cmp_ratio, norm_eps, rotary_mode,
+        norm_weight, norm_bias, cos, sin, cu_seqlens, seqused, cmp_ratio, norm_eps, rotary_mode,
         enforce_model_dims,
     )
-    batch_hidden, lengths = _split_hidden(hidden_states, seq_lens)
+    batch_hidden, lengths = _split_hidden(
+        hidden_states, cu_seqlens, cache_block_table.size(0)
+    )
     for batch, hidden in enumerate(batch_hidden):
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
         _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate)

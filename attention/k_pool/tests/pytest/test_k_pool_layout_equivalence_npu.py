@@ -25,7 +25,7 @@ def _run_npu(
     state_cache,
     cache_block_table,
     start_pos,
-    seq_lens,
+    cu_seqlens,
     cmp_ratio,
     norm_weight,
     norm_bias,
@@ -41,7 +41,7 @@ def _run_npu(
         start_pos.npu(),
         norm_weight=None if norm_weight is None else norm_weight.npu(),
         norm_bias=None if norm_bias is None else norm_bias.npu(),
-        seq_lens=None if seq_lens is None else seq_lens.npu(),
+        cu_seqlens=None if cu_seqlens is None else cu_seqlens.npu(),
         cmp_ratio=cmp_ratio,
     )
     torch_npu.npu.synchronize()
@@ -88,7 +88,7 @@ def _run_case(case: Case, norm_on: bool):
         state_cache,
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
     ) = _make_case_inputs(case)
     norm_weight = norm_bias = None
     if norm_on:
@@ -103,7 +103,7 @@ def _run_case(case: Case, norm_on: bool):
         state_cache.clone(),
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
         case.cmp_ratio,
         norm_weight,
         norm_bias,
@@ -148,8 +148,9 @@ def _run_case(case: Case, norm_on: bool):
 
     order = tuple(reversed(range(len(case.lengths))))
     perm_hidden = torch.cat([segments[index] for index in order], dim=0)
-    perm_lengths = torch.tensor(
-        [case.lengths[index] for index in order], dtype=torch.int32
+    perm_cu_seqlens = torch.tensor(
+        [0, *torch.tensor([case.lengths[index] for index in order], dtype=torch.int32).cumsum(0).tolist()],
+        dtype=torch.int32,
     )
     perm_output, perm_cache = _run_npu(
         perm_hidden,
@@ -159,7 +160,7 @@ def _run_case(case: Case, norm_on: bool):
         state_cache.clone(),
         cache_block_table[list(order)],
         start_pos[list(order)],
-        perm_lengths,
+        perm_cu_seqlens,
         case.cmp_ratio,
         norm_weight,
         norm_bias,

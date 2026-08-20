@@ -166,12 +166,15 @@ def _make_case_inputs(case: Case):
             (len(case.lengths), case.lengths[0], hidden_size),
             dtype=torch.bfloat16,
         )
-        seq_lens = None
+        cu_seqlens = None
     else:
         hidden_states = torch.randn(
             (sum(case.lengths), hidden_size), dtype=torch.bfloat16
         )
-        seq_lens = torch.tensor(case.lengths, dtype=torch.int32)
+        cu_seqlens = torch.tensor(
+            [0, *torch.tensor(case.lengths, dtype=torch.int32).cumsum(0).tolist()],
+            dtype=torch.int32,
+        )
 
     wk = (torch.randn(head_dim, hidden_size) * 0.02).to(torch.bfloat16)
     gate_weight = (torch.randn(head_dim, hidden_size) * 0.02).to(torch.bfloat16)
@@ -189,7 +192,7 @@ def _make_case_inputs(case: Case):
         state_cache,
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
     )
 
 
@@ -246,7 +249,7 @@ def run_case(
         state_cache,
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
     ) = _make_case_inputs(case)
     norm_weight = None
     norm_bias = None
@@ -265,7 +268,7 @@ def run_case(
         start_pos,
         norm_weight=norm_weight,
         norm_bias=norm_bias,
-        seq_lens=seq_lens,
+        cu_seqlens=cu_seqlens,
         cmp_ratio=case.cmp_ratio,
         norm_eps=norm_eps,
         enforce_model_dims=False,
@@ -282,7 +285,7 @@ def run_case(
         start_pos.npu(),
         norm_weight=None if norm_weight is None else norm_weight.npu(),
         norm_bias=None if norm_bias is None else norm_bias.npu(),
-        seq_lens=None if seq_lens is None else seq_lens.npu(),
+        cu_seqlens=None if cu_seqlens is None else cu_seqlens.npu(),
         cmp_ratio=case.cmp_ratio,
         norm_eps=norm_eps,
     )

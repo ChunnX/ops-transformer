@@ -59,7 +59,12 @@ public:
         this->Input("norm_bias").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Input("cos").ParamType(OPTIONAL).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Input("sin").ParamType(OPTIONAL).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
-        this->Input("seq_lens")
+        this->Input("cu_seqlens")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})

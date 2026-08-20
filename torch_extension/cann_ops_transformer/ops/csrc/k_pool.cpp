@@ -73,7 +73,8 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
                  const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
                  const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
                  const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
-                 const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &seqLens,
+                 const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &cuSeqlens,
+                 const c10::optional<at::Tensor> &seqused,
                  int64_t cmpRatio, double normEps, int64_t rotaryMode)
 {
     TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
@@ -95,8 +96,9 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
     TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
     TORCH_CHECK(cos.has_value() == sin.has_value(), "cos and sin must be provided as a pair");
     TORCH_CHECK(!cos.has_value(), "KPool RoPE is not implemented in this stage");
-    TORCH_CHECK(hiddenStatesDim != DIM_TWO || seqLens.has_value(), "seq_lens is required for TH layout");
-    TORCH_CHECK(hiddenStatesDim != DIM_THREE || !seqLens.has_value(), "seq_lens must be absent for BSH layout");
+    TORCH_CHECK(hiddenStatesDim != DIM_TWO || cuSeqlens.has_value(), "cu_seqlens is required for TH layout");
+    TORCH_CHECK(hiddenStatesDim != DIM_THREE || !cuSeqlens.has_value(), "cu_seqlens must be absent for BSH layout");
+    TORCH_CHECK(!seqused.has_value(), "seqused is reserved and must be None in this stage");
     at::Tensor pooledKey = ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 
     auto stateCacheDim = stateCache.dim();
@@ -105,15 +107,15 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
     auto contiguousAxesResult = IsContiguousAxes(stateCache);
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
-    c10::optional<at::Tensor> seqOffsets = c10::nullopt;
-    if (seqLens.has_value()) {
-        TORCH_CHECK(seqLens->dim() == DIM_ONE, "seq_lens dim num[", seqLens->dim(), "] should be 1");
-        auto cumulative = at::cumsum(*seqLens, VALUE_0, seqLens->scalar_type());
-        auto prefix = at::zeros({VALUE_1}, seqLens->options());
-        seqOffsets = at::cat({prefix, cumulative}, VALUE_0);
+    if (cuSeqlens.has_value()) {
+        TORCH_CHECK(cuSeqlens->scalar_type() == at::kInt, "cu_seqlens must be INT32");
+        TORCH_CHECK(cuSeqlens->dim() == DIM_ONE,
+                    "cu_seqlens dim num[", cuSeqlens->dim(), "] should be 1");
+        TORCH_CHECK(cuSeqlens->size(0) == cacheBlockTable.size(0) + VALUE_1,
+                    "cu_seqlens shape must be [B+1]");
     }
     ACLNN_CMD(aclnnKPool, hidden_states, wk, gate_weight, ape, stateCache, cacheBlockTable, startPos,
-              normWeight, normBias, cos, sin, seqOffsets, cmpRatio, normEps, rotaryMode,
+              normWeight, normBias, cos, sin, cuSeqlens, seqused, cmpRatio, normEps, rotaryMode,
               stateCacheStrideDim0, pooledKey);
 
     return pooledKey;
@@ -123,7 +125,8 @@ at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, cons
                      const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
                      const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
                      const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
-                     const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &seqLens,
+                     const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &cuSeqlens,
+                     const c10::optional<at::Tensor> &seqused,
                      int64_t cmpRatio, double normEps, int64_t rotaryMode)
 {
     TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
@@ -145,6 +148,9 @@ at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, cons
     TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
     TORCH_CHECK(cos.has_value() == sin.has_value(), "cos and sin must be provided as a pair");
     TORCH_CHECK(!cos.has_value(), "KPool RoPE is not implemented in this stage");
+    TORCH_CHECK(hiddenStatesDim != DIM_TWO || cuSeqlens.has_value(), "cu_seqlens is required for TH layout");
+    TORCH_CHECK(hiddenStatesDim != DIM_THREE || !cuSeqlens.has_value(), "cu_seqlens must be absent for BSH layout");
+    TORCH_CHECK(!seqused.has_value(), "seqused is reserved and must be None in this stage");
     return ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 }
 

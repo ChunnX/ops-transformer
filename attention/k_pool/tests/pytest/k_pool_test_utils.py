@@ -47,10 +47,13 @@ def make_inputs(
         if len(set(lengths)) > 1:
             raise ValueError("BSH helper requires equal per-batch lengths")
         hidden = torch.randn((len(lengths), lengths[0], h), dtype=torch.bfloat16)
-        seq_lens = None
+        cu_seqlens = None
     else:
         hidden = torch.randn((sum(lengths), h), dtype=torch.bfloat16)
-        seq_lens = torch.tensor(lengths, dtype=torch.int32)
+        cu_seqlens = torch.tensor(
+            [0, *torch.tensor(lengths, dtype=torch.int32).cumsum(0).tolist()],
+            dtype=torch.int32,
+        )
     wk = torch.randn((d, h), dtype=torch.bfloat16)
     gate_weight = torch.randn((d, h), dtype=torch.bfloat16)
     ape = torch.randn((ratio, d), dtype=torch.float32)
@@ -71,7 +74,8 @@ def make_inputs(
         norm_bias,
         None,
         None,
-        seq_lens,
+        cu_seqlens,
+        None,
     )
 
 
@@ -123,11 +127,19 @@ def make_invalid_manifest_inputs(case: dict[str, Any]):
     elif reason == "updated_length_exceeds_cache_capacity":
         args[6][:] = 1024
     elif reason == "sum_seq_lens_not_T":
-        args[11] = torch.tensor([3, 3], dtype=torch.int32)
+        args[11] = torch.tensor([0, 3, 3], dtype=torch.int32)
     elif reason == "TH_seq_lens_missing":
         args[11] = None
     elif reason == "BSH_seq_lens_not_empty":
-        args[11] = torch.tensor([4, 4], dtype=torch.int32)
+        args[11] = torch.tensor([0, 4, 8], dtype=torch.int32)
+    elif reason == "TH_cu_seqlens_not_prefix":
+        args[11] = torch.tensor([1, 4, 8], dtype=torch.int32)
+    elif reason == "TH_cu_seqlens_decreasing":
+        args[11] = torch.tensor([0, 5, 4], dtype=torch.int32)
+    elif reason == "TH_cu_seqlens_last_not_T":
+        args[11] = torch.tensor([0, 4, 7], dtype=torch.int32)
+    elif reason == "seqused_not_empty":
+        args[12] = torch.tensor([4, 4], dtype=torch.int32)
     elif reason == "norm_weight_bias_not_paired":
         args[7] = torch.ones((8,), dtype=torch.float32)
     elif reason == "norm_eps_not_positive":

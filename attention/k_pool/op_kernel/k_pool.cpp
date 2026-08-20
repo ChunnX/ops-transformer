@@ -28,7 +28,7 @@ using namespace KPool;
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
         op.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable,              \
-                seqLens, nullptr, startPos, pooledKeyOut, workspace);                                                \
+                seqLens, seqused, startPos, pooledKeyOut, workspace);                                               \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -46,6 +46,7 @@ __global__ __aicore__ void k_pool(
     __gm__ uint8_t *cos,
     __gm__ uint8_t *sin,
     __gm__ uint8_t *seqLens,
+    __gm__ uint8_t *seqused,
     __gm__ uint8_t *pooledKeyOut,
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) {

@@ -9,7 +9,7 @@
 
 ```text
 BSH [B,S,H]
-TH  [T,H] + seq_lens[B]
+TH  [T,H] + cu_seqlens[B+1]
 K/Gate投影
 可选LayerNorm
 State Cache写入

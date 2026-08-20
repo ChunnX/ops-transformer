@@ -37,7 +37,7 @@ def _run_case(case_name, first_lengths, norm_on):
         state_cache,
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
     ) = _make_case_inputs(case)
     norm_weight = norm_bias = None
     if norm_on:
@@ -52,7 +52,7 @@ def _run_case(case_name, first_lengths, norm_on):
         state_cache.clone(),
         cache_block_table,
         start_pos,
-        seq_lens,
+        cu_seqlens,
         case.cmp_ratio,
         norm_weight,
         norm_bias,
@@ -61,19 +61,25 @@ def _run_case(case_name, first_lengths, norm_on):
     first_hidden, second_hidden = _split_hidden(
         hidden_states, case.layout, case.lengths, first_lengths
     )
-    first_seq_lens = (
+    first_cu_seqlens = (
         None
         if case.layout == "BSH"
-        else torch.tensor(first_lengths, dtype=torch.int32)
+        else torch.tensor(
+            [0, *torch.tensor(first_lengths, dtype=torch.int32).cumsum(0).tolist()],
+            dtype=torch.int32,
+        )
     )
     second_lengths = tuple(
         total - first
         for total, first in zip(case.lengths, first_lengths)
     )
-    second_seq_lens = (
+    second_cu_seqlens = (
         None
         if case.layout == "BSH"
-        else torch.tensor(second_lengths, dtype=torch.int32)
+        else torch.tensor(
+            [0, *torch.tensor(second_lengths, dtype=torch.int32).cumsum(0).tolist()],
+            dtype=torch.int32,
+        )
     )
     _, first_cache = _run_npu(
         first_hidden,
@@ -83,7 +89,7 @@ def _run_case(case_name, first_lengths, norm_on):
         state_cache.clone(),
         cache_block_table,
         start_pos,
-        first_seq_lens,
+        first_cu_seqlens,
         case.cmp_ratio,
         norm_weight,
         norm_bias,
@@ -97,7 +103,7 @@ def _run_case(case_name, first_lengths, norm_on):
         first_cache,
         cache_block_table,
         second_start_pos,
-        second_seq_lens,
+        second_cu_seqlens,
         case.cmp_ratio,
         norm_weight,
         norm_bias,

@@ -28,7 +28,8 @@ class KPoolOpBuilder(OpBuilder):
             "k_pool(Tensor hidden_states, Tensor wk, Tensor gate_weight, Tensor ape, Tensor(a!) state_cache, "
             "Tensor cache_block_table, Tensor start_pos, *, "
             "Tensor? norm_weight=None, Tensor? norm_bias=None, Tensor? cos=None, Tensor? sin=None, "
-            "Tensor? seq_lens=None, int cmp_ratio=4, float norm_eps=1e-6, int rotary_mode=1) -> Tensor"
+            "Tensor? cu_seqlens=None, Tensor? seqused=None, int cmp_ratio=4, float norm_eps=1e-6, "
+            "int rotary_mode=1) -> Tensor"
         )
 
     def register_meta(self):
@@ -51,7 +52,8 @@ class KPoolOpBuilder(OpBuilder):
             norm_bias=None,
             cos=None,
             sin=None,
-            seq_lens=None,
+            cu_seqlens=None,
+            seqused=None,
             cmp_ratio=4,
             norm_eps=1e-6,
             rotary_mode=1,
@@ -62,6 +64,12 @@ class KPoolOpBuilder(OpBuilder):
                 raise ValueError("cos and sin must be passed as a pair")
             if cos is not None:
                 raise NotImplementedError("KPool RoPE is not implemented in this stage")
+            if hidden_states.dim() == 2 and cu_seqlens is None:
+                raise ValueError("cu_seqlens is required for TH layout")
+            if hidden_states.dim() == 3 and cu_seqlens is not None:
+                raise ValueError("cu_seqlens must be absent for BSH layout")
+            if seqused is not None:
+                raise ValueError("seqused is reserved and must be None in this stage")
             b = cache_block_table.size(0)
             pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
             pooled_key_size = (b, pcap, wk.size(0))
@@ -86,7 +94,8 @@ def k_pool(
     norm_bias: Optional[torch.Tensor] = None,
     cos: Optional[torch.Tensor] = None,
     sin: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None,
+    cu_seqlens: Optional[torch.Tensor] = None,
+    seqused: Optional[torch.Tensor] = None,
     cmp_ratio: int = 4,
     norm_eps: float = 1e-6,
     rotary_mode: int = 1,
@@ -101,6 +110,12 @@ def k_pool(
         raise ValueError("cos and sin must be passed as a pair")
     if cos is not None:
         raise NotImplementedError("KPool RoPE is not implemented in this stage")
+    if hidden_states.dim() == 2 and cu_seqlens is None:
+        raise ValueError("cu_seqlens is required for TH layout")
+    if hidden_states.dim() == 3 and cu_seqlens is not None:
+        raise ValueError("cu_seqlens must be absent for BSH layout")
+    if seqused is not None:
+        raise ValueError("seqused is reserved and must be None in this stage")
     op_module = k_pool_op_builder.load()
     return op_module.k_pool(
         hidden_states,
@@ -114,7 +129,8 @@ def k_pool(
         norm_bias,
         cos,
         sin,
-        seq_lens,
+        cu_seqlens,
+        seqused,
         cmp_ratio,
         norm_eps,
         rotary_mode,
