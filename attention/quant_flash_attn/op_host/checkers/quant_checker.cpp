@@ -638,7 +638,8 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(qfaInfo.opName, paraName.c_str(),
                                               DataTypeToSerialString(desc->GetDataType()).c_str(),
                                               ("The dtype of " + paraName + " must be " + expectedDtypeStr +
-                                               " in current quant_mode scenario").c_str()),
+                                               " when quant_mode is " +
+                                               QfaQuantModeToSerialString(qfaInfo.quantMode)).c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
@@ -781,7 +782,7 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                     config.supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_kv",
                         QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
-                        ("When quant_mode is MxFP8 and layout_q is " + qLayoutStr +
+                        ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
                          ", layout_kv must be in {TND, PA_BBND, PA_BNBD, PA_NZ}").c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -790,7 +791,8 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
             config.supportedOutLayouts.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_out",
                 QfaLayoutToSerialString(qfaInfo.outLayout).c_str(),
-                ("When quant_mode is MxFP8 and layout_q is " + qLayoutStr + ", layout_out must be TND").c_str()),
+                ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
+                 ", layout_out must be TND").c_str()),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
@@ -798,7 +800,7 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                   qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q_descale",
                 QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
-                ("When quant_mode is MxFP8 and layout_q is " + qLayoutStr +
+                ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
                  ", layout_q_descale must be in {TND, N2TGD}").c_str()),
         return ge::GRAPH_FAILED);
 
