@@ -27,7 +27,7 @@ protected:
     }
 };
 
-// BSH
+// SBH
 TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_0)
 {
     optiling::FlashAttentionScoreCompileInfo compileInfo = {
@@ -113,11 +113,11 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_1)
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScore",
         {
-        // q
+        // q: B=1, N1=1, S1=128, D=64
         {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        // k: S2=256, B=1, H2=128
+        // k: B=1, N2=1, S2=128, D=64
         {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        // v: S2=256, B=1, H2=128
+        // v: B=1, N2=1, S2=128, D=64
         {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         // real_shift
         {{{1, 1, 128, 128}, {1, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -195,9 +195,9 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_2)
         {
         // q
         {{{81, 2, 192}, {81, 2, 192}}, ge::DT_BF16, ge::FORMAT_ND},
-        // k: S2=256, B=1, H2=128
+        // k: T=81, N2=2, D=192
         {{{81, 2, 192}, {81, 2, 192}}, ge::DT_BF16, ge::FORMAT_ND},
-        // v: S2=256, B=1, H2=128
+        // v: T=81, N2=2, D=192
         {{{81, 2, 192}, {81, 2, 192}}, ge::DT_BF16, ge::FORMAT_ND},
         // real_shift
         {{{1,2,1024,67}, {1,2,1024,67}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -205,7 +205,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_2)
         {{{81,2,192}, {81,2,192}}, ge::DT_UINT8, ge::FORMAT_ND},
         // padding_mask
         {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        // atten_mask: S1=256, S2=256
+        // atten_mask: S1=2048, S2=2048
         {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},
         // prefix
         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
@@ -232,10 +232,10 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_tiling_2)
         },
         {
         // 输出Tensor
-        // softmaxMax: B=1, N1=1, S1=256, 8
+        // softmaxMax:
         // {{{974,2,8}, {974,2,8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{81, 2, 8}, {81, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        // softmaxSum: B=1, N1=1, S1=256, 8
+        // softmaxSum:
         // {{{974,2,8}, {974,2,8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{81, 2, 8}, {81, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         // softmaxOut

@@ -3247,7 +3247,7 @@ protected:
 
         bool isSupportAttrs = pseExistFlag == 0 && dropMaskExistFlag == 0 &&
                               noMask && isNotCausal;
-        
+
         return (isSupportBSND || isSupportBNSD) && isSupportAttrs;
 
     }
