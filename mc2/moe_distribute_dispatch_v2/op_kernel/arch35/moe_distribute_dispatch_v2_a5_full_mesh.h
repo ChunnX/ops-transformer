@@ -1793,19 +1793,29 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     DataCopyPad<float, PaddingMode::Compact>(countTensorFp32,
                                              windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET],
                                              countCopyParams, countCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    LocalTensor<float> expertTokenNumTensor = tokenNumBuf_.Get<float>();
+    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
+    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(expertTokenNumTensor, countTensorFp32, expertCountShape,
+                                                         false);
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
+    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor.ReinterpretCast<int32_t>();
+    SyncFunc<AscendC::HardEvent::V_S>();
     int64_t expertTokenNumCumsum = 0;
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-        int64_t expertTokenNum = 0;
-        for (uint32_t rankIdx = 0; rankIdx < epWorldSize_; ++rankIdx) {
-            expertTokenNum += static_cast<int64_t>(recvCountTensor_.GetValue(localExpertIdx * epWorldSize_ + rankIdx));
+    if (expertTokenNumsType_ == 0) {
+        for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+            expertTokenNumCumsum += static_cast<int64_t>(expertTokenNumInt32Tensor.GetValue(localExpertIdx));
         }
+    }
+    // 从后向前写int64结果，避免覆盖尚未读取的int32归约结果
+    for (uint32_t localExpertIdx = localExpertNum; localExpertIdx > 0; --localExpertIdx) {
+        uint32_t expertIdx = localExpertIdx - 1;
+        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumInt32Tensor.GetValue(expertIdx));
         if (expertTokenNumsType_ == 0) {
-            expertTokenNumCumsum += expertTokenNum;
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
+            expertTokenNumsLocalTensor.SetValue(expertIdx, expertTokenNumCumsum);
+            expertTokenNumCumsum -= expertTokenNum;
         } else {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
+            expertTokenNumsLocalTensor.SetValue(expertIdx, expertTokenNum);
         }
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
