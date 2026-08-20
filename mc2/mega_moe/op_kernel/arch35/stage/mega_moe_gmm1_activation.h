@@ -28,20 +28,6 @@ using namespace AscendC;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
 
-struct Gmm1ActivationState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
-
-struct SharedExpertGmm1ActivationState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
-
 // 等待当前 GMM1 tile 对应的 Dispatch 输入就绪。
 template <bool IsShared, typename Config>
 __aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
@@ -1044,23 +1030,18 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     }
 }
 
-template <typename QuantOutType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool EnableA8W4, uint32_t Gmm1TileM, uint32_t EpilogueTileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename BlockEpilogue>
-__aicore__ inline void RunGmm1ActivationByMode(const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
-                                               BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
-                                               const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
-                                               Gmm1ActivationState &runtimeState, uint32_t expertIdx,
-                                               void *persistentBlockMmadContext = nullptr,
-                                               bool allowWeightL2Bypass = false)
+template <typename QuantOutType, typename ActivationOutType, typename QuantScaleType, uint32_t Gmm1TileM,
+          uint32_t EpilogueTileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false,
+          bool IsWaveFlagGrained = false, typename BlockEpilogue>
+__aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
+                                                    BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
+                                                    const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
+                                                    GmmRuntimeState &runtimeState, uint32_t expertIdx,
+                                                    void *persistentBlockMmadContext = nullptr,
+                                                    bool allowWeightL2Bypass = false)
 {
-    if constexpr (EnableA8W4) {
-        RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM, EpilogueTileM,
-                    TopkWeightsPrefetch, false, IsWaveFlagGrained>(
-            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.gmTileSequence,
-            gmmConfig.blockJob, globalTokenStartIndex, expertIdx);
-    } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-               gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+    if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
+        gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
@@ -1131,11 +1112,13 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
 template <typename QuantOutType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
           bool EnableA8W4, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
           typename BlockEpilogue>
-__aicore__ inline void RunSharedExpertGmm1ActivationStage(
-    const MoeStageCommonConfig &commonConfig, const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
-    BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-    SharedExpertGmm1ActivationState &runtimeState, uint32_t sharedExpertIdx, void *persistentBlockMmadContext = nullptr,
-    bool allowWeightL2Bypass = false)
+__aicore__ inline void RunSharedExpertGmm1ActivationStage(const MoeStageCommonConfig &commonConfig,
+                                                          const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
+                                                          BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
+                                                          const ProblemShape &problemShape,
+                                                          GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
+                                                          void *persistentBlockMmadContext = nullptr,
+                                                          bool allowWeightL2Bypass = false)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig.tokenNum;
     if constexpr (EnableA8W4) {
@@ -1163,7 +1146,7 @@ __aicore__ inline void RunSharedExpertGmm1ActivationStage(
 template <bool EnableA8W4, bool TopkWeightsPrefetch>
 __aicore__ inline void FinishMoeGmm1ActivationStage(const MoeStageCommonConfig &commonConfig,
                                                     const MoeSyncWorkspaceLayout &syncLayout,
-                                                    const WorkspaceInfo &workspace, Gmm1ActivationState &runtimeState)
+                                                    const WorkspaceInfo &workspace, GmmRuntimeState &runtimeState)
 {
     if constexpr (TopkWeightsPrefetch) {
         int32_t allDoneTag = static_cast<int32_t>(commonConfig.moeExpertPerRank + 1U);

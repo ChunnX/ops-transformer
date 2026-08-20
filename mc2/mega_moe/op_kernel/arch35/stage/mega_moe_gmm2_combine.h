@@ -239,13 +239,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
 constexpr int32_t MAX_AICORE_NUM = 36;
 
-struct Gmm2RuntimeState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
-
 struct QuantCombineBufferConfig {
     int64_t combineUbElementCount;
     uint32_t quantTokenSizeBytes;
@@ -982,7 +975,7 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const Params &params,
                                      const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                     Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
+                                     GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
                                      bool allowWeightL2Bypass = false)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
@@ -1009,7 +1002,7 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
           bool IsGmm1Interleaved, bool IsWaveFlagGrained>
 __aicore__ inline void RunMoeExpertGmm2Stage(const GmmExecutionConfig &gmmConfig, const Params &params,
                                              const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                             Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
+                                             GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
                                              bool allowWeightL2Bypass = false)
 {
     RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
@@ -1023,7 +1016,7 @@ template <typename GenericElementA, typename A8W4ElementA, typename WeightType, 
 __aicore__ inline bool RunSharedExpertGmm2Stage(const MoeStageCommonConfig &commonConfig,
                                                 const GmmExecutionConfig &gmmConfig, const Params &params,
                                                 const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
-                                                Gmm2RuntimeState &runtimeState, uint32_t sharedExpertIdx,
+                                                GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
                                                 void *persistentBlockMmadContext = nullptr,
                                                 bool allowWeightL2Bypass = false)
 {
