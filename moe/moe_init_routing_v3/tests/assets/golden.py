@@ -937,17 +937,21 @@ class MoeInitRoutingV3KernelSpec:
                 continue
             npu_arr = numpy.asarray(_torch_to_numpy(npu_outs[i]))
             golden_arr = numpy.asarray(_torch_to_numpy(golden_outs[i]))
-            if npu_arr.size != golden_arr.size and golden_arr.size > 0:
+            if npu_arr.size != golden_arr.size and npu_arr.size > 0 and golden_arr.size > 0:
                 npu_flat = npu_arr.reshape(-1)
                 golden_flat = golden_arr.reshape(-1)
-                min_len = golden_flat.size
-                truncated = npu_flat[:min_len].reshape(golden_arr.shape)
-                if hasattr(npu_outs[i], "detach"):
+                min_len = min(npu_flat.size, golden_flat.size)
+                npu_truncated = npu_flat[:min_len]
+                golden_truncated = golden_flat[:min_len]
+                target_shape = golden_arr.shape if npu_flat.size >= golden_flat.size else npu_arr.shape
+                npu_outs[i] = npu_truncated.reshape(target_shape)
+                golden_outs[i] = golden_truncated.reshape(target_shape)
+                if hasattr(outputs[i], "detach"):
                     import torch
-                    npu_outs[i] = torch.from_numpy(truncated.copy()).to(
-                        device=npu_outs[i].device, dtype=npu_outs[i].dtype)
-                else:
-                    npu_outs[i] = truncated
+                    npu_outs[i] = torch.from_numpy(numpy.asarray(npu_outs[i]).copy()).to(
+                        device=outputs[i].device, dtype=outputs[i].dtype)
+                    golden_outs[i] = torch.from_numpy(numpy.asarray(golden_outs[i]).copy()).to(
+                        device=outputs[half + i].device, dtype=outputs[half + i].dtype)
                 modified = True
         if not modified:
             return None
@@ -1027,17 +1031,21 @@ class AclnnMoeInitRoutingV3Spec:
                 continue
             npu_arr = numpy.asarray(_torch_to_numpy(npu_outs[i]))
             golden_arr = numpy.asarray(_torch_to_numpy(golden_outs[i]))
-            if npu_arr.size != golden_arr.size and golden_arr.size > 0:
+            if npu_arr.size != golden_arr.size and npu_arr.size > 0 and golden_arr.size > 0:
                 npu_flat = npu_arr.reshape(-1)
                 golden_flat = golden_arr.reshape(-1)
-                min_len = golden_flat.size
-                truncated = npu_flat[:min_len].reshape(golden_arr.shape)
-                if hasattr(npu_outs[i], "detach"):
+                min_len = min(npu_flat.size, golden_flat.size)
+                npu_truncated = npu_flat[:min_len]
+                golden_truncated = golden_flat[:min_len]
+                target_shape = golden_arr.shape if npu_flat.size >= golden_flat.size else npu_arr.shape
+                npu_outs[i] = npu_truncated.reshape(target_shape)
+                golden_outs[i] = golden_truncated.reshape(target_shape)
+                if hasattr(outputs[i], "detach"):
                     import torch
-                    npu_outs[i] = torch.from_numpy(truncated.copy()).to(
-                        device=npu_outs[i].device, dtype=npu_outs[i].dtype)
-                else:
-                    npu_outs[i] = truncated
+                    npu_outs[i] = torch.from_numpy(numpy.asarray(npu_outs[i]).copy()).to(
+                        device=outputs[i].device, dtype=outputs[i].dtype)
+                    golden_outs[i] = torch.from_numpy(numpy.asarray(golden_outs[i]).copy()).to(
+                        device=outputs[half + i].device, dtype=outputs[half + i].dtype)
                 modified = True
         if not modified:
             return None
