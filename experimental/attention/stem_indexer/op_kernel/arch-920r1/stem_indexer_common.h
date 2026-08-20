@@ -26,6 +26,7 @@ enum class SI_LAYOUT : uint32_t {
 };
 // Sync mode between Cube and Vector.
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
+constexpr uint32_t MM1_RES_BUFFER_NUM = 2U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
 constexpr uint32_t CROSS_CV_EVENT = 2U;
 // Buffer size in bytes.
