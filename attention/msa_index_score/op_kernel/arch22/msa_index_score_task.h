@@ -13,7 +13,7 @@
  * \brief varlen + sparse_mode 因果裁剪的任务枚举器。
  *
  * atten_mask（sparse_mode=3）采用与 LightningIndexer 相同的 rightDownCausal 解析：
- *   visible_key_end(q) = kv_len - q_len + t_off + 1
+ *    visible_key_end(q) = kv_len - q_len + t_off + 1
  * 不物化 / 不加载 [2048,2048] 模板。
  *
  * start_loc[b] 为当前 query 所在逻辑 block 索引，仅用于 local_mask（强制高分），
