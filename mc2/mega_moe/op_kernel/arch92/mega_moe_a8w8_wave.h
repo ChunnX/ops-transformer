@@ -212,8 +212,8 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
-    UpdateWaveGmm2GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
-                               QuantScaleOutType, configureCombineCounter>(
+    UpdateWaveGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+                               configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
 
@@ -225,11 +225,22 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
     Get<K_VALUE>(runtimeProblemState.problemShape) = Get<K_VALUE>(state.problemShape);
     runtimeProblemState.expertBeforeCnt =
         static_cast<uint32_t>(state.rowOffset) + tokenStartIndexInExpert;
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        SyncAll<false>();
+    }
     void *blockMmadContext = nullptr;
     if constexpr (g_coreType == AIC) {
-        blockMmadContext = gmm2Config_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ?
-                               static_cast<void *>(&gmm2NzMmadContext_) :
-                               static_cast<void *>(&gmm2NdMmadContext_);
+        if (gmm2Config_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                gmm2NzMmadContext_.blockMmad.SetCopyOutViaUb(true);
+            }
+            blockMmadContext = static_cast<void *>(&gmm2NzMmadContext_);
+        } else {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                gmm2NdMmadContext_.blockMmad.SetCopyOutViaUb(true);
+            }
+            blockMmadContext = static_cast<void *>(&gmm2NdMmadContext_);
+        }
     }
     RunGmm2ByMode<CombineQuantMode, ActivationQuantOutType, ActivationQuantOutType, Weight1Type,
                   QuantScaleOutType, false, false, GMM1_TILE_M, TopkWeightsPrefetch, false,

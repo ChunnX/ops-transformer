@@ -80,6 +80,11 @@ public:
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
                                 const L1Params &l1Params, bool isBias, bool enableL0cPingPong);
 
+    __aicore__ inline void SetCopyOutViaUb(bool enabled)
+    {
+        copyOutViaUb_ = enabled;
+    }
+
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
               typename TensorBias, typename TensorC>
     __aicore__ inline void operator()(const TensorA &tensorA, const TensorB &tensorB,
@@ -183,9 +188,10 @@ private:
     static constexpr uint64_t SCALE_C0 = 2U;
     static constexpr uint64_t L0C_C0 = 16U;
     static constexpr TEventID INPUT_BUFFER_EVENT_BASE = 0;
-    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 2;
+    // Match the native QBMM MX event partition: input buffers use 0-3, scales and MMAD release use 4-5.
+    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 4;
     static constexpr TEventID MTE2_TO_MTE1_EVENT_BASE = 0;
-    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 0;
+    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 4;
     static constexpr TEventID MTE1_TO_MMAD_EVENT_BASE = 0;
 
     static constexpr uint64_t C0_SIZE_A = AscendC::AuxGetC0Size<AType>();
@@ -213,6 +219,7 @@ private:
     uint64_t l1BufferIndex_{0U};
     uint64_t scaleL1BufferIndex_{0U};
     uint64_t l0BufferIndex_{0U};
+    bool copyOutViaUb_{false};
     uint64_t l1AOffset_[BUFFER_COUNT]{};
     uint64_t l1BOffset_[BUFFER_COUNT]{};
     uint64_t l1ScaleAOffset_[BUFFER_COUNT]{};
@@ -301,6 +308,9 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Init(
         kL1_ = DEFAULT_K_L1;
         scaleKL1_ = kL1_;
     }
+    l1BufferIndex_ = 0U;
+    scaleL1BufferIndex_ = 0U;
+    l0BufferIndex_ = 0U;
     UpdateL1Offsets();
 
     // MegaMoe does not use bias or L0C ping-pong on this path. Keep the generic
@@ -489,6 +499,20 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::CopyOut
             AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{})
                 .with(AscendC::Te::FixpipeParams(Blaze::Gemm::FINAL_ACCUMULATION)),
             tensorC, tensorL0C);
+    } else if (copyOutViaUb_) {
+        auto tensorCUb = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, CType>(0U),
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                            AscendC::Std::Int<AscendC::AuxGetC0Size<CType>()>>{}(m, n));
+        AscendC::Te::Copy(
+            AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{})
+                .with(AscendC::Te::FixpipeParams(Blaze::Gemm::FINAL_ACCUMULATION)),
+            tensorCUb, tensorL0C);
+        SetFlag<HardEvent::FIX_MTE3>(0);
+        WaitFlag<HardEvent::FIX_MTE3>(0);
+        AscendC::Te::Copy(AscendC::Te::MakeCopy(AscendC::Te::CopyUB2GM{}), tensorC, tensorCUb);
+        SetFlag<HardEvent::MTE3_S>(0);
+        WaitFlag<HardEvent::MTE3_S>(0);
     } else {
         AscendC::Te::Copy(
             AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{})
