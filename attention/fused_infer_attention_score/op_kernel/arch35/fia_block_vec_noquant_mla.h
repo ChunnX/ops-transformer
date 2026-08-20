@@ -60,7 +60,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
-    static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT =
@@ -181,8 +181,8 @@ public:
             }
             return true;
         }
-        // FD(flash decode)场景: sparse 下部分 decode 行"有效kv范围为空"时任务被整体SKIP(见 CalcCurS2StartEndWithSparse),
-        // 不会写回也不会被 RowInvalid 覆盖, 只能靠启动预清兜底, 故默认预清
+        // FD(flash decode)场景: sparse 下部分 decode 行"有效kv范围为空"时任务被整体SKIP(见
+        // CalcCurS2StartEndWithSparse), 不会写回也不会被 RowInvalid 覆盖, 只能靠启动预清兜底, 故默认预清
         if constexpr (FLASH_DECODE) {
             return true;
         }
@@ -684,7 +684,8 @@ public:
     {
         // SOFTMAX的VF中max/sum/exp读写按256B对齐的, 实际使用需按256B向上对齐分配
         static constexpr uint32_t REG_BYTES = 256U;
-        static constexpr uint32_t SOFTMAX_BUF_BYTES = (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
+        static constexpr uint32_t SOFTMAX_BUF_BYTES =
+            (mBaseSize / CV_RATIO) * sizeof(float); // 实际只需使用32 * 4 =128B
         static constexpr uint32_t ACT_BYTES = (SOFTMAX_BUF_BYTES + REG_BYTES - 1) / REG_BYTES * REG_BYTES;
 
         tPipe->InitBuffer(softmaxSumBuf[0], ACT_BYTES);

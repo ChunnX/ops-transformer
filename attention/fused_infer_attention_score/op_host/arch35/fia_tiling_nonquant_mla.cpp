@@ -448,20 +448,11 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyLayout()
     }
 }
 
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyPseMode()
-{
-    tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE;
-}
+void FiaTilingNonQuantMlaArch35::UpdateTilingKeyPseMode() { tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE; }
 
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyQuantMode()
-{
-    tilingKeyInfo_.quantMode = NoQuantMode;
-}
+void FiaTilingNonQuantMlaArch35::UpdateTilingKeyQuantMode() { tilingKeyInfo_.quantMode = NoQuantMode; }
 
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyHasRope()
-{
-    tilingKeyInfo_.hasRope = true;
-}
+void FiaTilingNonQuantMlaArch35::UpdateTilingKeyHasRope() { tilingKeyInfo_.hasRope = true; }
 
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
 {
@@ -612,8 +603,7 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     // gSize*s1Size<=64 的单token场景: K/V数据量远超L2容量, 完全无法复用, 关闭L2 Cache避免无意义的缓存填充/驱逐开销
-    tilingData_.baseTiling.fiaBaseParams.l2CacheOffFlag =
-        (fiaInfo_->gSize * fiaInfo_->s1Size) <= 64 ? 1U : 0U;
+    tilingData_.baseTiling.fiaBaseParams.l2CacheOffFlag = (fiaInfo_->gSize * fiaInfo_->s1Size) <= 64 ? 1U : 0U;
     OP_LOGI(fiaInfo_->opName, "l2CacheOffFlag: %u, gSize: %u, s1Size: %u",
             tilingData_.baseTiling.fiaBaseParams.l2CacheOffFlag, fiaInfo_->gSize, fiaInfo_->s1Size);
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
