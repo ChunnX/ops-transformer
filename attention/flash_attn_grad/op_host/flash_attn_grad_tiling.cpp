@@ -127,6 +127,19 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         n2Size = kShape->GetStorageShape().GetDim(2);
     }
 
+    // GQA: Q/dout/attn_out/dq carry N1 = N2*G heads while K/V/dk/dv carry N2.
+    // G is derived by division, mirroring the AscendC reference
+    // (flash_attention_score_grad_tiling_normal_regbase.cpp, e.g. the BNSD
+    // branch: g = qShape.GetDim(1) / kShape.GetDim(1)). G == 1 is plain MHA.
+    OP_CHECK_IF(n2Size <= 0 || n1Size <= 0,
+                OP_LOGE(context->GetNodeName(), "head num must be positive, got N1=%ld, N2=%ld.", n1Size, n2Size),
+                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(n1Size % n2Size != 0,
+                OP_LOGE(context->GetNodeName(),
+                        "head num of q (%ld) must be divisible by head num of k/v (%ld) for GQA.", n1Size, n2Size),
+                return ge::GRAPH_PARAM_INVALID);
+    int64_t gSize = n1Size / n2Size;
+
         // Decide the block-to-core mapping. Linear splitting spreads the live cores
     // across many heads: at S=8192 D=128 with 36 cores, core 0 works head 0
     // while core 35 works head 31, so 36 cores stream K/V for 32 heads at once
@@ -153,8 +166,12 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         constexpr int64_t FP32_BYTES = 4;
         int64_t s1Outer = (s1Size + CUBE_BASE_M - 1) / CUBE_BASE_M;
         int64_t s2Outer = (s2Size + CUBE_BASE_N - 1) / CUBE_BASE_N;
+        // Under GQA the block grid is b*n2*G*s1Outer*s2Outer and the fused batch
+        // dimension is b*n2*G, so G simply multiplies the head count here (the
+        // kernel walks g inside n2, see set_run_info).
         int64_t perHeadBlocks = s1Outer * s2Outer;
-        int64_t totalBlocks = bSize * n2Size * perHeadBlocks;
+        int64_t fusedHeads = bSize * n2Size * gSize;
+        int64_t totalBlocks = fusedHeads * perHeadBlocks;
         // Must use aicNum, not blockDim: blockDim is the mixed scheduling value
         // from CalcTschBlockDim, while the kernel's coreNum comes from
         // pl.get_block_num() which equals the physical cube core count (36).
@@ -167,8 +184,12 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
             for (int64_t c = 0; c < cores; ++c) {
                 liveHeads.insert((c * perCore) / perHeadBlocks);
             }
+            // Per fused (b,n2,g) unit: the Q-side tensors (q+dout+attn_out read
+            // fp16, dq written fp32) are private to this g, while the KV-side
+            // ones (k+v read fp16, dk+dv written fp32) are shared by all G of
+            // them -- so charge the KV bytes once per G.
             int64_t perHeadBytes = 3 * s1Size * dSize * FP16_BYTES + s1Size * dSize * FP32_BYTES +
-                                   2 * s2Size * dSize * FP16_BYTES + 2 * s2Size * dSize * FP32_BYTES;
+                                   (2 * s2Size * dSize * FP16_BYTES + 2 * s2Size * dSize * FP32_BYTES) / gSize;
             int64_t liveBytes = static_cast<int64_t>(liveHeads.size()) * perHeadBytes;
             // 2x L2, not 1x: the measured crossover is a 264 MB working set
             // (N=12), not the N=6 that merely exceeds 128 MB. Just past L2 there
@@ -177,7 +198,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
             // Measured (S=8192, 36 cores, us, linear/swizzle): N=1 193/222,
             // N=8 1556/1761, N=10 1904/2007, N=12 2833/2677, N=16 4121/3550,
             // N=24 6483/4982. Linear wins through N=10, swizzle from N=12 on.
-            if (liveBytes > 2 * L2_CACHE_BYTES && bSize * n2Size * s2Outer >= 2 * cores) {
+            if (liveBytes > 2 * L2_CACHE_BYTES && fusedHeads * s2Outer >= 2 * cores) {
                 swizzle = 1;
             }
         }
@@ -196,16 +217,24 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // Collapse the layout difference into the 4D view parameters (see the field
     // comments in flash_attn_grad_tiling.h). The kernel then runs one pl.load
     // form for both layouts, picking the slice with plain arithmetic.
+    // Two sets: the Q side has N1 = N2*G heads, the KV side has N2.
+    tilingData->gSize = gSize;
     if (isBnsd) {
-        tilingData->viewD0 = bSize * n2Size;
-        tilingData->viewD2 = 1;
-        tilingData->coefB0 = n2Size;
+        tilingData->viewD0Q = bSize * n1Size;
+        tilingData->viewD2Q = 1;
+        tilingData->coefB0Q = n1Size;
+        tilingData->viewD0KV = bSize * n2Size;
+        tilingData->viewD2KV = 1;
+        tilingData->coefB0KV = n2Size;
         tilingData->coefN0 = 1;
         tilingData->coefN2 = 0;
     } else {
-        tilingData->viewD0 = bSize;
-        tilingData->viewD2 = n2Size;
-        tilingData->coefB0 = 1;
+        tilingData->viewD0Q = bSize;
+        tilingData->viewD2Q = n1Size;
+        tilingData->coefB0Q = 1;
+        tilingData->viewD0KV = bSize;
+        tilingData->viewD2KV = n2Size;
+        tilingData->coefB0KV = 1;
         tilingData->coefN0 = 0;
         tilingData->coefN2 = 1;
     }
@@ -222,25 +251,29 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
     //   [0]          libapi reserve (system)
-    //   [+libapi]    dq accumulator  B*S1*N2*D fp32
+    //   [+libapi]    dq accumulator  B*S1*N1*D fp32   (N1 = N2*G)
     //   [+...]       dk accumulator  B*S2*N2*D fp32
     //   [+...]       dv accumulator  B*S2*N2*D fp32
+    // dq follows q's head count (N1) while dk/dv follow k/v's (N2) -- under GQA
+    // the G Q-heads of one KV head all atomicAdd into the same dk/dv slot.
     // The kernel accumulates dq/dk/dv in fp32 via atomicAdd, then its post
     // stage applies scale and casts down to the fp16/bf16 outputs. dv gets no
     // scale (matches qkvIdx < 2 in the AscendC reference).
     constexpr size_t FP32_SIZE = 4;
     size_t libapiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t dqElems = static_cast<size_t>(bSize) * s1Size * n2Size * dSize;
+    size_t dqElems = static_cast<size_t>(bSize) * s1Size * n1Size * dSize;
     size_t dkvElems = static_cast<size_t>(bSize) * s2Size * n2Size * dSize;
     size_t workspaceSize = libapiSize + (dqElems + dkvElems * 2) * FP32_SIZE;
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: blockDim=%u, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, view=[%ld,S,%ld,D], coef=(%ld,%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
-            blockDim, layoutQStr.c_str(), layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size, dSize,
-            tilingData->viewD0, tilingData->viewD2, tilingData->coefB0, tilingData->coefN0, tilingData->coefN2,
-            tilingKey, workspaceSize);
+            "FlashAttnGrad tiling: blockDim=%u, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
+            blockDim, layoutQStr.c_str(), layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size,
+            n2Size, gSize, dSize, dvSize,
+            tilingData->viewD0Q, tilingData->viewD2Q, tilingData->coefB0Q,
+            tilingData->viewD0KV, tilingData->viewD2KV, tilingData->coefB0KV,
+            tilingData->coefN0, tilingData->coefN2, tilingKey, workspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }

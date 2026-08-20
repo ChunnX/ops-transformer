@@ -91,7 +91,11 @@ struct Shape {
     int64_t b = 1;
     int64_t s1 = 256;
     int64_t s2 = 256;
+    // GQA: q/dout/attn_out/dq carry n heads (N1); k/v/dk/dv carry n2 = n/g.
+    // g == 1 is plain MHA, where n2 == n.
     int64_t n = 1;
+    int64_t n2 = 1;
+    int64_t g = 1;
     int64_t d = 128;
 };
 
@@ -124,12 +128,14 @@ inline size_t Idx(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
     return static_cast<size_t>(((b * sh.s1 + s) * sh.n + n) * sh.d + d);
 }
 
+// KV-side index. Takes a KV head number (0..n2-1) and uses sh.n2 as the head
+// extent -- under GQA the KV tensors have fewer heads than the Q ones.
 inline size_t IdxKv(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
 {
     if (g_layout == Layout::BNSD) {
-        return static_cast<size_t>(((b * sh.n + n) * sh.s2 + s) * sh.d + d);
+        return static_cast<size_t>(((b * sh.n2 + n) * sh.s2 + s) * sh.d + d);
     }
-    return static_cast<size_t>(((b * sh.s2 + s) * sh.n + n) * sh.d + d);
+    return static_cast<size_t>(((b * sh.s2 + s) * sh.n2 + n) * sh.d + d);
 }
 
 // Host reference in fp32. Also produces softmax_lse = max + log(sum(exp(s-max)))
@@ -157,13 +163,17 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
 
     for (int64_t b = 0; b < sh.b; ++b) {
         for (int64_t n = 0; n < sh.n; ++n) {
+            // GQA: Q head n is served by KV head n/g. With g == 1 this is n.
+            // The G Q-heads sharing one KV head accumulate into the same
+            // dk/dv slot, mirroring the kernel's atomicAdd.
+            const int64_t n2i = n / sh.g;
             for (int64_t i = 0; i < sh.s1; ++i) {
                 // S = Q @ K^T * scale, then softmax
                 float maxScore = -3.0e38F;
                 for (int64_t j = 0; j < sh.s2; ++j) {
                     float acc = 0.0F;
                     for (int64_t d = 0; d < sh.d; ++d) {
-                        acc += HalfToFloat(q[Idx(sh, b, i, n, d)]) * HalfToFloat(k[IdxKv(sh, b, j, n, d)]);
+                        acc += HalfToFloat(q[Idx(sh, b, i, n, d)]) * HalfToFloat(k[IdxKv(sh, b, j, n2i, d)]);
                     }
                     p[j] = acc * scale;
                     maxScore = std::max(maxScore, p[j]);
@@ -182,13 +192,13 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
                 for (int64_t d = 0; d < sh.d; ++d) {
                     float acc = 0.0F;
                     for (int64_t j = 0; j < sh.s2; ++j) {
-                        acc += p[j] * HalfToFloat(v[IdxKv(sh, b, j, n, d)]);
+                        acc += p[j] * HalfToFloat(v[IdxKv(sh, b, j, n2i, d)]);
                     }
                     g.attnOut[Idx(sh, b, i, n, d)] = acc;
                 }
                 for (int64_t j = 0; j < sh.s2; ++j) {
                     for (int64_t d = 0; d < sh.d; ++d) {
-                        g.dv[IdxKv(sh, b, j, n, d)] += p[j] * HalfToFloat(dout[Idx(sh, b, i, n, d)]);
+                        g.dv[IdxKv(sh, b, j, n2i, d)] += p[j] * HalfToFloat(dout[Idx(sh, b, i, n, d)]);
                     }
                 }
 
@@ -200,7 +210,7 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
                 for (int64_t j = 0; j < sh.s2; ++j) {
                     float acc = 0.0F;
                     for (int64_t d = 0; d < sh.d; ++d) {
-                        acc += HalfToFloat(dout[Idx(sh, b, i, n, d)]) * HalfToFloat(v[IdxKv(sh, b, j, n, d)]);
+                        acc += HalfToFloat(dout[Idx(sh, b, i, n, d)]) * HalfToFloat(v[IdxKv(sh, b, j, n2i, d)]);
                     }
                     dp[j] = p[j] * (acc - sfmg);
                 }
@@ -209,13 +219,13 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
                 for (int64_t d = 0; d < sh.d; ++d) {
                     float acc = 0.0F;
                     for (int64_t j = 0; j < sh.s2; ++j) {
-                        acc += dp[j] * HalfToFloat(k[IdxKv(sh, b, j, n, d)]);
+                        acc += dp[j] * HalfToFloat(k[IdxKv(sh, b, j, n2i, d)]);
                     }
                     g.dq[Idx(sh, b, i, n, d)] = acc * scale;
                 }
                 for (int64_t j = 0; j < sh.s2; ++j) {
                     for (int64_t d = 0; d < sh.d; ++d) {
-                        g.dk[IdxKv(sh, b, j, n, d)] += dp[j] * HalfToFloat(q[Idx(sh, b, i, n, d)]) * scale;
+                        g.dk[IdxKv(sh, b, j, n2i, d)] += dp[j] * HalfToFloat(q[Idx(sh, b, i, n, d)]) * scale;
                     }
                 }
             }
@@ -294,9 +304,15 @@ int main()
 {
     Shape sh;
     sh.b = EnvInt("FAG_B", sh.b);
-    sh.n = EnvInt("FAG_N", sh.n);
+    sh.n = EnvInt("FAG_N", sh.n);   // N1: head count of q/dout/attn_out/dq
+    sh.g = EnvInt("FAG_G", sh.g);   // GQA group size; 1 == plain MHA
     sh.s1 = EnvInt("FAG_S1", sh.s1);
     sh.s2 = EnvInt("FAG_S2", sh.s2);
+    if (sh.g <= 0 || sh.n % sh.g != 0) {
+        printf("FAG_N (%ld) must be a positive multiple of FAG_G (%ld)\n", sh.n, sh.g);
+        return -1;
+    }
+    sh.n2 = sh.n / sh.g;            // head count of k/v/dk/dv
     // Host golden is an O(B*N*S1*S2*D) triple loop; skip it for large shapes and
     // only assert the kernel ran and produced non-zero output there.
     const bool checkGolden = EnvInt("FAG_CHECK", 1) != 0;
@@ -310,11 +326,11 @@ int main()
     }
     const float scale = 1.0F / std::sqrt(static_cast<float>(sh.d));
     const size_t qCount = static_cast<size_t>(sh.b * sh.s1 * sh.n * sh.d);
-    const size_t kvCount = static_cast<size_t>(sh.b * sh.s2 * sh.n * sh.d);
+    const size_t kvCount = static_cast<size_t>(sh.b * sh.s2 * sh.n2 * sh.d);
     const size_t lseCount = static_cast<size_t>(sh.b * sh.n * sh.s1);
 
-    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N=%ld D=%ld scale=%.6f layout=%s\n", sh.b,
-           sh.s1, sh.s2, sh.n, sh.d, scale, layoutStr.c_str());
+    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N1=%ld N2=%ld G=%ld D=%ld scale=%.6f layout=%s\n",
+           sh.b, sh.s1, sh.s2, sh.n, sh.n2, sh.g, sh.d, scale, layoutStr.c_str());
 
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
@@ -351,8 +367,8 @@ int main()
     const bool isBnsd = (g_layout == Layout::BNSD);
     const std::vector<int64_t> qShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n, sh.s1, sh.d}
                                                : std::vector<int64_t>{sh.b, sh.s1, sh.n, sh.d};
-    const std::vector<int64_t> kvShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n, sh.s2, sh.d}
-                                                : std::vector<int64_t>{sh.b, sh.s2, sh.n, sh.d};
+    const std::vector<int64_t> kvShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n2, sh.s2, sh.d}
+                                                : std::vector<int64_t>{sh.b, sh.s2, sh.n2, sh.d};
     // softmax_lse is [B,N,S1] regardless of layout
     const std::vector<int64_t> lseShape = {sh.b, sh.n, sh.s1};
 

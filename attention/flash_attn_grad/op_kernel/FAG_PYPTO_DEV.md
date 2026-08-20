@@ -8,6 +8,7 @@ pypto-pro 重写。变量名与代码结构尽量跟随 AscendC 原版。
 | 项 | 取值 |
 |---|---|
 | 布局 | BSND / BNSD（均为非 TND），见 3 节 |
+| head 数 | 支持 GQA：N1 = N2*G（Q 侧 N1，KV 侧 N2），G=1 即 MHA |
 | headDim | 128 |
 | 数据类型 | fp16 输入 / fp32 累加 / fp16 输出 |
 | 不支持 | sparse、pse、dropout、attenMask、确定性计算、rope |
@@ -114,12 +115,51 @@ kernel 入口 `flash_attn_grad`：**13 输入 / 3 输出 / 1 workspace / 1 tilin
 ```python
 b, s1, s2, n1, n2, d, dv: int
 scaleValue: float
-viewD0, viewD2, coefB0, coefN0, coefN2: int   # 布局视图参数，见下
+gSize: int                                   # GQA 组大小 G
+viewD0Q, viewD2Q, coefB0Q: int               # Q 侧(N1 个 head)视图参数
+viewD0KV, viewD2KV, coefB0KV: int            # KV 侧(N2 个 head)视图参数
+coefN0, coefN2: int                          # 只取决于 layout，两侧共用
 ```
 
 注意其中**没有 coreNum 字段**，kernel 里改用 `pl.get_block_num()`（实测
 cube/vector 两侧都返回物理核数 36，故 CV 双侧算出的 `numBlocks` 一致，
 set/wait 能正确配对）。
+
+### GQA：N1 = N2 * G
+
+Q 侧（`q`/`dout`/`attn_out`/`dq`）有 N1 个 head，KV 侧（`k`/`v`/`dk`/`dv`）有
+N2 个，`G = N1 / N2` 由 host 相除得出（对齐 ASC 的
+`tiling_normal_regbase.cpp`，各 layout 分支都是 Q 的 head 维除以 KV 的）。
+host 校验 `N1 % N2 == 0`，不满足则返回 `GRAPH_PARAM_INVALID`。
+
+块网格为 **b → n2 → g → s2o → s1o**（g 在 n2 之内、s2o 之外，与 ASC 的
+`GetNextValidIdx` 一致），共 `b*n2*G*s1Outer*s2Outer` 块。索引：
+
+```
+idx0/idx2 的 head：Q 侧用 n2oIdx*G + goIdx，KV 侧用 n2oIdx
+lse   ：[B, N1, S1]，offset = ((b*N2 + n2o)*G + g)*S1
+```
+
+`softmax_lse` 必须按 **N1** 存：每个 Q head 的 softmax 归一化因子不同，G 个
+Q head 不能共享一份 lse。
+
+**dK/dV 跨 g 靠 GM 的 atomicAdd 合并**。组号 = `index // s1Outer`，已融合
+`(b,n2,g,s2o)` 四维，跨 g 即换组 → 先 flush 再重新在 L0C 上累加，G 个 Q head
+对同一 KV head 的贡献在 GM 上相加。这与 ASC 的 BN2GS1S2 模板一致（该模板
+`needAtomic` 恒真，`keyOffset` 不含 g）。**故 GQA 是纯索引改动，不动片上存储。**
+
+三处容易漏掉 G 的地方（都会静默算错）：
+
+| 位置 | 症状 |
+|---|---|
+| `wsRowsQ`（workspace 分区） | dq 段须按 N1，误用 N2 会让 dk/dv 起始偏移错位 |
+| `numColTasks`（swizzle 列数） | 须含 G，否则 swizzle 下漏掉 `(G-1)/G` 的列 |
+| `s2_group_of`（dKV 累加组号） | 旧的逐维还原式在 G>1 下失效，已化简为 `index // s1Outer` |
+
+swizzle 本身无需改：它只依赖「融合 batch 维 × s2Outer」的列数，把 G 并入
+`b*n2*G` 即可，列内 s2o 不变的性质保持，K/V 单载入与 L0C 累加都不受影响。
+（已用 Python 全量验证：索引分解 240 个 index 全检自洽；swizzle 在 4 组 GQA
+配置下无重复、无遗漏、无组内断裂。）
 
 ### 布局泛化：BSND / BNSD 统一四维视图
 
@@ -137,9 +177,13 @@ set/wait 能正确配对）。
 | BNSD `[B,N,S,D]` | `[B*N, S, 1, D]` | `[b*N+n, s, 0, 0]` | (N, 1, 0) |
 
 ```
-idx0 = boIdx * coefB0 + n2oIdx * coefN0
-idx2 = n2oIdx * coefN2
+idx0 = boIdx * coefB0 + head * coefN0
+idx2 = head * coefN2
 ```
+
+GQA 下 Q 侧与 KV 侧的 head 数不同（N1 vs N2），故 `viewD0/viewD2/coefB0`
+各有一套（表中的 N 分别取 N1 / N2），`head` 分别取 `n2oIdx*G+goIdx` / `n2oIdx`；
+`coefN0`/`coefN2` 只取决于 layout，两套共用。
 
 两者的**最内轴都是 D**，所以已验证的 `order=[1,3]`（转置读 `[3,1]`）语义不变；
 索引是纯算术、无分支，因此不触碰 pypto「分支赋值无法 phi 合并」的限制。
@@ -383,8 +427,8 @@ def sel(flag, whenOne, whenZero):
 | 文件 | 说明 |
 |---|---|
 | `op_kernel/flash_attn_grad.py` | kernel 实现（~1530 行），含 `FlashAttnGradTilingData` / `FlashAttnGradTilingKey` / `decide_swizzle()` |
-| `op_kernel/test_flash_attention_score_grad_pypto.py` | 13 个 shape 用例，含 S1/S2 尾块；带 2 分钟执行看护 |
-| `op_kernel/prof_pypto.py` | msprof 各流水占用率，支持 `B/N/S1/S2/CORES/FAG_LAYOUT` 环境变量 |
+| `op_kernel/test_flash_attention_score_grad_pypto.py` | 13 个 shape 用例（含 S1/S2 尾块）+ `CASE_FILTER=GQA` 的 11 个 GQA 用例；带 2 分钟执行看护 |
+| `op_kernel/prof_pypto.py` | msprof 各流水占用率，支持 `B/N/G/S1/S2/CORES/FAG_LAYOUT` 环境变量（N 为 N2） |
 | `op_kernel/bench_fag_asc_vs_pypto.py` | 与 AscendC 端到端对比 + 正确性交叉验证 |
 | `op_host/flash_attn_grad_tiling.cpp` | tiling：workspace 尺寸、swizzle 门控、tilingkey 拼装 |
 | `op_host/flash_attn_grad_tiling_check.cpp` | 参数校验。**文件名必须含 `_tiling`**，tiling 对象库按 `*_tiling*.cpp` glob 收源文件，原名 `_check.cpp` 会漏编，链接期报 `undefined symbol CheckParams` |
@@ -401,6 +445,7 @@ PYTHONPATH=$PYPTO $PY test_flash_attention_score_grad_pypto.py   # 全部用例
 CASE_FILTER=11 PYTHONPATH=$PYPTO $PY test_...py                  # 单个用例
 FAG_FORCE_SWIZZLE=1 PYTHONPATH=$PYPTO $PY test_...py             # 强制分核方式
 FAG_LAYOUT=BNSD PYTHONPATH=$PYPTO $PY test_...py                 # 切布局(BSND/BNSD)
+CASE_FILTER=GQA PYTHONPATH=$PYPTO $PY test_...py                 # 11 个 GQA 用例
 B=1 N=32 S1=8192 S2=8192 PROF_OUT=/tmp/p PYTHONPATH=$PYPTO $PY prof_pypto.py
 PYTHONPATH=$PYPTO $PY bench_fag_asc_vs_pypto.py                  # 对比 ASC
 ```
@@ -432,10 +477,10 @@ g++ -std=c++17 -O2 examples/test_aclnn_flash_attn_grad.cpp -o /tmp/fag_aclnn \
   -L$CANN/lib64 -L$VEND/op_api/lib -lascendcl -lnnopbase -lcust_opapi
 export LD_LIBRARY_PATH=$VEND/op_api/lib:$CANN/lib64:$LD_LIBRARY_PATH
 export ASCEND_CUSTOM_OPP_PATH=$VEND
-FAG_LAYOUT=BNSD FAG_B=1 FAG_N=2 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
+FAG_LAYOUT=BNSD FAG_B=1 FAG_N=4 FAG_G=2 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
 ```
 
-`FAG_CHECK=0` 跳过 host golden（`O(B*N*S1*S2*D)` 三重循环，大 shape 太慢），
+`FAG_N` 是 N1，`FAG_G` 是 G（N2 = N1/G）。`FAG_CHECK=0` 跳过 host golden（`O(B*N*S1*S2*D)` 三重循环，大 shape 太慢），
 只校验执行成功与输出量级非零。加
 `ASCEND_GLOBAL_LOG_LEVEL=1 ASCEND_SLOG_PRINT_TO_STDOUT=1` 可看到 tiling 日志里
 实际选中的 `swizzle=`。
@@ -469,7 +514,24 @@ FAG_LAYOUT=BNSD FAG_B=1 FAG_N=2 FAG_S1=256 FAG_S2=256 FAG_CHECK=1 /tmp/fag_aclnn
 
   索引由编译期常量变成一次乘加，开销在噪声内。
 
+- **GQA（N1=N2*G）**：JIT 侧 11 个 GQA 用例（G 取 2/3/4/8/12，含 N2=1、
+  奇数 G、S1/S2 尾块、多核大 shape）在 2 布局 x 2 分核 = 4 种组合下全 PASS；
+  AOT 侧 aclnn 用例 G=1/2/4 均 PASS，且 dK 的 rms 随 G 线性增长
+  （1.50e-03 / 2.12e-03 / 3.00e-03），印证 G 份贡献确实累加到了同一 KV head。
+  host 日志确认 G=4 时 `viewKV` 的 head 数由 8 降到 2、workspace 相应缩小。
+
+  GQA 用例的 max_diff 比 MHA 大（G=8 时 dK 达 9.77e-04 vs MHA 6.10e-05），
+  但全部**精确等于某个 fp16 ULP**（2^-10 ~ 2^-14），即输出以 fp16 存储的量化
+  下限，非算法误差 —— 算法错误不会精确落在 ULP 边界上。G 越大 dK/dV 量级越大、
+  落入更高的 fp16 指数区间，ULP 随之变大。容差 5e-2 仍有约 51 倍余量。
+
 性能：N=1 0.93x、N=32 0.96x、N=64 0.94x（ASC 为 1.0 基线）。
+
+> GQA 的性能数未采集：本机 msprof 的解析任务全部失败且**MHA 基线同样失败**，
+> 属环境问题（`set_env.sh` 会把 PATH 覆盖成不含 `/usr/bin` 的值，parser 调不到
+> 系统工具；原 PATH 里还残留已删除的 cann-9.1.0 路径）。跑 profiling 前需
+> `export PATH=$PATH:/usr/bin:/bin`。GQA 是纯索引改动、不动片上存储，预期无
+> 回归，但**尚未实测**。
 
 **推送受阻**：token 认证正常（Julius47，全 scope，对 fork 是 Owner），但 gitcode
 返回 `<CH.00905403> You are not allowed to push code to this project` 403，

@@ -236,9 +236,16 @@ class FlashAttnGradTilingData:
     # 运行期纯算术、无分支，故不占 tilingkey 位(不增大算子二进制)。
     # 注意不能改用「倒置 stride」的办法：make_tensor 对非紧凑 stride 会
     # 静默忽略并按紧凑跨距去读，不报错(实测见 FAG_PYPTO_DEV.md)。
-    viewD0: int
-    viewD2: int
-    coefB0: int
+    # GQA 组大小：n1 = n2 * gSize。gSize=1 即普通 MHA。
+    # Q/dout/attn_out/dq 有 n1 个 head，K/V/dk/dv 只有 n2 个，
+    # 故视图参数分 Q / KV 两套（coefN0/coefN2 只取决于 layout，两套共用）。
+    gSize: int
+    viewD0Q: int
+    viewD2Q: int
+    coefB0Q: int
+    viewD0KV: int
+    viewD2KV: int
+    coefB0KV: int
     coefN0: int
     coefN2: int
 
@@ -286,14 +293,25 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         # BSND: [B,S,N,D] 的行距，mm2Ka/mm2Kb 即 AscendC 同名字段
         n2D=tiling.n2 * tiling.d,
         s1oS2o=s1Outer * s2Outer,
-        n2GS1oS2o=tiling.n2 * s1Outer * s2Outer,
-        totalBlockNum=tiling.b * tiling.n2 * s1Outer * s2Outer,
+        # 块网格为 b -> n2 -> g -> s2o -> s1o（与 ASC 的维度顺序一致，
+        # g 在 n2 之内、s2o 之外）。下面三个常量是对应层级的块数：
+        #   s1oS2o     : 一个 (b,n2,g) 内的块数
+        #   gS1oS2o    : 一个 (b,n2)   内的块数
+        #   n2GS1oS2o  : 一个 b        内的块数
+        gS1oS2o=tiling.gSize * s1Outer * s2Outer,
+        n2GS1oS2o=tiling.n2 * tiling.gSize * s1Outer * s2Outer,
+        totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
+        gSize=tiling.gSize,
         coreNum=coreNum,
         enableSwizzle=enableSwizzle,
-        # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释
-        viewD0=tiling.viewD0,
-        viewD2=tiling.viewD2,
-        coefB0=tiling.coefB0,
+        # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。
+        # Q 侧 n1=n2*G 个 head，KV 侧 n2 个，故两套。
+        viewD0Q=tiling.viewD0Q,
+        viewD2Q=tiling.viewD2Q,
+        coefB0Q=tiling.coefB0Q,
+        viewD0KV=tiling.viewD0KV,
+        viewD2KV=tiling.viewD2KV,
+        coefB0KV=tiling.coefB0KV,
         coefN0=tiling.coefN0,
         coefN2=tiling.coefN2,
     )
@@ -324,10 +342,15 @@ def make_run_infos():
         queryOffset=0,
         keyOffset=0,
         isS2IdxNoChange=0,
-        # 统一四维视图 [viewD0, S, viewD2, D] 上的第 0 / 第 2 轴索引。
-        # 由 (boIdx, n2oIdx) 与 host 传入的系数算出，见 set_run_info()。
-        idx0=0,
-        idx2=0,
+        # GQA 的组内索引 g，取值 [0, gSize)
+        goIdx=0,
+        # 统一四维视图上的第 0 / 第 2 轴索引，见 set_run_info()。
+        # Q 侧(q/dout/attn_out/dq)用 head = n2oIdx*gSize + goIdx；
+        # KV 侧(k/v/dk/dv)用 head = n2oIdx。
+        idx0Q=0,
+        idx2Q=0,
+        idx0KV=0,
+        idx2KV=0,
     )
 
 
@@ -447,7 +470,9 @@ def core_block_range(constInfo, cBlockIdx, coreNum):
              t ≡ cBlockIdx (mod coreNum) 的个数，每列 s1Outer 块。
     线性:    连续均分 [cBlockIdx*blockPerCore, +blockPerCore)。
     """
-    numColTasks = constInfo.bSize * constInfo.n2Size * constInfo.s2Outer
+    # 列数 = 融合 batch 维(b*n2*G) x s2Outer。G 必须计入，否则 swizzle 下
+    # 会漏掉 (G-1)/G 的列(已验证：并入 G 后覆盖无重复无遗漏)。
+    numColTasks = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
     rem = pl.max(numColTasks - cBlockIdx, 0)
     swz = ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer
 
@@ -468,11 +493,15 @@ def global_idx(constInfo, cBlockIdx, coreNum, localIdx):
 
 
 def s2_group_of(constInfo, idx):
-    """(b, n2, s2o) 的组合编号：同一编号内 dK/dV 可在 L0C 上持续累加。"""
-    bIdx = idx // constInfo.n2GS1oS2o
-    n2Idx = idx % constInfo.n2GS1oS2o // constInfo.s1oS2o
-    s2Idx = idx % constInfo.s1oS2o // constInfo.s1Outer
-    return (bIdx * constInfo.n2Size + n2Idx) * constInfo.s2Outer + s2Idx
+    """(b, n2, g, s2o) 的组合编号：同一编号内 dK/dV 可在 L0C 上持续累加。
+
+    块网格是 b -> n2 -> g -> s2o -> s1o，一组恰为「连续 s1Outer 个块」，
+    故组号就是 idx // s1Outer —— 已融合 (b,n2,g,s2o) 四维，无需再逐维还原。
+    GQA 下跨 g 即换组(g 在 s2o 外侧)，dK/dV 会先 flush 再重新累加；G 个 Q
+    head 对同一 KV head 的贡献靠 GM 上的 atomicAdd 合并 —— 与 ASC 的
+    BN2GS1S2 模板 needAtomic 恒真一致。
+    """
+    return idx // constInfo.s1Outer
 
 
 def dkv_acc_flag(constInfo, gIdx, localIdx):
@@ -519,11 +548,15 @@ def next_s2_same(constInfo, gIdx, localIdx):
 
 
 def set_run_info(constInfo, runInfo, taskId, index, subIdx):
-    # index -> (boIdx, n2oIdx, s2oIdx, s1oIdx)，S1 为最快轴
+    # index -> (boIdx, n2oIdx, goIdx, s2oIdx, s1oIdx)，S1 为最快轴。
+    # 维度顺序 b -> n2 -> g -> s2o -> s1o，与 ASC 的
+    # GetNextValidIdx 一致（g 在 n2 之内、s2o 之外）。
     bDimTail = index % constInfo.n2GS1oS2o
+    n2DimTail = bDimTail % constInfo.gS1oS2o
     gDimTail = index % constInfo.s1oS2o
     runInfo.boIdx = index // constInfo.n2GS1oS2o
-    runInfo.n2oIdx = bDimTail // constInfo.s1oS2o
+    runInfo.n2oIdx = bDimTail // constInfo.gS1oS2o
+    runInfo.goIdx = n2DimTail // constInfo.s1oS2o
     runInfo.s2oIdx = gDimTail // constInfo.s1Outer
     runInfo.s1oIdx = gDimTail % constInfo.s1Outer
 
@@ -559,10 +592,14 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     prevS2oIdx = (index - 1) % constInfo.s1oS2o // constInfo.s1Outer
     runInfo.isS2IdxNoChange = runInfo.s2oIdx == prevS2oIdx
 
-    # 统一四维视图上的两个非 S 轴索引。BSND 下退化为 (boIdx, n2oIdx)，
-    # BNSD 下为 (boIdx*n2 + n2oIdx, 0)，纯算术无分支。
-    runInfo.idx0 = runInfo.boIdx * constInfo.coefB0 + runInfo.n2oIdx * constInfo.coefN0
-    runInfo.idx2 = runInfo.n2oIdx * constInfo.coefN2
+    # 统一四维视图上的两个非 S 轴索引，纯算术无分支。
+    # Q 侧的 head 是 n2oIdx*gSize + goIdx（共 n1 个），KV 侧是 n2oIdx（共 n2 个）
+    # —— 对应 ASC 里 GetQueryOffset 含 gOffset 而 GetKeyOffset 不含。
+    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
+    runInfo.idx0Q = runInfo.boIdx * constInfo.coefB0Q + headQ * constInfo.coefN0
+    runInfo.idx2Q = headQ * constInfo.coefN2
+    runInfo.idx0KV = runInfo.boIdx * constInfo.coefB0KV + runInfo.n2oIdx * constInfo.coefN0
+    runInfo.idx2KV = runInfo.n2oIdx * constInfo.coefN2
 
 
 # ==================================================================
@@ -577,14 +614,14 @@ def iterate_mm_qk(constInfo, runInfo, tensor_q, tensor_k,
     # k_l1 以 [D,S2] 载入，故 S2 是它的列
     pl.set_validshape(k_t, [HEAD_DIM_ALIGN, runInfo.s2RealSize])
     # BSND -> tile[S,D]: order=[1,3] 取 (S,D) 两轴
-    pl.load(q_t, tensor_q, [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
+    pl.load(q_t, tensor_q, [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q, 0],
             order=[1, 3])
     # 右矩阵转置(isRightTranspose=true)：K[S2,D] 以 [D,S2] 载入。
     # 仅在 s2 组切换时重载：S1 是最快轴，同组内连续 s1Outer 个 task 的 K
     # 完全相同(对应 ASC isCopyRight = !isS2IdxNoChange)。
     if loadKV == 1:
         pl.load(k_t, tensor_k,
-                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
+                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
                 order=[3, 1])
     lt = left.next()
     rt = right.next()
@@ -612,12 +649,12 @@ def iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
     v_t = v_l1.current()
     pl.set_validshape(do_t, [runInfo.s1RealSize, HEAD_DIM_ALIGN])
     pl.set_validshape(v_t, [HEAD_DIM_ALIGN, runInfo.s2RealSize])
-    pl.load(do_t, tensor_dy, [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
+    pl.load(do_t, tensor_dy, [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q, 0],
             order=[1, 3])
     # 同 mm2 的 K：仅在 s2 组切换时重载
     if loadKV == 1:
         pl.load(v_t, tensor_v,
-                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
+                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
                 order=[3, 1])
     lt = left.next()
     rt = right.next()
@@ -651,7 +688,7 @@ def iterate_mm_dsk(constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV,
     # 同 mm2/mm1：仅在 s2 组切换时重载(mm3 的 K 是非转置视图)
     if loadKV == 1:
         pl.load(k_t, tensor_k,
-                [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
+                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
                 order=[1, 3])
     lt = left.next()
     rt = right.next()
@@ -664,7 +701,7 @@ def iterate_mm_dsk(constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV,
     pl.move(rt, k_t)
     pl.matmul(at, lt, rt)
     pl.store(tensor_dq_ws, at,
-             [runInfo.idx0, runInfo.queryOffset, runInfo.idx2, 0],
+             [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
 
 
@@ -806,9 +843,9 @@ def process_vec1_chunk(constInfo, runInfo, s1Base, rowOff, rows,
     loadBase = pl.max(pl.min(rowBase, constInfo.s1Size - SFMG_LOOP_SIZE), 0)
     rowShift = rowBase - loadBase
     pl.load(y_ub, tensor_y,
-            [runInfo.idx0, loadBase, runInfo.idx2, 0], order=[1, 3])
+            [runInfo.idx0Q, loadBase, runInfo.idx2Q, 0], order=[1, 3])
     pl.load(dy_ub, tensor_dy,
-            [runInfo.idx0, loadBase, runInfo.idx2, 0], order=[1, 3])
+            [runInfo.idx0Q, loadBase, runInfo.idx2Q, 0], order=[1, 3])
     softmax_grad_front_mul_vf(prod_ub, y_ub, dy_ub, rows, rowShift)
     # dim=0：沿最后一轴(D)做行向 reduce，得到 [rows, 1]
     pl.sum(sfmg_chunk_ub, prod_ub, tmp_ub, dim=0)
@@ -875,10 +912,12 @@ def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub):
     loadBase = pl.max(loadBase, 0)
     rowShift = s1Base - loadBase
     # CopyLse: 前向的 lse 直接复用，无需再求极值或行和
-    # lse 形状 [B,N,S1]，按 (b, n2, s1) 三维索引；order=[2,0] 指明
-    # 搬运沿 S1(轴 2) 展开、落到 tile 的行方向
+    # lse 形状 [B,N1,S1]，按 (b, n2*G+g, s1) 三维索引 —— head 维用 Q 侧的
+    # n1，与 ASC 的 ((b*n2+n2o)*G+g)*S1 一致；order=[2,0] 指明搬运沿
+    # S1(轴 2) 展开、落到 tile 的行方向
+    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
     pl.load(lse_ub, tensor_lse,
-            [runInfo.boIdx, runInfo.n2oIdx, loadBase], order=[2, 0])
+            [runInfo.boIdx, headQ, loadBase], order=[2, 0])
     muls_simple_softmax_vf(mm2_ub, lse_ub, constInfo.scaleValue,
                            runInfo.halfS1RealSize, rowShift)
 
@@ -1110,10 +1149,10 @@ def flush_dkv(runInfo, tensor_dk_ws, tensor_dv_ws, dk_at, dv_at):
     只写一次。仍用 atomicAdd：多核可能分到同一 s2 块的不同 s1 区间。
     """
     pl.store(tensor_dk_ws, dk_at,
-             [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
+             [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
     pl.store(tensor_dv_ws, dv_at,
-             [runInfo.idx0, runInfo.keyOffset, runInfo.idx2, 0],
+             [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
              order=[1, 3], atomic=pl.AtomicType.AtomicAdd)
 
 
@@ -1162,7 +1201,9 @@ def flash_attn_grad(
     # ---- workspace 分区 ----
     # host(GetWorkspaceSizes) 给的是单块连续内存，这里按 fp32 元素切成
     # dq/dk/dv 三段累加区。三段大小必须与 host 的 CalcWorkSpace 逐一对齐。
-    wsRowsQ = tiling.b * tiling.s1 * tiling.n2
+    # dq 段按 n1(=n2*G) 个 head，dk/dv 段按 n2 —— 与 host 的 dqElems/dkvElems
+    # 一致。GQA 下若这里误用 n2，dk/dv 的起始偏移就会算错。
+    wsRowsQ = tiling.b * tiling.s1 * tiling.n1
     wsRowsKV = tiling.b * tiling.s2 * tiling.n2
     ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
     dq_workspace = ws_ptr
@@ -1176,45 +1217,52 @@ def flash_attn_grad(
     #   BNSD: [B*N, S, 1, D]，idx = [b*N+n, s, 0, 0]
     # 两者都是紧凑排布 —— 这一点是必须的：make_tensor 对非紧凑 stride 会静默
     # 忽略并按紧凑跨距去读(不报错)，所以不能用「倒置 stride」表达 BNSD。
-    viewD2 = constInfo.viewD2
-    d2d = viewD2 * HEAD_DIM_ALIGN
-    s1nd = constInfo.s1Size * d2d
-    s2nd = constInfo.s2Size * d2d
+    # Q 侧(n1 个 head)与 KV 侧(n2 个 head)各一套视图参数
+    viewD2Q = constInfo.viewD2Q
+    d2dQ = viewD2Q * HEAD_DIM_ALIGN
+    s1ndQ = constInfo.s1Size * d2dQ
+    viewD2KV = constInfo.viewD2KV
+    d2dKV = viewD2KV * HEAD_DIM_ALIGN
+    s2ndKV = constInfo.s2Size * d2dKV
 
-    tensor_q = pl.make_tensor(q, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
-                              [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_k = pl.make_tensor(k, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
-                              [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_q = pl.make_tensor(q, [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, HEAD_DIM_ALIGN],
+                              [s1ndQ, d2dQ, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_k = pl.make_tensor(k, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, HEAD_DIM_ALIGN],
+                              [s2ndKV, d2dKV, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
     # MM3(dQ = dS@K) 需要「未转置」的 K，而 MM2 需要 K^T。
     # 每个 GM tensor 只会推导出一种 Layout：tensor_k 因 MM2 的转置读被定成
     # Layout::DN，MM3 若共用它，plain 读也会被按 DN 解释，实测等价于拿到 K^T
     # (partial 与 K[s2o]^T 吻合到 1e-4)。故为 MM3 单独建一份同 buffer 的
     # tensor 视图，让它独立推导 layout。
-    tensor_k_nt = pl.make_tensor(k, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
-                                 [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_v = pl.make_tensor(v, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
-                              [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_dy = pl.make_tensor(dout, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
-                               [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    tensor_y = pl.make_tensor(attn_out, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
-                              [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
-    # softmax_lse : [B,N,S1]
+    tensor_k_nt = pl.make_tensor(k, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, HEAD_DIM_ALIGN],
+                                 [s2ndKV, d2dKV, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_v = pl.make_tensor(v, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, HEAD_DIM_ALIGN],
+                              [s2ndKV, d2dKV, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_dy = pl.make_tensor(dout, [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, HEAD_DIM_ALIGN],
+                               [s1ndQ, d2dQ, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    tensor_y = pl.make_tensor(attn_out, [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, HEAD_DIM_ALIGN],
+                              [s1ndQ, d2dQ, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP16)
+    # softmax_lse : [B,N1,S1] —— 按 Q 的 head 数(n1 = n2*G)存，因为每个 Q head
+    # 的 softmax 归一化因子不同，G 个 Q head 不能共享同一份 lse。
+    # 对齐 ASC 的 softmax_max/sum：offset = ((b*n2 + n2o)*G + g)*S1。
+    n1Size = constInfo.n2Size * constInfo.gSize
     tensor_lse = pl.make_tensor(
-        softmax_lse, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size],
-        [constInfo.n2Size * constInfo.s1Size, constInfo.s1Size, 1],
+        softmax_lse, [constInfo.bSize, n1Size, constInfo.s1Size],
+        [n1Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32)
     # dq/dk/dv workspace 为 fp32，供 atomicAdd 累加
-    tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.viewD0, constInfo.s1Size, viewD2, HEAD_DIM_ALIGN],
-                                  [s1nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
-    tensor_dk_ws = pl.make_tensor(dk_workspace, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
-                                  [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
-    tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.viewD0, constInfo.s2Size, viewD2, HEAD_DIM_ALIGN],
-                                  [s2nd, d2d, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, HEAD_DIM_ALIGN],
+                                  [s1ndQ, d2dQ, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dk_ws = pl.make_tensor(dk_workspace, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, HEAD_DIM_ALIGN],
+                                  [s2ndKV, d2dKV, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
+    tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, HEAD_DIM_ALIGN],
+                                  [s2ndKV, d2dKV, HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)
 
     # ---- pre/post 用的展平视图 ----
-    # workspace 逻辑形状 [B,S,N2,D]，pre/post 只需按行线性遍历，
-    # 故另建 [B*S*N2, D] 的二维视图(同一 buffer，独立推导 layout)。
-    dqRows = constInfo.bSize * constInfo.s1Size * constInfo.n2Size
+    # workspace 逻辑形状 [B,S,N,D]，pre/post 只需按行线性遍历，
+    # 故另建 [B*S*N, D] 的二维视图(同一 buffer，独立推导 layout)。
+    # dq 侧的 head 数是 n1(=n2*G)，dk/dv 侧是 n2 —— GQA 下两者不同。
+    dqRows = constInfo.bSize * constInfo.s1Size * n1Size
     dkvRows = constInfo.bSize * constInfo.s2Size * constInfo.n2Size
     tensor_dq_ws_flat = pl.make_tensor(dq_workspace, [dqRows, HEAD_DIM_ALIGN],
                                        [HEAD_DIM_ALIGN, 1], dtype=pl.DT_FP32)

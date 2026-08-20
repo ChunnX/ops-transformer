@@ -33,13 +33,21 @@ def golden_flash_attention_grad(q, k, v, dy, scale):
     Input layout: BSND [B, S, N, D]. Internally rearranged to BNSD for matmul.
     Uses FP32 for all computation.
     Per-tile dpsum matching kernel behavior (dpsum per 128-wide s2 tile).
+
+    GQA: q/dy 有 N1 个 head，k/v 有 N2 个，N1 = N2*G。计算时把 k/v 沿 head
+    维展开 G 份(每个 KV head 服务 G 个 Q head)，最后把 dk/dv 按 G 求和折回
+    N2 —— 这正对应 kernel 侧 G 个 Q head 对同一 KV head 做 atomicAdd。
+    返回的 dq/lse 是 N1 个 head，dk/dv 是 N2 个。
     """
-    B, S1, N, D = q.shape
-    S2 = k.shape[1]
+    B, S1, N1, D = q.shape
+    S2, N2 = k.shape[1], k.shape[2]
+    G = N1 // N2
     q_f32 = q.float().transpose(1, 2)
-    k_f32 = k.float().transpose(1, 2)
-    v_f32 = v.float().transpose(1, 2)
     dy_f32 = dy.float().transpose(1, 2)
+    # [B,N2,S2,D] -> [B,N1,S2,D]，沿 head 维每份重复 G 次(与 n2*G+g 的
+    # 编号一致：head n1 对应 KV head n1//G)
+    k_f32 = k.float().transpose(1, 2).repeat_interleave(G, dim=1)
+    v_f32 = v.float().transpose(1, 2).repeat_interleave(G, dim=1)
 
     s = torch.matmul(q_f32, k_f32.transpose(-1, -2)) * scale
 
@@ -63,6 +71,11 @@ def golden_flash_attention_grad(q, k, v, dy, scale):
     ds = p * (dp - sfmg)
     dq_pt = torch.matmul(ds, k_f32) * scale
     dk_pt = torch.matmul(ds.transpose(-1, -2), q_f32) * scale
+
+    # dk/dv 目前是 N1 个 head；GQA 下把服务同一 KV head 的 G 份求和折回 N2。
+    # G=1 时 reshape+sum 是恒等操作，故无需分支。
+    dk_pt = dk_pt.reshape(B, N2, G, S2, D).sum(dim=2)
+    dv = dv.reshape(B, N2, G, S2, dv.shape[-1]).sum(dim=2)
 
     return (dq_pt.half().transpose(1, 2), dk_pt.half().transpose(1, 2),
             dv.half().transpose(1, 2), y_f32.half().transpose(1, 2),
@@ -100,18 +113,21 @@ def run_kernel_with_timeout(launch, timeout_s=KERNEL_TIMEOUT_S):
           flush=True)
 
 
-def run_case(B, N, S1, S2, D, num_cores):
+def run_case(B, N, S1, S2, D, num_cores, G=1):
+    """N 是 KV 的 head 数(N2)；Q 侧为 N1 = N*G。G=1 即普通 MHA。"""
     device_id = int(os.environ.get("TILE_FWK_DEVICE_ID", 0))
     device = f"npu:{device_id}"
     torch.npu.set_device(device)
 
     scale = 1.0 / math.sqrt(D)
+    N2 = N
+    N1 = N2 * G
 
     torch.manual_seed(42)
-    q = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
-    k = torch.randn(B, S2, N, D, device=device, dtype=torch.float16)
-    v = torch.randn(B, S2, N, D, device=device, dtype=torch.float16)
-    dy = torch.randn(B, S1, N, D, device=device, dtype=torch.float16)
+    q = torch.randn(B, S1, N1, D, device=device, dtype=torch.float16)
+    k = torch.randn(B, S2, N2, D, device=device, dtype=torch.float16)
+    v = torch.randn(B, S2, N2, D, device=device, dtype=torch.float16)
+    dy = torch.randn(B, S1, N1, D, device=device, dtype=torch.float16)
 
     # Compute golden reference
     (dq_gold, dk_gold, dv_gold, y_gold, lse_gold,
@@ -147,28 +163,32 @@ def run_case(B, N, S1, S2, D, num_cores):
     # 单块 workspace，kernel 内切成 dq/dk/dv 三段 fp32（见 make_ptr 处）。
     # 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
     # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
-    ws_elems = (B * S1 * N * D) + 2 * (B * S2 * N * D)
+    ws_elems = (B * S1 * N1 * D) + 2 * (B * S2 * N2 * D)
     workspace = torch.full((ws_elems,), float("nan"), device=device,
                            dtype=torch.float32)
     # fp16 最终输出：由 kernel 的 post 阶段写(scale + cast)
     # 输出张量按目标布局分配（dq/dk/dv 的布局跟随 q/k/v）
-    _oq = (B, N, S1, D) if is_bnsd else (B, S1, N, D)
-    _okv = (B, N, S2, D) if is_bnsd else (B, S2, N, D)
+    _oq = (B, N1, S1, D) if is_bnsd else (B, S1, N1, D)
+    _okv = (B, N2, S2, D) if is_bnsd else (B, S2, N2, D)
     dq_out_t = torch.zeros(*_oq, device=device, dtype=torch.float16)
     dk_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
     dv_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
     # 视图参数与 host 的 TilingFunc 一致：两种布局统一成 [viewD0,S,viewD2,D]
     tiling = FlashAttnGradTilingData(
-        b=B, s1=S1, s2=S2, n1=N, n2=N, d=D, dv=D, scaleValue=scale,
-        viewD0=(B * N) if is_bnsd else B,
-        viewD2=1 if is_bnsd else N,
-        coefB0=N if is_bnsd else 1,
+        b=B, s1=S1, s2=S2, n1=N1, n2=N2, d=D, dv=D, scaleValue=scale,
+        gSize=G,
+        viewD0Q=(B * N1) if is_bnsd else B,
+        viewD2Q=1 if is_bnsd else N1,
+        coefB0Q=N1 if is_bnsd else 1,
+        viewD0KV=(B * N2) if is_bnsd else B,
+        viewD2KV=1 if is_bnsd else N2,
+        coefB0KV=N2 if is_bnsd else 1,
         coefN0=1 if is_bnsd else 0,
         coefN2=0 if is_bnsd else 1,
     )
     # swizzle 由 tilingkey 区分(每种分核各编一份二进制)，不再走 tiling 字段。
     # 判据与 host 的 TilingFunc 保持一致。
-    swizzle = decide_swizzle(B, N, S1, S2, D, num_cores)
+    swizzle = decide_swizzle(B, N1, S1, S2, D, num_cores)
     # FAG_FORCE_SWIZZLE 用于覆盖判据，单独验证另一条编译产物的正确性 ——
     # 两种分核对同一输入必须给出相同结果(仅分块顺序不同)。
     _force = os.environ.get("FAG_FORCE_SWIZZLE")
@@ -176,9 +196,9 @@ def run_case(B, N, S1, S2, D, num_cores):
         swizzle = int(_force)
 
     # Launch kernel
-    print(f"Launching kernel: B={B}, N={N}, S1={S1}, S2={S2}, D={D}, "
-          f"scale={scale:.6f}, cores={num_cores}, layout={layout}, "
-          f"swizzle={swizzle}")
+    print(f"Launching kernel: B={B}, N1={N1}, N2={N2}, G={G}, S1={S1}, "
+          f"S2={S2}, D={D}, scale={scale:.6f}, cores={num_cores}, "
+          f"layout={layout}, swizzle={swizzle}")
 
     # 先触发编译（不计入执行看护窗口）：编译发生在首次调用内部，
     # 故这里用 launch + 同步作为一次完整执行，并只对「执行」计时看护。
@@ -254,6 +274,24 @@ CASES = [
     (1, 1, 8192, 8192, 128, 32),   # 12: 32 个 cube 核
 ]
 
+# GQA 用例：N 列是 KV 的 head 数(N2)，末列为 G，Q 侧 head 数 N1 = N2*G。
+# 覆盖 G 为 2 的幂与奇数、N2=1(所有 Q head 共享单个 KV head)、
+# 尾块与 G 的组合、以及多核大 shape。
+# (B, N2, S1, S2, D, cores, G)
+GQA_CASES = [
+    (1, 1, 256, 256, 128, 1, 2),    # 0: 最小 GQA，N1=2 N2=1
+    (1, 1, 256, 256, 128, 1, 8),    # 1: G=8，单 KV head
+    (1, 2, 256, 256, 128, 1, 2),    # 2: N1=4 N2=2
+    (1, 2, 256, 256, 128, 1, 3),    # 3: G 为奇数，N1=6 N2=2
+    (2, 3, 256, 256, 128, 1, 2),    # 4: 多 batch + N2 奇数
+    (1, 1, 200, 168, 128, 1, 4),    # 5: 双尾块 + G=4
+    (1, 2, 200, 256, 128, 1, 3),    # 6: S1 尾块 + G 奇数
+    (1, 2, 256, 200, 128, 1, 2),    # 7: S2 尾块 + G=2
+    (2, 2, 384, 256, 128, 4),       # 8: 多核(G 默认 1，作对照)
+    (1, 2, 1024, 1024, 128, 8, 4),  # 9: 多核 + G=4
+    (1, 1, 8192, 8192, 128, 36, 4), # 10: 大 shape 36 核 + G=4
+]
+
 
 # ==================================================================
 #  泛化用例(100 个)：B/N/S1/S2 覆盖奇数、偶数、尾块边界，核数同时
@@ -308,14 +346,20 @@ def run_test():
     flt = os.environ.get("CASE_FILTER", "")
     if flt == "G":
         cases = GENERALIZED_CASES
+    elif flt == "GQA":
+        cases = GQA_CASES
     elif flt:
         cases = [CASES[int(i)] for i in flt.split(",")]
     else:
         cases = CASES
-    for (B, N, S1, S2, D, cores) in cases:
-        tag = f"B{B} N{N} S1={S1} S2={S2} D{D} cores={cores}"
+    for case in cases:
+        # 用例元组可带可选的第 7 项 G(缺省 1)
+        B, N, S1, S2, D, cores = case[:6]
+        G = case[6] if len(case) > 6 else 1
+        tag = (f"B{B} N2={N} G={G} N1={N * G} S1={S1} S2={S2} D{D} "
+               f"cores={cores}")
         print(f"\n{'='*62}\n[case] {tag}\n{'='*62}")
-        if not run_case(B, N, S1, S2, D, cores):
+        if not run_case(B, N, S1, S2, D, cores, G):
             failed.append(tag)
 
     print(f"\n{'='*62}")

@@ -28,20 +28,29 @@ TILING_DATA_FIELD_DEF(int64_t, n2)
 TILING_DATA_FIELD_DEF(int64_t, d)
 TILING_DATA_FIELD_DEF(int64_t, dv)
 TILING_DATA_FIELD_DEF(float, scaleValue)
+// GQA group size: N1 = N2 * gSize. gSize == 1 is plain MHA.
+TILING_DATA_FIELD_DEF(int64_t, gSize)
 // Layout view parameters. Both BSND and BNSD are expressed as ONE 4D compact
 // view [viewD0, S, viewD2, D] so the kernel needs a single pl.load form with a
 // fixed order= -- the layout difference reduces to these numbers, evaluated at
 // runtime with no branch and no extra tilingkey bit.
 //   BSND [B,S,N,D] -> view [B,   S, N, D], index [b,     s, n, 0]
 //   BNSD [B,N,S,D] -> view [B*N, S, 1, D], index [b*N+n, s, 0, 0]
-// index0 = b * coefB0 + n * coefN0 ; index2 = n * coefN2
+// index0 = b * coefB0 + head * coefN0 ; index2 = head * coefN2
 //   BSND: coefB0=1, coefN0=0, coefN2=1
 //   BNSD: coefB0=N, coefN0=1, coefN2=0
+// Under GQA the Q side (q/dout/attn_out/dq) has N1 heads and is indexed by
+// head = n2*G+g, while the KV side (k/v/dk/dv) has N2 heads and is indexed by
+// head = n2. So viewD0/viewD2/coefB0 come in two sets; coefN0/coefN2 depend
+// only on the layout (not on the head count) and are therefore shared.
 // Note: a plain stride remap does NOT work -- make_tensor silently ignores
 // non-compact strides and reads with the compact ones instead.
-TILING_DATA_FIELD_DEF(int64_t, viewD0)
-TILING_DATA_FIELD_DEF(int64_t, viewD2)
-TILING_DATA_FIELD_DEF(int64_t, coefB0)
+TILING_DATA_FIELD_DEF(int64_t, viewD0Q)
+TILING_DATA_FIELD_DEF(int64_t, viewD2Q)
+TILING_DATA_FIELD_DEF(int64_t, coefB0Q)
+TILING_DATA_FIELD_DEF(int64_t, viewD0KV)
+TILING_DATA_FIELD_DEF(int64_t, viewD2KV)
+TILING_DATA_FIELD_DEF(int64_t, coefB0KV)
 TILING_DATA_FIELD_DEF(int64_t, coefN0)
 TILING_DATA_FIELD_DEF(int64_t, coefN2)
 END_TILING_DATA_DEF
