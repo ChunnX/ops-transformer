@@ -48,6 +48,21 @@ public:
     // 按 groupEp 在图中查找已存在的 context Const 节点（dispatch/combine 两个 pass 共享同一个）
     static ge::GNode FindContextConstNode(ge::Graph &graph, const std::string &groupEp);
 
+    // 获取（或创建并注册）HCCL 持有的 Mc2MoeContext device buffer，语义与单算子路径
+    // （mc2_context.cpp GetMc2ContextTensor）一致：tag = groupEp + opName，
+    // 命中 HcclEngineCtxGet 直接返回固定地址；未命中则 HcclEngineCtxCreate + H2D 一次。
+    // 返回的 ctx 地址在 comm 生命周期内固定，供 ConstPlaceHolder 节点引用。
+    static bool GetContextDeviceAddr(const std::string &groupEp, const std::string &opName, void *&ctx,
+                                     uint64_t &ctxSize);
+
+    // 创建指向外部 device buffer（HCCL 持有的 ctx）的 ConstPlaceHolder 节点，
+    // 替代拷贝进 weight 区的 Const 节点：GE 直接引用 addr，不分配不拷贝。
+    static ge::graphStatus CreateContextPlaceHolderNode(ge::Graph &graph, const std::string &groupEp, void *ctxAddr,
+                                                        uint64_t ctxSize, ge::GNode &placeholderNode);
+
+    // 按 groupEp 在图中查找已存在的 context ConstPlaceHolder 节点（dispatch/combine 两个 pass 共享同一个）
+    static ge::GNode FindContextPlaceHolderNode(ge::Graph &graph, const std::string &groupEp);
+
 private:
     static constexpr const char *kContextConstNamePrefix = "mc2_moe_context_";
     Mc2MoeGraphContext() = default;
@@ -89,6 +104,9 @@ private:
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRanksByLayer)(HcclComm, uint32_t, uint32_t **, uint32_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
+    HcclResult (*HcclEngineCtxGet)(HcclComm, const char *, CommEngine, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char *, void *, uint64_t, uint64_t) = nullptr;
 
     std::unordered_map<std::string, std::pair<std::vector<int32_t>, int64_t>> contextCache_;
 };
