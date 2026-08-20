@@ -142,6 +142,7 @@ private:
                                                 uint32_t toExpertId, uint32_t toExpertIndex);
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
                                          uint32_t srcTokenIndex, uint32_t toExpertIndex);
+    __aicore__ inline void BufferInitSerial();
     __aicore__ inline void CalAndSendCntSerial();
     __aicore__ inline void SetValidExpertInfoSerial(uint32_t expInfoSize, uint32_t &validNum);
     __aicore__ inline void SetExpertTokenNumsSerial();
@@ -219,6 +220,12 @@ private:
     TBuf<> performanceFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
+    TBuf<> serialCumSumBuf_;
+    TBuf<> serialCountBuf_;
+    TBuf<> serialExpertMapBuf_;
+    TBuf<> serialExpertFinishBuf_;
+    TBuf<> serialExpertLeftBuf_;
+    TBuf<> serialTBuf_;
     GM_ADDR expandXOutGM_;
     GM_ADDR expandScalesOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -1130,11 +1137,14 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     if (useSerialMode_) {
         tpipe_->Reset();
         SplitToCore(rscvStatusNum_, aivNum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, true);
+        startId_ = startStatusIndex_;
+        endId_ = endStatusIndex_;
+        sendNum_ = recStatusNumPerCore_;
         if (recStatusNumPerCore_ == 0) {
             SyncAll<true>();
             return;
         }
-        BufferInit();
+        BufferInitSerial();
     }
     LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
     LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
@@ -1657,6 +1667,29 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::BufferInitSerial()
+{
+    TBuf<> beginBuf, endBuf;
+    tpipe_->InitBuffer(beginBuf, UB_ALIGN);
+    BufferInit();
+    uint32_t recvCntPrefixSize = Ceil(sendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t countNum = (aivId_ == 0U) ? rscvStatusNum_ : endId_;
+    uint32_t countBufSize = Ceil(countNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t expInfoSize = Ceil(sendNum_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(serialCumSumBuf_, recvCntPrefixSize);
+    tpipe_->InitBuffer(serialCountBuf_, countBufSize);
+    tpipe_->InitBuffer(serialExpertMapBuf_, expInfoSize);
+    tpipe_->InitBuffer(serialExpertFinishBuf_, expInfoSize);
+    tpipe_->InitBuffer(serialExpertLeftBuf_, expInfoSize);
+    tpipe_->InitBuffer(endBuf, UB_ALIGN);
+    uint64_t beginUbAddr = beginBuf.Get<uint8_t>().GetPhyAddr();
+    uint64_t endUbAddr = endBuf.Get<uint8_t>().GetPhyAddr();
+    uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
+    tBufRealSize_ = static_cast<uint32_t>(FULL_MESH_MAX_UB_SIZE - usedUbSize - 2U * UB_ALIGN);
+    tpipe_->InitBuffer(serialTBuf_, tBufRealSize_);
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalAndSendCntSerial()
 {
     uint32_t startExpertId, endExpertId, sendExpertNum;
@@ -1728,8 +1761,6 @@ template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SetExpertTokenNumsSerial()
 {
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    uint32_t tokenNumBufSize = Ceil(localExpertNum * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(tokenNumBuf_, tokenNumBufSize);
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
     int64_t expertTokenNumCumsum = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
@@ -1753,22 +1784,13 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::LocalWindowCopySerial()
 {
-    tpipe_->Reset();
-    TBuf<> cumSumBuf, countBuf;
-    SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
     if (sendNum_ == 0) {
         return;
     }
     recvCntPrefixStartId_ = startId_;
-    uint32_t recvCntPrefixNum = sendNum_;
-    uint32_t recvCntPrefixSize = Ceil(recvCntPrefixNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t countNum = (aivId_ == 0U) ? rscvStatusNum_ : endId_;
-    uint32_t countBufSize = Ceil(countNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(scalarBuf_, UB_ALIGN);
-    tpipe_->InitBuffer(cumSumBuf, recvCntPrefixSize);
-    tpipe_->InitBuffer(countBuf, countBufSize);
-    sendCntTensor_ = cumSumBuf.Get<int32_t>();
-    recvCountTensor_ = countBuf.Get<int32_t>();
+    sendCntTensor_ = serialCumSumBuf_.Get<int32_t>();
+    recvCountTensor_ = serialCountBuf_.Get<int32_t>();
     LocalTensor<float> countTensorFp32 = recvCountTensor_.ReinterpretCast<float>();
     DataCopyExtParams countCopyParams{static_cast<uint16_t>(countNum), sizeof(float), STATE_OFFSET - sizeof(float), 0U,
                                       0U};
@@ -1803,29 +1825,18 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         SetExpertTokenNumsSerial();
     }
     // 连续化
-    TBuf<> expertMapBuf, expertFinishBuf, expertLeftBuf, tBuf;
     uint32_t validNum = 0;
     uint32_t expInfoSize = Ceil(sendNum_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(expertMapBuf, expInfoSize);
-    tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
-    tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
-    uint32_t tokenNumSize =
-        (aivId_ == 0U) ?
-            Ceil((isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_) * sizeof(int64_t), UB_ALIGN) * UB_ALIGN :
-            0U;
-    tBufRealSize_ =
-        FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + recvCntPrefixSize + countBufSize + tokenNumSize) - (expInfoSize * 3);
-    tpipe_->InitBuffer(tBuf, tBufRealSize_);
-    expertMapTensor_ = expertMapBuf.Get<uint32_t>();
-    expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
-    expertLeftNumTensor_ = expertLeftBuf.Get<uint32_t>();
+    expertMapTensor_ = serialExpertMapBuf_.Get<uint32_t>();
+    expertFinishNumTensor_ = serialExpertFinishBuf_.Get<uint32_t>();
+    expertLeftNumTensor_ = serialExpertLeftBuf_.Get<uint32_t>();
     SetValidExpertInfoSerial(expInfoSize, validNum);
     if (validNum == 0) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         return;
     }
     SyncFunc<AscendC::HardEvent::V_S>();
-    WaitAndFormatOutput(tBuf, validNum);
+    WaitAndFormatOutput(serialTBuf_, validNum);
     RunPosRecord(RUNPOS_ARRIVECNT);
 }
 
