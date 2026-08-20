@@ -20,6 +20,7 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_quant_lightning_indexer_v2.h"
 #include "aclnnop/aclnn_quant_lightning_indexer_v2_metadata.h"
+#include "aclnn/opdev/platform.h"
 
 using namespace std;
 
@@ -336,6 +337,9 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
 } // namespace
 
 int main() {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        return 0;
+    }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
