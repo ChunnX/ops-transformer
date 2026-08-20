@@ -113,8 +113,9 @@ private:
         ExpertRowCursor &cursor, uint32_t expertRowCount, uint32_t remainingMGroupCount) const;
     __aicore__ inline void MetaInfoCalAndDispatch(
         const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
-        uint32_t waveLogicalRowCount);
-    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(ExpertRowCursor &dispatchCursor);
+        uint32_t waveLogicalRowCount, uint32_t dispatchWaveSequence);
+    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(
+        ExpertRowCursor &dispatchCursor, uint32_t dispatchWaveSequence);
     __aicore__ inline void SetGmm1ProblemState(
         Gmm1ExpertLoopState &problemState, const Gmm1ExpertLoopState &expertState,
         uint32_t problemStartRowOffset, uint32_t problemEndRowOffset);
@@ -861,12 +862,16 @@ __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceWave
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(
     const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
-    uint32_t waveLogicalRowCount)
+    uint32_t waveLogicalRowCount, uint32_t dispatchWaveSequence)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U || waveLogicalRowCount == 0U) {
             return;
         }
+
+        uint32_t gatherMaskCallCount = 0U;
+        uint32_t copyCallCount = 0U;
+        uint32_t flagAtomicAddCount = 0U;
 
         constexpr int32_t ROUTE_CACHE_STRIDE = ALIGN_32 / sizeof(int32_t);
         constexpr int32_t ROUTE_MATCHED_COUNT = 0;
@@ -883,6 +888,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndD
             static_cast<int32_t>(tokenDispatchConfig_.blockJob.totalJobs);
         int32_t coreLogicalLane = static_cast<int32_t>(tokenDispatchConfig_.blockJob.jobIndex);
         if (coreLogicalLane >= static_cast<int32_t>(waveLogicalRowCount)) {
+            PipeBarrier<PIPE_ALL>();
+            PRINTF("[DISPATCH_ROUTE_STATS] core=%u wave=%u begin=(%u,%u) end=(%u,%u) rows=%u gather=%u copy=%u atomic=%u\n",
+                   static_cast<uint32_t>(coreLogicalLane), dispatchWaveSequence,
+                   waveBeginCursor.expertIdx, waveBeginCursor.rowOffsetInExpert,
+                   waveEndCursor.expertIdx, waveEndCursor.rowOffsetInExpert,
+                   waveLogicalRowCount, gatherMaskCallCount, copyCallCount, flagAtomicAddCount);
+            PipeBarrier<PIPE_ALL>();
             return;
         }
 
@@ -1082,6 +1094,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndD
                                        tokenDispatchScratch_.maskBatchU32Tensor, true,
                                        static_cast<uint32_t>(validRouteCount),
                                        {1, 1, 0, 0}, batchMatchedRouteCount);
+                            ++gatherMaskCallCount;
                             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
                             int32_t batchMatchOrdinalBegin = matchedRouteCount;
@@ -1118,7 +1131,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndD
                                     tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
                                     dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin,
                                     selectedRowCount, rankOrdinalStride, expertLogicalRowStride);
-                                PublishGmm1TileReadySequence(
+                                ++copyCallCount;
+                                flagAtomicAddCount += PublishGmm1TileReadySequence(
                                     tokenDispatchConfig_, params_, localExpertId,
                                     static_cast<int32_t>(GMM1_TILE_M), firstSelectedExpertRow,
                                     selectedRowCount, expertLogicalRowStride);
@@ -1132,13 +1146,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndD
                 completedRound = nextRound;
             }
         }
+        PipeBarrier<PIPE_ALL>();
+        PRINTF("[DISPATCH_ROUTE_STATS] core=%u wave=%u begin=(%u,%u) end=(%u,%u) rows=%u gather=%u copy=%u atomic=%u\n",
+               static_cast<uint32_t>(coreLogicalLane), dispatchWaveSequence,
+               waveBeginCursor.expertIdx, waveBeginCursor.rowOffsetInExpert,
+               waveEndCursor.expertIdx, waveEndCursor.rowOffsetInExpert,
+               waveLogicalRowCount, gatherMaskCallCount, copyCallCount, flagAtomicAddCount);
+        PipeBarrier<PIPE_ALL>();
     }
 }
 
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
-    ExpertRowCursor &dispatchCursor)
+    ExpertRowCursor &dispatchCursor, uint32_t dispatchWaveSequence)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
@@ -1161,7 +1182,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             waveMGroupCount += GetMGroupCountForRows(segmentRows, GMM1_TILE_M);
             waveLogicalRowCount += segmentRows;
         }
-        MetaInfoCalAndDispatch(waveBegin, waveEnd, waveLogicalRowCount);
+        MetaInfoCalAndDispatch(waveBegin, waveEnd, waveLogicalRowCount, dispatchWaveSequence);
         dispatchCursor = waveEnd;
     }
     return dispatchCursor;
@@ -1501,6 +1522,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertRowCursor preparedWaveEndCursor{};
     bool hasPreparedWave = false;
     uint32_t waveSequence = 0U;
+    uint32_t dispatchWaveSequence = 0U;
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -1517,11 +1539,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                 if (hasPreparedWave) {
                     waveEndCursor = preparedWaveEndCursor;
                 } else {
-                    waveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
+                    waveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor, dispatchWaveSequence++);
                 }
                 // AIV1 先预取下一 wave，再等待并消费当前 wave 的 GMM2 输出。
                 if (waveEndCursor.expertIdx < moeExpertPerRank_) {
-                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
+                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor, dispatchWaveSequence++);
                     hasPreparedWave = true;
                 } else {
                     preparedWaveEndCursor = waveEndCursor;

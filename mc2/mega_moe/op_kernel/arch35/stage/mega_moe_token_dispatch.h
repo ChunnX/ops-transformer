@@ -228,14 +228,15 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
 
 // 发布一个等差 expert-row 序列覆盖到的 GMM1 tile ready 计数。
 // firstExpertRow + n * expertRowStride 是本次批量 Copy 的真实目标行。
-__aicore__ inline void PublishGmm1TileReadySequence(
+__aicore__ inline uint32_t PublishGmm1TileReadySequence(
     const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
     int32_t gmm1TileRowCount, int32_t firstExpertRow,
     int32_t selectedRowCount, int32_t expertRowStride)
 {
     if (selectedRowCount <= 0 || expertRowStride <= 0) {
-        return;
+        return 0U;
     }
+    uint32_t atomicAddCount = 0U;
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
     __gm__ int32_t *readyBase =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
@@ -255,8 +256,10 @@ __aicore__ inline void PublishGmm1TileReadySequence(
         int32_t tileRowCount = endSelectedIdx - firstSelectedIdx;
         if (tileRowCount > 0) {
             AtomicAdd(readyBase + static_cast<int64_t>(tileIdx) * INT_CACHELINE, tileRowCount);
+            ++atomicAddCount;
         }
     }
+    return atomicAddCount;
 }
 
 /** 根据当前 core 的专家 row range 定位相交的 source-rank segment。 */
