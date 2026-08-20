@@ -588,6 +588,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 #include <cstring>
 #include "securec.h"
 #include "acl/acl.h"
+#include "aclnn/opdev/platform.h"
 #include "aclnnop/aclnn_quant_lightning_indexer_v2.h"
 
 using namespace std;
@@ -846,6 +847,9 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
 } // namespace
 
 int main() {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        return 0;
+    }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
