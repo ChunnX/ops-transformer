@@ -39,8 +39,8 @@ ge::graphStatus QfaInfoParser::GetEmptyTensorFlag()
             if (shape->GetStorageShape().GetDim(i) == 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_,
                         ToString(shape->GetStorageShape()).c_str(), name.c_str(),
-                        ("The shape of " + name + " contains a dimension of size 0 at axis " +
-                         std::to_string(i) + ", which is not supported").c_str());
+                        ("Tensor " + name + " has empty dimension at axis " + std::to_string(i) +
+                         ", size is 0, which is not supported").c_str());
                 return true;
             }
         }
@@ -403,7 +403,7 @@ ge::graphStatus QfaInfoParser::GetS2SizeForPageAttention()
     OP_CHECK_IF(
         opParamInfo_.blockTable.tensor == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-                                              "When layout_kv is PA, block_table must be provided but got nullptr."),
+                                              "When layout_kv is PA, block_table must be provided but got nullptr"),
         return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
