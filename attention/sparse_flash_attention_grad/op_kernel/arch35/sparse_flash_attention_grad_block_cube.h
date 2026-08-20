@@ -15,7 +15,7 @@
 
 #ifndef SPARSE_FLASH_ATTENTION_GRAD_BLOCK_CUBE_H
 #define SPARSE_FLASH_ATTENTION_GRAD_BLOCK_CUBE_H
- 
+
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
@@ -26,11 +26,11 @@ using namespace commondef;
 namespace SfagBaseApi {
 
 constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
- 
-template<bool IS_ROPE = false>
+
+template <bool IS_ROPE = false>
 struct PreloadArgs;
- 
-template<>
+
+template <>
 struct PreloadArgs<false> {
     int64_t nextQueryOffset;
     int64_t nextDyOffset;
@@ -38,8 +38,8 @@ struct PreloadArgs<false> {
     bool copyCurrent = true;
     bool copyNext = false;
 };
- 
-template<>
+
+template <>
 struct PreloadArgs<true> {
     int64_t nextQueryOffset;
     int64_t nextDyOffset;
@@ -50,7 +50,6 @@ struct PreloadArgs<true> {
     bool copyNext = false;
 };
 
- 
 TEMPLATES_DEF
 class FAGBlockCube {
 public:
@@ -69,17 +68,17 @@ public:
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
     constexpr static bool IS_DKV_RESIDENT_L0C = false;
     constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
- 
+
     constexpr static uint32_t DQ_L0_SPLIT_K = 128;
     constexpr static uint32_t DKV_L0_SPLIT_K = 128;
- 
+
     // input global mmemory
     GlobalTensor<INPUT_TYPE> queryGm, keyGm, valueGm, dyGm, queryRopeGm, keyRopeGm;
- 
+
     // output global mmemory
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
     // GlobalTensor<INPUT_TYPE> dqGm, dkGm, dvGm;
- 
+
     TPipe *pipe;
     SFagTilingType tilingData;
     // vector scaleDs通过ssbuf传递给cube
@@ -99,13 +98,13 @@ public:
     BufferManager<BufferType::L0B> l0bBufferManager;
     BuffersPolicyDB<BufferType::L0A> l0aBuf;
     BuffersPolicyDB<BufferType::L0B> l0bBuf;
- 
+
     BufferManager<BufferType::L0C> l0cBufferManager;
     BuffersPolicyDB<BufferType::L0C> commonl0CBuf;
     // N<=64 + Rope：dq 的 512 nope 常驻；mm1/2/4/5 与 dq-rope/dk 走 work
     BuffersPolicySingleBuffer<BufferType::L0C> dqNopeL0CBuf;
     BuffersPolicySingleBuffer<BufferType::L0C> workL0CBuf;
-    
+
     bool isDkvL0CResidentForD192Dv128 = false;
     MutexID vL1BufMutexId;
 
@@ -167,7 +166,7 @@ private:
                                               BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
                                               FagConstInfo &constInfo, FagRunInfo &runInfo);
 };
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline FAGBlockCube<TEMPLATE_ARGS>::~FAGBlockCube()
 {
@@ -175,7 +174,7 @@ __aicore__ inline FAGBlockCube<TEMPLATE_ARGS>::~FAGBlockCube()
         ReleaseMutexID(vL1BufMutexId);
     }
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::SetCubeBlockParams(TPipe *pipe, SFagTilingType tilingData,
                                                                        BufferManager<BufferType::L1> *l1BuffMgr)
@@ -184,7 +183,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::SetCubeBlockParams(TPipe *pi
     this->tilingData = tilingData;
     this->l1BufferManagerPtr = l1BuffMgr;
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR key, GM_ADDR value,
                                                                      GM_ADDR dy, GM_ADDR queryRope, GM_ADDR keyRope,
@@ -198,7 +197,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR que
     queryRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)queryRope);
     keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline uint32_t FAGBlockCube<TEMPLATE_ARGS>::GetKvNzC0Stride(FagRunInfo &runInfo)
 {
@@ -228,7 +227,7 @@ __aicore__ inline Buffer<BufferType::L0C> FAGBlockCube<TEMPLATE_ARGS>::GetWorkL0
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::CopyKVToL1(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
-                                                              FagConstInfo &constInfo, FagRunInfo &runInfo)
+                                                               FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1> kvL1Buffer = kvL1Buf[runInfo.commonRunInfo.taskIdMod2].Get();
     kvL1Buffer.Wait<HardEvent::MTE1_MTE2>();
@@ -347,13 +346,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo 
         dYL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * constInfo.commonConstInfo.dSizeV * sizeof(INPUT_TYPE));
         commonL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
     }
- 
+
     // init l0a l0b buffer
     l0aBufferManager.Init(pipe, L0_MAX_SIZE);
     l0bBufferManager.Init(pipe, L0_MAX_SIZE);
     l0aBuf.Init(l0aBufferManager, L0_SINGLE_BUFFER_SIZE);
     l0bBuf.Init(l0bBufferManager, L0_SINGLE_BUFFER_SIZE);
- 
+
     // init l0c buffer
     l0cBufferManager.Init(pipe, L0C_MAX_SIZE); // 256 * 1024
     if (IsDqNopeL0CResident(constInfo)) {
@@ -431,14 +430,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             vL1Tensor = vDbSlot[k % 2].GetTensor<INPUT_TYPE>();
         }
         MMParam param = {
-            (uint32_t)constInfo.commonConstInfo.gSize, // singleM
+            (uint32_t)constInfo.commonConstInfo.gSize,  // singleM
             (uint32_t)runInfo.commonRunInfo.s2RealSize, // singleN
-            (uint32_t)realK, // singleK
+            (uint32_t)realK,                            // singleK
             false,                                      // isLeftTranspose
             true,                                       // isRightTranspose
             true,
-            k == 0
-        };
+            k == 0};
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, CUBE_BASEK, ABLayout::MK, ABLayout::KN>(
             dyL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], vL1Tensor, l0aBuf, l0bBuf,
             mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -471,14 +469,14 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1L0CBuffer.Set<HardEvent::FIX_M>();                               // 反向同步
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC_TYPE> &mm2ResTensor, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1> qL1Buffer = qL1Buf.Get();
     Nd2NzParams nd2NzParams;
- 
+
     // copy current, when IS_L1_PRELOAD=true, only first loop copy current
     nd2NzParams.dstNzC0Stride = AlignTo16(constInfo.commonConstInfo.gSize);
     if (!runInfo.isS1IdxNoChange) {
@@ -540,19 +538,19 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         }
 
         MMParam param = {
-            (uint32_t)constInfo.commonConstInfo.gSize, // singleM
+            (uint32_t)constInfo.commonConstInfo.gSize,  // singleM
             (uint32_t)runInfo.commonRunInfo.s2RealSize, // singleN
-            (uint32_t)realK,  // singleK
+            (uint32_t)realK,                            // singleK
             false,                                      // isLeftTranspose
             true,                                       // isRightTranspose
             true,
-            k == 0                                     // isOutKFisrt
+            k == 0 // isOutKFisrt
         };
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN,
-                L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
+                   L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
             qL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], kL1Tensor, l0aBuf, l0bBuf,
             mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
-    
+
         if (!constInfo.isHeadNLe64) {
             kDbSlot[k % 2].Set<HardEvent::MTE1_MTE2>();
             if (k + 2 < kLoops) {
@@ -615,8 +613,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNopeRope(typename DqkvResPos<T, IS_WRIT
         false,
         false,
         true,
-        !runInfo.isS1IdxNoChange
-    };
+        !runInfo.isS1IdxNoChange};
     MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
         dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, dqNopeBuf.GetTensor<CALC_TYPE>(), nopeParam);
     if (!runInfo.isNextS1IdxNoChange) {
@@ -645,8 +642,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNopeRope(typename DqkvResPos<T, IS_WRIT
         false,
         false,
         true,
-        true
-    };
+        true};
     MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
         dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor[kvNzC0Stride * nopeN], l0aBuf, l0bBuf,
         ropeBuf.GetTensor<CALC_TYPE>(), ropeParam);
@@ -709,22 +705,21 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
             kDbSlot[n % 2].Wait<HardEvent::MTE2_MTE1>();
             kL1Tensor = kDbSlot[n % 2].GetTensor<INPUT_TYPE>();
         }
- 
+
         Buffer<BufferType::L0C> mm3L0CBuffer = GetWorkL0CBuffer(constInfo);
         // load l1 to l0ab + mmad
         mm3L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
         MMParam param = {
-            (uint32_t)constInfo.commonConstInfo.gSize, // singleM
-            (uint32_t)realN,  // singleN
+            (uint32_t)constInfo.commonConstInfo.gSize,  // singleM
+            (uint32_t)realN,                            // singleN
             (uint32_t)runInfo.commonRunInfo.s2RealSize, // singleK
             false,                                      // isLeftTranspose
             false,                                      // isRightTranspose
             true,
-            true
-        };
+            true};
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
-        dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
- 
+            dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+
         if (constInfo.isHeadNLe64) {
             if (n == nLoops - 1) {
                 kL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 整块用完再放行，供下次 CopyKVToL1
@@ -762,7 +757,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
         mm3L0CBuffer.Set<HardEvent::FIX_M>();
     }
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void
@@ -818,8 +813,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNopeRope(typename DqkvResPos<T, IS_WRIT
         true,
         false,
         true,
-        true
-    };
+        true};
     MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
         dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor, l0aBuf, l0bBuf, dkBuf.GetTensor<CALC_TYPE>(), nopeParam);
     dkBuf.Set<HardEvent::M_FIX>();
@@ -844,8 +838,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNopeRope(typename DqkvResPos<T, IS_WRIT
         true,
         false,
         true,
-        true
-    };
+        true};
     MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
         dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[qStride * nopeN], l0aBuf, l0bBuf, dkBuf.GetTensor<CALC_TYPE>(),
         ropeParam);
@@ -931,7 +924,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
     for (uint32_t n = 0; n < nLoops; ++n) {
         realN = GetLoopTileSize(n, nLoops, constInfo.dTotalSize, baseN);
         Buffer<BufferType::L1> qL1Buffer = runInfo.isNextS1IdxNoChange ? qL1Buf.Get() :
-            (batchScratch ? qL1Scratch : qDbSlot[n % 2]);
+                                                                         (batchScratch ? qL1Scratch : qDbSlot[n % 2]);
         LocalTensor<INPUT_TYPE> qL1Tensor;
         Nd2NzParams nd2NzParams;
         nd2NzParams.dstNzC0Stride = AlignTo16(constInfo.commonConstInfo.gSize);
@@ -944,22 +937,21 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
             qDbSlot[n % 2].Wait<HardEvent::MTE2_MTE1>();
             qL1Tensor = qDbSlot[n % 2].GetTensor<INPUT_TYPE>();
         }
- 
+
         Buffer<BufferType::L0C> dkL0CBuffer = GetWorkL0CBuffer(constInfo);
         // load l1 to l0ab + mmad
         dkL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s2RealSize, // singleM
-            (uint32_t)realN,  // singleN
-            (uint32_t)constInfo.commonConstInfo.gSize, // singleK
+            (uint32_t)realN,                            // singleN
+            (uint32_t)constInfo.commonConstInfo.gSize,  // singleK
             true,                                       // isLeftTranspose
-            false,                                       // isRightTranspose
+            false,                                      // isRightTranspose
             true,
-            true
-        };
+            true};
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
             dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
- 
+
         if (dbCopy) {
             qDbSlot[n % 2].Set<HardEvent::MTE1_MTE2>();
             if (n + 2 < nLoops) {
@@ -968,10 +960,10 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
                                         qDbSlot[(n + 2) % 2]);
             }
         }
- 
+
         dkL0CBuffer.Set<HardEvent::M_FIX>();
         dkL0CBuffer.Wait<HardEvent::M_FIX>();
- 
+
         // fixp2gm
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = realN;
@@ -991,7 +983,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
         qL1Scratch.Set<HardEvent::MTE1_MTE2>();
     }
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void
@@ -1043,7 +1035,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_
     for (uint32_t n = 0; n < nLoops; ++n) {
         realN = GetLoopTileSize(n, nLoops, constInfo.commonConstInfo.dSizeV, baseN);
         Buffer<BufferType::L1> dYL1Buffer = runInfo.isNextS1IdxNoChange ? dYL1Buf.Get() :
-            (batchScratch ? dYL1Scratch : dyDbSlot[n % 2]);
+                                                                          (batchScratch ? dYL1Scratch : dyDbSlot[n % 2]);
         LocalTensor<INPUT_TYPE> dYL1Tensor;
         Nd2NzParams nd2NzParams;
         // load right matrix to L1
@@ -1062,15 +1054,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s2RealSize, // singleM
             realN,                                      // singleN
-            (uint32_t)constInfo.commonConstInfo.gSize, // singleK
+            (uint32_t)constInfo.commonConstInfo.gSize,  // singleK
             true,                                       // isLeftTranspose
             false,                                      // isRightTranspose
             true,
-            true
-        };
+            true};
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
             pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor[dyL1Offset], l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
- 
+
         if (dbCopy) {
             dyDbSlot[n % 2].Set<HardEvent::MTE1_MTE2>();
             if (n + 2 < nLoops) {
@@ -1099,7 +1090,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_
         dYL1Scratch.Set<HardEvent::MTE1_MTE2>();
     }
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
@@ -1108,7 +1099,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvRe
 {
     IterateMmDsKNormal<T, IS_WRITE_UB>(outTensor, selectedKWorkSpaceGm, dSL1Buf, constInfo, runInfo);
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
@@ -1117,7 +1108,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvRe
 {
     IterateMmDsQNormal<T, IS_WRITE_UB>(outTensor, dSL1Buf, constInfo, runInfo);
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
@@ -1126,58 +1117,57 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvRe
 {
     IterateMmPDyNormal<T, IS_WRITE_UB>(outTensor, pL1Buf, constInfo, runInfo);
 }
- 
+
 TEMPLATES_DEF
 class FAGBlockCubeDummy {
 public:
     __aicore__ inline FAGBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *pipe, SFagTilingType tilingData,
-                                              BufferManager<BufferType::L1> *l1BuffMgr){};
+                                              BufferManager<BufferType::L1> *l1BuffMgr) {};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR queryRope,
-                                            GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace){};
-    __aicore__ inline void InitCubeBuffer(FagConstInfo &constInfo){};
+                                            GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace) {};
+    __aicore__ inline void InitCubeBuffer(FagConstInfo &constInfo) {};
     __aicore__ inline void IterateMmDyV(LocalTensor<CALC_TYPE> &mm1ResTensor, const GlobalTensor<INPUT_TYPE> &selectedVWorkSpaceGm, FagConstInfo &constInfo,
-                                        FagRunInfo &runInfo){};
+                                        FagRunInfo &runInfo) {};
     __aicore__ inline void IterateMmQK(LocalTensor<CALC_TYPE> &mm2ResTensor, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm, FagConstInfo &constInfo,
-                                       FagRunInfo &runInfo){};
+                                       FagRunInfo &runInfo) {};
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                         BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
-                                        FagConstInfo &constInfo, FagRunInfo &runInfo){}; // dq
+                                        FagConstInfo &constInfo, FagRunInfo &runInfo) {}; // dq
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
                                         BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
-                                        FagConstInfo &constInfo, FagRunInfo &runInfo){}; // dk
+                                        FagConstInfo &constInfo, FagRunInfo &runInfo) {}; // dk
     template <typename T, bool IS_WRITE_UB>
     __aicore__ inline void IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
                                         BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
-                                        FagConstInfo &constInfo, FagRunInfo &runInfo){}; // dv
+                                        FagConstInfo &constInfo, FagRunInfo &runInfo) {}; // dv
 };
- 
+
 template <typename T>
 struct CubeBlockTraits; // 声明
- 
+
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
- 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
- 
+
 DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCube);
 DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCubeDummy);
- 
+
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
- 
- 
+
 } // namespace SfagBaseApi
 #endif
