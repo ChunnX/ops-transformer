@@ -220,7 +220,7 @@ public:
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
     uint8_t paLayoutType = 0; // 重构前tiling无赋值，需赋默认值
-    uint8_t kvCacheNzD0 = 0;  // NZ布局KV Cache的D0值，int8=32, int4/fp4=32, fp16/bf16=16
+    uint8_t kvCacheNzD0 = 0;  // NZ布局KV Cache的D0值
     uint8_t isRowInvalid;
     uint8_t isPostQuantPerChnl;
     uint8_t isPostQuantBF16;
