@@ -21,20 +21,28 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    # The Ascend950 tiling entry is a separate implementation.  Package builds
-    # configure one SoC at a time, so omit the existing 910C entry only when
-    # the selected target is Ascend950.
+    # The Ascend950 tiling entry lives alongside the default tiling entry.
+    # Package builds configure one SoC at a time, so compile only the tiling
+    # implementation for the selected target.
     list(FIND ASCEND_COMPUTE_UNIT "ascend950" MOE_FUSED_TOPK_ASCEND950_INDEX)
     if(NOT MOE_FUSED_TOPK_ASCEND950_INDEX EQUAL -1)
         set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/moe_fused_topk_tiling.cpp
             PROPERTIES HEADER_FILE_ONLY TRUE
         )
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/moe_fused_topk_tiling_arch35.cpp
+            PROPERTIES HEADER_FILE_ONLY FALSE
+        )
     else()
         set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/moe_fused_topk_tiling.cpp
             PROPERTIES HEADER_FILE_ONLY FALSE
         )
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/moe_fused_topk_tiling_arch35.cpp
+            PROPERTIES HEADER_FILE_ONLY TRUE
+        )
     endif()
-    add_modules_sources_with_soc(OPTYPE moe_fused_topk ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE moe_fused_topk ACLNNTYPE aclnn_exclude)
 endif()
