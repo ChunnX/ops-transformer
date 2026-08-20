@@ -17,6 +17,8 @@
 
 #include "allto_all_matmul_tiling_base.h"
 #include "mc2_exception_dump.h"
+#include "../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
+#include <cstddef>
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
@@ -58,6 +60,12 @@ inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *u
     constexpr uint32_t TILING_GM_ARG_IDX = 12U;
     constexpr uint32_t ARGS_OFFSET = 0U;
     Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmul", TILING_GM_ARG_IDX, ARGS_OFFSET);
+
+    constexpr uint32_t WORKSPACE_GM_ARG_IDX = 11U;
+    constexpr uint32_t WS_LAYOUT_OFFSET =
+        offsetof(AlltoAllMatmulTilingData, workspaceLayout);
+    Mc2Exception::Mc2DumpWorkspaceContent(args, "AlltoAllMatmul",
+                                          WORKSPACE_GM_ARG_IDX, WS_LAYOUT_OFFSET, ARGS_OFFSET);
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()

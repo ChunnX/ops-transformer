@@ -16,6 +16,8 @@
 #ifndef ALLTO_ALL_MATMUL_KERNEL_BASE_H
 #define ALLTO_ALL_MATMUL_KERNEL_BASE_H
 
+#include "../../../common/op_kernel/mc2_runtime_info.h"
+
 namespace Mc2Kernel {
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 class AlltoAllMatmulKernelBase {
@@ -37,6 +39,7 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR commOutGM_;
     GM_ADDR transOutGM_;
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
@@ -62,9 +65,11 @@ __aicore__ inline void
     workspaceGM_ = workspaceGM;
     commOutGM_ = workspaceGM;
     transOutGM_ = all2all_out;
-    if (all2all_out == nullptr) {
+        if (all2all_out == nullptr) {
         transOutGM_ = (GM_ADDR)((uint64_t)commOutGM_ + mc2Tiling_.commLen);
     }
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
     // 初始化流水线
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
@@ -77,15 +82,18 @@ AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTili
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
+        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
+        runtimeInfo_.UpdatePhase(1, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
     // 结束流水线
+    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
     pipeLine_->End();
 }
 

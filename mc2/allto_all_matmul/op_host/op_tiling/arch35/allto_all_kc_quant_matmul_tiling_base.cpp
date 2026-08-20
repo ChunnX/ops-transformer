@@ -507,6 +507,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::PostTiling()
                     OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
+    localTilingData_.workspaceLayout = workspaceLayout_;
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
         OP_LOGE(opName_, "AlltoAllMatmul postTiling: memcpy_s tiling data failed, ret=%d.", ret);
@@ -606,9 +607,24 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
-                             +inferredInfo_.x1ScaleOptionalLen + inferredInfo_.quantOutLen;
-    workspaces[0] = workspaceSize;
+    // 量化场景额外段: x1ScaleOptionalLen + quantOutLen
+    BuildWorkspaceLayout();
+    // 追加量化专属段
+    uint64_t offset = workspaceLayout_.totalSize;
+    uint32_t idx = workspaceLayout_.segCount;
+    if (inferredInfo_.x1ScaleOptionalLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.x1ScaleOptionalLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.x1ScaleOptionalLen;
+    }
+    if (inferredInfo_.quantOutLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.quantOutLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.quantOutLen;
+    }
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+    workspaces[0] = workspaceLayout_.totalSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
             workspaces[0], inferredInfo_.commLen, inferredInfo_.permuteLen, inferredInfo_.x1ScaleOptionalLen,
             inferredInfo_.quantOutLen);

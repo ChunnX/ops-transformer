@@ -8,17 +8,19 @@
 
 # !
 #  \file parse_allto_all_matmul_tiling.py
-#  \brief AlltoAllMatmul TilingData 解析脚本。
-#         解析异常 dump 产生的 tiling_data_*.bin 或 args_info_*.bin 文件。
+#  \brief AlltoAllMatmul TilingData / Workspace / RuntimeInfo 解析脚本。
+#         解析异常 dump 产生的 tiling_data_*.bin、args_info_*.bin 或 workspace_seg*.bin 文件。
 #
 # 用法:
-#   python parse_allto_all_matmul_tiling.py <bin_file> [--quant] [--args] [--json]
+#   python parse_allto_all_matmul_tiling.py <bin_file> [--quant] [--args] [--json] [--ws-layout]
 #
 # 模式:
-#   默认      解析 tiling_data_*.bin（非量化 AlltoAllMatmulTilingData, 1136B）
-#   --quant   解析 tiling_data_*.bin（量化 AlltoAllQuantMatmulTilingData, 1384B）
-#   --args    解析 args_info_*.bin（16 个 GM 地址指针, 256B）
-#   --json    以 JSON 格式输出（默认为人类可读表格）
+#   默认         解析 tiling_data_*.bin（非量化 AlltoAllMatmulTilingData）
+#   --quant      解析 tiling_data_*.bin（量化 AlltoAllQuantMatmulTilingData）
+#   --args       解析 args_info_*.bin（GM 地址指针）
+#   --ws-layout  从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo
+#   --workspace  解析 workspace_seg*_type*_*.bin（自动识别段类型，type=12 解析 RuntimeInfo）
+#   --json       以 JSON 格式输出（默认为人类可读表格）
 
 import sys
 import os
@@ -40,6 +42,19 @@ MC2_QUANT_BMM_TILING_PARAMS_SIZE = 360  # params(128) + TCubeTiling(200) + L2cac
 ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1144  # 非量化: 64+512+96+236+236
 ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1392  # 量化: 64+512+96+360+360
 TILING_DUMP_SIZE = 2048  # dump 固定大小
+
+# ====== Workspace 结构体大小常量（与 mc2_tiling_struct.h 保持一致）======
+WORKSPACE_SEG_INFO_SIZE = 24   # 8+8+1+7
+MAX_WORKSPACE_SEGMENTS = 8
+WORKSPACE_LAYOUT_INFO_SIZE = 16 + MAX_WORKSPACE_SEGMENTS * WORKSPACE_SEG_INFO_SIZE  # 208
+RUNTIME_INFO_PER_CORE_SIZE = 512
+RUNTIME_INFO_CORE_MAX = 128
+RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 65536
+RUNTIME_INFO_MAGIC = 0x4D433252  # "MC2R"
+
+# WorkspaceLayoutInfo 在 TilingData 中的偏移（追加在结构体末尾）
+OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_DATA_SIZE  # 1144
+OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE  # 1392
 
 # 量化模式枚举（x1QuantMode / x2QuantMode，与 op_proto.h 保持一致）
 # x1QuantMode: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
@@ -103,6 +118,38 @@ HCCL_DATA_TYPE_MAP = {
     17: "HCCL_DATA_TYPE_INT4",
     18: "HCCL_DATA_TYPE_UINT4",
     19: "HCCL_DATA_TYPE_FLOAT4_E2M1",
+}
+
+# Workspace 段类型枚举（与 mc2_tiling_struct.h WorkspaceSegType 保持一致）
+WS_SEG_TYPE_MAP = {
+    0: "LIB_API",
+    1: "ND2NZ",
+    2: "GATHER",
+    3: "GATHER_SCALE1",
+    4: "GATHER_SCALE",
+    5: "COMM_OUT",
+    6: "PERMUTE_OUT",
+    7: "BIAS",
+    8: "MM_RESULT",
+    9: "RECV_BUF",
+    10: "COMM_INT8",
+    11: "DYNAMIC_QUANT",
+    12: "RUNTIME_INFO",
+    255: "RESERVED",
+}
+
+# RuntimePhase 枚举（与 mc2_tiling_struct.h RuntimePhase 保持一致）
+RUNTIME_PHASE_MAP = {
+    0: "INIT",
+    1: "COMM_PREPARE",
+    2: "COMM_WAIT",
+    3: "COMM_PROCESS",
+    4: "COMPUTE_LOCAL",
+    5: "COMPUTE_GATHER",
+    6: "TRANSPOSE",
+    7: "REDUCE",
+    8: "FINALIZE",
+    255: "RESERVED",
 }
 
 
@@ -324,13 +371,115 @@ def parse_args_info(data: bytes) -> dict:
     for i in range(num_ptrs):
         name = ARGS_INDEX_NAMES[i]
         args[f"[{i}] {name}"] = f"0x{ptrs[i]:016x}"
-    args["_dumpFileSize"] = len(data)
+        args["_dumpFileSize"] = len(data)
     args["_validArgCount"] = num_ptrs
     args["_note"] = (
         f"dump 代码固定拷贝 min(devArgsLen, 256) 字节，AlltoAllMatmul 有效 args 为 {num_ptrs} 个。"
         f" 实际 devArgsLen 请查看日志中 'Tiling dump start' 行的 devArgsLen 字段。"
     )
     return args
+
+
+# ====== Workspace 解析函数 ======
+
+
+def parse_workspace_seg_info(data: bytes, offset: int) -> dict:
+    """解析单个 WorkspaceSegInfo（24B）。"""
+    if offset + WORKSPACE_SEG_INFO_SIZE > len(data):
+        return {"error": "data too short for WorkspaceSegInfo"}
+    seg_offset, seg_size = struct.unpack_from("<2Q", data, offset)
+    seg_type = struct.unpack_from("<B", data, offset + 16)[0]
+    return {
+        "offset": seg_offset,
+        "size": seg_size,
+        "type": seg_type,
+        "typeName": WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})"),
+    }
+
+
+def parse_workspace_layout_info(data: bytes, offset: int) -> dict:
+    """解析 WorkspaceLayoutInfo（208B）。"""
+    if offset + WORKSPACE_LAYOUT_INFO_SIZE > len(data):
+        return {"error": f"data too short for WorkspaceLayoutInfo (need offset {offset} + {WORKSPACE_LAYOUT_INFO_SIZE})"}
+    total_size, seg_count, reserved = struct.unpack_from("<Q2I", data, offset)
+    segments = []
+    for i in range(min(seg_count, MAX_WORKSPACE_SEGMENTS)):
+        seg_offset = offset + 16 + i * WORKSPACE_SEG_INFO_SIZE
+        segments.append(parse_workspace_seg_info(data, seg_offset))
+    return {
+        "totalSize": total_size,
+        "segCount": seg_count,
+        "segments": segments,
+    }
+
+
+def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
+    """解析单个 RuntimeInfoPerCore（512B）。"""
+    if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
+        return {"error": "data too short for RuntimeInfoPerCore"}
+    magic_num, core_id = struct.unpack_from("<IH", data, offset)
+    exec_turn, exec_position, comm_phase = struct.unpack_from("<3B", data, offset + 6)
+    return {
+        "magicNum": magic_num,
+        "magicValid": magic_num == RUNTIME_INFO_MAGIC,
+        "coreId": core_id,
+        "execTurn": exec_turn,
+        "execPosition": exec_position,
+        "commPhase": comm_phase,
+        "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
+    }
+
+
+def parse_runtime_info_segment(data: bytes) -> dict:
+    """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。"""
+    max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
+    slots = []
+    active_count = 0
+    for i in range(max_slots):
+        offset = i * RUNTIME_INFO_PER_CORE_SIZE
+        slot = parse_runtime_info_per_core(data, offset)
+        slot["slotIdx"] = i
+        if slot.get("magicValid", False):
+            active_count += 1
+            # 判断是 C 核还是 V 核（需要 aicCoreNum，从 tiling info 获取或从 coreId 推断）
+            slots.append(slot)
+        else:
+            # 未写入的 slot 也保留，但标记为 inactive
+            slots.append(slot)
+    return {
+        "segmentSize": len(data),
+        "maxSlots": max_slots,
+        "activeSlots": active_count,
+        "slots": slots,
+    }
+
+
+def detect_workspace_seg_from_filename(filename: str) -> tuple:
+    """从文件名检测是否为 workspace_seg 文件，返回 (seg_idx, seg_type) 或 None。"""
+    import re
+    basename = os.path.basename(filename)
+    m = re.match(r"workspace_seg(\d+)_type(\d+)_", basename)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def parse_workspace_segment_file(data: bytes, seg_type: int) -> dict:
+    """解析 workspace_seg*_type*_*.bin 文件，根据段类型选择解析方式。"""
+    type_name = WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")
+    result = {
+        "segmentType": seg_type,
+        "segmentTypeName": type_name,
+        "fileSize": len(data),
+    }
+    if seg_type == 12:  # WS_SEG_RUNTIME_INFO
+        rt_info = parse_runtime_info_segment(data)
+        result["runtimeInfo"] = rt_info
+    else:
+        # 非 RuntimeInfo 段：做基础 hex 统计
+        result["hexPreview"] = data[:256].hex()
+        result["note"] = f"段类型 {type_name}，原始二进制数据，请结合 tiling 参数人工分析。"
+    return result
 
 
 def print_section(title: str):
@@ -379,6 +528,8 @@ def print_args_info(result: dict):
     dump_file_size = result.pop("_dumpFileSize", 0)
     valid_arg_count = result.pop("_validArgCount", 0)
     for name, addr in result.items():
+        if name.startswith("_"):
+            continue
         logging.info("  %-30s: %s", name, addr)
     logging.info("")
     logging.info("  有效 args 数量: %d (index 0-%d)", valid_arg_count, valid_arg_count - 1)
@@ -386,6 +537,79 @@ def print_args_info(result: dict):
     logging.info("  提示: tilingGM 应在 [12] 位置 (offset=96)")
     tiling_gm = result.get("[12] tilingGM", "N/A")
     logging.info("  [12] tilingGM = %s", tiling_gm)
+
+
+def print_workspace_layout_info(ws_layout: dict):
+    """人类可读格式打印 WorkspaceLayoutInfo。"""
+    if "error" in ws_layout:
+        logging.error("  %s", ws_layout["error"])
+        return
+    print_section("WorkspaceLayoutInfo (208B)")
+    logging.info("  %-30s: %s bytes", "totalSize", ws_layout["totalSize"])
+    logging.info("  %-30s: %s", "segCount", ws_layout["segCount"])
+    logging.info("")
+    logging.info("  %-4s  %-12s  %-12s  %-6s  %s", "Idx", "Offset", "Size", "Type", "TypeName")
+    logging.info("  " + "-" * 66)
+    for i, seg in enumerate(ws_layout["segments"]):
+        if "error" in seg:
+            logging.error("  [%d]  %s", i, seg["error"])
+            continue
+        logging.info("  [%d]  0x%010x  %10d  %-6d  %s",
+                     i, seg["offset"], seg["size"], seg["type"], seg["typeName"])
+
+
+def print_runtime_info_segment(rt_info: dict):
+    """人类可读格式打印 RuntimeInfo 段。"""
+    print_section("RuntimeInfo Segment (type=12, 64KB)")
+    logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
+    logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
+    logging.info("")
+    logging.info("  %-6s  %-8s  %-8s  %-10s  %-10s  %-16s",
+                 "Slot", "CoreId", "Valid", "ExecTurn", "ExecPos", "CommPhase")
+    logging.info("  " + "-" * 70)
+    for slot in rt_info["slots"]:
+        if slot.get("magicValid", False):
+            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-10d  %s (%d)",
+                         slot["slotIdx"], slot["coreId"], "YES",
+                         slot["execTurn"], slot["execPosition"],
+                         slot["commPhaseName"], slot["commPhase"])
+        else:
+            # 只在前后有 active slot 的范围内打印 inactive，避免刷屏
+            pass
+    logging.info("")
+    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
+    active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
+    if not active_slots:
+        logging.warning("  无有效 slot，可能 runtime info 未被写入（异常发生在 Init 之前）。")
+    else:
+        for slot in active_slots:
+            core_type = "V核" if slot["coreId"] >= 128 else "C核"
+            # 尝试从 tiling info 推断 aicCoreNum 来区分 C/V 核
+            logging.info("  Core %-4d (%s):  turn=%d, position=%d, phase=%s",
+                         slot["coreId"], core_type,
+                         slot["execTurn"], slot["execPosition"], slot["commPhaseName"])
+
+
+def print_workspace_segment(result: dict):
+    """人类可读格式打印 workspace 段文件。"""
+    seg_type = result["segmentType"]
+    type_name = result["segmentTypeName"]
+    print_section(f"Workspace Segment (type={seg_type}/{type_name}, {result['fileSize']}B)")
+    if seg_type == 12:  # RUNTIME_INFO
+        print_runtime_info_segment(result["runtimeInfo"])
+    else:
+        logging.info("  段类型: %d (%s)", seg_type, type_name)
+        logging.info("  文件大小: %d bytes", result["fileSize"])
+        logging.info("  Hex 预览 (前 256 字节):")
+        hex_str = result.get("hexPreview", "")
+        for i in range(0, min(len(hex_str), 512), 64):
+            offset_hex = f"{i // 2:04x}"
+            chunk = hex_str[i:i + 64]
+            # 格式化为每行 32 字节（64 hex chars）
+            formatted = " ".join(chunk[j:j + 2] for j in range(0, len(chunk), 2))
+            logging.info("    %s: %s", offset_hex, formatted)
+        logging.info("")
+        logging.info("  %s", result.get("note", ""))
 
 
 def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
@@ -470,20 +694,41 @@ def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AlltoAllMatmul TilingData dump 解析脚本",
+        description="AlltoAllMatmul TilingData / Workspace / RuntimeInfo dump 解析脚本",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog="""\
 示例:
+  # 解析非量化 tiling data
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin
+
+  # 解析量化 tiling data
+  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --quant
+
+  # 解析 args_info（验证 tilingGM offset）
   python parse_allto_all_matmul_tiling.py args_info_AlltoAllMatmul.0.1.20260819.bin --args
+
+  # 从 tiling_data 中提取 WorkspaceLayoutInfo
+  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --ws-layout
+
+  # 解析 workspace 段文件（自动从文件名识别段类型）
+  python parse_allto_all_matmul_tiling.py workspace_seg4_type12_AlltoAllMatmul.0.1.20260819.bin --workspace
+
+  # JSON 格式输出
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --json
+
+  # 逐字节对比验证
   python parse_allto_all_matmul_tiling.py tiling_data_*.bin --verify tiling_ref.bin
         """,
     )
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
+    parser.add_argument("--ws-layout", action="store_true",
+                        help="从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo")
+    parser.add_argument("--workspace", action="store_true",
+                        help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
-    parser.add_argument("--verify", metavar="REF_FILE", help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
+    parser.add_argument("--verify", metavar="REF_FILE",
+                        help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
@@ -495,6 +740,26 @@ def main():
 
     logging.info("读取文件: %s (%d bytes)", args.bin_file, len(data))
 
+    # --- workspace 段文件解析 ---
+    if args.workspace:
+        seg_info = detect_workspace_seg_from_filename(args.bin_file)
+        if seg_info is None:
+            logging.error("文件名不匹配 workspace_seg{idx}_type{type}_* 模式: %s", args.bin_file)
+            logging.error("请使用 --ws-layout 解析 tiling_data 中的 WorkspaceLayoutInfo，"
+                          "或确保文件名格式为 workspace_segN_typeM_*。")
+            sys.exit(1)
+        seg_idx, seg_type = seg_info
+        logging.info("检测到 workspace 段文件: segIdx=%d, segType=%d (%s)",
+                     seg_idx, seg_type, WS_SEG_TYPE_MAP.get(seg_type, "UNKNOWN"))
+        result = parse_workspace_segment_file(data, seg_type)
+        result["segIdx"] = seg_idx
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        else:
+            print_workspace_segment(result)
+        return
+
+    # --- args_info 解析 ---
     if args.args:
         result = parse_args_info(data)
         if args.json:
@@ -503,6 +768,7 @@ def main():
             print_args_info(result)
         return
 
+    # --- verify 对比 ---
     if args.verify:
         if not os.path.isfile(args.verify):
             logging.error("参考文件不存在: %s", args.verify)
@@ -512,6 +778,25 @@ def main():
         ok = verify_tiling_data(data, ref_data)
         sys.exit(0 if ok else 1)
 
+    # --- WorkspaceLayoutInfo 解析 ---
+    if args.ws_layout:
+        is_quant = detect_quant_mode(data)
+        ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
+        mode_str = "量化" if is_quant else "非量化"
+        logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
+        ws_layout = parse_workspace_layout_info(data, ws_offset)
+        if "error" in ws_layout:
+            logging.error("解析失败: %s", ws_layout["error"])
+            logging.error("可能原因: dump 文件不含 WorkspaceLayoutInfo（旧版本 dump），或量化模式不匹配。")
+            logging.error("尝试使用 --quant 切换量化/非量化模式。")
+            sys.exit(1)
+        if args.json:
+            print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
+        else:
+            print_workspace_layout_info(ws_layout)
+        return
+
+    # --- 默认: tiling_data 解析 ---
     is_quant = detect_quant_mode(data)
     info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
     x1_qm = info.get("x1QuantMode", 0) if "error" not in info else 0
@@ -542,10 +827,21 @@ def main():
             struct_size, len(data), len(data) - struct_size,
         )
 
+    # 如果 dump 文件足够大，尝试解析尾部的 WorkspaceLayoutInfo
+    ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
+    if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
+        ws_layout = parse_workspace_layout_info(data, ws_offset)
+        if "error" not in ws_layout and ws_layout.get("segCount", 0) > 0:
+            result["workspaceLayout"] = ws_layout
+            logging.info("检测到 WorkspaceLayoutInfo (offset=%d, segCount=%d, totalSize=%d)",
+                         ws_offset, ws_layout["segCount"], ws_layout["totalSize"])
+
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
     else:
         print_tiling_data(result, is_quant)
+        if "workspaceLayout" in result:
+            print_workspace_layout_info(result["workspaceLayout"])
 
 
 if __name__ == "__main__":

@@ -164,5 +164,75 @@ struct MC2MatmulV3TilingData {
     uint32_t isHf32;
     uint32_t aswWindowLen;
 };
+
+// ==================== Workspace 段布局信息 ====================
+
+constexpr uint32_t MAX_WORKSPACE_SEGMENTS = 8U;
+
+// Workspace 段类型
+enum WorkspaceSegType : uint8_t {
+    WS_SEG_LIB_API       = 0,   // 系统库预留空间
+    WS_SEG_ND2NZ         = 1,   // ND2NZ 格式转换空间
+    WS_SEG_GATHER        = 2,   // AllGather 通信结果空间
+    WS_SEG_GATHER_SCALE1 = 3,   // AllGather scale1 空间 (FP8 perblock)
+    WS_SEG_GATHER_SCALE  = 4,   // AllGather scale 空间
+    WS_SEG_COMM_OUT      = 5,   // AlltoAll 通信结果空间
+    WS_SEG_PERMUTE_OUT   = 6,   // AlltoAll 重排空间
+    WS_SEG_BIAS          = 7,   // bias 空间
+    WS_SEG_MM_RESULT     = 8,   // matmul 结果暂存空间
+    WS_SEG_RECV_BUF      = 9,   // ReduceScatter 接收缓冲 (a2a 路径)
+    WS_SEG_COMM_INT8     = 10,  // int8 通信 workspace
+    WS_SEG_DYNAMIC_QUANT = 11,  // 动态量化临时空间
+    WS_SEG_RUNTIME_INFO  = 12,  // 运行时信息段 (64KB)
+    WS_SEG_RESERVED      = 255,
+};
+
+// 单个段描述 (24 bytes)
+struct WorkspaceSegInfo {
+    uint64_t offset;      // 相对 workspace 基地址的偏移 (字节)
+    uint64_t size;        // 该段大小 (字节)
+    uint8_t  type;        // WorkspaceSegType
+    uint8_t  reserved[7]; // 对齐
+};
+
+// Workspace 布局信息 (208 bytes)
+struct WorkspaceLayoutInfo {
+    uint64_t totalSize;                                // workspace 总大小
+    uint32_t segCount;                                 // 实际段数
+    uint32_t reserved;                                 // 对齐
+    WorkspaceSegInfo segments[MAX_WORKSPACE_SEGMENTS]; // 段数组 (按 offset 升序)
+};
+
+// ==================== Runtime Info ====================
+
+constexpr uint32_t RUNTIME_INFO_CORE_MAX = 128U;       // 最大核数
+constexpr uint32_t RUNTIME_INFO_PER_CORE_SIZE = 512U;  // 每核 512 字节
+constexpr uint32_t RUNTIME_INFO_TOTAL_SIZE =
+    RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE; // 64KB
+
+// 通信/计算阶段枚举 (各算子共用)
+enum RuntimePhase : uint8_t {
+    RT_PHASE_INIT           = 0,
+    RT_PHASE_COMM_PREPARE   = 1,   // 通信准备 (AllGather/AlltoAll prepare)
+    RT_PHASE_COMM_WAIT      = 2,   // 通信等待 (hccl.Wait)
+    RT_PHASE_COMM_PROCESS   = 3,   // 通信执行中
+    RT_PHASE_COMPUTE_LOCAL  = 4,   // 本卡计算
+    RT_PHASE_COMPUTE_GATHER = 5,   // 远端数据计算
+    RT_PHASE_TRANSPOSE      = 6,   // 转置
+    RT_PHASE_REDUCE         = 7,   // 归约
+    RT_PHASE_FINALIZE       = 8,   // 结束清理
+    RT_PHASE_RESERVED       = 255,
+};
+
+// 每个 core 的运行时信息 (512 字节)
+struct alignas(512) RuntimeInfoPerCore {
+    uint32_t magicNum;        // 4B  魔数 0x4D433252 ("MC2R")
+    uint16_t coreId;          // 2B  core ID (C核: 0~aicCoreNum-1, V核: aicCoreNum~total-1)
+    uint8_t  execTurn;        // 1B  执行轮次 (从 0 开始递增)
+    uint8_t  execPosition;    // 1B  执行位置 (当前 tile/turn 索引)
+    uint8_t  commPhase;       // 1B  当前阶段 (RuntimePhase)
+    uint8_t  reserved[503];   // 503B 预留
+}; // 512 bytes
+
 } // namespace Mc2Tiling
 #endif // MC2_TILING_STRUCT_H

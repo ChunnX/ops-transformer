@@ -831,7 +831,130 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                            tilingBuf.data(), tilingDumpSize) != 0) {
         OP_LOGE(OP_NAME, "Failed to dump tiling data.");
     }
-    OP_LOGE(OP_NAME, "Tiling dump done: op=%s, deviceId=%u.", op, deviceId);
+        OP_LOGE(OP_NAME, "Tiling dump done: op=%s, deviceId=%u.", op, deviceId);
+}
+
+inline void Mc2DumpWorkspaceContent(aclrtExceptionInfo *args, const char *op,
+                                    uint32_t workspaceGmArgIdx,
+                                    uint32_t workspaceLayoutOffset,
+                                    uint32_t argsOffset = 0U)
+{
+    if (args == nullptr || op == nullptr) {
+        return;
+    }
+
+    auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (getArgsFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    void *devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0U;
+    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed.");
+        return;
+    }
+
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGE(OP_NAME, "Workspace dump start: op=%s, devArgsPtr=%p, devArgsLen=%u, wsGmArgIdx=%u, wsLayoutOffset=%u",
+            op, devArgsPtr, devArgsLen, workspaceGmArgIdx, workspaceLayoutOffset);
+
+    // 1. 读取 workspaceGM 指针
+    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
+    if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
+        return;
+    }
+    uint64_t workspaceGM = 0U;
+    if (aclrtMemcpy(&workspaceGM, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + wsGmOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy workspaceGM pointer failed, offset=%u.", wsGmOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "workspaceGM=0x%lx (offset=%u)", workspaceGM, wsGmOffset);
+    if (workspaceGM == 0U) {
+        OP_LOGE(OP_NAME, "workspaceGM is 0, skip workspace dump.");
+        return;
+    }
+
+    // 2. 读取 tilingGM 指针 (tilingGmArgIdx = workspaceGmArgIdx + 1)
+    uint32_t tilingGmOffset = argsOffset + (workspaceGmArgIdx + 1) * sizeof(uint64_t);
+    if (tilingGmOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "tilingGmOffset=%u + 8 > devArgsLen=%u, args too short.", tilingGmOffset, devArgsLen);
+        return;
+    }
+    uint64_t tilingGM = 0U;
+    if (aclrtMemcpy(&tilingGM, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy tilingGM pointer failed, offset=%u.", tilingGmOffset);
+        return;
+    }
+    if (tilingGM == 0U) {
+        OP_LOGE(OP_NAME, "tilingGM is 0, skip workspace dump.");
+        return;
+    }
+
+    // 3. D2H 拷贝 tiling data 以解析 WorkspaceLayoutInfo
+    constexpr uint32_t tilingDumpSize = 2048U;
+    std::vector<uint8_t> tilingBuf(tilingDumpSize, 0);
+    if (aclrtMemcpy(tilingBuf.data(), tilingDumpSize, reinterpret_cast<void *>(tilingGM), tilingDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy tiling data for workspace layout failed.");
+        return;
+    }
+
+    // 4. 解析 WorkspaceLayoutInfo
+    constexpr uint32_t wsLayoutInfoSize = sizeof(Mc2Tiling::WorkspaceLayoutInfo);
+    if (workspaceLayoutOffset + wsLayoutInfoSize > tilingDumpSize) {
+        OP_LOGE(OP_NAME, "workspaceLayoutOffset=%u + %u > tilingDumpSize=%u.",
+                workspaceLayoutOffset, wsLayoutInfoSize, tilingDumpSize);
+        return;
+    }
+    Mc2Tiling::WorkspaceLayoutInfo wsLayout;
+    memcpy(&wsLayout, tilingBuf.data() + workspaceLayoutOffset, wsLayoutInfoSize);
+    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0) {
+        OP_LOGE(OP_NAME, "wsLayout invalid: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
+        return;
+    }
+    OP_LOGE(OP_NAME, "wsLayout: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
+
+    // 5. 逐段 D2H 拷贝并落盘
+    auto dumpPathFunc = GetAcldumpGetPathFunc();
+    if (dumpPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
+        return;
+    }
+    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL.");
+        return;
+    }
+
+    constexpr uint64_t MAX_SEG_DUMP_SIZE = 64U * 1024U * 1024U;
+
+    for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
+        auto &seg = wsLayout.segments[i];
+        if (seg.size == 0) {
+            continue;
+        }
+        uint64_t dumpSize = std::min(seg.size, MAX_SEG_DUMP_SIZE);
+        std::vector<uint8_t> segBuf(dumpSize, 0);
+        void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
+        if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
+                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset, dumpSize);
+            continue;
+        }
+        std::string segPrefix = "workspace_seg" + std::to_string(i) + "_type" + std::to_string(seg.type) + "_";
+        std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+        if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+        }
+    }
+    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
 }
 } // namespace Mc2Exception
 #endif

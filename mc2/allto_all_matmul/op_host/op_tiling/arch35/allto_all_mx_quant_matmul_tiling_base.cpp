@@ -760,10 +760,11 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get tiling data from context"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
+        OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
                     OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.", tilingBufCap,
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
+    localTilingData_.workspaceLayout = workspaceLayout_;
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
         OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s tiling data failed, ret=%d.", ret);
@@ -849,9 +850,23 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
-                             inferredInfo_.commScaleLen + inferredInfo_.permuteScaleLen;
-    workspaces[0] = workspaceSize;
+    BuildWorkspaceLayout();
+    // 追加 MX 量化专属段: commScaleLen + permuteScaleLen
+    uint64_t offset = workspaceLayout_.totalSize;
+    uint32_t idx = workspaceLayout_.segCount;
+    if (inferredInfo_.commScaleLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commScaleLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.commScaleLen;
+    }
+    if (inferredInfo_.permuteScaleLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteScaleLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.permuteScaleLen;
+    }
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+    workspaces[0] = workspaceLayout_.totalSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
             inferredInfo_.permuteLen);
     return ge::GRAPH_SUCCESS;

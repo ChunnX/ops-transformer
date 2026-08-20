@@ -271,6 +271,8 @@ ge::graphStatus AllToAllFpMatmulTilingBase::PostTiling()
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
 
+    localTilingData_.workspaceLayout = workspaceLayout_;
+
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
         OP_LOGE(opName_, "PostTiling: memcpy_s tiling data failed, ret=%d.", ret);
