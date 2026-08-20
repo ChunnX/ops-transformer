@@ -76,8 +76,7 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
 
 static bool IsWeightFullQuantFamily(int64_t weightQuantMode)
 {
-    return weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT ||
-           weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||
+    return weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||
            weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 ||
            weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT;
 }
