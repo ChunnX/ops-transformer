@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "flash_attn_tiling.h"
+#include "flash_attn_tiling_arch35.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
 #include <map>
@@ -119,6 +119,12 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
         faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         winLeft = MASK_MODE_INT_MAX;
+        winRight = MASK_MODE_INT_MAX;
+    }
+    if (winLeft == -1) {
+        winLeft = MASK_MODE_INT_MAX;
+    }
+    if (winRight == -1) {
         winRight = MASK_MODE_INT_MAX;
     }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),

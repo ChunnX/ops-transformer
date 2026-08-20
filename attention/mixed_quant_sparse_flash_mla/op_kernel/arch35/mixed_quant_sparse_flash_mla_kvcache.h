@@ -86,10 +86,10 @@ __aicore__ inline void GetSingleCoreParam(
         }
     }
     const int64_t casualOffset = runParam.actualS2OriSize - runParam.actualS1Size;
-    if (constInfo.oriMaskMode == 3) {
+    if (constInfo.oriMaskMode == 3U) {
         runParam.nextTokensPerBatchOri = casualOffset;
         runParam.preTokensPerBatch = runParam.actualS1Size;
-    } else if (constInfo.oriMaskMode == 4) {
+    } else if (constInfo.oriMaskMode == 4U) {
         runParam.preTokensPerBatch =
             (constInfo.oriWinLeft == -1) ? runParam.actualS1Size : constInfo.oriWinLeft - casualOffset;
         runParam.nextTokensPerBatchOri =

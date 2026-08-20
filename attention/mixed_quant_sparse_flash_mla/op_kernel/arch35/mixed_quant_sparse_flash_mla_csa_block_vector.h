@@ -34,10 +34,10 @@ using AscendC::Reg::StoreDist;
 #include "../../sparse_flash_mla/arch35/common/flash_decode.h"
 #endif
 
-#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
-#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #else
-#include "../common/arch35/vf/vf_flash_decode.h"
+#include "../common/arch35/vf/vf_flash_decode_arch35.h"
 #endif
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
@@ -139,6 +139,7 @@ public:
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
                                             __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
                                             __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -163,8 +164,7 @@ public:
     }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -232,13 +232,11 @@ private:
         return stagingMOffset;
     }
 
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                            const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                              Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                               const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void CalProcessSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKeyOffset(int64_t s2Idx, int64_t &realKeyOffset, int64_t &realScaleOffset,
                                         const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &runInfo,
@@ -250,16 +248,10 @@ private:
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t *tokenData,
                                               const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
-                                     int64_t s2ProcessBaseSize, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                          LocalTensor<Q_T> antiKvTensorAsB16, int64_t v0Loop, int64_t dealRow,
-                                          int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
+                                     ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                           LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
                                           const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                             int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset,
                                           int64_t scaleOffset);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
@@ -367,9 +359,9 @@ private:
     bool isSinks = false;
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
-    int64_t sparseCalSize;
-    int64_t sparseS2Start;
-    int64_t sparseS2End;
+    int64_t processSize;
+    int64_t processS2Start;
+    int64_t processS2End;
     __gm__ uint8_t *fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
     __gm__ uint8_t *intraCoreCombineBase = nullptr;
@@ -406,9 +398,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < 8U; ++i) {
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
+        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < processS2End))) {
             tokenData[i] = sparseIndicesGm.GetValue(idx);
         } else {
             break;
@@ -420,16 +412,30 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase,
                                                                  const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    uint32_t sparseBlockCount = runInfo.isCmp ? constInfo.cmpSparseBlockCount : constInfo.oriSparseBlockCount;
-    uint32_t alignedSparseBlockCount =
-        runInfo.isCmp ? constInfo.alignedCmpSparseBlockCount : constInfo.alignedOriSparseBlockCount;
+    uint32_t sparseBlockCount = 0;
+    uint32_t alignedSparseBlockCount = 0;
     int64_t curS2LoopCnt = runInfo.s2LoopCount;
     GlobalTensor<int64_t> phyAddrGm;
-    if (runInfo.isCmp) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+        sparseBlockCount = constInfo.cmpSparseBlockCount;
+        alignedSparseBlockCount = constInfo.alignedCmpSparseBlockCount;
         curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
         phyAddrGm = cmpKvPhyAddrGm.template ReinterpretCast<int64_t>();
-    } else {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
+        sparseBlockCount = constInfo.oriSparseBlockCount;
+        alignedSparseBlockCount = constInfo.alignedOriSparseBlockCount;
         phyAddrGm = oriKvPhyAddrGm.template ReinterpretCast<int64_t>();
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (runInfo.isCmp) {
+            sparseBlockCount = constInfo.cmpSparseBlockCount;
+            alignedSparseBlockCount = constInfo.alignedCmpSparseBlockCount;
+            curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
+            phyAddrGm = cmpKvPhyAddrGm.template ReinterpretCast<int64_t>();
+        } else {
+            sparseBlockCount = constInfo.oriSparseBlockCount;
+            alignedSparseBlockCount = constInfo.alignedOriSparseBlockCount;
+            phyAddrGm = oriKvPhyAddrGm.template ReinterpretCast<int64_t>();
+        }
     }
     uint64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -438,9 +444,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenD
         topkBS1Idx = (runInfo.boIdx * constInfo.s1Size + runInfo.s1oIdx) * alignedSparseBlockCount;
     }
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < 8U; ++i) {
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
+        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < processS2End))) {
             tokenData[i] = phyAddrGm.GetValue(idx);
         } else {
             break;
@@ -559,7 +565,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
         int64_t scaleOffset0 = -1;
         int64_t scaleOffset1 = -1;
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
-            if (constInfo.useVecS2PhyAddr) {
+            if constexpr (IS_VEC_S2PHYADDR) {
                 keyOffset0 = tokenData[i];
                 keyOffset1 = tokenData[i + 1];
             } else {
@@ -647,7 +653,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             }
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2;
+        startRow += 2U;
     }
     return dealRow;
 }
@@ -908,7 +914,7 @@ __aicore__ inline void AntiquantVFFp8D448_FloatScale(LocalTensor<Q_T> &kRopeUbNz
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> antiKvTensorAsB16,
                                                              LocalTensor<KV_T> srcTensor, int64_t dealRow,
-                                                             int64_t s2ProcessBaseSize, ConstInfo &constInfo)
+                                                             ConstInfo &constInfo)
 {
     LocalTensor<int8_t> kRopeUb;
     LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)];
@@ -922,22 +928,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> an
         CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
         AntiquantVFFp8D448_FloatScale<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, floatScale, kRopeUb, dealRow);
     }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1, LocalTensor<Q_T> antiKvTensorAsB16,
-    int64_t v0Loop, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
-{
-    uint64_t blockElementNum = 16;
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
-    dataCopyParams.blockLen = dealRow;
-    dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
-    dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
-
-    LocalTensor<Q_T> dst = outputL1.GetTensor<Q_T>();
-    DataCopy(dst[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -957,41 +947,36 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t s2ProcessBaseSize = 32;
-    int64_t s2ProcessSize = s2ProcessBaseSize;
-    int64_t s2V0LoopTimes = (runInfo.s2RealSize + s2ProcessBaseSize - 1) / s2ProcessBaseSize;
-    int64_t s2Tail = runInfo.s2RealSize - (s2V0LoopTimes - 1) * s2ProcessBaseSize;
-    for (uint32_t i = 0; i < s2V0LoopTimes; i++) {
-        if (i == s2V0LoopTimes - 1) {
-            s2ProcessSize = s2Tail;
+    if (processSize == 0) {
+        return;
+    }
+    constexpr int64_t v0ProcessBase = 16;
+    int64_t v0ProcessSize = v0ProcessBase;
+    int64_t loopTimes = (processSize + v0ProcessBase - 1) / v0ProcessBase;
+    for (uint32_t i = 0; i < loopTimes; i++) {
+        int64_t s2StartIdx = processS2Start + i * v0ProcessBase;
+        if (i == loopTimes - 1) {
+            v0ProcessSize = processSize - i * v0ProcessBase;
         }
-        int64_t dealRow =
-            GetSubBlockIdx() == 0 ? CeilDiv(s2ProcessSize, 2L) : s2ProcessSize - CeilDiv(s2ProcessSize, 2L);
-        if (dealRow == 0) {
-            continue;
-        }
-        int64_t s2StartIdx = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2ProcessSize, 2L);
-        s2StartIdx += i * s2ProcessBaseSize;
         // 1、copy kv in, gm ->ub
         WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
-        CopyInKvNotSparse(kvInUb, i, dealRow, s2StartIdx, runInfo, constInfo);
+        CopyInKvNotSparse(kvInUb, i, v0ProcessSize, s2StartIdx, runInfo, constInfo);
         SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
 
         // 2、dequant by vf
         WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
-        DequantKv(kvDequantOutUb, kvInUb, dealRow, s2ProcessBaseSize, constInfo);
+        DequantKv(kvDequantOutUb, kvInUb, v0ProcessSize, constInfo);
         SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
 
         // 3、copy kv out, ub -> l1
         SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
-        CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, dealRow, s2StartIdx, runInfo, constInfo);
+        CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
         SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         pingPongV0 ^= 1;
     }
@@ -1096,7 +1081,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalProcessSize(const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         sparseIndicesGm = runInfo.isCmp ? cmpSparseIndicesGm : oriSparseIndicesGm;
@@ -1112,35 +1097,34 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
         int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3);
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = 0;
+                processSize = CeilDiv(v0S2SizeFirstCore, 2U);
+                processS2Start = 0;
             } else {
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2);
+                processSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2U);
+                processS2Start = CeilDiv(v0S2SizeFirstCore, 2U);
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2);
-                sparseS2Start = v0S2SizeFirstCore;
+                processSize = CeilDiv(v0S2SizeSecondCore, 2U);
+                processS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2);
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2);
+                processSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2U);
+                processS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2U);
             }
         }
-        sparseS2End = sparseS2Start + sparseCalSize;
+        processS2End = processS2Start + processSize;
     } else {
         int64_t s2PerVecLoop = 2LL;
         int64_t vecNum = 2LL;
         int64_t s2Loops = CeilDiv(CeilDiv(runInfo.s2RealSize, vecNum), s2PerVecLoop);
-        sparseS2Start = GetSubBlockIdx() == 0 ? 0 : Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize);
-        sparseS2End = GetSubBlockIdx() == 0 ? Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize) : runInfo.s2RealSize;
-        sparseCalSize = sparseS2End - sparseS2Start;
+        processS2Start = GetSubBlockIdx() == 0 ? 0 : Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize);
+        processS2End = GetSubBlockIdx() == 0 ? Min(s2Loops * s2PerVecLoop, runInfo.s2RealSize) : runInfo.s2RealSize;
+        processSize = processS2End - processS2Start;
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     bool isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
@@ -1160,50 +1144,42 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         }
     }
 
+    CalProcessSize(runInfo, constInfo);
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (isCmp) {
-            CalSparseCalSize(runInfo, constInfo);
-            ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessSparseKv(v0ResGm, runInfo, constInfo);
         } else {
-            ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
         }
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                          TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        CalSparseCalSize(runInfo, constInfo);
-        ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+        ProcessSparseKv(v0ResGm, runInfo, constInfo);
     } else {
-        ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+        ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
     }
     v0ResGm.SetCrossCore();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (sparseCalSize == 0) {
+    if (processSize == 0) {
         return;
     }
-    // Left-closed, right-open interval
-    // 4x = 2x + 2x
-    // 4x + 1 = (2x + 2) + (2x - 1)
-    // 4x + 2 = (2x + 2) + (2x)
-    // 4x + 3 = (2x + 2) + (2x + 1)
-    int64_t s2ProcessBaseSize = 32;
     bool meetEnd = false;
-    int64_t s2Start = sparseS2Start;
-    int64_t s2 = sparseS2Start;
+    int64_t s2Start = processS2Start;
+    int64_t s2 = processS2Start;
     // 处理一个s2的base块
-    while ((s2 < sparseS2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
+    while ((s2 < processS2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
         int64_t dealRow = 0;
         // 1、copy kv in, gm ->ub
         WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
-        while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
+        while (dealRow < Min(16, processSize) && s2 < processS2End) { // 拷贝满16行或者遇到-1
             int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
             if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
-                if (constInfo.useVecS2PhyAddr) {
+                if constexpr (IS_VEC_S2PHYADDR) {
                     GetRealS2Addr(tokenData, s2, runInfo, constInfo);
                 } else {
                     GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
@@ -1232,7 +1208,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         // 2、dequant by vf
         WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
-        DequantKv(kvDequantOutUb, kvInUb, dealRow, s2ProcessBaseSize, constInfo);
+        DequantKv(kvDequantOutUb, kvInUb, dealRow, constInfo);
         SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         // 3、copy kv out, ub -> l1
         SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
@@ -1290,7 +1266,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
                 int64_t sinksOffset = 0;
                 if constexpr (!IS_SPLIT_G) {
-                    sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
+                    sinksOffset = GetBlockIdx() % 2U == 0 ? 0 : runInfo.firstHalfMRealSize;
                 } else {
                     sinksOffset = runInfo.goIdx;
                     if (constInfo.subBlockIdx == 1) {
@@ -1325,7 +1301,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
 
-    outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
     if (likely(runInfo.halfMRealSize != 0)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) *
@@ -2083,9 +2058,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     int64_t processedCount = 0;
     tmpGS1Start = gS1StartIdx;
     bool done = false;
-    SetFlag<HardEvent::V_MTE2>(3);
-    SetFlag<HardEvent::V_MTE2>(4);
-    SetFlag<HardEvent::MTE3_V>(7);
+    SetFlag<HardEvent::V_MTE2>(3U);
+    SetFlag<HardEvent::V_MTE2>(4U);
+    SetFlag<HardEvent::MTE3_V>(7U);
     for (uint32_t bIdx = bN2StartIdx; bIdx < bN2EndIdx && !done; ++bIdx) {
         bool lastBN = bIdx == bN2EndIdx - 1;
         int32_t actualS1Size =
@@ -2094,10 +2069,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
                              (hasCuSeqlensQ ? cuSeqlensQGm.GetValue(bIdx) : constInfo.s1Size * bIdx) :
                              constInfo.s1Size * bIdx;
         int32_t s1End = (lastBN && nextGs1Idx != 0) ? nextGs1Idx : actualS1Size;
-        WaitFlag<HardEvent::V_MTE2>(3);
+        WaitFlag<HardEvent::V_MTE2>(3U);
         CopyPaTableToUb(blkTableUb, bIdx, blockTableGm, maxBlockNumPerBatch);
-        SetFlag<HardEvent::MTE2_V>(8);
-        WaitFlag<HardEvent::MTE2_V>(8);
+        SetFlag<HardEvent::MTE2_V>(8U);
+        WaitFlag<HardEvent::MTE2_V>(8U);
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
             int32_t validS2 = CalcCurValidS2ForPhyAddr(bIdx, s1Idx, actualS1Size, isOriKv, hasActualSeqKvlen,
                                                        hasCuSeqlensKv, cuSeqlensQGm, actualSeqKvlenGm, cuSeqlensKvGm,
@@ -2112,29 +2087,29 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             ++validCounter;
             uint16_t s2Loop = (validS2 + s2NumPerLoop - 1) / s2NumPerLoop;
             int32_t s2Tail = validS2 - (s2Loop - 1) * s2NumPerLoop;
-            WaitFlag<HardEvent::V_MTE2>(4);
+            WaitFlag<HardEvent::V_MTE2>(4U);
             CopySparseIdxToUb(sparseIdxUb, bS1Idx, s1Idx, validS2, sparseIndicesGm, sparseBlockCount);
-            SetFlag<HardEvent::MTE2_V>(6);
-            WaitFlag<HardEvent::MTE2_V>(6);
-            WaitFlag<HardEvent::MTE3_V>(7);
+            SetFlag<HardEvent::MTE2_V>(6U);
+            WaitFlag<HardEvent::MTE2_V>(6U);
+            WaitFlag<HardEvent::MTE3_V>(7U);
             GetMixedKVPhyAddrVF<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize,
                                           shiftRightNum, constInfo.sparseBlockSize, constInfo.dSizeVInput, kvStride);
-            SetFlag<HardEvent::V_MTE2>(4);
-            SetFlag<HardEvent::V_MTE3>(5);
-            WaitFlag<HardEvent::V_MTE3>(5);
+            SetFlag<HardEvent::V_MTE2>(4U);
+            SetFlag<HardEvent::V_MTE3>(5U);
+            WaitFlag<HardEvent::V_MTE3>(5U);
             CopyPhyAddrToGm(kvPhyAddrUb, bS1Idx, s1Idx, validS2, s2NumPerLoop, phyAddrGm, alignedSparseBlockCount);
-            SetFlag<HardEvent::MTE3_V>(7);
+            SetFlag<HardEvent::MTE3_V>(7U);
             if (++processedCount >= rowCount) {
                 done = true;
                 break;
             }
         }
-        SetFlag<HardEvent::V_MTE2>(3);
+        SetFlag<HardEvent::V_MTE2>(3U);
         tmpGS1Start = 0;
     }
-    WaitFlag<HardEvent::V_MTE2>(3);
-    WaitFlag<HardEvent::V_MTE2>(4);
-    WaitFlag<HardEvent::MTE3_V>(7);
+    WaitFlag<HardEvent::V_MTE2>(3U);
+    WaitFlag<HardEvent::V_MTE2>(4U);
+    WaitFlag<HardEvent::MTE3_V>(7U);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -2231,7 +2206,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
         tPipe->InitBuffer(softmaxFinalSumBuf[1], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[0], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[1], softmaxBufSize);
-        tPipe->InitBuffer(batchReduceTmpBuf, 768 * sizeof(float));
+        tPipe->InitBuffer(batchReduceTmpBuf, 768U * sizeof(float));
     }
     tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
@@ -2264,15 +2239,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512);   // sinksBuf内存申请512B
     if (constInfo.isSoftmaxLseEnable) {
-        tPipe->InitBuffer(outLseBuf[0], 256);
-        tPipe->InitBuffer(outLseBuf[1], 256);
+        tPipe->InitBuffer(outLseBuf[0], 256U);
+        tPipe->InitBuffer(outLseBuf[1], 256U);
     }
 
     tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
     tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * 16 * sizeof(KV_T));
     // kv输入D轴608, V0阶段每次处理16个seq, 开2 buffer
-    tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
-    tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
+    tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (16U + 1) * sizeof(Q_T));
+    tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (16U + 1) * sizeof(Q_T));
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -2285,7 +2260,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     }
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     if constexpr (IS_BATCH_CONSISTENCY) {
-        for (uint32_t eventIdx = 0; eventIdx < 2; ++eventIdx) {
+        for (uint32_t eventIdx = 0; eventIdx < 2U; ++eventIdx) {
             intraLseMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
             intraAttnOutMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         }
@@ -2329,6 +2304,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
+{
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
+        WaitFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+    }
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    if (constInfo.isSoftmaxLseEnable) {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    }
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[0]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[1]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
