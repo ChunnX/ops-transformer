@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file grouped_matmul_tensor_api_kernel.h
+ * \file grouped_matmul_kernel.h
  * \brief Non-quant grouped matmul outer kernel implemented with Tensor API.
  */
 
@@ -38,14 +38,13 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<
-        0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0>;
+    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
-    using GroupedMatmulKernel = Blaze::Gemm::Kernel::GemmUniversal<
-        ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using GroupedMatmulKernel =
+        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulKernel::Params;
     using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
     using BlockSchedulerParams = typename BlockScheduler::Params;
@@ -53,21 +52,17 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     const uint64_t baseM = static_cast<uint64_t>(mmTilingData.baseM);
     const uint64_t baseN = static_cast<uint64_t>(mmTilingData.baseN);
     const uint64_t baseK = static_cast<uint64_t>(mmTilingData.baseK);
-    const uint64_t sharedKStep = Blaze::Gemm::Min(static_cast<uint64_t>(mmTilingData.stepKa),
-                                                  static_cast<uint64_t>(mmTilingData.stepKb));
+    const uint64_t sharedKStep =
+        Blaze::Gemm::Min(static_cast<uint64_t>(mmTilingData.stepKa), static_cast<uint64_t>(mmTilingData.stepKb));
     const uint64_t kL1 = baseK * Blaze::Gemm::Max(sharedKStep, static_cast<uint64_t>(1));
 
-    GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParams.groupNum),
-                        static_cast<int32_t>(gmmBaseParams.groupType),
-                        static_cast<uint32_t>(gmmBaseParams.groupListType),
-                        static_cast<uint64_t>(gmmBaseParams.singleX),
-                        static_cast<uint64_t>(gmmBaseParams.singleWeight),
-                        static_cast<uint64_t>(gmmBaseParams.singleY),
-                        static_cast<uint32_t>(gmmBaseParams.hasBias),
-                        static_cast<uint32_t>(gmmBaseParams.weightNoL2Cache)};
-    constexpr uint32_t nTailAlign = BlockMmad::WEIGHT_NZ_FORMAT ?
-                                        static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) :
-                                        1U;
+    GMMTiling gmmParams{
+        static_cast<uint32_t>(gmmBaseParams.groupNum),      static_cast<int32_t>(gmmBaseParams.groupType),
+        static_cast<uint32_t>(gmmBaseParams.groupListType), static_cast<uint64_t>(gmmBaseParams.singleX),
+        static_cast<uint64_t>(gmmBaseParams.singleWeight),  static_cast<uint64_t>(gmmBaseParams.singleY),
+        static_cast<uint32_t>(gmmBaseParams.hasBias),       static_cast<uint32_t>(gmmBaseParams.weightNoL2Cache)};
+    constexpr uint32_t nTailAlign =
+        BlockMmad::WEIGHT_NZ_FORMAT ? static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) : 1U;
     BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
                                          static_cast<int32_t>(baseN),
                                          static_cast<uint64_t>(gmmBaseParams.mTailCnt),
@@ -78,43 +73,24 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                          static_cast<uint32_t>(gmmBaseParams.groupNum),
                                          static_cast<int64_t>(mmTilingData.M)};
 
-    // typename BlockMmad::Params mmParams{
-    //     x,
-    //     weight,
-    //     y,
-    //     gmmBaseParams.hasBias == 0 ? nullptr : bias,
-    //     groupList,
-    //     nullptr,
-    //     baseM,
-    //     baseN,
-    //     kL1,
-    //     static_cast<uint32_t>(baseM),
-    //     static_cast<uint32_t>(baseN),
-    //     static_cast<uint32_t>(baseK),
-    //     2U,
-    //     static_cast<uint16_t>(mmTilingData.dbL0C)};
+    typename BlockMmad::Params mmParams{x,
+                                        weight,
+                                        y,
+                                        gmmBaseParams.hasBias == 0 ? nullptr : bias,
+                                        groupList,
+                                        nullptr,
+                                        baseM,
+                                        baseN,
+                                        kL1,
+                                        static_cast<uint32_t>(baseM),
+                                        static_cast<uint32_t>(baseN),
+                                        static_cast<uint32_t>(baseK),
+                                        2U,
+                                        static_cast<uint16_t>(mmTilingData.dbL0C),
+                                        nullptr};
 
-    typename BlockMmad::Params mmParams{
-        x,
-        weight,
-        y,
-        gmmBaseParams.hasBias == 0 ? nullptr : bias,
-        groupList,
-        nullptr,
-        baseM,
-        baseN,
-        kL1,
-        static_cast<uint32_t>(baseM),
-        static_cast<uint32_t>(baseN),
-        static_cast<uint32_t>(baseK),
-        2U,
-        static_cast<uint16_t>(mmTilingData.dbL0C),
-        nullptr};
-
-    ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M),
-                              static_cast<int64_t>(mmTilingData.N),
-                              static_cast<int64_t>(mmTilingData.Ka),
-                              static_cast<int64_t>(1)};
+    ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M), static_cast<int64_t>(mmTilingData.N),
+                              static_cast<int64_t>(mmTilingData.Ka), static_cast<int64_t>(1)};
     Params params{problemShape, mmParams, {}, schedulerParams, gmmParams};
     GroupedMatmulKernel kernel;
     kernel(params);
