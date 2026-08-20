@@ -891,8 +891,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
                 tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
 
-            DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                       TopkWeightsPrefetch>(
+            DispatchExpertTokensRankInterleaved<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
                 expertGlobalRowBegin,
                 segmentEnd - segmentBegin, segmentBegin);

@@ -72,6 +72,17 @@ struct DispatchExpertRankRange {
     int32_t firstRankOffset;
 };
 
+// One layer of the deterministic rank-interleaved row layout for an expert.
+// A layer covers the ordinal interval [roundBegin, roundEnd) of every active
+// source rank. Rows are laid out round-major and rank-minor inside the layer.
+struct DispatchRankInterleaveLayer {
+    int32_t roundBegin;
+    int32_t roundEnd;
+    int32_t logicalRowBegin;
+    int32_t activeRankCount;
+    int32_t activeRankPosition;
+};
+
 struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> stridedTensor;
     LocalTensor<int32_t> compactTensor;
@@ -218,6 +229,73 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     }
 }
 
+// Copy a compacted list of source tokens to an explicit list of destination
+// rows. validTopkIndexTensor[0, copyNum) stores the source topk indices and
+// topkIndexTensor[0, copyNum) stores the corresponding absolute destination
+// rows. The explicit row list is required by rank-interleaved physical layout.
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, int32_t remoteRankIdx, int32_t copyNum)
+{
+    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
+    int32_t bufferCount = bufferConfig.bufferCount;
+
+    GlobalTensor<ActivationType> remoteRankGlobalTensor;
+    GlobalTensor<ActivationType> tokenRevGlobalTensor;
+    GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
+    GlobalTensor<int32_t> metaInfoGlobalTensor;
+    tokenRevGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ ActivationType *>(params.workspaceInfo.dispatchRevDataPtr));
+    scaleRevGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ QuantScaleType *>(params.workspaceInfo.dispatchRevScalePtr));
+    remoteRankGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
+    metaInfoGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
+
+    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(0);
+    FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+        context, scratch, 0, firstTopkIndex, remoteRankIdx, remoteRankGlobalTensor);
+
+    int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
+    for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
+        int32_t copyIdx = issueIdx - 1;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
+        FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+            context, scratch, issueIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+        int32_t dstRow = scratch.topkIndexTensor.GetValue(copyIdx);
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
+            metaInfoGlobalTensor, 0, copyIdx);
+    }
+
+    for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
+        int32_t copyIdx = issueIdx - 1;
+        int32_t issueBufferIdx = issueIdx % bufferCount;
+        int32_t copyBufferIdx = copyIdx % bufferCount;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
+        FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
+            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+        int32_t dstRow = scratch.topkIndexTensor.GetValue(copyIdx);
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyBufferIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
+            metaInfoGlobalTensor, 0, copyIdx);
+    }
+
+    int32_t lastCopyIdx = copyNum - 1;
+    int32_t lastDstRow = scratch.topkIndexTensor.GetValue(lastCopyIdx);
+    StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, scratch, lastCopyIdx % bufferCount, lastDstRow, tokenRevGlobalTensor,
+        scaleRevGlobalTensor, metaInfoGlobalTensor, 0, lastCopyIdx);
+
+    for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
+        TEventID eventId = static_cast<TEventID>(bufferIdx);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
+}
+
 /** 根据当前 core 的专家 row range 定位相交的 source-rank segment。 */
 template <typename ActivationType>
 __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
@@ -242,6 +320,116 @@ __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
         previousRankPrefix = rankPrefix;
     }
     return range;
+}
+
+template <typename ActivationType>
+__aicore__ inline int32_t GetDispatchExpertRankTokenCount(
+    const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
+    uint32_t localExpertId, int32_t expertGlobalRowBegin, uint32_t remoteRankIdx)
+{
+    int32_t rankRowEnd = scratch.cumsumInfoTensor.GetValue(
+        localExpertId * context.common.worldSize + remoteRankIdx) - expertGlobalRowBegin;
+    int32_t rankRowBegin = remoteRankIdx == 0U ? 0 :
+        scratch.cumsumInfoTensor.GetValue(
+            localExpertId * context.common.worldSize + remoteRankIdx - 1U) - expertGlobalRowBegin;
+    return rankRowEnd - rankRowBegin;
+}
+
+template <typename ActivationType>
+__aicore__ inline DispatchRankInterleaveLayer BuildDispatchRankInterleaveLayer(
+    const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
+    uint32_t localExpertId, int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
+    int32_t roundBegin, int32_t logicalRowBegin)
+{
+    DispatchRankInterleaveLayer layer{
+        roundBegin, 0x7fffffff, logicalRowBegin, 0, 0};
+    for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
+        int32_t rankTokenCount = GetDispatchExpertRankTokenCount(
+            context, scratch, localExpertId, expertGlobalRowBegin, rankIdx);
+        if (rankTokenCount <= roundBegin) {
+            continue;
+        }
+        if (rankIdx < remoteRankIdx) {
+            ++layer.activeRankPosition;
+        }
+        ++layer.activeRankCount;
+        if (rankTokenCount < layer.roundEnd) {
+            layer.roundEnd = rankTokenCount;
+        }
+    }
+    return layer;
+}
+
+template <typename ActivationType>
+__aicore__ inline bool DispatchRankHasCoreOwnedRows(
+    const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
+    uint32_t localExpertId, int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
+    int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd)
+{
+    int32_t rankTokenCount = GetDispatchExpertRankTokenCount(
+        context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx);
+    int32_t coreCount = static_cast<int32_t>(context.blockJob.totalJobs == 0U ?
+        1U : context.blockJob.totalJobs);
+    int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    int32_t roundBegin = 0;
+    int32_t logicalRowBegin = 0;
+    while (roundBegin < rankTokenCount) {
+        DispatchRankInterleaveLayer layer = BuildDispatchRankInterleaveLayer(
+            context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx,
+            roundBegin, logicalRowBegin);
+        int32_t firstRankRowInLayer = layer.logicalRowBegin + layer.activeRankPosition;
+        int32_t layerRoundCount = layer.roundEnd - layer.roundBegin;
+        int32_t ordinalOffsetBegin = segmentExpertRowBegin > firstRankRowInLayer ?
+            Ops::Base::CeilDiv(segmentExpertRowBegin - firstRankRowInLayer, layer.activeRankCount) : 0;
+        int32_t ordinalOffsetEnd = segmentExpertRowEnd > firstRankRowInLayer ?
+            (segmentExpertRowEnd - 1 - firstRankRowInLayer) / layer.activeRankCount : -1;
+        if (ordinalOffsetEnd >= layerRoundCount) {
+            ordinalOffsetEnd = layerRoundCount - 1;
+        }
+        for (int32_t probe = 0;
+             probe < coreCount && ordinalOffsetBegin + probe <= ordinalOffsetEnd; ++probe) {
+            int32_t expertLogicalRow = firstRankRowInLayer +
+                (ordinalOffsetBegin + probe) * layer.activeRankCount;
+            if ((expertGlobalRowBegin + expertLogicalRow) % coreCount == coreIdx) {
+                return true;
+            }
+        }
+        logicalRowBegin += layerRoundCount * layer.activeRankCount;
+        roundBegin = layer.roundEnd;
+    }
+    return false;
+}
+
+template <typename ActivationType>
+__aicore__ inline void PublishInterleavedDispatchBatchReady(
+    const TokenDispatchConfig &context, const Params &params,
+    const TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
+    int32_t expertGlobalRowBegin, int32_t gmm1TileRowCount, int32_t selectedCount)
+{
+    if (selectedCount <= 0) {
+        return;
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+    __gm__ int32_t *gmm1TileReadyCount =
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
+        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+    int32_t currentTileIdx = -1;
+    int32_t currentTileRows = 0;
+    for (int32_t selectedIdx = 0; selectedIdx < selectedCount; ++selectedIdx) {
+        int32_t destinationRow = scratch.topkIndexTensor.GetValue(selectedIdx);
+        int32_t tileIdx = (destinationRow - expertGlobalRowBegin) / gmm1TileRowCount;
+        if (tileIdx != currentTileIdx && currentTileRows > 0) {
+            AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(currentTileIdx) * INT_CACHELINE,
+                      currentTileRows);
+            currentTileRows = 0;
+        }
+        currentTileIdx = tileIdx;
+        ++currentTileRows;
+    }
+    if (currentTileRows > 0) {
+        AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(currentTileIdx) * INT_CACHELINE,
+                  currentTileRows);
+    }
 }
 
 // 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
@@ -338,6 +526,132 @@ __aicore__ inline void DispatchRankTokens(
         int32_t segmentExpertRowEnd = segmentExpertRowBegin + dispatchedRowCount;
         PublishGmm1TileReady(context, params, localExpertId, gmm1TileRowCount,
                              segmentExpertRowBegin, segmentExpertRowEnd);
+    }
+}
+
+// Scan one source rank and emit only the rows owned by this Dispatch core in
+// the deterministic rank-interleaved expert layout. Every core performs its
+// own mask compaction, avoiding a shared compact-index workspace and barrier.
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchRankTokensInterleaved(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
+    int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
+    int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd,
+    int32_t gmm1TileRowCount)
+{
+    int32_t rankTokenCount = GetDispatchExpertRankTokenCount(
+        context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx);
+    if (rankTokenCount <= 0 || !DispatchRankHasCoreOwnedRows(
+            context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx,
+            segmentExpertRowBegin, segmentExpertRowEnd)) {
+        return;
+    }
+
+    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
+    uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+    int32_t coreCount = static_cast<int32_t>(context.blockJob.totalJobs == 0U ?
+        1U : context.blockJob.totalJobs);
+    int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    GlobalTensor<uint8_t> remoteRankMaskGlobal;
+    int32_t matchedRouteCount = 0;
+    bool reachedSegmentEnd = false;
+    DispatchRankInterleaveLayer layer = BuildDispatchRankInterleaveLayer(
+        context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx, 0, 0);
+
+    for (int32_t batchIdx = 0;
+         batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < rankTokenCount && !reachedSegmentEnd;
+         ++batchIdx) {
+        int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
+        bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
+        int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
+        int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+        if (isLastBatch) {
+            uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+            validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
+            if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
+                maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
+            }
+        }
+
+        remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+            params.peermemInfo.maskRecvPtr +
+            (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
+            static_cast<uint64_t>(batchRouteBegin / 8)));
+        DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+        CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
+        uint64_t batchMatchedRouteCount = 0;
+        GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
+                   static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+
+        int32_t batchMatchCount = static_cast<int32_t>(batchMatchedRouteCount);
+        int32_t selectedCount = 0;
+        for (int32_t batchMatchIdx = 0; batchMatchIdx < batchMatchCount; ++batchMatchIdx) {
+            int32_t rankTokenOrdinal = matchedRouteCount + batchMatchIdx;
+            if (rankTokenOrdinal >= rankTokenCount) {
+                reachedSegmentEnd = true;
+                break;
+            }
+            while (rankTokenOrdinal >= layer.roundEnd) {
+                int32_t nextLogicalRowBegin = layer.logicalRowBegin +
+                    (layer.roundEnd - layer.roundBegin) * layer.activeRankCount;
+                layer = BuildDispatchRankInterleaveLayer(
+                    context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx,
+                    layer.roundEnd, nextLogicalRowBegin);
+            }
+            int32_t expertLogicalRow = layer.logicalRowBegin +
+                (rankTokenOrdinal - layer.roundBegin) * layer.activeRankCount +
+                layer.activeRankPosition;
+            if (expertLogicalRow >= segmentExpertRowEnd) {
+                reachedSegmentEnd = true;
+                break;
+            }
+            if (expertLogicalRow < segmentExpertRowBegin) {
+                continue;
+            }
+
+            int32_t destinationRow = expertGlobalRowBegin + expertLogicalRow;
+            if (destinationRow % coreCount != coreIdx) {
+                continue;
+            }
+            int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(batchMatchIdx);
+            scratch.validTopkIndexTensor.SetValue(selectedCount, topkIndex);
+            scratch.topkIndexTensor.SetValue(selectedCount, destinationRow);
+            ++selectedCount;
+        }
+
+        if (selectedCount > 0) {
+            CopyInterleavedTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, winRankAddr, scratch, static_cast<int32_t>(remoteRankIdx), selectedCount);
+            PublishInterleavedDispatchBatchReady(
+                context, params, scratch, localExpertId, expertGlobalRowBegin,
+                gmm1TileRowCount, selectedCount);
+        }
+        matchedRouteCount += batchMatchCount;
+    }
+}
+
+// Dispatch one expert segment using a stable rank-interleaved physical row
+// order. Global destination-row modulo provides core ownership, so rotation is
+// naturally preserved across both expert and wave boundaries.
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchExpertTokensRankInterleaved(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
+    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount, uint32_t expertRowOffset)
+{
+    if (dispatchRowCount == 0U) {
+        return;
+    }
+    int32_t segmentExpertRowBegin = static_cast<int32_t>(expertRowOffset);
+    int32_t segmentExpertRowEnd = segmentExpertRowBegin + static_cast<int32_t>(dispatchRowCount);
+    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    for (uint32_t remoteRankIdx = 0U; remoteRankIdx < context.common.worldSize; ++remoteRankIdx) {
+        DispatchRankTokensInterleaved<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
+            remoteRankIdx, segmentExpertRowBegin, segmentExpertRowEnd, gmm1TileRowCount);
     }
 }
 
