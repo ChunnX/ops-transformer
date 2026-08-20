@@ -19,6 +19,20 @@ import torch
 import numpy as np
 import gc
 
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
+
+
+def _get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
+
 
 PYTEST_GOLDEN_MODULE = None
 
@@ -340,7 +354,7 @@ def cpu_compressor(
     _GOLDEN_CONTEXT["cu_seqlens_list"] = cu_seqlens_list
     _GOLDEN_CONTEXT["is_th"] = is_th
     bench_outputs = None
-    if _get_compare_method == "cross_check" :
+    if _get_compare_method() == "cross_check":
         bench_outputs = _run_benchmark(
             x_cpu,
             wkv_cpu,
@@ -434,7 +448,7 @@ def aclnn_compressor_golden(
     _GOLDEN_CONTEXT["mid_result_mask"] = mid_result_mask
 
     bench_outputs = None
-    if _get_compare_method == "cross_check" :
+    if _get_compare_method() == "cross_check":
         bench_outputs = _run_benchmark(
             x_cpu,
             wkv_cpu,
