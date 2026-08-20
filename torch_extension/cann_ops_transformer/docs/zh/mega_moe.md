@@ -642,18 +642,18 @@ sym_buffer.update_group(group) -> None
 `clean_mask_buffer` 时才会在 NPU 上创建
 shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank
 会在后续计算和卡间通信中被跳过。
-`query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、
-所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor；
-掩码尚未创建时，接口会先自动创建全 0 掩码，调用者无需感知内部初始化时机。
-`update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。
-`clean_mask_buffer` 在当前 NPU stream 上将本地掩码的所有元素清零；各 rank 需要分别调用，跨 rank
-的一致性仍由调用者保证。掩码尚未创建时，接口会创建全 0 掩码。
-`get_local_buffer_tensor` 将当前 Rank 的本地 CCL Buffer 零拷贝包装为 NPU Tensor。`offset` 以 `dtype`
-元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。
-返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，
-必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
-`update_group` 使用新 group 完整重建通信链路，并保留当前 `mask_buffer`；旧通信链路的算子执行完成
-以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用
+
+    - `query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor。
+    - `update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。当恢复 rank，即masked输入为False时，必须调用`get_local_buffer_tensor`清空算子现存通信缓存区标志位。样例如下：
+    ```python
+    symm_buffer.update_mask_buffer(0, False)  # 恢复rank 0 通信
+    symm_buffer.update_mask_buffer(1, False)  # 恢复rank 1 通信
+    local_buffer = symm_buffer.get_local_buffer_tensor(torch.uint8)
+    local_buffer.zero_()
+    ```
+    - `clean_mask_buffer` 在当前 NPU stream 上将本地掩码的所有元素清零；各 rank 需要分别调用，跨 rank的一致性仍由调用者保证。掩码尚未创建时，接口会创建全 0 掩码。
+    - `get_local_buffer_tensor` 将当前 Rank 的本地 CCL Buffer 零拷贝包装为 NPU Tensor。`offset` 以 `dtype`元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
+    - `update_group` 使用新 group 完整重建通信链路；旧通信链路的算子执行完成以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用。
 `clean_mask_buffer`。
 
 ## 参数说明
