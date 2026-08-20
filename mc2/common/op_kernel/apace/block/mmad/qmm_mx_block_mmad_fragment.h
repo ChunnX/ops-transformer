@@ -27,7 +27,7 @@
 #include "tensor_api/tensor.h"
 #include "blaze/gemm/tile/tile_trait.h"
 #include "blaze/gemm/tile/pad_mx_kl1.h"
-#include "../../basic/fragment_tensor/fragment_tensor.h"
+#include "apace/basic/fragment_tensor/fragment_tensor.h"
 
 namespace Blaze {
 namespace Gemm {
