@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import gc
 import logging
 import os
 import sys
@@ -27,14 +28,45 @@ from common import qfa_mxfp4_golden as golden_mod
 logger = logging.getLogger(__name__)
 
 
+# 环境变量 QFA_SKIP_GENERATE=1 时跳过 golden_mod.generate_data(),
+# 直接用 CSV/manual-data 传入的 tensor 拼装 data_dict。
+# manual-data replay (python3 -m ttk e2e --manual-data-dirs ...) 必须打开,
+# 否则 CSV 占位 tensor 是随机数据, 跑出来的结果无意义。
+_SKIP_GENERATE = os.environ.get("QFA_SKIP_GENERATE", "").lower() in ("1", "true", "yes")
+
+
 def _apply_golden_globals(attrs):
     """把 case attributes 注入 golden 模块全局变量 (B, N_q, ...)."""
     for k, v in attrs.items():
         setattr(golden_mod, k, v)
 
 
+def _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale):
+    """manual-data replay 优化: 把 bin 加载的 6 个 packed tensor 注入 golden_mod
+    的 _REPLAY_QKV_OVERRIDE slot。后续 generate_data() 检测到 slot 非空就跳过
+    FP32 生成 + mxfp4 量化 + rearrange (大 case 几百秒), 直接用 bin 数据;
+    其余字段 (block_table/p_scale/sinks/attn_mask/cu_seqlens/layouts/num_heads/
+    softmax_scale/fp32_bnsd) 仍按原逻辑生成, 保证参数完整性。
+
+    用完必须清空 slot, 否则会污染同进程后续 case。
+    """
+    golden_mod._REPLAY_QKV_OVERRIDE = {
+        "q": q,
+        "k": k,
+        "v": v,
+        "q_descale": q_descale,
+        "k_descale": k_descale,
+        "v_descale": v_descale,
+    }
+
+
+def _clear_replay_qkv():
+    """清空 replay slot, 避免污染同进程后续 case。"""
+    golden_mod._REPLAY_QKV_OVERRIDE = {}
+
+
 def npu_qfa_mxfp4(
-    # ========== Tensor inputs (TTK 占位, 真实数据从 golden_mod._cached_data 取) ==========
+    # ========== Tensor inputs (TTK 占位, 真实数据由 golden_mod.generate_data 重新生成) ==========
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -102,15 +134,6 @@ def npu_qfa_mxfp4(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-    """MXFP4 quant_flash_attn TTK wrapper.
-
-    graph_path:
-      - 0: eager 模式, 直接调用 quant_flash_attn_metadata + quant_flash_attn
-      - 7: aclgraph 模式, 用 npugraph_ex backend 编译 Network
-      - 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
-    """
-    torch_npu.npu.set_device(int(device_id))
-
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
@@ -149,7 +172,7 @@ def npu_qfa_mxfp4(
             "ENABLE_MASK": enable_mask,
             "ENABLE_LSE": enable_lse,
             "INNER_PRECISE": inner_precise,
-            "DEVICE_ID": device_id,
+            "DEVICE_ID": torch.npu.current_device(),
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,
             "DATA_RANGE_Q": data_range_q,
@@ -186,29 +209,50 @@ def npu_qfa_mxfp4(
         }
     )
 
-    # 从 golden_mod 取 customize_inputs 缓存的真实 MXFP4 数据
-    cached = getattr(golden_mod, "_cached_data", None)
-    if cached is None:
-        logger.warning("[WRAPPER] customize_inputs 缓存为空, 重新生成数据")
-        cached = golden_mod.generate_data()
-        golden_mod._cached_data = cached
-    else:
-        logger.info("[WRAPPER] 使用 customize_inputs 缓存的真实 MXFP4 数据")
-
-    # 调用 golden 的 npu_mxfp4_fa (内部根据 GRAPH_PATH 选 eager / npugraph_ex)
+    if _SKIP_GENERATE:
+        _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        try:
+            data_dict = golden_mod.generate_data()
+        except Exception:
+            golden_mod._clear_physical_s_override()
+            data_dict = golden_mod.generate_data()
+    finally:
+        golden_mod._clear_physical_s_override()
+        if _SKIP_GENERATE:
+            _clear_replay_qkv()
+    golden_mod._apply_csv_shape_override(
+        data_dict,
+        {
+            "q": q,
+            "k": k,
+            "v": v,
+            "q_descale": q_descale,
+            "k_descale": k_descale,
+            "v_descale": v_descale,
+        },
+    )
     logger.info(
-        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
+        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",
         graph_path,
         input_layout,
         B,
         N_q,
         N_kv,
         D,
+        _SKIP_GENERATE,
     )
     try:
-        atten_out, lse_out = golden_mod.npu_mxfp4_fa(cached)
+        atten_out, lse_out = golden_mod.npu_mxfp4_fa(data_dict)
     except Exception as e:
         logger.error("[WRAPPER] NPU 调用失败: %s", str(e))
+        torch.npu.synchronize()
+        gc.collect()
+        torch.npu.empty_cache()
         raise
+
+    gc.collect()
+    torch.npu.empty_cache()
 
     return atten_out, lse_out

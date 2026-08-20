@@ -344,6 +344,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - 当groupListType为0时，groupList须为非负单调非递减数列（累积和），且最后一个值不大于x1中tensor的第一维；当groupListType为1时，groupList须为非负数组（各组大小），且数值的总和不大于x1中tensor的第一维。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
     - 当sharedInput不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
+    - x1支持M为0，x2支持N为0；其他空Tensor场景不支持。
 
   <!-- end id10 -->
 
@@ -380,7 +381,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape是空tensor。</td>
+      <td>除x1的M为0或x2的N为0外，传入了其他空Tensor。</td>
     </tr>
   </tbody></table>
 
@@ -468,6 +469,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x2的e取值范围[1, 1024]。
     - sharedInput的n和x2的n一致。
+    - x1支持M为0，x2支持N为0；其他空Tensor场景不支持。
 
   - 全量化场景支持的数据类型为：
 
@@ -1061,7 +1063,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
                         size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                     return ret);
-      for (int64_t i = 0; i < size; i++) {
+      for (int64_t i = 0; i < 10 && i < size; i++) {
           LOG_PRINT("result[%lld] is: %f\n", static_cast<long long>(i), resultData[i]);
       }
 
