@@ -35,10 +35,9 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            int64_t topkWeightsType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
-    TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
-                    (topkIds.scalar_type() == at::kInt),
-                "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    TORCH_CHECK((x.dim() >= DIM_TWO) && (topkIds.dim() >= DIM_TWO),
+                "The x and topk_ids must have at least 2 dimensions for output construction");
+    TORCH_CHECK(!weight1.empty() && !weight2.empty(), "weight1 and weight2 must not be empty");
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
@@ -249,20 +248,15 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
     if (isA2 || isA3) {
-        TORCH_CHECK(epWorldSize == 2 || epWorldSize == 4 || epWorldSize == 8 || epWorldSize == 16 ||
-                        epWorldSize == 32 || epWorldSize == 64 || epWorldSize == 128,
-                    "ep_world_size only support {2, 4, 8, 16, 32, 64, 128} on A2/A3, but got ", epWorldSize);
-        TORCH_CHECK(hidden >= 1024 && hidden <= 8192 && hidden % 512 == 0,
-                    "hidden only support [1024, 8192] and hidden % 512 == 0 on A2/A3, but got ", hidden);
-        TORCH_CHECK(numMaxTokensPerRank >= 1 && numMaxTokensPerRank <= 4096,
-                    "num_max_tokens_per_rank only support [1, 4096] on A2/A3, but got ", numMaxTokensPerRank);
-        TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048,
-                    "moe_expert_num only support [1, 2048] on A2/A3, but got ", moeExpertNum);
-        TORCH_CHECK(numTopk >= 1 && numTopk <= 16, "num_topk only support [1, 16] on A2/A3, but got ", numTopk);
-        TORCH_CHECK(dispatchQuantMode == 0 || dispatchQuantMode == 2 || dispatchQuantMode == 4,
-                    "dispatch_quant_mode only support {0, 2, 4} on A2/A3, but got ", dispatchQuantMode);
+        // A2/A3 capability checks are performed by the Arch22 tiling implementation. Only keep
+        // arithmetic-safety checks here because this helper runs before tiling while allocating the
+        // communication buffer.
+        TORCH_CHECK(epWorldSize > 0, "ep_world_size must be greater than 0, but got ", epWorldSize);
+        TORCH_CHECK(moeExpertNum >= 0 && numMaxTokensPerRank >= 0 && numTopk >= 0 && hidden >= 0 &&
+                        maxRecvTokenNum >= 0,
+                    "A2/A3 buffer size arguments must not be negative");
 
-        bool isQuantRouting = (dispatchQuantMode == 4);
+        bool isQuantRouting = (dispatchQuantMode == 2);
         // max_recv_token_num 为 0 时自动计算为 bs * epWorldSize * min(topK, expertPerRank)，
         if (maxRecvTokenNum == 0) {
             int64_t expertPerRank = moeExpertNum / epWorldSize;
