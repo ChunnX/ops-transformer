@@ -130,7 +130,8 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
@@ -149,10 +150,7 @@ public:
         kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
     }
 
-    __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
-    {
-        this->softmaxLseGm = softmaxLseGm;
-    }
+    __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm) { this->softmaxLseGm = softmaxLseGm; }
     __aicore__ inline void InitParams()
     {
         this->dSizeV_Align = AttentionCommon::Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
@@ -431,25 +429,29 @@ public:
             if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                           constInfo);
+                DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<layout>()>(
+                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                    {.gSize = constInfo.gSize, .n2Size = constInfo.n2Size});
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                           constInfo, s1Size);
+                DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
+                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                    {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.n2Size});
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                      taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                            actualGSplitSize, constInfo);
+                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                    {.s1Size = constInfo.s1Size, .gSize = constInfo.gSize});
             } else { // BNSD
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                      taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                 uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                            actualGSplitSize, constInfo, qActSeqLens);
+                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
+                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                    {.s1Size = constInfo.s1Size, .qActSeqLens = qActSeqLens});
             }
         }
     }
