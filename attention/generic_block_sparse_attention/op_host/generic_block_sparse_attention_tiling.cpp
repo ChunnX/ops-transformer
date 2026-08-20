@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include "log/log.h"
 #include "err/ops_err.h"
@@ -82,6 +83,16 @@ constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FULL = 5;
 constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
+constexpr uint32_t GSA_FD_MAX_SPLIT_NUM = 16U;
+constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;
+constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;
+
+namespace {
+uint64_t AlignUp(uint64_t value, uint64_t alignment)
+{
+    return (value + alignment - 1U) / alignment * alignment;
+}
+} // namespace
 
 namespace optiling {
 
@@ -389,6 +400,7 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    totalQTokens_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_T));
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
     if (embeddingSize_ != 128) {
@@ -439,12 +451,12 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 kvHeads_);
         return ge::GRAPH_FAILED;
     }
-    const uint32_t groupSize = numHeads_ / kvHeads_;
-    if (groupSize > GBSA_MAX_GROUP_SIZE) {
+    groupSize_ = numHeads_ / kvHeads_;
+    if (groupSize_ > GBSA_MAX_GROUP_SIZE) {
         OP_LOGE(context->GetNodeName(),
                 "Unsupported groupSize=%u (numHeads=%u, kvHeads=%u), currently only groupSize <= %u is supported to "
                 "avoid kernel L0C/UB overflow.",
-                groupSize, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
+                groupSize_, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
         return ge::GRAPH_FAILED;
     }
     constexpr uint32_t GBSA_MAX_TOPK = 256U;
@@ -541,6 +553,7 @@ ge::graphStatus GBSATiling::ParseInputTensors(gert::TilingContext *context)
 
 ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
 {
+    uint64_t pipelineWorkspaceSize = 0;
     if (socVer_ != SOC_VER_950_CODE) {
         constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = 131072;
         constexpr uint32_t NUM3 = 3;
@@ -550,13 +563,37 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
         mm2OutSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
         updateSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
         uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
-        workSpaceSize_ = libapiSize_ + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + identityIdxSize;
+        pipelineWorkspaceSize = mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + identityIdxSize;
     } else {
         uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
         uint64_t perTaskWorkspace = static_cast<uint64_t>(topK_) * blockShapeY_ * embeddingSize_ * dtypeSize * 2;
         uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
-        workSpaceSize_ = libapiSize_ + identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
+        pipelineWorkspaceSize = identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
     }
+
+    uint64_t userWorkspaceSize = pipelineWorkspaceSize;
+    if (fdStaticEnabled_) {
+        const uint32_t maxSparseBaseTasks = aicNum_ == 0U ? 0U :
+            std::min(GSA_FD_MAX_COMBINE_TASK_NUM, (aicNum_ * 3U - 1U) / 10U);
+        fdPartialCapacity_ = maxSparseBaseTasks * GSA_FD_MAX_SPLIT_NUM;
+        fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
+        fdPartialLseOffset_ = AlignUp(pipelineWorkspaceSize, GSA_FD_WORKSPACE_ALIGNMENT);
+        const uint64_t partialLseSize = static_cast<uint64_t>(fdPartialCapacity_) * 2U *
+            fdLseSubStride_ * sizeof(float);
+        fdPartialOOffset_ = AlignUp(fdPartialLseOffset_ + partialLseSize, GSA_FD_WORKSPACE_ALIGNMENT);
+        const uint64_t partialOSize = static_cast<uint64_t>(fdPartialCapacity_) * groupSize_ *
+            embeddingSize_ * sizeof(float);
+        if (fdPartialOOffset_ > std::numeric_limits<uint64_t>::max() - partialOSize) {
+            OP_LOGE(context->GetNodeName(), "Flash Decoding workspace size overflow.");
+            return ge::GRAPH_FAILED;
+        }
+        userWorkspaceSize = fdPartialOOffset_ + partialOSize;
+    }
+    if (userWorkspaceSize > std::numeric_limits<size_t>::max() - libapiSize_) {
+        OP_LOGE(context->GetNodeName(), "GenericBlockSparseAttention workspace size overflow.");
+        return ge::GRAPH_FAILED;
+    }
+    workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
     context->SetBlockDim(blockDim_);
     size_t *workspaceArray = context->GetWorkspaceSizes(1);
@@ -673,6 +710,9 @@ ge::graphStatus GBSATiling::CheckQuantConfig(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "returnSoftmaxlse=1 is not supported for FP8 full-quant path.");
         return ge::GRAPH_FAILED;
     }
+    // Runtime FD is selected by metadata. LSE output keeps using the normal path
+    // until FD combine writes the public LSE tensor as part of its contract.
+    fdStaticEnabled_ = topK_ >= 12U && !returnSoftmaxlse_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -739,14 +779,14 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_topK(topK_);
     tilingData_->set_qBlockNum(qBlockNum_);
     tilingData_->set_maxBlocksPerBatch(maxBlocksPerBatch_);
+    tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_mm1OutSize(mm1OutSize_);
     tilingData_->set_smOnlineOutSize(smOnlineOutSize_);
     tilingData_->set_mm2OutSize(mm2OutSize_);
     tilingData_->set_updateSize(updateSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
-    uint32_t groupSize = numHeads_ / kvHeads_;
-    tilingData_->set_groupSize(groupSize);
+    tilingData_->set_groupSize(groupSize_);
     uint64_t tilingKey = GenerateTilingKey();
     tilingData_->set_tilingKey(tilingKey);
     context->SetTilingKey(tilingKey);
@@ -774,6 +814,11 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_pL1BufNum(3); // PRE_LAUNCH + 1
     tilingData_->set_kStride0(kStride0_);
     tilingData_->set_vStride0(vStride0_);
+    tilingData_->set_fdStaticEnabled(fdStaticEnabled_ ? 1U : 0U);
+    tilingData_->set_fdLseSubStride(fdLseSubStride_);
+    tilingData_->set_fdPartialCapacity(fdPartialCapacity_);
+    tilingData_->set_fdPartialLseOffset(fdPartialLseOffset_);
+    tilingData_->set_fdPartialOOffset(fdPartialOOffset_);
 
     return ge::GRAPH_SUCCESS;
 }

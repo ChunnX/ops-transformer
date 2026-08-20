@@ -28,6 +28,7 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t topK;        // sparseBlockIdx dim-3 (KVb): selected KV blocks per Q block
     uint32_t qBlockNum;   // sparseBlockIdx dim-2 (Qb): total Q blocks
     uint32_t maxBlocksPerBatch;
+    uint32_t totalQTokens;
     float scaleValue;
     uint64_t mm1OutSize;
     uint64_t smOnlineOutSize;
@@ -55,6 +56,11 @@ struct GenericBlockSparseAttentionTilingData {
     // PAGED_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
     uint64_t kStride0;
     uint64_t vStride0;
+    uint32_t fdStaticEnabled;
+    uint32_t fdLseSubStride;
+    uint32_t fdPartialCapacity;
+    uint64_t fdPartialLseOffset;
+    uint64_t fdPartialOOffset;
 };
 
 } // namespace GenericBlockSparseAttn
