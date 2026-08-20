@@ -39,9 +39,11 @@ ASCENDC_TPL_ARGS_DECL(FFN,
                                             FFN_TPL_MODE_STREAMK));
 
 // 合法组合：
-//  - bf16 gelu/silu：basic + streamK（down split-K，仅 bf16）
+//  - bf16 gelu/silu：basic + streamK（down split-K）
 //  - bf16 swiglu：basic only（down 无 streamK）
-//  - fp16 gelu/silu/swiglu：basic only（streamK 3rd 内核仅 bf16）
+//  - fp16 gelu/silu：basic + streamK（2026-08-20 放开；3rd streamK 内核 dtype 泛化，
+//    fp16 分支齐备，官方 mat_mul_v3 StreamK 亦支持 fp16）
+//  - fp16 swiglu：basic only
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(DTYPE, ASCENDC_TPL_UI_LIST, FFN_TPL_DTYPE_BF16),
@@ -53,7 +55,11 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(MODE, ASCENDC_TPL_UI_LIST, FFN_TPL_MODE_BASIC)),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(DTYPE, ASCENDC_TPL_UI_LIST, FFN_TPL_DTYPE_FP16),
-        ASCENDC_TPL_UINT_SEL(ACT, ASCENDC_TPL_UI_LIST, FFN_TPL_ACT_GELU, FFN_TPL_ACT_SILU, FFN_TPL_ACT_SWIGLU),
+        ASCENDC_TPL_UINT_SEL(ACT, ASCENDC_TPL_UI_LIST, FFN_TPL_ACT_GELU, FFN_TPL_ACT_SILU),
+        ASCENDC_TPL_UINT_SEL(MODE, ASCENDC_TPL_UI_LIST, FFN_TPL_MODE_BASIC, FFN_TPL_MODE_STREAMK)),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(DTYPE, ASCENDC_TPL_UI_LIST, FFN_TPL_DTYPE_FP16),
+        ASCENDC_TPL_UINT_SEL(ACT, ASCENDC_TPL_UI_LIST, FFN_TPL_ACT_SWIGLU),
         ASCENDC_TPL_UINT_SEL(MODE, ASCENDC_TPL_UI_LIST, FFN_TPL_MODE_BASIC)), );
 
 #endif // FFN_ARCH35_TILING_KEY_H

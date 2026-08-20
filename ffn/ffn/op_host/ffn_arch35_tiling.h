@@ -81,7 +81,7 @@ public:
     static bool DetectLayout(const gert::TilingContext *context,
                              const gert::StorageShape *weight1Shape,
                              const gert::StorageShape *weight2Shape,
-                             int64_t xK, ge::DataType xDtype, bool &isLinear);
+                             int64_t xK, bool isSwiglu, bool &isLinear);
 
     // arch35 fused 融合 tiling 主入口（原 FFNV1SetTiling）：
     // 不满足 fused 约束时返回 GRAPH_NOT_CHANGED；真正错误返回 GRAPH_FAILED。
