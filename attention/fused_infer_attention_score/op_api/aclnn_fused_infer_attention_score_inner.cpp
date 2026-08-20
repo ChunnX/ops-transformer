@@ -200,13 +200,13 @@ int64_t GetPageAttentionCacheHeadDim(const aclTensor *tensor, int64_t numKeyValu
     return -1;
 }
 
-bool IsArch22MlaD512RoutingCandidate(
+bool IsMlaD512PaDim0RoutingCandidate(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
     const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
     const char *inputLayout, int64_t numHeads, int64_t numKeyValueHeads,
-    int64_t sparseMode, int64_t blockSize, bool hasUnsupportedFeature)
+    int64_t sparseMode, int64_t blockSize, bool hasUnsupportedFeature, NpuArch expectedArch)
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 || hasUnsupportedFeature ||
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != expectedArch || hasUnsupportedFeature ||
         query == nullptr || queryRopeOptional == nullptr || keyRopeOptional == nullptr || inputLayout == nullptr ||
         key == nullptr || value == nullptr || key->Size() != 1 || value->Size() != 1 ||
         (*key)[0] == nullptr || (*value)[0] == nullptr || numHeads <= 0 || numKeyValueHeads != 1 ||
@@ -236,6 +236,29 @@ bool IsArch22MlaD512RoutingCandidate(
            GetPageAttentionCacheHeadDim((*key)[0], numKeyValueHeads) == 512 &&
            GetPageAttentionCacheHeadDim((*value)[0], numKeyValueHeads) == 512 &&
            GetPageAttentionCacheHeadDim(keyRopeOptional, numKeyValueHeads) == 64;
+}
+
+bool IsArch22MlaD512RoutingCandidate(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
+    const char *inputLayout, int64_t numHeads, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t blockSize, bool hasUnsupportedFeature)
+{
+    return IsMlaD512PaDim0RoutingCandidate(
+        query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode,
+        blockSize, hasUnsupportedFeature, NpuArch::DAV_2201);
+}
+
+// Ascend950 (DAV_3510): host PA already allows dim0 NC; V5 must KEEP instead of Contiguous.
+bool IsArch35MlaD512RoutingCandidate(
+    const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
+    const char *inputLayout, int64_t numHeads, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t blockSize, bool hasUnsupportedFeature)
+{
+    return IsMlaD512PaDim0RoutingCandidate(
+        query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode,
+        blockSize, hasUnsupportedFeature, NpuArch::DAV_3510);
 }
 
 bool IsFAIRoutingCandidate(
@@ -678,13 +701,16 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         qStartIdxOptional != nullptr ||
         kvStartIdxOptional != nullptr || antiquantMode != 0 || keyAntiquantMode != 0 || valueAntiquantMode != 0 ||
         queryQuantMode != 0;
-    const bool isArch22MlaRoutingCandidate =
-        enableArch22MlaDim0Stride &&
-        IsArch22MlaD512RoutingCandidate(query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads,
+    // Arch22 MLA dim0 KEEP is V4-gated; Ascend950 MLA PA dim0 KEEP is enabled for V5 as well.
+    const bool isMlaKvRopeDim0Candidate =
+        (enableArch22MlaDim0Stride &&
+         IsArch22MlaD512RoutingCandidate(query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads,
+                                         numKeyValueHeads, sparseMode, blockSize, hasUnsupportedMlaFeature)) ||
+        IsArch35MlaD512RoutingCandidate(query, key, value, queryRopeOptional, keyRopeOptional, inputLayout, numHeads,
                                         numKeyValueHeads, sparseMode, blockSize, hasUnsupportedMlaFeature);
     const bool supportTensorV2 = NnopbaseSupportTensorV2 != nullptr;
     const auto cacheStridePolicy = DecideCacheStridePolicy(
-        supportTensorV2, IsCacheScene(blockTableOptional), isFAIRoutingCandidate, isArch22MlaRoutingCandidate);
+        supportTensorV2, IsCacheScene(blockTableOptional), isFAIRoutingCandidate, isMlaKvRopeDim0Candidate);
     if (!supportTensorV2) {
         OP_LOGW("Current opbase does not support TensorV2, make key, value and keyRope contiguous.");
     }
