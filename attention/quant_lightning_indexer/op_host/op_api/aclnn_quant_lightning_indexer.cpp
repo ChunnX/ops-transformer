@@ -89,7 +89,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "Key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios. "
                             "axis[%ld] stride=%ld, expected=%ld",
-                            i, static_cast<long>scaleStride[i], static_cast<long>expected);
+                            i, static_cast<long> scaleStride[i], static_cast<long> expected);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
                 expected *= scaleShape.GetDim(i);
