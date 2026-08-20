@@ -87,6 +87,7 @@ struct BlockAttnResPrepareCubeTilingData {
     uint32_t dTileNum;
     uint32_t sAlign;
     uint32_t nAlign;
+    uint32_t mm1NAlign;
     uint32_t dAlign;
 
     uint8_t qL1BufferNum;

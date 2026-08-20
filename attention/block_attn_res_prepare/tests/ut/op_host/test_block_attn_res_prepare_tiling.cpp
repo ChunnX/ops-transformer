@@ -68,6 +68,7 @@ struct CubeTilingDataView {
     uint32_t dTileNum;
     uint32_t sAlign;
     uint32_t nAlign;
+    uint32_t mm1NAlign;
     uint32_t dAlign;
     uint8_t qL1BufferNum;
     uint8_t vL1BufferNum;
@@ -86,7 +87,7 @@ struct CubeTilingDataView {
 };
 
 static_assert(sizeof(VectorTilingDataView) == 64U);
-static_assert(sizeof(CubeTilingDataView) == 168U);
+static_assert(sizeof(CubeTilingDataView) == 176U);
 
 gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
                                   const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
@@ -188,12 +189,28 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingAllocatesMm1AndMm2Workspace)
     ASSERT_GE(tilingInfo.tilingDataSize, sizeof(CubeTilingDataView));
     const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->baseT, 2U);
     EXPECT_EQ(tilingData->baseS, 24U);
     EXPECT_EQ(tilingData->nAlign, 16U);
-    const uint64_t expectedWorkspaceElems = static_cast<uint64_t>(tilingData->baseS) * tilingData->totalN +
-                                            static_cast<uint64_t>(tilingData->sAlign) *
-                                                (tilingData->nAlign + tilingData->baseDAlign);
+    EXPECT_EQ(tilingData->mm1NAlign, 16U);
+    const uint64_t expectedWorkspaceElems =
+        static_cast<uint64_t>(tilingData->baseS) * tilingData->baseT * tilingData->totalN +
+        static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign +
+        static_cast<uint64_t>(tilingData->sAlign) * tilingData->baseDAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
+    EXPECT_EQ(tilingData->reduceUbElems, 64U);
+}
+
+TEST_F(BlockAttnResPrepareTilingTest, CubeTGroupingPreservesPerCoreTokenLoad)
+{
+    auto compileInfo = Ascend950CompileInfo();
+    auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}});
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
+    const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->baseT, 1U);
+    EXPECT_EQ(tilingData->totalWorkUnits, 32U);
 }
 
 TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnavailable)

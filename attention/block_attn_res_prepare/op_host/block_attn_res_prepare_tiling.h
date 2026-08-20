@@ -101,7 +101,7 @@ protected:
     void DumpTilingInfo() override;
 
 private:
-    bool SelectCubeBaseD();
+    bool SelectCubeTileShape();
 
     uint32_t usedCoreNum_ = 0;
     uint32_t baseT_ = 1;
@@ -112,6 +112,7 @@ private:
     uint32_t dTileNum_ = 0;
     uint32_t sAlign_ = 0;
     uint32_t nAlign_ = 0;
+    uint32_t mm1NAlign_ = 0;
     uint32_t dAlign_ = 0;
     uint32_t qL1BufferNum_ = 1;
     uint32_t vL1BufferNum_ = 1;

@@ -337,22 +337,23 @@ bool BlockAttnResPrepareCubeTiling::IsCapable()
         aivCoreNum_ < 2U || l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
         return false;
     }
-    return SelectCubeBaseD();
+    return SelectCubeTileShape();
 }
 
-bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
+bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
 {
     const uint64_t usableUbBytes = ubSize_ - UB_RESERVED_BYTES;
     const uint64_t usableL1Bytes = l1Size_ - L1_RESERVED_BYTES;
     nAlign_ = static_cast<uint32_t>(AlignUp<uint64_t>(totalN_, CUBE_BLOCK));
     dAlign_ = static_cast<uint32_t>(AlignUp<uint64_t>(totalD_, CUBE_BLOCK));
 
-    // Cube owns a separate (M,N,K) tiling search.  Prefer one complete S tile, as it
-    // keeps the Cube M dimension full for prefill; progressively smaller S tiles are
-    // considered only when L1/L0/UB capacity requires them.
+    // Pack adjacent token matrices into MM1's N dimension until one 16-column Cube tile is filled. The
+    // load-balance guard keeps the maximum number of token/S tiles assigned to one core no larger than baseT=1,
+    // because MM2 and its AIV epilogue still execute once per token.
     const std::array<uint64_t, 5> sCandidates = {
         totalS_, std::min<uint64_t>(totalS_, 128UL), std::min<uint64_t>(totalS_, 64UL),
         std::min<uint64_t>(totalS_, CUBE_MAX_BASE_S), std::min<uint64_t>(totalS_, CUBE_BLOCK)};
+    const std::array<uint64_t, 4> tCandidates = {8UL, 4UL, 2UL, 1UL};
     const std::array<uint64_t, 3> dCandidates = {std::min<uint64_t>(totalD_, 512UL),
                                                  std::min<uint64_t>(totalD_, 256UL),
                                                  std::min<uint64_t>(totalD_, 128UL)};
@@ -363,66 +364,86 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
         }
         previousS = sCandidate;
         const uint32_t candidateSAlign = static_cast<uint32_t>(AlignUp<uint64_t>(sCandidate, CUBE_BLOCK));
-        uint64_t previousD = 0U;
-        for (const uint64_t candidate : dCandidates) {
-            if (candidate == 0U || candidate == previousD) {
+        const uint64_t candidateSTileNum = CeilDiv(totalS_, sCandidate);
+        const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / 2U);
+        const uint64_t baselineWorkUnits = totalT_ * candidateSTileNum;
+        const uint64_t baselineUsedCores = std::min<uint64_t>(mixedCoreNum, baselineWorkUnits);
+        const uint64_t baselineTokenWork = CeilDiv(baselineWorkUnits, baselineUsedCores);
+        for (const uint64_t candidateT : tCandidates) {
+            if (candidateT > totalT_ || candidateT * totalN_ > CUBE_BLOCK) {
                 continue;
             }
-            previousD = candidate;
-            const uint64_t baseDAlign = AlignUp<uint64_t>(candidate, CUBE_BLOCK);
-            const uint64_t dTileNum = CeilDiv(totalD_, candidate);
-            const uint64_t qL1BufferNum = dTileNum > 1U ? 2U : 1U;
-            const uint64_t vL1BufferNum = dTileNum > 1U ? 2U : 1U;
-            // Two V UB regions provide ping/pong buffering for the mixed AIC/AIV path.
-            const uint64_t vUbBufferNum = 2U;
-            const uint64_t qL1Elems = static_cast<uint64_t>(candidateSAlign) * baseDAlign;
-            const uint64_t vL1Elems = static_cast<uint64_t>(nAlign_) * baseDAlign;
-            const uint64_t eL1Elems = static_cast<uint64_t>(candidateSAlign) * nAlign_;
-            const uint64_t vUbElems = static_cast<uint64_t>(nAlign_) * baseDAlign;
-            const uint64_t dotUbElems = static_cast<uint64_t>(candidateSAlign) * nAlign_ + FP32_REG_ELEMS;
-            const uint64_t reduceUbElems = FP32_REG_ELEMS;
-            const uint64_t softmaxUbElems = static_cast<uint64_t>(2U) * candidateSAlign;
-
-            const uint64_t l1Bytes =
-                (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
-            const uint64_t ubBytes =
-                (vUbBufferNum * vUbElems + dotUbElems + reduceUbElems + softmaxUbElems) * FP32_BYTES;
-            const uint64_t mm1BaseK = std::min<uint64_t>(baseDAlign, 64U);
-            const uint64_t mm1L0ABytes = static_cast<uint64_t>(candidateSAlign) * mm1BaseK * FP32_BYTES;
-            const uint64_t mm1L0BBytes = static_cast<uint64_t>(nAlign_) * mm1BaseK * FP32_BYTES;
-            const uint64_t mm1L0CBytes = static_cast<uint64_t>(candidateSAlign) * nAlign_ * FP32_BYTES;
-            const uint64_t mm2L0ABytes = static_cast<uint64_t>(candidateSAlign) * nAlign_ * FP32_BYTES;
-            const uint64_t mm2L0BBytes = static_cast<uint64_t>(nAlign_) * baseDAlign * FP32_BYTES;
-            const uint64_t mm2L0CBytes = static_cast<uint64_t>(candidateSAlign) * baseDAlign * FP32_BYTES;
-            const uint64_t mm1L1SlotBytes =
-                (static_cast<uint64_t>(candidateSAlign) + nAlign_) * baseDAlign * FP32_BYTES;
-            const uint64_t mm2L1SlotBytes = (static_cast<uint64_t>(candidateSAlign) * nAlign_ +
-                                             static_cast<uint64_t>(nAlign_) * baseDAlign) *
-                                            FP32_BYTES;
-
-            if (l1Bytes > usableL1Bytes || ubBytes > usableUbBytes || mm1L1SlotBytes > l1Size_ / 4U ||
-                mm2L1SlotBytes > l1Size_ / 4U || mm1L0ABytes > l0ASize_ || mm2L0ABytes > l0ASize_ ||
-                mm1L0BBytes > l0BSize_ || mm2L0BBytes > l0BSize_ || mm1L0CBytes > l0CSize_ ||
-                mm2L0CBytes > l0CSize_) {
+            const uint64_t candidateTGroups = CeilDiv(totalT_, candidateT);
+            const uint64_t groupedWorkUnits = candidateTGroups * candidateSTileNum;
+            const uint64_t groupedUsedCores = std::min<uint64_t>(mixedCoreNum, groupedWorkUnits);
+            const uint64_t groupedTokenWork = CeilDiv(groupedWorkUnits, groupedUsedCores) * candidateT;
+            if (groupedTokenWork > baselineTokenWork) {
                 continue;
             }
+            const uint64_t candidateMm1NAlign = AlignUp<uint64_t>(candidateT * totalN_, CUBE_BLOCK);
+            uint64_t previousD = 0U;
+            for (const uint64_t candidateD : dCandidates) {
+                if (candidateD == 0U || candidateD == previousD) {
+                    continue;
+                }
+                previousD = candidateD;
+                const uint64_t baseDAlign = AlignUp<uint64_t>(candidateD, CUBE_BLOCK);
+                const uint64_t dTileNum = CeilDiv(totalD_, candidateD);
+                const uint64_t qL1BufferNum = dTileNum > 1U ? 2U : 1U;
+                const uint64_t vL1BufferNum = dTileNum > 1U ? 2U : 1U;
+                const uint64_t vUbBufferNum = 2U;
+                const uint64_t qL1Elems = static_cast<uint64_t>(candidateSAlign) * baseDAlign;
+                const uint64_t vL1Elems = candidateMm1NAlign * baseDAlign;
+                const uint64_t eL1Elems = static_cast<uint64_t>(candidateSAlign) * nAlign_;
+                const uint64_t vUbElems = static_cast<uint64_t>(nAlign_) * baseDAlign;
+                const uint64_t dotUbElems = static_cast<uint64_t>(candidateSAlign) * nAlign_ + FP32_REG_ELEMS;
+                const uint64_t reduceUbElems = FP32_REG_ELEMS;
+                const uint64_t softmaxUbElems = static_cast<uint64_t>(2U) * candidateSAlign;
 
-            baseS_ = static_cast<uint32_t>(sCandidate);
-            sAlign_ = candidateSAlign;
-            baseD_ = static_cast<uint32_t>(candidate);
-            baseDAlign_ = static_cast<uint32_t>(baseDAlign);
-            dTileNum_ = static_cast<uint32_t>(dTileNum);
-            qL1BufferNum_ = static_cast<uint32_t>(qL1BufferNum);
-            vL1BufferNum_ = static_cast<uint32_t>(vL1BufferNum);
-            vUbBufferNum_ = static_cast<uint32_t>(vUbBufferNum);
-            qL1Elems_ = qL1Elems;
-            vL1Elems_ = vL1Elems;
-            eL1Elems_ = eL1Elems;
-            vUbElems_ = vUbElems;
-            dotUbElems_ = dotUbElems;
-            reduceUbElems_ = reduceUbElems;
-            softmaxUbElems_ = softmaxUbElems;
-            return true;
+                const uint64_t l1Bytes =
+                    (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
+                const uint64_t ubBytes =
+                    (vUbBufferNum * vUbElems + dotUbElems + reduceUbElems + softmaxUbElems) * FP32_BYTES;
+                const uint64_t mm1BaseK = std::min<uint64_t>(baseDAlign, 64U);
+                const uint64_t mm1L0ABytes = static_cast<uint64_t>(candidateSAlign) * mm1BaseK * FP32_BYTES;
+                const uint64_t mm1L0BBytes = candidateMm1NAlign * mm1BaseK * FP32_BYTES;
+                const uint64_t mm1L0CBytes =
+                    static_cast<uint64_t>(candidateSAlign) * candidateMm1NAlign * FP32_BYTES;
+                const uint64_t mm2L0ABytes = static_cast<uint64_t>(candidateSAlign) * nAlign_ * FP32_BYTES;
+                const uint64_t mm2L0BBytes = static_cast<uint64_t>(nAlign_) * baseDAlign * FP32_BYTES;
+                const uint64_t mm2L0CBytes = static_cast<uint64_t>(candidateSAlign) * baseDAlign * FP32_BYTES;
+                const uint64_t mm1L1SlotBytes =
+                    (static_cast<uint64_t>(candidateSAlign) + candidateMm1NAlign) * baseDAlign * FP32_BYTES;
+                const uint64_t mm2L1SlotBytes = (static_cast<uint64_t>(candidateSAlign) * nAlign_ +
+                                                 static_cast<uint64_t>(nAlign_) * baseDAlign) *
+                                                FP32_BYTES;
+
+                if (l1Bytes > usableL1Bytes || ubBytes > usableUbBytes || mm1L1SlotBytes > l1Size_ / 4U ||
+                    mm2L1SlotBytes > l1Size_ / 4U || mm1L0ABytes > l0ASize_ || mm2L0ABytes > l0ASize_ ||
+                    mm1L0BBytes > l0BSize_ || mm2L0BBytes > l0BSize_ || mm1L0CBytes > l0CSize_ ||
+                    mm2L0CBytes > l0CSize_) {
+                    continue;
+                }
+
+                baseT_ = static_cast<uint32_t>(candidateT);
+                baseS_ = static_cast<uint32_t>(sCandidate);
+                sAlign_ = candidateSAlign;
+                baseD_ = static_cast<uint32_t>(candidateD);
+                baseDAlign_ = static_cast<uint32_t>(baseDAlign);
+                dTileNum_ = static_cast<uint32_t>(dTileNum);
+                mm1NAlign_ = static_cast<uint32_t>(candidateMm1NAlign);
+                qL1BufferNum_ = static_cast<uint32_t>(qL1BufferNum);
+                vL1BufferNum_ = static_cast<uint32_t>(vL1BufferNum);
+                vUbBufferNum_ = static_cast<uint32_t>(vUbBufferNum);
+                qL1Elems_ = qL1Elems;
+                vL1Elems_ = vL1Elems;
+                eL1Elems_ = eL1Elems;
+                vUbElems_ = vUbElems;
+                dotUbElems_ = dotUbElems;
+                reduceUbElems_ = reduceUbElems;
+                softmaxUbElems_ = softmaxUbElems;
+                return true;
+            }
         }
     }
     return false;
@@ -430,13 +451,14 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
 
 ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
 {
-    OP_CHECK_IF(baseD_ == 0U, OP_LOGE(context_->GetNodeName(), "Cube baseD was not selected"),
+    OP_CHECK_IF(baseT_ == 0U || baseD_ == 0U, OP_LOGE(context_->GetNodeName(), "Cube tile was not selected"),
                 return ge::GRAPH_FAILED);
 
     sTileNum_ = static_cast<uint32_t>(CeilDiv<uint64_t>(totalS_, baseS_));
-    OP_CHECK_IF(totalT_ > std::numeric_limits<uint64_t>::max() / sTileNum_,
+    const uint64_t tTileNum = CeilDiv<uint64_t>(totalT_, baseT_);
+    OP_CHECK_IF(tTileNum > std::numeric_limits<uint64_t>::max() / sTileNum_,
                 OP_LOGE(context_->GetNodeName(), "Cube work count overflows uint64"), return ge::GRAPH_FAILED);
-    const uint64_t totalWorkUnits = totalT_ * sTileNum_;
+    const uint64_t totalWorkUnits = tTileNum * sTileNum_;
     OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "Cube work units exceed uint32 tiling range"),
                 return ge::GRAPH_FAILED);
@@ -447,10 +469,9 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     const uint32_t blockFactor = static_cast<uint32_t>(totalWorkUnits / usedCoreNum_);
     const uint32_t bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum_);
 
-    // MM1 Fixpipe produces a compact [baseS, N] tile. Keep E in a separate
-    // nAlign-pitched tile so the two AIV peers can read dot and write E without
-    // overlapping each other. MM2 uses one contiguous output tile for AIV scatter.
-    const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * totalN_;
+    // MM1 produces [baseS, baseT * N]. AIV consumes each token's columns sequentially, so E and the MM2 output
+    // each reuse one tile after the corresponding AIC/AIV handshake.
+    const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * baseT_ * totalN_;
     const uint64_t eWorkspaceElems = static_cast<uint64_t>(sAlign_) * nAlign_;
     const uint64_t mm2WorkspaceElems = static_cast<uint64_t>(sAlign_) * baseDAlign_;
     OP_CHECK_IF(dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceElems ||
@@ -486,6 +507,7 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.dTileNum = dTileNum_;
     tilingData_.sAlign = sAlign_;
     tilingData_.nAlign = nAlign_;
+    tilingData_.mm1NAlign = mm1NAlign_;
     tilingData_.dAlign = dAlign_;
     tilingData_.qL1BufferNum = static_cast<uint8_t>(qL1BufferNum_);
     tilingData_.vL1BufferNum = static_cast<uint8_t>(vL1BufferNum_);
@@ -547,9 +569,10 @@ void BlockAttnResPrepareCubeTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(),
             "BlockAttnResPrepare Cube tiling: T=%lu N=%lu S=%lu D=%lu cores=%u baseS=%u baseD=%u "
-            "sLoops=%u dLoops=%u qL1/vL1/vUb buffers=%u/%u/%u nAlign=%u workspacePerCore=%lu workspace=%lu",
-            totalT_, totalN_, totalS_, totalD_, usedCoreNum_, baseS_, baseD_, sTileNum_, dTileNum_, qL1BufferNum_,
-            vL1BufferNum_, vUbBufferNum_, nAlign_, workspacePerCoreElems_, workspaceSize_);
+            "baseT=%u sLoops=%u dLoops=%u qL1/vL1/vUb buffers=%u/%u/%u nAlign/mm1NAlign=%u/%u "
+            "workspacePerCore=%lu workspace=%lu",
+            totalT_, totalN_, totalS_, totalD_, usedCoreNum_, baseS_, baseD_, baseT_, sTileNum_, dTileNum_,
+            qL1BufferNum_, vL1BufferNum_, vUbBufferNum_, nAlign_, mm1NAlign_, workspacePerCoreElems_, workspaceSize_);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(BlockAttnResPrepare, BlockAttnResPrepareCubeTiling, 0);
