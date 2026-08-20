@@ -203,7 +203,9 @@ class QuantAllReduceAccuracyChecker:
             final_metrics = metrics
             # 打印精度指标
             logging.info(f"Rank-{rank} accuracy metrics:")
-            logging.info(f"  MAE: {metrics.mae:.6f} (threshold: {self.type_info['mae']})")
+            logging.info(
+                f"  MAE: {metrics.mae:.6f} (threshold: {self.type_info['mae']})"
+            )
             logging.info(f"  MaxAE: {metrics.max_ae:.6f}")
             logging.info(f"  MSE: {metrics.mse:.6f}")
             logging.info(f"  RMSE: {metrics.rmse:.6f}")
@@ -222,9 +224,13 @@ class QuantAllReduceAccuracyChecker:
         # 输出最终结果
         logging.info("\n" + "=" * 50)
         if all_pass:
-            logging.info(f"[PASS] all ranks (type: {self.output_type}) accuracy check passed")
+            logging.info(
+                f"[PASS] all ranks (type: {self.output_type}) accuracy check passed"
+            )
         else:
-            logging.error(f"[FAIL] some ranks (type: {self.output_type}) accuracy check failed")
+            logging.error(
+                f"[FAIL] some ranks (type: {self.output_type}) accuracy check failed"
+            )
         logging.info("=" * 50)
         # 写入CSV文件（传递封装后的指标对象）
         self.write_to_result_csv(final_metrics, all_pass)

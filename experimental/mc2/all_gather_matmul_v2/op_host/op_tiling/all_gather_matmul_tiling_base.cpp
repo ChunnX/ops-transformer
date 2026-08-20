@@ -130,7 +130,6 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-
 void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
                                                         ::TCubeTiling &tailTiling)
 {
@@ -187,7 +186,6 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
 }
-
 
 void AllGatherMatmulTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg)
 {
@@ -363,14 +361,8 @@ ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo()
-{
-    return AnalyzeShapeAttr();
-};
-ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo() { return AnalyzeShapeAttr(); };
+ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
 
 uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
 {

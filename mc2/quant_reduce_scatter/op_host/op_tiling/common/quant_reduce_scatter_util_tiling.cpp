@@ -212,11 +212,11 @@ static bool CheckXShapeValid(const gert::TilingContext *context, TilingRunInfo &
     }
 
     // 校验x是否为空tensor
-    OP_TILING_CHECK(emptyTensor,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x",
-                                                          Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
-                                                          "The shape of x must have all dimensions positive (>=1)"),
-                    return false);
+    OP_TILING_CHECK(
+        emptyTensor,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", Ops::Base::ToString(xShape->GetStorageShape()).c_str(),
+                                              "The shape of x must have all dimensions positive (>=1)"),
+        return false);
 
     // 校验BS是否被worldSize整除
     const char *dimDesc = (xDimNum == THREE_DIMS) ? "B*S" : "BS"; // 报错信息二维时为BS, 三维时为B*S
