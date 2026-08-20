@@ -233,7 +233,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     LocalParams localParams{0,                     // rankId=0
                             1,                     // rankSize=1
-                            curTileM,              // originalM = 当前 tile M
+                            static_cast<uint64_t>(curTileM), // originalM = 当前 tile M
                             x1_,                   // localAGmAddr
                             x1Scale_,              // localScaleAGmAddr
                             0,                     // localMatmul=0
