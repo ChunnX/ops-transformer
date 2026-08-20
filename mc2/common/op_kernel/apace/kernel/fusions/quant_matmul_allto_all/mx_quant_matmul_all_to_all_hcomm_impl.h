@@ -288,16 +288,23 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 {
     auto &&commTiling = tilingData_->commTilingData;
 
-    // Phase 1: 计算头块 tiles
+    // 头块/尾块2级通算掩盖（Blaze kernel一次性算完所有tile会导致编译卡死，
+    // for循环逐tile调用也会编译卡死，采用头块/尾块2级掩盖是当前最优可行方案）
+    //
+    // 时间轴:
+    // AIC(计算):   [head matmul] [tail matmul] [wait]
+    // AICPU(通信):                [head comm  ] [tail comm]
+
+    // Phase 1: 计算头块
     if (headTileCnt_ > 0) {
         MatmulTileProcess(0, commTiling.splitAxisTileSize);
     }
 
-    // Phase 2: 确保头块 matmul 全核完成，然后异步下发所有 AllToAll 通信
+    // Phase 2: 确保头块全核完成，异步下发所有AllToAll
     AscendC::SyncAll();
     PrepareAllToAll();
 
-    // Phase 3: 计算尾块 tiles（与 AllToAll 通信并行）
+    // Phase 3: 计算尾块（与头块AllToAll通信并行）
     if (commTiling.splitAxisTailCnt > 0) {
         MatmulTileProcess(headTileCnt_, commTiling.splitAxisTailSize);
     }
