@@ -973,8 +973,7 @@ __aicore__ inline Gmm2ExpertLoopState CreateGmm2ExpertLoopState(const Gmm2Config
  * 动态 Wave 使用 rowOffset 索引紧凑 token buffer，使用 expertIdx 索引定长资源。Dispatch 与 GMM
  * 以不同 Wave 进度推进时，无需继续累加旧的 Gmm2BlockOffset。
  */
-template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool ConfigureCombineCounter>
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool ConfigureCombineCounter>
 __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace, const ExpertWeightTensorListAddrs &weights,
     GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx,
@@ -998,7 +997,7 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
         rowOffset * activationOutputWidth / activationOutputElementsPerByte * sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
         workspace.activationQuantScalePtr + rowOffset * activationScaleWidth * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, expertIdx,
         static_cast<uint64_t>(expertIdx) * tokenHiddenDim * activationOutputWidth / weightElementsPerByte);
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1084,7 +1083,7 @@ __aicore__ inline bool PrepareSharedExpertGmm2State(const Gmm2Config &context,
     return Get<M_VALUE>(state.problemShape) != 0;
 }
 
-template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType,
           bool ConfigureGmm2Output, bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace,
@@ -1102,7 +1101,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
         workspace.activationQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
         workspace.activationQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, expertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1131,7 +1130,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
     }
 }
 
-template <typename ActivationType, typename QuantScaleType, uint32_t Gmm1TileM,
+template <typename ActivationType, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
           bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace,
@@ -1144,7 +1143,7 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
         workspace.sharedExpertActivationDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal =
         workspace.sharedExpertActivationScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, sharedExpertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1201,7 +1200,7 @@ __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &pa
     }
 }
 
-template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
           uint32_t ActivationOutputElementsPerByte, bool ConfigureGmm2Output,
           bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
@@ -1214,7 +1213,7 @@ __aicore__ inline bool PrepareMoeExpertGmm2Stage(
                                    ActivationOutputElementsPerByte>(context, scratch, state, expertIdx)) {
         return false;
     }
-    UpdateMoeExpertGmm2GlobalBuffer<ActivationType, ActivationOutType, QuantScaleType,
+    UpdateMoeExpertGmm2GlobalBuffer<WeightType, ActivationOutType, QuantScaleType,
                                     ConfigureGmm2Output, ConfigureCombineCounter,
                                     ConfigureGmmToEpilogue>(
         context, workspace, weights, gmmAddrInfo, state, expertIdx);
@@ -1252,7 +1251,7 @@ __aicore__ inline bool RunSharedExpertGmm2Stage(
             context, state, sharedExpertIdx)) {
         return false;
     }
-    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
+    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, WeightType, QuantScaleType, Gmm1TileM,
                                        EnableA8W4 || EnableA4W4>(
         context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
     RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType,

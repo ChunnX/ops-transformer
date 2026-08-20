@@ -25,6 +25,7 @@
 #include "blaze/gemm/tile/tile_trait.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "c_api/asc_simd.h"
+#include "c_api/cube_datamove/cube_datamove.h"
 #include "tensor_api/tensor.h"
 
 namespace Blaze {
@@ -80,6 +81,13 @@ public:
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
                                 const L1Params &l1Params, bool isBias, bool enableL0cPingPong);
 
+    __aicore__ inline void EnableOneShotDirectL0C2UB()
+    {
+        if (!directL0C2UBUsed_) {
+            directL0C2UBEnabled_ = true;
+        }
+    }
+
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
               typename TensorBias, typename TensorC>
     __aicore__ inline void operator()(const TensorA &tensorA, const TensorB &tensorB,
@@ -110,6 +118,10 @@ private:
 
     template <typename TensorC>
     __aicore__ inline void CopyOut(const TensorC &tensorC, uint64_t m, uint64_t n);
+
+    template <typename TensorC, typename TensorL0C>
+    __aicore__ inline void CopyOutViaDirectL0C2UB(
+        const TensorC &tensorC, const TensorL0C &tensorL0C, uint64_t m, uint64_t n);
 
     __aicore__ inline uint64_t SelectKL1(uint64_t requestedKL1) const;
     __aicore__ inline uint64_t CalcL1BufferBytes(uint64_t kL1, uint64_t scaleKL1) const;
@@ -180,12 +192,14 @@ private:
     static constexpr uint64_t MX_SCALE_GROUP_K = 64U;
     static constexpr uint64_t MX_SCALE_ELEMENTS_PER_GROUP = 2U;
     static constexpr uint64_t L0_BUFFER_BYTES = 32U * 1024U;
+    static constexpr uint64_t DIRECT_COPY_UB_OFFSET = 256U * 1024U;
     static constexpr uint64_t SCALE_C0 = 2U;
     static constexpr uint64_t L0C_C0 = 16U;
     static constexpr TEventID INPUT_BUFFER_EVENT_BASE = 0;
-    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 2;
+    // Match the native QBMM MX event partition: input buffers use 0-3, scales and MMAD release use 4-5.
+    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 4;
     static constexpr TEventID MTE2_TO_MTE1_EVENT_BASE = 0;
-    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 0;
+    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 4;
     static constexpr TEventID MTE1_TO_MMAD_EVENT_BASE = 0;
 
     static constexpr uint64_t C0_SIZE_A = AscendC::AuxGetC0Size<AType>();
@@ -213,6 +227,8 @@ private:
     uint64_t l1BufferIndex_{0U};
     uint64_t scaleL1BufferIndex_{0U};
     uint64_t l0BufferIndex_{0U};
+    bool directL0C2UBEnabled_{false};
+    bool directL0C2UBUsed_{false};
     uint64_t l1AOffset_[BUFFER_COUNT]{};
     uint64_t l1BOffset_[BUFFER_COUNT]{};
     uint64_t l1ScaleAOffset_[BUFFER_COUNT]{};
@@ -301,6 +317,9 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Init(
         kL1_ = DEFAULT_K_L1;
         scaleKL1_ = kL1_;
     }
+    l1BufferIndex_ = 0U;
+    scaleL1BufferIndex_ = 0U;
+    l0BufferIndex_ = 0U;
     UpdateL1Offsets();
 
     // MegaMoe does not use bias or L0C ping-pong on this path. Keep the generic
@@ -477,6 +496,39 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
 }
 
 MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
+template <typename TensorC, typename TensorL0C>
+__aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::CopyOutViaDirectL0C2UB(
+    const TensorC &tensorC, const TensorL0C &tensorL0C, uint64_t m, uint64_t n)
+{
+    static_assert(AscendC::Std::is_same_v<CType, bfloat16_t>,
+                  "direct arch92 L0C diagnostic only supports BF16 output");
+
+    auto tensorCUb = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, CType>(DIRECT_COPY_UB_OFFSET),
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                        AscendC::Std::Int<AscendC::AuxGetC0Size<CType>()>>{}(m, n));
+    auto copyParams = AscendC::Te::MakeL0COutCopyParams<decltype(tensorCUb), TensorL0C>(
+        tensorCUb.Layout(), tensorL0C.Layout());
+
+    // The active ascend910_96 C API exposes the 21-argument form. Calling it
+    // directly bypasses the incompatible 22-argument Tensor API wrapper.
+    asc_copy_l0c2ub_sync(
+        (__ubuf__ bfloat16_t *)tensorCUb.Data().Get(),
+        (__cc__ float *)tensorL0C.Data().Get(),
+        static_cast<uint16_t>(copyParams.nSize), static_cast<uint16_t>(copyParams.mSize),
+        copyParams.dstStride, static_cast<uint16_t>(copyParams.srcStride),
+        false, 0U, static_cast<uint8_t>(Blaze::Gemm::FINAL_ACCUMULATION),
+        static_cast<uint64_t>(QuantMode_t::F322BF16), 0U, false, true,
+        0U, 0U, false, 0U, false, false, false, false);
+
+    SetFlag<HardEvent::FIX_MTE3>(0);
+    WaitFlag<HardEvent::FIX_MTE3>(0);
+    AscendC::Te::Copy(AscendC::Te::MakeCopy(AscendC::Te::CopyUB2GM{}), tensorC, tensorCUb);
+    SetFlag<HardEvent::MTE3_S>(0);
+    WaitFlag<HardEvent::MTE3_S>(0);
+}
+
+MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
 template <typename TensorC>
 __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::CopyOut(
     const TensorC &tensorC, uint64_t m, uint64_t n)
@@ -489,6 +541,10 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::CopyOut
             AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{})
                 .with(AscendC::Te::FixpipeParams(Blaze::Gemm::FINAL_ACCUMULATION)),
             tensorC, tensorL0C);
+    } else if (directL0C2UBEnabled_) {
+        directL0C2UBEnabled_ = false;
+        directL0C2UBUsed_ = true;
+        CopyOutViaDirectL0C2UB(tensorC, tensorL0C, m, n);
     } else {
         AscendC::Te::Copy(
             AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{})
