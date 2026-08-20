@@ -23,37 +23,10 @@
 
 namespace optiling {
 
-// This layout is deliberately local to the Ascend950 host path. Its kernel-side
-// counterpart is independently declared under op_kernel/arch35.
-struct MoeFusedTopkArch35TilingData {
-    uint32_t firstDimSize{0};
-    uint32_t secondDimSize{0};
-    uint32_t addNumDimSize{0};
-    uint32_t groupNum{0};
-    uint32_t groupTopk{0};
-    uint32_t topN{0};
-    uint32_t topK{0};
-
-    uint32_t activateType{0};
-    uint32_t isNorm{0};
-    float scale{1.0F};
-    uint32_t groupEles{0};
-    uint32_t blockNum{0};
-    uint32_t ubFactorElement{0};
-    uint32_t batchPerCore{0};
-    uint32_t tailBatch{0};
-
-    uint32_t expertNum{0};
-    uint32_t tableDim{0};
-    uint32_t topkMaxValue{0};
-    uint32_t topkMinValue{0};
-    uint32_t reserved{0};
-    uint64_t workspacePerCore{0};
-    TopkTiling topkTilingData{};
-};
-
-static_assert(sizeof(MoeFusedTopkArch35TilingData) % sizeof(uint64_t) == 0,
-              "MoeFusedTopkArch35TilingData must be eight-byte aligned");
+// Reuse the registered tiling-data class so nested TopkTiling data is
+// serialized into its device-side POD layout instead of copying the host-side
+// TilingDef object (which contains pointers and bookkeeping fields).
+using MoeFusedTopkArch35TilingData = MoeFusedTopkTilingData;
 
 ge::graphStatus TilingMoeFusedTopkArch35(gert::TilingContext *context);
 

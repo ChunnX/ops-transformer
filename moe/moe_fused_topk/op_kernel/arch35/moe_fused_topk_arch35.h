@@ -202,6 +202,10 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Co
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     } else {
         LocalTensor<inputT> addNumLocalInputT = addNumLocal.template ReinterpretCast<inputT>();
+        // Cast permits this small-to-large in-place expansion when the source
+        // begins at AlignUp(dst + count * sizeof(inputT), 32). Keep the input
+        // in the upper half so its bytes cannot be overwritten by earlier
+        // float results.
         DataCopyPad(addNumLocalInputT[secondAlignBlockCountFp16_], mGmAddNum_, {1, secondDimSizeInputBytes, 0, 0, 0},
                     {false, 0, 0, 0});
         event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
@@ -225,6 +229,8 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Co
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     } else {
         LocalTensor<inputT> xLocalInputT = xLocal.template ReinterpretCast<inputT>();
+        // See CopyInAddNum: this is the Cast-supported small-to-large
+        // overlapping layout, with the source placed after the float output.
         DataCopyPad(xLocalInputT[secondAlignBlockCountFp16_], mGmX_[xOffset], {1, secondDimSizeInputBytes, 0, 0, 0},
                     {false, 0, 0, 0});
         event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
@@ -285,8 +291,12 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Co
     // the ranking copy to the existing minimum finite sentinel.  The sigmoid
     // tensor itself remains untouched and is still used for the final output.
     LocalTensor<uint8_t> validScoreMask = sortedBuf_.Get<uint8_t>();
-    Compare(validScoreMask, xLocal, xLocal, CMPMODE::EQ, secondDimSize_);
-    Select(xLocal, validScoreMask, xLocal, floatNegativeInf_, SELMODE::VSEL_TENSOR_SCALAR_MODE, secondDimSize_);
+    // xLocal is laid out as groupNum_ rows with each row padded to a sort
+    // unit. Normalize the complete padded layout; using secondDimSize_ here
+    // only covers the first few rows when groupEles_ is not sort-aligned.
+    uint32_t groupedScoreCount = groupElesAlignSortCount_ * groupNum_;
+    Compare(validScoreMask, xLocal, xLocal, CMPMODE::EQ, groupedScoreCount);
+    Select(xLocal, validScoreMask, xLocal, floatNegativeInf_, SELMODE::VSEL_TENSOR_SCALAR_MODE, groupedScoreCount);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
@@ -317,13 +327,17 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Gr
     LocalTensor<float> sortedTensor = sortedBuf_.Get<float>();
     LocalTensor<float> topkGroupValue = topkValueBuf_.Get<float>();
     LocalTensor<uint8_t> tempTensor = tempBuf_.Get<uint8_t>();
-    LocalTensor<int32_t> indicesLocal = sortedTensor[wholeSortNum_].template ReinterpretCast<int32_t>();
+    // TOPK_NORMAL writes groupNum_ rows of topnPad_ values. Place the index
+    // output after the complete value region; wholeSortNum_ only describes
+    // one input row and can overlap the value output when groupNum_ > 1.
+    LocalTensor<int32_t> indicesLocal = sortedTensor[groupNum_ * topnPad_].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> sourceIndicesLocal;
     LocalTensor<bool> finishLocal;
     AscendC::TopKInfo topkInfo = {static_cast<int32_t>(groupNum_),
                                   CeilAlign(static_cast<int32_t>(groupEles_), SORT_UNIT),
                                   static_cast<int32_t>(groupEles_)};
     AscendC::TopK<calT, false, false, false, TopKMode::TOPK_NORMAL>(
-        sortedTensor, indicesLocal, xLocal, indicesLocal, finishLocal, tempTensor, n_, topkTilingData_, topkInfo);
+        sortedTensor, indicesLocal, xLocal, sourceIndicesLocal, finishLocal, tempTensor, n_, topkTilingData_, topkInfo);
     AscendC::PipeBarrier<PIPE_V>();
     Duplicate<float>(topkGroupValue, floatNegativeInf_, CeilAlign(groupNum_, SORT_UNIT));
     AscendC::PipeBarrier<PIPE_V>();
@@ -345,6 +359,11 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Gr
     LocalTensor<float> tempTensor = tempBuf_.Get<float>();
     LocalTensor<uint8_t> selectedGroupMask = assistBuf_.Get<uint8_t>();
 
+    // selectedGroupMask reuses assistBuf_ later in this function. Rebuild
+    // the sort indices for every batch; the all-NaN Gather path returns
+    // early and therefore does not restore this shared buffer.
+    ArithProgression(assistLocal.template ReinterpretCast<int32_t>(), 0, 1, wholeSortNum_);
+    AscendC::PipeBarrier<PIPE_V>();
     Sort<float, true>(sortedTensor, topkGroupValue, assistLocal, tempTensor, CeilDiv(groupNum_, SORT_UNIT));
     AscendC::PipeBarrier<PIPE_V>();
 
@@ -475,13 +494,16 @@ template <typename inputT, typename calT, uint32_t enableExpertMapping>
 __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::NormImpl()
 {
     LocalTensor<float> yLocal = yOutBuf_.Get<float>();
-    LocalTensor<float> tempTensor = tempBuf_.Get<float>();
+    // Sum requires dst, src and sharedTmpBuffer to be non-overlapping. The
+    // group TopK values are dead after GatherSigmoidImpl, so reuse that buffer
+    // for the single reduction result and retain tempBuf_ as scratch only.
+    LocalTensor<float> reduceResult = topkValueBuf_.Get<float>();
     LocalTensor<uint8_t> sharedTmpBuffer = tempBuf_.Get<uint8_t>();
-    AscendC::Sum<calT>(tempTensor, yLocal, sharedTmpBuffer, {1, topkPad_, k_});
+    AscendC::Sum<calT>(reduceResult, yLocal, sharedTmpBuffer, {1, topkPad_, k_});
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
     WaitFlag<HardEvent::V_S>(eventIdVToS);
-    float reduceSumValue = 1 / tempTensor.GetValue(0);
+    float reduceSumValue = 1 / reduceResult.GetValue(0);
     event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventIdSToV);
     WaitFlag<HardEvent::S_V>(eventIdSToV);

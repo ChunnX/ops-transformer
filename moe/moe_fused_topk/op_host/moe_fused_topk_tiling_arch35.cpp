@@ -78,7 +78,7 @@ private:
     void GetTmpBuffSize();
     ge::graphStatus SplitUb();
     ge::graphStatus SetKernelTiling();
-    void TilingDataPrint() const;
+    void TilingDataPrint();
 
     gert::TilingContext *context_ = nullptr;
     uint32_t firstDimSize_ = 0;
@@ -238,7 +238,7 @@ void MoeFusedTopkTilingArch35::GetTmpBuffSize()
 ge::graphStatus MoeFusedTopkTilingArch35::SplitUb()
 {
     uint64_t needUbSize = 0;
-    uint64_t tilingDataSize = CeilAlign(sizeof(tilingData_), static_cast<size_t>(BYTE_BLOCK));
+    uint64_t tilingDataSize = CeilAlign(tilingData_.GetDataSize(), static_cast<size_t>(BYTE_BLOCK));
     ubFactorElement_ = static_cast<uint32_t>((ubSize_ - tilingDataSize) / BYTE_BLOCK);
 
     needUbSize += tilingDataSize;
@@ -268,61 +268,58 @@ ge::graphStatus MoeFusedTopkTilingArch35::SetKernelTiling()
     workspacePerCore_ = secondDimSize_ * FP32_DTYPE_SIZE;
     size_t usedWorkspaceSize = SYS_WORKSPACE_SIZE + usedCoreNum_ * workspacePerCore_;
 
-    tilingData_.firstDimSize = firstDimSize_;
-    tilingData_.secondDimSize = secondDimSize_;
-    tilingData_.addNumDimSize = addNumDimSize_;
-    tilingData_.groupNum = groupNum_;
-    tilingData_.groupTopk = groupTopk_;
-    tilingData_.topN = topN_;
-    tilingData_.topK = topK_;
-    tilingData_.activateType = activateType_;
-    tilingData_.isNorm = isNorm_;
-    tilingData_.scale = scale_;
-    tilingData_.groupEles = groupEles_;
-    tilingData_.blockNum = usedCoreNum_;
-    tilingData_.ubFactorElement = ubFactorElement_;
-    tilingData_.batchPerCore = batchPerCore_;
-    tilingData_.tailBatch = tailBatch_;
-    tilingData_.expertNum = expertNum_;
-    tilingData_.tableDim = tableDim_;
-    tilingData_.topkMaxValue = topkMaxValue_;
-    tilingData_.topkMinValue = topkMinValue_;
-    tilingData_.workspacePerCore = workspacePerCore_;
+    tilingData_.set_firstDimSize(firstDimSize_);
+    tilingData_.set_secondDimSize(secondDimSize_);
+    tilingData_.set_addNumDimSize(addNumDimSize_);
+    tilingData_.set_groupNum(groupNum_);
+    tilingData_.set_groupTopk(groupTopk_);
+    tilingData_.set_topN(topN_);
+    tilingData_.set_topK(topK_);
+    tilingData_.set_activateType(activateType_);
+    tilingData_.set_isNorm(isNorm_);
+    tilingData_.set_scale(scale_);
+    tilingData_.set_groupEles(groupEles_);
+    tilingData_.set_blockNum(usedCoreNum_);
+    tilingData_.set_ubFactorElement(ubFactorElement_);
+    tilingData_.set_batchPerCore(batchPerCore_);
+    tilingData_.set_tailBatch(tailBatch_);
+    tilingData_.set_expertNum(expertNum_);
+    tilingData_.set_tableDim(tableDim_);
+    tilingData_.set_topkMaxValue(topkMaxValue_);
+    tilingData_.set_topkMinValue(topkMinValue_);
+    tilingData_.set_workspacePerCore(workspacePerCore_);
 
     auto rawTilingData = context_->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData);
     OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData->GetData());
-    OP_CHECK_IF(rawTilingData->GetCapacity() < sizeof(tilingData_),
+    OP_CHECK_IF(rawTilingData->GetCapacity() < tilingData_.GetDataSize(),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
                                             "Raw tiling data capacity %zu is smaller than required %zu.",
-                                            rawTilingData->GetCapacity(), sizeof(tilingData_)),
+                                            rawTilingData->GetCapacity(), tilingData_.GetDataSize()),
                 return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_));
-    OP_CHECK_IF(ret != EOK,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "Copy arch35 tiling data failed, ret=%d.", ret),
-                return ge::GRAPH_FAILED);
+    tilingData_.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     context_->SetTilingKey(tilingKey_);
     context_->SetBlockDim(usedCoreNum_);
     workspaces[0] = usedWorkspaceSize;
-    rawTilingData->SetDataSize(sizeof(tilingData_));
+    rawTilingData->SetDataSize(tilingData_.GetDataSize());
     TilingDataPrint();
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeFusedTopkTilingArch35::TilingDataPrint() const
+void MoeFusedTopkTilingArch35::TilingDataPrint()
 {
     OP_LOGD(context_->GetNodeName(), "arch35 tilingKey:           %lu", tilingKey_);
     OP_LOGD(context_->GetNodeName(), "arch35 usedCoreNum:         %u", usedCoreNum_);
-    OP_LOGD(context_->GetNodeName(), "arch35 firstDimSize:        %u", tilingData_.firstDimSize);
-    OP_LOGD(context_->GetNodeName(), "arch35 secondDimSize:       %u", tilingData_.secondDimSize);
-    OP_LOGD(context_->GetNodeName(), "arch35 groupNum:            %u", tilingData_.groupNum);
-    OP_LOGD(context_->GetNodeName(), "arch35 groupEles:           %u", tilingData_.groupEles);
-    OP_LOGD(context_->GetNodeName(), "arch35 topkMaxValue:        %u", tilingData_.topkMaxValue);
-    OP_LOGD(context_->GetNodeName(), "arch35 topkMinValue:        %u", tilingData_.topkMinValue);
-    OP_LOGD(context_->GetNodeName(), "arch35 workspacePerCore:    %lu", tilingData_.workspacePerCore);
+    OP_LOGD(context_->GetNodeName(), "arch35 firstDimSize:        %u", tilingData_.get_firstDimSize());
+    OP_LOGD(context_->GetNodeName(), "arch35 secondDimSize:       %u", tilingData_.get_secondDimSize());
+    OP_LOGD(context_->GetNodeName(), "arch35 groupNum:            %u", tilingData_.get_groupNum());
+    OP_LOGD(context_->GetNodeName(), "arch35 groupEles:           %u", tilingData_.get_groupEles());
+    OP_LOGD(context_->GetNodeName(), "arch35 topkMaxValue:        %u", tilingData_.get_topkMaxValue());
+    OP_LOGD(context_->GetNodeName(), "arch35 topkMinValue:        %u", tilingData_.get_topkMinValue());
+    OP_LOGD(context_->GetNodeName(), "arch35 workspacePerCore:    %lu", tilingData_.get_workspacePerCore());
 }
 
 ge::graphStatus MoeFusedTopkTilingArch35::Run()

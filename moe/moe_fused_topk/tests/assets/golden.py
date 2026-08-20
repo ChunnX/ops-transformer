@@ -10,7 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-"""Shared ACLNN and direct-kernel Golden/Input helpers for MoeFusedTopk ST."""
+"""PyTorch Golden and input customization for MoeFusedTopk tests."""
 
 from __future__ import annotations
 
@@ -19,22 +19,135 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import torch
 
 
+__spec__ = {"moe_fused_topk": "MoeFusedTopkTestSpec"}
+
+# Retain the legacy registrations while ATK cases migrate to TTK.
 __golden__ = {
     "aclnn": {"aclnnMoeFusedTopk": "aclnn_moe_fused_topk_golden"},
     "kernel": {"moe_fused_topk": "moe_fused_topk_golden"},
 }
-
 __input__ = {
     "aclnn": {"aclnnMoeFusedTopk": "aclnn_moe_fused_topk_input"},
     "kernel": {"moe_fused_topk": "moe_fused_topk_input"},
 }
 
 
+def _check_activation(activate_type) -> None:
+    if int(activate_type) != 0:
+        raise ValueError(
+            f"MoeFusedTopk only supports activate_type=0 (sigmoid), got {activate_type}"
+        )
+
+
+def _score_tensor(value: torch.Tensor) -> torch.Tensor:
+    """Match kernel FP32 intermediates, while retaining TTK Promote FP64."""
+    if value.dtype in (torch.float32, torch.float64):
+        return value
+    return value.float()
+
+
+def _rankable(value: torch.Tensor) -> torch.Tensor:
+    """Give non-finite scores the deterministic ordering used by the kernel."""
+    limits = torch.finfo(value.dtype)
+    return torch.nan_to_num(
+        value, nan=limits.min, posinf=limits.max, neginf=limits.min
+    )
+
+
+def _torch_moe_fused_topk(
+    x,
+    add_num,
+    mapping_num,
+    mapping_table,
+    *,
+    group_num,
+    group_topk,
+    top_n,
+    top_k,
+    activate_type,
+    is_norm,
+    scale,
+    enable_expert_mapping,
+):
+    """Implement MoeFusedTopk as a chain of small PyTorch operations."""
+    _check_activation(activate_type)
+    group_num = int(group_num)
+    group_topk = int(group_topk)
+    top_n = int(top_n)
+    top_k = int(top_k)
+
+    x_score = _score_tensor(x)
+    add_score = _score_tensor(add_num)
+    sigmoid = torch.sigmoid(x_score)
+    scores = sigmoid + add_score
+
+    token_num, expert_num = scores.shape
+    grouped = scores.reshape(token_num, group_num, expert_num // group_num)
+
+    # NaN cannot participate in routing. Normalize the ranking copy only so
+    # the gathered sigmoid output preserves its IEEE value.
+    group_top_values = torch.topk(_rankable(grouped), top_n, dim=-1).values
+    group_scores = _rankable(torch.sum(group_top_values, dim=-1))
+    group_order = torch.argsort(
+        group_scores, dim=-1, descending=True, stable=True
+    )
+
+    selected_group = torch.zeros_like(group_scores, dtype=torch.bool)
+    selected_group.scatter_(1, group_order[:, :group_topk], True)
+    masked_scores = torch.where(selected_group.unsqueeze(-1), grouped, 0.0)
+    flat_rank_scores = _rankable(masked_scores.reshape(token_num, expert_num))
+    selected_indices = torch.argsort(
+        flat_rank_scores, dim=-1, descending=True, stable=True
+    )[:, :top_k]
+
+    result = torch.gather(sigmoid, -1, selected_indices)
+    if bool(is_norm):
+        result = result / torch.sum(result, dim=-1, keepdim=True)
+        result = result * float(scale)
+
+    output_indices = selected_indices.to(torch.int32)
+    if bool(enable_expert_mapping):
+        if mapping_num is None or mapping_table is None:
+            raise ValueError(
+                "mapping_num and mapping_table are required when expert mapping is enabled"
+            )
+        raw_indices = selected_indices
+        counts = mapping_num[raw_indices].to(torch.int64).clamp_min(1)
+        token_offsets = torch.arange(
+            token_num, device=raw_indices.device, dtype=torch.int64
+        ).unsqueeze(1)
+        redundant_offsets = token_offsets.remainder(counts)
+        output_indices = mapping_table[raw_indices, redundant_offsets].to(torch.int32)
+
+    return [result, output_indices]
+
+
+def _numpy_to_torch(value):
+    if value is None:
+        return None
+    array = np.ascontiguousarray(value)
+    # NumPy/ML-dtypes BF16 has no torch.from_numpy bridge on some hosts.
+    if str(array.dtype) not in {
+        "float16",
+        "float32",
+        "float64",
+        "int8",
+        "int16",
+        "int32",
+        "int64",
+        "uint8",
+        "bool",
+    }:
+        array = array.astype(np.float32)
+    return torch.from_numpy(array)
+
+
 @lru_cache(maxsize=1)
 def _special_inputs() -> dict[str, dict[str, str]]:
-    """Load the NaN/Inf cases retained from the legacy ATK matrix."""
+    """Load only explicitly requested NaN/Inf inputs from the legacy matrix."""
     source = (
         Path(__file__).parents[1]
         / "st"
@@ -43,62 +156,126 @@ def _special_inputs() -> dict[str, dict[str, str]]:
     )
     result: dict[str, dict[str, str]] = {}
     for case in json.loads(source.read_text(encoding="utf-8")):
-        values = {item["name"]: item["range_values"] for item in case["inputs"]}
-        special = {
-            name: value[0]
-            for name, value in values.items()
-            if name in {"x", "add_num"}
-            and isinstance(value, list)
-            and len(value) == 1
-            and value[0] in {"nan", "inf", "-inf"}
-        }
+        special = {}
+        for item in case["inputs"]:
+            values = item.get("range_values")
+            if (
+                item["name"] in {"x", "add_num"}
+                and isinstance(values, list)
+                and len(values) == 1
+                and values[0] in {"nan", "inf", "-inf"}
+            ):
+                special[item["name"]] = values[0]
         if special:
             result[f"moe_fused_topk_atk_{case['id']:03d}"] = special
-            result[f"moe_fused_topk_kernel_atk_{case['id']:03d}"] = special
     return result
 
 
-def _as_numpy(value) -> np.ndarray:
-    if isinstance(value, np.ndarray):
-        return value
-    if hasattr(value, "detach"):
-        value = value.detach().cpu()
-    if hasattr(value, "numpy"):
-        try:
-            return value.numpy()
-        except TypeError:
-            # PyTorch does not expose a NumPy BF16 view on every platform.
-            return value.float().numpy()
-    return np.asarray(value)
-
-
 def _write_tensor(target, value) -> None:
-    """Write a NumPy value into either a NumPy or a torch test tensor."""
     if isinstance(target, np.ndarray):
         target[...] = np.asarray(value, dtype=target.dtype)
-        return
-    import torch
-
-    target.copy_(torch.as_tensor(value, device=target.device, dtype=target.dtype))
+    else:
+        target.copy_(torch.as_tensor(value, device=target.device, dtype=target.dtype))
 
 
-def _fill_stable_inputs(x, add_num) -> None:
-    """Avoid accidental TopK ties across FP16, BF16 and FP32 test runs."""
-    x_shape = _as_numpy(x).shape
-    expert_count = _as_numpy(add_num).shape[0]
-    ranks = np.arange(expert_count, dtype=np.int32)
-    values = -np.ldexp((1 + ranks % 127).astype(np.float32), -20 + ranks // 127).astype(
-        np.float32
-    )
-    _write_tensor(x, np.zeros(x_shape, dtype=np.float32))
-    _write_tensor(add_num, values)
-
-
-def _customize_inputs(x, add_num, testcase_name) -> None:
-    _fill_stable_inputs(x, add_num)
+def _customize_inputs(x, add_num, testcase_name):
+    """Leave normal random inputs intact; inject only declared IEEE specials."""
     for name, value in _special_inputs().get(testcase_name, {}).items():
-        target = x if name == "x" else add_num
-        _write_tensor(target, np.float32(value))
+        _write_tensor(x if name == "x" else add_num, float(value))
+    return x, add_num
+
+
+class MoeFusedTopkTestSpec:
+    """TTK kernel TestSpec for the Ascend 950 implementation."""
+
+    def golden(
+        x,
+        add_num,
+        mapping_num=None,
+        mapping_table=None,
+        *,
+        group_num,
+        group_topk,
+        top_n,
+        top_k,
+        activate_type,
+        is_norm,
+        scale,
+        enable_expert_mapping,
+        **_kwargs,
+    ):
+        inputs = [_numpy_to_torch(v) for v in (x, add_num, mapping_num, mapping_table)]
+        return [
+            output.numpy()
+            for output in _torch_moe_fused_topk(
+                *inputs,
+                group_num=group_num,
+                group_topk=group_topk,
+                top_n=top_n,
+                top_k=top_k,
+                activate_type=activate_type,
+                is_norm=is_norm,
+                scale=scale,
+                enable_expert_mapping=enable_expert_mapping,
+            )
+        ]
+
+    class TorchImpl:
+        def __init__(
+            self,
+            *,
+            group_num,
+            group_topk,
+            top_n,
+            top_k,
+            activate_type,
+            is_norm,
+            scale,
+            enable_expert_mapping,
+            **_kwargs,
+        ):
+            self.attrs = {
+                "group_num": group_num,
+                "group_topk": group_topk,
+                "top_n": top_n,
+                "top_k": top_k,
+                "activate_type": activate_type,
+                "is_norm": is_norm,
+                "scale": scale,
+                "enable_expert_mapping": enable_expert_mapping,
+            }
+
+        def __call__(
+            self, x, add_num, mapping_num=None, mapping_table=None, **_kwargs
+        ):
+            return _torch_moe_fused_topk(
+                x, add_num, mapping_num, mapping_table, **self.attrs
+            )
+
+    third_party = {"torch": TorchImpl}
+    tolerance = {
+        "float32": {"standard": "cross_check"},
+        "int32": {"standard": "binary_equal"},
+    }
+
+    def customize_inputs(
+        x, add_num, mapping_num=None, mapping_table=None, *, testcase_name=None, **_kwargs
+    ):
+        _customize_inputs(x, add_num, testcase_name)
+        return x, add_num, mapping_num, mapping_table
+
+
+def moe_fused_topk_input(
+    x,
+    add_num,
+    mapping_num,
+    mapping_table,
+    *,
+    testcase_name=None,
+    **_kwargs,
+):
+    _customize_inputs(x, add_num, testcase_name)
+    return x, add_num, mapping_num, mapping_table
 
 
 def aclnn_moe_fused_topk_input(
@@ -125,92 +302,6 @@ def aclnn_moe_fused_topk_input(
     _customize_inputs(x, addNum, testcase_name)
 
 
-def moe_fused_topk_input(
-    x,
-    add_num,
-    mapping_num,
-    mapping_table,
-    *,
-    testcase_name=None,
-    **_kwargs,
-):
-    _customize_inputs(x, add_num, testcase_name)
-    return x, add_num, mapping_num, mapping_table
-
-
-def _calculate(
-    x,
-    add_num,
-    mapping_num,
-    mapping_table,
-    group_num,
-    group_topk,
-    top_n,
-    top_k,
-    is_norm,
-    scale,
-    enable_expert_mapping,
-):
-    x_float = _as_numpy(x).astype(np.float32, copy=False)
-    add_num_float = _as_numpy(add_num).astype(np.float32, copy=False)
-    mapping_num_int = _as_numpy(mapping_num).astype(np.int64, copy=False)
-    mapping_table_int = _as_numpy(mapping_table).astype(np.int32, copy=False)
-
-    with np.errstate(over="ignore", invalid="ignore"):
-        sigmoid = 1.0 / (1.0 + np.exp(-x_float))
-        scores = sigmoid + add_num_float
-
-    token_count, expert_count = scores.shape
-    group_num = int(group_num)
-    group_topk = int(group_topk)
-    top_n = int(top_n)
-    top_k = int(top_k)
-    grouped = scores.reshape(token_count, group_num, expert_count // group_num)
-    group_order = np.argsort(
-        -np.take_along_axis(
-            grouped,
-            np.argsort(-grouped, axis=-1, kind="stable")[..., :top_n],
-            axis=-1,
-        ).sum(axis=-1),
-        axis=-1,
-        kind="stable",
-    )
-
-    masked = grouped.copy()
-    if group_topk < group_num:
-        deselected = group_order[:, group_topk:]
-        rows = np.arange(token_count)[:, None]
-        masked[rows, deselected, :] = 0.0
-
-    selected_indices = np.argsort(
-        -masked.reshape(token_count, expert_count), axis=-1, kind="stable"
-    )[:, :top_k]
-    result = np.take_along_axis(sigmoid, selected_indices, axis=-1)
-    if bool(is_norm):
-        with np.errstate(divide="ignore", invalid="ignore"):
-            result = result / result.sum(axis=-1, keepdims=True)
-            result = result * np.float32(scale)
-
-    output_indices = selected_indices.astype(np.int32, copy=True)
-    if bool(enable_expert_mapping):
-        for batch_index in range(token_count):
-            for topk_index in range(top_k):
-                expert_id = int(selected_indices[batch_index, topk_index])
-                offset = batch_index % max(1, int(mapping_num_int[expert_id]))
-                output_indices[batch_index, topk_index] = mapping_table_int[
-                    expert_id, offset
-                ]
-    return result.astype(np.float32, copy=False), output_indices
-
-
-def _to_output(value, template):
-    if isinstance(template, np.ndarray):
-        return np.asarray(value, dtype=template.dtype)
-    import torch
-
-    return torch.as_tensor(value, device=template.device, dtype=template.dtype)
-
-
 def moe_fused_topk_golden(
     x,
     add_num,
@@ -227,19 +318,20 @@ def moe_fused_topk_golden(
     enable_expert_mapping,
     **_kwargs,
 ):
-    del activate_type
-    return _calculate(
-        x,
-        add_num,
-        mapping_num,
-        mapping_table,
-        group_num,
-        group_topk,
-        top_n,
-        top_k,
-        is_norm,
-        scale,
-        enable_expert_mapping,
+    inputs = [_numpy_to_torch(v) for v in (x, add_num, mapping_num, mapping_table)]
+    return tuple(
+        output.numpy()
+        for output in _torch_moe_fused_topk(
+            *inputs,
+            group_num=group_num,
+            group_topk=group_topk,
+            top_n=top_n,
+            top_k=top_k,
+            activate_type=activate_type,
+            is_norm=is_norm,
+            scale=scale,
+            enable_expert_mapping=enable_expert_mapping,
+        )
     )
 
 
@@ -260,18 +352,20 @@ def aclnn_moe_fused_topk_golden(
     indices,
     **_kwargs,
 ):
-    del activateType
-    result, output_indices = _calculate(
-        x,
-        addNum,
-        mappingNum,
-        mappingTable,
-        groupNum,
-        groupTopk,
-        topN,
-        topK,
-        isNorm,
-        scale,
-        enableExpertMapping,
+    del y, indices
+    return tuple(
+        _torch_moe_fused_topk(
+            x,
+            addNum,
+            mappingNum,
+            mappingTable,
+            group_num=groupNum,
+            group_topk=groupTopk,
+            top_n=topN,
+            top_k=topK,
+            activate_type=activateType,
+            is_norm=isNorm,
+            scale=scale,
+            enable_expert_mapping=enableExpertMapping,
+        )
     )
-    return _to_output(result, y), _to_output(output_indices, indices)
