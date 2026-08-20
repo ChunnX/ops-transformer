@@ -506,8 +506,14 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
-    usingApaceImpl_ = quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE && npuArch_ == NpuArch::DAV_3510 &&
+    const bool isApaceMxDtype = mc2tiling::CheckDataTypeVaild(args_.geAType, MXDTYPE_SUPPORT_LIST) &&
+                                mc2tiling::CheckDataTypeVaild(args_.geBType, MXDTYPE_SUPPORT_LIST);
+    usingApaceImpl_ = quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE && isApaceMxDtype &&
+                      !args_.isATrans && npuArch_ == NpuArch::DAV_3510 &&
                       args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
+    if (usingApaceImpl_) {
+        usingApaceImpl_ = mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    }
     if (usingApaceImpl_) {
         // APACE path uses pure AIC Hcomm ReduceScatter instead of the AIV All2All + Vector Reduce path.
         isA2APath_ = false;

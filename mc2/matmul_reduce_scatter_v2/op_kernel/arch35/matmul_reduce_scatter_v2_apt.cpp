@@ -16,7 +16,19 @@
 #include "../matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "lib/matmul_intf.h"
 #include "../common_def.h"
+
+// MatmulReduceScatterV2 also registers HIFLOAT8 binaries, while the APACE MX
+// kernel only accepts native MXFP8/MXFP4 element types.  Keep the APACE header
+// out of every other dtype translation unit so template collection cannot
+// instantiate MatmulWithScaleMx with __hif8.
+#if ((((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                  \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                 \
+     ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
+#define MMRS_APACE_MX_DTYPE 1
 #include "../../../common/op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_mx_quant_hcomm_impl.h"
+#else
+#define MMRS_APACE_MX_DTYPE 0
+#endif
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "matmul_a2a_vec_reduce_fp16_bf16.h" // 新实现：All2All + Vec Reduce
@@ -90,16 +102,21 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     auto context = GetHcclContext<0>();
     constexpr AscendC::HcclServerType hcclServerType = TPL_COMM_MODE == TPL_CCU_COMM_MODE ?
         AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU : AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU;
-    REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);
+#if MMRS_APACE_MX_DTYPE
     if constexpr (TPL_USING_APACE) {
+        REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommMatmulReduceScatterV2TilingData, tilingData, tilingGM);
         Apace::MatmulReduceScatterV2MxQuantHcommImpl<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, TPL_TRANSB, hcommMatmulReduceScatterV2TilingData, hcclServerType>
             op(&tilingData);
         op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM);
         op.Run();
-    } else {
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, tilingData, tilingGM);
+    } else
+#endif
+    {
+        // Keep the legacy path byte-for-byte compatible with its original
+        // tiling-data acquisition.  APACE-specific registration stays above.
+        GET_TILING_DATA(tilingData, tilingGM);
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
@@ -142,3 +159,5 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
 #endif
     }
 }
+
+#undef MMRS_APACE_MX_DTYPE
