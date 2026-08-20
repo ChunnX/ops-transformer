@@ -36,15 +36,16 @@ __aicore__ inline void InvokeGmmWeightQuantTensorApiMx(
         reinterpret_cast<GM_ADDR>(GetTensorAddr<BType>(0, weight)) : weight;
     GM_ADDR scaleBArg = gmm->singleWeight ?
         reinterpret_cast<GM_ADDR>(GetTensorAddr<ScaleBType>(0, scaleB)) : scaleB;
+    const uint8_t hasBias = (gmm->hasBias != 0U || bias != nullptr) ? 1U : 0U;
     GM_ADDR biasArg = nullptr;
-    if (gmm->hasBias) {
+    if (hasBias != 0U) {
         biasArg = gmm->singleWeight ? reinterpret_cast<GM_ADDR>(GetTensorAddr<BiasType>(0, bias)) : bias;
     }
 
     typename Kernel::Params params{
         xData, weightArg, scaleA, scaleBArg, biasArg, groupList, yData,
         gmm->coreNum, gmm->groupNum, gmm->groupType, gmm->groupListType,
-        gmm->singleWeight, gmm->hasBias, gmm->groupSize, gmm->nSize, gmm->kSize,
+        gmm->singleWeight, hasBias, gmm->groupSize, gmm->nSize, gmm->kSize,
         gmm->mainBlockCount, gmm->mainBlockSize,
         gmm->firstTailBlockCount, gmm->firstTailBlockSize,
         gmm->secondTailBlockCount, gmm->secondTailBlockSize,
