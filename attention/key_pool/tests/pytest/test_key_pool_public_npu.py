@@ -339,7 +339,10 @@ def run_case(
 
     tail_nonzero = 0
     for batch, length in enumerate(case.lengths):
-        valid_pools = (case.start_pos[batch] + length) // case.cmp_ratio
+        valid_pools = (
+            (case.start_pos[batch] + length) // case.cmp_ratio
+            - case.start_pos[batch] // case.cmp_ratio
+        )
         tail_nonzero += int(torch.count_nonzero(actual_output[batch, valid_pools:]))
     checks.append(
         {
@@ -362,7 +365,10 @@ def run_case(
     if per_batch:
         batch_checks = []
         for batch, length in enumerate(case.lengths):
-            valid_pools = (case.start_pos[batch] + length) // case.cmp_ratio
+            valid_pools = (
+                (case.start_pos[batch] + length) // case.cmp_ratio
+                - case.start_pos[batch] // case.cmp_ratio
+            )
             batch_check = _precision(
                 f"pooled_key_batch_{batch}",
                 actual_output[batch, :valid_pools],

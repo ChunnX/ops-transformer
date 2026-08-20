@@ -527,7 +527,7 @@ __aicore__ inline void KeyPoolKernel<COMP>::Process()
             blockVec_.TransformKeysBeforePool();
             SyncAll();
         }
-        blockVec_.ComputeFullHistoryPool();
+        blockVec_.ComputeIncrementalPool();
     }
     FreeEventID();
 }

@@ -73,11 +73,14 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
     )
     for batch, length in enumerate(case.lengths):
         updated_len = int(start_pos[batch]) + length
-        valid_pools = updated_len // case.cmp_ratio
+        valid_pools = updated_len // case.cmp_ratio - int(start_pos[batch]) // case.cmp_ratio
         if valid_pools == 0:
             continue
+        first_pool = int(start_pos[batch]) // case.cmp_ratio
         logical = torch.arange(
-            valid_pools * case.cmp_ratio, dtype=torch.long
+            first_pool * case.cmp_ratio,
+            (first_pool + valid_pools) * case.cmp_ratio,
+            dtype=torch.long,
         ).view(valid_pools, case.cmp_ratio)
         physical = block_table.long()[batch, logical // block_size]
         gathered = golden_cache[physical, logical % block_size]
@@ -178,7 +181,10 @@ def run_case(case, device: int, norm_on: bool, norm_eps: float):
     tail_nonzero = 0
     batch_checks = []
     for batch, length in enumerate(case.lengths):
-        valid_pools = (case.start_pos[batch] + length) // case.cmp_ratio
+        valid_pools = (
+            (case.start_pos[batch] + length) // case.cmp_ratio
+            - case.start_pos[batch] // case.cmp_ratio
+        )
         tail_nonzero += int(
             torch.count_nonzero(actual_output[batch, valid_pools:])
         )

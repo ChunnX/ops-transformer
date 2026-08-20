@@ -208,14 +208,16 @@ def _pool_one_batch_loop(
     state_cache: torch.Tensor,
     cache_block_table: torch.Tensor,
     batch: int,
+    start_pos: int,
     updated_len: int,
     cmp_ratio: int,
     ape: torch.Tensor,
     output: torch.Tensor,
 ) -> None:
     width = state_cache.size(-1) // 2
+    first_pool = start_pos // cmp_ratio
     valid_pool_count = updated_len // cmp_ratio
-    for pool in range(valid_pool_count):
+    for pool in range(first_pool, valid_pool_count):
         keys = []
         gates = []
         for relative in range(cmp_ratio):
@@ -228,7 +230,9 @@ def _pool_one_batch_loop(
         logits = torch.stack(gates, dim=0)
         probabilities = torch.softmax(logits, dim=0)
         probabilities = probabilities.to(torch.bfloat16).float()
-        output[batch, pool] = (probabilities * key_tensor).sum(dim=0).to(torch.bfloat16)
+        output[batch, pool - first_pool] = (
+            probabilities * key_tensor
+        ).sum(dim=0).to(torch.bfloat16)
 
 
 def run_key_pool_golden(
@@ -275,7 +279,14 @@ def run_key_pool_golden(
     for batch, length in enumerate(lengths):
         updated_len = int(start_pos[batch]) + length
         _pool_one_batch_loop(
-            state_cache, cache_block_table, batch, updated_len, cmp_ratio, ape, output
+            state_cache,
+            cache_block_table,
+            batch,
+            int(start_pos[batch]),
+            updated_len,
+            cmp_ratio,
+            ape,
+            output,
         )
     intermediates = {
         "k_projection": torch.cat(k_parts, dim=0) if k_parts else torch.empty(0),
@@ -320,18 +331,27 @@ def run_key_pool_oracle(
     batch_size = len(batch_hidden)
     block_size = state_cache.size(1)
     pcap = (cache_block_table.size(1) * block_size + cmp_ratio - 1) // cmp_ratio
-    logical_positions = torch.arange(pcap * cmp_ratio, device=state_cache.device)
+    first_pool = torch.div(start_pos.to(torch.long), cmp_ratio, rounding_mode="floor")
+    logical_positions = (
+        first_pool[:, None] * cmp_ratio
+        + torch.arange(pcap * cmp_ratio, device=state_cache.device)[None, :]
+    )
     logical_capacity = cache_block_table.size(1) * block_size
     safe_positions = logical_positions.clamp(max=logical_capacity - 1)
     block_ids = safe_positions // block_size
     offsets = safe_positions % block_size
-    physical = cache_block_table[:, block_ids]
+    physical = torch.gather(
+        cache_block_table,
+        1,
+        block_ids.to(torch.long),
+    ).to(torch.long)
+    offsets = offsets.to(torch.long)
     gathered = state_cache[physical, offsets]
     gathered = gathered.view(batch_size, pcap, cmp_ratio, -1)
     keys = gathered[..., : wk.size(0)]
     gates = gathered[..., wk.size(0) :]
     updated_lens = start_pos.to(torch.long) + torch.tensor(lengths, device=start_pos.device)
-    valid = logical_positions.view(1, pcap, cmp_ratio) < updated_lens[:, None, None]
+    valid = logical_positions.view(batch_size, pcap, cmp_ratio) < updated_lens[:, None, None]
     logits = gates + ape.view(1, 1, cmp_ratio, -1)
     logits = logits.masked_fill(~valid[..., None], float("-inf"))
     probabilities = torch.nan_to_num(torch.softmax(logits, dim=2)).to(torch.bfloat16).float()

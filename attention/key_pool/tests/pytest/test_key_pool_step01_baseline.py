@@ -67,7 +67,7 @@ def test_step01_baseline_golden_cases(
             logical_block, offset = divmod(logical_pos, block_size)
             physical_block = int(table[batch, logical_block])
             touched[physical_block, offset] = True
-        valid_pool_count = (start + length) // ratio
+        valid_pool_count = (start + length) // ratio - start // ratio
         assert torch.count_nonzero(output[batch, valid_pool_count:]) == 0, case_id
 
     after_cache = intermediates["state_cache"]

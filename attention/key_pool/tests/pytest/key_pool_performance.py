@@ -95,13 +95,18 @@ def _run_torch_decomposition(npu_inputs, case, batch_ids, token_offsets):
 
     logical_capacity = block_table.size(1) * block_size
     pool_capacity = (logical_capacity + case.cmp_ratio - 1) // case.cmp_ratio
-    logical = torch.arange(
+    first_pool = torch.div(start_pos.long(), case.cmp_ratio, rounding_mode="floor")
+    logical = first_pool[:, None] * case.cmp_ratio + torch.arange(
         pool_capacity * case.cmp_ratio,
         dtype=torch.long,
         device=hidden_states.device,
-    )
+    )[None, :]
     safe_logical = logical.clamp(max=logical_capacity - 1)
-    physical = block_table.long()[:, safe_logical // block_size]
+    physical = torch.gather(
+        block_table.long(),
+        1,
+        (safe_logical // block_size).expand(len(case.lengths), -1),
+    )
     gathered = state_cache[physical, safe_logical % block_size]
     gathered = gathered.view(len(case.lengths), pool_capacity, case.cmp_ratio, -1)
     keys = gathered[..., :head_dim]
@@ -110,7 +115,7 @@ def _run_torch_decomposition(npu_inputs, case, batch_ids, token_offsets):
     updated_lens = start_pos.long() + torch.tensor(
         case.lengths, dtype=torch.long, device=hidden_states.device
     )
-    valid = logical.view(1, pool_capacity, case.cmp_ratio) < updated_lens[:, None, None]
+    valid = logical.view(len(case.lengths), pool_capacity, case.cmp_ratio) < updated_lens[:, None, None]
     logits = gates + ape.view(1, 1, case.cmp_ratio, head_dim)
     logits = logits.masked_fill(~valid[..., None], float("-inf"))
     probabilities = torch.nan_to_num(torch.softmax(logits, dim=2)).to(torch.bfloat16).float()
