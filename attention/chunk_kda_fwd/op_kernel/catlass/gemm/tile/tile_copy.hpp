@@ -11,25 +11,25 @@
 #ifndef CATLASS_GEMM_TILE_TILE_COPY_HPP
 #define CATLASS_GEMM_TILE_TILE_COPY_HPP
 
-#include <type_traits>
 
-#include "catlass/catlass.hpp"
-#include "catlass/detail/tag_to_layout.hpp"
-#include "catlass/gemm/helper.hpp"
-#include "catlass/gemm/tile/cast_fp8_to_fp16.hpp"
-#include "catlass/gemm/tile/cast_int4_to_int8.hpp"
-#include "catlass/gemm/tile/cast_int8_to_fp16.hpp"
-#include "catlass/gemm/tile/copy_gm_to_l1.hpp"
-#include "catlass/gemm/tile/copy_gm_to_ub.hpp"
-#include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
-#include "catlass/gemm/tile/copy_l0c_to_ub.hpp"
-#include "catlass/gemm/tile/copy_l1_to_bt.hpp"
-#include "catlass/gemm/tile/copy_l1_to_fp.hpp"
-#include "catlass/gemm/tile/copy_l1_to_l0a.hpp"
-#include "catlass/gemm/tile/copy_l1_to_l0b.hpp"
-#include "catlass/gemm/tile/copy_ub_to_gm.hpp"
-#include "catlass/gemm/tile/tile_copy_tla.hpp"
-#include "tla/kda_tensor.hpp"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 namespace Catlass::Gemm::Tile {
 

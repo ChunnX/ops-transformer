@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_GM_TO_UB_HPP
 
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
-#include "catlass/gemm/tile/atlasa2/copy_gm_to_ub.hpp"
+
 #endif
 
 #endif

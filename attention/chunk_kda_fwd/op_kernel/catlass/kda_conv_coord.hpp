@@ -11,7 +11,7 @@
 #ifndef CATLASS_KDA_CONV_COORD_HPP
 #define CATLASS_KDA_CONV_COORD_HPP
 
-#include "catlass/kda_coord.hpp"
+
 
 namespace Catlass {
 

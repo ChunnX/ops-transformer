@@ -11,7 +11,7 @@
 #ifndef CATLASS_ARCH_KDA_CROSS_CORE_SYNC_HPP
 #define CATLASS_ARCH_KDA_CROSS_CORE_SYNC_HPP
 
-#include "catlass/catlass.hpp"
+
 
 namespace Catlass::Arch {
 

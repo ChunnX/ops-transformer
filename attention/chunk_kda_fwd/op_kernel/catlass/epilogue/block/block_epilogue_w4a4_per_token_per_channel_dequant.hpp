@@ -10,14 +10,14 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 
-#include "catlass/arch/resource.hpp"
-#include "catlass/catlass.hpp"
-#include "catlass/detail/kda_callback.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/matrix_coord.hpp"
+
+
+
+
+
+
+
+
 
 namespace Catlass::Epilogue::Block {
 

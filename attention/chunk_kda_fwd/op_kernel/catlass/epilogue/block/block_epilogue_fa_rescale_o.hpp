@@ -11,12 +11,12 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESCALE_O_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESCALE_O_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/epilogue/tile/tile_copy.hpp"
+
+
+
+
+
+
 
 namespace Catlass::Epilogue::Block {
 

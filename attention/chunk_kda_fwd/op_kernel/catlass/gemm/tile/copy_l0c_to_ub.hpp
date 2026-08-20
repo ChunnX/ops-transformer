@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_UB_HPP
 
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 3510)
-#include "catlass/gemm/tile/ascend950/copy_l0c_to_ub.hpp"
+
 #endif
 
 #endif

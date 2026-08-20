@@ -11,11 +11,11 @@
 #ifndef CATLASS_GEMM_TILE_ATLASA2_COPY_GM_TO_UB_HPP
 #define CATLASS_GEMM_TILE_ATLASA2_COPY_GM_TO_UB_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/arch.hpp"
-#include "catlass/gemm/tile/tile_copy_tla.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "tla/kda_tensor.hpp"
+
+
+
+
+
 
 namespace Catlass::Gemm::Tile {
 

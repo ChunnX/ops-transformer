@@ -11,13 +11,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_GROUP_PER_BLOCK_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_GROUP_PER_BLOCK_HPP
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "tla/kda_tensor.hpp"
-#include "tla/layout.hpp"
+
+
+
+
+
+
+
 
 namespace Catlass::Epilogue::Block {
 

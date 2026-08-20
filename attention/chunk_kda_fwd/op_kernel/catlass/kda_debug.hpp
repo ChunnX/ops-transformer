@@ -11,11 +11,11 @@
 #ifndef CATLASS_KDA_DEBUG_HPP
 #define CATLASS_KDA_DEBUG_HPP
 
-#include <functional>
-#include <iostream>
-#include <sstream>
 
-#include <acl/acl.h>
+
+
+
+
 
 #define SINGLE_CORE_DUMPSIZE (1024 * 1024)
 #ifdef CATLASS_ARCH
