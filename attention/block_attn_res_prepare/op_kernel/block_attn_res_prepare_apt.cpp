@@ -14,18 +14,18 @@
  */
 
 #include "arch35/block_attn_res_prepare_vector.h"
-#include "blaze/gemm/kernel/kernel_block_attn_res_prepare.h"
+#include "blaze/transformer/kernel/kernel_block_attn_res_prepare.h"
 
 #define BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY 1000UL
 #define BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY 2000UL
 
 namespace {
-__aicore__ inline Blaze::Gemm::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
+__aicore__ inline Blaze::Transformer::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
     GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator,
     GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
     const optiling::BlockAttnResPrepareCubeTilingData &tiling)
 {
-    Blaze::Gemm::BlockAttnResPrepareParams params{};
+    Blaze::Transformer::BlockAttnResPrepareParams params{};
     params.gmParams.blockResidualGmAddr = blockRes;
     params.gmParams.validBlocksGmAddr = validBlocks;
     params.gmParams.effectiveQueryGmAddr = pseudoQuery;
@@ -85,7 +85,7 @@ extern "C" __global__ __aicore__ void block_attn_res_prepare(
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
         const auto params = MakeBlockAttnResPrepareParams(blockRes, validBlocks, pseudoQuery, numerator,
                                                           logitMax, expSum, userWorkspace, cubeTilingData);
-        Blaze::Gemm::Kernel::KernelBlockAttnResPrepare kernel;
+        Blaze::Transformer::Kernel::KernelBlockAttnResPrepare kernel;
         kernel(params);
     }
 }
