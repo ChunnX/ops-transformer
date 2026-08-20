@@ -180,17 +180,20 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
     auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
     uint64_t perRankN = nonSplitAxisSize / rankDim_;
-    uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * perRankN;
 
-    // 计算当前tile在mmResult和y中的偏移
+    // mmResult布局为[rankM, rankN]行主序，同一rank的N数据在各行中不连续
+    // 采用逐行发送：每次发送perRankN个元素(一行中一个rank的N数据)，
+    // strideCount=rankN(行间隔)，batchCnt=curTileM(行数)
+    // AllToAll内部按strideCount跨行抽取同一rank的数据，实现无转置通信
     uint64_t tileOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize;
-    uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
+    uint64_t sendCount = perRankN;
+    uint64_t dataStrideCount = nonSplitAxisSize;  // 行间隔 = rankN
 
     return hccl_.template AlltoAll<true>(
         mmResultGM_ + tileOffset * nonSplitAxisSize * sizeof(YType),
         y_ + tileOffset * perRankN * sizeof(YType),
         sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-        dataStrideCount, 1);
+        dataStrideCount, static_cast<uint8_t>(curTileM));
 }
 }
 
