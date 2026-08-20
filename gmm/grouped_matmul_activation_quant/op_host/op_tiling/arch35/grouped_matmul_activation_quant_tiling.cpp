@@ -489,8 +489,8 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
     tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
     const uint64_t scaleKRequested = static_cast<uint64_t>(
-        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb)) *
-        basicTiling_.baseK;
+                                         std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb)) *
+                                     basicTiling_.baseK;
     // MX scales address K in 64-element groups.  Round both the requested
     // span and the final K tail to the same unit so A/B scale layout updates
     // cannot stop in the middle of a scale group.
