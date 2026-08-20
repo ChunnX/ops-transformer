@@ -21,6 +21,7 @@ __input__ = {
 __spec__ = {
     "moe_init_routing_v3": "MoeInitRoutingV3KernelSpec",
     "aclnnMoeInitRoutingV3": "AclnnMoeInitRoutingV3Spec",
+    "torch_npu.npu_moe_init_routing_v2": "E2eMoeInitRoutingV3Spec",
 }
 
 import numpy
@@ -958,6 +959,69 @@ class MoeInitRoutingV3KernelSpec:
         return tuple(npu_outs) + tuple(golden_outs)
 
 
+class E2eMoeInitRoutingV3Spec:
+    """E2E spec for torch_npu.npu_moe_init_routing_v2 — same as ACLNN but with snake_case params."""
+
+    tolerance = {
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+        "float32": {"standard": "stat_rel_err"},
+    }
+
+    def golden(x, expert_idx, scale=None, offset=None,
+               active_num=-1, expert_capacity=-1, expert_num=-1, drop_pad_mode=0,
+               expert_tokens_num_type=0, expert_tokens_num_flag=False, quant_mode=-1,
+               active_expert_range=None, row_idx_type=0, expanded_x_out=None,
+               expanded_row_idx_out=None, expert_tokens_count_or_cumsum_out=None,
+               expanded_scale_out=None, **kwargs):
+        x_np = _torch_to_numpy(x)
+        expert_idx_np = _torch_to_numpy(expert_idx)
+        scale_np = _torch_to_numpy(scale)
+        offset_np = _torch_to_numpy(offset)
+        if active_expert_range is not None:
+            active_expert_range = _to_list(active_expert_range)
+        else:
+            active_expert_range = [0, int(expert_num)]
+
+        results = _moe_init_routing_v3_numpy(
+            x_np, expert_idx_np, scale_np, offset_np,
+            int(active_num), int(expert_capacity), int(expert_num), int(drop_pad_mode),
+            int(expert_tokens_num_type), bool(expert_tokens_num_flag), int(quant_mode),
+            active_expert_range, int(row_idx_type))
+
+        templates = (expanded_x_out, expanded_row_idx_out,
+                     expert_tokens_count_or_cumsum_out, expanded_scale_out)
+        return [_numpy_to_torch(arr, tpl) for arr, tpl in zip(results, templates)]
+
+    def pre_compare(*outputs, **kwargs):
+        half = len(outputs) // 2
+        npu_outs = list(outputs[:half])
+        golden_outs = list(outputs[half:])
+        modified = False
+        for i in range(half):
+            if npu_outs[i] is None or golden_outs[i] is None:
+                continue
+            npu_arr = numpy.asarray(_torch_to_numpy(npu_outs[i]))
+            golden_arr = numpy.asarray(_torch_to_numpy(golden_outs[i]))
+            if npu_arr.size != golden_arr.size and npu_arr.size > 0 and golden_arr.size > 0:
+                npu_flat = npu_arr.reshape(-1)
+                golden_flat = golden_arr.reshape(-1)
+                min_len = min(npu_flat.size, golden_flat.size)
+                npu_truncated = npu_flat[:min_len]
+                golden_truncated = golden_flat[:min_len]
+                target_shape = golden_arr.shape if npu_flat.size >= golden_flat.size else npu_arr.shape
+                npu_outs[i] = npu_truncated.reshape(target_shape)
+                golden_outs[i] = golden_truncated.reshape(target_shape)
+                if hasattr(outputs[i], "detach"):
+                    import torch
+                    npu_outs[i] = torch.from_numpy(numpy.asarray(npu_outs[i]).copy()).to(
+                        device=outputs[i].device, dtype=outputs[i].dtype)
+                    golden_outs[i] = torch.from_numpy(numpy.asarray(golden_outs[i]).copy()).to(
+                        device=outputs[half + i].device, dtype=outputs[half + i].dtype)
+                modified = True
+        if not modified:
+            return None
+        return tuple(npu_outs) + tuple(golden_outs)
 class AclnnMoeInitRoutingV3Spec:
     """ACLNN spec — golden returns actual shape, pre_compare truncates NPU output to golden size."""
 
