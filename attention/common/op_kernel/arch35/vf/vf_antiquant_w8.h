@@ -324,7 +324,6 @@ __simd_vf__ void AntiquantVFImplW8PerTokenNzD032(__ubuf__ uint8_t *ubSrcAddr, __
 {
     MicroAPI::RegTensor<KV_T> vKvData;
     MicroAPI::RegTensor<Q_T> vScaleLoaded;
-    MicroAPI::RegTensor<Q_T> vOffsetLoaded;
     MicroAPI::RegTensor<Q_T> vOffsetFirst;
     MicroAPI::RegTensor<Q_T> vOffsetBack;
     MicroAPI::RegTensor<Q_T> vScaleFirst;
@@ -348,9 +347,7 @@ __simd_vf__ void AntiquantVFImplW8PerTokenNzD032(__ubuf__ uint8_t *ubSrcAddr, __
 
     for (uint16_t rowLoop = 0; rowLoop < rowLoopCnt; rowLoop++) {
         uint16_t rowLoopIdx = rowLoopCnt - 1 - rowLoop;
-        __ubuf__ Q_T *ubOffsetAddrTmp = ubOffsetAddr + doubleRowBaseSize * rowLoopIdx;
         __ubuf__ Q_T *ubScaleAddrTmp = ubScaleAddr + doubleRowBaseSize * rowLoopIdx;
-
         MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_E2B_B16>(vScaleLoaded, ubScaleAddrTmp);
         MicroAPI::Interleave<Q_T>(vScaleFirst, vScaleBack, vScaleLoaded, vScaleLoaded);
 

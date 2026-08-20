@@ -2259,7 +2259,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
             fiaInfo.inputKvType == ge::DT_INT8 &&
             (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
-             (!fiaInfo.batchContinuousFlag && fiaInfo.kvCacheNzD0 != 32))) {
+             (!fiaInfo.batchContinuousFlag && fiaInfo.kvCacheNzD0 != NUM_32))) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                 fiaInfo.opName, "key and value",
                 "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, tensorlist is not supported");
@@ -2384,6 +2384,12 @@ ge::graphStatus DequantChecker::CheckFeatureNzD32ForAntiquant(const FiaTilingInf
                     "When PA_NZ D0=32 antiquant is enabled, PagedAttention must be enabled"),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    fiaInfo.opName, "key/value", ToString(fiaInfo.inputKvType).c_str(),
+                    "When PA_NZ D0=32 antiquant is enabled, the dtype of key/value must be INT8"),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(fiaInfo.blockSize != 128 && fiaInfo.blockSize != 512,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
@@ -2472,7 +2478,7 @@ ge::graphStatus DequantChecker::CheckFeatureNzD32ForAntiquant(const FiaTilingInf
                         "sparse_mode must be 0 and atten_mask must be nullptr"),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN && fiaInfo.sparseMode != SPARSE_MODE_TREE,
+        OP_CHECK_IF(fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         fiaInfo.opName, "sparse_mode", std::to_string(fiaInfo.sparseMode).c_str(),
                         "When PA_NZ D0=32 antiquant is enabled and Q_S>1, "
