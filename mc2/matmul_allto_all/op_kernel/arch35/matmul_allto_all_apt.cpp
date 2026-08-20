@@ -143,9 +143,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
 
-    if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
-        MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
-    } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {
+    if constexpr (QUANTMODE == KC_QUANT_MODE) {
         MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
     } else if constexpr (QUANTMODE == MX_QUANT_MODE) {
         AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
