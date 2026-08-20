@@ -484,6 +484,24 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
 
+    // 根据X1数据类型选择KC量化模式
+    uint32_t quantMode = (contextInfo.args_.geAType == ge::DT_FLOAT8_E5M2) ? KC_QUANT_FP8E5M2_MODE
+                                                                            : KC_QUANT_FP8E4M3_MODE;
+
+    // 根据占用的UB空间判断是否使用小K模式
+    const uint32_t doubleBuffNum = 2;
+    const uint32_t alignUBBlockSize = 32;
+    const uint64_t sizeOfUB = 248 * 1024;
+    uint32_t maxM = inferredInfo.tailM > inferredInfo.tileM ? inferredInfo.tailM : inferredInfo.tileM;
+    uint64_t sizeOfInputKInUB =
+        (contextInfo.args_.inputDtypeSize * contextInfo.args_.orgKValue + alignUBBlockSize - 1) / alignUBBlockSize *
+        contextInfo.args_.rankDim;
+    uint64_t sizeOfQuantKInUB =
+        (contextInfo.args_.inputDtypeSize * contextInfo.args_.orgKValue + alignUBBlockSize - 1) / alignUBBlockSize *
+        contextInfo.args_.rankDim;
+    uint64_t sizeOfSmallKUsed = sizeof(double) * maxM + doubleBuffNum * (sizeOfInputKInUB + sizeOfQuantKInUB);
+    bool isSmallK = sizeOfSmallKUsed < sizeOfUB ? true : false;
+
     uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
                                                         engineType) != ge::GRAPH_SUCCESS) {
@@ -491,9 +509,20 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     }
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
-    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
-            x2TransposeFlag, biasDType, commMode, tilingKey);
+    const uint64_t tilingKey =
+        GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, commMode);
+    OP_LOGD(opName_,
+            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE: [%d,%d,%d,%d,%d], TilingKey is [%lu].", quantMode,
+            x2TransposeFlag, biasDType, isSmallK, commMode, tilingKey);
+    return tilingKey;
+}
+    uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
+
+    const uint64_t tilingKey =
+        GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, commMode);
+    OP_LOGD(opName_,
+            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE: [%d,%d,%d,%d,%d], TilingKey is [%lu].", quantMode,
+            x2TransposeFlag, biasDType, isSmallK, commMode, tilingKey);
     return tilingKey;
 }
 
