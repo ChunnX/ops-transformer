@@ -120,11 +120,14 @@ def _validate_layout_dims(
     layout_q_descale: str,
     layout_kv: str,
     layout_out: str,
+    quant_mode: int,
 ):
     """根据 layout 校验 q/k/v/descale 的维度数，不合法时通过 torch._check 抛出拦截信息。
 
+    仅在 MxFP8 (quant_mode=1) 场景下校验 descale 维度; 其他模式 (如 GQA_FP8_FULLQUANT) 跳过 descale 校验。
+
     维度约定:
-      Q  TND:(T,N,D)  BSND:(B,S,N,D)  BNSD:(B,N,S,D)
+      Q  TND:(T,N,D)  BSND:(B,S,N,D)  BNSD:(B,N,S,D)  NTD:(N,T,D)
       KV TND:(T,Nkv,D) BSND:(B,S,Nkv,D) BNSD:(B,Nkv,S,D)
          PA_NZ:(BlockNum,Nkv,D//32,Bs,32)
          PA_BNBD:(BlockNum,Nkv,Bs,D)  PA_BBND:(BlockNum,Bs,Nkv,D)
@@ -160,46 +163,48 @@ def _validate_layout_dims(
         lambda: f"v with layout {layout_kv} expects {k_expected} dims, but got {v.dim()} dims {tuple(v.shape)}",
     )
 
-    # === q_descale 维度校验 ===
-    if q_descale is not None:
-        dq_expected = _DESCALE_EXPECTED_NDIM.get(layout_q_descale)
-        torch._check(
-            dq_expected is not None,
-            lambda: f"Unsupported layout_q_descale: {layout_q_descale!r}, expected one of TND/BSND/BNSD/N2TGD",
-        )
-        torch._check(
-            q_descale.dim() == dq_expected,
-            lambda: f"q_descale with layout {layout_q_descale} expects {dq_expected} dims, "
-            f"but got {q_descale.dim()} dims {tuple(q_descale.shape)}",
-        )
+    # === descale 维度校验 (仅 MxFP8 quant_mode=1) ===
+    if quant_mode == 1:
+        # === q_descale 维度校验 ===
+        if q_descale is not None:
+            dq_expected = _DESCALE_EXPECTED_NDIM.get(layout_q_descale)
+            torch._check(
+                dq_expected is not None,
+                lambda: f"Unsupported layout_q_descale: {layout_q_descale!r}, expected one of TND/BSND/BNSD/N2TGD",
+            )
+            torch._check(
+                q_descale.dim() == dq_expected,
+                lambda: f"q_descale with layout {layout_q_descale} expects {dq_expected} dims, "
+                f"but got {q_descale.dim()} dims {tuple(q_descale.shape)}",
+            )
 
-    # === k_descale 维度校验 ===
-    if k_descale is not None:
-        dk_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
-        torch._check(
-            dk_expected is not None,
-            lambda: f"Unsupported layout_kv for k_descale: {layout_kv!r}, "
-            f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
-        )
-        torch._check(
-            k_descale.dim() == dk_expected,
-            lambda: f"k_descale with layout {layout_kv} expects {dk_expected} dims, "
-            f"but got {k_descale.dim()} dims {tuple(k_descale.shape)}",
-        )
+        # === k_descale 维度校验 ===
+        if k_descale is not None:
+            dk_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
+            torch._check(
+                dk_expected is not None,
+                lambda: f"Unsupported layout_kv for k_descale: {layout_kv!r}, "
+                f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
+            )
+            torch._check(
+                k_descale.dim() == dk_expected,
+                lambda: f"k_descale with layout {layout_kv} expects {dk_expected} dims, "
+                f"but got {k_descale.dim()} dims {tuple(k_descale.shape)}",
+            )
 
-    # === v_descale 维度校验 ===
-    if v_descale is not None:
-        dv_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
-        torch._check(
-            dv_expected is not None,
-            lambda: f"Unsupported layout_kv for v_descale: {layout_kv!r}, "
-            f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
-        )
-        torch._check(
-            v_descale.dim() == dv_expected,
-            lambda: f"v_descale with layout {layout_kv} expects {dv_expected} dims, "
-            f"but got {v_descale.dim()} dims {tuple(v_descale.shape)}",
-        )
+        # === v_descale 维度校验 ===
+        if v_descale is not None:
+            dv_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
+            torch._check(
+                dv_expected is not None,
+                lambda: f"Unsupported layout_kv for v_descale: {layout_kv!r}, "
+                f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
+            )
+            torch._check(
+                v_descale.dim() == dv_expected,
+                lambda: f"v_descale with layout {layout_kv} expects {dv_expected} dims, "
+                f"but got {v_descale.dim()} dims {tuple(v_descale.shape)}",
+            )
 
     # === layout_out 与 layout_q 一致性校验 ===
     torch._check(
@@ -318,6 +323,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             _validate_layout_dims(
                 q, k, v, q_descale, k_descale, v_descale,
                 layout_q, layout_q_descale, layout_kv, layout_out,
+                _resolve_quant_mode(quant_mode),
             )
 
             if layout_q == "TND":
@@ -516,7 +522,7 @@ def quant_flash_attn(
     # 根据 layout 校验 q/k/v/descale 维度，拦截非法输入
     _validate_layout_dims(
         q, k, v, q_descale, k_descale, v_descale,
-        layout_q, layout_q_descale, layout_kv, layout_out,
+        layout_q, layout_q_descale, layout_kv, layout_out, quant_mode,
     )
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
