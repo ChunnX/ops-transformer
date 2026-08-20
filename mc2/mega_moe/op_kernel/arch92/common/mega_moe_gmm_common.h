@@ -27,6 +27,7 @@ namespace GmmKernel {
 
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
+constexpr unsigned long GMM_DEBUG_UINT_BIAS = 1000000UL;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 
@@ -352,6 +353,131 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
         context.initConfig = requestedConfig;
         context.initialized = true;
     }
+}
+
+__aicore__ inline void DebugSetCondUint(uint64_t value)
+{
+    set_cond(GMM_DEBUG_UINT_BIAS + static_cast<unsigned long>(value));
+}
+
+// Prints the exact AIC tile mapping and BlockMmad configuration selected for one debug tile.
+template <uint32_t Marker, typename BlockMmad, typename Config, typename ActualShape>
+__aicore__ inline void DebugGmmAicTileConfig(const BlockMmad &blockMmad, const Config &config,
+                                             const ActualShape &actualShape,
+                                             uint32_t loopIdx, uint32_t startLoopIdx, uint32_t tileNum,
+                                             uint32_t mLoc, uint32_t nLoc, uint32_t kLoc,
+                                             int32_t gmTileSequence)
+{
+    using KernelConfig = typename Config::KernelConfig;
+    using ElementA = typename KernelConfig::ElementAType;
+    using ElementB = typename KernelConfig::ElementBType;
+    const auto &tiling = config.blockMmadTiling;
+    uint64_t scaleWindowElements =
+        Ops::Base::CeilDiv(tiling.l1Params.scaleKL1, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+        MXFP_MULTI_BASE_SIZE;
+    uint64_t l1WindowBytes =
+        static_cast<uint64_t>(tiling.tileM) * tiling.l1Params.kL1 * sizeof(ElementA) +
+        static_cast<uint64_t>(tiling.tileN) * tiling.l1Params.kL1 * sizeof(ElementB) +
+        static_cast<uint64_t>(tiling.tileM + tiling.tileN) * scaleWindowElements;
+
+    set_cond(static_cast<unsigned long>(Marker));
+    DebugSetCondUint(config.blockIdx);
+    DebugSetCondUint(config.blockNum);
+    DebugSetCondUint(loopIdx);
+    DebugSetCondUint(startLoopIdx);
+    DebugSetCondUint(tileNum);
+    DebugSetCondUint(mLoc);
+    DebugSetCondUint(nLoc);
+    DebugSetCondUint(kLoc);
+    DebugSetCondUint(Get<M_VALUE>(actualShape));
+    DebugSetCondUint(Get<N_VALUE>(actualShape));
+    DebugSetCondUint(Get<K_VALUE>(actualShape));
+    DebugSetCondUint(config.m);
+    DebugSetCondUint(config.n);
+    DebugSetCondUint(config.k);
+    DebugSetCondUint(config.outputN);
+    DebugSetCondUint(config.schedulerN);
+    DebugSetCondUint(config.scaleK);
+    DebugSetCondUint(config.tileM);
+    DebugSetCondUint(config.activationTileM);
+    DebugSetCondUint(tiling.tileM);
+    DebugSetCondUint(tiling.tileN);
+    DebugSetCondUint(tiling.l1Params.kL1);
+    DebugSetCondUint(tiling.l1Params.scaleKL1);
+    DebugSetCondUint(Ops::Base::CeilDiv(config.k, static_cast<uint32_t>(tiling.l1Params.kL1)));
+    DebugSetCondUint(Ops::Base::CeilDiv(config.k, static_cast<uint32_t>(tiling.l1Params.scaleKL1)));
+    DebugSetCondUint(Ops::Base::CeilDiv(config.k, static_cast<uint32_t>(L0_TILE_K)));
+    DebugSetCondUint(scaleWindowElements);
+    DebugSetCondUint(l1WindowBytes);
+    DebugSetCondUint(AscendC::TOTAL_L1_SIZE / 2U);
+    DebugSetCondUint(KernelConfig::IS_WEIGHT_NZ);
+    DebugSetCondUint(static_cast<uint32_t>(gmTileSequence));
+
+    auto blockMmadState = blockMmad.GetDebugState();
+    DebugSetCondUint(blockMmadState.problemK);
+    DebugSetCondUint(blockMmadState.kL1);
+    DebugSetCondUint(blockMmadState.scaleKL1);
+    DebugSetCondUint(blockMmadState.baseM);
+    DebugSetCondUint(blockMmadState.baseN);
+    DebugSetCondUint(blockMmadState.baseK);
+    DebugSetCondUint(blockMmadState.l1BufferIndex);
+    DebugSetCondUint(blockMmadState.scaleL1BufferIndex);
+    DebugSetCondUint(blockMmadState.l0BufferIndex);
+    DebugSetCondUint(blockMmadState.l1AOffset);
+    DebugSetCondUint(blockMmadState.l1BOffset);
+    DebugSetCondUint(blockMmadState.l1ScaleAOffset);
+    DebugSetCondUint(blockMmadState.l1ScaleBOffset);
+}
+
+// Prints the effective BlockMmad state after one debug tile has completed.
+template <uint32_t Marker, typename BlockMmad>
+__aicore__ inline void DebugGmmBlockMmadState(const BlockMmad &blockMmad, uint32_t blockIdx,
+                                              uint32_t loopIdx, uint32_t mLoc, uint32_t nLoc,
+                                              uint32_t kLoc)
+{
+    auto state = blockMmad.GetDebugState();
+    set_cond(static_cast<unsigned long>(Marker));
+    DebugSetCondUint(blockIdx);
+    DebugSetCondUint(loopIdx);
+    DebugSetCondUint(mLoc);
+    DebugSetCondUint(nLoc);
+    DebugSetCondUint(kLoc);
+    DebugSetCondUint(state.problemK);
+    DebugSetCondUint(state.kL1);
+    DebugSetCondUint(state.scaleKL1);
+    DebugSetCondUint(state.baseM);
+    DebugSetCondUint(state.baseN);
+    DebugSetCondUint(state.baseK);
+    DebugSetCondUint(state.l1BufferIndex);
+    DebugSetCondUint(state.scaleL1BufferIndex);
+    DebugSetCondUint(state.l0BufferIndex);
+    DebugSetCondUint(state.l1AOffset);
+    DebugSetCondUint(state.l1BOffset);
+    DebugSetCondUint(state.l1ScaleAOffset);
+    DebugSetCondUint(state.l1ScaleBOffset);
+}
+
+// Prints the AIV mapping that consumed the AIC tile-specific GM handoff flag.
+template <uint32_t Marker, typename Config, typename ActualShape>
+__aicore__ inline void DebugGmmAivTileMapping(const Config &config, const ActualShape &actualShape,
+                                              uint32_t loopIdx, uint32_t startLoopIdx, uint32_t tileNum,
+                                              uint32_t mLoc, uint32_t nLoc, uint32_t kLoc,
+                                              int32_t expectedSequence, int32_t observedSequence)
+{
+    set_cond(static_cast<unsigned long>(Marker));
+    DebugSetCondUint(config.blockIdx);
+    DebugSetCondUint(config.blockNum);
+    DebugSetCondUint(loopIdx);
+    DebugSetCondUint(startLoopIdx);
+    DebugSetCondUint(tileNum);
+    DebugSetCondUint(mLoc);
+    DebugSetCondUint(nLoc);
+    DebugSetCondUint(kLoc);
+    DebugSetCondUint(Get<M_VALUE>(actualShape));
+    DebugSetCondUint(Get<N_VALUE>(actualShape));
+    DebugSetCondUint(Get<K_VALUE>(actualShape));
+    DebugSetCondUint(static_cast<uint32_t>(expectedSequence));
+    DebugSetCondUint(static_cast<uint32_t>(observedSequence));
 }
 
 /*

@@ -162,6 +162,9 @@ public:
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline auto GetTopkWeightTensor();
+    __aicore__ inline auto GetGluResultTensor();
+    __aicore__ inline auto GetQuantOutputTensor();
+    __aicore__ inline auto GetQuantScaleOutputTensor();
     // 计算并写回一个激活/量化 tile，不包含流水通知。
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
@@ -691,6 +694,25 @@ BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline auto BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetTopkWeightTensor()
 {
     return weightUb_;
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline auto BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetGluResultTensor()
+{
+    return gluRes_;
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline auto BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetQuantOutputTensor()
+{
+    return quantOutput_;
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline auto
+BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetQuantScaleOutputTensor()
+{
+    return quantScaleOutput_;
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS

@@ -60,6 +60,28 @@ struct SharedExpertGmm1ActivationState {
     int32_t &gmTileSequence;
 };
 
+constexpr uint32_t DEBUG_SAMPLE_VALUE_COUNT = 20U;
+constexpr uint32_t DEBUG_MX_SCALE_VALUE_COUNT =
+    L1_TILE_N / MXFP_DIVISOR_SIZE * MXFP_MULTI_BASE_SIZE;
+
+template <typename ActivationQuantOp>
+__aicore__ inline void DebugFirstTokenActivationResult(ActivationQuantOp &activationQuantOp)
+{
+    auto gluBitsTensor = activationQuantOp.GetGluResultTensor().template ReinterpretCast<uint16_t>();
+    auto quantBitsTensor = activationQuantOp.GetQuantOutputTensor().template ReinterpretCast<uint8_t>();
+    auto scaleBitsTensor = activationQuantOp.GetQuantScaleOutputTensor().template ReinterpretCast<uint8_t>();
+    set_cond(910003UL);
+    for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+        set_cond(static_cast<unsigned long>(gluBitsTensor.GetValue(valueIdx)));
+    }
+    for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+        set_cond(static_cast<unsigned long>(quantBitsTensor.GetValue(valueIdx)));
+    }
+    for (uint32_t valueIdx = 0U; valueIdx < DEBUG_MX_SCALE_VALUE_COUNT; ++valueIdx) {
+        set_cond(static_cast<unsigned long>(scaleBitsTensor.GetValue(valueIdx)));
+    }
+}
+
 // 等待当前 GMM1 tile 对应的 Dispatch 输入就绪。
 template <bool IsShared, typename Config>
 __aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
@@ -203,6 +225,13 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
+        bool isDebugTile = expertIdx == 0U &&
+                           gmmAddrInfo.gmm1OutGlobal == params.workspaceInfo.gmm1MmadResPtr &&
+                           mLoc == 0U && nLoc == 0U;
+        if (isDebugTile) {
+            DebugGmmAicTileConfig<910008U>(blockMmad, config, actualShape, loopIdx, startLoopIdx,
+                                           tileNum, mLoc, nLoc, kLoc, gmTileSequence);
+        }
         auto gmBlockA = workSet.gmA.Slice(
             Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
         /*
@@ -219,6 +248,9 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
+        if (isDebugTile) {
+            DebugGmmBlockMmadState<910013U>(blockMmad, config.blockIdx, loopIdx, mLoc, nLoc, kLoc);
+        }
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         if constexpr (TopkWeightsPrefetch) {
@@ -325,7 +357,7 @@ template <typename MakeLayoutC, typename ElementC, bool IsWaveFlagGrained, typen
 __aicore__ inline void Gmm1AivPrefetchEpilogueTileGeneric(
     const Config &config, TensorC &gmC, TensorMetaInfo &metaInfoGm, ActivationQuantOp &activationQuantOp,
     const GMMAddrInfo &gmmAddrInfo, uint32_t expertBeforeCnt, const ActualShape &actualShape, uint32_t mLoc,
-    uint32_t nLoc)
+    uint32_t nLoc, uint32_t expertIdx)
 {
     uint32_t mLen = Get<M_VALUE>(actualShape);
     if (mLen == 0U) {
@@ -365,6 +397,17 @@ __aicore__ inline void Gmm1AivPrefetchEpilogueTileGeneric(
         AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+        if (expertIdx == 0U && expertBeforeCnt == 0U && subMLoc == 0U && nLoc == 0U) {
+            auto gmm1GateBitsTensor = activationQuantOp.GetFirstL0c2UbTensor().template ReinterpretCast<uint16_t>();
+            auto gmm1UpBitsTensor = activationQuantOp.GetSecondL0c2UbTensor().template ReinterpretCast<uint16_t>();
+            set_cond(910002UL);
+            for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+                set_cond(static_cast<unsigned long>(gmm1GateBitsTensor.GetValue(valueIdx)));
+            }
+            for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+                set_cond(static_cast<unsigned long>(gmm1UpBitsTensor.GetValue(valueIdx)));
+            }
+        }
 
         Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
         Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -377,6 +420,9 @@ __aicore__ inline void Gmm1AivPrefetchEpilogueTileGeneric(
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         activationQuantOp(epilogueShape, epilogueOffset);
+        if (expertIdx == 0U && expertBeforeCnt == 0U && subMLoc == 0U && nLoc == 0U) {
+            DebugFirstTokenActivationResult(activationQuantOp);
+        }
         NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     }
@@ -475,7 +521,7 @@ template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typen
           typename ActivationQuantOp, typename Config, typename ActualShape>
 __aicore__ inline void Gmm1AivGmHandoffEpilogueTileGeneric(
     ActivationQuantOp &activationQuantOp, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo, const Config &config,
-    const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc)
+    const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc, bool debugFirstToken)
 {
     if (Get<M_VALUE>(actualShape) == 0U) {
         return;
@@ -501,6 +547,17 @@ __aicore__ inline void Gmm1AivGmHandoffEpilogueTileGeneric(
     AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+    if (debugFirstToken && mLoc == 0U && nLoc == 0U) {
+        auto gmm1GateBitsTensor = activationQuantOp.GetFirstL0c2UbTensor().template ReinterpretCast<uint16_t>();
+        auto gmm1UpBitsTensor = activationQuantOp.GetSecondL0c2UbTensor().template ReinterpretCast<uint16_t>();
+        set_cond(910002UL);
+        for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(gmm1GateBitsTensor.GetValue(valueIdx)));
+        }
+        for (uint32_t valueIdx = 0U; valueIdx < DEBUG_SAMPLE_VALUE_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(gmm1UpBitsTensor.GetValue(valueIdx)));
+        }
+    }
     Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
         Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), 0, 0};
     Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -513,6 +570,9 @@ __aicore__ inline void Gmm1AivGmHandoffEpilogueTileGeneric(
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset);
+    if (debugFirstToken && mLoc == 0U && nLoc == 0U) {
+        DebugFirstTokenActivationResult(activationQuantOp);
+    }
     NotifyGmm2InputReady<IsWaveFlagGrained>(
         gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
@@ -569,7 +629,7 @@ __aicore__ inline void Gmm1AivPrefetchEpilogueGeneric(
         WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         Gmm1AivPrefetchEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
             config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
-            mLoc, nLoc);
+            mLoc, nLoc, expertIdx);
     }
 }
 
@@ -668,7 +728,8 @@ __aicore__ inline void Gmm1ExecGeneric(
                 expertIdx);
         } else if constexpr (UseGmHandoff) {
             Gmm1AivGmHandoffEpilogueGeneric<ElementC, MakeLayoutC, IsWaveFlagGrained>(
-                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, activationQuantOp);
+                workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, activationQuantOp,
+                expertIdx, expertBeforeCnt);
         } else {
             Gmm1AivEpilogueGeneric<IsWaveFlagGrained>(
                 workSet, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp);
@@ -715,7 +776,7 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(
             }
         }
         Gmm1AivGmHandoffEpilogueTileGeneric<ElementC, MakeLayoutC, IsWaveFlagGrained>(
-            activationQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc);
+            activationQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc, false);
         gmTileSequence = expectedReadySequence;
     }
 }
@@ -724,22 +785,33 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename WorkSet,
           typename Config, typename ActivationQuantOp>
 __aicore__ inline void Gmm1AivGmHandoffEpilogueGeneric(
-    WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
-    uint32_t tileNum, int32_t &gmTileSequence, ActivationQuantOp &activationQuantOp)
+    WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
+    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence,
+    ActivationQuantOp &activationQuantOp, uint32_t expertIdx, uint32_t expertBeforeCnt)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t kLoc = Get<K_VALUE>(blockCoord);
         int32_t expectedReadySequence = gmTileSequence + 1;
         while (AscendC::ReadGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag) < expectedReadySequence) {
             int64_t startCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - startCycle < 100) {
             }
         }
+        int32_t observedReadySequence = AscendC::ReadGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag);
+        if (expertIdx == 0U && expertBeforeCnt == 0U &&
+            gmmAddrInfo.gmm1OutGlobal == params.workspaceInfo.gmm1MmadResPtr &&
+            mLoc == 0U && nLoc == 0U) {
+            DebugGmmAivTileMapping<910009U>(config, actualShape, loopIdx, startLoopIdx, tileNum,
+                                            mLoc, nLoc, kLoc, expectedReadySequence,
+                                            observedReadySequence);
+        }
         Gmm1AivGmHandoffEpilogueTileGeneric<ElementC, MakeLayoutC, IsWaveFlagGrained>(
-            activationQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc);
+            activationQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc,
+            expertIdx == 0U && expertBeforeCnt == 0U);
         gmTileSequence = expectedReadySequence;
     }
 }

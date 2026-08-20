@@ -74,11 +74,29 @@ public:
         uint64_t l1BufNum;
     };
 
+    struct DebugState {
+        uint64_t problemK;
+        uint64_t kL1;
+        uint64_t scaleKL1;
+        uint64_t baseM;
+        uint64_t baseN;
+        uint64_t baseK;
+        uint64_t l1BufferIndex;
+        uint64_t scaleL1BufferIndex;
+        uint64_t l0BufferIndex;
+        uint64_t l1AOffset;
+        uint64_t l1BOffset;
+        uint64_t l1ScaleAOffset;
+        uint64_t l1ScaleBOffset;
+    };
+
     __aicore__ inline BlockMmad();
     __aicore__ inline ~BlockMmad();
 
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
                                 const L1Params &l1Params, bool isBias, bool enableL0cPingPong);
+
+    __aicore__ inline DebugState GetDebugState() const;
 
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
               typename TensorBias, typename TensorC>
@@ -308,6 +326,28 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Init(
     (void)isBias;
     (void)enableL0cPingPong;
     (void)l1Params.l1BufNum;
+}
+
+MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
+__aicore__ inline typename MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::DebugState
+MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::GetDebugState() const
+{
+    uint64_t inputBufferIndex = l1BufferIndex_ & (BUFFER_COUNT - 1U);
+    uint64_t scaleBufferIndex = scaleL1BufferIndex_ & (BUFFER_COUNT - 1U);
+    return DebugState{
+        k_,
+        kL1_,
+        scaleKL1_,
+        baseM_,
+        baseN_,
+        baseK_,
+        l1BufferIndex_,
+        scaleL1BufferIndex_,
+        l0BufferIndex_,
+        l1AOffset_[inputBufferIndex],
+        l1BOffset_[inputBufferIndex],
+        l1ScaleAOffset_[scaleBufferIndex],
+        l1ScaleBOffset_[scaleBufferIndex]};
 }
 
 MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS

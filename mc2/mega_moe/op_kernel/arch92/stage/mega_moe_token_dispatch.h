@@ -123,11 +123,19 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
     int32_t dstIdx, GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor, GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t copyStartIdx, int32_t copyIdx)
+    int32_t copyStartIdx, int32_t copyIdx, bool debugFirstToken)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
+    if (debugFirstToken && dstIdx == 0) {
+        auto dispatchDebugTensor = tokenScaleBuffer.template ReinterpretCast<uint8_t>();
+        set_cond(910001UL);
+        for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+            uint8_t value = dispatchDebugTensor.GetValue(valueIdx);
+            set_cond(static_cast<unsigned long>(value));
+        }
+    }
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
     if constexpr (TopkWeightsPrefetch) {
@@ -156,7 +164,7 @@ template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPref
 __aicore__ inline void CopyTokensAndMetaForDispatch(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, int32_t rowDstOffset, int32_t remoteRankIdx,
-    int32_t copyStartIdx, int32_t copyNum)
+    int32_t copyStartIdx, int32_t copyNum, bool debugFirstToken)
 {
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t bufferCount = bufferConfig.bufferCount;
@@ -192,7 +200,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
                                                                   remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            copyStartIdx, copyIdx, debugFirstToken);
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
@@ -204,12 +212,12 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyBufferIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            copyStartIdx, copyIdx, debugFirstToken);
     }
 
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, scratch, (copyNum - 1) % bufferCount, copyNum - 1, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
+        metaInfoGlobalTensor, copyStartIdx, copyNum - 1, debugFirstToken);
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
@@ -327,7 +335,8 @@ __aicore__ inline void DispatchRankTokens(
                 rankSegmentRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
             CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
                 context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx,
-                batchLocalMatchBegin, batchDispatchRowCount);
+                batchLocalMatchBegin, batchDispatchRowCount,
+                localExpertId == 0U && dispatchDstRowBegin == expertGlobalRowBegin);
             dispatchedRowCount += batchDispatchRowCount;
         }
         matchedRouteCount = batchMatchOrdinalEnd;
