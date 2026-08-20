@@ -912,7 +912,7 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                     uint64_t s1LeftPaddingSize = 0;
                     if (constInfo.isQHasLeftPadding) {
                         s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize -
-                                            qActSeqLensParser.GetActualSeqLength(bIdx);
+                                            qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                     }
                     DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>>(
                         softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
@@ -922,7 +922,7 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(bIdx);
+                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                     uint64_t s1LeftPaddingSize = 0;
                     if (constInfo.isQHasLeftPadding) {
                         s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
