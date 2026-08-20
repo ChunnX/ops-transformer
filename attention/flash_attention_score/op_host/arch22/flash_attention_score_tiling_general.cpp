@@ -159,7 +159,12 @@ enum AttenMaskShapeType : uint8_t {
     ATTEN_1_1_1_T_T = 99,
 };
 
-enum PseShapeType : uint8_t { PSE_B_N2_G_S1_S2 = 0, PSE_B_N2_G_1_S2 = 1, PSE_B_N2_G_SLOPE, PSE_1_N2_G_SLOPE };
+enum PseShapeType : uint8_t {
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE,
+    PSE_1_N2_G_SLOPE
+};
 
 enum SparseMode : uint8_t {
     NO_MASK = 0,
@@ -183,7 +188,11 @@ enum AttenMaskCompressMode : uint8_t {
     BAND_LEFT_UP_CAUSAL_MODE
 };
 
-enum ImplMode : uint8_t { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
+enum ImplMode : uint8_t {
+    AA_HIGH_PRECISION = 0,
+    AA_HIGH_PERFORMANCE = 1,
+    AA_INVALID_LINE_HIGH_PRECISION = 2
+};
 
 enum PseType : uint8_t {
     PSE_OUTER_MUL_ADD_TYPE = 0,
@@ -226,7 +235,10 @@ struct MatmulConstParams {
     DTemplateType dType;
 };
 
-enum MatmulPolicyType : uint8_t { MATMUL_POLICY_NORMAL = 0, MATMUL_POLICY_UNSPLITK = 1 };
+enum MatmulPolicyType : uint8_t {
+    MATMUL_POLICY_NORMAL = 0,
+    MATMUL_POLICY_UNSPLITK = 1
+};
 
 template <typename T>
 static T AlignUp(T num1, T num2)
@@ -279,7 +291,15 @@ static T CalcTailSize(T num1, T num2)
 
 class TilingKey {
 public:
-    TilingKey() : splitS1(0), splitS2(0), splitD(0), dtype(0), layoutType(0), sparseType(0), reserved(0) {}
+    TilingKey()
+        : splitS1(0),
+          splitS2(0),
+          splitD(0),
+          dtype(0),
+          layoutType(0),
+          sparseType(0),
+          reserved(0)
+    {}
 
     void Reset()
     {
@@ -327,7 +347,11 @@ public:
 
 class FlashAttentionScoreTilingBase : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
+    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
     ~FlashAttentionScoreTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -2598,7 +2622,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetWorkspaceSize()
 
 class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1;
         expectTemplate.splitD = 1;
@@ -2932,7 +2957,8 @@ protected:
 
 class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingB(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingB(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         templateName = "FlashAttentionScoreB";
     }
@@ -3203,7 +3229,8 @@ protected:
 
 class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -3249,7 +3276,6 @@ protected:
                               noMask && isNotCausal;
 
         return (isSupportBSND || isSupportBNSD) && isSupportAttrs;
-
     }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
@@ -3838,7 +3864,8 @@ protected:
 
 class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -4606,7 +4633,9 @@ protected:
 
 class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context) {}
+    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
+    {}
     ~FlashAttentionScoreTilingDropMask() override = default;
 
 protected:
