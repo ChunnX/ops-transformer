@@ -86,6 +86,7 @@ def _calculate_metadata_size():
 # 各 layout 期望的 tensor 维度数
 _LAYOUT_EXPECTED_NDIM = {
     "TND": 3,
+    "NTD": 3,
     "BSND": 4,
     "BNSD": 4,
     "PA_NZ": 5,
@@ -135,7 +136,7 @@ def _validate_layout_dims(
     q_expected = _LAYOUT_EXPECTED_NDIM.get(layout_q)
     torch._check(
         q_expected is not None,
-        lambda: f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD",
+        lambda: f"Unsupported layout_q: {layout_q!r}, expected one of TND/NTD/BSND/BNSD",
     )
     torch._check(
         q.dim() == q_expected,
