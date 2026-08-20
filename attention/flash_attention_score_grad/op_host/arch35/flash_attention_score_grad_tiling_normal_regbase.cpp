@@ -655,10 +655,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
            fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
-    // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
+    // TND场景下，仅确定性计算+MHA+BN2GS1S2模板，以及非确定性计算+BN2S2模板支持swizzle优化。
+    // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
     bool templateSupportCond =
         (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && fBaseParams.g == 1) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
          (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
           (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&

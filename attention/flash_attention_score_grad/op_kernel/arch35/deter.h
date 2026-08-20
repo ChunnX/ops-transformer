@@ -1550,6 +1550,7 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
     j -= 1;
     r -= 1;
     coordinateInfo.batchId = -1;
+    int64_t n1 = n2 * g;
     for (int64_t bIdx = 0; bIdx < b; bIdx++) {
         if (r < tndS2BlockPrefixSum[bIdx + 1]) {
             int64_t actualS1Len = 0;
@@ -1565,12 +1566,18 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
             }
             // delta / s1OuterTmp表示在此bIdx下，s2的绝对idx
             int64_t s2IdxTmp = delta / s1OuterTmp * k + j;
-            if (s2IdxTmp >= s2OuterTmp * n2 * g) {
+            if (s2IdxTmp >= s2OuterTmp * n1) {
                 continue;
             }
-            int64_t n1Idx = s2IdxTmp / s2OuterTmp;
-            int64_t s2Idx = s2IdxTmp % s2OuterTmp;
-            int64_t s1Idx = (s2Idx + delta) % s1OuterTmp;
+            int64_t n1Idx = s2IdxTmp % n1;
+            int64_t s2Idx = s2IdxTmp / n1;
+            // 跨batch填充时，delta包含各核独立的修正量，不能用于dQ的对角相位；
+            // 同一batch、同一全局轮次必须使用一致的相位，避免多个核写入同一dQ block。
+            int64_t batchRound = r - static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]);
+            int64_t s1Idx = (s2Idx + batchRound) % s1OuterTmp;
+            if (s1Idx < 0) {
+                s1Idx += s1OuterTmp;
+            }
             coordinateInfo.actualS1Len = actualS1Len;
             coordinateInfo.actualS2Len = actualS2Len;
             coordinateInfo.s1Outer = s1OuterTmp;
