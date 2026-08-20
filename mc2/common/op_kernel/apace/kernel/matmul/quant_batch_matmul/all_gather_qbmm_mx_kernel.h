@@ -26,10 +26,10 @@
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
-#include "apace/basic/fragment_tensor/fragment_tensor.h"
-#include "apace/basic/fragment_tensor/fragment_tensor_api.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "../../../block/mmad/qmm_mx_block_mmad_fragment.h"
+#include "../../../basic/fragment_tensor/fragment_tensor.h"
+#include "../../../basic/fragment_tensor/fragment_tensor_api.h"
+#include "../../../tiling/quant_matmul_tiling_data.h"
 
 namespace AllGatherQuantMatmulImpl {
 
