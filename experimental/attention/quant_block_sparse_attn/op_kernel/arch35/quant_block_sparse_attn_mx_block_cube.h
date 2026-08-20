@@ -108,27 +108,50 @@ public:
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
+        IterateBmm1Impl<true, true>(outputBuf, runInfo, constInfo, subLoop);
+    }
+
+    __aicore__ inline void IterateBmm1ReuseQ(
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf0,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1, MxRunInfo &runInfo,
+        const MxConstInfo &constInfo)
+    {
+        // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
+        IterateBmm1Impl<true, false>(outputBuf0, runInfo, constInfo, 0U);
+        IterateBmm1Impl<false, true>(outputBuf1, runInfo, constInfo, 1U);
+    }
+
+private:
+    template <bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
+    __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                           MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
+    {
         // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
 
         Buffer<BufferType::L1> qBuf;
         const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
-        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
-            // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
-            qBuf = l1QBuffers_.Get();
-            qBuf.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
-            CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
-                                   constInfo.n2GD);
+        if constexpr (LOAD_Q_TO_L0B) {
+            if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
+                // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
+                qBuf = l1QBuffers_.Get();
+                qBuf.Wait<HardEvent::MTE1_MTE2>();
+                LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
+                CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
+                                       constInfo.n2GD);
 
-            LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
-            MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
-                                          constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
-                                          constInfo.qScaleN1D);
-            qBuf.Set<HardEvent::MTE2_MTE1>();
+                LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
+                MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
+                                              constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
+                                              constInfo.qScaleN1D);
+                qBuf.Set<HardEvent::MTE2_MTE1>();
+            } else {
+                qBuf = l1QBuffers_.GetPre();
+                qBuf.Set<HardEvent::MTE2_MTE1>();
+            }
         } else {
+            // Paired subLoop1 reuses both the current L1 Q buffer and its already loaded L0B tile.
             qBuf = l1QBuffers_.GetPre();
-            qBuf.Set<HardEvent::MTE2_MTE1>();
         }
 
         Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
@@ -141,20 +164,32 @@ public:
         kBuf.Set<HardEvent::MTE2_MTE1>();
 
         kBuf.Wait<HardEvent::MTE2_MTE1>();
-        qBuf.Wait<HardEvent::MTE2_MTE1>();
+        if constexpr (LOAD_Q_TO_L0B) {
+            qBuf.Wait<HardEvent::MTE2_MTE1>();
+        }
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
         MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
-        MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
-                     BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
-                                                   mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
-                                                   qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        if constexpr (LOAD_Q_TO_L0B && RELEASE_Q_L0B) {
+            MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
+                         BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
+                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
+                kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        } else {
+            MxMatmulFullReuseB<LOAD_Q_TO_L0B, RELEASE_Q_L0B, INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE,
+                               ABLayout::MK, ABLayout::KN, BuffersPolicyDB<BufferType::L0A>,
+                               BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
+                kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        }
 
-        if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
-            qBuf.Set<HardEvent::MTE1_MTE2>();
+        if constexpr (RELEASE_Q_L0B) {
+            if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
+                qBuf.Set<HardEvent::MTE1_MTE2>();
+            }
         }
         kBuf.Set<HardEvent::MTE1_MTE2>();
         mm1ResL0C.Set<HardEvent::M_FIX>();
@@ -166,6 +201,7 @@ public:
         outputBuf.SetCrossCore();
     }
 
+public:
     __aicore__ inline void IterateBmm2(MxBmm2Buf &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo)
