@@ -27,6 +27,33 @@ def _split_hidden(hidden_states, layout, lengths, first_lengths):
     return first, second
 
 
+def _new_pool_count(start_pos: int, length: int, cmp_ratio: int) -> int:
+    return (start_pos + length) // cmp_ratio - start_pos // cmp_ratio
+
+
+def _assemble_chunk_output(
+    first_output,
+    second_output,
+    start_pos,
+    first_lengths,
+    second_lengths,
+    cmp_ratio,
+):
+    """Restore the full-call pool order from two incremental outputs."""
+    assembled = torch.zeros_like(first_output)
+    for batch, (start, first_len, second_len) in enumerate(
+        zip(start_pos.tolist(), first_lengths, second_lengths)
+    ):
+        first_count = _new_pool_count(start, first_len, cmp_ratio)
+        second_start = start + first_len
+        second_count = _new_pool_count(second_start, second_len, cmp_ratio)
+        assembled[batch, :first_count] = first_output[batch, :first_count]
+        assembled[batch, first_count : first_count + second_count] = second_output[
+            batch, :second_count
+        ]
+    return assembled
+
+
 def _run_case(case_name, first_lengths, norm_on):
     case = CASES[case_name]
     (
@@ -81,7 +108,7 @@ def _run_case(case_name, first_lengths, norm_on):
             dtype=torch.int32,
         )
     )
-    _, first_cache = _run_npu(
+    first_output, first_cache = _run_npu(
         first_hidden,
         wk,
         gate_weight,
@@ -109,7 +136,15 @@ def _run_case(case_name, first_lengths, norm_on):
         norm_bias,
     )
 
-    output_equal = torch.equal(full_output, chunk_output)
+    assembled_chunk_output = _assemble_chunk_output(
+        first_output,
+        chunk_output,
+        start_pos,
+        first_lengths,
+        second_lengths,
+        case.cmp_ratio,
+    )
+    output_equal = torch.equal(full_output, assembled_chunk_output)
     cache_bitwise = torch.equal(full_cache, chunk_cache)
     cache_close = bool(
         torch.isclose(
