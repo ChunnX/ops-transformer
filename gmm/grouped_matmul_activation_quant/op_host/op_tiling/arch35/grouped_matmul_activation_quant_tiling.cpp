@@ -64,6 +64,7 @@ constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP4 = 64;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
+constexpr uint32_t MX_SCALE_GROUP_SIZE = 64;
 constexpr uint32_t MXFP4_PACK_FACTOR = 2;
 constexpr uint64_t MX_EPILOGUE_MAX_TILE_ELEMENTS = 128UL * 256UL;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
@@ -483,12 +484,17 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.baseK = basicTiling_.baseK;
     tilingData_.mmTilingData.kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
     tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
-    uint32_t scaleKL1 = std::min(
-        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) *
-            basicTiling_.baseK,
-        inputParams_.kSize);
-    tilingData_.mmTilingData.scaleKAL1 = scaleKL1;
-    tilingData_.mmTilingData.scaleKBL1 = scaleKL1;
+    const uint64_t scaleKRequested = static_cast<uint64_t>(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb)) *
+        basicTiling_.baseK;
+    // MX scales address K in 64-element groups.  Round both the requested
+    // span and the final K tail to the same unit so A/B scale layout updates
+    // cannot stop in the middle of a scale group.
+    const uint64_t scaleKL1 = std::min(
+        GroupedMatmul::CeilAlign(scaleKRequested, static_cast<uint64_t>(MX_SCALE_GROUP_SIZE)),
+        GroupedMatmul::CeilAlign(inputParams_.kSize, static_cast<uint64_t>(MX_SCALE_GROUP_SIZE)));
+    tilingData_.mmTilingData.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
+    tilingData_.mmTilingData.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
