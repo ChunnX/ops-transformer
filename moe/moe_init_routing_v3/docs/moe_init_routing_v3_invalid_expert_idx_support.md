@@ -113,3 +113,89 @@ GatherCopy 相比 ScatterCopy 的核心收益是**避免同一源行 x 的重复
 | `test_case_invalid_expert_idx_3` | FullLoad Unquantized | `[873,889]`（子集） | COUNT | 0.3 | COUNT 模式 + ExpertTokensCount SIMT 函数 |
 
 golden 计算（`gen_data.py`）已正确处理 -1：将 `expertIdx < expert_start` 的元素设为 `INT32_MAX`，排序后排到末尾，不参与有效输出。
+
+## 7. ST 测试用例设计
+
+### 7.1 测试因子矩阵
+
+| 维度 | 因子 | 取值 |
+|------|------|------|
+| -1 比例 | 无 -1 / 少量 -1 / 大量 -1 / 全 -1 | 0%, 10%, 50%, 100% |
+| quant_mode | 非量化 / 动态量化 / MXFP8 e5m2 / MXFP8 e4m3 | -1, 1, 2, 3 |
+| row_idx_type | gather / scatter | 0, 1 |
+| dtype | bfloat16 / float16 / float32 | bfloat16, float16, float32 |
+| expert_tokens_num_type | cumsum / count / key_value | 0, 1, 2 |
+| expert_num | 小 / 中 / 大 | 8, 16, 28, 30, 43, 48, 256, 1024, 10240 |
+| active_expert_range | 全范围 / 子范围 | [0, expert_num], [start, end] |
+| scale | 有 / 无 | 有, 无 |
+| K 值 | 小 / 中 / 大 | 1, 2, 4, 8, 10, 16, 21, 30, 31, 64 |
+| 全载/非全载 | 非全载 / 全载 | active_num=-1, active_num=n*k |
+| drop_pad_mode | dropless / droppad | 0, 1 |
+| 边界场景 | -1 恰好 < expert_start / 全部在 range 外 | edge |
+
+### 7.2 用例清单
+
+测试用例文件：`tests/assets/moe_init_routing_v3_invalid_expertidx.csv`（31 条用例）
+
+| 用例 | -1 比例 | quant_mode | row_idx_type | dtype | expert_tokens_num_type | expert_num | active_expert_range | 特殊场景 |
+|------|---------|-----------|-------------|-------|----------------------|-----------|--------------------|---------|
+| 01 | 0%（基线） | -1 | scatter | bf16 | count(1) | 256 | 子范围 | 无 -1 基线回归 |
+| 02 | 10% | -1 | scatter | bf16 | count(1) | 256 | 子范围 | 少量 -1 |
+| 03 | 50% | -1 | scatter | bf16 | count(1) | 256 | [0,3] | 大量 -1 |
+| 04 | 100% | -1 | scatter | bf16 | count(1) | 256 | 子范围 | 全 -1 |
+| 05 | 10% | 1 | scatter | bf16 | count(1) | 256 | 子范围 | 动态量化 + -1 |
+| 06 | 50% | 1 | scatter | bf16 | count(1) | 256 | [0,3] | 动态量化 + 大量 -1 |
+| 07 | 10% | 1 | gather | fp16 | count(1) | 256 | 子范围 | gather + -1 |
+| 08 | 50% | 1 | gather | fp16 | count(1) | 256 | [0,3] | gather + 大量 -1 |
+| 09 | 10% | -1 | scatter | bf16 | cumsum(0) | 1024 | 子范围 | cumsum + -1 |
+| 10 | 10% | -1 | scatter | bf16 | key_value(2) | 1024 | 子范围 | key_value + -1 |
+| 11 | 10% | -1 | scatter | fp16 | count(1) | 1024 | 子范围[100,600] | 子范围 + -1 |
+| 12 | 10% | -1 | scatter | fp16 | count(1) | 256 | 全范围[0,256] | 全范围 + -1 |
+| 13 | 10% | 1 | gather | fp32 | count(1) | 256 | 子范围 | fp32 动态量化 + -1 |
+| 14 | 10% | -1 | scatter | bf16 | count(1) | 8 | 全范围 | 小专家数 + -1 |
+| 15 | 10% | -1 | scatter | bf16 | key_value(2) | 10240 | 全范围 | 大专家数 + -1 |
+| 16 | 10% | -1 | scatter | fp16 | count(1) | 256 | [0,100] | -1 恰好 < expert_start |
+| 17 | 0%（全不在range） | -1 | scatter | fp16 | count(1) | 256 | [50,100] | 全部在 range 外 |
+| 18 | 10% | 1 | gather | bf16 | count(1) | 256 | 子范围 | 带 scale + -1 |
+| 19 | 10% | -1 | scatter | bf16 | count(1) | 256 | [0,16] | K=1 + -1 |
+| 20 | 10% | -1 | scatter | fp16 | count(1) | 256 | [0,200] | K=64 大 K + -1 |
+| 21 | 10% | 2(MXFP8 e5m2) | gather | fp16 | count(1) | 28 | 子范围 | MXFP8 e5m2 + -1 |
+| 22 | 10% | 3(MXFP8 e4m3) | scatter | fp16 | count(1) | 30 | 子范围 | MXFP8 e4m3 + -1 |
+| 23 | 10% | 2(MXFP8 e5m2) | scatter | bf16 | count(1) | 43 | 子范围 | bf16 MXFP8 e5m2 + -1 |
+| 24 | 50% | 3(MXFP8 e4m3) | gather | bf16 | count(1) | 48 | [0,3] | MXFP8 e4m3 gather + 大量 -1 |
+| 25 | 10% | -1 | scatter | bf16 | count(1) | 256 | 全范围 | 全载 + -1 |
+| 26 | 10% | 1 | scatter | fp16 | count(1) | 256 | 全范围 | 全载动态量化 + -1 |
+| 27 | 10% | -1 | scatter | bf16 | count(1) | 256 | 子范围 | 全载子范围 + -1 |
+| 28 | 10% | -1 | gather | fp16 | count(1) | 256 | 子范围 | 全载 gather + -1 |
+| 29 | 10% | -1 | gather | fp32 | count(1) | 256 | 全范围 | DropPad + -1 |
+| 30 | 10% | -1 | scatter | fp16 | count(1) | 16 | 全范围 | DropPad scatter + -1 |
+| 31 | 10% | -1 | gather | bf16 | key_value(2) | 32 | 全范围 | DropPad key_value + -1 |
+
+### 7.3 -1 生成方式
+
+通过 CSV 的 `input_data_ranges` 控制 expertIdx 的取值范围：
+
+- **无 -1**：范围设为 `(expert_start, expert_end-1)`，如 `(82, 211)`
+- **少量 -1**：范围设为 `(-1, expert_end-1)`，-1 出现概率约 `1/(expert_end)`（如 256 个值中 1 个 -1，约 0.4%）
+- **大量 -1**：范围设为 `(-1, 2)`，4 个值中 -1 占 25%，大幅提高 -1 比例
+- **全 -1**：范围设为 `(-1, -1)`，确保全部生成 -1
+- **全部在 range 外**：范围设为 `(expert_end, expert_num-1)`，如 `(200, 255)`
+
+### 7.4 执行命令
+
+```bash
+# kernel 模式
+python3 -m ttk kernel \
+  -i moe/moe_init_routing_v3/tests/assets/moe_init_routing_v3_invalid_expertidx.csv \
+  --plugin moe/moe_init_routing_v3/tests/assets
+
+# GEIR 模式
+python3 -m ttk geir \
+  -i moe/moe_init_routing_v3/tests/assets/moe_init_routing_v3_invalid_expertidx.csv \
+  --plugin moe/moe_init_routing_v3/tests/assets
+
+# ACLNN 模式（需先转换为 ACLNN CSV 格式）
+python3 -m ttk aclnn \
+  -i moe/moe_init_routing_v3/tests/assets/moe_init_routing_v3_invalid_expertidx_aclnn.csv \
+  --plugin moe/moe_init_routing_v3/tests/assets
+```
