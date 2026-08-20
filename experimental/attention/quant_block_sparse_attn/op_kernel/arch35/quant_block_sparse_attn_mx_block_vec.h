@@ -59,7 +59,6 @@ public:
                   "MX vector currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
-    static constexpr uint32_t DB = 2U;
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
     static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
@@ -75,6 +74,7 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
+    static constexpr uint32_t EMPTY_OUT_UB_SIZE = VEC_M_BASE * DV_BASE * sizeof(OUTPUT_T);
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size)
@@ -103,6 +103,11 @@ public:
         if ASCEND_IS_AIV {
             // V2 累计输出：[VEC_M_BASE,dTemplateAlign64] fp32。
             tPipe_->InitBuffer(stage2OutBuf_, VEC_M_BASE * dTemplateAlign64 * sizeof(MM_T));
+            // 空 Q block 只写本 block 对应的行，避免启动时全量清零输出 GM。
+            tPipe_->InitBuffer(emptyOutBuf_, EMPTY_OUT_UB_SIZE);
+            if constexpr (HAS_LSE) {
+                tPipe_->InitBuffer(emptyLseBuf_, SOFTMAX_STATE_UB_SIZE);
+            }
             // V1 DN packed P 使用双队列。
             tPipe_->InitBuffer(stage1OutQue_[0], 1, STAGE1_OUT_UB_SIZE);
             tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
@@ -149,24 +154,59 @@ public:
             mte3ToVId_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             vToMte3Id_[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
             SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+
+            LocalTensor<OUTPUT_T> emptyOut = emptyOutBuf_.template Get<OUTPUT_T>();
+            Duplicate<OUTPUT_T>(emptyOut, 0.0F, VEC_M_BASE * DV_BASE);
+            if constexpr (HAS_LSE) {
+                LocalTensor<float> emptyLse = emptyLseBuf_.template Get<float>();
+                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, VEC_M_BASE);
+            }
+            SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         }
     }
 
-    __aicore__ inline void ClearOutput(const optiling::QuantBlockSparseAttnMxEmptyTensorParams &emptyTensorParams,
-                                       const MxConstInfo &constInfo)
+    __aicore__ inline void ClearEmptyQBlock(uint32_t n1Idx, uint32_t queryTokenBase, uint32_t actualS1Size,
+                                           uint32_t s1OuterIdx, const MxConstInfo &constInfo)
     {
         if ASCEND_IS_AIV {
-            // sparseSeqLen=0 的 Q block 不进入主循环，需预置输出，避免留下未写 GM。
-            const uint64_t aivCoreNum = static_cast<uint64_t>(constInfo.coreNum) * GetSubBlockNum();
-            InitOutputSingleCore(attentionOutGm_, emptyTensorParams.totalOutputSize, aivCoreNum, constInfo.aivIdx,
-                                 0.0F);
-            if constexpr (HAS_LSE) {
-                InitOutputSingleCore(softmaxLseGm_, emptyTensorParams.totalSoftMaxLseOutputSize, aivCoreNum,
-                                     constInfo.aivIdx, QBSA_EMPTY_LSE_VALUE);
+            const uint32_t s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
+            uint32_t actMSize = constInfo.qSparseBlockSize;
+            if (unlikely(s1Idx + actMSize > actualS1Size)) {
+                actMSize = actualS1Size - s1Idx;
             }
-            WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-            SyncAll();
-            SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+            const uint32_t actMSizeAlign32 = (actMSize + 31U) >> 5U << 5U;
+            uint32_t actVecMSize = actMSize <= 16U ? actMSize : (actMSizeAlign32 >> 1U);
+            uint32_t vecMbaseIdx = 0U;
+            if (constInfo.subBlockIdx == 1U) {
+                vecMbaseIdx = actVecMSize;
+                actVecMSize = actMSize - actVecMSize;
+            }
+            if (unlikely(actVecMSize == 0U)) {
+                return;
+            }
+
+            DataCopyExtParams outCopyParams;
+            outCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
+            outCopyParams.blockCount = actVecMSize;
+            outCopyParams.srcStride = 0U;
+            outCopyParams.dstStride = constInfo.attentionOutStride;
+            const uint64_t outOffset =
+                ((queryTokenBase + s1Idx + vecMbaseIdx) * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
+            LocalTensor<OUTPUT_T> emptyOut = emptyOutBuf_.template Get<OUTPUT_T>();
+            DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
+
+            if constexpr (HAS_LSE) {
+                DataCopyExtParams lseCopyParams;
+                lseCopyParams.blockLen = sizeof(float);
+                lseCopyParams.blockCount = actVecMSize;
+                lseCopyParams.srcStride = 0U;
+                lseCopyParams.dstStride = constInfo.softmaxLseStride;
+                const uint64_t lseOffset =
+                    (queryTokenBase + s1Idx + vecMbaseIdx) * constInfo.realN2Size + n1Idx;
+                LocalTensor<float> emptyLse = emptyLseBuf_.template Get<float>();
+                DataCopyPad(softmaxLseGm_[lseOffset], emptyLse, lseCopyParams);
+            }
         }
     }
 
@@ -189,7 +229,7 @@ public:
 
         const uint32_t softmaxBufIdx = runInfo.mLoop % SOFTMAX_BUFFER_NUM;
         const uint32_t expBufIdx = runInfo.loop % SOFTMAX_BUFFER_NUM;
-        const uint32_t stage1Offset = (runInfo.loop * 2U + SUB_LOOP) % DB;
+        constexpr uint32_t stage1Offset = SUB_LOOP;
         LocalTensor<float> sumUb = softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> preLoopMaxUb = preLoopMaxBuf_.template Get<float>()[0];
@@ -296,24 +336,6 @@ public:
     }
 
 private:
-    template <typename T>
-    __aicore__ inline void InitOutputSingleCore(GlobalTensor<T> &outputGm, uint64_t totalSize, uint64_t aivCoreNum,
-                                                uint32_t aivIdx, float initValue)
-    {
-        const uint64_t singleCoreSize = (totalSize + aivCoreNum - 1U) / aivCoreNum;
-        const uint64_t coreOffset = static_cast<uint64_t>(aivIdx) * singleCoreSize;
-        const uint64_t singleInitSize =
-            coreOffset < totalSize ?
-                (totalSize - coreOffset < singleCoreSize ? totalSize - coreOffset : singleCoreSize) :
-                0U;
-        if (singleInitSize == 0U) {
-            return;
-        }
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-        InitOutput<T>(outputGm[coreOffset], singleInitSize, initValue);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-    }
-
     __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
     {
         // E8M0 code 0 is 2^-127 (an FP32 subnormal), not FP32 zero.
@@ -484,15 +506,15 @@ private:
         const uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if constexpr (SUB_LOOP == 1U) {
             // subLoop1 写 P 的后 256 列：4 个 column group，每组起点相隔 32 个 E8M0 元素。
-            for (uint16_t i = 0U; i < 4U; ++i) {
-                DataCopy(pScaleL1Tensor[vecOffset + (i << 5U)], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
-            }
+            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
+            DataCopy(pScaleL1Tensor[vecOffset + 32U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
+            DataCopy(pScaleL1Tensor[vecOffset + 64U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
+            DataCopy(pScaleL1Tensor[vecOffset + 96U], pScaleSubLoopTensor, {4, 1, 0, pScaleDstStride});
         } else if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
             // 只有一个 256-token subLoop 时，需要把 PScale 同步填到完整 512-token tile 的两个半区。
             // 每半区跨度为 256 个 E8M0 元素，即 8 个 32B 块。
-            for (uint16_t i = 0U; i < 2U; ++i) {
-                DataCopy(pScaleL1Tensor[vecOffset + (i << 8U)], pScaleSubLoopTensor, {1, 8, 0, 0});
-            }
+            DataCopy(pScaleL1Tensor[vecOffset], pScaleSubLoopTensor, {1, 8, 0, 0});
+            DataCopy(pScaleL1Tensor[vecOffset + 256U], pScaleSubLoopTensor, {1, 8, 0, 0});
         }
     }
 
@@ -504,18 +526,14 @@ private:
         // 两个 AIV、两个 subLoop 分别写入 P 的对应象限。
         LocalTensor<INPUT_T> pL1Tensor = outputBuf.GetTensor<INPUT_T>();
         constexpr uint64_t subLoopOffset = static_cast<uint64_t>(S2_SPLIT) * M_BASE * SUB_LOOP;
-        constexpr uint16_t elementSize = 32U;
-        constexpr uint32_t singleProcessSOuterSize = M_BASE >> 1U;
-        constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1U) / elementSize;
-        constexpr uint32_t actVec0Align32 = M_BASE >> 1U;
-        for (uint32_t i = 0U; i < actCopyCount; ++i) {
-            uint64_t dstOffset = static_cast<uint64_t>(32U) * S2_SPLIT * i + subLoopOffset;
-            if (constInfo.subBlockIdx == 1U) {
-                dstOffset += S2_SPLIT * actVec0Align32;
-            }
-            uint64_t srcOffset = static_cast<uint64_t>(i) * (65U << 5);
-            DataCopy(pL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
-        }
+        constexpr uint64_t vecBlockOffset = static_cast<uint64_t>(S2_SPLIT) * VEC_M_BASE;
+        constexpr uint64_t secondCopyDstOffset = static_cast<uint64_t>(32U) * S2_SPLIT;
+        constexpr uint64_t secondCopySrcOffset = 65U << 5U;
+        const uint64_t dstBase = subLoopOffset + constInfo.subBlockIdx * vecBlockOffset;
+        DataCopy(pL1Tensor[dstBase], stage1CastTensor,
+                 {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
+        DataCopy(pL1Tensor[dstBase + secondCopyDstOffset], stage1CastTensor[secondCopySrcOffset],
+                 {4, S2_SPLIT >> 2, (S2_SPLIT >> 2) + 2U, 0});
     }
 
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
@@ -549,9 +567,6 @@ private:
     __aicore__ inline void SoftmaxLseCopyOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        if (unlikely(runInfo.actVecMSize == 0U)) {
-            return;
-        }
         LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();
         ComputeLseOutputVF(lseUb, sumUb, maxUb, runInfo.actVecMSize);
         softmaxLseQueue_.template EnQue(lseUb);
@@ -577,6 +592,8 @@ private:
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TBuf<> stage2OutBuf_;
+    TBuf<> emptyOutBuf_;
+    TBuf<> emptyLseBuf_;
     TBuf<> softmaxMaxBuf_[SOFTMAX_BUFFER_NUM];
     TBuf<> softmaxSumBuf_[SOFTMAX_BUFFER_NUM];
     TBuf<> softmaxExpBuf_[SOFTMAX_BUFFER_NUM];

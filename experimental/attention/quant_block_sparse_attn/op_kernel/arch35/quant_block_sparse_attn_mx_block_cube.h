@@ -106,9 +106,9 @@ public:
     }
 
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
+                                       MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        IterateBmm1Impl<true, true>(outputBuf, runInfo, constInfo, subLoop);
+        IterateBmm1Impl<0U, true, true>(outputBuf, runInfo, constInfo);
     }
 
     __aicore__ inline void IterateBmm1ReuseQ(
@@ -117,22 +117,23 @@ public:
         const MxConstInfo &constInfo)
     {
         // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
-        IterateBmm1Impl<true, false>(outputBuf0, runInfo, constInfo, 0U);
-        IterateBmm1Impl<false, true>(outputBuf1, runInfo, constInfo, 1U);
+        IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
+        IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
     }
 
 private:
-    template <bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
+    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
     __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
+                                           MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
+        static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
         // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
-        const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
+        const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
 
         Buffer<BufferType::L1> qBuf;
         const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
         if constexpr (LOAD_Q_TO_L0B) {
-            if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
+            if (unlikely(runInfo.isFirstS2Loop)) {
                 // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
                 qBuf = l1QBuffers_.Get();
                 qBuf.Wait<HardEvent::MTE1_MTE2>();
@@ -147,7 +148,6 @@ private:
                 qBuf.Set<HardEvent::MTE2_MTE1>();
             } else {
                 qBuf = l1QBuffers_.GetPre();
-                qBuf.Set<HardEvent::MTE2_MTE1>();
             }
         } else {
             // Paired subLoop1 reuses both the current L1 Q buffer and its already loaded L0B tile.
@@ -160,12 +160,14 @@ private:
         const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
         LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
         // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
-        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, subLoop);
+        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, SUB_LOOP);
         kBuf.Set<HardEvent::MTE2_MTE1>();
 
         kBuf.Wait<HardEvent::MTE2_MTE1>();
         if constexpr (LOAD_Q_TO_L0B) {
-            qBuf.Wait<HardEvent::MTE2_MTE1>();
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                qBuf.Wait<HardEvent::MTE2_MTE1>();
+            }
         }
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
@@ -187,7 +189,7 @@ private:
         }
 
         if constexpr (RELEASE_Q_L0B) {
-            if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
+            if (unlikely(runInfo.isLastS2Loop)) {
                 qBuf.Set<HardEvent::MTE1_MTE2>();
             }
         }
@@ -265,17 +267,20 @@ private:
 
     __aicore__ inline uint32_t AlignUp64(uint32_t value) const { return (value + 63U) >> 6 << 6; }
 
-    __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo, uint32_t subLoop) const
+    template <uint32_t SUB_LOOP>
+    __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo) const
     {
+        static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
         if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
-            return subLoop == 0U ? runInfo.actSingleLoopS2Size : 0U;
+            if constexpr (SUB_LOOP == 0U) {
+                return runInfo.actSingleLoopS2Size;
+            }
+            return 0U;
         }
-        return subLoop == 0U ? S2_SPLIT : runInfo.actSingleLoopS2Size - S2_SPLIT;
-    }
-
-    __aicore__ inline bool IsLastSubLoop(const MxRunInfo &runInfo, uint32_t subLoop) const
-    {
-        return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
+        if constexpr (SUB_LOOP == 0U) {
+            return S2_SPLIT;
+        }
+        return runInfo.actSingleLoopS2Size - S2_SPLIT;
     }
 
     __aicore__ inline uint32_t GetBlockOverlapStart(uint32_t tileStart, uint32_t blockStart) const
