@@ -103,8 +103,8 @@ protected:
     TBuf<> mm1ResBuf[2];
     TBuf<> mm2ResBuf[2];
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
+    BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
+    BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
  
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
@@ -280,8 +280,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
     if (constInfo.isHeadNLe64) {
-        dSL1Buf.Init(l1BufferManager, SFAG_L1_DS_P_EACH);
-        pL1Buf.Init(l1BufferManager, SFAG_L1_DS_P_EACH);
+        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+        pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
     } else {
         dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
         pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
