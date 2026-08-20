@@ -43,9 +43,11 @@ struct alignas(8) AllGatherMxMatmulUdmaTilingData {
 #pragma pack(pop)
 
 // Hcomm/CCU 路径 tiling 结构体（apace 自有，不依赖外部算子 tiling）
+namespace Apace {
 struct hcommAllGatherMatmulTilingData {
     Mc2InitTiling mc2InitTiling;       // HCCL 初始化参数
     Mc2CcTiling mc2CcTiling;           // HCCL CC task 配置
     CommTilingData commTile;           // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
     QuantMatmulTilingData mmTile;      // Matmul tiling 参数
 };
+} // namespace Apace
