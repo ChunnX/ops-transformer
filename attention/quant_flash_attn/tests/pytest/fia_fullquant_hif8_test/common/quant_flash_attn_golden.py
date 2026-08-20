@@ -1206,4 +1206,10 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _get_seqused_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
-        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        fill_tnd_padding(
+            cpu_lse_tnd_torch, _get_seqused_q(), CU_SEQLENS_Q, fill_value=float("inf")
+        )
+        # NPU LSE 输出为 N-major 排布 (N, T): N 在外, T 在内
+        # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+        cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
+        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)
