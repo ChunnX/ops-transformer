@@ -106,7 +106,7 @@ private:
                                            GMMAddrInfo &gmm2AddrInfo, Gmm2RuntimeState &runtimeState);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-                                                 const CombineBufferConfig &bufferConfig);
+                                                 const CombineBufferConfig &bufferConfig, bool useAllAivCores);
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void CrossRankSyncInWorldSize();
 
@@ -834,15 +834,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineExperts(
     uint32_t expertBegin, uint32_t expertEnd, ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-    const CombineBufferConfig &bufferConfig)
+    const CombineBufferConfig &bufferConfig, bool useAllAivCores)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
+    if (!useAllAivCores && GetSubBlockIdx() != 1U) {
         return;
     }
 
+    CombineBufferConfig activeBufferConfig = bufferConfig;
+    if (useAllAivCores) {
+        activeBufferConfig =
+            PrepareFinalWaveCombineBuffers<CombineQuantMode>(waveCombineConfig_, bufferConfig, waveCombineScratch_);
+    }
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
         if (!UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, combineState, expertIdx, true,
@@ -850,10 +855,17 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
             continue;
         }
         UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, combineAddrInfo, combineState);
-        RunWaveExpertCombineStage<CombineQuantMode>(waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
-                                                    combineAddrInfo, combineState, combineState.expertIdx, rowSequence);
+        if (useAllAivCores) {
+            RunWaveExpertCombineStage<CombineQuantMode, true>(waveCombineConfig_, activeBufferConfig,
+                                                              waveCombineScratch_, params_, combineAddrInfo,
+                                                              combineState, combineState.expertIdx, rowSequence);
+        } else {
+            RunWaveExpertCombineStage<CombineQuantMode>(waveCombineConfig_, activeBufferConfig, waveCombineScratch_,
+                                                        params_, combineAddrInfo, combineState, combineState.expertIdx,
+                                                        rowSequence);
+        }
     }
-    DrainWaveCombineRowRing(rowSequence, bufferConfig.rowBufferCount);
+    DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -914,8 +926,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
         }
 
         uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
+        // 最后一轮之后不再有 GMM1/SwiGLU 使用 AIV0 的 UB，可安全把尾部 Combine 扩展到全部 AIV。
+        bool useAllAivCores = !hasNextWave;
         ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState, combineAddrInfo,
-                              combineBufferConfig);
+                              combineBufferConfig, useAllAivCores);
         combineBeginExpertIndex = combineEndExpertIndex;
         waveBeginPosition = waveEndPosition;
     }
