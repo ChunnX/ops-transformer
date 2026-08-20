@@ -17,6 +17,7 @@
 #include "checkers/checker_adapter.h"
 #include "checkers/sparse_flash_mla_checker.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
+#include "register/op_def_registry.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -376,7 +377,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
 
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
+        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>npuArch_);
         return ge::GRAPH_FAILED;
     }
     batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
@@ -510,7 +511,7 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
+ge::graphStatus SMLAInfoParser::GetSMLATemplateMode()
 {
     if (opParamInfo_.oriKv.desc != nullptr) {
         if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr) {
@@ -1137,7 +1138,7 @@ ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
     }
 
     if (ge::GRAPH_SUCCESS != GetInOutDataType() || ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||
-        ge::GRAPH_SUCCESS != GetKvLayout() || ge::GRAPH_SUCCESS != GetSMLATemplateMode(smlaInfo)) {
+        ge::GRAPH_SUCCESS != GetKvLayout() || ge::GRAPH_SUCCESS != GetSMLATemplateMode()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -2244,7 +2245,7 @@ ge::graphStatus SMLATilingCheck::Process()
     return ge::GRAPH_SUCCESS;
 }
 
-void SparseFlashMlaTiling::CalcUbBmm(SMLATilingInfo *tilingInfo)
+void SparseFlashMlaTiling::CalcUbBmm(const SMLATilingInfo *tilingInfo)
 {
     uint32_t cubeMSize = tilingInfo->gSize * tilingInfo->s1Size;
     uint32_t maxMSize = mBaseSize_;
@@ -2317,11 +2318,13 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
-    uint32_t oriBlocksizeFlag = static_cast<uint32_t>((tilingInfo->oriBlockSize & (tilingInfo->oriBlockSize - 1)) == 0);
-    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>((tilingInfo->cmpBlockSize & (tilingInfo->cmpBlockSize - 1)) == 0);
+    uint32_t oriBlocksizeFlag = static_cast<uint32_t>(tilingInfo->oriBlockSize &
+        static_cast<uint32_t>(tilingInfo->oriBlockSize - 1)) == 0;
+    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>(tilingInfo->cmpBlockSize &
+        static_cast<uint32_t>(tilingInfo->cmpBlockSize - 1)) == 0;
     uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                          oriBlocksizeFlag :
-                                         (oriBlocksizeFlag && cmpBlocksizeFlag)) :
+                                         (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0)) :
                                     1U;
     uint64_t paExtraUb = std::max(static_cast<uint64_t>(tilingInfo->oriMaxBlockNumPerBatch) * sizeof(int32_t),
                                   static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t));
@@ -2333,7 +2336,7 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     vectorizeFlag = static_cast<uint32_t>((tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                                            tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                                            tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                          (vectorizeUbSize <= UB_SIZE) && blocksizeFlag);
+                                          (vectorizeUbSize <= UB_SIZE) && (blocksizeFlag != 0));
 
     if (vectorizeFlag == 0U) {
         return 0ULL;
