@@ -66,7 +66,7 @@ static constexpr int64_t Y_SEPARATED = 1L;   // x split
 static constexpr int64_t X_SEPARATED = 2L;   // y split
 static constexpr int64_t NO_SEPARATED = 3L;  // x,y split
 static constexpr int64_t MAX_GROUP_LIST_SIZE_ARRAY = 128L;
-static constexpr int64_t MAX_GROUP_LIST_SIZE_TENSOR = 1024L;
+static constexpr int64_t MAX_GROUP_LIST_SIZE_TENSOR = 25600L;
 static constexpr int64_t MAX_INNER_AXIS = 65535L;
 
 static constexpr size_t SEPARATED_WEIGHT_DIM = 2UL;
