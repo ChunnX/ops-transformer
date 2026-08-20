@@ -538,7 +538,7 @@ ge::graphStatus QuantCompressorTiling::CheckDimNumSupport(const gert::StorageSha
                     }
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, name,
                         std::to_string(shape->GetStorageShape().GetDimNum()),
-                        "dimension should be " + oss.str());
+                        name + " dimension should be " + oss.str());
                 }(),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -557,7 +557,7 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaX() const
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_NAME,
                     "dim " + std::to_string(context_->x.shape->GetStorageShape().GetDimNum() - 1) + "=" +
                     std::to_string(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1)),
-                    "x hiddenSize should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
+                    "x should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
                     std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -569,8 +569,9 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaWkv() const
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    uint32_t headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coff;
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&headDim, HEAD_DIM, "headDim")) {
+    uint32_t coffVal = static_cast<uint32_t>(static_cast<uint8_t>(*context_->coff));
+    uint32_t headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coffVal;
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&headDim, HEAD_DIM, WKV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -595,7 +596,7 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaStateCache() const
     OP_CHECK_IF(blockSize > MAX_BLOCK_SIZE || blockSize < MIN_BLOCK_SIZE,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
                     "dim 1=" + std::to_string(blockSize),
-                    "state_cache blockSize should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
+                    "state_cache dim 1 should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
                     std::to_string(MAX_BLOCK_SIZE) + "]"),
                 return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
@@ -607,7 +608,7 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaStateCache() const
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
                         "dim 0=" + std::to_string(blockNum),
                         "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
-                        ", state_cache blockNum should not be less than batchSize(" +
+                        ", state_cache dim 0 should not be less than batchSize(" +
                         std::to_string(batchSize) + ")"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
@@ -823,46 +824,46 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
         static_cast<uint8_t>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)) {
         OP_CHECK_IF(context_->xDescale.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "x_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->xDescale.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "x_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wkvDescale.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "wkv_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wkvDescale.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "wkv_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wgateDescale.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "wgate_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wgateDescale.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate_descale",
-                        "in quant_mode = 1, should not be nullptr"),
+                        "wgate_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
     }
     if (context_->layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in TH layout, should not be nullptr"),
+                        "cu_seqlens should not be nullptr in TH layout"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in TH layout, should not be nullptr"),
+                        "cu_seqlens should not be nullptr in TH layout"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in BSH layout, must be nullptr"),
+                        "cu_seqlens must be nullptr in BSH layout"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in BSH layout, must be nullptr"),
+                        "cu_seqlens must be nullptr in BSH layout"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -921,10 +922,10 @@ ge::graphStatus QuantCompressorTiling::CheckShapeConsistency() const
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgateDescale", context_->wgateDescale.shape,
                                                       COMPRESSOR_DIM_INDEX_0, "coff*headDim",
                                                       static_cast<uint32_t>(coffD)) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_1, "hiddenSize",
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_1, "x",
                                                       baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_1,
-                                                      "hiddenSize", baseParams_->hiddenSize) ||
+                                                      "x", baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_0,
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_0,

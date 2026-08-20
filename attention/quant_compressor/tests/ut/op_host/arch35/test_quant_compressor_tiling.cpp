@@ -940,6 +940,9 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_wkv_wrong_dimnum)
         &compileInfo, "Ascend950");
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
+
+// quantMode=1 but xDescale absent -> EZ0037 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON
+TEST_F(QuantCompressorTiling, quant_compressor_tiling_quant_mode1_without_xdescale)
 {
     QuantCompressorUtCompileInfo compileInfo{};
     gert::TilingContextPara tilingContextPara(
