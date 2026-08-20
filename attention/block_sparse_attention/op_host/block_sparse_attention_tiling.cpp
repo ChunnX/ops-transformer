@@ -732,6 +732,12 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
                 blockShapeX_);
         return ge::GRAPH_FAILED;
     }
+    // V3 新增:mxfp4 要求 blockShapeY 为 64 的倍数
+    if (IsMxfp4Quant(quantMode_) && blockShapeY_ % 64 != 0) {
+        OP_LOGE(bsaContext->GetNodeName(), "mxfp4 requires blockShapeY to be multiple of 64, but got %u.",
+                blockShapeY_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
