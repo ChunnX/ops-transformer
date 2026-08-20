@@ -80,9 +80,23 @@ __aicore__ inline void KernelScanTokenInfo::Init(GM_ADDR schedule_context, GM_AD
     rsvdCntGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace), SCAN_BATCHID_GM_OFFSET);
     if (GetBlockIdx() == 0) {
         InitGlobalMemory(rsvdCntGm, SCAN_BATCHID_GM_OFFSET, 0);
+
+        GM_ADDR groupListTmpAddr = workspace + (OFFSET_SORTED_EXPERT_IDS +
+            scheduleContextInfo->sortNumWorkSpace * (NUM_TWO * NUM_FOUR + 1)) * sizeof(int32_t);
+        GlobalTensor<int32_t> groupListTmpGm;
+        groupListTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(groupListTmpAddr),
+                                       scheduleContextInfo->expertNum);
+        InitGlobalMemory(groupListTmpGm, scheduleContextInfo->expertNum, 0);
+
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        // core0 清零 rsvdCnt(workspace[0]) 后必须 flush 到 GM 全局可见，再经 SyncAll 放行其他核：
+        // 否则清零可能滞留 core0 cache，其他核 atomic-add 读到未清零的复用脏值(workspace 长跑复用
+        // 脏页)→ 累加到脏基 → actual_token_num 偶发变负/减半(高频非确定)。单核路径(ffn_wb_sort_one_core.h)
+        // 写 rsvdCnt 后同样用 DataCacheCleanAndInvalid 刷，多核清零此前漏了这步。
+        DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_ALL>(
+            rsvdCntGm);
     }
-    // SyncAll(); -- 为sort清理的gm,后面天然有 SyncAll,此处不需要
+    // 为sort清理的gm,后面天然有 SyncAll,此处不需要
 
     tokenInfoGm.SetGlobalBuffer((__gm__ int32_t *)token_info_gm_addr, A * M * F);
     pollIdxGm.SetGlobalBuffer((__gm__ uint64_t *)schedule_context);
