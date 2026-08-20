@@ -690,6 +690,7 @@ public:
         }
         TORCH_CHECK(index < netLinkNum, "No matching communication protocol found in HCCL links, protocol is ",
                     static_cast<int>(protocol));
+        ASCEND_LOGI("Get HCCL Communication link Success, protocol is: %u", protocol);
     }
 
     TopoType GetTopoType() const
