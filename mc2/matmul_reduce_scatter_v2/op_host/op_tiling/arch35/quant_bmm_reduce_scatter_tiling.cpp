@@ -25,6 +25,7 @@
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
+#include "securec.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -43,6 +44,7 @@ constexpr uint64_t MXFP8_SIZE_M = 1;
 constexpr uint64_t MXFP8_SIZE_N = 1;
 constexpr uint64_t MX_SCALE_OFFSET = 64;
 constexpr uint64_t EVEN_ALIGN = 2;
+constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
 constexpr uint64_t PERTENSOR_SCALE_DIM = 1;
 constexpr uint64_t PERBLOCK_SCALE_DIM = 2;
 constexpr uint64_t MX_SCALE_DIM = 3;
@@ -504,6 +506,18 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
+    const bool isApaceMxDtype = mc2tiling::CheckDataTypeVaild(args_.geAType, MXDTYPE_SUPPORT_LIST) &&
+                                mc2tiling::CheckDataTypeVaild(args_.geBType, MXDTYPE_SUPPORT_LIST);
+    usingApaceImpl_ = quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE && isApaceMxDtype &&
+                      !args_.isATrans && npuArch_ == NpuArch::DAV_3510 &&
+                      args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
+    if (usingApaceImpl_) {
+        usingApaceImpl_ = mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    }
+    if (usingApaceImpl_) {
+        // APACE path uses pure AIC Hcomm ReduceScatter instead of the AIV All2All + Vector Reduce path.
+        isA2APath_ = false;
+    }
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
                     return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
@@ -514,7 +528,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
         MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingDataA5()));
     }
     MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
-    MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+    if (usingApaceImpl_) {
+        MC2_CHECK_LOG_RET(opName_, DoApaceMxTiling());
+        myWorkSpaceSize_ = libApiWorkSpaceSize_;
+    } else {
+        MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+    }
     if ((GetQuantMode() == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (MutableRCSTilingDataA5().tileCnt == 0) &&
         (MutableRCSTilingDataA5().tailCnt == 0)) {
         MutableRCSTilingDataA5().tileCnt = 1;
@@ -527,9 +546,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 
 uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 {
-    bool enableNd2Nz = false;              // quantbatchmatmul输入数据格式为ND
-    bool isCastBias = false;               // david上支持bias数据类型为bf16
-    uint8_t commAlgorithm = args_.commAlg; // fullmesh
     uint8_t outputType = 0;
     uint32_t yDType = static_cast<uint32_t>(*context_->GetAttrs()->GetAttrPointer<uint64_t>(YDTYPE_INDEX));
     if (yDType == DTYPE_ENUM_FLOAT) {
@@ -558,9 +574,10 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
-                                            scaleType, commAlg, commMode_);
+                                            scaleType, commAlg, commMode_, usingApaceImpl_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
-    OP_LOGD(opName_, "inputType, outputType, scaleType is: [%u, %u, %u]", inputType, outputType, scaleType);
+    OP_LOGD(opName_, "inputType, outputType, scaleType, usingApaceImpl is: [%u, %u, %u, %d]", inputType, outputType,
+            scaleType, usingApaceImpl_);
     return tilingKey;
 }
 
@@ -637,15 +654,32 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
-    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
-            sizeof(QuantBatchMatmulV3ReduceScatterTilingData), rawTilingDataPtr->GetCapacity());
-    rawTilingDataPtr->SetDataSize(sizeof(QuantBatchMatmulV3ReduceScatterTilingData));
+    const size_t tilingDataSize = usingApaceImpl_ ? sizeof(hcommMatmulReduceScatterV2TilingData) :
+                                                   sizeof(QuantBatchMatmulV3ReduceScatterTilingData);
+    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
+            rawTilingDataPtr->GetCapacity());
 
     OP_TILING_CHECK(
-        sizeof(QuantBatchMatmulV3ReduceScatterTilingData) % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", sizeof(QuantBatchMatmulV3ReduceScatterTilingData)),
+        tilingDataSize % sizeof(uint64_t) != 0,
+        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
-    if (MutableRCSTilingDataA5().rankID == 0) {
+    if (usingApaceImpl_) {
+        OP_TILING_CHECK(rawTilingDataPtr->GetCapacity() < sizeof(apaceTilingData_),
+                        OP_LOGE(opName_, "tiling buffer capacity[%zu] is smaller than APACE tiling size[%zu]",
+                                rawTilingDataPtr->GetCapacity(), sizeof(apaceTilingData_)),
+                        return ge::GRAPH_FAILED);
+        apaceTilingData_.mc2InitTiling = quantBmmMatmulReducescatterTilingData_->mc2InitTiling;
+        apaceTilingData_.mc2CcTiling = quantBmmMatmulReducescatterTilingData_->mc2CcTiling;
+        auto outTilingData = context_->GetTilingData<hcommMatmulReduceScatterV2TilingData>();
+        OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "failed to get APACE tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, rawTilingDataPtr->GetCapacity(), &apaceTilingData_,
+                               sizeof(apaceTilingData_));
+        OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "copy APACE tiling data failed, ret=%d", ret),
+                        return ge::GRAPH_FAILED);
+    }
+    rawTilingDataPtr->SetDataSize(tilingDataSize);
+    if (!usingApaceImpl_ && MutableRCSTilingDataA5().rankID == 0) {
         PrintRCSTilingData(context_->GetNodeName(), MutableRCSTilingDataA5());
         PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTileTilingData());
         PrintTCubeTilingParams(context_->GetNodeName(), MutableTCubeTilingParam());
@@ -659,7 +693,15 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
             PrintTCubeTilingL2cache(context_->GetNodeName(), MutableTailTCubeTilingL2cache());
         }
     }
-    uint32_t usedCoreNum = std::max(MutableTCubeTileTilingData().usedCoreNum, MutableTCubeTailTilingData().usedCoreNum);
+    uint32_t usedCoreNum = 0;
+    if (usingApaceImpl_) {
+        usedCoreNum = apaceTilingData_.headQbmmTilingData.usedCoreNum;
+        if (apaceTilingData_.commTilingData.splitAxisTailCnt > 0) {
+            usedCoreNum = std::max(usedCoreNum, apaceTilingData_.tailQbmmTilingData.usedCoreNum);
+        }
+    } else {
+        usedCoreNum = std::max(MutableTCubeTileTilingData().usedCoreNum, MutableTCubeTailTilingData().usedCoreNum);
+    }
     context_->SetBlockDim(usedCoreNum);
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
     context_->SetScheduleMode(1);
@@ -734,6 +776,58 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
                        tailMValue_;
     QuantBmmReduceScatterHelper mmTail(*this, quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling);
     MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
+{
+    auto &cfg = MutableRCSTilingDataA5();
+    OP_TILING_CHECK(cfg.rankDim == 0 || cfg.tileCnt == 0,
+                    OP_LOGE(opName_, "invalid APACE MX split: rankDim=%u, tileCnt=%u", cfg.rankDim, cfg.tileCnt),
+                    return ge::GRAPH_FAILED);
+
+    const uint64_t perRankM = static_cast<uint64_t>(cfg.rankM) / cfg.rankDim;
+    const uint64_t tileM =
+        (perRankM - static_cast<uint64_t>(cfg.tailM) * cfg.tailCnt) / cfg.tileCnt;
+    auto &commTiling = apaceTilingData_.commTilingData;
+    commTiling.splitAxisTileSize = tileM;
+    commTiling.splitAxisTileCnt = cfg.tileCnt;
+    commTiling.splitAxisTailSize = cfg.tailM;
+    commTiling.splitAxisTailCnt = cfg.tailCnt;
+    commTiling.nonSplitAxisSize = args_.nValue;
+    auto &headTiling = apaceTilingData_.headQbmmTilingData;
+    auto &tailTiling = apaceTilingData_.tailQbmmTilingData;
+    constexpr uint64_t FRAGMENT_M_ALIGN = 16;
+    const uint64_t paddedTailM =
+        cfg.tailCnt > 0 ? mc2tiling::AlignUp<uint64_t>(cfg.tailM, FRAGMENT_M_ALIGN) : 0;
+    const uint64_t headLogicalM = static_cast<uint64_t>(cfg.rankDim) * tileM;
+    const uint64_t tailLogicalM = static_cast<uint64_t>(cfg.rankDim) * paddedTailM;
+    apaceTilingData_.paddedTailM = static_cast<uint32_t>(paddedTailM);
+
+    if (isMxfp4_) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
+        // FragmentTensor assembles rankDim independent M fragments into one
+        // logical scheduler domain. Keep M-tail splitting fragment-safe.
+        tilingSwat.SetOptimizeEnable(false);
+        tilingSwat.SetMTailAlignEnable(true);
+        tilingSwat.GetTilingData(headLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, headTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
+    } else {
+        // E4M3 and E5M2 have the same B8 storage and share the APACE tiling strategy.
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
+        tilingSwat.SetOptimizeEnable(false);
+        tilingSwat.SetMTailAlignEnable(true);
+        tilingSwat.GetTilingData(headLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, headTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
+    }
+    OP_LOGD(opName_,
+            "APACE MX pipeline tiling: rankM=%u, tileM=%lu, headLogicalM=%lu, tailM=%u, paddedTailM=%lu, "
+            "tailLogicalM=%lu, N=%lu, K=%lu",
+            cfg.rankM, tileM, headLogicalM, cfg.tailM, paddedTailM, tailLogicalM, args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -929,6 +1023,15 @@ QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTi
 
 CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 {
+    if (usingApaceImpl_) {
+        MMPlusReduceScatter reduceScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER,
+                                                 SocVersion::SOC950, false,
+                                                 (commMode_ == TPL_AICPU_COMM_MODE));
+        reduceScatterTiling.GetTiling();
+        CutResult cutRes = reduceScatterTiling.tilingM_.cutRes;
+        AlignCutResForApace(cutRes, args_.mValue);
+        return cutRes;
+    }
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
                                                               TopoType::STANDARD_CARD);
@@ -945,6 +1048,30 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
     }
+}
+
+void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const
+{
+    constexpr uint64_t KERNEL_ALIGN_M = 256;
+    if (cutRes.longTileLen == 0 || mValue == 0) {
+        OP_LOGD(opName_, "AlignCutResForApace skip: longTileLen=%lu, mValue=%lu", cutRes.longTileLen, mValue);
+        return;
+    }
+    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
+    if (longTile >= mValue) {
+        cutRes.longTileLen = mValue;
+        cutRes.numLongTile = 1;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
+    } else {
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        cutRes.shortTileLen = mValue % longTile;
+        cutRes.numShortTile = cutRes.shortTileLen > 0 ? 1 : 0;
+    }
+    cutRes.shortTileAtBack = true;
+    OP_LOGD(opName_, "APACE aligned cutRes: longTile=%lu, numLong=%lu, shortTile=%lu, numShort=%lu",
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile);
 }
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
