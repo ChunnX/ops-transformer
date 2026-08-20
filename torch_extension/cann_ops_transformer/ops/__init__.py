@@ -68,6 +68,6 @@ from .dense_lightning_indexer_softmax_lse import (
 )
 from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
-from . import graph_convert as _graph_convert
 from .fused_causal_conv1d import fused_causal_conv1d
-from .fused_causal_conv1d_ import fused_causal_conv1d_
+from .fused_causal_conv1d_ import inplace_fused_causal_conv1d
+from . import graph_convert as _graph_convert
