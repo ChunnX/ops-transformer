@@ -377,7 +377,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
 
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>npuArch_);
+        OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t> npuArch_);
         return ge::GRAPH_FAILED;
     }
     batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
@@ -2318,10 +2318,10 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
-    uint32_t oriBlocksizeFlag = static_cast<uint32_t>(tilingInfo->oriBlockSize &
-        static_cast<uint32_t>(tilingInfo->oriBlockSize - 1)) == 0;
-    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>(tilingInfo->cmpBlockSize &
-        static_cast<uint32_t>(tilingInfo->cmpBlockSize - 1)) == 0;
+    uint32_t oriBlocksizeFlag =
+        static_cast<uint32_t>(tilingInfo->oriBlockSize & static_cast<uint32_t>(tilingInfo->oriBlockSize - 1)) == 0;
+    uint32_t cmpBlocksizeFlag =
+        static_cast<uint32_t>(tilingInfo->cmpBlockSize & static_cast<uint32_t>(tilingInfo->cmpBlockSize - 1)) == 0;
     uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                          oriBlocksizeFlag :
                                          (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0)) :
