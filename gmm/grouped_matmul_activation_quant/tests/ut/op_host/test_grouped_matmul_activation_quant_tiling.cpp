@@ -55,7 +55,8 @@ constexpr uint32_t DEFAULT_L0B_SIZE = 65536U;
 constexpr uint32_t DEFAULT_AIC_NUM = 32U;
 constexpr uint32_t DEFAULT_AIV_NUM = 64U;
 constexpr uint64_t DEFAULT_UB_SIZE = 262144UL;
-constexpr uint64_t MX_EPILOGUE_MAX_TILE_ELEMENTS = 128UL * 256UL;
+constexpr uint64_t MX_EPILOGUE_MAX_ELEMENTS_PER_AIV = 128UL * 256UL;
+constexpr uint64_t MX_EPILOGUE_AIV_COUNT = 2UL;
 
 struct GroupedMatmulActivationQuantTilingCase {
     void Run() const
@@ -97,8 +98,10 @@ struct GroupedMatmulActivationQuantTilingCase {
             reinterpret_cast<const GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams *>(
                 tilingInfo.tilingData.get());
         ASSERT_NE(tilingData, nullptr);
-        EXPECT_LE(static_cast<uint64_t>(tilingData->mmTilingData.baseM) * tilingData->mmTilingData.baseN,
-                  MX_EPILOGUE_MAX_TILE_ELEMENTS)
+        EXPECT_LE(((static_cast<uint64_t>(tilingData->mmTilingData.baseM) + MX_EPILOGUE_AIV_COUNT - 1) /
+                   MX_EPILOGUE_AIV_COUNT) *
+                      tilingData->mmTilingData.baseN,
+                  MX_EPILOGUE_MAX_ELEMENTS_PER_AIV)
             << "prefix=" << prefix;
     }
 
