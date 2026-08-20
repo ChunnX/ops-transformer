@@ -126,8 +126,8 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         MATMUL_ALLTO_ALL_APT_FP_IMPL(tilingData, pipe, commServerType);
     }
 #elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1))
+    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData); // 按当前最大的结构体申请内存
     if constexpr (USING_APACE_IMPL) {
-        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, true>
@@ -135,16 +135,14 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
         op.Run();
     } else {
-        REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
         MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, AscendC::HCCL_DATA_TYPE_UINT8);
     }
 #else
+    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData); // 按当前最大的结构体申请内存
     if constexpr (USING_APACE_IMPL) {
-        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
     } else {
-        REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
     }
 
