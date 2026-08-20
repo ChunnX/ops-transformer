@@ -308,9 +308,15 @@ public:
                         if (delay12CoreTaskId == 0 && delay12TileInfo.isLastKvsTile) {
                             AscendC::PipeBarrier<PIPE_ALL>();
                             AscendC::DumpTensor(ubOTmpTensor, 220, 32);
-                            AscendC::printf("[MXFP8-DUMP] OTmp desc=220 otmp0=%f blk=%u lastKvs=%d tile=%u kvsAct=%u qsAct=%u\n",
+                            AscendC::printf("[MXFP8-DUMP] OTmp desc=220 blk=%u sub=%u otmp0=%f otmp50=%f otmp57=%f otmp63=%f "
+                                "otmpRS50=%f otmpRS57=%f lastKvs=%d tile=%u kvsAct=%u qsAct=%u\n",
+                                AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(),
                                 static_cast<float>(ubOTmpTensor.GetValue(0)),
-                                AscendC::GetBlockIdx(),
+                                static_cast<float>(ubOTmpTensor.GetValue(50)),
+                                static_cast<float>(ubOTmpTensor.GetValue(57)),
+                                static_cast<float>(ubOTmpTensor.GetValue(63)),
+                                static_cast<float>(ubOTmpTensor.GetValue(128 * 64 + 50)),
+                                static_cast<float>(ubOTmpTensor.GetValue(128 * 64 + 57)),
                                 static_cast<int>(delay12TileInfo.isLastKvsTile),
                                 static_cast<uint32_t>(delay12TaskTileIdx),
                                 delay12TileInfo.kvsActBaseTile,
@@ -375,7 +381,6 @@ public:
 
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
-                    // todo mm1
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
                         curTaskInfo.qsActBaseTile,   // rows = S1 实际 tile
                         qHeadMul * embed_);          // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
@@ -413,12 +418,19 @@ public:
                         if (coreTaskId == 0 && curTaskTileIdx < 2) {
                             AscendC::PipeBarrier<PIPE_ALL>();
                             AscendC::DumpTensor(ubSTensor[0], static_cast<uint32_t>(200 + curTaskTileIdx), 32);
-                            AscendC::printf("[MXFP8-DUMP] S desc=%u s0=%f s1=%f blk=%u sub=%u loop=%u tile=%u kvsAct=%u qsAct=%u taskTiles=%u\n",
+                            AscendC::printf("[MXFP8-DUMP] S desc=%u blk=%u sub=%u s0=%f s57=%f s58=%f s63=%f s64=%f s114=%f s127=%f s256_57=%f "
+                                "loop=%u tile=%u kvsAct=%u qsAct=%u taskTiles=%u\n",
                                 static_cast<uint32_t>(200 + curTaskTileIdx),
-                                static_cast<float>(ubSTensor[0].GetValue(0)),
-                                static_cast<float>(ubSTensor[0].GetValue(1)),
                                 AscendC::GetBlockIdx(),
                                 subBlockIdx,
+                                static_cast<float>(ubSTensor[0].GetValue(0)),
+                                static_cast<float>(ubSTensor[0].GetValue(57)),
+                                static_cast<float>(ubSTensor[0].GetValue(58)),
+                                static_cast<float>(ubSTensor[0].GetValue(63)),
+                                static_cast<float>(ubSTensor[0].GetValue(64)),
+                                static_cast<float>(ubSTensor[0].GetValue(114)),
+                                static_cast<float>(ubSTensor[0].GetValue(127)),
+                                static_cast<float>(ubSTensor[0].GetValue(256 + 57)),
                                 static_cast<uint32_t>(coreTileLoop),
                                 static_cast<uint32_t>(curTaskTileIdx),
                                 curTileInfo.kvsActBaseTile,
@@ -850,7 +862,8 @@ public:
         info.curKvsTileLoopIdx = curTaskTileIdx;
         info.isFirstKvsTile = (curTaskTileIdx == 0);
         info.isLastKvsTile = (curTaskTileIdx + 1 == taskInfo.taskTileNum);
-        info.isLastSecondKvsTile = (curTaskTileIdx + 2 == taskInfo.taskTileNum);
+        info.isLastSecondKvsTile = ((curTaskTileIdx + 2 == taskInfo.taskTileNum) ||
+                                    (taskInfo.taskTileNum == 1)); // pv rowsum刷1，同 mxfp4
 
         info.isUpdatePScale = (info.isLastKvsTile ||
                                ((info.curKvsTileLoopIdx + 1) % MXFP8Kernel::TILE_GROUP_N == 0));

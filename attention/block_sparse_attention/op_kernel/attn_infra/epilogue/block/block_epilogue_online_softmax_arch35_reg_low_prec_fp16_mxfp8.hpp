@@ -137,11 +137,64 @@ public:
 #if BSA_MXFP8_DUMP
         if (tileInfo.curKvsTileLoopIdx < 2) {
             AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::DumpTensor(sUBTensor[spBuffIdx], 201, 32);
-            AscendC::printf("[MXFP8-DUMP] S-epilogue desc=201 s0=%f blk=%u sub=%u loop=%u tile=%u actKvs=%u actQs=%u gmaxIdx=%u\n",
-                static_cast<float>(sUBTensor[spBuffIdx].GetValue(0)),
+            auto sDump = sUBTensor[spBuffIdx];
+            AscendC::printf("[MXFP8-DUMP] S-epilogue blk=%u sub=%u loop=%u tile=%u actKvs=%u actQs=%u "
+                "s0=%f s57=%f s58=%f s63=%f s64=%f s114=%f s127=%f s256_57=%f\n",
                 AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(),
-                tileInfo.loop, tileInfo.curKvsTileLoopIdx, actKvsTile, actQsTile, groupMaxIdx);
+                tileInfo.loop, tileInfo.curKvsTileLoopIdx, actKvsTile, actQsTile,
+                static_cast<float>(sDump.GetValue(0)),
+                static_cast<float>(sDump.GetValue(57)),
+                static_cast<float>(sDump.GetValue(58)),
+                static_cast<float>(sDump.GetValue(63)),
+                static_cast<float>(sDump.GetValue(64)),
+                static_cast<float>(sDump.GetValue(114)),
+                static_cast<float>(sDump.GetValue(127)),
+                static_cast<float>(sDump.GetValue(256 + 57)));
+            AscendC::printf("[MXFP8-DUMP] S-qs57 k0-7 %f %f %f %f %f %f %f %f\n",
+                static_cast<float>(sDump.GetValue(0 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(1 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(2 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(3 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(4 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(5 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(6 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(7 * 256 + 57)));
+            AscendC::printf("[MXFP8-DUMP] S-qs57 k8-15 %f %f %f %f %f %f %f %f\n",
+                static_cast<float>(sDump.GetValue(8 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(9 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(10 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(11 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(12 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(13 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(14 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(15 * 256 + 57)));
+            AscendC::printf("[MXFP8-DUMP] S-qs57 k16-23 %f %f %f %f %f %f %f %f\n",
+                static_cast<float>(sDump.GetValue(16 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(17 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(18 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(19 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(20 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(21 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(22 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(23 * 256 + 57)));
+            AscendC::printf("[MXFP8-DUMP] S-qs57 k24-31 %f %f %f %f %f %f %f %f\n",
+                static_cast<float>(sDump.GetValue(24 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(25 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(26 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(27 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(28 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(29 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(30 * 256 + 57)),
+                static_cast<float>(sDump.GetValue(31 * 256 + 57)));
+            AscendC::printf("[MXFP8-DUMP] S-qs114 k0-7 %f %f %f %f %f %f %f %f\n",
+                static_cast<float>(sDump.GetValue(0 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(1 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(2 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(3 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(4 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(5 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(6 * 256 + 114)),
+                static_cast<float>(sDump.GetValue(7 * 256 + 114)));
         }
 #endif
 
@@ -223,14 +276,29 @@ public:
         if (tileInfo.curKvsTileLoopIdx < 2) {
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DumpTensor(pUBTensor[spBuffIdx], 210, 32);
-            AscendC::DumpTensor(localGroupMaxUBTensor[groupMaxIdx], 211, 32);
-            AscendC::DumpTensor(localGlobalMaxUBTensor[tileInfo.tileMaxIdx], 213, 32);
-            AscendC::printf("[MXFP8-DUMP] P desc=210 p0=%u grpMax0=%f gmax0=%f blk=%u sub=%u loop=%u tile=%u gmaxIdx=%u tileMax=%u\n",
-                static_cast<uint32_t>(pUBTensor[spBuffIdx].GetValue(0)),
-                static_cast<float>(localGroupMaxUBTensor[groupMaxIdx].GetValue(0)),
-                static_cast<float>(localGlobalMaxUBTensor[tileInfo.tileMaxIdx].GetValue(0)),
-                AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(),
-                tileInfo.loop, tileInfo.curKvsTileLoopIdx, groupMaxIdx, tileInfo.tileMaxIdx);
+            AscendC::DumpTensor(localGroupMaxUBTensor[groupMaxIdx], 211, 128);
+            AscendC::DumpTensor(localGlobalMaxUBTensor[tileInfo.tileMaxIdx], 213, 128);
+            auto gmDump = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
+            auto lgDump = localGroupMaxUBTensor[groupMaxIdx];
+            AscendC::printf("[MXFP8-DUMP] P/gmax blk=%u sub=%u actKvs=%u "
+                "gm0=%f gm57=%f gm58=%f gm63=%f gm64=%f gm114=%f "
+                "lg0_57=%f lg1_57=%f lg2_57=%f lg3_57=%f "
+                "lg0_114=%f lg1_114=%f lg2_114=%f lg3_114=%f\n",
+                AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), actKvsTile,
+                static_cast<float>(gmDump.GetValue(0)),
+                static_cast<float>(gmDump.GetValue(57)),
+                static_cast<float>(gmDump.GetValue(58)),
+                static_cast<float>(gmDump.GetValue(63)),
+                static_cast<float>(gmDump.GetValue(64)),
+                static_cast<float>(gmDump.GetValue(114)),
+                static_cast<float>(lgDump.GetValue(57)),
+                static_cast<float>(lgDump.GetValue(128 + 57)),
+                static_cast<float>(lgDump.GetValue(256 + 57)),
+                static_cast<float>(lgDump.GetValue(384 + 57)),
+                static_cast<float>(lgDump.GetValue(114)),
+                static_cast<float>(lgDump.GetValue(128 + 114)),
+                static_cast<float>(lgDump.GetValue(256 + 114)),
+                static_cast<float>(lgDump.GetValue(384 + 114)));
         }
 #endif
 

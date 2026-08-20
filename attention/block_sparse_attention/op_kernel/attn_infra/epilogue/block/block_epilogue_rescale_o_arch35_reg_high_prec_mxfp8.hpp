@@ -82,16 +82,25 @@ public:
 #define BSA_MXFP8_DUMP 0
 #endif
 #if BSA_MXFP8_DUMP
-        if (AscendC::GetBlockIdx() == 0 && tileInfo.isLastKvsTile) {
+        if (tileInfo.isLastKvsTile) {
             AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::DumpTensor(oTmpUBTensor, 221, 32);
-            AscendC::DumpTensor(localRowSumUBTensor, 230, 32);
-            AscendC::DumpTensor(globalRowSumUBTensor, 231, 32);
-            AscendC::printf("[MXFP8-DUMP] rescale desc=221/230/231 otmp0=%f lsum0=%f gsum0=%f last=%d\n",
-                static_cast<float>(oTmpUBTensor.GetValue(0)),
+            AscendC::printf("[MXFP8-DUMP] rescale pre blk=%u sub=%u last=%d lsum0=%f lsum50=%f lsum57=%f lsum63=%f "
+                "gsum0=%f gsum50=%f gsum57=%f gsum63=%f otmp0=%f otmp50=%f otmp57=%f otmpRS50=%f otmpRS57=%f\n",
+                AscendC::GetBlockIdx(), subBlockIdx,
+                static_cast<int>(tileInfo.isLastKvsTile),
                 static_cast<float>(localRowSumUBTensor.GetValue(0)),
+                static_cast<float>(localRowSumUBTensor.GetValue(50)),
+                static_cast<float>(localRowSumUBTensor.GetValue(57)),
+                static_cast<float>(localRowSumUBTensor.GetValue(63)),
                 static_cast<float>(globalRowSumUBTensor.GetValue(0)),
-                static_cast<int>(tileInfo.isLastKvsTile));
+                static_cast<float>(globalRowSumUBTensor.GetValue(50)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(57)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(63)),
+                static_cast<float>(oTmpUBTensor.GetValue(0)),
+                static_cast<float>(oTmpUBTensor.GetValue(50)),
+                static_cast<float>(oTmpUBTensor.GetValue(57)),
+                static_cast<float>(oTmpUBTensor.GetValue(128 * 64 + 50)),
+                static_cast<float>(oTmpUBTensor.GetValue(128 * 64 + 57)));
         }
 #endif
 
@@ -103,6 +112,24 @@ public:
             Mxfp8VF::processUpdate<true>(oUBTensor, oTmpUBTensor, dm,
                                          globalRowSumUBTensor, localRowSumUBTensor);
         }
+#if BSA_MXFP8_DUMP
+        if (tileInfo.isLastKvsTile) {
+            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::DumpTensor(localRowSumUBTensor, 230, 64);
+            AscendC::DumpTensor(globalRowSumUBTensor, 231, 64);
+            AscendC::printf("[MXFP8-DUMP] rescale post blk=%u sub=%u lsum0=%f lsum50=%f lsum57=%f lsum63=%f "
+                "gsum0=%f gsum50=%f gsum57=%f gsum63=%f\n",
+                AscendC::GetBlockIdx(), subBlockIdx,
+                static_cast<float>(localRowSumUBTensor.GetValue(0)),
+                static_cast<float>(localRowSumUBTensor.GetValue(50)),
+                static_cast<float>(localRowSumUBTensor.GetValue(57)),
+                static_cast<float>(localRowSumUBTensor.GetValue(63)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(0)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(50)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(57)),
+                static_cast<float>(globalRowSumUBTensor.GetValue(63)));
+        }
+#endif
 
         if (tileInfo.isLastKvsTile) {
             const uint32_t actQsTile = actualOriShape.n();
@@ -119,12 +146,15 @@ public:
                 Mxfp8VF::processOut<MXFP8::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
 #if BSA_MXFP8_DUMP
-                if (AscendC::GetBlockIdx() == 0) {
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    AscendC::DumpTensor(outTensorFp32Ub, 300, 32);
-                    AscendC::printf("[MXFP8-DUMP] O desc=300 o0=%f\n",
-                        static_cast<float>(outTensorFp32Ub.GetValue(0)));
-                }
+                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::printf("[MXFP8-DUMP] O desc=300 blk=%u sub=%u o0=%f o50=%f o57=%f o63=%f gsum50=%f gsum57=%f\n",
+                    AscendC::GetBlockIdx(), subBlockIdx,
+                    static_cast<float>(outTensorFp32Ub.GetValue(0)),
+                    static_cast<float>(outTensorFp32Ub.GetValue(50)),
+                    static_cast<float>(outTensorFp32Ub.GetValue(57)),
+                    static_cast<float>(outTensorFp32Ub.GetValue(63)),
+                    static_cast<float>(globalRowSumUBTensor.GetValue(50)),
+                    static_cast<float>(globalRowSumUBTensor.GetValue(57)));
 #endif
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();

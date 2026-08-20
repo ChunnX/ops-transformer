@@ -48,8 +48,10 @@ struct CopyL1ToL0AMxFp8A5 {
         // 调用方传完整 L1 S2 对齐时更稳妥——用 s2Act 作为本段，srcStride 由外层全长决定
         // 这里用 max(s2Start+s2Act, s2Act) 的 16 对齐；PV 侧会再传 s2Full
         loadData2DParamsA.dstStride = (dAct + NZ_C0 - 1) / NZ_C0 + 1; // +1 for rowsum pad fractal
-        if (dAct <= FP8_C0) {
-            loadData2DParamsA.dstStride += FP8_C0 / NZ_C0;
+        // mxfp4: `if (dAct <= FP4_C0)` 且 FP4_C0=64，把 D=64 的 dstStride 从 5 pad 到 9
+        //（与 D=128 / PV_MMAD_M_DIM=144 同构）。fp8 不能用 FP8_C0=32 当阈值，否则 D=64 不进分支。
+        if (dAct <= Block::MXFP8::CONST_64) {
+            loadData2DParamsA.dstStride += Block::MXFP8::CONST_64 / NZ_C0;
         }
         loadData2DParamsA.ifTranspose = true;
 
@@ -82,8 +84,9 @@ struct CopyL1ToL0AMxFp8A5 {
         loadData2DParamsA.kStep = dAct / FP8_C0;
         loadData2DParamsA.srcStride = s2FullAlign16 / NZ_C0;
         loadData2DParamsA.dstStride = (dAct + NZ_C0 - 1) / NZ_C0 + 1;
-        if (dAct <= FP8_C0) {
-            loadData2DParamsA.dstStride += FP8_C0 / NZ_C0;
+        // 同 mxfp4 D=64：dstStride pad 到 9，PV mmad M 仍为 144。见上一重载注释。
+        if (dAct <= Block::MXFP8::CONST_64) {
+            loadData2DParamsA.dstStride += Block::MXFP8::CONST_64 / NZ_C0;
         }
         loadData2DParamsA.ifTranspose = true;
 

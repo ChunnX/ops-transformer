@@ -123,11 +123,22 @@ public:
 #if BSA_MXFP8_DUMP
         if (tileInfo.isLastKvsTile && tileInfo.curKvsTileLoopIdx < 4) {
             AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::printf("[MXFP8-DUMP] pscale-pre localGmax=%f peerGmax=%f grpMax=%f sub=%u tileMax=%u\n",
+            AscendC::printf("[MXFP8-DUMP] pscale-pre blk=%u sub=%u "
+                "lgm0=%f lgm57=%f lgm58=%f lgm63=%f lgm64=%f lgm114=%f "
+                "peer0=%f peer57=%f peer114=%f grp0_57=%f grp1_57=%f grp0_114=%f\n",
+                AscendC::GetBlockIdx(), subBlockIdx,
                 static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(localGlobalMax.GetValue(57)),
+                static_cast<float>(localGlobalMax.GetValue(58)),
+                static_cast<float>(localGlobalMax.GetValue(63)),
+                static_cast<float>(localGlobalMax.GetValue(64)),
+                static_cast<float>(localGlobalMax.GetValue(114)),
                 static_cast<float>(peerGlobalMax.GetValue(0)),
-                static_cast<float>(localGroupMax1.GetValue(0)),
-                subBlockIdx, tileInfo.tileMaxIdx);
+                static_cast<float>(peerGlobalMax.GetValue(57)),
+                static_cast<float>(peerGlobalMax.GetValue(114)),
+                static_cast<float>(localGroupMax1.GetValue(57)),
+                static_cast<float>(localGroupMax1.GetValue(128 + 57)),
+                static_cast<float>(localGroupMax1.GetValue(114)));
         }
 #endif
 
@@ -186,14 +197,19 @@ public:
             AscendC::DumpTensor(pscale1, 212, 32);
             AscendC::DumpTensor(localGlobalMax, 214, 32);
             AscendC::DumpTensor(peerGlobalMax, 215, 32);
-            AscendC::printf("[MXFP8-DUMP] pscale desc=212 p0=%u firstLoop=%u firstStart=%u secondLoop=%u "
-                "sub=%u kvsFirst=%u loop=%u curS2=%u localGmax=%f peerGmax=%f grpMax=%f\n",
-                static_cast<uint32_t>(pscale1.GetValue(0)), firstLoop, firstLoopStart, secondLoop,
-                subBlockIdx, tileInfo.kvsFirstTileStartVecCore,
-                static_cast<uint32_t>(tileInfo.loop), tileInfo.curKvsTileLoopIdx,
+            AscendC::printf("[MXFP8-DUMP] pscale desc=212 blk=%u sub=%u "
+                "lgm0=%f lgm57=%f lgm58=%f lgm63=%f lgm64=%f lgm114=%f "
+                "peer0=%f peer57=%f peer114=%f\n",
+                AscendC::GetBlockIdx(), subBlockIdx,
                 static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(localGlobalMax.GetValue(57)),
+                static_cast<float>(localGlobalMax.GetValue(58)),
+                static_cast<float>(localGlobalMax.GetValue(63)),
+                static_cast<float>(localGlobalMax.GetValue(64)),
+                static_cast<float>(localGlobalMax.GetValue(114)),
                 static_cast<float>(peerGlobalMax.GetValue(0)),
-                static_cast<float>(localGroupMax1.GetValue(0)));
+                static_cast<float>(peerGlobalMax.GetValue(57)),
+                static_cast<float>(peerGlobalMax.GetValue(114)));
         }
 #endif
 
@@ -220,66 +236,65 @@ public:
      template <class TensorDst>
     __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src, AscendC::LocalTensor<ElementPScale> &pscale2Src, 
                                                 uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop, bool isQsAlign128) {
-        // 第一部分: firstLoop 组, 从 firstLoopStart 开始
-        uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
-        // uint32_t l1PScaleTensorMSize = tla::get<0>(l1PScaleTensor.shape());
-        auto l1TlaTile1 = tla::GetTile(l1PScaleTensor,
-            tla::MakeCoord(subBlockIdx + firstLoopStart, 0),
-            tla::MakeShape(firstLoop, l1PScaleTensorNSize));
-        uint32_t dstOffset = l1TlaTile1.layout()(l1TlaTile1.coord());
-        uint16_t pscaleGroupLen = static_cast<uint16_t>(l1PScaleTensorNSize / MXFP8::DATA_BLOCK_BYTE);
-        uint16_t pscaleGroupHalfLen = static_cast<uint16_t>(l1PScaleTensorNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
-        AscendC::DataCopyParams repeatParams1;
-        repeatParams1.blockCount = firstLoop;
-        repeatParams1.blockLen = isQsAlign128 ? pscaleGroupLen : pscaleGroupHalfLen;
-        repeatParams1.srcStride = isQsAlign128 ? 0 : pscaleGroupHalfLen;
-        repeatParams1.dstStride = isQsAlign128 ? pscaleGroupLen : (pscaleGroupHalfLen + pscaleGroupLen);
-
-
-        // AscendC::printf("==== CopyPScaleUbToL1 debug ====\n");
-        // AscendC::printf("subBlockIdx:%d, firstLoopStart:%d, firstLoop:%d, secondLoopStart:%d, secondLoop:%d\n",
-        //     subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
-        // AscendC::printf("l1PScaleTensor shape(M,N):(%d,%d), l1PScaleTensorNSize:%d\n", l1PScaleTensorMSize, l1PScaleTensorNSize, l1PScaleTensorNSize);
-        // AscendC::printf("DATA_BLOCK_BYTE:%d, pscaleGroupLen:%d\n", MXFP8::DATA_BLOCK_BYTE, pscaleGroupLen);
-        // AscendC::printf("l1TlaTile1 coord(M,N):(%d,%d), shape(M,N):(%d,%d)\n",
-        //     tla::get<0>(l1TlaTile1.coord()), tla::get<1>(l1TlaTile1.coord()),
-        //     tla::get<0>(l1TlaTile1.shape()), tla::get<1>(l1TlaTile1.shape()));
-        // AscendC::printf("dstOffset:%d\n", dstOffset);
-        // AscendC::printf("repeatParams1: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n",
-        //     repeatParams1.blockCount, repeatParams1.blockLen, repeatParams1.srcStride, repeatParams1.dstStride);
-
-        AscendC::DataCopy(l1TlaTile1.data()[dstOffset], pscale1Src, repeatParams1);
-
+        // GetPScaleParams 的 firstLoopStart 是 AIV 本地 groupMax 环（loop/2%12）。
+        // L1 P-scale 与 P 一样按 loop%12 分槽；dstStride 再隔行写入（AIV0 偶数槽 / AIV1 奇数槽）。
+        // 组 0：groupMax 0 → L1 0，skip-2 得到 0,2,4,6，碰巧正确。
+        // 组 1：groupMax 4 必须映射成 L1 8，否则 PV 读 loop%12=8 用到组 0 残留 scale。
+        CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale1Src, subBlockIdx, firstLoopStart, firstLoop, isQsAlign128);
         if (secondLoop != 0) {
-            // 第二部分: secondLoop 组, 从 secondLoopStart 开始
-            auto l1TlaTile2 = tla::GetTile(l1PScaleTensor,
-                tla::MakeCoord(subBlockIdx + secondLoopStart, 0),
-                tla::MakeShape(secondLoop, l1PScaleTensorNSize));
-            uint32_t dstOffset2 = l1TlaTile2.layout()(l1TlaTile2.coord());
-            AscendC::DataCopyParams repeatParams2;
-            repeatParams2.blockCount = secondLoop;
-            repeatParams2.blockLen = isQsAlign128 ? pscaleGroupLen : pscaleGroupHalfLen;
-            repeatParams2.srcStride = isQsAlign128 ? 0 : pscaleGroupHalfLen;
-            repeatParams2.dstStride = isQsAlign128 ? pscaleGroupLen : (pscaleGroupHalfLen + pscaleGroupLen);
-            // repeatParams2.blockCount = secondLoop;
-            // repeatParams2.blockLen = static_cast<uint16_t>(pscaleGroupLen);
-            // repeatParams2.srcStride = 0;
-            // repeatParams2.dstStride = static_cast<uint16_t>(pscaleGroupLen);
-
-            // AscendC::printf("---- secondLoop branch ----\n");
-            // AscendC::printf("l1TlaTile2 coord(M,N):(%d,%d), shape(M,N):(%d,%d)\n",
-            //     tla::get<0>(l1TlaTile2.coord()), tla::get<1>(l1TlaTile2.coord()),
-            //     tla::get<0>(l1TlaTile2.shape()), tla::get<1>(l1TlaTile2.shape()));
-            // AscendC::printf("dstOffset2:%d\n", dstOffset2);
-            // AscendC::printf("repeatParams2: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n",
-            //     repeatParams2.blockCount, repeatParams2.blockLen, repeatParams2.srcStride, repeatParams2.dstStride);
-            // AscendC::printf("==== CopyPScaleUbToL1 debug end ====\n");
-
-            AscendC::DataCopy(l1TlaTile2.data()[dstOffset2], pscale2Src, repeatParams2);
+            CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale2Src, subBlockIdx, secondLoopStart, secondLoop, isQsAlign128);
         }
     }
 
 private:
+    template <class TensorDst>
+    __aicore__ inline void CopyPScaleUbToL1Seg(TensorDst &l1PScaleTensor,
+                                               AscendC::LocalTensor<ElementPScale> &src,
+                                               uint16_t l1MStart, uint16_t count, bool isQsAlign128)
+    {
+        if (count == 0) {
+            return;
+        }
+        uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
+        auto l1TlaTile = tla::GetTile(l1PScaleTensor,
+            tla::MakeCoord(l1MStart, 0),
+            tla::MakeShape(1, l1PScaleTensorNSize));
+        uint32_t dstOffset = l1TlaTile.layout()(l1TlaTile.coord());
+        uint16_t pscaleGroupLen = static_cast<uint16_t>(l1PScaleTensorNSize / MXFP8::DATA_BLOCK_BYTE);
+        uint16_t pscaleGroupHalfLen = static_cast<uint16_t>(l1PScaleTensorNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
+        AscendC::DataCopyParams rp;
+        rp.blockCount = count;
+        rp.blockLen = isQsAlign128 ? pscaleGroupLen : pscaleGroupHalfLen;
+        rp.srcStride = isQsAlign128 ? 0 : pscaleGroupHalfLen;
+        rp.dstStride = isQsAlign128 ? pscaleGroupLen : (pscaleGroupHalfLen + pscaleGroupLen);
+        AscendC::DataCopy(l1TlaTile.data()[dstOffset], src, rp);
+    }
+
+    template <class TensorDst>
+    __aicore__ inline void CopyPScaleUbToL1FromGroupMax(TensorDst &l1PScaleTensor,
+                                                        AscendC::LocalTensor<ElementPScale> &src,
+                                                        uint32_t subBlockIdx, uint16_t groupMaxStart,
+                                                        uint16_t count, bool isQsAlign128)
+    {
+        if (count == 0) {
+            return;
+        }
+        uint32_t l1Cnt = tla::get<0>(l1PScaleTensor.shape());
+        uint16_t l1Start = static_cast<uint16_t>((2 * groupMaxStart + subBlockIdx) % l1Cnt);
+        uint16_t fit = 0;
+        for (uint16_t s = l1Start; s < l1Cnt; s += 2) {
+            ++fit;
+        }
+        uint16_t n1 = count < fit ? count : fit;
+        CopyPScaleUbToL1Seg(l1PScaleTensor, src, l1Start, n1, isQsAlign128);
+        if (n1 < count) {
+            uint32_t srcOff = static_cast<uint32_t>(n1) * tla::get<1>(l1PScaleTensor.shape());
+            AscendC::LocalTensor<ElementPScale> src2 = src[srcOff];
+            CopyPScaleUbToL1Seg(l1PScaleTensor, src2, static_cast<uint16_t>(subBlockIdx),
+                                static_cast<uint16_t>(count - n1), isQsAlign128);
+        }
+    }
+
     __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx,
                                            uint16_t &firstLoopStart, uint16_t &firstLoop, uint16_t &secondLoopStart,
                                            uint16_t &secondLoop)

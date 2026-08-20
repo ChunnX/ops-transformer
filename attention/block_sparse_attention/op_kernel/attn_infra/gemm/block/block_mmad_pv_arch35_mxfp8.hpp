@@ -358,16 +358,20 @@
  
      __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64, uint32_t curBaseTileSize, uint32_t embedReal)
      {
+         // mxfp4：halfEmbed = ROW_SUM_NUM/2，始终按 D=128 两面清尾。
+         // fp8 C0=32 → 4 面覆盖 D=128；D=64 的 GM 只占前 2 面，后 2 面写在 32KB KV 槽余量上
+         //（与 mxfp4 D=64 把第二面写进槽余量同构），LoadV kStep 仍按实际 dAct。
+         (void)embedReal;
          AscendC::InitConstValueParams<uint16_t> kvL1InitParams(
              1, static_cast<uint16_t>(s2Align64 - curBaseTileSize), 0, MXFP8::ZERO_FILL_PATTERN);
-         uint32_t halfEmbed = MXFP8::ROW_SUM_NUM / 2;
-         AscendC::Fill(
-             l1ATensor[l1ABufId][halfEmbed * curBaseTileSize].template ReinterpretCast<uint16_t>(),
-             kvL1InitParams);
-         AscendC::Fill(
-             l1ATensor[l1ABufId][halfEmbed * curBaseTileSize * 2 + (s2Align64 - curBaseTileSize) * halfEmbed]
-                 .template ReinterpretCast<uint16_t>(),
-             kvL1InitParams);
+         uint32_t planeElems = s2Align64 * MXFP8::FP8_C0_ELEMS;
+         constexpr uint32_t planeCnt = MXFP8::CONST_128 / MXFP8::FP8_C0_ELEMS;
+         uint32_t validElems = curBaseTileSize * MXFP8::FP8_C0_ELEMS;
+         for (uint32_t p = 0; p < planeCnt; ++p) {
+             AscendC::Fill(
+                 l1ATensor[l1ABufId][p * planeElems + validElems].template ReinterpretCast<uint16_t>(),
+                 kvL1InitParams);
+         }
      }
  
      template <class TensorV, class TensorC, class TaskInfoT, class TileInfoT>
@@ -401,17 +405,18 @@
          uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
          uint32_t mMmad = MXFP8::PV_MMAD_M_DIM;
- 
+
+         // 先等 MTE1 释放 L1A 再 Pad：与 mxfp4/QFA 同序，避免 Pad(MTE2 Fill) 与上一轮
+         // MTE1 LoadData(L1A->L0A) 竞争 l1ATensor[l1ABufId]（仅尾部 kvs 不齐 64 时触发）。
+         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
+
          if (delay12TileInfo.kvsActBaseTileAlign32 != delay12TileInfo.kvsActBaseTileAlign64) {
              PadPS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, delay12TileInfo.kvsActBaseTileAlign32, embedReal, pSlot);
          }
- 
+
          if (curBaseTileSize != delay12TileInfo.kvsActBaseTileAlign64) {
              PadVS2NotAlign64(delay12TileInfo.kvsActBaseTileAlign64, curBaseTileSize, embedReal);
          }
- 
-         // AscendC::PipeBarrier<PIPE_MTE2>();
-         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
  
          auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId],
              tla::MakeLayout<ElementA, layout::nZ>(embedReal, delay12TileInfo.kvsActBaseTileAlign64), Arch::PositionL1{});

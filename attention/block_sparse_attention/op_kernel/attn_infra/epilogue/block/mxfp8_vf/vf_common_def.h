@@ -114,6 +114,22 @@ constexpr half NEG_TWO_VALE = static_cast<half>(-2.0f);
 constexpr half TWO_VALE = static_cast<half>(2.0f);
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
 
+// mxfp4 / golden 同构：Exp 后 fp16→bf16→fp16，再进 float→e4m3 RINT。
+// 缺这一步时，1.064453 直接 RINT 成 e4m3 1.125；bf16 RT 后是 1.0625→e4m3 1.0
+// （s2=32 qs57 k=12：rowsum 1.53125 vs golden 1.500）。
+#define BSA_MXFP8_FP16_BF16_RT4(c0, c1, c2, c3, preg16)                                   \
+    do {                                                                                 \
+        RegTensor<bfloat16_t> _bf0, _bf1, _bf2, _bf3;                                    \
+        Cast<bfloat16_t, T, castTraitZero>(_bf0, (c0), (preg16));                        \
+        Cast<bfloat16_t, T, castTraitZero>(_bf1, (c1), (preg16));                        \
+        Cast<bfloat16_t, T, castTraitZero>(_bf2, (c2), (preg16));                        \
+        Cast<bfloat16_t, T, castTraitZero>(_bf3, (c3), (preg16));                        \
+        Cast<T, bfloat16_t, castTraitZero>((c0), _bf0, (preg16));                        \
+        Cast<T, bfloat16_t, castTraitZero>((c1), _bf1, (preg16));                        \
+        Cast<T, bfloat16_t, castTraitZero>((c2), _bf2, (preg16));                        \
+        Cast<T, bfloat16_t, castTraitZero>((c3), _bf3, (preg16));                        \
+    } while (0)
+
 // FIA LoadAlign(+64)：128 half 的 even/odd 再 Interleave 成连续 qs[0:64) / qs[64:128)
 #define BSA_MXFP8_FP16_SPLIT_CONSEC64(fLo, fHi, srcHalf, preg16)                          \
     do {                                                                                 \

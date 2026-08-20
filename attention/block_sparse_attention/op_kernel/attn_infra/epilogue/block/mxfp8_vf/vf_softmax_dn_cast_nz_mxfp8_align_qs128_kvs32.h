@@ -141,6 +141,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
             Exp(src_c1, src_c1, preg_all_16bit);
             Exp(src_c2, src_c2, preg_all_16bit);
             Exp(src_c3, src_c3, preg_all_16bit);
+            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_all_16bit);
 
             // FIA：连续 64 qs 再四路 e4m3 RINT
             BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);
@@ -189,6 +190,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
             Exp(src_c1, src_c1, preg_all_16bit);
             Exp(src_c2, src_c2, preg_all_16bit);
             Exp(src_c3, src_c3, preg_all_16bit);
+            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_all_16bit);
 
             // FIA：连续 64 qs 再四路 e4m3 RINT
             BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);

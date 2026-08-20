@@ -354,7 +354,7 @@ function PrecisionView() {
       />
       <Note>
         Y 轴：NPU vs golden 满足率（%）。门槛 99.5%。Source: mxfp8_pytest ·
-        dump-off · 2026-08-18 · NPU 3 · cann_bsa_0817。判据 rtol=1/128、atol=1e-4、maxRE &lt; 10。
+        dump-off · 2026-08-18 官方套件 / 2026-08-19 跨组 · NPU 4 · cann_bsa_0817。判据 rtol=1/128、atol=1e-4、maxRE &lt; 10。
       </Note>
 
       <Table
@@ -366,8 +366,8 @@ function PrecisionView() {
           ["qs128 / kvs160 tail", "b1 n1 s160", "99.95%", "过"],
           ["qs128 / kvs256 dense", "b1 n1 s256", "99.99%", "过"],
           ["GQA qs128 / kvs192", "n1=4 n2=1 s192", "99.86%", "过"],
-          ["sparse qs128 / kvs256", "n1=2 n2=2 s256", "99.64%", "过（隔离复跑）"],
-          ["qs64 / kvs128", "blockShapeX=64", "—", "tiling 失败"],
+          ["sparse qs128 / kvs256", "n1=2 n2=2 s256", "99.64%", "过"],
+          ["qs64 / kvs128", "blockShapeX=64", "100.00%", "过（QK pad-to-128）"],
         ]}
         rowTone={[
           "success",
@@ -376,21 +376,41 @@ function PrecisionView() {
           "success",
           "success",
           "success",
-          "danger",
+          "success",
         ]}
       />
 
-      <Grid columns={2} gap={12}>
-        <Callout tone="warning" title="qs64 未进精度">
-          host CheckBlockShapeQuantConstraint 要求 float8 全量化
-          blockShapeX==128。不是精度失败。qs64 VF 文件在仓库里，但 tiling
-          拦在前面。
-        </Callout>
-        <Callout tone="info" title="同进程污染">
-          全量一次跑时 qs64 的 tiling inner error 会把后续 sparse
-          带崩。sparse 必须另起进程；官方 6 个 qs128 case 都过线。
-        </Callout>
-      </Grid>
+      <H3>跨 TILE_GROUP（s2&gt;1024，2026-08-19）</H3>
+      <Table
+        headers={["case", "覆盖路径", "fulfill", "结果"]}
+        columnAlign={["left", "left", "right", "left"]}
+        rows={[
+          ["qs128 / kvs1152", "组 2 仅 1 tile", "100.00%", "过"],
+          ["qs128 / kvs1056", "组 2 首块 kvs32 尾", "100.00%", "过"],
+          ["qs128 / kvs1280", "组 2 两整 tile", "100.00%", "过"],
+          ["qs128 / kvs2048", "两整组；L1 槽 8 回绕", "99.93%", "过"],
+          ["qs128 / kvs3072", "三组；groupMax 与 L1 环", "99.93%", "过"],
+          ["qs256 / kvs16384", "原长序列", "99.71%", "过"],
+          ["qs64 / kvs1152、2048", "CopyPScale 半行", "100.00%", "过"],
+          ["GQA / sparse / b=2 × 1152", "多 head / gather / 奇数 loop", "≥99.79%", "过"],
+        ]}
+        rowTone={[
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+          "success",
+        ]}
+      />
+
+      <Callout tone="warning" title="CopyPScale 两套下标">
+        UB localGroupMax 用 loop/2%12；L1 P-scale 与 P 一样用 loop%12。写 L1
+        的起点必须是 (2*groupMaxStart+sub)%12。组 0 的 0,2,4,6 碰巧对齐，组 1
+        起不 *2 会把 scale 写到错误槽（1152 曾 62.5%，16384 曾 5.15%）。
+      </Callout>
 
       <H3>套件外（不纳入验收）</H3>
       <Table
@@ -407,8 +427,13 @@ function PrecisionView() {
         todos={[
           {
             id: "qs64",
-            content: "qs64：放开 blockShapeX==128，接 qs64 VF",
-            status: "pending",
+            content: "qs64：host 允许 X=64；QK pad-to-128 + qs128 VF",
+            status: "completed",
+          },
+          {
+            id: "cross-group",
+            content: "跨组 CopyPScale L1 映射 loop%12（s2>1024）",
+            status: "completed",
           },
           {
             id: "s32",
@@ -460,13 +485,17 @@ function AsBuiltView() {
             "组尾经 L1 交换",
             "asc_copy_l12ub_sync；UB 偏移 160KB+512",
           ],
-          ["pScale 槽", "每基块 1 槽", "kvs128 = 1 slot；不可套 mxfp4 ×2"],
+          ["pScale 槽", "每基块 1 槽", "UB loop/2%12；L1 loop%12，CopyPScale 必须 *2"],
           [
             "kvs32 pad",
             "未写",
             "groupmax pad 满 4 组；PadPS2 128 行 × 4 C0",
           ],
-          ["qs64", "验收覆盖", "host 仍要求 blockShapeX==128"],
+          [
+            "qs64",
+            "验收覆盖",
+            "host X=64/128；QK pad M=128 + qs128 VF；CopyP 仍用 align64=64",
+          ],
         ]}
         rowTone={[
           "success",
@@ -476,9 +505,9 @@ function AsBuiltView() {
           "warning",
           "warning",
           "warning",
-          "info",
           "warning",
-          "danger",
+          "warning",
+          "info",
         ]}
       />
 
@@ -502,6 +531,15 @@ function AsBuiltView() {
           99.17%→99.95%。kvs32 VF 只 pad 1 个 groupmax，computePscale
           固定读 4 组，残留 Inf 变成 e8m0=255。PadPS2 曾按 64 行 2
           平面写，应对 128 行 × 4 个 FP8 C0。
+        </Callout>
+        <Callout tone="warning" title="5 · qs64 even/odd">
+          Fixpipe N=64 时 VF 按 QsBase=128 读 even/odd。QK pad N=128 +
+          qs128 VF 后 100%。
+        </Callout>
+        <Callout tone="danger" title="6 · 跨组 CopyPScale L1 下标">
+          s2&gt;1024：GetPScaleParams 用 UB groupMax 环，CopyPScale 曾直接当
+          L1 行号。组 1 写槽 4、PV 读槽 8。dest=(2*groupMaxStart+sub)%12
+          后 1152=100%、16384=99.71%。
         </Callout>
       </Stack>
 
@@ -530,12 +568,34 @@ function AsBuiltView() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader trailing={<Pill size="sm">待做</Pill>}>
-            7 · qs64 / 短 kvs / 性能
+          <CardHeader trailing={<Pill size="sm" active>已完成</Pill>}>
+            7 · qs64
           </CardHeader>
           <CardBody>
             <Text size="small">
-              blockShapeX、套件外 s2=32/96、MXFP4 性能对比、可选 Q 切 D。
+              host 允许 blockShapeX=64/128。QK pad-to-128，softmax/pscale
+              走 qs128 VF。qs64/kvs128 = 100%。
+            </Text>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader trailing={<Pill size="sm" active>已完成</Pill>}>
+            8 · 跨 TILE_GROUP
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              CopyPScale L1 映射 loop%12。s2=1152/2048/3072/16384 与 qs64
+              跨组均 ≥99.5%。
+            </Text>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader trailing={<Pill size="sm">待做</Pill>}>
+            9 · 短 kvs / 性能
+          </CardHeader>
+          <CardBody>
+            <Text size="small">
+              套件外 s2=32/96、MXFP4 性能对比、可选 Q 切 D。
             </Text>
           </CardBody>
         </Card>
@@ -646,22 +706,22 @@ export default function BsaMxfp8AsBuiltReport() {
       <Stack gap={8}>
         <H1>BSA MXFP8 as-built（精度反向分析）</H1>
         <Row gap={8} wrap>
-          <Pill active>2026-08-18 板上修订</Pill>
+          <Pill active>2026-08-19 跨组修订</Pill>
           <Pill>quantMode=4 · e4m3 / e8m0</Pill>
           <Pill>kvs128 · G=8 · Dpv=12</Pill>
         </Row>
         <Text>
-          0817 几何（QK 半面 64×128、基块 128×128）没有改。dump-off
-          全量后，官方 qs128 套件 6/6 过 99.5%；qs64 仍被 host tiling
-          拦住。下面按实测把原稿补成 as-built。
+          0817 几何（QK 半面 64×128、基块 128×128）没有改。官方 qs128 套件、
+          qs64/kvs128、以及跨 TILE_GROUP（s2&gt;1024）均过 99.5%。as-built
+          约束见「原稿到落地」。
         </Text>
       </Stack>
 
       <Grid columns={4} gap={12}>
-        <Stat value="6 / 6" label="qs128 套件过线" tone="success" />
-        <Stat value="99.64%" label="最低 fulfill（sparse）" tone="success" />
-        <Stat value="99.5%" label="门槛" />
-        <Stat value="qs64" label="未进比对（tiling）" tone="warning" />
+        <Stat value="7 / 7" label="官方套件过线" tone="success" />
+        <Stat value="99.64%" label="套件最低（sparse 256）" tone="success" />
+        <Stat value="99.71%" label="长序列 qs256/kvs16384" tone="success" />
+        <Stat value="s2=32/96" label="套件外未达标" tone="warning" />
       </Grid>
 
       <Row gap={8} wrap>

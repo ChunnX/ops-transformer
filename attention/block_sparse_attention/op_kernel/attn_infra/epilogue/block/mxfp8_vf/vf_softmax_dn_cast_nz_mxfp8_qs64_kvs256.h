@@ -146,6 +146,7 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest
             Exp(src_c1, src_c1, preg_VL64_16bit);
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
+            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_VL64_16bit);
 
             // K-outer（qs64 仅 lo 64 qs）：C0=0,1 占 TLA 0-15 / 16-31
             Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
@@ -192,6 +193,7 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_vf(__ubuf__ T2 *pDest
             Exp(src_c1, src_c1, preg_VL64_16bit);
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
+            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_VL64_16bit);
 
             Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
             Cast<float, T, castTraitZero>(src_f1, src_c1, preg_all_fp32);
