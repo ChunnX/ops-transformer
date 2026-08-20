@@ -14,10 +14,7 @@
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
-const char *Op(const CheckContext &context)
-{
-    return context.opName == nullptr ? "SparseMla" : context.opName;
-}
+const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
 } // namespace
 
 ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
@@ -26,10 +23,10 @@ ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "ori_mask_mode", std::to_string(context.oriMaskMode).c_str(),
                                           "0, 3 or 4"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.cmpMaskMode != 0 && context.cmpMaskMode != 3,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_mask_mode", std::to_string(context.cmpMaskMode).c_str(),
-                                          "0 or 3"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.cmpMaskMode != 0 && context.cmpMaskMode != 3,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "cmp_mask_mode", std::to_string(context.cmpMaskMode).c_str(), "0 or 3"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriWinLeft < -1 || context.oriWinRight < -1,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     Op(context), "ori_win_left and ori_win_right",
@@ -57,12 +54,6 @@ ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
                                                           "SWA mode requires cmp_mask_mode=0"),
                     return ge::GRAPH_FAILED);
     } else if (IsOriCmpSparse(context)) {
-        OP_CHECK_IF(context.oriMaskMode != 0 || context.cmpMaskMode != 0,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                        Op(context), "ori_mask_mode and cmp_mask_mode",
-                        (std::to_string(context.oriMaskMode) + ", " + std::to_string(context.cmpMaskMode)).c_str(),
-                        "Sparse ori_kv mode requires ori_mask_mode=cmp_mask_mode=0"),
-                    return ge::GRAPH_FAILED);
     } else if (context.variant == OperatorVariant::SPARSE) {
         OP_CHECK_IF(context.cmpMaskMode != 3,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_mask_mode",
@@ -72,12 +63,6 @@ ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
     }
 
     if (context.oriSparseIndices.present && !context.cmpKv.present) {
-        OP_CHECK_IF(context.oriMaskMode != 0 || context.cmpMaskMode != 0,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                        Op(context), "ori_mask_mode and cmp_mask_mode",
-                        (std::to_string(context.oriMaskMode) + ", " + std::to_string(context.cmpMaskMode)).c_str(),
-                        "Ori-only sparse mode requires both mask modes to be 0"),
-                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
