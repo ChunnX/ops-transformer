@@ -107,12 +107,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                              GM_ADDR commScale, GM_ADDR x1Offset, GM_ADDR x2Offset, GM_ADDR y,
                                              GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    // kernel的使用类型，USING_APACE_IMPL时为AIC_ONLY，否则为MIX_AIC_1_2
-    if constexpr (USING_APACE_IMPL) {
-        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
-    } else {
-        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    }
+    // kernel的使用类型由tiling_key.h中ASCENDC_TPL_KERNEL_TYPE_SEL控制
     TPipe pipe;
     constexpr HcclServerType commServerType =
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
