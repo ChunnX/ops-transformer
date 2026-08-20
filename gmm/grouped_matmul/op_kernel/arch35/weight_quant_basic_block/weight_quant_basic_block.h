@@ -131,7 +131,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
             l1StartSize += MX_BIAS_L1_SIZE;
         }
 
-        static constexpr uint64_t MX_SCALE_L1_SIZE = MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType);
+        static constexpr uint64_t MX_SCALE_L1_SIZE = 4 * 1024;
         uint64_t mxScaleAL1L1StartSize = l1StartSize;
         uint64_t mxScaleAL1L1RemainSize = l1RemainSize;
         l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
@@ -293,9 +293,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
         if (cvLoopIdx_ > 1) {
             WaitAicToAiv();
         }
-        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-            HandleMxA8W4Scale(offsetParam, kMte2Offset);
-        }
+        // scaleA/scaleB are prepacked in GM and are copied by AIC together with
+        // the current kbL1 tile.  AIV is now responsible for weight conversion only.
         vectorCompute_.WaitVToMTE2();
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             mxBiasSetParamAndGmtoUb(offsetParam, l1ConsumeConfig, ubConsumeConfig, kMte2Offset, mte2RealK);
