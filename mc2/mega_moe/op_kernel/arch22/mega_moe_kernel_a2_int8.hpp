@@ -16,10 +16,10 @@
 #include "utils/copy_l0c_to_gm_custom.hpp"
 
 #include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "template_linear_algebra_v2/arch/tla_v2_cross_core_sync.hpp"
 #include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/detail/callback.hpp"
+#include "template_linear_algebra_v2/tla_v2_coord.hpp"
+#include "template_linear_algebra_v2/detail/tla_v2_callback.hpp"
 #include "template_linear_algebra_v2/gemm_coord.hpp"
 #include "template_linear_algebra_v2/matrix_coord.hpp"
 #include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
@@ -34,8 +34,8 @@
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.hpp"
-#include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
-#include "unpermute/moe_token_unpermute.h"
+#include "moe_init_routing_quant_v2/mc2_mega_moe_quant_moe_v2_fullload_dynamic_quant.h"
+#include "unpermute/mc2_mega_moe_moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
