@@ -102,6 +102,7 @@ private:
     __aicore__ inline void SetTilingDataAndCal(const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void SendToSharedExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void SendToMoeExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
+    __aicore__ inline void WaitSendToken();
     __aicore__ inline void ExpertActiveMaskInit();
     __aicore__ inline void ExpertActiveMaskCal();
     __aicore__ inline void CalcSendTokenBufNum(TBuf<> &outBuf);
@@ -276,6 +277,7 @@ private:
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
     bool useSerialMode_ = false;
+    bool needWaitSendToken_ = false;
     uint64_t totalWinSize_{0};
     uint32_t expertTokenNumsType_{1};
     int32_t expertIdsCnt_{0};
@@ -624,6 +626,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     for (int i = 0; i < sendTokenBufNum_; i++) {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
     }
+    needWaitSendToken_ = true;
     for (uint32_t virtualTokenIndex = startTokenId; virtualTokenIndex < endTokenId; ++virtualTokenIndex) {
         uint32_t sendTokenIndex = virtualTokenIndex % activeMaskBsCnt_;
         uint32_t toSharedExpertIndex = virtualTokenIndex / activeMaskBsCnt_;
@@ -646,8 +649,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             TokenToExpert(dstWinGMTensor, inQueue, srcTokenIndex, axisK_ + toSharedExpertIndex);
         }
     }
-    for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+    if (!useSerialMode_) {
+        WaitSendToken();
     }
 }
 
@@ -667,6 +670,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     for (int i = 0; i < sendTokenBufNum_; i++) {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
     }
+    needWaitSendToken_ = true;
 
     for (int32_t index = aivId_; index < validTokenNum; index += moeUsedAivNum_) {
         int32_t tokenId = index / axisK_;
@@ -700,9 +704,21 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
     }
 
+    if (!useSerialMode_) {
+        WaitSendToken();
+    }
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitSendToken()
+{
+    if (!needWaitSendToken_) {
+        return;
+    }
     for (int i = 0; i < sendTokenBufNum_; i++) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
     }
+    needWaitSendToken_ = false;
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1679,6 +1695,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
     // 所有核完成token发送和count计算后，再统一发布count
     PipeBarrier<PIPE_ALL>();
+    WaitSendToken();
     SyncAll<true>();
     if (sendExpertNum == 0) {
         return;
