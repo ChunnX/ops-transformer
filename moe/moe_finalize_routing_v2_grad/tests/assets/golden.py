@@ -44,6 +44,11 @@ class AclnnMoeFinalizeRoutingV2GradTestSpec:
         BSK = expandedRowIdx.shape[0]
         eri = expandedRowIdx.to(torch.int64)
 
+        topK = 1
+        if scalesOptional is not None and scalesOptional.dim() >= 2:
+            topK = scalesOptional.shape[1]
+        N = BSK // topK
+
         if dropPadMode == 1:
             if expandedXOptional is not None and expandedXOptional.dim() == 3:
                 E, C = expandedXOptional.shape[0], expandedXOptional.shape[1]
@@ -54,7 +59,7 @@ class AclnnMoeFinalizeRoutingV2GradTestSpec:
             out_rows = E * C
             out_shape = (E, C, H)
         else:
-            if activeNum > 0:
+            if activeNum > 0 and activeNum < BSK:
                 out_rows = activeNum
             else:
                 out_rows = BSK
@@ -65,30 +70,36 @@ class AclnnMoeFinalizeRoutingV2GradTestSpec:
             for i in range(BSK):
                 src_row = eri[i].item()
                 if 0 <= src_row < out_rows:
-                    grad_expanded_x[src_row] = grad_y[i]
+                    grad_row_idx = i // topK
+                    grad_expanded_x[src_row] = grad_y[grad_row_idx]
             grad_expanded_x = grad_expanded_x.reshape(out_shape)
             grad_scales = torch.zeros((BSK, 1), dtype=grad_y_dtype)
             return [grad_expanded_x.to(grad_y_dtype), grad_scales]
         else:
             scales_dtype = scalesOptional.dtype
-            scales = scalesOptional.reshape(BSK).to(torch.float32)
+            scales = scalesOptional.reshape(BSK, topK).to(torch.float32)
             grad_expanded_x = torch.zeros((out_rows, H), dtype=torch.float32)
-            grad_scales = torch.zeros((BSK,), dtype=torch.float32)
+            grad_scales = torch.zeros((BSK, topK), dtype=torch.float32)
 
             expanded_x = expandedXOptional.to(torch.float32) if expandedXOptional is not None else None
             if expanded_x is not None and expanded_x.dim() == 3:
                 expanded_x = expanded_x.reshape(-1, H)
+
             for i in range(BSK):
                 src_row = eri[i].item()
+                k_idx = i % topK
+                grad_row_idx = i // topK
                 if 0 <= src_row < out_rows:
-                    grad_expanded_x[src_row] = grad_y[i] * scales[i]
+                    scale_val = scales[grad_row_idx, k_idx]
+                    grad_expanded_x[src_row] = grad_y[grad_row_idx] * scale_val
                     if expanded_x is not None:
-                        grad_scales[i] = torch.sum(expanded_x[src_row] * grad_y[i])
+                        grad_scales[grad_row_idx, k_idx] = torch.sum(
+                            expanded_x[src_row] * grad_y[grad_row_idx])
                     else:
-                        grad_scales[i] = torch.sum(grad_y[i] * scales[i])
+                        grad_scales[grad_row_idx, k_idx] = 0.0
             grad_expanded_x = grad_expanded_x.reshape(out_shape)
             return [grad_expanded_x.to(grad_y_dtype),
-                    grad_scales.reshape(BSK, 1).to(scales_dtype)]
+                    grad_scales.reshape(N, topK).to(scales_dtype)]
 
     @staticmethod
     def customize_inputs(*args, **kwargs):

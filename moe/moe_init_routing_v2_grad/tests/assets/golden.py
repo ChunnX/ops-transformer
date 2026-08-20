@@ -94,7 +94,7 @@ class MoeInitRoutingV2GradTestSpec:
                     if 0 <= src_row < A:
                         rows.append(grad_expanded_x[src_row])
             if rows:
-                grad_x[element] = numpy.sum(numpy.stack(rows), axis=0)
+                grad_x[element] = numpy.sum(numpy.stack(rows).astype(numpy.float32), axis=0)
 
         return [grad_x.astype(ori_dtype)]
 

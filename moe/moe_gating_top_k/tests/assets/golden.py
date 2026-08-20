@@ -16,7 +16,7 @@ import torch
 __spec__ = {
     "moe_gating_top_k": "MoeGatingTopKTestSpec",
     "aclnnMoeGatingTopK": "AclnnMoeGatingTopKTestSpec",
-    "aclnnMoeGatingTopKV2": "AclnnMoeGatingTopKTestSpec",
+    "aclnnMoeGatingTopKV2": "AclnnMoeGatingTopKV2TestSpec",
 }
 
 
@@ -43,6 +43,73 @@ def _softmax_numpy(x, axis=-1):
 class AclnnMoeGatingTopKTestSpec:
 
     @staticmethod
+    def golden(x, biasOptional, k=1, kGroup=1, groupCount=1, groupSelectMode=0,
+               renorm=0, normType=0, outFlag=False, routedScalingFactor=1.0,
+               eps=1e-20, yOut=None, expertIdxOut=None, outOut=None, *args, **kwargs):
+        inputIdsOptional = kwargs.get('inputIdsOptional', None)
+        tid2eidOptional = kwargs.get('tid2eidOptional', None)
+        ori_dtype = x.dtype
+        x = x.to(torch.float32)
+        if biasOptional is not None:
+            biasOptional = biasOptional.to(torch.float32)
+
+        if normType == 0:
+            x = _softmax_torch(x, -1)
+        elif normType == 1:
+            x = 1 / (1 + numpy.exp(-x.numpy()))
+            x = torch.from_numpy(x).to(torch.float32)
+        elif normType == 2:
+            x = torch.sqrt(torch.nn.functional.softplus(x))
+
+        original_x = x
+        if biasOptional is not None:
+            x = x + biasOptional
+
+        hashFlag = inputIdsOptional is not None and tid2eidOptional is not None
+        if hashFlag:
+            indices = tid2eidOptional[inputIdsOptional].to(torch.int64)
+        else:
+            if groupCount > 1:
+                x_reshaped = x.reshape(x.shape[0], groupCount, -1)
+                if groupSelectMode == 0:
+                    group_x = torch.amax(x_reshaped, dim=-1)
+                else:
+                    top2 = torch.topk(x_reshaped, 2, dim=-1).values
+                    group_x = top2.sum(dim=-1)
+                _, group_indices = torch.sort(group_x, dim=-1, descending=True, stable=True)
+                group_indices = group_indices[:, :kGroup]
+
+                mask = torch.ones((x_reshaped.shape[0], groupCount), dtype=torch.bool)
+                mask[torch.arange(x_reshaped.shape[0])[:, None], group_indices] = False
+                x = torch.where(mask.unsqueeze(-1), float('-inf'), x_reshaped)
+                x = x.reshape(x.shape[0], -1)
+
+            _, indices = torch.sort(x, dim=-1, stable=True, descending=True)
+            indices = indices[:, :k].to(torch.int64)
+
+        y = torch.gather(original_x, 1, indices)
+
+        if normType != 0 or renorm != 0:
+            y = y / (y.sum(dim=-1, keepdim=True) + eps)
+        y = y * routedScalingFactor
+
+        if outFlag:
+            out = original_x
+        else:
+            out = None
+
+        return [y.to(ori_dtype), None, out]
+
+    tolerance = {
+        "float32": {"standard": "stat_rel_err"},
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+    }
+
+
+class AclnnMoeGatingTopKV2TestSpec:
+
+    @staticmethod
     def golden(x, biasOptional, inputIdsOptional=None, tid2eidOptional=None,
                k=1, kGroup=1, groupCount=1, groupSelectMode=0,
                renorm=0, normType=0, outFlag=False, routedScalingFactor=1.0,
@@ -55,8 +122,7 @@ class AclnnMoeGatingTopKTestSpec:
         if normType == 0:
             x = _softmax_torch(x, -1)
         elif normType == 1:
-            x = 1 / (1 + numpy.exp(-x.numpy()))
-            x = torch.from_numpy(x).to(torch.float32)
+            x = 1 / (1 + torch.exp(-x))
         elif normType == 2:
             x = torch.sqrt(torch.nn.functional.softplus(x))
 
