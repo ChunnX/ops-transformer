@@ -43,6 +43,10 @@ public:
     {
         mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)ctxPtr;
         epWorldSize_ = epWorldSize;
+        if (GetBlockIdx() == 0) {
+            AscendC::PRINTF("[lijd-dbg] dispatch ctx epRankId=%u epWinBuf=%llx\n", mc2Context_->epRankId,
+                            (unsigned long long)mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
+        }
     }
 
     __aicore__ inline void Check(uint64_t /* totalWinSize */, TPipe * /* pipe */, GM_ADDR /* exceptionAddr */)

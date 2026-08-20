@@ -1517,6 +1517,11 @@ static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char 
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "context", dtypeStr.c_str(), "INT32");
         return ge::GRAPH_FAILED;
     }
+    // [lijd-dbg] 验证 ConstPlaceHolder 的 format 是否被 GE format 传播改写：primary==2(ND) 保持原样
+    // 则下方 FRACTAL_NZ 校验会失败；primary==6(FRACTAL_NZ) 则为"只标不搬"或已重排，需结合 kernel 读数判定
+    OP_LOGI(nodeName, "[lijd-dbg] context storage_format=%d primary=%d dim0=%ld",
+            static_cast<int>(contextDesc->GetStorageFormat()),
+            static_cast<int>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())), contextDim0);
 
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
