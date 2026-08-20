@@ -137,7 +137,7 @@ __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q
 
         for (uint16_t rowLoop = 0; rowLoop < rowLoopCnt; rowLoop++) {
             uint16_t rowLoopIdx = rowLoopCnt - 1 - rowLoop;
-            __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + dealBaseNum * rowLoopIdx + colDstStride * colLoopIdx;
+            __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + colDstStride * colLoopIdx + dealBaseNum * rowLoopIdx;
             __ubuf__ uint8_t *ubSrcTemp = ubSrcAddr + colSrcStride * colLoopIdx + dealBaseNum * rowLoopIdx;
 
             MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
@@ -163,8 +163,7 @@ __aicore__ inline void AntiquantVFW8NzD032(LocalTensor<KV_T> &antiqInUb, LocalTe
                                             LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
     static_assert(baseSize % 32 == 0);
-    static_assert(IsSameType<KV_T, int8_t>::value || IsSameType<KV_T, hifloat8_t>::value,
-                  "antiquant w8 D032, KV_T must be int8_t or hifloat8_t");
+    static_assert(IsSameType<KV_T, int8_t>::value, "antiquant w8 D032, KV_T must be int8_t");
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
     __ubuf__ Q_T *ubOffsetAddr = (__ubuf__ Q_T *)antiqOffsetUb.GetPhyAddr();
@@ -336,14 +335,13 @@ __simd_vf__ void AntiquantVFImplW8PerTokenNzD032(__ubuf__ uint8_t *ubSrcAddr, __
     MicroAPI::MaskReg kvTypeMaskAll = MicroAPI::CreateMask<KV_T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg qTypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
 
-    // const uint32_t rowBaseSize = 4;
     const uint32_t colBaseSize = 32;
     const uint32_t dealBaseNum = 128;
     const uint32_t doubleRowBaseSize = 8;
 
     const uint32_t rowStride = doubleRowBaseSize * colBaseSize;
     const uint32_t colDstStride = dealRowCount * colBaseSize;
-    const uint32_t colSrcStride = (dealRowCount * colBaseSize + 31) >> 5U << 5U;
+    const uint32_t colSrcStride = dealRowCount * colBaseSize;
     const uint16_t rowLoopCnt =
         static_cast<uint16_t>((dealRowCount + doubleRowBaseSize - 1) / doubleRowBaseSize);
     const uint16_t colLoopCnt = static_cast<uint16_t>(baseSize / colBaseSize);
