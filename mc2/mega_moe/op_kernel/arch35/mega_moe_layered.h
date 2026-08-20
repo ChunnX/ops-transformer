@@ -1274,13 +1274,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 CommitPreparedDispatchBatch(targetServerForSender, peerRank, activeBatchHandle, preparedDescTensor,
                                             preparedDataCount);
                 preparedDataCount = 0;
-                // Slot state changes to DONE only in CommitPreparedDispatchBatch. Without a commit, rescanning the
-                // contiguous DONE prefix cannot advance cursor.
-                int32_t oldCursor = cursor;
-                cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
-                if (cursor != oldCursor) {
-                    WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                }
+            }
+
+            int32_t oldCursor = cursor;
+            cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
+            if (cursor != oldCursor) {
+                WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
             }
             if (computeDone && preparedDataCount == 0U && cursor == ReadGmByPassDCache(countPtr)) {
                 break;
