@@ -53,7 +53,7 @@ using namespace AscendC;
 
 template <typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,
           int32_t CombineQuantMode, bool TopkWeightsPrefetch,
-          typename ArchitecturePolicy = MegaMoeArch92ArchitecturePolicy<false>>
+          typename ArchitecturePolicy = MegaMoeArch92ArchitecturePolicy>
 class MegaMoe {
 public:
     template <int32_t QM>
@@ -159,12 +159,10 @@ protected:
 
     using BlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch,
-                                       ArchitecturePolicy::IS_GMM1_INTERLEAVED>;
+                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       L1_TILE_M_256, L1_TILE_N, false,
-                                       ArchitecturePolicy::IS_GMM1_INTERLEAVED>;
+                                       L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
@@ -651,9 +649,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     GMMAddrInfo gmmAddrInfo{};
     uint32_t startBlockIdx = 0U;
     int32_t vecSetSyncCom = 0;
-    uint16_t pingpongIdx = 0U;
-    SharedExpertGmm1ActivationState runtimeState{
-        startBlockIdx, vecSetSyncCom, gmTileSequence, pingpongIdx};
+    SharedExpertGmm1ActivationState runtimeState{startBlockIdx, vecSetSyncCom, gmTileSequence};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
                                            QuantScaleOutType, ENABLE_A8W4>(
@@ -661,11 +657,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
             gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType,
                                            QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M,
-                                           ArchitecturePolicy::IS_GMM1_INTERLEAVED, false>(
+                                           false>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
             runtimeState, sharedExpertIdx);
     }
-    EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    EndSync(runtimeState.vecSetSyncCom);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -680,7 +676,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         RunSharedExpertGmm2Stage<QuantOutType, ActivationQuantOutType, Weight1Type,
                                  QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
-                                 GMM1_TILE_M, false, ArchitecturePolicy::IS_GMM1_INTERLEAVED, false>(
+                                 GMM1_TILE_M, false, false>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
             runtimeState, sharedExpertIdx);
     }
@@ -696,9 +692,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
     GMMAddrInfo gmm1AddrInfo{};
     uint32_t gmm1StartBlockIdx = 0U;
     int32_t gmm1VecSetSyncCom = 0;
-    uint16_t gmm1PingPongIdx = 0U;
-    Gmm1ActivationState gmm1RuntimeState{
-        gmm1StartBlockIdx, gmm1VecSetSyncCom, gmTileSequence, gmm1PingPongIdx};
+    Gmm1ActivationState gmm1RuntimeState{gmm1StartBlockIdx, gmm1VecSetSyncCom, gmTileSequence};
     uint64_t currentSendCnt = 0U;
     uint64_t nextSendCnt = 0U;
 

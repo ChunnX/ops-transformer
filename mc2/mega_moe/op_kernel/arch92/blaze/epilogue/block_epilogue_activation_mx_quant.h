@@ -115,14 +115,12 @@ using namespace ActivationQuantMsg;
 
 #define BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_, \
-              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_>
+              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS \
-    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch, \
-        IsInterleaved_
+    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
-          bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false,
-          bool IsInterleaved_ = false>
+          bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false>
 class BlockEpilogueActivationMxQuant {
 public:
     __aicore__ inline BlockEpilogueActivationMxQuant() {}
@@ -165,13 +163,12 @@ public:
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline auto GetTopkWeightTensor();
     // 计算并写回一个激活/量化 tile，不包含流水通知。
-    __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
-                                      uint16_t pingpongIdx = 0);
+    __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0, uint64_t mLoc = 0);
+    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint64_t mLoc = 0);
 
     __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                        __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
@@ -265,8 +262,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         fpEmax_ = FP4_E1M2_MAX_EXP;
     }
 
-    // 非交织布局使用完整 tile，交织布局使用带 ping-pong 偏移的半 tile。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / ACTIVATION_N_HALF : MAX_SINGLE_MN;
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS = MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -554,17 +550,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize,
     uint16_t nSize, uint32_t nDstUbAligned)
 {
-    uint32_t nSrcUbAligned;
-    if constexpr (IsInterleaved_) {
-        // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize。
-        // 注意：2*nSize==实际行距(TileN) 仅在满 tile 成立；tiling 已约束 hiddenDim%256==0，
-        // 交织调度宽度为完整 hiddenDim，故交织路径不会出现尾 tile；若未来放宽须改用 TileN。
-        nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
-    } else {
-        // 非交织源是两块独立 UB tile，生产端按固定行距 TileN 写入（MakeLayoutC(tileM, L1_TILE_N)）；
-        // 尾块 nSize < TileN 时行距不随 nSize 收缩，否则第 1 行起整行错位。
-        nSrcUbAligned = TileN;
-    }
+    // Gate/Up 是两块独立 UB tile，生产端按固定行距 TileN 写入；尾块不能收缩行距。
+    uint32_t nSrcUbAligned = TileN;
     uint16_t dim0VfTimes = mSize;
     uint16_t dim1VfTimes = nSize / ActivationImpl::VF_LEN_FP32;
     uint32_t dim1Tail = nSize % ActivationImpl::VF_LEN_FP32;
@@ -627,20 +614,20 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
             const float invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
             const ActivationImpl::SiTUParams situParams{clampLimit_, activationBeta_, invBeta, activationAlpha_,
                                                         invAlpha};
-            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, situParams);
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true>(ctx, situParams);
         } else {
             const ActivationImpl::SiTUParams situParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
-            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, situParams);
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false>(ctx, situParams);
         }
     } else if (activation == ActMode::SWIGLU_STEP) {
         const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, swiGluParams);
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>(ctx, swiGluParams);
     } else if (activation == ActMode::SWIGLU_OAI) {
         const ActivationImpl::SwiGLUOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
-        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx, swiGluOaiParams);
+        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch>(ctx, swiGluOaiParams);
     } else {
         const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, swiGluParams);
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>(ctx, swiGluParams);
     }
 }
 
@@ -675,30 +662,15 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationForMX(
-    uint16_t mSize, uint16_t pingpongIdx, uint64_t mLoc)
+    uint16_t mSize, uint64_t mLoc)
 {
-    constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
-    constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
-    constexpr uint32_t pongElemOf_int8 = MAX_SINGLE_MN * sizeof(DataTypeIn);
-    constexpr uint32_t pongElemOf_uint16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(uint16_t);
-    // 为交织 ping-pong 布局选择当前使用的半 tile 缓冲区。
-    const uint32_t pongMul = (IsInterleaved_ && pingpongIdx == 1U) ? 1U : 0U;
-
-    __ubuf__ DataTypeIn *l0cOutUbBase =
-        (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr() + pongMul * pongElemOf_DataTypeIn;
-    __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr() + pongMul * pongElemOf_bf16;
-    __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr() + pongMul * pongElemOf_int8;
-    __ubuf__ uint16_t *quantScaleOutputInUbAddr =
-        (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *halfScaleAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-
-    __ubuf__ DataTypeIn *l0cOutUbSecondAddr;
-    if constexpr (IsInterleaved_) {
-        l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
-    } else {
-        l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
-    }
+    __ubuf__ DataTypeIn *l0cOutUbBase = (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr();
+    __ubuf__ DataTypeIn *l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
+    __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
+    __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
+    __ubuf__ uint16_t *quantScaleOutputInUbAddr = (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr();
+    __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr();
+    __ubuf__ uint16_t *halfScaleAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
     VFDoActivationAndQuantForMX(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase, l0cOutUbSecondAddr,
                                 gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
 }
@@ -723,7 +695,7 @@ __aicore__ inline auto BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
-    const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
+    const BlockShape &blockShape, const BlockCoord &blockCoord)
 {
     singleM_ = Get<M_VALUE>(blockShape); // 128
     singleN_ = Get<N_VALUE>(blockShape); // 256
@@ -740,25 +712,12 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
     uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
-    VFDoActivationForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
+    VFDoActivationForMX(singleM_, mLoc); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
-    if constexpr (IsInterleaved_) {
-        constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
-        if (pingpongIdx == 1U) {
-            AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[PONG_INT8_ELEMS];
-            AscendC::LocalTensor<int8_t> quantScalePong = quantScaleOutput_[PONG_INT8_ELEMS];
-            CopyOutputFromUb2Gm(singleM_, yOffset, quantOutputPong);
-            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScalePong);
-        } else {
-            CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
-        }
-    } else {
-        CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-        CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
-    }
+    CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
+    CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);

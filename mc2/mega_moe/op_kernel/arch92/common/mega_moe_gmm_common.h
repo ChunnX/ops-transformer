@@ -43,7 +43,7 @@ struct BlockMmadSelector {
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
           bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsLayered = false, bool IsWaveFlagGrained = false>
 struct Config {
     static_assert(!IsA8W4, "arch92 MegaMoe only supports A8W8 GMM");
     static constexpr bool IS_SHARED = IsShared;
@@ -231,7 +231,6 @@ struct Config {
 
     struct ProblemConfig {
         using KernelConfig = Config;
-        static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
         static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
 
         uint32_t m = 0;
@@ -275,7 +274,7 @@ struct Config {
         config.n = Get<N_VALUE>(problemShape);
         config.k = Get<K_VALUE>(problemShape);
         config.outputN = config.n / ACTIVATION_N_HALF;
-        config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
+        config.schedulerN = config.outputN;
         config.tileM = gmm1TileM;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
         return config;

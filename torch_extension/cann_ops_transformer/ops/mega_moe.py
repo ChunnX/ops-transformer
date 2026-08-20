@@ -265,7 +265,7 @@ class SymmBuffer:
             backend={
                 "Ascend910B": "kfc",
                 "Ascend910_93": "kfc",
-                "Ascend910_96": "channel",
+                "Ascend910_9699": "channel",
                 "Ascend950": "channel",
             },
             customCclBufferSize=required_ccl_buffer_size,

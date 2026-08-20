@@ -15,11 +15,9 @@
 
 namespace MegaMoeImpl {
 
-template <bool IsGmm1Interleaved>
 struct MegaMoeArch92ArchitecturePolicy {
     static constexpr bool PERSIST_DISPATCH_CUMSUM = true;
     static constexpr bool USE_GM_HANDOFF = true;
-    static constexpr bool IS_GMM1_INTERLEAVED = IsGmm1Interleaved;
     static constexpr WorkspaceLayoutPolicy WORKSPACE_LAYOUT = WorkspaceLayoutPolicy::GM_HANDOFF_EXPERT_WAVE;
 
     __aicore__ static inline uint32_t GetPhysicalBlockIdx()

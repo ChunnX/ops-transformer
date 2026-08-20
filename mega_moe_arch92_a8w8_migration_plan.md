@@ -81,14 +81,14 @@ waveMGroupTarget = ceil(
 - 单个大专家可以跨多个Wave连续处理，不再独自撑大一个Wave。
 - GMM2没有独立的两轮目标，只处理当前Wave覆盖的token切片。
 
-非交织Weight1下，GMM1和GMM2的tile数分别近似为：
+A6固定使用非交织Weight1，GMM1和GMM2的tile数分别近似为：
 
 ```text
 GMM1: sum(ceil(expertTokens / 256) * ceil((hiddenDim / 2) / 256))
 GMM2: sum(ceil(expertTokens / 256) * ceil(h / 256))
 ```
 
-当 `MEGA_MOE_WEIGHT1_INTERLEAVED=1` 时，Generic GMM1 scheduler使用完整 `hiddenDim`，Wave负载计算必须改用实际 `schedulerN`，不能继续固定使用 `hiddenDim / 2`。
+因此A6 Generic GMM1 scheduler固定使用`hiddenDim / 2`作为N方向调度宽度。arch35已有的Weight1 Interleave能力不在本次修改范围内。
 
 ### 3.3 不能直接复用 A8W4 MMAD 函数
 
@@ -286,26 +286,43 @@ waveMGroupTarget = ceil(
     gmm1TilesPerMGroup);
 ```
 
-其中：
+其中A6固定使用：
 
 ```cpp
-schedulerN = IsGmm1Interleaved ? hiddenDim : hiddenDim / 2;
+schedulerN = hiddenDim / 2;
 ```
 
 Wave以256-token M-group为最小切分单位。一个专家超过当前Wave剩余容量时，只把当前容量覆盖的M-group放入本Wave，剩余token由下一Wave继续处理。
 
-### 6.2 AIC与AIV如何得到一致Wave边界
+### 6.2 A6不保留Weight1 Interleave
+
+A6首版只支持非交织Weight1，布局契约为：
+
+```text
+[全部Gate列][全部Up列]
+```
+
+该决策基于A6实际流水，而不是仅把编译开关固定为0：
+
+- AIC执行GMM1后将Gate/Up结果写入GM，AIV等待GM sequence后执行GM2UB和SwiGLU。
+- SwiGLU不直接消费AIC共享UB，也不会通过占用同一块UB同步阻塞下一次GMM1。
+- 原Interleave路径的主要收益是把Gate/Up双区改为Ping/Pong区，以支持AIC/AIV直接UB交接时的双缓冲；该机制在A6 `USE_GM_HANDOFF=true`路径中不可达。
+- Wave按M-group提供足够的GMM1调度并行度，没有必要为了更细的N轴切片继续维护特殊Weight1布局、额外scheduler粒度、Activation分支、flag计数和模板实例。
+
+因此arch92删除`MEGA_MOE_WEIGHT1_INTERLEAVED`入口开关、ArchitecturePolicy能力位以及GMM1/Epilogue/GMM2中的Interleave模板分支。arch35现有Interleave代码和能力保持不变。
+
+### 6.3 AIC与AIV如何得到一致Wave边界
 
 - AIV在 `ComputeExpertTokenCountAndNotify` 中得到 `sendCnt`。
 - 每个物理block将相同专家token数写入 `expertRevTokenNumsPtr[expert][physicalBlock]`。
 - AIC和AIV都从自己的物理block槽读取专家token数，再使用相同公式推进`(expertIdx, tokenIndexInExpert)`二维游标。
 - Wave边界不能依赖只有AIV本地可见的临时变量。
 
-### 6.3 GMM2不重新划Wave
+### 6.4 GMM2不重新划Wave
 
 GMM2直接处理当前GMM1 Wave覆盖的二维token区间`[waveBeginPosition, waveEndPosition)`，不根据GMM2 tile数重新分Wave。同一个大专家可在多个Wave中分别执行GMM1、GMM2和Combine。
 
-### 6.4 专家内切片约束
+### 6.5 专家内切片约束
 
 该策略已经进入A6实现，约束如下：
 
@@ -545,7 +562,7 @@ MTE3写回half 0         || Vector计算/量化half 1 || MTE2预取下一tile
 - topk weights预取开关开启时，weight UB和metadata不能与任一活跃bank重叠。
 - 两个half以及当前256行token group所需的全部N方向tile处理完成后，才能按既有协议发布GMM2-ready状态。
 - 若改为按128行累计ready count，Host预留的flag数量、AIC等待目标和Reset范围必须同步更新；优先保持外部256行同步语义不变。
-- 需要分别验证SwiGLU、SwiGLU-Step、SwiGLU-OAI、SituGLU、topk weights预取开关和Weight1交织路径。
+- 需要分别验证SwiGLU、SwiGLU-Step、SwiGLU-OAI、SituGLU和topk weights预取开关。
 
 这是主流水中优先级最高的384KB专项优化，因为A6的GMM1到Activation必须经过GM中转，双缓冲有机会隐藏一部分GM2UB时间。
 
@@ -809,7 +826,7 @@ mc2/mega_moe/op_kernel/
 - 入口文件必须直接位于 `op_kernel`，即 `arch92` 的上级目录，以匹配 A6 编译仓扫描 Kernel 源文件的目录约定；放在 `arch92` 内不会进入 A6 Kernel 编译。
 - 通过 `arch92/` 显式包含 `mega_moe_a8w8_wave.h`、`mega_moe_tiling.h` 和 `mega_moe_tiling_key.h`，不依赖编译命令额外注入 `arch92` 目录。
 - `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1)`。
-- 保留 `MEGA_MOE_WEIGHT1_INTERLEAVED` 编译期开关和0/1合法性检查，并将其传入A6 Generic GMM1调度。
+- 不提供Weight1 Interleave编译开关；A6固定实例化非交织Generic GMM1。
 - 注册与arch92 Host一致的TilingData。
 - 只实例化MTE。
 - 只接受以下A8W8组合：
@@ -960,7 +977,7 @@ context->SetScheduleMode(1);
 - topk weight关闭/开启。
 - 共享专家0到4。
 - 每专家TensorList和堆叠Tensor布局。
-- A5当前的Weight1交织编译路径；Wave tile统计必须与Generic scheduler的 `schedulerN` 一致。
+- 非交织Weight1布局：`[全部Gate列][全部Up列]`。
 - xActiveMask、maxRecvTokenNum、numMaxTokensPerRank等A5现有A8W8参数。
 
 必须拒绝：
@@ -1102,7 +1119,7 @@ this->AICore().AddConfig("ascend910_96", aicore_config);
 | xActiveMask | 支持 | 沿用A5前处理语义 |
 | 每专家TensorList | 支持 | 地址解析不变 |
 | 堆叠weight Tensor | 支持 | 地址偏移解析不变 |
-| Weight1交织编译路径 | 支持 | Wave负载按实际schedulerN统计 |
+| Weight1交织编译路径 | 不支持 | GM handoff下无UB双缓冲收益，arch92已删除该模板链路 |
 
 ## 20. 实施顺序
 
@@ -1146,7 +1163,6 @@ this->AICore().AddConfig("ascend910_96", aicore_config);
 4. SwiGLU/SwiGLU-Step/SwiGLU-OAI/SituGLU。
 5. 共享专家。
 6. per-expert/stacked weight布局。
-7. Weight1交织编译路径。
 
 ### 阶段F：构建和注册
 
@@ -1187,7 +1203,7 @@ this->AICore().AddConfig("ascend910_96", aicore_config);
 - sharedExpertNum 0、1、4。
 - SwiGLU/SwiGLU-Step/SwiGLU-OAI/SituGLU。
 - General/NZ和两种weight布局。
-- Weight1交织开/关，确认Wave边界和Activation完成计数一致。
+- 非交织Weight1下确认Gate/Up地址、Wave边界和Activation完成计数一致。
 
 ### 21.4 同步稳定性
 
@@ -1516,7 +1532,7 @@ arch92 Host Tiling和Kernel现已同步支持：
 
 空参数列表允许`GetData()==nullptr`。Kernel激活实现位于arch92本地
 `blaze/epilogue/gated_activation.h`，不引用A5私有CANN实现；Epilogue继续保留A6的
-`MEGA_MOE_IS_KERNEL_COMPILE`保护、非交织tail-N固定`TileN`行距及现有UB/GM交接逻辑。
+`MEGA_MOE_IS_KERNEL_COMPILE`保护、Gate/Up双区tail-N固定`TileN`行距及现有UB/GM交接逻辑。
 
 ## 本次工作区静态审查
 

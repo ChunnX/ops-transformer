@@ -483,9 +483,8 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t waveStart = waveIdx * L1_TILE_M_256;
         uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
-        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
         uint32_t targetLoops = Ops::Base::CeilDiv(waveM, config.activationTileM) *
-                               Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
+                               Ops::Base::CeilDiv(config.k, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
@@ -847,8 +846,8 @@ __aicore__ inline void Gmm2ExecA8W4(
 // =================================================================================================
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
-          bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool UseGmHandoff = false>
+          bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsWaveFlagGrained = false,
+          bool UseGmHandoff = false>
 __aicore__ inline void RunGmm2Generic(
     const Params &params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
@@ -859,7 +858,7 @@ __aicore__ inline void RunGmm2Generic(
 {
     using GmmConfig = GmmKernel::Config<false, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                         ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared,
-                                        IsLayered, IsGmm1Interleaved, IsWaveFlagGrained>;
+                                        IsLayered, IsWaveFlagGrained>;
     auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler(
@@ -889,7 +888,7 @@ __aicore__ inline void RunGmm2Generic(
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, bool UseGmHandoff = false>
+          bool IsWaveFlagGrained = false, bool UseGmHandoff = false>
 __aicore__ inline void RunGmm2Generic(
     const Params &params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
@@ -902,7 +901,7 @@ __aicore__ inline void RunGmm2Generic(
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
                    IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
-                   IsGmm1Interleaved, IsWaveFlagGrained, UseGmHandoff>(
+                   IsWaveFlagGrained, UseGmHandoff>(
         params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob,
         logicalCombineJobCount, blockMmadContext,
         allowWeightL2Bypass, expertTokenCount, rowOffsetInExpert);
@@ -1169,8 +1168,8 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
 // 使用调用方传入的 block 任务执行 GMM2，并保持所选同步约定不变。
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsShared, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool UseGmHandoff = false>
+          bool TopkWeightsPrefetch, bool IsShared, bool IsWaveFlagGrained = false,
+          bool UseGmHandoff = false>
 __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &params,
                                      const GMMAddrInfo &gmmAddrInfo, const Gmm2ExpertLoopState &state,
                                      Gmm2RuntimeState &runtimeState, void *blockMmadContext = nullptr,
@@ -1188,14 +1187,14 @@ __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &pa
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType,
                        QuantScaleType, true, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
-                       IsGmm1Interleaved, IsWaveFlagGrained, UseGmHandoff>(
+                       IsWaveFlagGrained, UseGmHandoff>(
             params, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.gmTileSequence, context.blockJob, logicalCombineJobCount,
             blockMmadContext, allowWeightL2Bypass, expertTokenCount, rowOffsetInExpert);
     } else {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType,
                        QuantScaleType, false, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
-                       IsGmm1Interleaved, IsWaveFlagGrained, UseGmHandoff>(
+                       IsWaveFlagGrained, UseGmHandoff>(
             params, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.gmTileSequence, context.blockJob, logicalCombineJobCount,
             blockMmadContext, allowWeightL2Bypass, expertTokenCount, rowOffsetInExpert);
@@ -1225,7 +1224,7 @@ __aicore__ inline bool PrepareMoeExpertGmm2Stage(
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA,
           typename WeightType, typename QuantScaleType, bool EnableA8W4,
           bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved, bool IsWaveFlagGrained, bool UseGmHandoff = false>
+          bool IsWaveFlagGrained, bool UseGmHandoff = false>
 __aicore__ inline void RunMoeExpertGmm2Stage(
     const Gmm2Config &context, const Params &params, const GMMAddrInfo &gmmAddrInfo,
     const Gmm2ExpertLoopState &state, Gmm2RuntimeState &runtimeState,
@@ -1233,16 +1232,14 @@ __aicore__ inline void RunMoeExpertGmm2Stage(
 {
     RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType,
                   QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
-                  TopkWeightsPrefetch, false, IsGmm1Interleaved,
-                  IsWaveFlagGrained, UseGmHandoff>(
+                  TopkWeightsPrefetch, false, IsWaveFlagGrained, UseGmHandoff>(
         context, params, gmmAddrInfo, state, runtimeState, blockMmadContext,
         allowWeightL2Bypass);
 }
 
 template <typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved,
-          bool IsWaveFlagGrained>
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsWaveFlagGrained>
 __aicore__ inline bool RunSharedExpertGmm2Stage(
     const Gmm2Config &context, const Params &params,
     const ExpertWeightTensorListAddrs &weights, Gmm2ExpertLoopState &state,
@@ -1260,8 +1257,7 @@ __aicore__ inline bool RunSharedExpertGmm2Stage(
         context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
     RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType,
                   QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
-                  TopkWeightsPrefetch, true, IsGmm1Interleaved,
-                  IsWaveFlagGrained>(
+                  TopkWeightsPrefetch, true, IsWaveFlagGrained>(
         context, params, gmmAddrInfo, state, runtimeState, blockMmadContext,
         allowWeightL2Bypass);
     return true;

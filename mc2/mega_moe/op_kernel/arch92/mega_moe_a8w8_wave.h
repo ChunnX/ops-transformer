@@ -39,17 +39,16 @@ __aicore__ inline uint32_t AdvanceArch92ExpertTokenPositionInWave(
 
 #define TemplateMegaMoeArch92TypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
-        int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved
+        int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeArch92TypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch, \
-        IsGmm1Interleaved
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeArch92TypeClass>
 class MegaMoeArch92A8W8Wave
     : public MegaMoe<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode,
-                     TopkWeightsPrefetch, MegaMoeArch92ArchitecturePolicy<IsGmm1Interleaved>> {
+                     TopkWeightsPrefetch, MegaMoeArch92ArchitecturePolicy> {
 private:
-    using ArchitecturePolicy = MegaMoeArch92ArchitecturePolicy<IsGmm1Interleaved>;
+    using ArchitecturePolicy = MegaMoeArch92ArchitecturePolicy;
     using MegaMoeBase = MegaMoe<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode,
                                 TopkWeightsPrefetch, ArchitecturePolicy>;
 
@@ -70,13 +69,11 @@ private:
     template <bool IsWeightNz>
     using Gmm1PersistentConfig = GmmKernel::Config<
         false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-        QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch, false, false,
-        IsGmm1Interleaved, false>;
+        QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch, false, false, false>;
     template <bool IsWeightNz>
     using Gmm2PersistentConfig = GmmKernel::Config<
         false, CombineQuantMode, ActivationQuantOutType, ActivationQuantOutType, bfloat16_t,
-        QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch, false, false,
-        IsGmm1Interleaved, false>;
+        QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch, false, false, false>;
     using Gmm1NdBlockMmad = typename Gmm1PersistentConfig<false>::BlockMmad;
     using Gmm1NzBlockMmad = typename Gmm1PersistentConfig<true>::BlockMmad;
     using Gmm2NdBlockMmad = typename Gmm2PersistentConfig<false>::BlockMmad;
@@ -142,9 +139,8 @@ private:
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void RunGmm1ActivationForExpert(
         ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-        int32_t &gmTileSequence, uint16_t &pingpongIdx, uint32_t expertIdx,
-        uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
-        uint32_t gmm1TilesPerMGroup);
+        int32_t &gmTileSequence, uint32_t expertIdx, uint32_t tokenStartIndexInExpert,
+        uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup);
     __aicore__ inline void RunGmm2CombineForExpert(
         ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
         int32_t &gmTileSequence, uint32_t expertIdx, uint32_t tokenStartIndexInExpert,
@@ -183,9 +179,8 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pre
 template <TemplateMegaMoeArch92TypeClass>
 __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::RunGmm1ActivationForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-    int32_t &gmTileSequence, uint16_t &pingpongIdx, uint32_t expertIdx,
-    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
-    uint32_t gmm1TilesPerMGroup)
+    int32_t &gmTileSequence, uint32_t expertIdx, uint32_t tokenStartIndexInExpert,
+    uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
 {
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
                                     QuantScaleOutType, A_ELEMS_PER_BYTE, false,
@@ -194,7 +189,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
         state, expertIdx, tokenStartIndexInExpert, gmm1TilesPerMGroup);
 
     int32_t unusedVecSync = 0;
-    Gmm1ActivationState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence, pingpongIdx};
+    Gmm1ActivationState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence};
     void *blockMmadContext = nullptr;
     if constexpr (g_coreType == AIC) {
         blockMmadContext = gmm1Config_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ?
@@ -203,7 +198,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
     }
     RunGmm1ActivationByMode<QuantOutType, Weight1Type, ActivationQuantOutType,
                             QuantScaleOutType, false, GMM1_TILE_M, EPILOGUE_TILE_M,
-                            TopkWeightsPrefetch, IsGmm1Interleaved, true,
+                            TopkWeightsPrefetch, true,
                             ArchitecturePolicy::USE_GM_HANDOFF>(
         gmm1Config_, params_, epilogueOp_, gmmAddrInfo, state, runtimeState, expertIdx,
         blockMmadContext, false, tokenStartIndexInExpert, sliceTokenCount);
@@ -238,7 +233,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
     }
     RunGmm2ByMode<CombineQuantMode, ActivationQuantOutType, ActivationQuantOutType, Weight1Type,
                   QuantScaleOutType, false, false, GMM1_TILE_M, TopkWeightsPrefetch, false,
-                  IsGmm1Interleaved, true, ArchitecturePolicy::USE_GM_HANDOFF>(
+                  true, ArchitecturePolicy::USE_GM_HANDOFF>(
         gmm2Config_, params_, gmmAddrInfo, runtimeProblemState, runtimeState, blockMmadContext, false,
         gmm2Config_.blockJob.totalJobs, expertTokenCount, tokenStartIndexInExpert);
 
@@ -259,11 +254,8 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
     uint32_t startBlockIdx = 0U;
-    uint16_t gmm1PingpongIdx = 0U;
 
-    const uint32_t schedulerN = IsGmm1Interleaved ?
-                                    gmm1Config_.common.gmm1OutputDim :
-                                    gmm1Config_.common.gmm1OutputDim / ACTIVATION_N_HALF;
+    const uint32_t schedulerN = gmm1Config_.common.gmm1OutputDim / ACTIVATION_N_HALF;
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(schedulerN, static_cast<uint32_t>(L1_TILE_N));
     waveMGroupTarget_ = Ops::Base::CeilDiv(
@@ -329,8 +321,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
                     expertTokenCount, waveMGroupTarget_, currentWaveMGroupCount, gmm1Position);
                 if (sliceTokenCount != 0U) {
                     RunGmm1ActivationForExpert(
-                        gmm1State, gmm1AddrInfo, startBlockIdx, gmTileSequence,
-                        gmm1PingpongIdx, currentExpertIdx,
+                        gmm1State, gmm1AddrInfo, startBlockIdx, gmTileSequence, currentExpertIdx,
                         sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
                 }
                 waveEndPosition = gmm1Position;

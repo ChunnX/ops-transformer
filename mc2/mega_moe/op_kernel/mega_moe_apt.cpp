@@ -30,15 +30,6 @@
 
 using namespace AscendC;
 
-#ifndef MEGA_MOE_WEIGHT1_INTERLEAVED
-#define MEGA_MOE_WEIGHT1_INTERLEAVED 0
-#endif
-#if MEGA_MOE_WEIGHT1_INTERLEAVED != 0 && MEGA_MOE_WEIGHT1_INTERLEAVED != 1
-#error "MEGA_MOE_WEIGHT1_INTERLEAVED must be 0 or 1"
-#endif
-
-static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
-
 template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType,
           uint8_t CommModeType, bool TopkWeightsPrefetch>
 __global__ __aicore__ void mega_moe(
@@ -67,7 +58,7 @@ __global__ __aicore__ void mega_moe(
         if constexpr (isA8W8DtypePair) {
             MegaMoeImpl::MegaMoeArch92A8W8Wave<
                 DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
+                CombineQuantOutType, TopkWeightsPrefetch>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask,
                     weightScales1, weightScales2, scales, sharedWeight1, sharedWeight2,

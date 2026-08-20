@@ -117,7 +117,7 @@ struct SwiGLUOaiParams {
  *   SwiGLU-Step：先计算 x1 的 SiLU 并裁剪，再与对称裁剪后的 x2 相乘
  *   包含主循环、尾循环和补零处理，所有寄存器均在本函数内声明
  */
-template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsStep, bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsStep>
 __aicore__ inline void RunSwiGLU(const ActivationContext<DataTypeIn> &ctx, const SwiGLUParams &swiGluParams)
 {
     const float scalarOne = 1.0f;
@@ -244,7 +244,7 @@ __aicore__ inline void RunSwiGLU(const ActivationContext<DataTypeIn> &ctx, const
  *   tanh 采用两段式（多项式路 + sigmoid 分解路），保号无相消
  *   包含主循环、尾循环和补零处理。
  */
-template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsLinear, bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsLinear>
 __aicore__ inline void RunSiTU(const ActivationContext<DataTypeIn> &ctx, const SiTUParams &situParams)
 {
     // tanh 多项式近似的奇次项系数（8 阶 Padé 近似，仅取奇次项）
@@ -422,7 +422,7 @@ __aicore__ inline void RunSiTU(const ActivationContext<DataTypeIn> &ctx, const S
  *   公式：(up + beta) × min(gate, clamp) × sigmoid(alpha × min(gate, clamp))
  *        = (clip(up,±clamp)+beta) × min(gate,clamp) / (1+exp(-alpha×min(gate,clamp)))
  */
-template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch>
 __aicore__ inline void RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, const SwiGLUOaiParams &swiGluOaiParams)
 {
     const float scalarOne = 1.0f;
