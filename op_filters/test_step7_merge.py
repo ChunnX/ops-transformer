@@ -59,6 +59,19 @@ def test_merge_prefix_ops_moe_ep_only():
     assert result == expected
 
 
+def test_merge_prefix_ops_engram_only():
+    """All engram_* ops collapse into a single engram entry."""
+    op_names = [
+        "engram_fetch",
+        "engram_fetch_grad",
+        "engram_fetch_wait",
+        "all_gather_matmul",
+    ]
+    expected = ["all_gather_matmul", "engram"]
+    result = _merge_prefix_ops(op_names, ASCEND950_MERGE_PREFIXES, _logger())
+    assert result == expected
+
+
 def test_merge_prefix_ops_both_prefixes():
     """Both moe_distribute and moe_ep prefixes merge in the same call."""
     op_names = [
@@ -133,3 +146,42 @@ def test_write_soc_json_ascend910b_keeps_separate_lines(tmp_path):
     assert "moe_ep_dispatch_epilogue" in lines
     # No merged moe_ep line is produced.
     assert "moe_ep" not in lines
+
+
+def _engram_mock_data(supported_product):
+    """Build mock op info data for engram write_soc_json tests."""
+    return [
+        {"op_name": "engram_fetch", "supported_products": [supported_product]},
+        {"op_name": "engram_fetch_grad", "supported_products": [supported_product]},
+        {"op_name": "engram_fetch_wait", "supported_products": [supported_product]},
+        {"op_name": "all_gather_matmul", "supported_products": [supported_product]},
+    ]
+
+
+def test_write_soc_json_ascend950_merges_engram(tmp_path):
+    """For ascend950, engram_* ops are merged into a single engram line."""
+    data = _engram_mock_data("ascend950")
+    output_path = write_soc_json(data, "ascend950", str(tmp_path), _logger())
+    lines = Path(output_path).read_text(encoding="utf-8").splitlines()
+
+    assert lines == ["all_gather_matmul", "engram"]
+    assert "engram" in lines
+    assert not any(line.startswith("engram_") for line in lines)
+
+
+def test_write_soc_json_ascend910b_keeps_engram_separate(tmp_path):
+    """For ascend910b, engram_* ops are written as separate lines (no merge)."""
+    data = _engram_mock_data("ascend910b")
+    output_path = write_soc_json(data, "ascend910b", str(tmp_path), _logger())
+    lines = Path(output_path).read_text(encoding="utf-8").splitlines()
+
+    assert lines == [
+        "all_gather_matmul",
+        "engram_fetch",
+        "engram_fetch_grad",
+        "engram_fetch_wait",
+    ]
+    assert "engram_fetch" in lines
+    assert "engram_fetch_grad" in lines
+    assert "engram_fetch_wait" in lines
+    assert "engram" not in lines

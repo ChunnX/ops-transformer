@@ -45,6 +45,7 @@ else:
 ASCEND950_MERGE_PREFIXES: Dict[str, str] = {
     "moe_distribute": "moe_distribute",
     "moe_ep": "moe_ep",
+    "engram": "engram",
 }
 
 
