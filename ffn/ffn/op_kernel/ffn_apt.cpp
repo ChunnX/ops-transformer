@@ -312,8 +312,6 @@ __aicore__ inline void FfnArch35KernelImpl(__gm__ uint8_t *x, __gm__ uint8_t *we
     SyncAll<false>();
     if constexpr (MODE == FFN_TPL_MODE_STREAMK) {
         // 官方 StreamK split-K：AIC 每核算一个 K 分片写 workspace，AIV 归约求和转 T。
-        // TPL_SEL 限定 MODE=STREAMK 仅 bf16 gelu/silu，此处 T 必为 bf16。
-        static_assert(IsSameType<T, bfloat16_t>::value, "MODE=STREAMK only supports bf16");
         // StreamK split-K 分片归约 workspace（host 布局：hidden 之后 + 128 pad）
         __gm__ uint8_t *downWs = user1 + ffn_tiling_data->v1HiddenOffset +
                                  static_cast<size_t>(ffn_tiling_data->v1HiddenRows) *

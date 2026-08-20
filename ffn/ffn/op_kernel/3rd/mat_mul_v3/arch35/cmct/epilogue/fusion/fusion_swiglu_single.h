@@ -76,10 +76,8 @@ public:
             AscendC::LocalTensor<DataTypeIn> srcRow = srcLocal[r * curAivN];
             AscendC::LocalTensor<DataTypeIn> outRow = outputLocal[r * outWidth];
             // silu(gate 半块)，全宽，写入输出区。
-            // 注意：不要换成 Muls/Exp/Adds/Reciprocal/Mul/Mul 显式链——3510 上
-            // Reciprocal 内部就是 Duplicate+Div（1/x 用 div 实现），该链每元素 7 条
-            // 寄存器操作（vs Silu+Mul 的 5 条）且每行 6 次 membase 调用（vs 2 次），
-            // 实测 M=640 aiv_vec 39.7→53.8µs、总耗时 70.0→81.0µs（2026-08-16 已证伪）。
+            // 注意：不要换成 Muls/Exp/Adds/Reciprocal/Mul/Mul 显式链——该链每元素
+            // 7 条寄存器操作（vs Silu+Mul 的 5 条）且每行 6 次 membase 调用（vs 2 次）。
             AscendC::Silu(outRow, srcRow, static_cast<uint32_t>(outWidth));
             AscendC::PipeBarrier<PIPE_V>();
             // ② silu(g) * up 半块，全宽，in-place

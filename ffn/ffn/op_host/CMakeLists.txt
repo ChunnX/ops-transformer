@@ -34,16 +34,10 @@ else()
     file(GLOB FFN_OFFICIAL_COMMON_TILING_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd/matmul/common/op_host/op_tiling/*.cpp
     )
+    # mat_mul_v3 3rd 源为 ffn/ffn/op_host/3rd 自持拷贝，无 mc2 依赖
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
         ${FFN_OFFICIAL_MM_TILING_SRCS}
         ${FFN_OFFICIAL_COMMON_TILING_SRCS}
-        # mc2 的 mat_mul_v3 host 源仍被 MC2_OPT 编入本 target，其引用
-        # Ops::Transformer::DebugTilingContext / TilingPrepareForOpCache / LegacyCommonMgr 等，
-        # 补编 mc2 对应实现使其可加载。
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/common/op_host/op_tiling/debug_tiling.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/op_cache_tiling.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/legacy_common_manager.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../mc2/3rd/ops_legacy/op_tiling/runtime_kb_api.cpp
     )
     target_include_directories(${OPHOST_NAME}_tiling_obj BEFORE PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/3rd

@@ -14,6 +14,7 @@
  */
 
 #include "aclnn_ffn.h"
+#include "../ffn_layout.h"
 #include "aclnn_ffn_v2.h"
 #include "aclnn_ffn_v3.h"
 
@@ -171,15 +172,28 @@ static bool IsArch35Fused(const FFNParams &ffnParams)
             ffnParams.activationType == ActiveType::SWIGLU);
 }
 
-// arch35 fused gelu：weight1 末维 == x 末维时为 linear 布局 [N, K]（out, in），否则为 canonical [K, N]
+// arch35 fused 布局识别（公共规则 ../ffn_layout.h；维度取最后两维）
+static ffnlayout::FfnLayout Arch35DetectLayout(const FFNParams &ffnParams)
+{
+    const auto &w1View = ffnParams.weight1->GetViewShape();
+    const auto &w2View = ffnParams.weight2->GetViewShape();
+    const auto &xView = ffnParams.x->GetViewShape();
+    return ffnlayout::FfnDetectLayout(w1View.GetDim(w1View.GetDimNum() - 2),
+                                      w1View.GetDim(w1View.GetDimNum() - 1),
+                                      w2View.GetDim(w2View.GetDimNum() - 2),
+                                      w2View.GetDim(w2View.GetDimNum() - 1),
+                                      xView.GetDim(xView.GetDimNum() - 1),
+                                      ffnParams.activationType == ActiveType::SWIGLU);
+}
+
+// arch35 fused：与权重校验同一公共规则（Arch35DetectLayout，含方阵 w2 消歧）；
+// 非 arch35 场景一律 canonical 语义。
 static bool IsLinearWeight(const FFNParams &ffnParams)
 {
     if (!IsArch35Fused(ffnParams)) {
         return false;
     }
-    size_t xDimNum = ffnParams.x->GetViewShape().GetDimNum();
-    int64_t xKDimValue = ffnParams.x->GetViewShape().GetDim(xDimNum - 1);
-    return ffnParams.weight1->GetViewShape().GetDim(1) == xKDimValue;
+    return Arch35DetectLayout(ffnParams) == ffnlayout::FfnLayout::LINEAR;
 }
 
 static bool CheckBiasDimNum(const aclTensor *weight, const aclTensor *expertTokens, const aclTensor *bias,
@@ -293,36 +307,22 @@ static aclnnStatus CheckFmapWeightShape(const FFNParams &ffnParams)
          ffnParams.x->GetDataType() == DataType::DT_FLOAT16) &&
         (ffnParams.activationType == ActiveType::GELU || ffnParams.activationType == ActiveType::SILU ||
          ffnParams.activationType == ActiveType::SWIGLU)) {
-        const int64_t w1Dim0 = ffnParams.weight1->GetViewShape().GetDim(0);
-        const int64_t w1Dim1 = ffnParams.weight1->GetViewShape().GetDim(1);
-        const int64_t w2Dim0 = ffnParams.weight2->GetViewShape().GetDim(0);
-        const int64_t w2Dim1 = ffnParams.weight2->GetViewShape().GetDim(1);
-        const bool isSwiglu = (ffnParams.activationType == ActiveType::SWIGLU);
-        // 布局识别与 infershape/tiling 同一套规则：
-        //  1) w1 非方阵：w1Dim1==xK → linear；w1Dim0==xK → canonical；
-        //  2) w1 方阵：用 w2 的布局一致性消歧（swiglu 的隐藏宽是 w1 行/列的一半）；
-        //  3) 全方阵/均不匹配：按 dtype 约定（BF16→linear，其余→canonical）。
-        bool layoutLinear = false;
-        if (w1Dim1 == xKDimValue && w1Dim0 != xKDimValue) {
-            layoutLinear = true;
-        } else if (w1Dim0 == xKDimValue && w1Dim1 != xKDimValue) {
-            layoutLinear = false;
-        } else if (w1Dim0 == xKDimValue && w1Dim1 == xKDimValue) {
-            const int64_t hiddenW = isSwiglu ? w1Dim0 / 2 : w1Dim0;
-            const int64_t hiddenW2 = isSwiglu ? w1Dim1 / 2 : w1Dim1;
-            if (w2Dim1 == hiddenW && w2Dim0 != hiddenW2) {
-                layoutLinear = true;
-            } else if (w2Dim0 == hiddenW2 && w2Dim1 != hiddenW) {
-                layoutLinear = false;
-            } else {
-                layoutLinear = (ffnParams.x->GetDataType() == DataType::DT_BF16);
-            }
-        } else {
+        const auto &w1ViewShape = ffnParams.weight1->GetViewShape();
+        const auto &w2ViewShape = ffnParams.weight2->GetViewShape();
+        const int64_t w1Dim0 = w1ViewShape.GetDim(w1ViewShape.GetDimNum() - 2);
+        const int64_t w1Dim1 = w1ViewShape.GetDim(w1ViewShape.GetDimNum() - 1);
+        const int64_t w2Dim0 = w2ViewShape.GetDim(w2ViewShape.GetDimNum() - 2);
+        const int64_t w2Dim1 = w2ViewShape.GetDim(w2ViewShape.GetDimNum() - 1);
+        // 布局识别走公共规则（Arch35DetectLayout → ../ffn_layout.h）。
+        const bool isSwiglu = (ffnParams.activationType == ActiveType::SWIGLU); // 下方 swiglu 分支校验使用
+        const ffnlayout::FfnLayout layout = Arch35DetectLayout(ffnParams);
+        if (layout == ffnlayout::FfnLayout::INVALID) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "weight1 shape [%ld, %ld] does not match x K=%ld (expect [K,N] or [N,K])", w1Dim0, w1Dim1,
                     xKDimValue);
             return ACLNN_ERR_PARAM_INVALID;
         }
+        const bool layoutLinear = (layout == ffnlayout::FfnLayout::LINEAR);
         if (layoutLinear) {
             if (isSwiglu) {
                 // linear swiglu：w1 [2H, K]，w2 [N, H]

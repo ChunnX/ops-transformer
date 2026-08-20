@@ -419,7 +419,7 @@ void MatMulV3TilingHelper::GetRebalanceBlock(const MatmulV3CompileInfo& compileI
     if (args.swigluSingleNAlign32) {
         // swiglu 单 matmul：epilogue 半宽输出（baseN/2 个 bf16 = baseN 字节）要求 32B 对齐，
         // 因此 baseN 必须为 32 的倍数。在搜索包络内收口（初值/上界/候选步长全部走 32 对齐），
-        // 而不是搜索后强改单个 baseN（强改会绕过 L1/L0C/波次容量约束，曾实测整卡 trap）。
+        // 而不是搜索后强改单个 baseN（会绕过 L1/L0C/波次容量约束）。
         baseNAlignUnit = std::max(baseNAlignUnit, BASIC_BLOCK_SIZE_32);
     }
 

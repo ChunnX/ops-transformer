@@ -1,22 +1,31 @@
 // arch35 FFN PyTorch binding: torch.ops.npu.ffn_linear -> aclnnFFNV2。
 // 直接接收 PyTorch Linear 布局权重 [N,K]（out,in），绕过 torch_npu.npu_ffn 的
 // canonical [K,N] 布局校验；kernel 内部通过 transB（ColumnMajor）处理。
+#include <cctype>
 #include <torch/library.h>
+#include "../op_host/ffn_layout.h"
 #include "torch_aclnn_helper.h"
 
 using namespace at;
 
 namespace ascend_kernel {
 
+// 与 aclnn GetActiveType 同语义：大小写不敏感、长度精确匹配（不做前缀匹配）
 bool is_swiglu(const std::string &act)
 {
-    return act.rfind("swiglu", 0) == 0 || act.rfind("Swiglu", 0) == 0 || act.rfind("SWIGLU", 0) == 0;
+    static constexpr char kSwiglu[] = "swiglu";
+    if (act.size() != sizeof(kSwiglu) - 1) {
+        return false;
+    }
+    for (size_t i = 0; i < act.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(act[i])) != kSwiglu[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
-// 与 aclnn/infershape/tiling 同一套布局识别：
-//  1) w1 非方阵：w1d1==xK → linear；w1d0==xK → canonical；
-//  2) w1 方阵：用 w2 消歧（swiglu 隐藏宽 = w1 边长/2）；
-//  3) 全方阵/均不匹配：BF16→linear，其余→canonical（写死约定）。
+// 布局识别走公共规则（../op_host/ffn_layout.h）：全方阵/均不匹配默认 canonical。
 std::vector<int64_t> ffn_linear_npu_output_size(const at::Tensor &x, const at::Tensor &weight1,
                                                 const at::Tensor &weight2, const std::string &activation)
 {
@@ -27,25 +36,10 @@ std::vector<int64_t> ffn_linear_npu_output_size(const at::Tensor &x, const at::T
     const int64_t w2d0 = weight2.size(-2);
     const int64_t w2d1 = weight2.size(-1);
     const bool swiglu = is_swiglu(activation);
-    const int64_t hiddenW = swiglu ? w1d0 / 2 : w1d0;
-    const int64_t hiddenW2 = swiglu ? w1d1 / 2 : w1d1;
-    bool isLinear = false;
-    if (w1d1 == xK && w1d0 != xK) {
-        isLinear = true;
-    } else if (w1d0 == xK && w1d1 != xK) {
-        isLinear = false;
-    } else if (w1d0 == xK && w1d1 == xK) {
-        if (w2d1 == hiddenW && w2d0 != hiddenW2) {
-            isLinear = true;
-        } else if (w2d0 == hiddenW2 && w2d1 != hiddenW) {
-            isLinear = false;
-        } else {
-            isLinear = (x.scalar_type() == at::kBFloat16);
-        }
-    } else {
-        TORCH_CHECK(false, "weight1 shape [", w1d0, ", ", w1d1,
-                    "] does not match x K=", xK, " (expect [K,N] canonical or [N,K] linear)");
-    }
+    const ffnlayout::FfnLayout layout = ffnlayout::FfnDetectLayout(w1d0, w1d1, w2d0, w2d1, xK, swiglu);
+    TORCH_CHECK(layout != ffnlayout::FfnLayout::INVALID, "weight1 shape [", w1d0, ", ", w1d1,
+                "] does not match x K=", xK, " (expect [K,N] canonical or [N,K] linear)");
+    const bool isLinear = (layout == ffnlayout::FfnLayout::LINEAR);
     if (swiglu && !isLinear) {
         TORCH_CHECK(false, "swiglu only supports linear layout weight1 [2H,K]");
     }
