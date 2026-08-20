@@ -145,6 +145,9 @@ public:
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
+        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+
         kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
@@ -228,12 +231,7 @@ private:
         }
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
-        initStageTwoParams.kg = kg_; // R7: unused, kept for compat
-        initStageTwoParams.keyGm = key_; // R7: original K for strided CalStateNew
-        initStageTwoParams.cgStartPos = cg.startPos; // R7: chunk group start in T
-        initStageTwoParams.vNewScaledGm.SetGlobalBuffer(
-            reinterpret_cast<__gm__ bfloat16_t *>(stageWsAddr_),
-            static_cast<uint64_t>(tiling_->aiCoreNum) * tiling_->chunkSize * tiling_->dv);
+        initStageTwoParams.kg = kg_;
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
         initStageTwoParams.ws = stageWsAddr_;
         initStageTwoParams.mm1Bf16 = &stage2MmBf16_;
@@ -305,6 +303,7 @@ private:
     GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
     GlobalTensor<vInnerType> vInner_; // (Nv, maxGroupLength, Dv) primary vInner
     GlobalTensor<lowType> qPrime_;    // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> attnInter_; // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;       // (Nv, maxGroupLength, C)
     // mask矩阵
