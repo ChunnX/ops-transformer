@@ -74,7 +74,6 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
-    static constexpr uint32_t EMPTY_OUT_UB_SIZE = VEC_M_BASE * DV_BASE * sizeof(OUTPUT_T);
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size)
@@ -103,11 +102,6 @@ public:
         if ASCEND_IS_AIV {
             // V2 累计输出：[VEC_M_BASE,dTemplateAlign64] fp32。
             tPipe_->InitBuffer(stage2OutBuf_, VEC_M_BASE * dTemplateAlign64 * sizeof(MM_T));
-            // 空 Q block 只写本 block 对应的行，避免启动时全量清零输出 GM。
-            tPipe_->InitBuffer(emptyOutBuf_, EMPTY_OUT_UB_SIZE);
-            if constexpr (HAS_LSE) {
-                tPipe_->InitBuffer(emptyLseBuf_, SOFTMAX_STATE_UB_SIZE);
-            }
             // V1 DN packed P 使用双队列。
             tPipe_->InitBuffer(stage1OutQue_[0], 1, STAGE1_OUT_UB_SIZE);
             tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
@@ -154,15 +148,6 @@ public:
             mte3ToVId_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             vToMte3Id_[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
             SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-
-            LocalTensor<OUTPUT_T> emptyOut = emptyOutBuf_.template Get<OUTPUT_T>();
-            Duplicate<OUTPUT_T>(emptyOut, 0.0F, VEC_M_BASE * DV_BASE);
-            if constexpr (HAS_LSE) {
-                LocalTensor<float> emptyLse = emptyLseBuf_.template Get<float>();
-                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, VEC_M_BASE);
-            }
-            SetFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
-            WaitFlag<HardEvent::V_MTE3>(vToMte3Id_[0]);
         }
     }
 
@@ -193,8 +178,13 @@ public:
             outCopyParams.dstStride = constInfo.attentionOutStride;
             const uint64_t outOffset =
                 ((queryTokenBase + s1Idx + vecMbaseIdx) * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
-            LocalTensor<OUTPUT_T> emptyOut = emptyOutBuf_.template Get<OUTPUT_T>();
+            // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
+            LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
+            Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
+            stage1OutQue_[0].template EnQue(emptyOut);
+            emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
             DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
+            stage1OutQue_[0].template FreeTensor(emptyOut);
 
             if constexpr (HAS_LSE) {
                 DataCopyExtParams lseCopyParams;
@@ -204,8 +194,12 @@ public:
                 lseCopyParams.dstStride = constInfo.softmaxLseStride;
                 const uint64_t lseOffset =
                     (queryTokenBase + s1Idx + vecMbaseIdx) * constInfo.realN2Size + n1Idx;
-                LocalTensor<float> emptyLse = emptyLseBuf_.template Get<float>();
+                LocalTensor<float> emptyLse = softmaxLseQueue_.template AllocTensor<float>();
+                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, actVecMSize);
+                softmaxLseQueue_.template EnQue(emptyLse);
+                emptyLse = softmaxLseQueue_.template DeQue<float>();
                 DataCopyPad(softmaxLseGm_[lseOffset], emptyLse, lseCopyParams);
+                softmaxLseQueue_.template FreeTensor(emptyLse);
             }
         }
     }
@@ -592,8 +586,6 @@ private:
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TBuf<> stage2OutBuf_;
-    TBuf<> emptyOutBuf_;
-    TBuf<> emptyLseBuf_;
     TBuf<> softmaxMaxBuf_[SOFTMAX_BUFFER_NUM];
     TBuf<> softmaxSumBuf_[SOFTMAX_BUFFER_NUM];
     TBuf<> softmaxExpBuf_[SOFTMAX_BUFFER_NUM];
