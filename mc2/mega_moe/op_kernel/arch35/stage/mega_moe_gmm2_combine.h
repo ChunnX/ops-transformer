@@ -997,44 +997,6 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
     }
 }
 
-template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
-          typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved, bool IsWaveFlagGrained>
-__aicore__ inline void RunMoeExpertGmm2Stage(const GmmExecutionConfig &gmmConfig, const Params &params,
-                                             const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                             GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
-                                             bool allowWeightL2Bypass = false)
-{
-    RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
-                  Gmm1TileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
-        gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
-}
-
-template <typename GenericElementA, typename A8W4ElementA, typename WeightType, typename QuantScaleType,
-          bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved,
-          bool IsWaveFlagGrained>
-__aicore__ inline bool RunSharedExpertGmm2Stage(const MoeStageCommonConfig &commonConfig,
-                                                const GmmExecutionConfig &gmmConfig, const Params &params,
-                                                const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
-                                                GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
-                                                void *persistentBlockMmadContext = nullptr,
-                                                bool allowWeightL2Bypass = false)
-{
-    if (commonConfig.tokenNum == 0U) {
-        return false;
-    }
-    ProblemShape problemShape;
-    Get<M_VALUE>(problemShape) = commonConfig.tokenNum;
-    Get<N_VALUE>(problemShape) = commonConfig.gmm1OutputDim;
-    Get<K_VALUE>(problemShape) = commonConfig.tokenHiddenDim;
-    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, WeightType, QuantScaleType, Gmm1TileM, EnableA8W4 || EnableA4W4>(
-        commonConfig, gmmConfig, params.workspaceInfo, weights, gmmAddrInfo, sharedExpertIdx);
-    RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
-                  Gmm1TileM, TopkWeightsPrefetch, true, IsGmm1Interleaved, IsWaveFlagGrained>(
-        gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
-    return true;
-}
-
 // 调度当前 MoE 专家指定 token 范围的量化 Combine。
 template <uint8_t CombineMode>
 __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
