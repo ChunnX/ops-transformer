@@ -111,8 +111,7 @@ private:
     __aicore__ inline uint32_t GetExpertDispatchRowCount(uint32_t expertIdx);
     __aicore__ inline uint32_t AdvanceWaveCursor(
         ExpertRowCursor &cursor, uint32_t expertRowCount, uint32_t remainingMGroupCount) const;
-    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(
-        ExpertRowCursor &dispatchCursor, uint32_t &dispatchTaskCoreBase);
+    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(ExpertRowCursor &dispatchCursor);
     __aicore__ inline void SetGmm1ProblemState(
         Gmm1ExpertLoopState &problemState, const Gmm1ExpertLoopState &expertState,
         uint32_t problemStartRowOffset, uint32_t problemEndRowOffset);
@@ -854,7 +853,7 @@ __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceWave
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
-    ExpertRowCursor &dispatchCursor, uint32_t &dispatchTaskCoreBase)
+    ExpertRowCursor &dispatchCursor)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
@@ -864,7 +863,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         ExpertRowCursor waveBegin = dispatchCursor;
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
-        uint32_t waveLogicalRowCount = 0U;
         while (waveEnd.expertIdx < moeExpertPerRank_ && waveMGroupCount < mGroupsPerWave_) {
             uint32_t expertRowCount = GetExpertDispatchRowCount(waveEnd.expertIdx);
             if (expertRowCount == 0U || waveEnd.rowOffsetInExpert >= expertRowCount) {
@@ -875,13 +873,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             uint32_t segmentRows = AdvanceWaveCursor(
                 waveEnd, expertRowCount, mGroupsPerWave_ - waveMGroupCount);
             waveMGroupCount += GetMGroupCountForRows(segmentRows, GMM1_TILE_M);
-            waveLogicalRowCount += segmentRows;
         }
 
-        const uint32_t dispatchCoreCount = tokenDispatchConfig_.blockJob.totalJobs == 0U ?
-            1U : tokenDispatchConfig_.blockJob.totalJobs;
-        const uint32_t dispatchCoreIdx = tokenDispatchConfig_.blockJob.jobIndex;
-        uint32_t waveTaskIndex = 0U;
         for (uint32_t expertIdx = waveBegin.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
             if (expertIdx > waveEnd.expertIdx ||
                 (expertIdx == waveEnd.expertIdx && waveEnd.rowOffsetInExpert == 0U)) {
@@ -898,58 +891,12 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
                 tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
 
-            // Wave 内按 expert-rank 展平任务：一个非空 rank segment 按行数动态切成
-            // 一个或多个连续 shard，每个 shard 唯一归属一个 Dispatch core。
-            // owner 连续扫描该 rank 的 ordinal 区间，并连续写回专家 row。
-            int32_t previousRankGlobalEnd = expertGlobalRowBegin;
-            for (uint32_t remoteRankIdx = 0U; remoteRankIdx < worldSize_; ++remoteRankIdx) {
-                int32_t rankGlobalEnd = tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                    expertIdx * worldSize_ + remoteRankIdx);
-                int32_t rankSegmentBegin = previousRankGlobalEnd - expertGlobalRowBegin;
-                int32_t rankSegmentEnd = rankGlobalEnd - expertGlobalRowBegin;
-                previousRankGlobalEnd = rankGlobalEnd;
-
-                int32_t taskRowBegin = rankSegmentBegin > static_cast<int32_t>(segmentBegin) ?
-                    rankSegmentBegin : static_cast<int32_t>(segmentBegin);
-                int32_t taskRowEnd = rankSegmentEnd < static_cast<int32_t>(segmentEnd) ?
-                    rankSegmentEnd : static_cast<int32_t>(segmentEnd);
-                if (taskRowEnd <= taskRowBegin) {
-                    continue;
-                }
-
-                int32_t taskRowCount = taskRowEnd - taskRowBegin;
-                // 按当前 Wave 的平均行预算动态切连续 shard。大 rank segment
-                // 获得更多 core，小 segment 保持单核；每个 shard 仍使用连续
-                // rank-local ordinal 和连续目标行。
-                uint32_t shardCount = static_cast<uint32_t>(
-                    (static_cast<uint64_t>(taskRowCount) * dispatchCoreCount +
-                     waveLogicalRowCount / 2U) / waveLogicalRowCount);
-                shardCount = shardCount == 0U ? 1U : shardCount;
-                shardCount = shardCount > static_cast<uint32_t>(taskRowCount) ?
-                    static_cast<uint32_t>(taskRowCount) : shardCount;
-                for (uint32_t shardIdx = 0U; shardIdx < shardCount; ++shardIdx) {
-                    int32_t shardRowBegin = taskRowBegin + static_cast<int32_t>(
-                        static_cast<uint64_t>(taskRowCount) * shardIdx / shardCount);
-                    int32_t shardRowEnd = taskRowBegin + static_cast<int32_t>(
-                        static_cast<uint64_t>(taskRowCount) * (shardIdx + 1U) / shardCount);
-
-                    uint32_t ownerCoreIdx =
-                        (dispatchTaskCoreBase + waveTaskIndex) % dispatchCoreCount;
-                    ++waveTaskIndex;
-                    if (ownerCoreIdx != dispatchCoreIdx) {
-                        continue;
-                    }
-
-                    DispatchRankTokens<ActivationType, QuantScaleOutType, TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
-                        expertGlobalRowBegin, remoteRankIdx, rankSegmentBegin,
-                        shardRowBegin - rankSegmentBegin, shardRowEnd - rankSegmentBegin,
-                        static_cast<int32_t>(GMM1_TILE_M));
-                }
-            }
+            DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                       TopkWeightsPrefetch>(
+                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
+                expertGlobalRowBegin,
+                segmentEnd - segmentBegin, segmentBegin);
         }
-        dispatchTaskCoreBase =
-            (dispatchTaskCoreBase + waveTaskIndex) % dispatchCoreCount;
         dispatchCursor = waveEnd;
     }
     return dispatchCursor;
@@ -1298,7 +1245,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertRowCursor combineCursor{};
     ExpertRowCursor preparedWaveEndCursor{};
     bool hasPreparedWave = false;
-    uint32_t dispatchTaskCoreBase = 0U;
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -1315,13 +1261,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                 if (hasPreparedWave) {
                     waveEndCursor = preparedWaveEndCursor;
                 } else {
-                    waveEndCursor = DispatchWaveAndGetEndCursor(
-                        dispatchCursor, dispatchTaskCoreBase);
+                    waveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
                 }
                 // AIV1 先预取下一 wave，再等待并消费当前 wave 的 GMM2 输出。
                 if (waveEndCursor.expertIdx < moeExpertPerRank_) {
-                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(
-                        dispatchCursor, dispatchTaskCoreBase);
+                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
                     hasPreparedWave = true;
                 } else {
                     preparedWaveEndCursor = waveEndCursor;
