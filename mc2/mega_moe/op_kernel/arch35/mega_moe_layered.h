@@ -345,6 +345,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         rankPerServer_ = worldSize_;
     }
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankPerServer_);
+    printf("serverNum_ = %d\n", serverNum_);
     serverId_ = rankId_ / rankPerServer_;
     rankIdInServer_ = rankId_ % rankPerServer_;
     for (int i = 0; i < worldSize_; i++) {
@@ -1105,6 +1106,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchT
     GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(peerRank, dispatchFlagWinOffset_) +
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
+
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
 
@@ -1177,6 +1179,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
             }
             if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) && cursor == ReadGmByPassDCache(countPtr)) {
+                hcomm_.FlushChannel(channel);
                 break;
             }
         }
@@ -1594,6 +1597,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
+        }
+    }
+    for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
+        for (uint32_t srcServer = 0; srcServer < serverNum_; ++srcServer) {
+            uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
+            if (relayRank == rankId_) {
+                continue;
+            }
+            hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
         }
     }
 }
@@ -2049,6 +2061,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
 }
 
@@ -2320,6 +2333,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
                         static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
+        hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_));
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();

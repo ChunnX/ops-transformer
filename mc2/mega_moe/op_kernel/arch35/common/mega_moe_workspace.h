@@ -52,7 +52,7 @@ struct PeermemInfo {
 
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
-                                  uint32_t serverNum = 1)
+                                  int64_t serverNum = 1)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -134,7 +134,7 @@ struct WorkspaceInfo {
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, int64_t serverNum = 1)
     {
         workspaceSize = 0;
         dispatchRevDataPtr = base;
