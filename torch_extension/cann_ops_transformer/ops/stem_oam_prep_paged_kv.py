@@ -26,8 +26,8 @@ class StemOamPrepPagedKvOpBuilder(OpBuilder):
     def schema(self) -> str:
         return [
             "stem_oam_prep_paged_kv(Tensor k_cache, Tensor v_cache, Tensor kv_indices, "
-            "int[] kv_seq_lens, Tensor? k_scale_cache, Tensor? v_scale, "
-            "float lambda_mag, str kv_layout, "
+            "int[] kv_seq_lens, Tensor k_scale_cache, Tensor v_scale, "
+            "*, float lambda_mag, int cache_layout, int kv_block_size, "
             "int stem_block_size, int stem_stride) -> (Tensor, Tensor)"
         ]
 
