@@ -463,20 +463,20 @@ public:
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLse<T, SoftmaxLseFormat::TNDtoNT>(
+                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>>(
                         softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                         {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    DataCopySoftmaxLse<T, SoftmaxLseFormat::BSND>(
+                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>>(
                         softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                         {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLse<T, SoftmaxLseFormat::BNSD>(
+                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>>(
                         softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                         {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
                 }
