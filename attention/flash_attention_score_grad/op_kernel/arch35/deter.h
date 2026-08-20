@@ -1550,6 +1550,7 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
     j -= 1;
     r -= 1;
     coordinateInfo.batchId = -1;
+    int64_t n1 = n2 * g;
     for (int64_t bIdx = 0; bIdx < b; bIdx++) {
         if (r < tndS2BlockPrefixSum[bIdx + 1]) {
             int64_t actualS1Len = 0;
@@ -1565,11 +1566,11 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
             }
             // delta / s1OuterTmp表示在此bIdx下，s2的绝对idx
             int64_t s2IdxTmp = delta / s1OuterTmp * k + j;
-            if (s2IdxTmp >= s2OuterTmp * n2 * g) {
+            if (s2IdxTmp >= s2OuterTmp * n1) {
                 continue;
             }
-            int64_t n1Idx = s2IdxTmp / s2OuterTmp;
-            int64_t s2Idx = s2IdxTmp % s2OuterTmp;
+            int64_t n1Idx = s2IdxTmp % n1;
+            int64_t s2Idx = s2IdxTmp / n1;
             int64_t s1Idx = (s2Idx + delta) % s1OuterTmp;
             coordinateInfo.actualS1Len = actualS1Len;
             coordinateInfo.actualS2Len = actualS2Len;
