@@ -212,13 +212,14 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
-    UpdateWaveGmm2GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
-                               QuantScaleOutType, configureCombineCounter>(
+    UpdateWaveGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+                               configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
 
     int32_t unusedVecSync = 0;
-    Gmm2RuntimeState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence, gmm2PingPongIdx_};
+    uint32_t gmm2StartBlockIdx = expertIdx == 0U ? 0U : startBlockIdx;
+    Gmm2RuntimeState runtimeState{gmm2StartBlockIdx, unusedVecSync, gmTileSequence, gmm2PingPongIdx_};
     Gmm2ExpertLoopState runtimeProblemState = CreateGmm2ExpertLoopState(gmm2Config_);
     Get<M_VALUE>(runtimeProblemState.problemShape) = sliceTokenCount;
     Get<N_VALUE>(runtimeProblemState.problemShape) = Get<N_VALUE>(state.problemShape);
@@ -236,6 +237,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
                   true, ArchitecturePolicy::USE_GM_HANDOFF>(
         gmm2Config_, params_, gmmAddrInfo, runtimeProblemState, runtimeState, blockMmadContext, false,
         gmm2Config_.blockJob.totalJobs, expertTokenCount, tokenStartIndexInExpert);
+    startBlockIdx = gmm2StartBlockIdx;
 
     ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
         quantCombineConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo,
