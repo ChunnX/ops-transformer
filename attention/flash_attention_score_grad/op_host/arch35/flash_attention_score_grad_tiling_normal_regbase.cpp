@@ -103,6 +103,90 @@ GQADenseScheduleResult SelectGQADenseSchedule(int64_t k, int64_t m, int64_t n, i
     return result;
 }
 
+bool IsTndDeterSwizzleScheduleSafe(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (params.aicNum == 0 || params.n1 <= 0) {
+        return false;
+    }
+
+    const int64_t cubeBaseM = static_cast<int64_t>(params.s1Inner) * params.s1CvRatio;
+    const int64_t cubeBaseN = static_cast<int64_t>(params.s2Inner) * params.s2CvRatio;
+    if (cubeBaseM <= 0 || cubeBaseN <= 0 || params.actualSeqQlen.size() != params.actualSeqKvlen.size()) {
+        return false;
+    }
+
+    // Mode 2 assigns consecutive linear IDs to S2 blocks inside each head and rotates S1 by S2 + round.
+    // One head has at most min(k, n) active cores in a round. The same number of S1 blocks is required to
+    // keep their dQ coordinates unique. The Python recommendation m >= n is the k >= n special case.
+    for (size_t bIdx = 0; bIdx < params.actualSeqQlen.size(); ++bIdx) {
+        const int64_t actualSeqQLen = params.actualSeqQlen[bIdx];
+        const int64_t actualSeqKvLen = params.actualSeqKvlen[bIdx];
+        if (actualSeqQLen <= 0 || actualSeqKvLen <= 0) {
+            return false;
+        }
+        const int64_t m = PositiveCeilDiv(actualSeqQLen, cubeBaseM);
+        const int64_t n = PositiveCeilDiv(actualSeqKvLen, cubeBaseN);
+        if (m < std::min(static_cast<int64_t>(params.aicNum), n)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsTndDeterSwizzleSlotUtilizationEnough(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (params.aicNum == 0 || params.n2 <= 0 || params.g <= 0 ||
+        params.actualSeqQlen.size() != params.actualSeqKvlen.size()) {
+        return false;
+    }
+
+    const int64_t aicNum = static_cast<int64_t>(params.aicNum);
+    const int64_t cubeBaseM = static_cast<int64_t>(params.s1Inner) * params.s1CvRatio;
+    const int64_t cubeBaseN = static_cast<int64_t>(params.s2Inner) * params.s2CvRatio;
+    if (cubeBaseM <= 0 || cubeBaseN <= 0) {
+        return false;
+    }
+
+    int64_t validSlotNum = 0;
+    int64_t totalSlotNum = 0;
+    for (size_t bIdx = 0; bIdx < params.actualSeqQlen.size(); ++bIdx) {
+        const int64_t actualSeqQLen = params.actualSeqQlen[bIdx];
+        const int64_t actualSeqKvLen = params.actualSeqKvlen[bIdx];
+        if (actualSeqQLen <= 0 || actualSeqKvLen <= 0) {
+            return false;
+        }
+        const int64_t m = PositiveCeilDiv(actualSeqQLen, cubeBaseM);
+        const int64_t n = PositiveCeilDiv(actualSeqKvLen, cubeBaseN);
+        const int64_t columnNum = n * params.n2 * params.g;
+        const int64_t batchRound = PositiveCeilDiv(columnNum, aicNum) * m;
+        validSlotNum += m * columnNum;
+        totalSlotNum += batchRound * aicNum;
+    }
+    return totalSlotNum > 0 && validSlotNum * TND_DETER_SWIZZLE_SLOT_UTILIZATION_PERCENT_BASE >=
+                                   totalSlotNum * TND_DETER_SWIZZLE_MIN_SLOT_UTILIZATION_PERCENT;
+}
+
+bool IsTndDeterSwizzleSupported(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (!IsTndDeterSwizzleScheduleSafe(params)) {
+        return false;
+    }
+    return IsTndDeterSwizzleSlotUtilizationEnough(params);
+}
+
+void ConfigureTndDeterBn2S2Swizzle(FuzzyBaseInfoParamsRegbase &params, const TndBaseInfo &tndBaseInfo)
+{
+    // Mode 2 keeps every (B, N2, S2) column on one core, so dK/dV never need a cross-core tail merge.
+    std::fill(std::begin(params.deterPrefix2), std::end(params.deterPrefix2), static_cast<int64_t>(-1));
+
+    // Different columns still atomically accumulate dQ. Synchronize consecutive rounds to keep the accumulation
+    // order deterministic, as in the BN2GS1S2 deterministic swizzle path.
+    std::fill(std::begin(params.startNeedSyncRound), std::end(params.startNeedSyncRound), static_cast<uint64_t>(0));
+    std::fill(std::begin(params.endNeedSyncRound), std::end(params.endNeedSyncRound), static_cast<uint64_t>(0));
+    params.startNeedSyncRound[0] = 1;
+    params.endNeedSyncRound[0] = tndBaseInfo.tndS2BlockPrefixSum[params.b];
+}
+
 int64_t CalcCausalSingleBatchRound(int64_t k, int64_t causalSize)
 {
     if (k <= 0 || causalSize <= 0) {
@@ -208,6 +292,17 @@ DeterBandScheduleResult SelectDeterBandSchedule(int64_t k, int64_t m, int64_t n,
                 result.maxRound = causalRound;
             }
         }
+    }
+
+    // All hybrid schedules iterate k slots in each round. Reject low-utilization schedules because
+    // invalid coordinates still incur round traversal and index-calculation overhead in the kernel.
+    const int64_t validSlotNum = bandBlocks * b;
+    const int64_t totalSlotNum = k * result.maxRound;
+    const bool slotUtilizationEnough =
+        totalSlotNum > 0 && validSlotNum * DETER_BAND_SWIZZLE_SLOT_UTILIZATION_PERCENT_BASE >=
+                                totalSlotNum * DETER_BAND_SWIZZLE_MIN_SLOT_UTILIZATION_PERCENT;
+    if (!slotUtilizationEnough) {
+        return {};
     }
     return result;
 }
@@ -708,10 +803,16 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
            fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
-    // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
-    bool templateSupportCond =
-        (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+    // TND场景下，确定性计算+MHA+Dense支持BN2GS1S2/BN2S2模板，非确定性计算支持BN2S2模板。
+    // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
+    // Mode 2 pads every batch's (N2, S2) columns to a full AIC group. Reject schedules whose aggregate
+    // valid-slot ratio is too low; otherwise short tail groups serialize batches while most cores stay idle.
+    const bool deterTndSwizzleSupported = !fBaseParams.isDeterministic || IsTndDeterSwizzleSupported(fBaseParams);
+    const bool templateSupportCond =
+        (fBaseParams.isDeterministic &&
+         (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
+         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && fBaseParams.g == 1 &&
+         deterTndSwizzleSupported) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
          (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
           (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
@@ -720,9 +821,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
-    OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d], isNzOut = [%d].",
+    if (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && tndBaseInfo.isTndSwizzle) {
+        ConfigureTndDeterBn2S2Swizzle(fBaseParams, tndBaseInfo);
+    }
+    OP_LOGI(context_,
+            "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], "
+            "deterTndSwizzleSupported=[%d], isTndSwizzle=[%d], isNzOut=[%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
-            static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
+            static_cast<int>(fBaseParams.enableSwizzle), static_cast<int>(deterTndSwizzleSupported),
+            tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
 
     ret = InitTilingData();
     if (ret != ge::GRAPH_SUCCESS) {
