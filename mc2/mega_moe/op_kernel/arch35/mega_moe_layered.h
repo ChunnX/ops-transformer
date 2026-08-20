@@ -345,6 +345,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         rankPerServer_ = worldSize_;
     }
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankPerServer_);
+    printf("serverNum_ = %d\n", serverNum_);
     serverId_ = rankId_ / rankPerServer_;
     rankIdInServer_ = rankId_ % rankPerServer_;
     for (int i = 0; i < worldSize_; i++) {
