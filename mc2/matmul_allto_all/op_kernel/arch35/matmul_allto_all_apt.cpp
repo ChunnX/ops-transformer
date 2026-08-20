@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_allto_all.cpp
@@ -44,7 +44,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, MatmulAlltoAllTilingData,             \
-                                           MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
+                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<ComputationContextType>;                            \
         using SchedulerType =                                                                                          \
@@ -66,7 +66,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, KcTransposeType);                                           \
         KcTransposeType transposeImplName(&pipe);                                                                      \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, QuantMatmulAlltoAllTilingData,        \
-                                           MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
+                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<KcComputationContextType>;                          \
         using SchedulerType =                                                                                          \
@@ -80,7 +80,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL
-#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType, hcclDataType, commDataTypeX1, isMxFp4)       \
+#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType, hcclDataType)                                  \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationContextType);                           \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationType);                                          \
@@ -94,9 +94,8 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType =                                                                                          \
             MatmulAlltoAllPipeLine<MxComputationType, TransposeType, CommunicationType, SchedulerContextType>;         \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
-        Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,                                    \
-                                                QuantMatmulAlltoAllTilingData>                                \
-            op(&SchedulerImpl, hcclDataType);                                                                          \
+        Mc2Kernel::MxQuantMatmulAllToAllArch35<SchedulerType, SchedulerContextType, QuantMatmulAlltoAllTilingData> op( \
+            &SchedulerImpl, hcclDataType);                                                                             \
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                                   \
         op.Process();                                                                                                  \
     } while (0)
@@ -108,6 +107,8 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                              GM_ADDR commScale, GM_ADDR x1Offset, GM_ADDR x2Offset, GM_ADDR y,
                                              GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    // kernel的使用类型，这里是cube和vic混用，cube是主核，cube:vec=1:2
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     constexpr HcclServerType commServerType =
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
@@ -124,30 +125,9 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         using DtypeBias = float;
         MATMUL_ALLTO_ALL_APT_FP_IMPL(tilingData, pipe, commServerType);
     }
-#else
-    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData); // 按当前最大的结构体申请内存
-#if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
-     ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
+#elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1))
     if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: 卡数<=8时启用，MatMul→AllToAll顺序
-        GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
-        Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
-                                              hcommAllToAllMatmulTilingData, commServerType, false>
-            op(&tilingData);
-        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
-        op.Run();
-    } else {
-        // arch35 主线路径: 使用通信+转置+计算 pipeline
-        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
-        AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
-        if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
-            hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
-        }
-        MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, hcclDataType, DTYPE_X1, false);
-    }
-#elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    if constexpr (USING_APACE_IMPL) {
-        // apace hcomm路径: 卡数<=8时启用，FP4场景 MatMul→AllToAll
+        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                               hcommAllToAllMatmulTilingData, commServerType, true>
@@ -155,17 +135,34 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
         op.Run();
     } else {
-        // arch35 主线路径: FP4场景使用uint8作为通信数据类型
+        REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
-        MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);
+        MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, AscendC::HCCL_DATA_TYPE_UINT8);
     }
 #else
+    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
+
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
         MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
     } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {
         MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
+    } else if constexpr (QUANTMODE == MX_QUANT_MODE) {
+        AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
+        if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
+            hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
+        }
+        if constexpr (USING_APACE_IMPL) {
+            REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
+            GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
+            Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
+                                                  hcommAllToAllMatmulTilingData, commServerType, false>
+                op(&tilingData);
+            op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
+            op.Run();
+        } else {
+            MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, hcclDataType);
+        }
     }
-#endif
 #endif
 }

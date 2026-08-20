@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_allto_all_tiling_key.h
@@ -47,7 +47,6 @@ ASCENDC_TPL_ARGS_DECL(MatmulAlltoAll,
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
 ASCENDC_TPL_SEL(
-    // NON_QUANT_MODE: X2TRANSPOSE(0,1) x DTYPEBIAS(SAME_WITH_X, FP32) x ISSMALLK(0) x COMMMODE(CCU, AICPU) x USING_APACE_IMPL(0) = 8种组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, NON_QUANT_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -55,7 +54,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0),
                          ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
                          ASCENDC_TPL_BOOL_SEL(USING_APACE_IMPL, 0)),
-    // KC_QUANT_FP8E4M3_MODE: X2TRANSPOSE(0,1) x DTYPEBIAS(FP32) x ISSMALLK(0,1) x COMMMODE(CCU, AICPU) x USING_APACE_IMPL(0) = 8种组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, KC_QUANT_FP8E4M3_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -63,7 +61,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0, 1),
                          ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
                          ASCENDC_TPL_BOOL_SEL(USING_APACE_IMPL, 0)),
-    // KC_QUANT_FP8E5M2_MODE: X2TRANSPOSE(0,1) x DTYPEBIAS(FP32) x ISSMALLK(0,1) x COMMMODE(CCU, AICPU) x USING_APACE_IMPL(0) = 8种组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, KC_QUANT_FP8E5M2_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -71,7 +68,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0, 1),
                          ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
                          ASCENDC_TPL_BOOL_SEL(USING_APACE_IMPL, 0)),
-    // MX_QUANT_MODE + USING_APACE_IMPL=0: arch35主线pipeline, MIX_AIC_1_2
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, MX_QUANT_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -79,7 +75,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0),
                          ASCENDC_TPL_UINT_SEL(COMMMODE, ASCENDC_TPL_UI_LIST, COMMMODE_CCU, COMMMODE_AICPU),
                          ASCENDC_TPL_BOOL_SEL(USING_APACE_IMPL, 0)),
-    // MX_QUANT_MODE + USING_APACE_IMPL=1: hcomm纯C通信, AIC_ONLY
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIC_ONLY),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, MX_QUANT_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
