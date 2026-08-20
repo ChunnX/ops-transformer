@@ -370,7 +370,7 @@ aclnnStatus aclnnMhcPreV2(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMhcPre默认确定性实现。
+  - aclnnMhcPreV2默认确定性实现。
 
 - Batch一致性说明：
   - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
