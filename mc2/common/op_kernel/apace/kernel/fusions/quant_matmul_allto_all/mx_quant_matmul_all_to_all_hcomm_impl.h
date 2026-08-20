@@ -54,7 +54,7 @@ constexpr uint64_t GetYHcclDataType()
     if constexpr (AscendC::IsSameType<T, half>::value) {
         return AscendC::HCCL_DATA_TYPE_FP16;
     } else if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
-        return AscendC::HCCL_DATA_TYPE_BF16;
+        return AscendC::HCCL_DATA_TYPE_BFP16;
     } else {
         return AscendC::HCCL_DATA_TYPE_FLOAT;
     }
