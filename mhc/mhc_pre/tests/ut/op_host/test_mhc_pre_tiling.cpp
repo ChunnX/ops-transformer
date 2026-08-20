@@ -1831,5 +1831,5 @@ TEST_F(MhcPreTiling, Ut_Check_MK_DeterministicLevels)
 TEST_F(MhcPreTiling, Ut_Check_BatchConsistency_ForceSplitBs)
 {
     // Batch consistency level 3 must use the BS accumulation order instead of the M-K template.
-    CheckMkGeneralizedTiling(256U, 4U, 5120U, 0, 3);
+    CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 3);
 }
