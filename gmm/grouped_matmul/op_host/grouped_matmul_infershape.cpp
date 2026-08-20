@@ -505,7 +505,8 @@ static ge::graphStatus CheckNonQuant(gert::InferShapeContext *context)
 static ge::graphStatus GetGroupSize(const gert::InferShapeContext *context, GMMParamsInfo &paramsInfo)
 {
     size_t groupNum = 1;
-    // all case allows 1024 in infershape, specific check in tiling
+    // Tensor group lists allow up to 25600 entries in infer shape; individual
+    // quantization tiling paths keep their own stricter limits.
     size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_TENSOR;
     if (paramsInfo.numX > 1UL) {
         groupNum = paramsInfo.numX;
