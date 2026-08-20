@@ -9,9 +9,11 @@
 Ascend 950PR/Ascend 950DT
 <!-- end id4 -->
 场景一：
+
 ![](../../../docs/zh/figures/GroupedMatmulTransFusionPass_1.png)
 
 场景二：
+
 ![](../../../docs/zh/figures/GroupedMatmulTransFusionPass_2.png)
 
 <!-- npu="950,A3,910b" id1 -->
@@ -32,9 +34,11 @@ Ascend 950PR/Ascend 950DT
 <!-- end id4 -->
 
 场景一：
+
 ![](../../../docs/zh/figures/GroupedMatmulTransFusionPass_3.png)
 
 场景二：
+
 ![](../../../docs/zh/figures/GroupedMatmulTransFusionPass_4.png)
 
 <!-- end id1 -->
