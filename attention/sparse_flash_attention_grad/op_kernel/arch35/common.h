@@ -173,7 +173,7 @@ struct FagConstInfo {
     int64_t selectedBlockCount = 2048;
     int64_t selectedBlockSize = 1;
     int64_t selectedCountOffset = 0;
-    // true: BSND.N / gSize <= SFAG_HEAD_N_L1_RESIDENT，gather 64 + K 双槽常驻
+    // true: host tiling 判定 gSize <= SFAG_HEAD_N_L1_RESIDENT，gather 64 + K 双槽常驻
     bool isHeadNLe64 = false;
 };
 
