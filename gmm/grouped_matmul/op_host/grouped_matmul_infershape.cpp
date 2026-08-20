@@ -797,9 +797,12 @@ static ge::graphStatus CheckFunctionParamsForShape(gert::InferShapeContext* cont
         OP_LOGW(context->GetNodeName(), "Cannot get platform info!");
         return GRAPH_SUCCESS;
     } else {
-        paramsInfo.platform = (platformInfo.shortSocVersion.find("310P") != std::string::npos) ?
-                                PlatformID::ASCEND310P : (platformInfo.shortSocVersion.find("950") != std::string::npos) ?
-                                PlatformID::ASCEND950 : PlatformID::ASCEND910B;
+        paramsInfo.platform =
+            (platformInfo.shortSocVersion.find("310P") != std::string::npos)
+                ? PlatformID::ASCEND310P
+                : (platformInfo.shortSocVersion.find("950") != std::string::npos)
+                    ? PlatformID::ASCEND950
+                    : PlatformID::ASCEND910B;
     }
     OP_CHECK_IF(CheckQuantParams(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "CheckQuantParams failed!"),
@@ -1027,7 +1030,9 @@ static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext* c
             auto shape0 = context->GetDynamicInputShape(nodeIdx[0], i);
             OP_CHECK_NULL_WITH_CONTEXT(context, shape0);
             int64_t innerAxisValue = shape0->GetDim(innerAxisDimId);
-            if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.shortSocVersion) > 0) && innerAxisValue > GMM_MAX_INNER_AXIS) {
+            if (!(ret == GRAPH_SUCCESS &&
+                  GmmDavidSupportSoc.count(platformInfo.shortSocVersion) > 0) &&
+                innerAxisValue > GMM_MAX_INNER_AXIS) {
                 OP_LOGW(context->GetNodeName(), "Dim %lu value of %s[%lu] should less or equal to %ld,"
                 "but now is %ld.", dimIds[0], tensorType[0].c_str(), i, GMM_MAX_INNER_AXIS, innerAxisValue);
             }
