@@ -25,11 +25,6 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
-namespace {
-constexpr int KEYPOOL_COFF = 1;
-constexpr int KEYPOOL_LINEAR_CACHE = 1;
-}
-
 void KeyPoolTiling::ConvertRequiredParams(gert::TilingContext &context, KeyPoolContext &key_poolContext)
 {
     key_poolContext.hidden_states.desc = context.GetRequiredInputDesc(HIDDEN_STATES_INPUT_INDEX);
@@ -93,9 +88,7 @@ ge::graphStatus KeyPoolTiling::ConvertContext(gert::TilingContext &context, KeyP
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
-    key_poolContext.coff = &KEYPOOL_COFF;
     key_poolContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
-    key_poolContext.cacheMode = &KEYPOOL_LINEAR_CACHE;
     key_poolContext.normEps = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_INDEX);
     key_poolContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
     key_poolContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
@@ -144,8 +137,7 @@ ge::graphStatus KeyPoolTiling::SetBaseInfo()
         baseParams_->hiddenSize = context_->hidden_states.shape->GetStorageShape().GetDim(KEY_POOL_DIM_INDEX_1);
     }
 
-    coff = static_cast<uint8_t>(*context_->coff);
-    baseParams_->headDim = context_->wk.shape->GetStorageShape().GetDim(KEY_POOL_DIM_INDEX_0) / coff;
+    baseParams_->headDim = context_->wk.shape->GetStorageShape().GetDim(KEY_POOL_DIM_INDEX_0);
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
     baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
     baseParams_->normEps = context_->normEps == nullptr ? 1e-6f : *context_->normEps;
@@ -153,8 +145,8 @@ ge::graphStatus KeyPoolTiling::SetBaseInfo()
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
     baseParams_->batchConsistency = static_cast<uint32_t>(context_->batchConsistency);
-    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
-            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,
+    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u, stateCacheStrideDim0:%u",
+            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio,
             baseParams_->stateCacheStrideDim0);
 
     return ge::GRAPH_SUCCESS;
@@ -173,11 +165,8 @@ ge::graphStatus KeyPoolTiling::SetPageAttentionInfo()
 ge::graphStatus KeyPoolTiling::SetWorkSpaceInfo()
 {
     workspaceParams_->dbWorkspaceRatio = 2;
-    workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    if (coff == 2) {
-        workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
-    }
+    workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim;
+    workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim;
     workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
 
     return ge::GRAPH_SUCCESS;
@@ -204,7 +193,7 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
 {
     if (context_->templateId == TemplateId::FULL_LOAD) {
         innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
-        innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
+        innerSplitParams_->dBaseSize = 128; // nBase = dBase * 2
         uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
         uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
         baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
@@ -245,7 +234,7 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
         }
     } else {
         innerSplitParams_->mBaseSize = 256;        // 256:核间切分，M轴基本块大小
-        innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
+        innerSplitParams_->dBaseSize = 128; // 128：核间切分，D轴基本块大小
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -354,8 +343,6 @@ ge::graphStatus KeyPoolTiling::GenTilingKey() const
     // 0: BSH 1:TH
     uint8_t layout = 0;
     uint8_t templateId = static_cast<uint8_t>(context_->templateId);
-    uint8_t cacheMode = static_cast<uint8_t>(*context_->cacheMode);
-
     auto hiddenStatesDtype = context_->hidden_states.desc->GetDataType();
     if (hiddenStatesDtype == ge::DT_BF16) {
         dtype = 0;
@@ -369,9 +356,8 @@ ge::graphStatus KeyPoolTiling::GenTilingKey() const
         layout = 1;
     }
 
-    context_->tilingKey = GET_TPL_TILING_KEY(layout, dtype, coff, cacheMode, templateId);
-    OP_LOGI(context_->opName, "KeyPool dtype:%hhu layout:%hhu  coff:%hhu, cacheMode: %u, template_id:%hhu", dtype,
-            layout, coff, cacheMode, templateId);
+    context_->tilingKey = GET_TPL_TILING_KEY(layout, dtype, templateId);
+    OP_LOGI(context_->opName, "KeyPool dtype:%hhu layout:%hhu template_id:%hhu", dtype, layout, templateId);
     OP_LOGI(context_->opName, "KeyPool tilingKey:%lu", context_->tilingKey);
 
     return ge::GRAPH_SUCCESS;
@@ -673,22 +659,6 @@ ge::graphStatus KeyPoolTiling::CheckSingleParaCmpRatio() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KeyPoolTiling::CheckSingleParaCoff() const
-{
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus KeyPoolTiling::CheckSingleParaCacheMode() const
-{
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cacheMode, CACHE_MODE, CACHE_MODE_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus KeyPoolTiling::CheckRequiredParaExistence() const
 {
     if (CheckRequiredInOutExistence() != ge::GRAPH_SUCCESS || CheckRequiredAttrExistence() != ge::GRAPH_SUCCESS) {
@@ -769,27 +739,9 @@ ge::graphStatus KeyPoolTiling::CheckFeature() const
                 OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
                         MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
                 return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
-        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize,
-                            pageAttentionParams_->blockNum),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            context_->cacheBlockTable.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_1,
-            OP_LOGE(context_->opName, "when cacheMode is %u, cacheBlockTable dim num should be equal to %u, but got %u",
-                    static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), KEY_POOL_DIM_NUM_1,
-                    context_->cacheBlockTable.shape->GetStorageShape().GetDimNum()),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(
-            context_->cacheBlockTable.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_2,
-            OP_LOGE(context_->opName, "when cacheMode is %u, cacheBlockTable dim num should be equal to %u, but got %u",
-                    static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER), KEY_POOL_DIM_NUM_2,
-                    context_->cacheBlockTable.shape->GetStorageShape().GetDimNum()),
-            return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(context_->cacheBlockTable.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_2,
+                OP_LOGE(context_->opName, "cacheBlockTable dimension should be 2 for linear cache"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -812,7 +764,6 @@ ge::graphStatus KeyPoolTiling::LogErrorShapeConsistency(const std::string &name,
 
 ge::graphStatus KeyPoolTiling::CheckShapeConsistency() const
 {
-    auto coffD = coff * baseParams_->headDim;
     uint32_t stateNum = 2;
     if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("cacheBlockTable", context_->cacheBlockTable.shape,
                                                       KEY_POOL_DIM_INDEX_0, "batchSize", baseParams_->batchSize) ||
@@ -825,29 +776,28 @@ ge::graphStatus KeyPoolTiling::CheckShapeConsistency() const
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, KEY_POOL_DIM_INDEX_1,
                                                       "hiddenSize", baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wk", context_->wk.shape, KEY_POOL_DIM_INDEX_0,
-                                                      "coff*headDim", static_cast<uint32_t>(coffD)) ||
+                                                      "headDim", baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, KEY_POOL_DIM_INDEX_0,
-                                                      "coff*headDim", static_cast<uint32_t>(coffD)) ||
+                                                      "headDim", baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_2,
-                                                      "2*coff*headDim", stateNum * static_cast<uint32_t>(coffD)) ||
+                                                      "2*headDim", stateNum * baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, KEY_POOL_DIM_INDEX_1,
-                                                      "coff*headDim", static_cast<uint32_t>(coffD)) ||
+                                                      "headDim", baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, KEY_POOL_DIM_INDEX_0, "cmpRatio",
                                                       baseParams_->cmpRatio)) {
         return ge::GRAPH_FAILED;
     }
     if (context_->normWeight.shape != nullptr &&
         (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_weight", context_->normWeight.shape, KEY_POOL_DIM_INDEX_0,
-                                                        "coff*headDim", static_cast<uint32_t>(coffD)) ||
+                                                        "headDim", baseParams_->headDim) ||
          ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_bias", context_->normBias.shape, KEY_POOL_DIM_INDEX_0,
-                                                       "coff*headDim", static_cast<uint32_t>(coffD)))) {
+                                                       "headDim", baseParams_->headDim))) {
         return ge::GRAPH_FAILED;
     }
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER) &&
-        (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_0,
+    if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_0,
                                                        "blockNum", pageAttentionParams_->blockNum) ||
          ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_1,
-                                                       "blockSize", pageAttentionParams_->blockSize))) {
+                                                       "blockSize", pageAttentionParams_->blockSize)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

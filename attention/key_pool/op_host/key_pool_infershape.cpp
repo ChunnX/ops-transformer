@@ -59,15 +59,15 @@ ge::graphStatus GetKeyPoolShapeDim(const gert::InferShapeContext* context, KeyPo
 {
     auto hiddenStatesShape = context->GetRequiredInputShape(HIDDEN_STATES_INPUT_INDEX);      // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, hiddenStatesShape);
-    auto wkShape = context->GetRequiredInputShape(WK_INPUT_INDEX);  // (coff * D, H)
+    auto wkShape = context->GetRequiredInputShape(WK_INPUT_INDEX);  // (D, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, wkShape);
-    auto gateWeightShape = context->GetRequiredInputShape(GATE_WEIGHT_INPUT_INDEX);  // (coff * D, H)
+    auto gateWeightShape = context->GetRequiredInputShape(GATE_WEIGHT_INPUT_INDEX);  // (D, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, gateWeightShape);
-    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
+    // (block_num, block_size, 2 * D)
     auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
 
-    auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
+    auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, D)
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
 
     auto cacheBlockTableShape = context->GetRequiredInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);

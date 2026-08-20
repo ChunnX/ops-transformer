@@ -229,7 +229,7 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTensor<HIDDEN_STATES_T> wL1Tensor, uint32_t hIdx,
                                                                            uint32_t kBase, uint32_t coffId)
 {
-    if constexpr (COMP::coff == COFF::DISABLE) {
+    {
         uint64_t gmOffset =
             coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
         uint32_t wkvL1Offset = 0;
@@ -241,17 +241,6 @@ __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTen
         CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
         CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 
-    } else {
-        uint64_t gmOffset =
-            coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
-        uint32_t wkvL1Offset = 0;
-        uint32_t wgateL1Offset = constInfo_.dBaseSize * (32 / sizeof(HIDDEN_STATES_T)); // wgate与wkv的起始点相隔dBaseSize个32B
-        uint32_t nValue = constInfo_.dBaseSize;
-        uint32_t dValue = kBase;
-        uint32_t srcDValue = constInfo_.hSize;
-        uint32_t dstNzC0Stride = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
-        CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-        CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
     }
 }
 
@@ -324,7 +313,7 @@ __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::CopyOutMm1Res(const RunIn
     FixpipeParamsV220 fixParams;
     fixParams.mSize = mDealSize;
     fixParams.srcStride = (mDealSize + 15) / 16 * 16; // 需要16对齐
-    fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
+    fixParams.dstStride = constInfo_.headDim;
     fixParams.ndNum = 1;
 
     uint64_t gmOffset = constInfo_.nStart + coffId * constInfo_.headDim + mStart * fixParams.dstStride;
@@ -358,7 +347,7 @@ __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo 
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 128;
     static constexpr uint32_t N_L0_BASE = 128;
-    uint32_t nCoff = (uint32_t)COMP::coff;
+    constexpr uint32_t nCoff = 1;
 
     // hSize为K_SIZE=512的倍数
     uint32_t hStart = constInfo_.kStart;

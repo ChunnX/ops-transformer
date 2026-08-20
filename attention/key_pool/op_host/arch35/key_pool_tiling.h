@@ -96,8 +96,6 @@ static const std::string NORM_BIAS_NAME = "norm_bias";
 static const std::string COS_NAME = "cos";
 static const std::string SIN_NAME = "sin";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
-static const std::string COFF_NAME = "coff";
-static const std::string CACHE_MODE_NAME = "cache_mode";
 static const std::string POOLED_KEY_NAME = "pooled_key";
 
 static std::string DataTypeToSerialString(ge::DataType type);
@@ -202,17 +200,12 @@ struct KeyPoolBaseShapeInfo {
     uint32_t tSize = 0;    // T
     uint32_t nSize = 0;    // N
     uint32_t dSize = 0;    // D
-    uint32_t coffSize = 0; // Coff: 1 or 2
     uint32_t csSize = 0;   // Compress sequence len
     uint32_t rSize = 0;    // Compress ratio
     uint32_t drSize = 0;   // Dr
 };
 
-const std::vector<int> COFF{1, 2};
 const std::vector<uint32_t> HEAD_DIM{128, 512};
-const std::vector<int> CACHE_MODE{1, 2};
-
-enum class CACHE_MODE : uint8_t { LINEAR_BUFFER = 1, RING_BUFFER = 2 };
 
 struct KeyPoolContext {
     const char *opName;
@@ -235,9 +228,7 @@ struct KeyPoolContext {
     OptionalParaInfo sin;
     RequiredParaInfo pooledKey;
 
-    const int *coff;
     const int *cmpRatio;
-    const int *cacheMode;
     const float *normEps;
     const int *rotaryMode;
     const int *stateCacheStrideDim0;
@@ -304,8 +295,6 @@ private:
     ge::graphStatus CheckSingleParaNormBias() const;
     ge::graphStatus CheckSingleParaPooledKey() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
-    ge::graphStatus CheckSingleParaCoff() const;
-    ge::graphStatus CheckSingleParaCacheMode() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
@@ -328,8 +317,6 @@ private:
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
-    uint8_t coff = 1;
-
     uint32_t mBaseSize = 0;
     uint32_t dbaseSize = 0;
 

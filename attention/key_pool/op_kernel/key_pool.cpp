@@ -32,7 +32,7 @@ using namespace KeyPool;
         op.Process();                                                                                                  \
     } while (0)
 
-template<uint8_t HiddenStatesLayout, uint8_t HiddenStatesDtype, uint8_t Coff, uint8_t CacheMode, uint8_t TemplateId>
+template<uint8_t HiddenStatesLayout, uint8_t HiddenStatesDtype, uint8_t TemplateId>
 __global__ __aicore__ void key_pool(
     __gm__ uint8_t *hidden_states,
     __gm__ uint8_t *wk,
@@ -60,19 +60,17 @@ __global__ __aicore__ void key_pool(
     TPipe pipe;
     constexpr auto hiddenStatesLayout = static_cast<HIDDEN_STATES_LAYOUT>(HiddenStatesLayout);
     constexpr auto hiddenStatesDtype = static_cast<HIDDEN_STATES_DTYPE>(HiddenStatesDtype);
-    constexpr auto coff = static_cast<COFF>(Coff);
-    constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     #if (__CCE_AICORE__ == 220)
         if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelFullLoad, hiddenStatesLayout, hiddenStatesDtype, coff);
+            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelFullLoad, hiddenStatesLayout, hiddenStatesDtype);
         } else {
-            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelPerf, hiddenStatesLayout, hiddenStatesDtype, coff);
+            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelPerf, hiddenStatesLayout, hiddenStatesDtype);
         }
     #else
         if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelFullLoad, hiddenStatesLayout, hiddenStatesDtype, coff, cacheMode);
+            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernelFullLoad, hiddenStatesLayout, hiddenStatesDtype);
         } else {
-            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernel, hiddenStatesLayout, hiddenStatesDtype, coff, cacheMode);
+            INVOKE_KEY_POOL_GENERAL_OP_IMPL(KeyPoolKernel, hiddenStatesLayout, hiddenStatesDtype);
         }
     #endif
 }

@@ -79,21 +79,20 @@ enum class HIDDEN_STATES_LAYOUT : std::uint8_t { BSH = static_cast<std::uint8_t>
 
 enum class HIDDEN_STATES_DTYPE : std::uint8_t { BF16 = static_cast<std::uint8_t>(0), FP16 = static_cast<std::uint8_t>(1) };
 
+// KeyPool currently instantiates only the non-overlap, linear-cache path.
+// Keep the compile-time compatibility values until the legacy vector cleanup
+// is completed without changing the validated execution path.
 enum class COFF : std::uint8_t { DISABLE = static_cast<std::uint8_t>(1), OVERLAP = static_cast<std::uint8_t>(2) };
-
-enum class CACHE_MODE : std::uint8_t {
-    LINEAR_BUFFER = static_cast<std::uint8_t>(1),
-    RING_BUFFER = static_cast<std::uint8_t>(2)
-};
+enum class CACHE_MODE : std::uint8_t { LINEAR_BUFFER = static_cast<std::uint8_t>(1) };
 
 enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
 
-template <HIDDEN_STATES_LAYOUT HIDDEN_STATES_L, HIDDEN_STATES_DTYPE HIDDEN_STATES_T, COFF C, CACHE_MODE Cache_Mode, typename... Args>
+template <HIDDEN_STATES_LAYOUT HIDDEN_STATES_L, HIDDEN_STATES_DTYPE HIDDEN_STATES_T, typename... Args>
 struct COMPType {
     static constexpr HIDDEN_STATES_LAYOUT hiddenStatesLayout = HIDDEN_STATES_L;
     static constexpr HIDDEN_STATES_DTYPE hiddenStatesDtype = HIDDEN_STATES_T;
-    static constexpr COFF coff = C;
-    static constexpr CACHE_MODE cacheMode = Cache_Mode;
+    static constexpr COFF coff = COFF::DISABLE;
+    static constexpr CACHE_MODE cacheMode = CACHE_MODE::LINEAR_BUFFER;
 };
 
 struct CmpBlockInfo {

@@ -303,7 +303,7 @@ __aicore__ inline void KeyPoolBlockCubePerf<COMP>::CopyOutMm1Res(const RunInfo &
     fixParams.mSize = mDealSize;
     fixParams.nSize = constInfo_.dBaseSize;
     fixParams.srcStride = Align(mDealSize, NZ_FRACTAL_DIM);
-    fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
+    fixParams.dstStride = constInfo_.headDim;
     fixParams.ndNum = 1;
 
     uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
@@ -330,7 +330,7 @@ __aicore__ inline void KeyPoolBlockCubePerf<COMP>::ComputeMm1(const RunInfo &inf
     static constexpr uint32_t K_L1_BASE = 256;
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 128;
-    uint32_t nCoff =  (uint32_t)COMP::coff;
+    constexpr uint32_t nCoff = 1;
 
     // hSize为K_SIZE=512的倍数
     uint32_t hSize = constInfo_.hSize;

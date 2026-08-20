@@ -310,7 +310,7 @@ __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::CopyOutMm1Res(const RunIn
     FixpipeParamsV220 fixParams;
     fixParams.mSize = mDealSize;
     fixParams.srcStride = Align(mDealSize, NZ_FRACTAL_DIM);   // 需要16对齐
-    fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
+    fixParams.dstStride = constInfo_.headDim;
     fixParams.ndNum = 1;
 
     uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
@@ -346,7 +346,7 @@ __aicore__ inline void KeyPoolBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo 
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 128;
     static constexpr uint32_t N_L0_BASE = 128;
-    uint32_t nCoff =  (uint32_t)COMP::coff;
+    constexpr uint32_t nCoff = 1;
 
     // hSize为K_SIZE=512的倍数
     uint32_t hStart = constInfo_.kStart;

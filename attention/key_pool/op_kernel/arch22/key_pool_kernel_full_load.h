@@ -228,7 +228,7 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.mGroupNum = constInfo.coreGroupNum;
     constInfo.mCurGroupIdx = constInfo.curGroupIdx;
 
-    uint32_t coff = (uint32_t)COMP::coff;
+    constexpr uint32_t coff = 1;
     constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
