@@ -302,7 +302,6 @@ public:
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 TORCH_CHECK(CheckLinks(netLinkNum, linksList, protocol), "Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
                                 layerList[layerIndex], rankIdLists[rankIdx], srcRankId);
-                }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
         }
