@@ -228,10 +228,11 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     //   fp32 (compact per slot) regardless.
     accumOutSize_ = taskSlots * slotOElems;
     lseStatSize_ = taskSlots * slotStatElems;
-    // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
-    // fp8 path (key 20003) always uses fp32 O_partial regardless of innerPrecise.
+    // innerPrecise==LOW halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
+    // fp8 path always uses fp32 O_partial regardless of innerPrecise.
     const bool useBf16OPartial =
-        (dataType_ != ge::DT_FLOAT8_E4M3FN) && (innerPrecise_ == 1U);
+        (dataType_ != ge::DT_FLOAT8_E4M3FN) &&
+        (innerPrecise_ == MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW);
     uint64_t accumOutBytes = accumOutSize_ *
         (useBf16OPartial ? sizeof(uint16_t) : sizeof(float));
     uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
@@ -245,7 +246,7 @@ uint64_t MinimaxSparseAttentionSplitKvTiling::GenerateTilingKey() const
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         return MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING;
     }
-    if (innerPrecise_ == 1U) {
+    if (innerPrecise_ == MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW) {
         return MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING;
     }
     return MINIMAX_SA_SPLIT_KV_BF16_D128_TILING;
@@ -272,14 +273,17 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
     tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        if (embeddingSize_ != 128U || blockSize_ != 128U) {
+        if (embeddingSize_ != MINIMAX_SA_SPLIT_KV_HEAD_DIM ||
+            blockSize_ != MINIMAX_SA_SPLIT_KV_BLOCK_SIZE) {
             OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires D=128 and blockSize=128.");
+                    "MinimaxSparseAttentionSplitKv fp8 path requires D=%u and blockSize=%u.",
+                    MINIMAX_SA_SPLIT_KV_HEAD_DIM, MINIMAX_SA_SPLIT_KV_BLOCK_SIZE);
             return ge::GRAPH_FAILED;
         }
-        if (innerPrecise_ != 4U) {
+        if (innerPrecise_ != MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH) {
             OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=4.");
+                    "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=%u.",
+                    MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH);
             return ge::GRAPH_FAILED;
         }
     }

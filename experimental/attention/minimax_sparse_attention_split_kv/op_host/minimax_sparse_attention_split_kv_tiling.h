@@ -29,6 +29,13 @@ constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_TILING = 20001;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING = 20002;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING = 20003;
 
+// Current kernel templates only implement D=128 / blockSize=128.
+constexpr uint32_t MINIMAX_SA_SPLIT_KV_HEAD_DIM = 128U;
+constexpr uint32_t MINIMAX_SA_SPLIT_KV_BLOCK_SIZE = 128U;
+// innerPrecise==1: BF16 O_partial; innerPrecise==4: FP32 O_partial (required by FP8).
+constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW = 1U;
+constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH = 4U;
+
 BEGIN_TILING_DATA_DEF(MinimaxSparseAttentionSplitKvTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
 TILING_DATA_FIELD_DEF(uint32_t, numHeads);
@@ -89,7 +96,7 @@ private:
     uint32_t kvHeads_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t embeddingSize_ = 0;
-    uint32_t blockSize_ = 128;
+    uint32_t blockSize_ = MINIMAX_SA_SPLIT_KV_BLOCK_SIZE;
     uint32_t topK_ = 8;
     uint32_t totalQTokens_ = 0;
     uint32_t numKvBlocks_ = 0;

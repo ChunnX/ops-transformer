@@ -86,10 +86,11 @@ static aclnnStatus ValidateParams(const aclTensor *query,
                 "MinimaxSparseAttentionSplitKv attentionOut must be BF16.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (qDtype == DataType::DT_FLOAT8_E4M3FN && innerPrecise != 4) {
+    constexpr int64_t kFp8InnerPrecise = 4;
+    if (qDtype == DataType::DT_FLOAT8_E4M3FN && innerPrecise != kFp8InnerPrecise) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=4, got %ld.",
-                innerPrecise);
+                "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=%ld, got %ld.",
+                kFp8InnerPrecise, innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
