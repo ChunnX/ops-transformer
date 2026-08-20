@@ -15,15 +15,22 @@
 #ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
+#include "adv_api/activation/softmax.h"
 #include "../utils/attenmask_gs1.h"
 
 #if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../common/vector_common.h"
+#include "../../common/memcopy/fa_gm_tensor.h"
+#include "../../common/memcopy/copy_gm_to_l1.h"
+#include "../../common/memcopy/copy_ub_to_gm.h"
 #endif
-
-#include "memory_copy_arch35.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -202,16 +209,15 @@ public:
             // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K,
-                                                BUFFER_SIZE_BYTE_16K)
-                               .template ReinterpretCast<OUTPUT_T>();
+            fdOutputBuf_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                    .template ReinterpretCast<OUTPUT_T>();
 
             // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
             constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
             fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3, STRIDE).template ReinterpretCast<T>();
-            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE,
-                                              STRIDE)
-                             .template ReinterpretCast<T>();
+            fdSumBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf1_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 2U * STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf2_ =
@@ -457,20 +463,22 @@ public:
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                   actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>()>(
+                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                        {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
+                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                        {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, qActSeqLens);
+                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
+                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                        {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
                 }
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }

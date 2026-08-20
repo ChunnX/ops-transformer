@@ -21,7 +21,6 @@
 
 #include "flash_attn_block_cube_dn.h"
 #include "flash_attn_block_vec_dn.h"
-#include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -446,25 +445,13 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm1(runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock_.IterateBmm1(runInfo); }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm2(runInfo);
-    }
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo) { cubeBlock_.IterateBmm2(runInfo); }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        vecFaBlock_.ProcessVec1(runInfo);
-    }
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo) { vecFaBlock_.ProcessVec1(runInfo); }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
-    {
-        vecFaBlock_.ProcessVec2(runInfo);
-    }
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo) { vecFaBlock_.ProcessVec2(runInfo); }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
@@ -582,12 +569,12 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2Start_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
         bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
@@ -609,8 +596,8 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm_.GetValue(
-            GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.mStart =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()
