@@ -30,7 +30,7 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
     bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA ||
-        (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
+        tilingData->combineQuantMode != COMBINE_NO_QUANT || useMteA8W8Wave;
     int64_t maxWavesPerExpert =
         Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
