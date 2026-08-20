@@ -31,6 +31,7 @@ golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
+
 class CompressorSpec:
     golden = golden_module.cpu_compressor
     customize_inputs = inputs_module.generate_compressor_inputs

@@ -33,6 +33,7 @@ golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
+
 class QuantCompressorSpec:
     golden = golden_module.cpu_quant_compressor
     customize_inputs = inputs_module.generate_quant_compressor_inputs
