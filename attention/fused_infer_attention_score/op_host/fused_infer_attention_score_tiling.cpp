@@ -2326,8 +2326,7 @@ static bool IsDynamicInputContiguous(const gert::TilingContext *context, size_t 
         if (!IsTensorContiguous(storageShape, strides)) {
             return false;
         }
-        if (tensorIndex == 0 && context->InputIsView(inputIndex) &&
-            (strides == nullptr || strides->GetDimNum() == 0)) {
+        if (tensorIndex == 0 && context->InputIsView(inputIndex) && (strides == nullptr || strides->GetDimNum() == 0)) {
             return false;
         }
     }
@@ -2367,8 +2366,7 @@ static bool IsDynamicInputDim0StrideCompatible(const gert::TilingContext *contex
         if (!IsTensorDim0StrideCompatible(storageShape, strides)) {
             return false;
         }
-        if (tensorIndex == 0 && context->InputIsView(inputIndex) &&
-            (strides == nullptr || strides->GetDimNum() == 0)) {
+        if (tensorIndex == 0 && context->InputIsView(inputIndex) && (strides == nullptr || strides->GetDimNum() == 0)) {
             return false;
         }
     }
@@ -2427,8 +2425,9 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     }
 
     OP_CHECK_IF(HasNonContiguousCacheInput(context) && !IsSupportedRegularFiaCacheStrideInput(context),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "Non-contiguous cache is supported only by the arch22 regular FAI or D512 MLA PA routes."),
+                OPS_REPORT_VECTOR_INNER_ERR(
+                    context->GetNodeName(),
+                    "Non-contiguous cache is supported only by the arch22 regular FAI or D512 MLA PA routes."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
@@ -2497,10 +2496,11 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingFusedInferAttentionScoreV4(context);
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
-        OP_CHECK_IF(HasNonContiguousCacheInput(context),
-                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                                "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            HasNonContiguousCacheInput(context),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                        "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
+            return ge::GRAPH_FAILED);
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
         return TilingFusedInferAttentionScore(context);
