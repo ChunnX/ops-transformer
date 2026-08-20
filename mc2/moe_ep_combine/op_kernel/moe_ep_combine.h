@@ -576,10 +576,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     // Channels without payload also publish completion so the receiver cannot wait forever.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     if (aivId_ < activeAivNum) {
+        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint64_t> flagWorkspace;
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
-        flagWorkspace.SetValue(0, 1U);
-        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagWorkspace);
+        DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         if (splitRankTokens) {
             SendChannelFlag(targetRank, channelIndex, groupSize);
         } else {
