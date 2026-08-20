@@ -1020,6 +1020,9 @@ inline void ApplyDeterministicConfig()
                     #aclnn_api "GetWorkspaceSize", " not in ", GetOpApiLibName(), ", or ", GetOpApiLibName(), ", or ", \
                     GetTransformerOpApiLibName(), "not found."); \
         auto acl_stream = c10_npu::getCurrentNPUStream().stream(false); \
+        if (c10_npu::check_enqueue_need_use(acl_stream)) { \
+            aclrtUseStreamResInCurrentThread(acl_stream); \
+        }\
         uint64_t workspace_size = 0; \
         uint64_t *workspace_size_addr = &workspace_size; \
         aclOpExecutor *executor = nullptr; \
@@ -1045,6 +1048,9 @@ inline void ApplyDeterministicConfig()
             workspace_addr = const_cast<void *>(workspace_tensor.storage().data()); \
         } \
         auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() -> int { \
+            if (c10_npu::check_enqueue_need_use(acl_stream)) { \
+                aclrtUseStreamResInCurrentThread(acl_stream); \
+            }\
             typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, const aclrtStream); \
             OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr); \
             auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream); \
