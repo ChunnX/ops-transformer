@@ -14,6 +14,26 @@
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
 #include "adv_api/math/cumsum.h"
+#include "simt_api/asc_simt.h"
+
+constexpr uint32_t SIMT_THREAD_NUM = 1024;
+
+__simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM) __aicore__ inline void ScatterSimt(
+    uint32_t tileLen,
+    __ubuf__ uint32_t *sortedIndex,
+    __ubuf__ int32_t  *value,
+    __ubuf__ int32_t  *index,
+    __ubuf__ int32_t  *globalPos,
+    __gm__  int32_t  *dstValueGm,
+    __gm__  int32_t  *dstIndexGm)
+{
+    for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
+        int32_t pos = globalPos[i];
+        uint32_t localIdx = sortedIndex[i];
+        dstValueGm[pos] = value[localIdx];
+        dstIndexGm[pos] = index[localIdx];
+    }
+}
 
 namespace EngramFetchGradSort {
 
@@ -630,8 +650,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
     event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
-    evtVMte3_ = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
-    evtMte3V_ = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_V));
+    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
 
     uint64_t mte2Total = 0;
     uint64_t keyTotal = 0;
@@ -713,30 +732,44 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             keyTotal += t2 - t1;
 
-            AscendC::LocalTensor<int32_t> tmpBufA = sortTempBuffer_.Get<int32_t>();
-            AscendC::LocalTensor<int32_t> tmpBufB = scatterTmpBufferB_.Get<int32_t>();
-
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(evtMte3V_);
+            AscendC::LocalTensor<int32_t> globalPosUb = scatterTmpBufferB_.Get<int32_t>();
 
             uint32_t keyStart = 0;
             uint8_t curKey = sortedKey.GetValue(0);
             for (uint32_t i = 1; i <= tileLen; i++) {
                 if (i == tileLen || sortedKey.GetValue(i) != curKey) {
                     uint32_t keyCount = i - keyStart;
-                    int32_t gmPos = prefixLocal.GetValue(curKey) + offsetLocal.GetValue(curKey);
-                    ScatterOneKey(keyStart, keyCount, gmPos, tmpBufA, tmpBufB,
-                                  valueLocal, indexLocal, sortIndices, dstValue, dstIndex, pipe);
+                    int32_t gmStart = prefixLocal.GetValue(curKey) + offsetLocal.GetValue(curKey);
+                    for (uint32_t j = 0; j < keyCount; j++) {
+                        globalPosUb.SetValue(keyStart + j, gmStart + static_cast<int32_t>(j));
+                    }
+                    offsetLocal.SetValue(curKey, offsetLocal.GetValue(curKey) + static_cast<int32_t>(keyCount));
                     if (i < tileLen) {
                         curKey = sortedKey.GetValue(i);
                         keyStart = i;
                     }
                 }
             }
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(evtMte3V_);
-            WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+
+            __gm__ int32_t *dstValPtr = (__gm__ int32_t *)(*dstValue).GetPhyAddr();
+            __gm__ int32_t *dstIdxPtr = (__gm__ int32_t *)(*dstIndex).GetPhyAddr();
+            __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
+            __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
+            __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
+            __ubuf__ int32_t *posUb = (__ubuf__ int32_t *)globalPosUb.GetPhyAddr();
+
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+
+            asc_vf_call<ScatterSimt>(dim3(SIMT_THREAD_NUM), tileLen,
+                sortedIdxUb, valUb, idxUb, posUb, dstValPtr, dstIdxPtr);
+
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             writeTotal += t3 - t2;
         }
+        AscendC::SyncAll<true>();
     }
     AscendC::SyncAll<true>();
     sortScatterMte2Cycle_[byteRound] += mte2Total;
