@@ -41,8 +41,8 @@ struct StageTwoParams {
     GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
     GlobalTensor<float> stateFp32Wk;       // (Nv, Dv, Dk) FP32 state workspace (BF16-state FP32-intermediate path)
-    GlobalTensor<float> wsFp32;            // (chunkSize, Dv) FP32 W@S temp per core (BF16-state path)
-    GlobalTensor<float> wsStateFp32;       // (Dv, Dk) FP32 (U-WS)@K temp per core (BF16-state path)
+    GlobalTensor<bfloat16_t> wsFp32;            // (chunkSize, Dv) BF16 W@S temp per core (BF16-state path)
+    GlobalTensor<bfloat16_t> wsStateFp32;       // (Dv, Dk) BF16 (U-WS)@K temp per core (BF16-state path)
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
@@ -349,8 +349,8 @@ public:
         if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
         } else {
-            // BF16-state path: W@S as FP32 output (no accumulate), AIV computes U-WS in UB
-            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 0);
+            // BF16-state path: W@S as BF16 output (no accumulate), AIV casts to FP32 and computes U-WS in UB
+            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 0);
         }
     }
 
@@ -361,8 +361,8 @@ public:
         if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
         } else {
-            // BF16-state path: (U-WS)@K as FP32 output (no accumulate), AIV adds to S in UB
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 0);
+            // BF16-state path: (U-WS)@K as BF16 output (no accumulate), AIV casts to FP32 and adds to S in UB
+            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 0);
         }
     }
 
@@ -382,13 +382,16 @@ public:
         Cast(uFp32Ub_, uBf16, RoundMode::CAST_NONE, curChunkSize_ * dvAligned_);
         inQueue_.FreeTensor(uBf16);
         PipeBarrier<PIPE_V>();
-        // Read W@S (FP32) from wsFp32 (GM) → wsFp32Ub_
-        DataCopyExtParams wsInParams{static_cast<uint16_t>(curChunkSize_),
-                                     static_cast<uint32_t>(Dv_ * sizeof(float)), 0, 0, 0};
-        DataCopyPadExtParams<float> wsInPad{true, 0, static_cast<uint8_t>(dvAligned_ - Dv_), 0};
-        DataCopyPad(wsFp32Ub_, sTP_->wsFp32, wsInParams, wsInPad);
+        // Read W@S (BF16) from wsFp32 (GM) → inQueue_, cast to FP32 → wsFp32Ub_
+        auto wsBf16 = inQueue_.AllocTensor<bfloat16_t>();
+        DataCopyPad(wsBf16, sTP_->wsFp32, uInParams, uInPad);
+        inQueue_.EnQue(wsBf16);
+        wsBf16 = inQueue_.DeQue<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        Cast(wsFp32Ub_, wsBf16, RoundMode::CAST_NONE, curChunkSize_ * dvAligned_);
+        inQueue_.FreeTensor(wsBf16);
+        PipeBarrier<PIPE_V>();
         // Sub: U - W@S (FP32, in-place in uFp32Ub_)
         Sub(uFp32Ub_, uFp32Ub_, wsFp32Ub_, curChunkSize_ * dvAligned_);
         PipeBarrier<PIPE_V>();
@@ -404,19 +407,27 @@ public:
     __aicore__ inline void CalStateAdd(int64_t nvId)
     {
         auto stateFp32 = sTP_->stateFp32Wk[nvId * Dv_ * Dk_];
-        // Read (U-WS)@K in tiles, Add to stateFp32Ub_ (FP32)
+        // Read (U-WS)@K (BF16) in tiles, cast to FP32, Add to stateFp32Ub_
         int64_t maxTileRows = chunkSize_ * dvAligned_ / curDk_;
         int64_t tileRows = (Dv_ < maxTileRows) ? Dv_ : maxTileRows;
         if (tileRows <= 0) { tileRows = 1; }
-        DataCopyExtParams inParams{static_cast<uint16_t>(tileRows),
-                                   static_cast<uint32_t>(Dk_ * sizeof(float)), 0, 0, 0};
-        DataCopyPadExtParams<float> inPad{true, 0, static_cast<uint8_t>(curDk_ - Dk_), 0};
         for (int64_t rowStart = 0; rowStart < Dv_; rowStart += tileRows) {
             int64_t rows = (rowStart + tileRows > Dv_) ? (Dv_ - rowStart) : tileRows;
-            inParams.blockCount = static_cast<uint16_t>(rows);
-            DataCopyPad(wsFp32Ub_, sTP_->wsStateFp32[rowStart * Dk_], inParams, inPad);
+            // Read BF16 from wsStateFp32
+            DataCopyExtParams inParams{static_cast<uint16_t>(rows),
+                                       static_cast<uint32_t>(Dk_ * sizeof(bfloat16_t)), 0, 0, 0};
+            DataCopyPadExtParams<bfloat16_t> inPad{true, 0, static_cast<uint8_t>(curDk_ - Dk_), 0};
+            auto wsBf16 = inQueue_.AllocTensor<bfloat16_t>();
+            DataCopyPad(wsBf16, sTP_->wsStateFp32[rowStart * Dk_], inParams, inPad);
+            inQueue_.EnQue(wsBf16);
+            wsBf16 = inQueue_.DeQue<bfloat16_t>();
             SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            // Cast BF16 to FP32 in wsFp32Ub_ (reused as temp)
+            Cast(wsFp32Ub_, wsBf16, RoundMode::CAST_NONE, rows * curDk_);
+            inQueue_.FreeTensor(wsBf16);
+            PipeBarrier<PIPE_V>();
+            // Add: stateFp32Ub_ + (U-WS)@K (FP32, in UB)
             Add(stateFp32Ub_[rowStart * curDk_], stateFp32Ub_[rowStart * curDk_], wsFp32Ub_, rows * curDk_);
             PipeBarrier<PIPE_V>();
         }

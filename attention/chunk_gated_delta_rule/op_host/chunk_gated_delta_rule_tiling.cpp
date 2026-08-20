@@ -159,7 +159,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
     // Stage2 FP32 temp workspace for BF16 state path on arch35 (W@S and (U-WS)@K FP32 results)
     if (!tilingData_.stateIsFp32 && socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
-        tilingData_.stageWorkspaceSz += (sizeHigh * c * dv + sizeHigh * dv * dk) * tilingData_.aiCoreNum;
+        tilingData_.stageWorkspaceSz += (sizeLow * c * dv + sizeLow * dv * dk) * tilingData_.aiCoreNum;
     }
 
     PrintTilingData();

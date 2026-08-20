@@ -64,7 +64,9 @@ public:
                 stage1MmVInner_.Init(&tiling_->matmulTilingFp32, pipe_);
             }
             stage2MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
+            if constexpr (kStateIsFp32) {
+                stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
+            }
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
     }
@@ -369,10 +371,10 @@ private:
             int64_t coreNum = tiling_->aiCoreNum;
             uint64_t wsOff = 0;
             initStageTwoParams.wsFp32.SetGlobalBuffer(
-                reinterpret_cast<__gm__ float *>(stageWsAddr_ + wsOff + coreId * c * dv * sizeof(float)));
-            wsOff += coreNum * c * dv * sizeof(float);
+                reinterpret_cast<__gm__ bfloat16_t *>(stageWsAddr_ + wsOff + coreId * c * dv * sizeof(bfloat16_t)));
+            wsOff += coreNum * c * dv * sizeof(bfloat16_t);
             initStageTwoParams.wsStateFp32.SetGlobalBuffer(
-                reinterpret_cast<__gm__ float *>(stageWsAddr_ + wsOff + coreId * dv * dk * sizeof(float)));
+                reinterpret_cast<__gm__ bfloat16_t *>(stageWsAddr_ + wsOff + coreId * dv * dk * sizeof(bfloat16_t)));
         }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
