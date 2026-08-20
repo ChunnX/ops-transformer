@@ -849,7 +849,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
         uint64_t s1LeftPaddingSize = 0;
         if (constInfo.isQHasLeftPadding) {
             s1LeftPaddingSize =
-                constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+                constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(info.bIdx);
         }
         DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
             softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
@@ -857,7 +857,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     } else {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(bIdx);
+        uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(info.bIdx);
         uint64_t s1LeftPaddingSize = 0;
         if (constInfo.isQHasLeftPadding) {
             s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
