@@ -545,12 +545,9 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
     if (tilingInfo_.opParamInfo.layoutKV == nullptr) {
         tilingInfo_.layoutKV = FiaLayout::BSND;
     } else {
-        const std::map<std::string, FiaLayout> kvLayoutMap = {{"BSND", FiaLayout::BSND},
-                                                              {"BNSD", FiaLayout::BNSD},
-                                                              {"TND", FiaLayout::TND},
-                                                              {"PA_BBND", FiaLayout::BnBsH},
-                                                              {"PA_BNBD", FiaLayout::BnNBsD},
-                                                              {"PA_NZ", FiaLayout::NZ}};
+        const std::map<std::string, FiaLayout> kvLayoutMap = {
+            {"BSND", FiaLayout::BSND},     {"BNSD", FiaLayout::BNSD},      {"TND", FiaLayout::TND},
+            {"PA_BBND", FiaLayout::BnBsH}, {"PA_BNBD", FiaLayout::BnNBsD}, {"PA_NZ", FiaLayout::NZ}};
         auto itKV = kvLayoutMap.find(tilingInfo_.opParamInfo.layoutKV);
         if (itKV == kvLayoutMap.end()) {
             OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD/PA_NZ",

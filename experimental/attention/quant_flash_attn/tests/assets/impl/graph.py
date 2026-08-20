@@ -38,13 +38,28 @@ _PASS_THROUGH = os.environ.get("QFA_PASS_THROUGH", "").lower() in ("1", "true", 
 
 
 def _build_fallback_data_dict(
-    q, k, v, q_descale, k_descale, v_descale,
+    q,
+    k,
+    v,
+    q_descale,
+    k_descale,
+    v_descale,
     block_table,
-    B, N_q, N_kv, D, V_D,
-    act_seq_lens_q, act_seq_lens_kv,
-    input_layout, layout_kv, layout_out,
-    softmax_scale, cu_seqlens_q, cu_seqlens_kv,
-    max_seqlen_q=-1, max_seqlen_kv=-1,
+    B,
+    N_q,
+    N_kv,
+    D,
+    V_D,
+    act_seq_lens_q,
+    act_seq_lens_kv,
+    input_layout,
+    layout_kv,
+    layout_out,
+    softmax_scale,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
 ):
     """异常用例回退: QFA_PASS_THROUGH=1 或 generate_data 失败时用 CSV tensor 拼
     最小 data_dict, 跳过 golden 让 NPU aclgraph 先跑, 交给 op_host 拦截非法输入.
@@ -53,6 +68,7 @@ def _build_fallback_data_dict(
     同款实现, 保持三入口行为一致.
     """
     import math
+
     qk_d = D
     s1_phys = q.shape[2] if q.ndim >= 3 and q.shape[0] == B else None
     s2_phys = k.shape[2] if k.ndim >= 3 and k.shape[0] == B else None
@@ -73,8 +89,15 @@ def _build_fallback_data_dict(
         act_kv_eff = []
 
     # 可选 tensor: 透传 block_table; 按 golden 全局变量生成 p_scale/sinks/attn_mask
-    block_table_t = block_table if block_table is not None else golden_mod._gen_opt_tensor(
-        golden_mod.BLOCK_TABLE_SHAPE, golden_mod.BLOCK_TABLE_DTYPE or "int32", None, seed=100
+    block_table_t = (
+        block_table
+        if block_table is not None
+        else golden_mod._gen_opt_tensor(
+            golden_mod.BLOCK_TABLE_SHAPE,
+            golden_mod.BLOCK_TABLE_DTYPE or "int32",
+            None,
+            seed=100,
+        )
     )
     if golden_mod.P_SCALE_VALUE is not None:
         p_scale_dt = golden_mod.get_dtype(golden_mod.P_SCALE_DTYPE) or torch.float32
@@ -91,12 +114,16 @@ def _build_fallback_data_dict(
             seed=101,
         )
     sinks_t = golden_mod._gen_opt_tensor(
-        golden_mod.SINKS_SHAPE, golden_mod.SINKS_DTYPE or "float32",
-        golden_mod.SINKS_DATARANGE, seed=102,
+        golden_mod.SINKS_SHAPE,
+        golden_mod.SINKS_DTYPE or "float32",
+        golden_mod.SINKS_DATARANGE,
+        seed=102,
     )
     attn_mask_t = golden_mod._gen_opt_tensor(
-        golden_mod.ATTN_MASK_SHAPE, golden_mod.ATTN_MASK_DTYPE or "int8",
-        golden_mod.ATTN_MASK_DATARANGE, seed=103,
+        golden_mod.ATTN_MASK_SHAPE,
+        golden_mod.ATTN_MASK_DTYPE or "int8",
+        golden_mod.ATTN_MASK_DATARANGE,
+        seed=103,
     )
 
     return dict(
@@ -125,7 +152,9 @@ def _build_fallback_data_dict(
         attn_out_layout=layout_out,
         num_heads=N_q,
         num_key_value_heads=N_kv,
-        softmax_scale=softmax_scale if softmax_scale is not None else 1.0 / math.sqrt(qk_d),
+        softmax_scale=softmax_scale
+        if softmax_scale is not None
+        else 1.0 / math.sqrt(qk_d),
         fp32_bnsd=None,
     )
 
@@ -285,12 +314,28 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
                 "[GRAPH] QFA_PASS_THROUGH=1, 跳过 generate_data, CSV tensor 拼 fallback data_dict"
             )
             data_dict = _build_fallback_data_dict(
-                q, k, v, q_descale, k_descale, v_descale, block_table,
-                B, N_q, N_kv, D, V_D,
-                act_seq_lens_q, act_seq_lens_kv,
-                input_layout, layout_kv, layout_out,
-                softmax_scale, cu_seqlens_q, cu_seqlens_kv,
-                max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+                q,
+                k,
+                v,
+                q_descale,
+                k_descale,
+                v_descale,
+                block_table,
+                B,
+                N_q,
+                N_kv,
+                D,
+                V_D,
+                act_seq_lens_q,
+                act_seq_lens_kv,
+                input_layout,
+                layout_kv,
+                layout_out,
+                softmax_scale,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_kv=max_seqlen_kv,
             )
         else:
             golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
@@ -302,12 +347,28 @@ class QuantFlashAttnMxfp4AclGraph(torch.nn.Module):
                     str(e),
                 )
                 data_dict = _build_fallback_data_dict(
-                    q, k, v, q_descale, k_descale, v_descale, block_table,
-                    B, N_q, N_kv, D, V_D,
-                    act_seq_lens_q, act_seq_lens_kv,
-                    input_layout, layout_kv, layout_out,
-                    softmax_scale, cu_seqlens_q, cu_seqlens_kv,
-                    max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+                    q,
+                    k,
+                    v,
+                    q_descale,
+                    k_descale,
+                    v_descale,
+                    block_table,
+                    B,
+                    N_q,
+                    N_kv,
+                    D,
+                    V_D,
+                    act_seq_lens_q,
+                    act_seq_lens_kv,
+                    input_layout,
+                    layout_kv,
+                    layout_out,
+                    softmax_scale,
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    max_seqlen_q=max_seqlen_q,
+                    max_seqlen_kv=max_seqlen_kv,
                 )
             finally:
                 golden_mod._clear_physical_s_override()
