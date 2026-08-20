@@ -58,11 +58,11 @@ Docs目录结构说明如下：
 
 | 文档        | 说明                  |
 | ----------------------- | ---------------------- |
-| [Simulator仿真工具](zh/debug/cann_sim.md) | 面向算子开发场景的SoC级仿真工具，用于分析运行在AI仿真器上AI任务在各阶段精度和性能数据。 |
+| [Simulator仿真工具](zh/debug/npu_sim.md) | 面向算子开发场景的SoC级仿真工具，用于分析运行在AI仿真器上AI任务在各阶段精度和性能数据。 |
 
 ### 样例实践
 
-如需学习算子领域高性能实战案例，可参考[cann-samples Performance目录](https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/README.md)）。
+如需学习算子领域高性能实战案例，可参考[cann-samples Performance目录](https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/README.md)。
 
 |  算子分类       |  样例算子       | 说明                  |
 | ----------------------- | ---------------------- | ---------------------- |

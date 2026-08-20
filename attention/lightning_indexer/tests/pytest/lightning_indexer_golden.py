@@ -179,7 +179,6 @@ class GeneralizedLI:
             # 根据布尔矩阵置-inf
             reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
         to_be_sort_ele = reduce_sum.clone()
-        to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
@@ -376,7 +375,8 @@ class GeneralizedLI:
         y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
         return y, y_value
 
-def li_output_single(params):
+def generate_li_test_data(params):
+    """Generate LightningIndexer inputs and CPU golden without running the main op."""
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, return_value = params
@@ -448,21 +448,54 @@ def li_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
+        
+        # kv_cache 0轴非连续：将key融合到blockFusion (ref v1 commit keyStride0)
+        properties = torch.npu.get_device_properties()
+        if "Ascend950" in properties.name:
+            key_stride = 10  # 0轴非连续增加stride
+            bytes_per_token = head_dim + key_stride # 整个非连续的长度
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
+            key_flat = key.view(block_num, block_size * k_head_num * head_dim)
+            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
+            blockFusion = blockFusion.npu()
+            key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+        
         key = key.npu()
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
 
     # cpu golden生成
-    cpu_result, topk_value = test_li.forward(query, key_cpu, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
-    cpu_result, _ = torch.sort(cpu_result)
+    cpu_result, topk_value = test_li.forward(
+        query, key_cpu, weights, actual_seq_lengths_query,
+        actual_seq_lengths_key, block_table)
+    score_values = test_li.trans_bnsd_to_layout(
+        topk_value, list(topk_value.shape), layout_query,
+        test_li.actual_seq_lengths_query)
+    return {
+        "params": params,
+        "cpu_result": cpu_result,
+        "topk_value": topk_value,
+        "score_values": score_values,
+        "query": query,
+        "key": key,
+        "weights": weights,
+        "actual_seq_lengths_query": actual_seq_lengths_query,
+        "actual_seq_lengths_key": actual_seq_lengths_key,
+        "block_table": block_table,
+    }
 
-    npu_result, sparse_value = torch_npu.npu_lightning_indexer(query, key, weights,
-                                                    actual_seq_lengths_query = actual_seq_lengths_query,
-                                                    actual_seq_lengths_key = actual_seq_lengths_key,
-                                                    block_table = block_table,
+
+def li_output_single(params):
+    data = generate_li_test_data(params)
+    layout_query, layout_key, sparse_count, sparse_mode = params[15:19]
+    npu_result, sparse_value = torch_npu.npu_lightning_indexer(
+                                                    data["query"], data["key"], data["weights"],
+                                                    actual_seq_lengths_query = data["actual_seq_lengths_query"],
+                                                    actual_seq_lengths_key = data["actual_seq_lengths_key"],
+                                                    block_table = data["block_table"],
                                                     layout_query = layout_query,
                                                     layout_key = layout_key,
                                                     sparse_count = sparse_count,
                                                     sparse_mode = sparse_mode)
     torch.npu.synchronize()
     npu_result, _ = torch.sort(npu_result)
-    return cpu_result, npu_result, topk_value, sparse_value
+    return data["cpu_result"], npu_result, data["topk_value"], sparse_value

@@ -11,17 +11,18 @@
 /*!
  * \file engram_fetch_grad.cpp
  * \brief EngramFetchGrad 算子 kernel 入口
- *
- * 单融合 kernel，3 步:
- * ① grad_sorted = gradFetched[perm]
- * ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad (用 commBuffer[peer] = a2a GM)
- * ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad)
- *    → gradUniqueOut (fp32) + uniqueLocalEntryOut (int32) + numUniqueOut (int32)
- *
- * kernel 签名按 op 定义顺序: input0~5, output0~2, workspace, tiling
- * input:  commContext(0), gradFetched(1), perm(2), sendCounts(3), recvCounts(4), recvLocalEntry(5), numRecv(6)
- * output: gradUniqueOut(0), uniqueLocalEntryOut(1), numUniqueOut(2)
  */
+
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#define ENABLE_ENGRAM_FETCH_GRAD_KERNEL
+#endif
+
+#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -31,7 +32,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_grad_tiling_data.h"
 #include "engram_fetch_grad_tiling_key.h"
-#include "../../engram_fetch/op_kernel/engram_fetch_utils.h"
+#include "arch35/engram_fetch_grad_arch35.h"
+#include "engram_fetch_grad_utils.h"
 
 using namespace Mc2Kernel;
 
@@ -44,4 +46,12 @@ __global__ __aicore__ void engram_fetch_grad(GM_ADDR commContext, GM_ADDR gradFe
     REGISTER_TILING_DEFAULT(EngramFetchGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchGradTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+
+#if defined(ENABLE_ENGRAM_FETCH_GRAD_KERNEL)
+    TPipe pipe;
+    EngramFetchGradArch35 op;
+    op.Init(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
+            gradUniqueOut, uniqueLocalEntryOut, numUniqueOut, workspaceGM, &pipe, &tilingData);
+    op.Process();
+#endif
 }

@@ -24,44 +24,62 @@ def load_impl_module(stem):
     if name in sys.modules:
         return sys.modules[name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
     try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception as exc:
         sys.modules.pop(name, None)
-        raise
+        raise RuntimeError(
+            "Failed to load LightningIndexerV2 assets module; "
+            f"stage=impl/{stem}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        ) from exc
     return module
 
 
+pre_npu_module = load_impl_module("pre_npu")
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class LightningIndexerV2Spec:
     golden = golden_module.cpu_lightning_indexer_v2
     customize_inputs = inputs_module.generate_li_v2_inputs
+    pre_npu = pre_npu_module.run
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, **kwargs):
-        score_layout, cu_seqlens_q = golden_module.get_score_context()
-        return compare_module.compare(
-            *outputs,
-            scores=golden_module.get_topk_scores(),
-            index_offsets=golden_module.get_index_offsets(),
-            score_layout=score_layout,
-            cu_seqlens_q=cu_seqlens_q,
+    def compare(*outputs, compare_context=None, context: "TtkContext" = None, **kwargs):
+        del kwargs
+        testcase_name = (
+            context.testcase_name
+            if context is not None
+            else (None if compare_context is None else compare_context.testcase_name)
         )
+        data = golden_module.get_compare_data(testcase_name, context)
+        if data is None:
+            if compare_context is None:
+                raise RuntimeError(
+                    "LightningIndexerV2 pytest compare requires compare_context"
+                )
+            data = inputs_module.rebuild_li_v2_compare_data(compare_context)
+            golden_module.set_compare_data(compare_context.testcase_name, data, context)
+        return compare_module.compare(*outputs, compare_data=data)
 
-    torch_graph = graph_module.LightningIndexerV2AclGraph
+
+class AclnnLightningIndexerV2Spec(LightningIndexerV2Spec):
+    golden = golden_module.cpu_aclnn_li_v2
+    customize_inputs = inputs_module.generate_aclnn_li_v2_inputs
 
 
 __spec__ = {
-    "li_v2_ttk_ops.lightning_indexer_v2": "LightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.lightning_indexer": "LightningIndexerV2Spec",
+    "aclnnLightningIndexerV2": "AclnnLightningIndexerV2Spec",
 }

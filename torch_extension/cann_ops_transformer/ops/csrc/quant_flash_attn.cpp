@@ -19,7 +19,7 @@
 namespace op_api {
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
-const int64_t QUANT_MODE_MXFP4 = 3;
+const int64_t QUANT_MODE_MXFP4 = 5;
 const int64_t FLOAT4_E2M1 = 296;
 const int64_t FLOAT8_E8M0 = 293;
 
@@ -89,6 +89,9 @@ quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, 
     if (layout_q == "TND") {
         tSize = q.size(0);
         nSize = q.size(1);
+    } else if (layout_q == "NTD") {
+        nSize = q.size(0);
+        tSize = q.size(1);
     } else if (layout_q == "BSND") {
         bSize = q.size(0);
         sSize = q.size(1);

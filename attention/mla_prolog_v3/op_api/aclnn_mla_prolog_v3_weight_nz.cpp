@@ -88,10 +88,7 @@ public:
         return true;
     }
 
-    bool IsTensorNotNull() const
-    {
-        return inner_ == nullptr;
-    }
+    bool IsTensorNotNull() const { return inner_ == nullptr; }
 
 private:
     const aclTensor *inner_;
@@ -152,7 +149,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     }
     if (it->second.find(kvCacheQuantMode) == it->second.end()) {
         std::string supportedStr;
-        const auto& modes = it->second;
+        const auto &modes = it->second;
         size_t total = modes.size();
         size_t idx = 0;
         for (auto mode : modes) {
@@ -170,9 +167,9 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV3", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
-                                              "When weightQuantMode==" + std::to_string(weightQuantMode) +
-                                                  ", must be within " + supportedStr);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "MlaPrologV3", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
+            "When weightQuantMode==" + std::to_string(weightQuantMode) + ", must be within " + supportedStr);
         return false;
     }
     return true;

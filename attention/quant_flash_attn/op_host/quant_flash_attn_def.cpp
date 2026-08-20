@@ -11,7 +11,7 @@
 /*!
  * \file quant_flash_attn_def.cpp
  * \brief QuantFlashAttn算子定义（量化注意力推理）
- *        输入数据类型支持FP8_E4M3（quant_mode=1），输出固定BF16。
+ *        输入数据类型支持FP8_E4M3等（详见 quant_mode 枚举），输出固定BF16。
  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。
  */
 
@@ -21,44 +21,39 @@ namespace ops {
 
 class QuantFlashAttn : public OpDef {
 public:
-    explicit QuantFlashAttn(const char *name) : OpDef(name)
+    explicit QuantFlashAttn(const char *name)
+        : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("v_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -106,18 +101,17 @@ public:
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataType({ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("softmax_lse")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Attr("quant_mode")
+        this->Attr("quant_compute_mode")
             .AttrType(REQUIRED)
-            .Int(1);
+            .Int();
         this->Attr("softmax_scale")
             .AttrType(OPTIONAL)
             .Float(0.0f);
@@ -169,4 +163,4 @@ public:
 
 OP_ADD(QuantFlashAttn);
 
-}  // namespace ops
+} // namespace ops

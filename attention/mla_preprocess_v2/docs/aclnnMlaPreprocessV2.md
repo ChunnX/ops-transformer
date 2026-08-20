@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -24,7 +34,7 @@
 
 - **计算流程图**
 
-![MlaPreprocess图](../../../docs/zh/figures/MlaPreprocess计算过程.png)
+![MlaPreprocess图](../../../docs/zh/figures/mla_preprocess_compute_process.png)
 
 - **计算公式**：
 
@@ -61,6 +71,8 @@
     $$
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
+
+    `cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。其他计算、输出形状、`q_down_out`语义和Cache布局不变。
 
 ## 函数原型
 
@@ -312,21 +324,21 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>cos</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
+      <td>与sin同时传入空指针时关闭RoPE；禁止仅传入一个空指针。启用RoPE时第0维必须等于input的tokenNum。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[tokenNum,64]</td>
+      <td>启用RoPE时为[tokenNum,64]；关闭RoPE时传入空指针，接口内部转换为[0]。</td>
       <td>-</td>
     </tr>
     <tr>
       <td>sin</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
+      <td>与cos同时传入空指针时关闭RoPE；禁止仅传入一个空指针。启用RoPE时第0维必须等于input的tokenNum。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[tokenNum,64]</td>
+      <td>启用RoPE时为[tokenNum,64]；关闭RoPE时传入空指针，接口内部转换为[0]。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -977,6 +989,7 @@ int main() {
   int64_t quantMode =  0;
   bool doRmsNorm = true;
   int64_t wdkvSplitCount = 1;
+  bool qDownOutFlag = true;
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> inputShape = {tokenNum, hiddenNum};
@@ -1168,10 +1181,11 @@ int main() {
   aclOpExecutor *executor;
 
   // 调用acaclnnMlaPreprocess第一段接口
-  ret = aclnnMlaPreprocessGetWorkspaceSize(
+  ret = aclnnMlaPreprocessV2GetWorkspaceSize(
     input, gamma0, beta0, quantScale0, quantOffset0,
-    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2, cos, sin, wuk, kvCache, kvCacheRope, slotMapping, ctkvScale, qNopeScale,
-    wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq, transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qOut, kvCacheOut, qRopeOut, krCacheOut, &workspaceSize, &executor);
+    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2,
+    cos, sin, wuk, kvCache, kvCacheRope, slotMapping, ctkvScale, qNopeScale,
+    wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq, transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qDownOutFlag, qOut, kvCacheOut, qRopeOut, krCacheOut, qDownOut, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
       LOG_PRINT("acaclnnMlaPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -1187,7 +1201,7 @@ int main() {
   }
 
   // 调用acaclnnMlaPreprocess第二段接口
-  ret = aclnnMlaPreprocess(workspaceAddr, workspaceSize, executor, stream);
+  ret = aclnnMlaPreprocessV2(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("acaclnnMlaPreprocess failed. ERROR: %d\n", ret);
             return ret);

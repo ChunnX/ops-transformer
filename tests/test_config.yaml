@@ -129,7 +129,10 @@ attention:
     test:
       ut: True
     ut_cov_exclude:
-      - attention/flash_attention_score_grad
+      - attention/flash_attention_score_grad/op_api
+      - attention/flash_attention_score_grad/op_graph
+      - attention/flash_attention_score_grad/op_kernel
+      - attention/flash_attention_score_grad/tests
     options:
       - flash_attention_score_grad
 
@@ -298,8 +301,6 @@ attention:
       - attention/prompt_flash_attention/tests
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h       # A5 FIA tiling 重构后不再依赖PFA算子，目前PFA tiling_v2目前已无法走入，无需看护
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h   # arch38 tiling 目前UT框架不支持（会被高级api拦截走不进去tiling，后续打通后开放）
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
@@ -507,11 +508,28 @@ attention:
       - attention/compressor/README.md
     ut_cov_exclude:
       - attention/compressor/tests
+      - attention/compressor/examples
     test:
       ut: True
       examples: False
     options:
       - compressor
+
+  quant_compressor:
+    module: True
+    src:
+      - attention/quant_compressor
+    exclude:
+      - attention/quant_compressor/docs
+      - attention/quant_compressor/README.md
+    ut_cov_exclude:
+      - attention/quant_compressor/tests
+      - attention/quant_compressor/examples
+    test:
+      ut: True
+      examples: False
+    options:
+      - quant_compressor
 
 gmm:
   grouped_matmul:
@@ -1164,6 +1182,25 @@ posembedding:
       ut: False
     options:
       - qkv_rms_norm_rope_cache
+
+  und_gen_qkv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/und_gen_qkv_rms_norm_rope_cache
+    exclude:
+      - posembedding/und_gen_qkv_rms_norm_rope_cache/docs
+      - posembedding/und_gen_qkv_rms_norm_rope_cache/README.md
+    # op_host / op_api 有 57 条 UT（tiling 35 + infershape 18 + aclnn 4），纳入覆盖率统计；
+    # op_kernel 目前还没有 UT，先单独排除，补上 tests/ut/op_kernel 后删掉这行
+    ut_cov_exclude:
+      - posembedding/und_gen_qkv_rms_norm_rope_cache/op_kernel
+    # 本算子只出 ascend950 的二进制（op_def 里只 AddConfig("ascend950")），
+    # examples 的 --run_example 需要对应 soc 的实机，这里先关掉，由 950 的 ST 覆盖端到端
+    test:
+      examples: False
+      ut: True
+    options:
+      - und_gen_qkv_rms_norm_rope_cache
 
 mc2:
   matrix:

@@ -18,7 +18,8 @@
 namespace ops {
 class QuantBlockSparseAttn : public OpDef {
 public:
-    explicit QuantBlockSparseAttn(const char *name) : OpDef(name)
+    explicit QuantBlockSparseAttn(const char *name)
+        : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -51,7 +52,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("p_scale")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -103,13 +104,10 @@ public:
         this->Output("attention_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
-        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(0);
-        this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(0);
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("sparse_q_block_size").AttrType(REQUIRED).Int(128);
         this->Attr("sparse_kv_block_size").AttrType(REQUIRED).Int(128);
-        this->Attr("paBlockStride").AttrType(REQUIRED).Int(0);
-        this->Attr("layout_kv").AttrType(REQUIRED).String("PA_BNSD");
+        this->Attr("layout_kv").AttrType(REQUIRED).String("PA_BNBD");
         this->Attr("layout_q").AttrType(REQUIRED).String("TND");
         this->Attr("layout_sparse_indices").AttrType(REQUIRED).String("B_N_Qb_Kb");
         this->Attr("layout_out").AttrType(REQUIRED).String("TND");

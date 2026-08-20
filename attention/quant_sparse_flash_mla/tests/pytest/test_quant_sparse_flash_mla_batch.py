@@ -21,7 +21,7 @@ import logging
 
 testcase_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
 is_run_graph = os.environ.get("RUN_GRAPH", "0") == "1"
-result_path = Path("result.xlsx")
+result_path = os.environ.get("QSMLA_RESULT_SAVE_PATH", "result.xlsx")
 device_id = 0
 
 # 日志配置
@@ -47,7 +47,7 @@ else:
 
 
 def qsmla(testcase_files):
-    test_data = torch.load(testcase_files, map_location="cpu")
+    test_data = torch.load(testcase_files, map_location="cpu", weights_only=False)
     try:
         if is_run_graph:
             npu_result, cpu_quant_result, cpu_lse, npu_lse = (
@@ -75,10 +75,10 @@ def qsmla(testcase_files):
             lse_res, lse_pct = result_compare_method.check_result(cpu_lse, npu_lse)
 
         # 主输出失败记录
-        if main_res != "PASS":
+        if main_res != "Pass":
             fail_info.append(f"MAIN_FAILED:{main_res}")
         # LSE失败记录
-        if lse_res is not None and lse_res != "PASS":
+        if lse_res is not None and lse_res != "Pass":
             fail_info.append(f"LSE_FAILED:{lse_res}")
             min_fulfill = min(min_fulfill, lse_pct)
 
@@ -95,9 +95,9 @@ def qsmla(testcase_files):
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data["params"], result, fulfill_percent, result_path)
+    utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
 
-    if result in ("NPU ERROR", "Failed"):
+    if result != "PASS":
         pytest.fail(
             f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
         )

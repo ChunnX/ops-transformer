@@ -288,12 +288,6 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                         (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(),
                         "> 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(rankSize),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "recvCounts",
-                        (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(),
-                        (std::string("dim0 must equal sendCounts dim0(rankSize)=") + std::to_string(rankSize)).c_str()),
-                    return ge::GRAPH_FAILED);
 
     // recvLocalEntry: 1D (R,)
     const gert::StorageShape *recvLocalEntryShape = context->GetInputShape(IN_RECV_LOCAL_ENTRY);
@@ -577,6 +571,15 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     OP_TILING_CHECK(totalRecv > 0 && hiddenBytes > INT64_MAX / totalRecv,
                     OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(totalRecv > 0 && tilingData.hiddenDim > INT64_MAX / totalRecv,
+                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
+                            totalRecv, tilingData.hiddenDim),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(totalRecv > 0 &&
+                        tilingData.hiddenDim > (INT64_MAX / static_cast<int64_t>(sizeof(float))) / totalRecv,
+                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
+                            totalRecv, tilingData.hiddenDim),
+                    return ge::GRAPH_FAILED);
 
     int64_t wsGradSorted = numTokens * hiddenBytes;
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
@@ -584,8 +587,29 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
+    int64_t wsSegCount = static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t);
 
-    int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch;
+    int64_t maxSortCount = totalRecv;
+    OP_TILING_CHECK(maxSortCount > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
+                    OP_LOGE(nodeName, "sort temp overflow: totalRecv=%ld", totalRecv),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(maxSortCount > INT64_MAX - 4095,
+                    OP_LOGE(nodeName, "sortTileCount CeilDiv overflow: totalRecv=%ld", totalRecv),
+                    return ge::GRAPH_FAILED);
+    int64_t sortTempSize = (maxSortCount * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    int64_t sortTileCount = (maxSortCount + 4096 - 1) / 4096;
+    int64_t wsSortTempVal = sortTempSize;
+    int64_t wsSortTempIdx = sortTempSize;
+    int64_t wsSortCompanion = sortTempSize;
+    int64_t wsSortHist = sortTileCount * 256 * sizeof(int32_t);
+    int64_t wsSortPrefix = 256 * sizeof(int32_t);
+    int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
+    int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortOffsets;
+
+    int64_t wsGradUniqueFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
+
+    int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
+                      wsSegCount + wsSortTotal + wsGradUniqueFp32;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 

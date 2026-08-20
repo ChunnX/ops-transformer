@@ -80,9 +80,6 @@ class InplacePartialRotaryMulBackwardOpBuilder(OpBuilder):
 inplace_partial_rotary_mul_backward_op_builder = (
     InplacePartialRotaryMulBackwardOpBuilder()
 )
-# Pre-load the op module so that torch.compile / dynamo tracing does not
-# encounter torch.utils.cpp_extension.load() at trace time.
-inplace_partial_rotary_mul_backward_op_builder.load()
 
 
 @impl(AS_LIBRARY, inplace_partial_rotary_mul_backward_op_builder.name, "PrivateUse1")
@@ -122,6 +119,10 @@ def inplace_partial_rotary_mul_backward(
     ``grad_output`` in-place — elements within ``partial_slice`` are
     replaced by the RoPE gradient, while elements outside the slice are
     left unchanged.
+
+    When the slice length is 0 (``partial_slice``'s start equals end, e.g.
+    ``[0, 0]``) or any of ``grad_output``/``r1``/``r2`` is an empty tensor
+    (some dim is 0), this is a no-op: ``grad_output`` is left unchanged.
 
     Args:
         grad_output (Tensor): Gradient of the loss w.r.t. the output of
