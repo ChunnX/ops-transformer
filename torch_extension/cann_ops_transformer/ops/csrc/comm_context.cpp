@@ -298,13 +298,10 @@ public:
                 hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerList[layerIndex], srcRankId, rankIdLists[rankIdx],
                                                     &linksList, &netLinkNum);
                 TORCH_CHECK(hcclRet == HCCL_SUCCESS,
-                            "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
+                            "Get HCCL links failed when checking protocol support, ret:%u ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
-                if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    ASCEND_LOGI("Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
+                TORCH_CHECK(CheckLinks(netLinkNum, linksList, protocol), "Layer %u does not support URMA with rank %u, srcRankId is %u, break loop",
                                 layerList[layerIndex], rankIdLists[rankIdx], srcRankId);
-                    // 若不支持，则跳出循环
-                    return;
                 }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
