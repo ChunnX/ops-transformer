@@ -154,28 +154,29 @@ build_wheel() {
 }
 
 # ============================================================
-# 采集函数
+# 采集函数 (capture 模式: NPUGraph capture + replay)
 # ============================================================
+SCAN_REPLAY_PY="$(pwd)/scan_replay.py"
+if [ ! -f "$SCAN_REPLAY_PY" ]; then
+    echo "[ERROR] scan_replay.py 不存在: $SCAN_REPLAY_PY"
+    exit 1
+fi
+
 collect_add() {
     local label=$1 outdir=$2
-    echo "[COLLECT] 采集 add ($label)..."
+    echo "[COLLECT] 采集 add ($label, capture 模式)..."
     rm -rf "$outdir"
-    msprof --output="$outdir" python3 tests/add/test_add.py 2>&1 | tail -1
+    OP_TYPE=add msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" 2>&1 | tail -1
 }
 
 collect_gmm() {
     local label=$1 outdir=$2
-    echo "[COLLECT] 采集 grouped_matmul ($label)..."
+    echo "[COLLECT] 采集 grouped_matmul ($label, eager 模式)..."
     rm -rf "$outdir"
-    # 优先用 msprof（能采集多 block 的 op_summary），若无法生成 op_summary 则回退到 msprof op
-    msprof --output="$outdir" python3 tests/grouped_matmul/test_groupedmatmul.py 2>&1 | tail -1
-    if ! find "$outdir" -name "op_summary_*.csv" 2>/dev/null | grep -q .; then
-        echo "        (msprof 未生成 op_summary，回退到 msprof op)"
-        rm -rf "$outdir"
-        msprof op --output="$outdir" \
-            --application="python3 tests/grouped_matmul/test_groupedmatmul.py" \
-            --launch-count=$LAUNCH_COUNT --warm-up=0 --replay-mode=application 2>&1 | tail -1
-    fi
+    # gemm (Cube 核) msprof 无 op_summary, 用 msopprof 采集
+    msopprof --output="$outdir" \
+        --application="python3 tests/grouped_matmul/test_groupedmatmul.py" \
+        --aic-metrics=PipeUtilization --launch-count=$LAUNCH_COUNT 2>&1 | tail -1
 }
 
 # ============================================================
@@ -217,6 +218,7 @@ import csv, statistics, sys, os, glob
 output_dir = sys.argv[1]
 
 def analyze_add(prof_dir, label):
+    # capture 模式: add 有 op_summary (AIV 核)
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
     if not csvs:
         print(f"  {label}: [未找到 op_summary CSV]")
