@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
@@ -87,26 +87,37 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
     at::Tensor sparseValuesOut = std::get<1>(poolKeyIndexerOutput);
 
     at::Device outputDevice = query.device();
-    auto actualSeqQVal = get_valid_tensor(actualSeqQ, outputDevice);
-    auto actualSeqKVal = get_valid_tensor(actualSeqK, outputDevice);
-    auto blockTableVal = get_valid_tensor(blockTable, outputDevice);
-    auto qDescaleVal = get_valid_tensor(qDescale, outputDevice);
-    auto kDescaleVal = get_valid_tensor(kDescale, outputDevice);
+    (void)outputDevice;
 
     char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
     char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
 
-    // TODO(step4): When quant_mode=0 (FP8 per-token-head) or quant_mode=1 (mxFP8),
-    // implement FixPkiAclDtypes to convert query/key/descale to proper ACL dtypes
-    // (FP8_E4M3FN / FLOAT8_E8M0) using TensorWrapper, similar to quant_lightning_indexer.cpp.
-    // Currently only quant_mode=-1 (no quantization) is fully supported.
+    // pool_tail_k / actual_seq_q / actual_seq_k are ValueDepend(OPTIONAL) in the op
+    // definition, so the auto-generated aclnn API expects aclIntArray* (not aclTensor*).
+    // Convert 1-D int64 tensors to at::IntArrayRef so ConvertType produces aclIntArray*.
+    at::Tensor poolTailKCpu = poolTailK.to(at::kLong).cpu().contiguous();
+    at::IntArrayRef poolTailKArr(poolTailKCpu.data_ptr<int64_t>(), poolTailKCpu.numel());
+
+    at::Tensor actualSeqQCpu;
+    c10::optional<at::IntArrayRef> actualSeqQArr = c10::nullopt;
+    if (actualSeqQ.has_value() && actualSeqQ.value().defined()) {
+        actualSeqQCpu = actualSeqQ.value().to(at::kLong).cpu().contiguous();
+        actualSeqQArr = at::IntArrayRef(actualSeqQCpu.data_ptr<int64_t>(), actualSeqQCpu.numel());
+    }
+
+    at::Tensor actualSeqKCpu;
+    c10::optional<at::IntArrayRef> actualSeqKArr = c10::nullopt;
+    if (actualSeqK.has_value() && actualSeqK.value().defined()) {
+        actualSeqKCpu = actualSeqK.value().to(at::kLong).cpu().contiguous();
+        actualSeqKArr = at::IntArrayRef(actualSeqKCpu.data_ptr<int64_t>(), actualSeqKCpu.numel());
+    }
 
     ACLNN_CMD(aclnnPoolKeyIndexer,
-              query, poolKey, weights, poolTailK,
-              actualSeqQVal, actualSeqKVal, blockTableVal,
-              qDescaleVal, kDescaleVal,
-              queryLayoutPtr, keyLayoutPtr,
-              topk, poolSize, maskMode, quantMode, returnValue,
+              query, poolKey, weights, poolTailKArr,
+              actualSeqQArr, actualSeqKArr, blockTable,
+              qDescale, kDescale,
+              topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+              maskMode, quantMode, returnValue,
               sparseIndicesOut, sparseValuesOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);

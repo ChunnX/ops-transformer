@@ -10,7 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnInner PRIVATE
+    target_sources(op_host_aclnn PRIVATE
     pool_key_indexer_def.cpp
     )
 endif()

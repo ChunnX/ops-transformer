@@ -78,10 +78,10 @@ def _get_compute_dtype(query_dtype):
 def _normalize_prefix_seq(seq, total):
     b = len(seq)
     if b == 1:
-        return torch.tensor([total], dtype=torch.int32)
+        return torch.tensor([total], dtype=torch.int64)
     lens = [total // b] * b
     lens[-1] += total - sum(lens)
-    return torch.tensor(lens, dtype=torch.int32).cumsum(0).to(torch.int32)
+    return torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
 
 
 def _parse_dtype(dtype_str):
@@ -266,10 +266,14 @@ class PKIGoldenRef:
         mask_s_kv = m_shape[1]
         masks = []
         for i_batch in range(batch):
-            S1 = actualSeqLengthsQ[i_batch] if len(actualSeqLengthsQ) > 0 else mask_s_q
+            S1 = (
+                actualSeqLengthsQ[i_batch]
+                if (actualSeqLengthsQ is not None and len(actualSeqLengthsQ) > 0)
+                else mask_s_q
+            )
             S2 = (
                 math.floor(actualSeqLengthsK[i_batch])
-                if len(actualSeqLengthsK) > 0
+                if (actualSeqLengthsK is not None and len(actualSeqLengthsK) > 0)
                 else mask_s_kv
             )
             cur_tail_k = int(pool_tail_k[i_batch]) if pool_tail_k is not None else 0
@@ -616,8 +620,10 @@ class PKIGoldenRef:
         y_values = torch.full(out_val_shape, float("-inf"), dtype=self.compute_dtype)
 
         for b_idx in range(batch):
-            curr_q = actual_seq_q[b_idx]
-            curr_k = math.floor(actual_seq_k[b_idx])
+            curr_q = actual_seq_q[b_idx] if actual_seq_q is not None else q_seq
+            curr_k = (
+                math.floor(actual_seq_k[b_idx]) if actual_seq_k is not None else k_seq
+            )
             cur_q = q_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]
             cur_k = k_bnsd[b_idx : (b_idx + 1), :, :curr_k, :]
             cur_wt = wt_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]

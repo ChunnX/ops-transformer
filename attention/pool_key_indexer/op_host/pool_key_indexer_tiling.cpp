@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numeric>
+#include "register/op_impl_registry.h"
 #include "../op_kernel/pool_key_indexer_template_tiling_key.h"
 
 using namespace ge;
@@ -840,33 +841,44 @@ uint32_t PoolKeyIndexerTiling::GetTrunkLen(uint32_t sparseCount)
 ge::graphStatus PoolKeyIndexerTiling::CalcWorkspaceSize(PoolKeyIndexerTilingInfo &info,
                                                         uint64_t &workspaceSize)
 {
+    // 布局必须与 kernel 侧一致（op_kernel/arch22/pool_key_indexer_kernel.h Init）:
+    // | mm1ResGm(双缓冲score) | vec1ResGm(LD中间结果) | vec1ParamGm(LD参数) |
+    // MIX 核上 GetBlockNum() 返回 blockDim = CalcTschBlockDim(aivNum, aicNum, aivNum) = aicNum，
+    // 与 LIV1/LIV2 一致直接使用 aicNum
+    constexpr uint64_t PKI_BASE_TOPK = 2048;
+    constexpr uint64_t PKI_TOPK_MAX_SIZE = 8192; // 与 LIV2 一致：LD 区域按 topk 上限预留余量
+    constexpr uint64_t PKI_SPARSE_COUNT_8K = 8192;
+    constexpr uint64_t PKI_S2_BASE_SIZE = 512;
+    constexpr uint64_t PKI_BLOCK_CUBE_SIZE = 16;
+    constexpr uint64_t PKI_WS_DOUBLE = 2;
+    constexpr uint64_t PKI_LD_PARAM_NUM = 16;
+
     uint64_t offset = 0;
     uint32_t aicNum = info.aicNum;
-    uint32_t blockNum = info.aivNum; // GetBlockNum equivalent
-    uint32_t s1BaseSize = tilingData_.get_s1BaseSize();
-    uint32_t s2BaseSize = tilingData_.get_s2BaseSize();
-    uint32_t sparseCount = info.sparseCount;
-    uint32_t topkCountAlign16 = AlignUp(sparseCount, 16U);
 
-    // S2 max for scoreGm sizing (use kSeqSize from shape or actual_seq_k)
-    uint64_t kSeqSize = (info.s2Size > 0) ? static_cast<uint64_t>(info.s2Size) : 8192;
-    uint64_t kSeqSizeAlign = RoundUp64(kSeqSize, s2BaseSize);
+    // kernel InitTilingData: sparseCount > BASE_TOPK 时 s1BaseSize = 8192/sparseCount*2, 否则为 8
+    uint64_t s1BaseSize = (info.sparseCount > PKI_BASE_TOPK) ? (PKI_SPARSE_COUNT_8K / info.sparseCount) * 2 : 8;
+    uint64_t mBaseSizeAlign = RoundUp64(s1BaseSize * info.gSize, PKI_BLOCK_CUBE_SIZE);
 
-    // scoreGm: per-core, s1BaseSize × kSeqSizeAlign × sizeof(SCORE_T)
-    uint64_t singleCoreScoreSize = static_cast<uint64_t>(s1BaseSize) * kSeqSizeAlign * PKI_SCORE_T_SIZE;
-    uint64_t scoreGmSize = RoundUp64(static_cast<uint64_t>(aicNum) * singleCoreScoreSize, PKI_GM_ALIGN_BYTES);
+    // scoreGm: aicNum × 双缓冲 × mBaseSizeAlign × s2BaseSize × sizeof(SCORE_T)
+    uint64_t scoreGmSize = RoundUp64(
+        static_cast<uint64_t>(aicNum) * PKI_WS_DOUBLE * mBaseSizeAlign * PKI_S2_BASE_SIZE * PKI_SCORE_T_SIZE,
+        PKI_GM_ALIGN_BYTES);
     tilingData_.set_wsOffScore(offset);
     offset += scoreGmSize;
 
-    // LD score: GetBlockNum × s1BaseSize × topkCountAlign16 × 2 × sizeof(SCORE_T)
+    // LD score: aicNum × s1BaseSize × 2(头/尾) × 2(idx/value) × TOPK_MAX × sizeof(SCORE_T)
+    // 按 topk 上限 8192 预留，覆盖 kernel 实写的 BASE_TOPK(2048)
     uint64_t ldScoreSize = RoundUp64(
-        static_cast<uint64_t>(blockNum) * s1BaseSize * topkCountAlign16 * 2 * PKI_SCORE_T_SIZE, 32);
+        static_cast<uint64_t>(aicNum) * s1BaseSize * PKI_WS_DOUBLE * PKI_WS_DOUBLE * PKI_TOPK_MAX_SIZE *
+            PKI_SCORE_T_SIZE,
+        32);
     tilingData_.set_wsOffLdScore(offset);
     offset += ldScoreSize;
 
-    // LD index: GetBlockNum × s1BaseSize × topkCountAlign16 × 2 × sizeof(int32_t)
+    // LD param: aicNum × s1BaseSize × 2 × LD_PARAM_NUM × sizeof(int64_t)
     uint64_t ldIdxSize = RoundUp64(
-        static_cast<uint64_t>(blockNum) * s1BaseSize * topkCountAlign16 * 2 * sizeof(int32_t), 32);
+        static_cast<uint64_t>(aicNum) * s1BaseSize * PKI_WS_DOUBLE * PKI_LD_PARAM_NUM * sizeof(int64_t), 32);
     tilingData_.set_wsOffLdIdx(offset);
     offset += ldIdxSize;
 
@@ -927,6 +939,10 @@ ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingI
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+    // kernel 侧 GetUserWorkspace() 会跳过系统保留区（arch22 为 16MB，
+    // 即 GetLibApiWorkSpaceSize()），必须计入总 workspace，否则 kernel 实际
+    // 可用空间不足导致 GM 越界（参照 lightning_indexer_v2_tiling.cpp）
+    workspaceSize += ascendcPlatform.GetLibApiWorkSpaceSize();
 
     // Set tiling data fields
     SetTilingData(info);
@@ -970,5 +986,15 @@ ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingI
 
     return ge::GRAPH_SUCCESS;
 }
+
+static ge::graphStatus TilingPoolKeyIndexer(gert::TilingContext *context)
+{
+    PoolKeyIndexerTiling tiling(context);
+    PoolKeyIndexerTilingInfo info;
+    return tiling.DoTiling(&info);
+}
+
+IMPL_OP_OPTILING(PoolKeyIndexer)
+    .Tiling(TilingPoolKeyIndexer);
 
 } // namespace optiling

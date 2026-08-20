@@ -95,43 +95,6 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
 pool_key_indexer_op_builder = PoolKeyIndexerOpBuilder()
 
 
-@torch.library.register_fake("cann_ops_transformer::pool_key_indexer")
-def pool_key_indexer_fake(
-    query,
-    pool_key,
-    weights,
-    pool_tail_k,
-    *,
-    actual_seq_q=None,
-    actual_seq_k=None,
-    block_table=None,
-    q_descale=None,
-    k_descale=None,
-    layout_q="BSND",
-    layout_k="BSND",
-    topk=128,
-    pool_size=1,
-    mask_mode=0,
-    quant_mode=-1,
-    return_value=False,
-):
-    """FakeTensor implementation for torch.compile support."""
-    indices_len = topk + pool_size - 1
-    values_len = topk // pool_size
-    if layout_q == "BSND":
-        idx_shape = [query.shape[0], query.shape[1], indices_len]
-        val_shape = [query.shape[0], query.shape[1], values_len]
-    else:
-        idx_shape = [query.shape[0], indices_len]
-        val_shape = [query.shape[0], values_len]
-    sparse_indices = torch.empty(idx_shape, dtype=torch.int32, device="meta")
-    if return_value:
-        sparse_values = torch.empty(val_shape, dtype=torch.float32, device="meta")
-    else:
-        sparse_values = torch.empty([0], dtype=torch.float32, device="meta")
-    return (sparse_indices, sparse_values)
-
-
 @impl(AS_LIBRARY, pool_key_indexer_op_builder.name, "PrivateUse1")
 def pool_key_indexer(
     query,

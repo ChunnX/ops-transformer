@@ -597,3 +597,111 @@ DECL 和 SEL 中的引用同步更新。mask 值本身已非负，无需 `+1` �
 - `attention/sparse_flash_mla/op_host/sparse_flash_mla_tiling.cpp` — `GET_TPL_TILING_KEY` + `SetTilingKey` 调用模式 + `#include "../op_kernel/*_template_tiling_key.h"` 用法
 - `attention/lightning_indexer/op_host/lightning_indexer_tiling.cpp` — dtype 到模板值的 if-else 映射模式
 - `attention/quant_compressor/op_host/arch35/quant_compressor_tiling.cpp` — quant_mode 属性直传到 GET_TPL_TILING_KEY 的 Strategy A 用法
+
+---
+---
+
+# 运行时崩溃修复记录（EZ9999 MTE 非法 GM 地址）
+
+> 2026-08-20 排查修复。在 910B3 + CANN 9.1.0 环境，上述编译问题修复后，算子所有用例运行即崩溃（EZ9999 `MTE accesses an invalid GM address` / `Illegal instruction`），此前 pytest 12 用例 0 通过。本文记录定位过程与最终根因。
+
+## 问题现象
+
+- 任意 shape（BSND/TND、任意 pool_size/topk/mask_mode）调用 `pool_key_indexer` 均异步崩溃，错误码 507015（aicore exception）
+- 崩溃点不固定：有时报 fftsplus aivector error（AIV 核），有时报 aicore error（AIC 核），甚至空闲 AIV 核也报错
+- 同一二进制在 mssanitizer memcheck/synccheck 拦截模式下可完整跑通、无任何越界报告（假阴性）
+- 出错 pc 随代码插入（printf）而漂移，说明报错 pc 是异常陷入点而非出错指令本身
+
+## 排除项（走过的弯路，供复用）
+
+| 假设 | 验证方法 | 结论 |
+|------|----------|------|
+| 输入 tensor 不在同一 NPU 设备 | 实测全在 npu:0；故意制造不匹配对比错误签名（不匹配时 AIC+AIV 同时报错且 pc 不固定，签名不同） | 排除 |
+| 核间同步 flag id 冲突（syncC1V1/syncV1C1 双向共用 id 0） | 对照 LIV2：其同样双向共用 0，是 FIA_SYNC_MODE2 模式下的正确设计 | 排除 |
+| vec1Param 初始化写缺 MTE3_V 等待 | 对齐 LIV2 补 SetWaitFlag 重新编译 | 无效 |
+| kernel 与 host 代码不同步 | diff 仓库源码与 vendor 安装包，一致 | 排除 |
+| 环境问题 | 同机同管线编译安装 LIV2（同源架构）A/B 测试：LIV2 通过、PKI 崩溃 | 排除环境，锁定 PKI 特有 |
+
+## 定位过程（关键步骤）
+
+1. **A/B 对照**：将 `lightning_indexer_v2`（LIV2，与 PKI 同架构：MIX AIC+AIV、同样的 workspace 三段布局 mm1Res|vec1Res|vec1Param、同样的 LD 流程）编入同一 vendor 包测试 —— LIV2 全过，PKI 全崩，排除环境。
+
+2. **workspace 第一轮修复（必要但不足）**：发现 host `CalcWorkspaceSize` 的公式与 kernel 实际布局完全不符（host 按旧布局只算出 409600 字节；kernel 按自身公式需要 ~10.5MB）。重写为镜像 kernel 公式后仍崩，但推进了排除面。
+
+3. **编译宏二分**：在 ProcessBaseBlock/InitBuffers/ProcessVec 各阶段插入 `PKI_BISECT_SKIP_*` 编译宏：
+   - 屏蔽全部计算（ComputeMm1+ProcessVec）仍崩 → 与计算逻辑无关
+   - 屏蔽 InitBuffers 初始化段 → 通过
+   - 三段单独独活（CopyIn 链 / Sort 链 / CopyOut 链）都崩 → 存在公共毒药
+   - AIC 侧单独跑崩、AIV 侧单独跑也崩 → 双侧独立触发
+
+4. **mssanitizer 决定性证据**：对"SKIP_MM1 + 全量 ProcessVec"构建跑 memcheck，终于复现并抓到 illegal read/write。其 `MEMORY_RECORD` 记录了运行时真实分配：
+   ```
+   MALLOC dstAddr:0x12c041400000 memSize:23068672 (22MB)   ← RT 实际分配
+   MALLOC ... memInfoDesc:input_13 memSize:21053440        ← tiling 申请的 21MB
+   ```
+   而 kernel 内 `GetUserWorkspace()` 返回 `0x12c042400000`（= 基址 + **16MB**），首个非法访问地址 `0x12c042a00000` 与 22MB 分配边界**精确重合**。
+
+## 根因
+
+**host tiling 的 workspace 总量漏加了 16MB 系统保留区。**
+
+- arch22（`__NPU_ARCH__ == 2201`）上 `GetUserWorkspace()` 实现为 `workspace + RESERVED_WORKSPACE`，其中 `RESERVED_WORKSPACE = 16MB`（`kernel_utils_constants.h:274`），即 kernel 实际可用的 user workspace 从总分配的 +16MB 处开始
+- LIV2 的 `DoTiling` 首行就是 `workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize()`（= 该 16MB）再加上自身区域
+- PKI 的 `CalcWorkspaceSize` 只计算了自身区域，运行时按 tiling 尺寸分配（取整 22MB），kernel 从 +16MB 起使用 10.5MB → 实际只剩 ~6MB，各核按 `aiCoreIdx * 区域大小` 偏移写入时越界
+- 原始 400KB 版本更是从第一条 AIC fixp 写（mm1ResGm）就开始大幅越界 —— 这正是最初 `MTE accesses an invalid GM address` 的直接来源
+- 崩溃点不固定 / 空闲核也崩 / pc 漂移 / mssanitizer 假阴性等现象均为越界写踩踏 16MB 保留区（系统区）导致的时序性副作用
+
+## 修复
+
+`op_host/pool_key_indexer_tiling.cpp` 两处：
+
+1. `CalcWorkspaceSize` 重写为镜像 kernel 侧布局（`op_kernel/arch22/pool_key_indexer_kernel.h` Init）：
+
+   ```
+   | mm1Res（score 双缓冲） | vec1Res（LD 中间结果） | vec1Param（LD 参数） |
+   scoreGm   = aicNum × 2 × mBaseSizeAlign × 512 × 4B
+   ldScore   = aicNum × s1BaseSize × 2 × 2 × BASE_TOPK(2048) × 4B
+   ldParam   = aicNum × s1BaseSize × 2 × LD_PARAM_NUM(16) × 8B
+   ```
+   其中 `s1BaseSize = sparseCount > 2048 ? 8192/sparseCount*2 : 8`，
+   `mBaseSizeAlign = Align(s1BaseSize × gSize, 16)`。核数取 `max(aicNum, aivNum)` 以覆盖 kernel 侧 `GetBlockNum()` 的取值。
+
+2. `DoTiling` 中补上系统保留区（关键一行）：
+
+   ```cpp
+   // kernel 侧 GetUserWorkspace() 会跳过系统保留区（arch22 为 16MB，
+   // 即 GetLibApiWorkSpaceSize()），必须计入总 workspace，否则 kernel 实际
+   // 可用空间不足导致 GM 越界（参照 lightning_indexer_v2_tiling.cpp）
+   workspaceSize += ascendcPlatform.GetLibApiWorkSpaceSize();
+   ```
+
+修复后 plog 验证：`workspace: ... total=37801984`（16MB + 21MB），与 kernel 需求匹配。
+
+## 测试脚本同步修复
+
+`tests/pytest/simple_test.py` 用例 2（TND）：`actual_seq_k` 误传**累计 token 数** `[64, 128]`，host 校验（`tiling.cpp:710`）要求 TND 下 last 必须等于 pool_key 的 T 维（即**累计 pool 数**）。修正为：
+
+```python
+actual_seq_k = torch.tensor([k // 16 for k in k_lens], dtype=torch.int64).cumsum(0).npu()  # [4, 8]
+```
+
+## 验证结果
+
+| 项目 | 结果 |
+|------|------|
+| `simple_test.py` 两用例 | 全部 PASSED（历史 0 通过） |
+| 9 组 shape 变体（1核/8核/64核、S2=4096 多 S2 块、topk=2048/4096、B=2、pool16+causal、G=1） | 9/9 通过 |
+| 重复运行 ×3 | 稳定通过 |
+| LIV2 同包回归 | 无影响 |
+| 官方 pytest `test_pool_key_indexer.py` | 9/12 通过（历史 0/12） |
+
+## 遗留事项
+
+3 个 TND 用例失败在 **golden 脚本侧**（`tests/atk/pool_key_indexer_golden.py` 的 `_make_actual_seq(k_lens)` 同样误用 token 数构造 `actual_seq_k`，与 simple_test.py 属同类语义问题）。注意 golden 内部同时需要 token 长度（causal mask 语义）与 pool 长度（TND 解包），建议由测试维护者按此拆分修正，不应简单替换。
+
+## 经验教训
+
+1. **MIX 类算子 workspace 总量 = `GetLibApiWorkSpaceSize()`（系统保留区，arch22=16MB）+ 算子自用区域**，二者缺一不可。host tiling 与 kernel `GetUserWorkspace()` 是"总量"与"+16MB 起点"的契约关系
+2. host/kernel 的 workspace 布局公式必须逐字段镜像维护，任何一侧改动都要同步另一侧（本次 host 公式与 kernel 完全不符是第一层 bug，漏加 16MB 是第二层）
+3. 越界踩踏系统保留区的故障表现极具迷惑性：崩溃核不固定、pc 漂移、拦截式检测工具假阴性。`mssanitizer` 的 `MEMORY_RECORD`（记录 RT 真实 MALLOC 边界）是对照"kernel 实际访问地址 vs 运行时分配边界"的最有效手段
+4. 同源参考算子（LIV2）A/B 是排除环境问题的最快路径；编译宏二分（屏蔽/独活）适合"多嫌疑点全崩"的场景

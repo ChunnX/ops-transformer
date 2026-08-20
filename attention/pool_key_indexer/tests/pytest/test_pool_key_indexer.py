@@ -70,7 +70,7 @@ def _build_bsnd_inputs(batch, q_seq, k_seq, n1, pool_size, dtype, seed=42):
     k_seq_pools = k_seq // pool_size
     pool_key = torch.randn(batch, k_seq_pools, N2, HEAD_DIM, dtype=dt)
     weights = torch.randn(batch, q_seq, n1, dtype=dt)
-    pool_tail_k = torch.randint(0, pool_size, (batch,), dtype=torch.int32)
+    pool_tail_k = torch.randint(0, pool_size, (batch,), dtype=torch.int64)
     return query, pool_key, weights, pool_tail_k
 
 
@@ -86,7 +86,7 @@ def _build_tnd_inputs(q_lens, k_lens, n1, pool_size, dtype, seed=42):
     total_k_pools = sum(k_pool_lens)
     pool_key = torch.randn(total_k_pools, N2, HEAD_DIM, dtype=dt)
     weights = torch.randn(total_q, n1, dtype=dt)
-    pool_tail_k = torch.randint(0, pool_size, (len(q_lens),), dtype=torch.int32)
+    pool_tail_k = torch.randint(0, pool_size, (len(q_lens),), dtype=torch.int64)
     actual_seq_q = _make_actual_seq(q_lens)
     actual_seq_k = _make_actual_seq(k_lens)
     return query, pool_key, weights, pool_tail_k, actual_seq_q, actual_seq_k

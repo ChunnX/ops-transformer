@@ -63,6 +63,7 @@ from .stem_oam_prep_varlen_q import stem_oam_prep_varlen_q
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
 from .stem_oam_prep_paged_kv import stem_oam_prep_paged_kv
+from .pool_key_indexer import pool_key_indexer
 from . import graph_convert as _graph_convert
 from .qkv_rms_norm_rope_cache_with_k_scale import (
     qkv_rms_norm_rope_cache_with_k_scale,
