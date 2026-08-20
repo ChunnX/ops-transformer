@@ -378,6 +378,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/msa_index_score/README.md">msa_index_score</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算 MSA（MiniMax Sparse Attention）模块 Index Branch 中的 block score，对每个 query token 与每个 KV sparse block 做 matmul+maxpool，输出逐 block 重要性分数。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/nsa_compress/README.md">nsa_compress</a></td>
     <td>✓</td>
     <td>✓</td>
