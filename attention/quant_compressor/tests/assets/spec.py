@@ -51,27 +51,70 @@ def _register_quant_compressor_api_params():
         ParamInfo(name="ape", type="Tensor"),
         ParamInfo(name="quant_mode", type="int"),
         ParamInfo(name="cmp_ratio", type="int"),
-        ParamInfo(name="x_descale", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="wkv_descale", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="wgate_descale", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="state_block_table", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="cu_seqlens", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="seqused", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="start_pos", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="coff", type="int", default=1, is_optional=True,
-                  is_keyword_only=True),
-        ParamInfo(name="cache_mode", type="int", default=1, is_optional=True,
-                  is_keyword_only=True),
+        ParamInfo(
+            name="x_descale",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="wkv_descale",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="wgate_descale",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="state_block_table",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="cu_seqlens",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="seqused",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="start_pos",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="coff", type="int", default=1, is_optional=True, is_keyword_only=True
+        ),
+        ParamInfo(
+            name="cache_mode",
+            type="int",
+            default=1,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
     ]
     register_api_params(
-        "cann_ops_transformer.ops.quant_compressor", e2e_params, source="manual_quant_compress"
+        "cann_ops_transformer.ops.quant_compressor",
+        e2e_params,
+        source="manual_quant_compress",
     )
 
     kernel_params = [
@@ -83,7 +126,9 @@ def _register_quant_compressor_api_params():
         ParamInfo(name="x_descale", type="Tensor", default=None, is_optional=True),
         ParamInfo(name="wkv_descale", type="Tensor", default=None, is_optional=True),
         ParamInfo(name="wgate_descale", type="Tensor", default=None, is_optional=True),
-        ParamInfo(name="state_block_table", type="Tensor", default=None, is_optional=True),
+        ParamInfo(
+            name="state_block_table", type="Tensor", default=None, is_optional=True
+        ),
         ParamInfo(name="cu_seqlens", type="Tensor", default=None, is_optional=True),
         ParamInfo(name="seqused", type="Tensor", default=None, is_optional=True),
         ParamInfo(name="start_pos", type="Tensor", default=None, is_optional=True),

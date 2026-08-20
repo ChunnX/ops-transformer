@@ -424,10 +424,25 @@ def read_state_page_cache(
         finish_cnt = finish_cnt + can_read_seq_cnt
     return result
 
+
 def cpu_compressor_fp64(
-    x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
-    block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
-    cmp_ratio=4, coff=1, cache_mode=1, grad_enabled=False):
+    x,
+    wkv,
+    wgate,
+    kv_state,
+    score_state,
+    update_kv_position,
+    update_score_position,
+    ape,
+    block_table=None,
+    cu_seqlens=None,
+    seqused=None,
+    start_pos=None,
+    cmp_ratio=4,
+    coff=1,
+    cache_mode=1,
+    grad_enabled=False,
+):
     x_dtype = x.dtype
     x = x.to(torch.float64).numpy()
     wkv = wkv.to(torch.float64).numpy()
@@ -452,15 +467,40 @@ def cpu_compressor_fp64(
         S = x.shape[1]
         new_kv_state = new_kv_state.reshape(B * S, new_kv_state.shape[-1])
         new_score_state = new_score_state.reshape(B * S, new_score_state.shape[-1])
-        cmp_kv = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype)
+        cmp_kv = np.zeros(
+            shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype
+        )
         if grad_enabled:
-            kv = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, coff * cmp_ratio, head_dim), dtype=matmul_dtype)
-            softmax = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, coff * cmp_ratio, head_dim), dtype=matmul_dtype)
+            kv = np.zeros(
+                shape=(B, (S + cmp_ratio - 1) // cmp_ratio, coff * cmp_ratio, head_dim),
+                dtype=matmul_dtype,
+            )
+            softmax = np.zeros(
+                shape=(B, (S + cmp_ratio - 1) // cmp_ratio, coff * cmp_ratio, head_dim),
+                dtype=matmul_dtype,
+            )
     else:
-        cmp_kv = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), head_dim), dtype=matmul_dtype)
+        cmp_kv = np.zeros(
+            shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), head_dim),
+            dtype=matmul_dtype,
+        )
         if grad_enabled:
-            kv = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), coff * cmp_ratio, head_dim), dtype=matmul_dtype)
-            softmax = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), coff * cmp_ratio, head_dim), dtype=matmul_dtype)
+            kv = np.zeros(
+                shape=(
+                    min(x.shape[0], x.shape[0] // cmp_ratio + B),
+                    coff * cmp_ratio,
+                    head_dim,
+                ),
+                dtype=matmul_dtype,
+            )
+            softmax = np.zeros(
+                shape=(
+                    min(x.shape[0], x.shape[0] // cmp_ratio + B),
+                    coff * cmp_ratio,
+                    head_dim,
+                ),
+                dtype=matmul_dtype,
+            )
 
     cmp_kv_mask = np.zeros_like(cmp_kv, dtype=bool)
     if grad_enabled:
@@ -494,23 +534,54 @@ def cpu_compressor_fp64(
 
             start_seq_id_in_sc = start_seq_idx % cmp_ratio
             end_seq_idx_in_sc = start_seq_id_in_sc + (end_seq_idx - start_seq_idx)
-            new_score_state[start_offset:end_offset, :] = np.add(new_score_state[start_offset:end_offset, :], ape[start_seq_id_in_sc : end_seq_idx_in_sc, :])
+            new_score_state[start_offset:end_offset, :] = np.add(
+                new_score_state[start_offset:end_offset, :],
+                ape[start_seq_id_in_sc:end_seq_idx_in_sc, :],
+            )
 
             if cache_mode == 1:
                 save_flag = True
             else:
-                save_flag = True if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio) else False
+                save_flag = (
+                    True
+                    if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio)
+                    else False
+                )
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
                 tmp_kv_state = new_kv_state[start_offset:end_offset, :]
                 tmp_score_state = new_score_state[start_offset:end_offset, :]
-                write_state_page_cache(kv_state, update_kv_position, tmp_kv_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
-                write_state_page_cache(score_state, update_score_position, tmp_score_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
+                write_state_page_cache(
+                    kv_state,
+                    update_kv_position,
+                    tmp_kv_state,
+                    b_idx,
+                    start_seq_idx,
+                    end_seq_idx,
+                    block_table,
+                    cache_mode=cache_mode,
+                )
+                write_state_page_cache(
+                    score_state,
+                    update_score_position,
+                    tmp_score_state,
+                    b_idx,
+                    start_seq_idx,
+                    end_seq_idx,
+                    block_table,
+                    cache_mode=cache_mode,
+                )
 
             if compress_flag:
-                sc_kv_state = np.zeros(shape=(coff, cmp_ratio, head_dim), dtype=matmul_dtype)
-                sc_score_state = np.full(shape=(coff, cmp_ratio, head_dim), fill_value=-float('inf'), dtype=matmul_dtype)
+                sc_kv_state = np.zeros(
+                    shape=(coff, cmp_ratio, head_dim), dtype=matmul_dtype
+                )
+                sc_score_state = np.full(
+                    shape=(coff, cmp_ratio, head_dim),
+                    fill_value=-float("inf"),
+                    dtype=matmul_dtype,
+                )
 
                 coff_id = coff - 1
                 d_start = coff_id * head_dim
@@ -521,10 +592,36 @@ def cpu_compressor_fp64(
                     if cnt_from_state > 0:
                         copy_start_seq_id = batch_start_pos - cnt_from_state
                         copy_end_seq_id = batch_start_pos
-                        sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                        sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = new_kv_state[start_offset:end_offset, d_start:d_end]
-                sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = new_score_state[start_offset:end_offset, d_start:d_end]
+                        sc_kv_state[coff_id, 0:cnt_from_state, :] = (
+                            read_state_page_cache(
+                                kv_state,
+                                b_idx,
+                                copy_start_seq_id,
+                                copy_end_seq_id,
+                                block_table,
+                                d_start,
+                                d_end,
+                                cache_mode=cache_mode,
+                            )
+                        )
+                        sc_score_state[coff_id, 0:cnt_from_state, :] = (
+                            read_state_page_cache(
+                                score_state,
+                                b_idx,
+                                copy_start_seq_id,
+                                copy_end_seq_id,
+                                block_table,
+                                d_start,
+                                d_end,
+                                cache_mode=cache_mode,
+                            )
+                        )
+                sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = new_kv_state[
+                    start_offset:end_offset, d_start:d_end
+                ]
+                sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = new_score_state[
+                    start_offset:end_offset, d_start:d_end
+                ]
 
                 if coff == 2:
                     coff_id = 0
@@ -534,22 +631,78 @@ def cpu_compressor_fp64(
                     if batch_start_pos == start_seq_idx:
                         cnt_from_state = cmp_ratio
                         if batch_start_pos >= cmp_ratio:
-                            copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio - cmp_ratio
+                            copy_start_seq_id = (
+                                batch_start_pos
+                                - batch_start_pos % cmp_ratio
+                                - cmp_ratio
+                            )
                             copy_end_seq_id = copy_start_seq_id + cnt_from_state
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                            sc_score_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = (
+                                read_state_page_cache(
+                                    kv_state,
+                                    b_idx,
+                                    copy_start_seq_id,
+                                    copy_end_seq_id,
+                                    block_table,
+                                    d_start,
+                                    d_end,
+                                    cache_mode=cache_mode,
+                                )
+                            )
+                            sc_score_state[coff_id, 0:cnt_from_state, :] = (
+                                read_state_page_cache(
+                                    score_state,
+                                    b_idx,
+                                    copy_start_seq_id,
+                                    copy_end_seq_id,
+                                    block_table,
+                                    d_start,
+                                    d_end,
+                                    cache_mode=cache_mode,
+                                )
+                            )
                     elif start_seq_idx - cmp_ratio < batch_start_pos:
                         cnt_from_state = batch_start_pos % cmp_ratio
                         if cnt_from_state > 0:
-                            copy_start_seq_id = batch_start_pos - batch_start_pos % cmp_ratio
+                            copy_start_seq_id = (
+                                batch_start_pos - batch_start_pos % cmp_ratio
+                            )
                             copy_end_seq_id = batch_start_pos
-                            sc_kv_state[coff_id, 0:cnt_from_state, :] = read_state_page_cache(kv_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
-                            sc_score_state[coff_id, 0:cnt_from_state,:] = read_state_page_cache(score_state, b_idx, copy_start_seq_id, copy_end_seq_id, block_table, d_start, d_end, cache_mode = cache_mode)
+                            sc_kv_state[coff_id, 0:cnt_from_state, :] = (
+                                read_state_page_cache(
+                                    kv_state,
+                                    b_idx,
+                                    copy_start_seq_id,
+                                    copy_end_seq_id,
+                                    block_table,
+                                    d_start,
+                                    d_end,
+                                    cache_mode=cache_mode,
+                                )
+                            )
+                            sc_score_state[coff_id, 0:cnt_from_state, :] = (
+                                read_state_page_cache(
+                                    score_state,
+                                    b_idx,
+                                    copy_start_seq_id,
+                                    copy_end_seq_id,
+                                    block_table,
+                                    d_start,
+                                    d_end,
+                                    cache_mode=cache_mode,
+                                )
+                            )
                     if cnt_from_state < cmp_ratio:
                         pre_start_offset = start_offset - (cmp_ratio - cnt_from_state)
                         pre_end_offset = start_offset
-                        sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = new_kv_state[pre_start_offset:pre_end_offset, d_start:d_end]
-                        sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = new_score_state[pre_start_offset:pre_end_offset, d_start:d_end]
+                        sc_kv_state[coff_id, cnt_from_state:cmp_ratio, :] = (
+                            new_kv_state[pre_start_offset:pre_end_offset, d_start:d_end]
+                        )
+                        sc_score_state[coff_id, cnt_from_state:cmp_ratio, :] = (
+                            new_score_state[
+                                pre_start_offset:pre_end_offset, d_start:d_end
+                            ]
+                        )
 
                 sc_kv_state = sc_kv_state.reshape(coff * cmp_ratio, head_dim)
                 sc_score_state = sc_score_state.reshape(coff * cmp_ratio, head_dim)

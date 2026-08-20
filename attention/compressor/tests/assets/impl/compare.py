@@ -25,6 +25,7 @@ except Exception:
 try:
     from ttk.core_modules.comparison.cross_check import CrossCheckComparison
     from ttk.core_modules.comparison.resolve import resolve_tolerance
+
     _TTK_CROSS_CHECK_AVAILABLE = True
 except Exception:
     _TTK_CROSS_CHECK_AVAILABLE = False
@@ -73,10 +74,12 @@ display_error_output = _pytest_golden.display_error_output
 cal_relative_diff_np_isclose = _pytest_golden.cal_relative_diff_np_isclose
 print_log = _pytest_golden.print_log
 
+
 def as_numpy(value):
     if hasattr(value, "detach"):
         value = value.detach().cpu().type(torch.float32).numpy()
     return np.asarray(value)
+
 
 def _to_torch(value):
     if value is None:
@@ -97,10 +100,12 @@ def _to_torch(value):
         return torch.from_numpy(arr)
     return torch.from_numpy(np.ascontiguousarray(arr))
 
+
 def _get_thresholds(dtype_str):
     if dtype_str == "bfloat16":
         return _BF16_RTOL, _BF16_ATOL, _PCT_THD
     return _FP16_RTOL, _FP16_ATOL, _PCT_THD
+
 
 def _tensor_compare(npu_out, golden_out, name):
     npu = as_numpy(npu_out)
@@ -230,6 +235,7 @@ def _tensor_compare(npu_out, golden_out, name):
         },
     }
 
+
 def _batch_consistency_check(npu_cmp_kv, kwargs):
     batch_consistency_id = kwargs.get("batch_consistency_id")
     batch_axis = kwargs.get("batch_axis")
@@ -331,6 +337,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                     print(f"[batch_consistency]  {status}(id={kl})")
 
     return result
+
 
 def compare(*outputs, **kwargs):
     if len(outputs) < 2:
@@ -442,6 +449,7 @@ def compare(*outputs, **kwargs):
     del npu_sub_outputs, golden_sub_outputs
     gc.collect()
     return results
+
 
 def compare_aclnn(*outputs, **kwargs):
     if len(outputs) < 2:
@@ -587,7 +595,9 @@ def _get_compare_method():
 
 
 def _resolve_cross_check_params(spec_tolerance, dtype_str):
-    standards = resolve_tolerance(spec_tolerance, None, None, [dtype_str], "cross_check")
+    standards = resolve_tolerance(
+        spec_tolerance, None, None, [dtype_str], "cross_check"
+    )
     return standards[0].params
 
 
@@ -604,44 +614,65 @@ def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, para
     }
 
 
-def _split_state_cache_sub_outputs(npu_state_cache, cpu_state_cache, bench_state,
-                                   update_kv, update_score):
+def _split_state_cache_sub_outputs(
+    npu_state_cache, cpu_state_cache, bench_state, update_kv, update_score
+):
     npu_sub = []
     golden_sub = []
     bench_sub = []
 
     if update_kv is not None and update_score is not None:
-        npu_sub.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv])
-        npu_sub.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2:][update_score])
-        npu_sub.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv])
-        npu_sub.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2:][~update_score])
+        npu_sub.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+        )
+        npu_sub.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+        )
+        npu_sub.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+        )
+        npu_sub.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
-        golden_sub.append(cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv])
-        golden_sub.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2:][update_score])
-        golden_sub.append(cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv])
-        golden_sub.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2:][~update_score])
+        golden_sub.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+        )
+        golden_sub.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+        )
+        golden_sub.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+        )
+        golden_sub.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
         if bench_state is not None:
             bench_sub.append(bench_state[:, :, : bench_state.shape[2] // 2][update_kv])
-            bench_sub.append(bench_state[:, :, bench_state.shape[2] // 2:][update_score])
+            bench_sub.append(
+                bench_state[:, :, bench_state.shape[2] // 2 :][update_score]
+            )
             bench_sub.append(bench_state[:, :, : bench_state.shape[2] // 2][~update_kv])
-            bench_sub.append(bench_state[:, :, bench_state.shape[2] // 2:][~update_score])
+            bench_sub.append(
+                bench_state[:, :, bench_state.shape[2] // 2 :][~update_score]
+            )
         else:
             bench_sub.extend([None, None, None, None])
     else:
         npu_sub.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
-        npu_sub.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2:])
+        npu_sub.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
         npu_sub.append(None)
         npu_sub.append(None)
 
         golden_sub.append(cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2])
-        golden_sub.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2:])
+        golden_sub.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :])
         golden_sub.append(None)
         golden_sub.append(None)
 
         if bench_state is not None:
             bench_sub.append(bench_state[:, :, : bench_state.shape[2] // 2])
-            bench_sub.append(bench_state[:, :, bench_state.shape[2] // 2:])
+            bench_sub.append(bench_state[:, :, bench_state.shape[2] // 2 :])
             bench_sub.append(None)
             bench_sub.append(None)
         else:
@@ -669,14 +700,18 @@ def _run_cross_check_loop(npu_sub, golden_sub, bench_sub, names, params):
         golden_out = golden_sub[idx]
         bench_out = bench_sub[idx] if idx < len(bench_sub) else None
         if npu_out is None and golden_out is None:
-            results.append({
-                "pass": True,
-                "precision": "N/A",
-                "error_info": f"{name} is None",
-            })
+            results.append(
+                {
+                    "pass": True,
+                    "precision": "N/A",
+                    "error_info": f"{name} is None",
+                }
+            )
         else:
             results.append(
-                _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, "float32", params)
+                _ttk_cross_check_single(
+                    npu_out, golden_out, bench_out, idx, "float32", params
+                )
             )
     return results
 
@@ -762,7 +797,9 @@ def _split_e2e_outputs(outputs, kwargs, bench_outputs):
         npu_sub.append(npu_outputs[0][cmp_kv_mask].to(torch.float32))
         golden_sub.append(golden_outputs[0][cmp_kv_mask].to(torch.float32))
         bench = bench_outputs[0] if bench_outputs else None
-        bench_sub.append(bench[cmp_kv_mask].to(torch.float32) if bench is not None else None)
+        bench_sub.append(
+            bench[cmp_kv_mask].to(torch.float32) if bench is not None else None
+        )
         for i in range(1, len(golden_outputs)):
             npu_sub.append(None)
             golden_sub.append(None)
@@ -799,6 +836,7 @@ def _run_ttk_cross_check_e2e(outputs, kwargs, bench_outputs, spec_tolerance):
     params = _resolve_cross_check_params(spec_tolerance, raw_dtype_str)
     results = _run_cross_check_loop(npu_sub, golden_sub, bench_sub, names, params)
     return results
+
 
 def is_cross_check_available():
     return _TTK_CROSS_CHECK_AVAILABLE

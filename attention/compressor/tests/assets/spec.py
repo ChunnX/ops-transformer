@@ -47,18 +47,44 @@ def _register_compressor_api_params():
         ParamInfo(name="state_cache", type="Tensor"),
         ParamInfo(name="ape", type="Tensor"),
         ParamInfo(name="cmp_ratio", type="int", default=4, is_optional=True),
-        ParamInfo(name="state_block_table", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="cu_seqlens", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="seqused", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="start_pos", type="Tensor", default=None,
-                  is_optional=True, is_keyword_only=True),
-        ParamInfo(name="coff", type="int", default=1, is_optional=True,
-                  is_keyword_only=True),
-        ParamInfo(name="cache_mode", type="int", default=1, is_optional=True,
-                  is_keyword_only=True),
+        ParamInfo(
+            name="state_block_table",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="cu_seqlens",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="seqused",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="start_pos",
+            type="Tensor",
+            default=None,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
+        ParamInfo(
+            name="coff", type="int", default=1, is_optional=True, is_keyword_only=True
+        ),
+        ParamInfo(
+            name="cache_mode",
+            type="int",
+            default=1,
+            is_optional=True,
+            is_keyword_only=True,
+        ),
     ]
     register_api_params(
         "cann_ops_transformer.ops.compressor", params, source="manual_compress"
@@ -83,9 +109,7 @@ def _register_compressor_api_params():
         ParamInfo(name="softmaxScoreOut", type="Tensor"),
         ParamInfo(name="kvOut", type="Tensor"),
     ]
-    register_api_params(
-        "aclnnCompressor", aclnn_params, source="manual_compress"
-    )
+    register_api_params("aclnnCompressor", aclnn_params, source="manual_compress")
 
 
 _register_compressor_api_params()
@@ -95,12 +119,24 @@ class CompressorSpec:
     golden = golden_module.cpu_compressor
     customize_inputs = inputs_module.generate_compressor_inputs
     tolerance = {
-        "float16": {"standard": "cross_check", "level": "L0",
-                     "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-                     "small_value": 2**-10, "small_value_atol": 2**-16},
-        "bfloat16": {"standard": "cross_check", "level": "L0",
-                      "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-                      "small_value": 2**-10, "small_value_atol": 2**-16},
+        "float16": {
+            "standard": "cross_check",
+            "level": "L0",
+            "mare_ratio": 10.0,
+            "mere_ratio": 2.0,
+            "rmse_ratio": 2.0,
+            "small_value": 2**-10,
+            "small_value_atol": 2**-16,
+        },
+        "bfloat16": {
+            "standard": "cross_check",
+            "level": "L0",
+            "mare_ratio": 10.0,
+            "mere_ratio": 2.0,
+            "rmse_ratio": 2.0,
+            "small_value": 2**-10,
+            "small_value_atol": 2**-16,
+        },
     }
 
     def compare(*outputs, compare_context=None, **kwargs):
@@ -134,12 +170,24 @@ class AclnnCompressorSpec:
     golden = golden_module.aclnn_compressor_golden
     customize_inputs = inputs_module.aclnn_compressor_input
     tolerance = {
-        "float16": {"standard": "cross_check", "level": "L0",
-                     "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-                     "small_value": 2**-10, "small_value_atol": 2**-16},
-        "bfloat16": {"standard": "cross_check", "level": "L0",
-                      "mare_ratio": 10.0, "mere_ratio": 2.0, "rmse_ratio": 2.0,
-                      "small_value": 2**-10, "small_value_atol": 2**-16},
+        "float16": {
+            "standard": "cross_check",
+            "level": "L0",
+            "mare_ratio": 10.0,
+            "mere_ratio": 2.0,
+            "rmse_ratio": 2.0,
+            "small_value": 2**-10,
+            "small_value_atol": 2**-16,
+        },
+        "bfloat16": {
+            "standard": "cross_check",
+            "level": "L0",
+            "mare_ratio": 10.0,
+            "mere_ratio": 2.0,
+            "rmse_ratio": 2.0,
+            "small_value": 2**-10,
+            "small_value_atol": 2**-16,
+        },
     }
 
     def compare(*outputs, compare_context=None, **kwargs):
