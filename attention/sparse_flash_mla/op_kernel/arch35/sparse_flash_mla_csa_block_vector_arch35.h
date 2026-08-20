@@ -397,7 +397,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8U; ++i) {
+    for (uint64_t i = 0; i < 8; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = sparseIndicesGm.GetValue(idx);
@@ -432,7 +432,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenD
             runInfo.boIdx * constInfo.s1Size * alignedSparseBlockCount + runInfo.s1oIdx * alignedSparseBlockCount;
     }
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8U; ++i) {
+    for (uint64_t i = 0; i < 8; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = phyAddrGm64.GetValue(idx);
@@ -575,7 +575,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
                 sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2U);
                 sparseS2Start = 0;
             } else {
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
+                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2U);
                 sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2U);
             }
         } else {
@@ -668,13 +668,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
                     GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
                 }
                 s2 += 8U;
-                if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
-                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
+                if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2U] == -1 && tokenData[3U] == -1 &&
+                    tokenData[4U] == -1 && tokenData[5U] == -1 && tokenData[6U] == -1 && tokenData[7U] == -1) {
                     meetEnd = true;
                     break;
                 }
                 dealRow += CopyInKvSparse(stage0OutUb, dealRow, tokenData, runInfo, constInfo);
-                if (tokenData[7] == -1) {
+                if (tokenData[7U] == -1) {
                     meetEnd = true;
                     break;
                 }

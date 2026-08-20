@@ -26,6 +26,10 @@ extern "C" {
 namespace {
 
 static constexpr const char *MQSMLA_ACLNN_OP_NAME = "aclnnMixedQuantSparseFlashMlaMetadata";
+// Dim Num
+constexpr uint32_t DIM_NUM_ONE = 1;
+constexpr uint32_t DIM_NUM_TWO = 2;
+constexpr uint32_t DIM_NUM_THREE = 3;
 
 enum class SparseModeMqsmla : uint8_t {
     DEFAULT_MASK = 0,
@@ -285,7 +289,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验切g模板核数
-    if (numHeadsQ == 128U) {
+    if (numHeadsQ == 128) { // 128：num_heads_q为128时，AI计算核心和AI向量核心数必须使用多核来保证计算效率
         if (aicCoreNum == 1 || aivCoreNum == 1) {
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                 MQSMLA_ACLNN_OP_NAME, "num_heads_q and aic_core_num and aiv_core_num",
@@ -513,7 +517,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
     if (IsTensorExistMqsmla(cuSeqlensQOptional)) {
         // 校验 cu_seqlens_q 维度
         dimNum = GetDimNumMqsmla(cuSeqlensQOptional);
-        if (dimNum != 1) {
+        if (dimNum != DIM_NUM_ONE) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -529,7 +533,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
     if (IsTensorExistMqsmla(sequsedQOptional)) {
         // 校验 seqused_q 维度
         dimNum = GetDimNumMqsmla(sequsedQOptional);
-        if (dimNum != 1) {
+        if (dimNum != DIM_NUM_ONE) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "seqused_q", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -547,7 +551,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (IsTensorExistMqsmla(cuSeqlensOriKvOptional)) {
             // 校验 cu_seqlens_ori_kv 维度
             dimNum = GetDimNumMqsmla(cuSeqlensOriKvOptional);
-            if (dimNum != 1) {
+            if (dimNum != DIM_NUM_ONE) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_ori_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -564,7 +568,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (IsTensorExistMqsmla(sequsedOriKvOptional)) {
             // 校验 seqused_ori_kv 维度
             dimNum = GetDimNumMqsmla(sequsedOriKvOptional);
-            if (dimNum != 1) {
+            if (dimNum != DIM_NUM_ONE) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "seqused_ori_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -583,7 +587,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             // 校验 ori_topk_length 维度
             dimNum = GetDimNumMqsmla(oriTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
-                if (dimNum != 2U) {
+                if (dimNum != DIM_NUM_TWO) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                              std::to_string(dimNum),
                                                              "The shape dim of ori_topk_length must be 2 "
@@ -591,7 +595,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
-                if (dimNum != 3U) {
+                if (dimNum != DIM_NUM_THREE) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "ori_topk_length",
                                                              std::to_string(dimNum),
                                                              "The shape dim of ori_topk_length must be 3 "
@@ -615,7 +619,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (IsTensorExistMqsmla(cuSeqlensCmpKvOptional)) {
             // 校验 cu_seqlens_cmp_kv 维度
             dimNum = GetDimNumMqsmla(cuSeqlensCmpKvOptional);
-            if (dimNum != 1) {
+            if (dimNum != DIM_NUM_ONE) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "cu_seqlens_cmp_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -632,7 +636,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (IsTensorExistMqsmla(sequsedCmpKvOptional)) {
             // 校验 seqused_cmp_kv 维度
             dimNum = GetDimNumMqsmla(sequsedCmpKvOptional);
-            if (dimNum != 1) {
+            if (dimNum != DIM_NUM_ONE) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "seqused_cmp_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -649,7 +653,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
         if (IsTensorExistMqsmla(cmpResidualKvOptional)) {
             // 校验 cmp_residual_kv 维度
             dimNum = GetDimNumMqsmla(cmpResidualKvOptional);
-            if (dimNum != 1) {
+            if (dimNum != DIM_NUM_ONE) {
                 OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "cmp_residual_kv", std::to_string(dimNum), "1");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -668,7 +672,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
             // 校验 cmp_topk_length 维度
             dimNum = GetDimNumMqsmla(cmpTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
-                if (dimNum != 2U) {
+                if (dimNum != DIM_NUM_TWO) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                              std::to_string(dimNum),
                                                              "The shape dim of cmp_topk_length must be 2 "
@@ -676,7 +680,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             } else if (strcmp(layoutQOptional, "BSND") == 0) {
-                if (dimNum != 3U) {
+                if (dimNum != DIM_NUM_THREE) {
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(MQSMLA_ACLNN_OP_NAME, "cmp_topk_length",
                                                              std::to_string(dimNum),
                                                              "The shape dim of cmp_topk_length must be 3 "
@@ -698,7 +702,7 @@ aclnnStatus CheckConsistencyMqsmla(const aclTensor *cuSeqlensQOptional, const ac
     if (IsTensorExistMqsmla(metadata)) {
         // 校验 metadata 维度
         dimNum = GetDimNumMqsmla(metadata);
-        if (dimNum != 1) {
+        if (dimNum != DIM_NUM_ONE) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(MQSMLA_ACLNN_OP_NAME, "metadata", std::to_string(dimNum), "1");
             return ACLNN_ERR_PARAM_INVALID;
         }
