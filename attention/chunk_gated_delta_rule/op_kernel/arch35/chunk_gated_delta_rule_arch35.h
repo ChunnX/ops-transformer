@@ -154,7 +154,12 @@ public:
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
-        if constexpr (kStateIsFp32) {
+        if constexpr (!kStateIsFp32) {
+            stateFp32Wk_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
+            offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
+        }
+
+        {
             uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
             curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
             offset += sizeof(lowType) * stateWkElemCnt;
@@ -184,6 +189,13 @@ public:
             seqStart = seqEnd;
             seqEnd = seqStart + (int64_t)length;
 
+            if constexpr (!kStateIsFp32) {
+                CastStateBf16ToFp32(initState_[bid * tiling_->stateStride0],
+                                    stateFp32Wk_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                                    tiling_->stateStride1);
+                SyncAll<false>();
+            }
+
             for (int64_t pos = seqStart; pos < seqEnd; pos += tiling_->maxGroupLength) {
                 cg.startPos = pos;
                 if (pos + tiling_->maxGroupLength > seqEnd) {
@@ -192,22 +204,123 @@ public:
                     cg.length = tiling_->maxGroupLength;
                 }
                 bool useInitialState = (pos == seqStart);
-                auto curState = (useInitialState) ? initState_[bid * tiling_->stateStride0] :
-                                                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2(cg, curState, finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState);
+                if constexpr (!kStateIsFp32) {
+                    RunStage2(cg, initState_[bid * tiling_->stateStride0],
+                              finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState, bid);
+                } else {
+                    auto curState = (useInitialState) ? initState_[bid * tiling_->stateStride0] :
+                                                        finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                    RunStage2(cg, curState, finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                              useInitialState, bid);
+                }
                 SyncAll<false>();
 
                 RunStage3(cg);
+                SyncAll<false>();
+            }
+
+            if constexpr (!kStateIsFp32) {
+                CastStateFp32ToBf16(stateFp32Wk_[bid * tiling_->nv * tiling_->dv * tiling_->dk],
+                                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
                 SyncAll<false>();
             }
         }
     }
 
 private:
+    __aicore__ inline void CastStateBf16ToFp32(GlobalTensor<bfloat16_t> srcGm, GlobalTensor<float> dstGm,
+                                                int64_t srcStride1)
+    {
+        if ASCEND_IS_AIV {
+            if (GetSubBlockIdx() != 0) { return; }
+            int64_t coreId = GetBlockIdx() / AIC_AIV_1_1;
+            int64_t coreNum = tiling_->aiCoreNum;
+            int64_t nv = tiling_->nv;
+            int64_t dv = tiling_->dv;
+            int64_t dk = tiling_->dk;
+            int64_t nvPerCore = (nv + coreNum - 1) / coreNum;
+            int64_t nvStart = coreId * nvPerCore;
+            int64_t nvEnd = (nvStart + nvPerCore > nv) ? nv : nvStart + nvPerCore;
+            int64_t curDk = Ceil(dk, BLOCK_BF16_NUM) * BLOCK_BF16_NUM;
+            TQue<QuePosition::VECIN, 1> inQue;
+            TQue<QuePosition::VECOUT, 1> outQue;
+            pipe_->InitBuffer(inQue, BUFFER_NUM_ONE, dv * curDk * sizeof(bfloat16_t));
+            pipe_->InitBuffer(outQue, BUFFER_NUM_ONE, dv * curDk * sizeof(float));
+            for (int64_t nvId = nvStart; nvId < nvEnd; nvId++) {
+                auto inLocal = inQue.AllocTensor<bfloat16_t>();
+                DataCopyExtParams inParams{static_cast<uint16_t>(dv),
+                                           static_cast<uint32_t>(dk * sizeof(bfloat16_t)), 0, 0, 0};
+                DataCopyPadExtParams<bfloat16_t> inPadParams{true, 0, static_cast<uint8_t>(curDk - dk), 0};
+                DataCopyPad(inLocal, srcGm[nvId * srcStride1], inParams, inPadParams);
+                inQue.EnQue(inLocal);
+                auto bf16Local = inQue.DeQue<bfloat16_t>();
+                auto fp32Local = outQue.AllocTensor<float>();
+                Cast(fp32Local, bf16Local, RoundMode::CAST_NONE, dv * curDk);
+                inQue.FreeTensor(bf16Local);
+                outQue.EnQue(fp32Local);
+                auto outLocal = outQue.DeQue<float>();
+                uint32_t actualReadBytes = Ceil(dk * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+                uint32_t srcRowBytes = curDk * sizeof(float);
+                uint32_t srcStride = (srcRowBytes >= actualReadBytes && (srcRowBytes - actualReadBytes) % BLOCK_SIZE == 0)
+                                         ? (srcRowBytes - actualReadBytes) / BLOCK_SIZE : 0;
+                DataCopyExtParams outParams{static_cast<uint16_t>(dv), static_cast<uint32_t>(dk * sizeof(float)),
+                                            srcStride, 0, 0};
+                DataCopyPad(dstGm[nvId * dv * dk], outLocal, outParams);
+                outQue.FreeTensor(outLocal);
+            }
+            PipeBarrier<PIPE_V>();
+            pipe_->Reset();
+        }
+    }
+
+    __aicore__ inline void CastStateFp32ToBf16(GlobalTensor<float> srcGm, GlobalTensor<bfloat16_t> dstGm)
+    {
+        if ASCEND_IS_AIV {
+            if (GetSubBlockIdx() != 0) { return; }
+            int64_t coreId = GetBlockIdx() / AIC_AIV_1_1;
+            int64_t coreNum = tiling_->aiCoreNum;
+            int64_t nv = tiling_->nv;
+            int64_t dv = tiling_->dv;
+            int64_t dk = tiling_->dk;
+            int64_t nvPerCore = (nv + coreNum - 1) / coreNum;
+            int64_t nvStart = coreId * nvPerCore;
+            int64_t nvEnd = (nvStart + nvPerCore > nv) ? nv : nvStart + nvPerCore;
+            int64_t curDk = Ceil(dk, BLOCK_FLOAT_NUM) * BLOCK_FLOAT_NUM;
+            TQue<QuePosition::VECIN, 1> inQue;
+            TQue<QuePosition::VECOUT, 1> outQue;
+            pipe_->InitBuffer(inQue, BUFFER_NUM_ONE, dv * curDk * sizeof(float));
+            pipe_->InitBuffer(outQue, BUFFER_NUM_ONE, dv * curDk * sizeof(bfloat16_t));
+            for (int64_t nvId = nvStart; nvId < nvEnd; nvId++) {
+                auto inLocal = inQue.AllocTensor<float>();
+                DataCopyExtParams inParams{static_cast<uint16_t>(dv),
+                                           static_cast<uint32_t>(dk * sizeof(float)), 0, 0, 0};
+                DataCopyPadExtParams<float> inPadParams{true, 0, static_cast<uint8_t>(curDk - dk), 0};
+                DataCopyPad(inLocal, srcGm[nvId * dv * dk], inParams, inPadParams);
+                inQue.EnQue(inLocal);
+                auto fp32Local = inQue.DeQue<float>();
+                auto bf16Local = outQue.AllocTensor<bfloat16_t>();
+                Cast(bf16Local, fp32Local, RoundMode::CAST_RINT, dv * curDk);
+                inQue.FreeTensor(fp32Local);
+                outQue.EnQue(bf16Local);
+                auto outLocal = outQue.DeQue<bfloat16_t>();
+                uint32_t actualReadBytes = Ceil(dk * sizeof(bfloat16_t), BLOCK_SIZE) * BLOCK_SIZE;
+                uint32_t srcRowBytes = curDk * sizeof(bfloat16_t);
+                uint32_t srcStride = (srcRowBytes >= actualReadBytes && (srcRowBytes - actualReadBytes) % BLOCK_SIZE == 0)
+                                         ? (srcRowBytes - actualReadBytes) / BLOCK_SIZE : 0;
+                DataCopyExtParams outParams{static_cast<uint16_t>(dv), static_cast<uint32_t>(dk * sizeof(bfloat16_t)),
+                                            srcStride, 0, 0};
+                DataCopyPad(dstGm[nvId * dv * dk], outLocal, outParams);
+                outQue.FreeTensor(outLocal);
+            }
+            PipeBarrier<PIPE_V>();
+            pipe_->Reset();
+        }
+    }
+
     __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
         GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
@@ -220,7 +333,7 @@ private:
 
     template <typename sType>
     __aicore__ inline void RunStage2(ChunkGroup &cg, GlobalTensor<sType> stateIn, GlobalTensor<sType> stateOut,
-                                     bool isFirstGroup)
+                                     bool isFirstGroup, int64_t bid)
     {
         Stage2<sType, gOptional> stageTwoOp;
         StageTwoParams<sType> initStageTwoParams;
@@ -247,10 +360,21 @@ private:
         initStageTwoParams.isFirstGroup = isFirstGroup;
         initStageTwoParams.stateIn = stateIn;
         initStageTwoParams.stateOut = stateOut;
-        if constexpr (std::is_same_v<sType, float>) {
-            initStageTwoParams.curStateBf16 = curStateBf16_;
-        } else {
-            initStageTwoParams.curStateBf16 = stateIn;
+        initStageTwoParams.curStateBf16 = curStateBf16_;
+        if constexpr (!std::is_same_v<sType, float>) {
+            initStageTwoParams.stateFp32Wk = stateFp32Wk_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+            int64_t coreId = GetBlockIdx();
+            if ASCEND_IS_AIV { coreId /= AIC_AIV_1_1; }
+            int64_t c = tiling_->chunkSize;
+            int64_t dv = tiling_->dv;
+            int64_t dk = tiling_->dk;
+            int64_t coreNum = tiling_->aiCoreNum;
+            uint64_t wsOff = 0;
+            initStageTwoParams.wsFp32.SetGlobalBuffer(
+                reinterpret_cast<__gm__ bfloat16_t *>(stageWsAddr_ + wsOff + coreId * c * dv * sizeof(bfloat16_t)));
+            wsOff += coreNum * c * dv * sizeof(bfloat16_t);
+            initStageTwoParams.wsStateFp32.SetGlobalBuffer(
+                reinterpret_cast<__gm__ bfloat16_t *>(stageWsAddr_ + wsOff + coreId * dv * dk * sizeof(bfloat16_t)));
         }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
@@ -298,6 +422,7 @@ private:
 
     GlobalTensor<lowType> curStateBf16_;
     GlobalTensor<lowType> vInnerBf16_; // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
+    GlobalTensor<highType> stateFp32Wk_; // (B, Nv, Dv, Dk) FP32 state workspace for BF16-state FP32-intermediate path
 
     GlobalTensor<highType> gCum_;     // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
