@@ -24,7 +24,7 @@
 
 ## 🚀概述
 
-ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architecture for Neural Networks）算子库中提供transformer类大模型计算的进阶算子库，包括attention类、moe类、mc2类等，覆盖各类attention、MoE计算、通算融合等场景，算子库在架构图中的位置如下。
+ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architecture for Neural Networks）算子库中提供transformer类大模型计算的进阶算子库，包括attention类、moe类、mc2类等，覆盖各类attention、MoE计算、通算融合等场景，算子库在架构图中的位置如下。 
 
 <img src="docs/zh/figures/architecture.png" alt="架构图"  width="700px" height="320px">
 
