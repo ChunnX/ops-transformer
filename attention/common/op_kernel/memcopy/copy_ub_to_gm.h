@@ -270,13 +270,23 @@ private:
         ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint64_t pendingCount = dealCount - headActSeq;
         while (pendingCount > qActSeqLens) {
-            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], {qActSeqLens, sizeof(float), 0, 0, 0});
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = qActSeqLens;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
             outOffset += s1Size;
             ubOffset += qActSeqLens * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
             pendingCount -= qActSeqLens;
         }
         if (pendingCount > 0) {
-            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], {pendingCount, sizeof(float), 0, 0, 0});
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = pendingCount;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
         }
     }
 
