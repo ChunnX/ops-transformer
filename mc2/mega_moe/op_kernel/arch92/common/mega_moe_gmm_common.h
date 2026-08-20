@@ -292,6 +292,9 @@ struct Config {
         config.schedulerN = config.outputN;
         config.tileM = L1_TILE_M_256;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        // Keep the adaptive M tile, but split GMM2 K=512 into two L1 windows to
+        // isolate the single-window path from the already-correct GMM1 path.
+        config.blockMmadTiling.l1Params = DefaultL1Params();
         return config;
     }
 
