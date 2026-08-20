@@ -346,43 +346,43 @@ struct RunInfo<false> {
     int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */ \
     int64_t prefixLoopCount = 0     /* 保存prefix参与的S2方向循环次数 */
 
-#define INFER_CONST_INFO                                                                                               \
-    /* 推理新增 */                                                                                                 \
-    bool isRowInvalid;          /* 是否使能行无效 */                                                            \
-    bool isActualLenDimsNull;   /* 判断是否有actualseq */                                                         \
-    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */                                                      \
-    bool isGqa;                                                                                                        \
-    bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */                                                             \
-                                                                                                                       \
-    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                               \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */                                            \
-    uint32_t isKvContinuous;     /* 是否为tensorlist */                                                             \
-    /* service mm1 mm2 pageAttention */                                                                                \
-    uint32_t blockTableDim2;                                                                                           \
-    uint32_t blockSize;                                                                                                \
-    uint32_t paLayoutType;                                                                                             \
-    uint32_t kvCacheNzD0;                                                                                              \
-    uint32_t paBlockNumSum;                                                                                            \
-    uint32_t transposeLayout;                                                                                          \
-    /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */                              \
-    /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */                       \
-    uint32_t headNumRatio;                                                                                             \
-    bool rsvd1;                                                                                                        \
-    bool isSoftmaxLseEnable;                                                                                           \
-    /* 左padding */                                                                                                   \
-    bool isQHasLeftPadding;                                                                                            \
-    bool isKVHasLeftPadding;                                                                                           \
-    int64_t queryRightPaddingSize;                                                                                     \
-    int64_t kvRightPaddingSize;                                                                                        \
-    /* FD */                                                                                                           \
-    int64_t sInnerLoopSize;        /* FD s2总大小 */                                                                \
-    int64_t actualCombineLoopSize; /* 实际规约块数 */                                                            \
-    int64_t splitKVNum;                                                                                                \
-    /* 后量化 */                                                                                                    \
-    bool isPostQuantPerChnl;                                                                                           \
-    bool isPostQuantBF16;                                                                                              \
-    bool isPostQuantOffsetExist;                                                                                       \
-    float postQuantScaleValue;                                                                                         \
+#define INFER_CONST_INFO \
+    /* 推理新增 */ \
+    bool isRowInvalid;          /* 是否使能行无效 */ \
+    bool isActualLenDimsNull;   /* 判断是否有actualseq */ \
+    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */ \
+    bool isGqa; \
+    bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */ \
+\
+    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */ \
+    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */ \
+    uint32_t isKvContinuous;     /* 是否为tensorlist */ \
+    /* service mm1 mm2 pageAttention */ \
+    uint32_t blockTableDim2; \
+    uint32_t blockSize; \
+    uint32_t paLayoutType; \
+    uint32_t kvCacheNzD0; \
+    uint32_t paBlockNumSum; \
+    uint32_t transposeLayout; \
+    /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */ \
+    /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */ \
+    uint32_t headNumRatio; \
+    bool rsvd1; \
+    bool isSoftmaxLseEnable; \
+    /* 左padding */ \
+    bool isQHasLeftPadding; \
+    bool isKVHasLeftPadding; \
+    int64_t queryRightPaddingSize; \
+    int64_t kvRightPaddingSize; \
+    /* FD */ \
+    int64_t sInnerLoopSize;        /* FD s2总大小 */ \
+    int64_t actualCombineLoopSize; /* 实际规约块数 */ \
+    int64_t splitKVNum; \
+    /* 后量化 */ \
+    bool isPostQuantPerChnl; \
+    bool isPostQuantBF16; \
+    bool isPostQuantOffsetExist; \
+    float postQuantScaleValue; \
     float postQuantOffsetValue
 
 #define CV_SHARED_PARAMS \
