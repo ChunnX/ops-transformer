@@ -106,7 +106,8 @@ private:
                                            GMMAddrInfo &gmm2AddrInfo, Gmm2RuntimeState &runtimeState);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-                                                 const CombineBufferConfig &bufferConfig);
+                                                 const CombineBufferConfig &bufferConfig,
+                                                 uint32_t allCoreCombineExpertIndex);
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void CrossRankSyncInWorldSize();
 
@@ -834,26 +835,37 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineExperts(
     uint32_t expertBegin, uint32_t expertEnd, ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-    const CombineBufferConfig &bufferConfig)
+    const CombineBufferConfig &bufferConfig, uint32_t allCoreCombineExpertIndex)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-
+    CombineBufferConfig activeBufferConfig = bufferConfig;
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
         if (!UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, combineState, expertIdx, true,
                                                 moeExpertPerRank_)) {
             continue;
         }
+        bool useAllAivCores = expertIdx == allCoreCombineExpertIndex;
+        // AIV0 在此前 Wave 虽不执行 Combine，仍需逐专家推进 combineState，确保最终专家的紧凑行偏移正确。
+        if (GetSubBlockIdx() == 0U && !useAllAivCores) {
+            continue;
+        }
         UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, combineAddrInfo, combineState);
-        RunWaveExpertCombineStage<CombineQuantMode>(waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
-                                                    combineAddrInfo, combineState, combineState.expertIdx, rowSequence);
+        if (useAllAivCores) {
+            activeBufferConfig =
+                PrepareFinalWaveCombineBuffers<CombineQuantMode>(waveCombineConfig_, bufferConfig, waveCombineScratch_);
+            RunWaveExpertCombineStage<CombineQuantMode, true>(waveCombineConfig_, activeBufferConfig,
+                                                              waveCombineScratch_, params_, combineAddrInfo,
+                                                              combineState, combineState.expertIdx, rowSequence);
+        } else {
+            RunWaveExpertCombineStage<CombineQuantMode>(waveCombineConfig_, activeBufferConfig, waveCombineScratch_,
+                                                        params_, combineAddrInfo, combineState, combineState.expertIdx,
+                                                        rowSequence);
+        }
     }
-    DrainWaveCombineRowRing(rowSequence, bufferConfig.rowBufferCount);
+    DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -880,11 +892,26 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition dispatchEndPosition{};
     uint32_t combineBeginExpertIndex = 0U;
+    uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
             DispatchAllExpertTokens();
             dispatchEndPosition.expertIdx = moeExpertPerRank_;
+        } else {
+            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+        }
+        // AIV1 会一次消费全部专家，而 AIV0 按计算 Wave 推进。双方只有在全局最后一个非空专家上
+        // 同时切换为全核 ownership，才能保证此前专家仍由 AIV1 完整覆盖，并避免 AIV0 提前复用 UB。
+        for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
+            uint32_t expertIdx = expertEnd - 1U;
+            uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace_, moeExpertPerRank_, expertIdx, true);
+            __gm__ int32_t *expertTokenCountAddr =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr) + countOffset;
+            if (AscendC::ReadGmByPassDCache(expertTokenCountAddr) != 0) {
+                allCoreCombineExpertIndex = expertIdx;
+                break;
+            }
         }
     }
 
@@ -915,7 +942,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
         uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
         ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState, combineAddrInfo,
-                              combineBufferConfig);
+                              combineBufferConfig, allCoreCombineExpertIndex);
         combineBeginExpertIndex = combineEndExpertIndex;
         waveBeginPosition = waveEndPosition;
     }
