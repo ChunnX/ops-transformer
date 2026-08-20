@@ -19,33 +19,15 @@
 using namespace NpuArch;
 
 namespace SplitFuse {
-template <
-    class LAYOUT_K = layout::ColumnMajor,
-    class LAYOUT_V = layout::RowMajor,
-    typename InputDtypeQ = half,
-    typename InputDtypeKv = half,
-    typename IntermCalcPrec = float,
-    bool PagedCacheFlag = false,
-    bool IS_FD = false,
-    FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
-    FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE,
-    bool BnbdFlag = false>
-__global__ __aicore__ void FAInfer(
-    GM_ADDR q,
-    GM_ADDR k,
-    GM_ADDR v,
-    GM_ADDR pseShift,
-    GM_ADDR mask,
-    GM_ADDR blockTables,
-    GM_ADDR o,
-    GM_ADDR lse,
-    GM_ADDR actualQseqlen,
-    GM_ADDR actualKvseqlen,
-    GM_ADDR workspace,
-    GM_ADDR tiling,
-    GM_ADDR sink)
+template <class LAYOUT_K = layout::ColumnMajor, class LAYOUT_V = layout::RowMajor, typename InputDtypeQ = half,
+          typename InputDtypeKv = half, typename IntermCalcPrec = float, bool PagedCacheFlag = false,
+          bool IS_FD = false, FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
+          FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+          Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE, bool BnbdFlag = false>
+__global__ __aicore__ void FAInfer(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR pseShift, GM_ADDR mask, GM_ADDR blockTables,
+                                   GM_ADDR o, GM_ADDR lse, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
+                                   GM_ADDR workspace, GM_ADDR tiling, GM_ADDR sink)
 {
     using ArchTag = Arch::AtlasA2;
     using ElementQ = InputDtypeQ;
@@ -78,10 +60,11 @@ __global__ __aicore__ void FAInfer(
     using KType = Gemm::GemmType<ElementK, LayoutK>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                               QType, KType, SType>;
+    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, QType, KType, SType>;
 
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
+    using DispatchPolicyOnlineSoftmax =
+        Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory),
+                                               IntermCalcPrec>;
     using PType = Gemm::GemmType<ElementP, LayoutP>;
     using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
     using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
@@ -93,8 +76,7 @@ __global__ __aicore__ void FAInfer(
     using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<PagedCacheFlag, false, BnbdFlag>;
     using VType = Gemm::GemmType<ElementV, LayoutV>;
     using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                               PType, VType, OTmpType>;
+    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, PType, VType, OTmpType>;
 
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
     using OType = Gemm::GemmType<ElementO, LayoutO>;
@@ -104,48 +86,31 @@ __global__ __aicore__ void FAInfer(
         Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
 
     using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-    using EpilogueInitOut =
-        Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
+    using EpilogueInitOut = Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
 
     using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
-    using FAInferKernel_FD = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                           EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                           PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
-    using FAInferKernel_NonFD = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                              EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                              PagedCacheFlag, maskCategory, inLayout>;
+    using FAInferKernel_FD =
+        FAInferKernel<BlockMmadQK, BlockMmadPV, EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                      PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
+    using FAInferKernel_NonFD = FAInferKernel<BlockMmadQK, BlockMmadPV, EpilogueOnlineSoftmax, EpilogueRescaleO,
+                                              EpilogueInitOut, PagedCacheFlag, maskCategory, inLayout>;
     using FAInferKernel = std::conditional_t<IS_FD, FAInferKernel_FD, FAInferKernel_NonFD>;
 
-    FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+    FAIKernelParams params{q, k,   v,         pseShift, mask, blockTables, actualQseqlen, actualKvseqlen,
+                           o, lse, workspace, tiling,   sink};
     FAInferKernel flashAttnInfer;
     flashAttnInfer(params);
 }
 
 // 新增：专门用于 pagedCacheFlag == true && qSeqlen == 1 的 Decoding 场景
-template <
-    typename InputDtypeQ = half,
-    typename InputDtypeKv = half,
-    typename IntermCalcPrec = float,
-    bool PagedCacheFlag = true,
-    FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
-    FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE,
-    bool BnbdFlag = false>
-__global__ __aicore__ void FAInferDecoding(
-    GM_ADDR q,
-    GM_ADDR k,
-    GM_ADDR v,
-    GM_ADDR pseShift,
-    GM_ADDR mask,
-    GM_ADDR blockTables,
-    GM_ADDR o,
-    GM_ADDR lse,
-    GM_ADDR actualQseqlen,
-    GM_ADDR actualKvseqlen,
-    GM_ADDR workspace,
-    GM_ADDR tiling,
-    GM_ADDR sink)
+template <typename InputDtypeQ = half, typename InputDtypeKv = half, typename IntermCalcPrec = float,
+          bool PagedCacheFlag = true, FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
+          FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+          Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE, bool BnbdFlag = false>
+__global__ __aicore__ void FAInferDecoding(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR pseShift, GM_ADDR mask,
+                                           GM_ADDR blockTables, GM_ADDR o, GM_ADDR lse, GM_ADDR actualQseqlen,
+                                           GM_ADDR actualKvseqlen, GM_ADDR workspace, GM_ADDR tiling, GM_ADDR sink)
 {
     using ElementQ = InputDtypeQ;
     using LayoutQ = layout::RowMajor;
@@ -180,10 +145,11 @@ __global__ __aicore__ void FAInferDecoding(
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using PType = Gemm::GemmType<ElementP, LayoutP>;
     using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                               QType, KType, SType>;
+    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, QType, KType, SType>;
 
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
+    using DispatchPolicyOnlineSoftmax =
+        Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory),
+                                               IntermCalcPrec>;
     using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
     using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
     using EpilogueOnlineSoftmax =
@@ -196,8 +162,7 @@ __global__ __aicore__ void FAInferDecoding(
     using VType = Gemm::GemmType<ElementV, LayoutV>;
     using OType = Gemm::GemmType<ElementO, LayoutO>;
     using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                               PType, VType, OTmpType>;
+    using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, PType, VType, OTmpType>;
 
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
     using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
@@ -206,14 +171,14 @@ __global__ __aicore__ void FAInferDecoding(
         Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
 
     using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-    using EpilogueInitOut =
-        Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
+    using EpilogueInitOut = Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
 
-    using FAInferKernelDecodingType = FAInferKernelDecoding<BlockMmadQK, BlockMmadPV,
-                                                            EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                                            PagedCacheFlag, maskCategory, inLayout>;
+    using FAInferKernelDecodingType =
+        FAInferKernelDecoding<BlockMmadQK, BlockMmadPV, EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
+                              PagedCacheFlag, maskCategory, inLayout>;
 
-    FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
+    FAIKernelParams params{q, k,   v,         pseShift, mask, blockTables, actualQseqlen, actualKvseqlen,
+                           o, lse, workspace, tiling,   sink};
     FAInferKernelDecodingType flashAttnInfer;
     flashAttnInfer(params);
 }
