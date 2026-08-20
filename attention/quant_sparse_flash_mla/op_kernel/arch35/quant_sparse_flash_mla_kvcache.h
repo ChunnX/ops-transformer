@@ -350,6 +350,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
             runParam.actualS2OriSize);
     }
     runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
+    runParam.s2CmpLineStartIdx = 0;
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
