@@ -1032,7 +1032,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    if (!useSerialMode_) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
