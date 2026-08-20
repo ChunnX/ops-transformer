@@ -83,7 +83,12 @@ enum class HIDDEN_STATES_DTYPE : std::uint8_t { BF16 = static_cast<std::uint8_t>
 // Keep the compile-time compatibility values until the legacy vector cleanup
 // is completed without changing the validated execution path.
 enum class COFF : std::uint8_t { DISABLE = static_cast<std::uint8_t>(1), OVERLAP = static_cast<std::uint8_t>(2) };
-enum class CACHE_MODE : std::uint8_t { LINEAR_BUFFER = static_cast<std::uint8_t>(1) };
+// The public interface is fixed to linear cache. Keep the legacy enum value
+// because some uninstantiated vector helpers still reference it.
+enum class CACHE_MODE : std::uint8_t {
+    LINEAR_BUFFER = static_cast<std::uint8_t>(1),
+    RING_BUFFER = static_cast<std::uint8_t>(2)
+};
 
 enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
 
