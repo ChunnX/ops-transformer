@@ -14,6 +14,7 @@
  */
 #ifndef __QUANT_BMM_REDUCE_SCATTER_TILING_H__
 #define __QUANT_BMM_REDUCE_SCATTER_TILING_H__
+#include "../../../../common/op_kernel/apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_tiling_data.h"
 #include "../matmul_reduce_scatter_tiling_base_v2.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -22,7 +23,6 @@
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_kernel/mc2_tiling_struct.h"
-#include "apace/kernel/fusions/matmul_reduce_scatter_v2/matmul_reduce_scatter_v2_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace optiling {
