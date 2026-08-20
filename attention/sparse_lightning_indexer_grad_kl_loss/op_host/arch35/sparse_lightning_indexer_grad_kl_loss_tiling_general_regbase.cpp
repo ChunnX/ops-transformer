@@ -726,8 +726,6 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetPlatformIn
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
         l2CacheSize = compileInfoPtr->l2CacheSize;
-        OP_LOGD(context_, "platform info from compileInfo: aiv[%u] aic[%u] ub[%lu] l1[%lu] l0c[%lu]",
-            aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();

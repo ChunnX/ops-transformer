@@ -121,15 +121,15 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
 
     // 对padding区域的输出梯度清零
     if constexpr (LAYOUT_Q == SLILayout::TND) {
-        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-        int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
-        int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
-        int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
-        int64_t actualAivNum = static_cast<int64_t>(tilingData->baseParams.totalAivNum);
+        if ASCEND_IS_AIV {
+            int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+            int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+            int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
+            int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
+            int64_t actualAivNum = static_cast<int64_t>(tilingData->baseParams.totalAivNum);
 
-        // 将padding行均分到各AIV核并行清零
-        if (t1PadLen > 0) {
-            if ASCEND_IS_AIV {
+            // 将padding行均分到各AIV核并行清零
+            if (t1PadLen > 0) {
                 int64_t split = t1PadLen / actualAivNum;
                 int64_t remain = t1PadLen % actualAivNum;
                 int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
@@ -153,9 +153,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                         static_cast<WEIGHT_T>(0));
                 }
             }
-        }
-        if (t2PadLen > 0) {
-            if ASCEND_IS_AIV {
+            if (t2PadLen > 0) {
                 int64_t split = t2PadLen / actualAivNum;
                 int64_t remain = t2PadLen % actualAivNum;
                 int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
