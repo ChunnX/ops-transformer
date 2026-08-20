@@ -52,7 +52,6 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
 ge::graphStatus InferShapeMlaPrologV3(gert::InferShapeContext *context);
 ge::graphStatus InferDataTypeMlaPrologV3(gert::InferDataTypeContext *context);
 
-
-}  // namespace ops
+} // namespace ops
 
 #endif // MLA_PROLOG_V3_INFERSHAPE_H
