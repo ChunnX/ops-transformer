@@ -262,5 +262,6 @@ def compressor(
         grad_enabled,
     )
     if state_cache is not None:
-        state_cache.copy_(new_state_cache)
+        with torch.no_grad():
+            state_cache.copy_(new_state_cache)
     return cmp_kv
