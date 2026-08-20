@@ -344,9 +344,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig(commonConfig_);
 
-    MC2MegaMoeA5Dump::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
-                                                  params_.peermemInfo, sendMaskConfig_.maskAlignSize,
-                                                  reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    MC2MegaMoeA5Dump::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
+                                                   sendMaskConfig_.maskAlignSize,
+                                                   reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // =================================================================================================

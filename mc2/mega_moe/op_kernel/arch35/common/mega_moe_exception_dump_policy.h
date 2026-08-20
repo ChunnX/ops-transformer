@@ -39,9 +39,10 @@ struct MegaMoeExceptionDumpPolicy {
 
 using ExceptionDumpEngine = MC2ExceptionDump::ExceptionDump<MegaMoeExceptionDumpPolicy>;
 
-__aicore__ inline void RegisterMegaMoeExceptionDump(
-    ExceptionDumpEngine &engine, GM_ADDR dumpBase, GM_ADDR tilingGM, const MegaMoeTilingData *tilingData,
-    const MegaMoeImpl::PeermemInfo &peermemInfo, uint32_t maskAlignSize, GM_ADDR epRankIdAddr)
+__aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine, GM_ADDR dumpBase, GM_ADDR tilingGM,
+                                                    const MegaMoeTilingData *tilingData,
+                                                    const MegaMoeImpl::PeermemInfo &peermemInfo, uint32_t maskAlignSize,
+                                                    GM_ADDR epRankIdAddr)
 {
     engine.Init(dumpBase, tilingGM);
     engine.UpdateStage(Stage::INIT);
@@ -55,10 +56,10 @@ __aicore__ inline void RegisterMegaMoeExceptionDump(
                 maskSlotSize);
     engine.Dump(epRankIdAddr, sizeof(uint32_t));
     if (tilingData->topoType == MegaMoeImpl::TOPO_TYPE_MTE) {
-        const size_t maskRecvSize = static_cast<size_t>(Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->moeExpertPerRank) * static_cast<int64_t>(tilingData->epWorldSize) *
-                static_cast<int64_t>(maskSlotSize),
-            static_cast<int64_t>(MegaMoeImpl::ALIGN_512)));
+        const size_t maskRecvSize = static_cast<size_t>(
+            Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->moeExpertPerRank) *
+                                     static_cast<int64_t>(tilingData->epWorldSize) * static_cast<int64_t>(maskSlotSize),
+                                 static_cast<int64_t>(MegaMoeImpl::ALIGN_512)));
         engine.Dump(peermemInfo.rankSyncInWorldPtr, static_cast<size_t>(MegaMoeImpl::PEERMEM_DATA_OFFSET));
         engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
     }

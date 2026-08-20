@@ -80,14 +80,12 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             // Dispatch 输出类型和权重类型可区分 A8W8/A8W4 Wave，无需增加 tiling key 维度。
-            constexpr bool isA8W8DtypePair =
-                (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 &&
-                 Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value) ||
-                (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
-                 Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value);
-            constexpr bool isA8W4DtypePair =
-                DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
-                Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
+            constexpr bool isA8W8DtypePair = (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 &&
+                                              Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value) ||
+                                             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+                                              Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value);
+            constexpr bool isA8W4DtypePair = DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+                                             Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
             if constexpr (isA8W8DtypePair) {
                 MegaMoeImpl::MegaMoeWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
                                          CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
@@ -97,8 +95,8 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                         expertTokenNumsOut, workspaceGM, &tilingData, tilingGM);
                 op.Process();
             } else if constexpr (isA8W4DtypePair) {
-                MegaMoeImpl::MegaMoeA8W4Wave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
-                                             DispatchQuantOutType, CombineQuantOutType, TopkWeightsPrefetch>
+                MegaMoeImpl::MegaMoeA8W4Wave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
+                                             CombineQuantOutType, TopkWeightsPrefetch>
                     op;
                 op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                         scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
