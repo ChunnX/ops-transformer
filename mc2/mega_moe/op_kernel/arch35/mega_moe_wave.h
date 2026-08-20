@@ -111,6 +111,9 @@ private:
     __aicore__ inline uint32_t GetExpertDispatchRowCount(uint32_t expertIdx);
     __aicore__ inline uint32_t AdvanceWaveCursor(
         ExpertRowCursor &cursor, uint32_t expertRowCount, uint32_t remainingMGroupCount) const;
+    __aicore__ inline void MetaInfoCalAndDispatch(
+        const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
+        uint32_t waveLogicalRowCount);
     __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(ExpertRowCursor &dispatchCursor);
     __aicore__ inline void SetGmm1ProblemState(
         Gmm1ExpertLoopState &problemState, const Gmm1ExpertLoopState &expertState,
@@ -440,6 +443,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor：每 src rank 一个 burst(32B)，共 worldSize*32B。
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
+    // routeCacheTensor：二层路由独占 workspace，每 src rank 一个 32B 参数槽。
+    uint32_t routeCacheTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
@@ -460,9 +465,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     tokenDispatchScratch_.sendCntTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
+    uint32_t routeCacheTensorAddr = sendCntTensorAddr + sendCntTensorSize;
+    tokenDispatchScratch_.routeCacheTensor = LocalTensor<int32_t>(
+        TPosition::VECCALC, routeCacheTensorAddr, routeCacheTensorSize / sizeof(int32_t));
     // Tensor 用途：DispatchExpertTokens 接收当前 batch 的 mask 切片；
     // Tensor 大小：routeItemsPerBatch / 8 字节，每个 bit 对应一个路由项；
-    uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
+    uint32_t maskBatchAddr = routeCacheTensorAddr + routeCacheTensorSize;
     uint32_t maskBatchSize =
         static_cast<uint32_t>(routeItemsPerBatch / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     tokenDispatchScratch_.maskBatchTensor =
@@ -851,6 +859,283 @@ __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceWave
 }
 
 template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(
+    const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
+    uint32_t waveLogicalRowCount)
+{
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() != 1U || waveLogicalRowCount == 0U) {
+            return;
+        }
+
+        constexpr int32_t ROUTE_CACHE_STRIDE = ALIGN_32 / sizeof(int32_t);
+        constexpr int32_t ROUTE_MATCHED_COUNT = 0;
+        constexpr int32_t ROUTE_TOKEN_COUNT = 1;
+        constexpr int32_t ROUTE_LAYER_BASE = 2;
+        constexpr int32_t ROUTE_LAST_SELECTED = 3;
+        constexpr int32_t ROUTE_ORDINAL_END = 4;
+        constexpr int32_t ROUTE_FIRST_SELECTED = 5;
+        constexpr int32_t ROUTE_ORDINAL_STRIDE = 6;
+        constexpr int32_t ROUTE_ROW_STRIDE = 7;
+
+        const MegaMoeDispatchBufferConfig &bufferConfig = tokenDispatchConfig_.bufferConfig;
+        int32_t dispatchCoreCount = tokenDispatchConfig_.blockJob.totalJobs == 0U ? 1 :
+            static_cast<int32_t>(tokenDispatchConfig_.blockJob.totalJobs);
+        int32_t coreLogicalLane = static_cast<int32_t>(tokenDispatchConfig_.blockJob.jobIndex);
+        if (coreLogicalLane >= static_cast<int32_t>(waveLogicalRowCount)) {
+            return;
+        }
+
+        uint32_t maskSlotSize = tokenDispatchConfig_.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+        uint64_t sendTotalNum =
+            static_cast<uint64_t>(tokenDispatchConfig_.common.tokenNum) * tokenDispatchConfig_.common.topK;
+        int32_t expertWaveLocalRowBegin = 0;
+        for (uint32_t localExpertId = waveBeginCursor.expertIdx;
+             localExpertId < moeExpertPerRank_; ++localExpertId) {
+            if (localExpertId > waveEndCursor.expertIdx ||
+                (localExpertId == waveEndCursor.expertIdx && waveEndCursor.rowOffsetInExpert == 0U)) {
+                break;
+            }
+
+            int32_t expertGlobalRowBegin = localExpertId == 0U ? 0 :
+                tokenDispatchScratch_.cumsumInfoTensor.GetValue(localExpertId * worldSize_ - 1U);
+            int32_t expertRowCount = static_cast<int32_t>(GetExpertDispatchRowCount(localExpertId));
+            int32_t expertRowBegin = localExpertId == waveBeginCursor.expertIdx ?
+                static_cast<int32_t>(waveBeginCursor.rowOffsetInExpert) : 0;
+            int32_t expertRowEnd = expertRowCount;
+            if (localExpertId == waveEndCursor.expertIdx) {
+                expertRowEnd = static_cast<int32_t>(waveEndCursor.rowOffsetInExpert);
+            }
+            int32_t expertWaveRowCount = expertRowEnd - expertRowBegin;
+            if (expertWaveRowCount <= 0) {
+                continue;
+            }
+            int32_t currentExpertWaveLocalRowBegin = expertWaveLocalRowBegin;
+            expertWaveLocalRowBegin += expertWaveRowCount;
+
+            // 第二层按 active-rank round 交织。每个 layer 内 activeRankCount
+            // 固定，因此一个 rank 的 expert row 是等差序列。
+            int32_t completedRound = 0;
+            int32_t layerLogicalRowBegin = 0;
+            while (layerLogicalRowBegin < expertRowEnd) {
+                int32_t activeRankCount = 0;
+                int32_t nextRound = 0x7fffffff;
+                int32_t previousRankPrefix = expertGlobalRowBegin;
+                for (int32_t remoteRankIdx = 0;
+                     remoteRankIdx < static_cast<int32_t>(worldSize_); ++remoteRankIdx) {
+                    int32_t rankPrefix = tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                        localExpertId * worldSize_ + static_cast<uint32_t>(remoteRankIdx));
+                    int32_t rankTokenCount = rankPrefix - previousRankPrefix;
+                    previousRankPrefix = rankPrefix;
+                    if (rankTokenCount > completedRound) {
+                        ++activeRankCount;
+                        nextRound = rankTokenCount < nextRound ? rankTokenCount : nextRound;
+                    }
+                }
+                if (activeRankCount == 0 || nextRound <= completedRound) {
+                    break;
+                }
+
+                int32_t layerRoundCount = nextRound - completedRound;
+                int32_t layerLogicalRowEnd =
+                    layerLogicalRowBegin + layerRoundCount * activeRankCount;
+                int32_t segmentLayerBegin = expertRowBegin > layerLogicalRowBegin ?
+                    expertRowBegin : layerLogicalRowBegin;
+                int32_t segmentLayerEnd = expertRowEnd < layerLogicalRowEnd ?
+                    expertRowEnd : layerLogicalRowEnd;
+
+                if (segmentLayerEnd > segmentLayerBegin) {
+                    int32_t activeRankPosition = 0;
+                    previousRankPrefix = expertGlobalRowBegin;
+                    for (int32_t remoteRankIdx = 0;
+                         remoteRankIdx < static_cast<int32_t>(worldSize_); ++remoteRankIdx) {
+                        int32_t rankPrefix = tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                            localExpertId * worldSize_ + static_cast<uint32_t>(remoteRankIdx));
+                        int32_t rankTokenCount = rankPrefix - previousRankPrefix;
+                        previousRankPrefix = rankPrefix;
+                        int32_t routeCacheBase = remoteRankIdx * ROUTE_CACHE_STRIDE;
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_TOKEN_COUNT, rankTokenCount);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_MATCHED_COUNT, 0);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_FIRST_SELECTED, 0x7fffffff);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_ORDINAL_END, 0);
+                        if (rankTokenCount <= completedRound) {
+                            continue;
+                        }
+
+                        int32_t rankLayerLogicalBase = layerLogicalRowBegin + activeRankPosition;
+                        ++activeRankPosition;
+                        if (rankLayerLogicalBase >= segmentLayerEnd) {
+                            continue;
+                        }
+                        int32_t rankOrdinalBegin = completedRound;
+                        if (rankLayerLogicalBase < segmentLayerBegin) {
+                            rankOrdinalBegin += Ops::Base::CeilDiv(
+                                segmentLayerBegin - rankLayerLogicalBase, activeRankCount);
+                        }
+                        int32_t rankOrdinalEnd = completedRound + Ops::Base::CeilDiv(
+                            segmentLayerEnd - rankLayerLogicalBase, activeRankCount);
+                        rankOrdinalEnd = rankOrdinalEnd < nextRound ? rankOrdinalEnd : nextRound;
+                        if (rankOrdinalEnd <= rankOrdinalBegin) {
+                            continue;
+                        }
+
+                        int32_t firstSelectedOrdinal = rankOrdinalEnd;
+                        int32_t probeEnd = rankOrdinalBegin + dispatchCoreCount;
+                        probeEnd = probeEnd < rankOrdinalEnd ? probeEnd : rankOrdinalEnd;
+                        for (int32_t rankOrdinal = rankOrdinalBegin;
+                             rankOrdinal < probeEnd; ++rankOrdinal) {
+                            int32_t expertLogicalRow = rankLayerLogicalBase +
+                                (rankOrdinal - completedRound) * activeRankCount;
+                            int32_t waveLogicalRow = currentExpertWaveLocalRowBegin +
+                                expertLogicalRow - expertRowBegin;
+                            if (waveLogicalRow % dispatchCoreCount == coreLogicalLane) {
+                                firstSelectedOrdinal = rankOrdinal;
+                                break;
+                            }
+                        }
+                        if (firstSelectedOrdinal >= rankOrdinalEnd) {
+                            continue;
+                        }
+
+                        int32_t gcdValue = activeRankCount;
+                        int32_t gcdRemainder = dispatchCoreCount;
+                        while (gcdRemainder != 0) {
+                            int32_t nextRemainder = gcdValue % gcdRemainder;
+                            gcdValue = gcdRemainder;
+                            gcdRemainder = nextRemainder;
+                        }
+                        int32_t rankOrdinalStride = dispatchCoreCount / gcdValue;
+                        int32_t expertLogicalRowStride = activeRankCount * rankOrdinalStride;
+                        int32_t lastSelectedOrdinal = firstSelectedOrdinal +
+                            ((rankOrdinalEnd - 1 - firstSelectedOrdinal) / rankOrdinalStride) *
+                                rankOrdinalStride;
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_LAYER_BASE, rankLayerLogicalBase);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_LAST_SELECTED, lastSelectedOrdinal);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_ORDINAL_END, rankOrdinalEnd);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_FIRST_SELECTED, firstSelectedOrdinal);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_ORDINAL_STRIDE, rankOrdinalStride);
+                        tokenDispatchScratch_.routeCacheTensor.SetValue(
+                            routeCacheBase + ROUTE_ROW_STRIDE, expertLogicalRowStride);
+                    }
+
+                    // batch index 与 expert/rank 无关，在 rank 循环外构造一次后复用。
+                    for (int32_t batchIdx = 0;
+                         batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
+                        int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
+                        bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
+                        int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
+                        int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+                        if (isLastBatch) {
+                            validRouteCount = static_cast<int32_t>(
+                                sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
+                            if (batchRouteBegin / 8 + maskSliceBytes >
+                                static_cast<int32_t>(tokenDispatchConfig_.maskAlignSize)) {
+                                maskSliceBytes = static_cast<int32_t>(tokenDispatchConfig_.maskAlignSize) -
+                                    batchRouteBegin / 8;
+                            }
+                        }
+                        CreateVecIndex(tokenDispatchScratch_.topkIndexTensor,
+                                       batchRouteBegin, bufferConfig.routeItemsPerBatch);
+
+                        for (int32_t remoteRankIdx = 0;
+                             remoteRankIdx < static_cast<int32_t>(worldSize_); ++remoteRankIdx) {
+                            int32_t routeCacheBase = remoteRankIdx * ROUTE_CACHE_STRIDE;
+                            int32_t rankTokenCount = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_TOKEN_COUNT);
+                            int32_t firstSelectedOrdinal = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_FIRST_SELECTED);
+                            int32_t rankOrdinalEnd = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_ORDINAL_END);
+                            if (rankTokenCount <= completedRound ||
+                                firstSelectedOrdinal >= rankOrdinalEnd) {
+                                continue;
+                            }
+                            int32_t matchedRouteCount = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_MATCHED_COUNT);
+                            int32_t lastSelectedOrdinal = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_LAST_SELECTED);
+                            if (matchedRouteCount > lastSelectedOrdinal) {
+                                continue;
+                            }
+
+                            GlobalTensor<uint8_t> remoteRankMaskGlobal;
+                            remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+                                params_.peermemInfo.maskRecvPtr +
+                                (static_cast<uint64_t>(localExpertId) * worldSize_ +
+                                 static_cast<uint32_t>(remoteRankIdx)) * maskSlotSize +
+                                static_cast<uint64_t>(batchRouteBegin / 8)));
+                            DataCopy(tokenDispatchScratch_.maskBatchTensor,
+                                     remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
+                            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+                            uint64_t batchMatchedRouteCount = 0U;
+                            GatherMask(tokenDispatchScratch_.validTopkIndexTensor,
+                                       tokenDispatchScratch_.topkIndexTensor,
+                                       tokenDispatchScratch_.maskBatchU32Tensor, true,
+                                       static_cast<uint32_t>(validRouteCount),
+                                       {1, 1, 0, 0}, batchMatchedRouteCount);
+                            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+
+                            int32_t batchMatchOrdinalBegin = matchedRouteCount;
+                            int32_t batchMatchOrdinalEnd = matchedRouteCount +
+                                static_cast<int32_t>(batchMatchedRouteCount);
+                            int32_t rankOrdinalStride = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_ORDINAL_STRIDE);
+                            int32_t expertLogicalRowStride = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_ROW_STRIDE);
+                            int32_t currentActiveRankCount =
+                                expertLogicalRowStride / rankOrdinalStride;
+                            int32_t rankLayerLogicalBase = tokenDispatchScratch_.routeCacheTensor.GetValue(
+                                routeCacheBase + ROUTE_LAYER_BASE);
+                            if (firstSelectedOrdinal < batchMatchOrdinalBegin) {
+                                firstSelectedOrdinal += Ops::Base::CeilDiv(
+                                    batchMatchOrdinalBegin - firstSelectedOrdinal,
+                                    rankOrdinalStride) * rankOrdinalStride;
+                            }
+                            int32_t selectedOrdinalEnd = rankOrdinalEnd < batchMatchOrdinalEnd ?
+                                rankOrdinalEnd : batchMatchOrdinalEnd;
+                            if (firstSelectedOrdinal < selectedOrdinalEnd) {
+                                int32_t selectedRowCount = 1 +
+                                    (selectedOrdinalEnd - 1 - firstSelectedOrdinal) /
+                                        rankOrdinalStride;
+                                int32_t batchLocalMatchBegin =
+                                    firstSelectedOrdinal - batchMatchOrdinalBegin;
+                                int32_t firstSelectedExpertRow = rankLayerLogicalBase +
+                                    (firstSelectedOrdinal - completedRound) *
+                                        currentActiveRankCount;
+                                int32_t dispatchDstRowBegin =
+                                    expertGlobalRowBegin + firstSelectedExpertRow;
+                                CopyTokensAndMetaForDispatch<
+                                    ActivationType, QuantScaleOutType, TopkWeightsPrefetch>(
+                                    tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                                    dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin,
+                                    selectedRowCount, rankOrdinalStride, expertLogicalRowStride);
+                                PublishGmm1TileReadySequence(
+                                    tokenDispatchConfig_, params_, localExpertId,
+                                    static_cast<int32_t>(GMM1_TILE_M), firstSelectedExpertRow,
+                                    selectedRowCount, expertLogicalRowStride);
+                            }
+                            tokenDispatchScratch_.routeCacheTensor.SetValue(
+                                routeCacheBase + ROUTE_MATCHED_COUNT, batchMatchOrdinalEnd);
+                        }
+                    }
+                }
+                layerLogicalRowBegin = layerLogicalRowEnd;
+                completedRound = nextRound;
+            }
+        }
+    }
+}
+
+template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
     ExpertRowCursor &dispatchCursor)
@@ -863,6 +1148,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         ExpertRowCursor waveBegin = dispatchCursor;
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
+        uint32_t waveLogicalRowCount = 0U;
         while (waveEnd.expertIdx < moeExpertPerRank_ && waveMGroupCount < mGroupsPerWave_) {
             uint32_t expertRowCount = GetExpertDispatchRowCount(waveEnd.expertIdx);
             if (expertRowCount == 0U || waveEnd.rowOffsetInExpert >= expertRowCount) {
@@ -873,29 +1159,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             uint32_t segmentRows = AdvanceWaveCursor(
                 waveEnd, expertRowCount, mGroupsPerWave_ - waveMGroupCount);
             waveMGroupCount += GetMGroupCountForRows(segmentRows, GMM1_TILE_M);
+            waveLogicalRowCount += segmentRows;
         }
-
-        for (uint32_t expertIdx = waveBegin.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
-            if (expertIdx > waveEnd.expertIdx ||
-                (expertIdx == waveEnd.expertIdx && waveEnd.rowOffsetInExpert == 0U)) {
-                break;
-            }
-            uint32_t expertRowCount = GetExpertDispatchRowCount(expertIdx);
-            uint32_t segmentBegin = expertIdx == waveBegin.expertIdx ?
-                waveBegin.rowOffsetInExpert : 0U;
-            uint32_t segmentEnd = expertIdx == waveEnd.expertIdx ?
-                waveEnd.rowOffsetInExpert : expertRowCount;
-            if (segmentEnd <= segmentBegin) {
-                continue;
-            }
-            int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
-                tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
-            DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                       TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
-                expertGlobalRowBegin,
-                segmentEnd - segmentBegin, segmentBegin);
-        }
+        MetaInfoCalAndDispatch(waveBegin, waveEnd, waveLogicalRowCount);
         dispatchCursor = waveEnd;
     }
     return dispatchCursor;
