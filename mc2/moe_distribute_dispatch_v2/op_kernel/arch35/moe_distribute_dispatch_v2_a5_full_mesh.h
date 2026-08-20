@@ -1829,9 +1829,18 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         DataCopyParams sumCopyParams{static_cast<uint16_t>(aivId_), 1, 0, 0};
         DataCopy(sumLocalTensor, cumsumWsGMTensor_, sumCopyParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LocalTensor<float> prefixSumOut = scalarBuf_.Get<float>();
+        LocalTensor<uint32_t> gatherSumPattern = scalarBuf_.Get<uint32_t>();
+        LocalTensor<float> prefixSumOut = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
         LocalTensor<float> prefixWorkTensor = sumContinueBuf_.Get<float>();
-        ReduceSum(prefixSumOut, sumLocalTensor, prefixWorkTensor, 1, aivId_, 1);
+        uint64_t recvCnt = 0;
+        gatherSumPattern.SetValue(0, 1);
+        SyncFunc<AscendC::HardEvent::S_V>();
+        GatherMask(prefixWorkTensor, sumLocalTensor, gatherSumPattern, true, 1,
+                   {1, static_cast<uint16_t>(aivId_), 1, 0}, recvCnt);
+        PipeBarrier<PIPE_V>();
+        uint32_t innerSum = Ceil(aivId_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+        SumParams sumParams{1, innerSum, aivId_};
+        Sum(prefixSumOut, prefixWorkTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         recvCntBeforeStart_ = static_cast<uint32_t>(prefixSumOut.ReinterpretCast<int32_t>().GetValue(0));
     }
