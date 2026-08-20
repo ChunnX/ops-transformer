@@ -145,7 +145,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<float> sinksGm;
 
-    TBuf<> commonTBuf;                            // common的复用空间
+    TBuf<> commonTBuf; // common的复用空间
     TBuf<> sinksBuf;
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2]; // 2份表示可能存在pingpong
     TQue<QuePosition::VECIN, 2> stage0InQue;      // for v0 input, 2份表示可能存在pingpong
@@ -205,8 +205,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t QSFAVectorService<TEMPLATE_AR
     if constexpr (isPa) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
-        realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-                        constInfo.keyStride0 + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+        realkeyOffset =
+            blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * constInfo.keyStride0 +
+            blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else {
         if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
             realkeyOffset = (runInfo.boIdx * constInfo.s2Size + s2Idx) * constInfo.dSizeVInput; // BSN(1)D
@@ -823,7 +824,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     if (this->hasSinks) {
-        tPipe->InitBuffer(sinksBuf, 512);
+        tPipe->InitBuffer(sinksBuf, 512U);
         InitSinksBuffer(constInfo);
     }
 }
