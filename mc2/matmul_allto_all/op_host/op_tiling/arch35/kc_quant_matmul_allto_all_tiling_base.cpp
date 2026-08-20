@@ -516,15 +516,6 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
             x2TransposeFlag, biasDType, isSmallK, commMode, tilingKey);
     return tilingKey;
 }
-    uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
-
-    const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, commMode);
-    OP_LOGD(opName_,
-            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE: [%d,%d,%d,%d,%d], TilingKey is [%lu].", quantMode,
-            x2TransposeFlag, biasDType, isSmallK, commMode, tilingKey);
-    return tilingKey;
-}
 
 /**
  * @brief 获取tiling切分结果（arch35覆盖）
