@@ -90,6 +90,7 @@ _LAYOUT_EXPECTED_NDIM = {
     "BNSD": 4,
     "PA_NZ": 5,
     "PA_BNBD": 4,
+    "PA_BBND": 4,
     "N2TGD": 5,
 }
 
@@ -103,6 +104,7 @@ _DESCALE_EXPECTED_NDIM = {
     "N2TGD": 5,     # (N_kv, T, G, D//2, 2)
     "PA_NZ": 6,     # (Bn, N, Bs//16, D//64, 16, 2)
     "PA_BNBD": 5,   # (Bn, N, Bs, D//64, 2)
+    "PA_BBND": 5,   # (Bn, Bs, N, D//64, 2)
 }
 
 
@@ -123,7 +125,8 @@ def _validate_layout_dims(
     维度约定:
       Q  TND:(T,N,D)  BSND:(B,S,N,D)  BNSD:(B,N,S,D)
       KV TND:(T,Nkv,D) BSND:(B,S,Nkv,D) BNSD:(B,Nkv,S,D)
-         PA_NZ:(BlockNum,Nkv,D//32,Bs,32)  PA_BNBD:(BlockNum,Nkv,Bs,D)
+         PA_NZ:(BlockNum,Nkv,D//32,Bs,32)
+         PA_BNBD:(BlockNum,Nkv,Bs,D)  PA_BBND:(BlockNum,Bs,Nkv,D)
       q_descale: 维度数与 layout_q_descale 一致 (最后一维为 group 数)
       k_descale: 维度数与 layout_kv 一致
       v_descale: per-channel-group, 维度数与 layout_kv 一致
@@ -143,7 +146,7 @@ def _validate_layout_dims(
     k_expected = _LAYOUT_EXPECTED_NDIM.get(layout_kv)
     torch._check(
         k_expected is not None,
-        lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+        lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
     )
     torch._check(
         k.dim() == k_expected,
@@ -174,7 +177,8 @@ def _validate_layout_dims(
         dk_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
         torch._check(
             dk_expected is not None,
-            lambda: f"Unsupported layout_kv for k_descale: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+            lambda: f"Unsupported layout_kv for k_descale: {layout_kv!r}, "
+            f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
         )
         torch._check(
             k_descale.dim() == dk_expected,
@@ -187,7 +191,8 @@ def _validate_layout_dims(
         dv_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
         torch._check(
             dv_expected is not None,
-            lambda: f"Unsupported layout_kv for v_descale: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+            lambda: f"Unsupported layout_kv for v_descale: {layout_kv!r}, "
+            f"expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
         )
         torch._check(
             v_descale.dim() == dv_expected,
