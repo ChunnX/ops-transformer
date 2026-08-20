@@ -1286,6 +1286,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 break;
             }
         }
+        hcomm_.FlushChannel(channel);
     }
 }
 
