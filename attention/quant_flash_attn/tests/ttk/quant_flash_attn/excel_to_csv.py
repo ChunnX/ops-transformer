@@ -535,6 +535,8 @@ def _build_attributes(row, col_by_name):
         if k_shape is not None:
             if layout_kv == "PA_NZ":
                 bs_idx = 3
+            elif layout_kv == "PA_BBND":
+                bs_idx = 1
             else:
                 bs_idx = 2
             raw_bs = k_shape[bs_idx] if len(k_shape) > bs_idx else 0
