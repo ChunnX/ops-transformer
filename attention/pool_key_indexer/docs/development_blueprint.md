@@ -9,6 +9,7 @@
  pool_size=1)                                                       不做索引展开)                       topk+pool_size-1)
 
   8补: 910B编译修复(已实施) — 15类编译问题修复，跨步骤1-3 + 模板TilingKey + torch_extension
+  8补2: 运行时崩溃修复(已实施) — workspace 16MB系统保留区 + CalcWorkspaceSize重写 + ValueDepend转IntArrayRef + ACLNN_CMD参数顺序 + register_fake移除
 ```
 
 **核心原则**：每步可独立编译验证，前步通过后才进入下一步。
@@ -552,7 +553,7 @@ Cube 核:
 | 文件 | 职责 | 参考 |
 |------|------|------|
 | `torch_extension/cann_ops_transformer/ops/csrc/pool_key_indexer.cpp` | C++ 后端：构造输出 tensor + `ACLNN_CMD(aclnnPoolKeyIndexer, ...)` 下发 | `csrc/lightning_indexer.cpp` |
-| `torch_extension/cann_ops_transformer/ops/pool_key_indexer.py` | Python 前端：`OpBuilder` + schema + Meta + register_fake + PrivateUse1 dispatch | `ops/lightning_indexer.py` |
+| `torch_extension/cann_ops_transformer/ops/pool_key_indexer.py` | Python 前端：`OpBuilder` + schema + Meta + PrivateUse1 dispatch（`register_fake` 已移除，Meta impl 足够） | `ops/lightning_indexer.py` |
 | `torch_extension/cann_ops_transformer/ops/graph_convert/graph_convert_pool_key_indexer.py` | torchair 图模式 GE Converter：`register_fx_node_ge_converter` + `torchair.ge.custom_op("PoolKeyIndexer")` | `graph_convert/graph_convert_lightning_indexer.py`（LIV2 stub）、旧 `torch_ops_extension` converter（已移植） |
 | `torch_extension/cann_ops_transformer/ops/__init__.py`（修改） | 导出 `pool_key_indexer` + `convert_pool_key_indexer` | 在末尾追加 import |
 
@@ -605,30 +606,36 @@ std::tuple<at::Tensor, at::Tensor> PoolKeyIndexer(
     bool returnValue)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
-    TORCH_CHECK(poolKey.numel() > 0, "Tensor poolKey is empty.");
+    TORCH_CHECK(poolKey.numel() > 0, "Tensor pool_key is empty.");
 
-    std::string layoutQStr(layoutQ), layoutKStr(layoutK);
-    auto [sparseIndices, sparseValues] = ConstructPoolKeyIndexerOutput(
-        query, topk, poolSize, layoutQStr, returnValue);
+    std::string queryLayoutStr(layoutQ), keyLayoutStr(layoutK);
+    auto [sparseIndicesOut, sparseValuesOut] = ConstructPoolKeyIndexerOutput(
+        query, topk, poolSize, queryLayoutStr, returnValue);
 
-    auto device = query.device();
-    auto actualSeqQVal = get_valid_tensor(actualSeqQ, device);
-    auto actualSeqKVal = get_valid_tensor(actualSeqK, device);
-    auto blockTableVal = get_valid_tensor(blockTable, device);
-    auto qDescaleVal   = get_valid_tensor(qDescale, device);
-    auto kDescaleVal   = get_valid_tensor(kDescale, device);
+    // ValueDepend(OPTIONAL) inputs: aclnn expects aclIntArray*, convert tensor→IntArrayRef
+    at::Tensor poolTailKCpu = poolTailK.to(at::kLong).cpu().contiguous();
+    at::IntArrayRef poolTailKArr(poolTailKCpu.data_ptr<int64_t>(), poolTailKCpu.numel());
 
-    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
-    char *layoutKPtr = const_cast<char *>(layoutKStr.c_str());
+    at::Tensor actualSeqQCpu;
+    c10::optional<at::IntArrayRef> actualSeqQArr = c10::nullopt;
+    if (actualSeqQ.has_value() && actualSeqQ.value().defined()) {
+        actualSeqQCpu = actualSeqQ.value().to(at::kLong).cpu().contiguous();
+        actualSeqQArr = at::IntArrayRef(actualSeqQCpu.data_ptr<int64_t>(), actualSeqQCpu.numel());
+    }
+    // actualSeqK 同理 ...
 
+    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
+    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
+
+    // 注意参数顺序：attrs 为 topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue
     ACLNN_CMD(aclnnPoolKeyIndexer,
-              query, poolKey, weights, poolTailK,
-              actualSeqQVal, actualSeqKVal, blockTableVal,
-              qDescaleVal, kDescaleVal,
-              layoutQPtr, layoutKPtr,
-              topk, poolSize, maskMode, quantMode, returnValue,
-              sparseIndices, sparseValues);
-    return {sparseIndices, sparseValues};
+              query, poolKey, weights, poolTailKArr,
+              actualSeqQArr, actualSeqKArr, blockTable,
+              qDescale, kDescale,
+              topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+              maskMode, quantMode, returnValue,
+              sparseIndicesOut, sparseValuesOut);
+    return {sparseIndicesOut, sparseValuesOut};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
@@ -638,6 +645,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 ```
 
 > **注**：本样例未含 `c10::OptionalDeviceGuard`，与 LIV2/QLI/flash_attn 等 lightning 家族算子保持一致（依赖 `query.options()` 携带设备信息分配输出张量）。开发规范 §3.1 建议加 DeviceGuard，但当前算子家族约定不使用。
+>
+> **关键设计**：
+> - `pool_tail_k` / `actual_seq_q` / `actual_seq_k` 是 `ValueDepend(OPTIONAL)` 输入，aclnn API 期望 `aclIntArray*`（非 `aclTensor*`），C++ wrapper 需将 1-D int64 tensor 转 CPU + `contiguous()` + 构造 `at::IntArrayRef`
+> - `block_table` / `q_descale` / `k_descale` 直接传 `c10::optional<at::Tensor>`，`ConvertType` 自动处理 optional→`aclTensor*`(或 nullptr)
+> - ACLNN_CMD 属性参数顺序为 `topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue`（对齐 aclnn IR 声明）
 
 #### 6.3.2 FP8 量化 dtype 适配（依赖步骤4，可延后）
 
@@ -726,7 +738,7 @@ def pool_key_indexer(query, pool_key, weights, pool_tail_k, *,
 
 **与 LIV2 的差异**：
 - 无 `*_metadata` 算子（PKI aclnn 接口无 metadata 分离，不同于 LIV2 的 `lightning_indexer_metadata`）
-- 已添加 `@torch.library.register_fake("cann_ops_transformer::pool_key_indexer")` 支持 torch.compile FakeTensor 推导
+- `register_fake` 已移除（与 LIV2 主算子一致，Meta impl 足够提供 shape 推导；如后续需 torch.compile 支持可补回）
 - 已添加 `graph_convert_pool_key_indexer.py`，注册真实可用的 GE converter（移植自旧 `torch_ops_extension`，不同于 LIV2 的 RuntimeError stub）
 
 #### 6.3.4 graph_convert Converter `ops/graph_convert/graph_convert_pool_key_indexer.py`
@@ -800,7 +812,7 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 ### 6.7 风险点
 
 1. **schema 顺序**：`ACLNN_CMD` 的传参顺序必须与 `aclnnPoolKeyIndexerGetWorkspaceSize` 的 IR 声明严格一致（inputs → attrs → outputs），否则 `GetWorkspaceSize` 返回非 0
-2. **optional tensor 处理**：`get_valid_tensor` 将 None 转为空 int32 tensor，需确认 aclnn 侧对空 tensor 的容忍度（LIV2 已验证该模式可行）
+2. **optional tensor 处理**：`block_table` / `q_descale` / `k_descale` 直接传 `c10::optional<at::Tensor>`，`ConvertType` 自动处理 optional→`aclTensor*`(或 nullptr)；`pool_tail_k` / `actual_seq_q` / `actual_seq_k` 是 ValueDepend 输入，需转 `IntArrayRef`（aclnn 期望 `aclIntArray*`）
 3. **layout 字符串生命周期**：`c10::string_view` → `std::string` → `const_cast<char*>` 需保证字符串在 `ACLNN_CMD` 执行期间存活（参考 LIV2 的局部变量做法）
 4. **FP8 dtype 修正时机**：`FixPkiAclDtypes` 依赖步骤4 的 kernel 反量化实现完成；步骤4 未完成前，步骤5 可先只支持 `quant_mode=-1`，FP8 路径留 TODO
 5. **输出 dtype 一致性**：`sparse_values` 必须为 FLOAT（规格要求），不能跟随 query dtype，C++ 构造时显式用 `at::kFloat`
@@ -869,6 +881,9 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 | 步骤5 graph_convert 移植真实 GE converter | 旧 torch_ops_extension 的 `torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub） |
 | 步骤5 无独立 metadata 子算子 | PKI aclnn 接口无 metadata 分离（不同于 LIV2），单算子即可 |
 | 步骤5 输出 values dtype 固定 FLOAT | 规格要求，不跟随 query dtype，C++ 显式 `at::kFloat` |
+| 步骤5 register_fake 移除 | 与 LIV2 主算子一致，Meta impl 足够提供 shape 推导。register_fake 与 Meta 冲突，移除后 eager 模式正常 |
+| 8补2: ValueDepend 输入转 IntArrayRef | `pool_tail_k`/`actual_seq_q`/`actual_seq_k` 在 op_def 中声明为 ValueDepend(OPTIONAL)，aclnn API 期望 aclIntArray*（非 aclTensor*），C++ wrapper 需将 tensor 转 CPU+contiguous+IntArrayRef |
+| 8补2: workspace 总量含 16MB 系统保留区 | arch22 的 `GetUserWorkspace()` 从 base+16MB 开始，host tiling 必须加 `GetLibApiWorkSpaceSize()`，否则 kernel 越界踩踏系统区 |
 | 8补: quant_mode +1 偏移映射 | def.cpp 属性 `-1` 是用户接口约定不改；tiling.h `int32_t` 保持一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 统一映射为非负值，实现用户接口与 kernel 内部编码解耦 |
 | 8补: 模板常量加 TPL_ 前缀 | `PKI_TPL_QUANT_*` / `PKI_TPL_MASK_*` 消除与 tiling.h `constexpr` 同名冲突，防止 `#define` 静默覆盖 |
 | 8补: ExpandAndAppendIndices 值传递 | `LocalTensor` 是轻量包装器（指针+偏移），按值传递无性能开销，且解决临时值无法绑定左值引用问题 |
@@ -932,6 +947,57 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 - `ffn/ffn` — `GetCoreNumAiv/Aic`、`GetCoreMemSize` 2 参、`CalcTschBlockDim` 实例方法
 - `common/src/op_host/tiling_util.cpp` — `GetCurNpuArch()` 正确用法
 - `attention/lightning_indexer/op_host/lightning_indexer_tiling.cpp` — dtype 到模板值的 if-else 映射模式
+
+---
+
+## 八·补2、运行时崩溃修复（已实施）
+
+> 2026-08-20 在 910B3 + CANN 9.1.0 环境，编译修复后算子所有用例运行即崩溃（EZ9999 `MTE accesses an invalid GM address`），pytest 12 用例 0 通过。详细记录见 `docs/build_fix_record.md` 末尾"运行时崩溃修复记录"章节。
+
+### 根因
+
+**host tiling 的 workspace 总量漏加了 16MB 系统保留区。**
+
+- arch22（`__NPU_ARCH__ == 2201`）上 `GetUserWorkspace()` 实现为 `workspace + RESERVED_WORKSPACE`，其中 `RESERVED_WORKSPACE = 16MB`（`GetLibApiWorkSpaceSize()`），即 kernel 实际可用的 user workspace 从总分配的 +16MB 处开始
+- LIV2 的 `DoTiling` 首行就是 `workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize()` 再加上自身区域
+- PKI 的 `CalcWorkspaceSize` 只计算了自身区域，且公式与 kernel 侧布局完全不符（host 按旧布局只算出 409600 字节；kernel 按自身公式需要 ~10.5MB）
+- 各核按 `aiCoreIdx * 区域大小` 偏移写入时越界踩踏 16MB 保留区，导致崩溃点不固定、pc 漂移、mssanitizer 假阴性
+
+### 修复内容
+
+| 文件 | 修改 |
+|------|------|
+| `op_host/pool_key_indexer_tiling.cpp` `CalcWorkspaceSize` | 重写为镜像 kernel 侧布局（`scoreGm` + `ldScore` + `ldParam` 三段），用 `aicNum × 2 × mBaseSizeAlign × 512 × 4B` 等正确公式 |
+| `op_host/pool_key_indexer_tiling.cpp` `DoTiling` | 补 `workspaceSize += ascendcPlatform.GetLibApiWorkSpaceSize()`（16MB 系统保留区） |
+| `op_host/pool_key_indexer_tiling.cpp` 文件末尾 | 补 `IMPL_OP_OPTILING(PoolKeyIndexer).Tiling(TilingPoolKeyIndexer)` 注册 |
+| `op_host/CMakeLists.txt` | `op_host_aclnnInner` → `op_host_aclnn`（与 LIV2/PKI 一致） |
+| `torch_extension/.../csrc/pool_key_indexer.cpp` | ValueDepend 输入转 `IntArrayRef` + ACLNN_CMD 参数顺序修正 + `get_valid_tensor` 移除 |
+| `torch_extension/.../pool_key_indexer.py` | 移除 `register_fake`（与 LIV2 主算子一致，Meta impl 足够） |
+| `tests/pytest/simple_test.py` | 新增简化测试脚本（2 用例：BSND + TND） |
+| `tests/atk/pool_key_indexer_golden.py` | `actual_seq_k` 语义修正（累计 pool 数，非 token 数） |
+
+### C++ 后端关键修复
+
+1. **ValueDepend 输入转 `IntArrayRef`**：`pool_tail_k` / `actual_seq_q` / `actual_seq_k` 在 op_def 中声明为 `ValueDepend(OPTIONAL)` + `DT_INT64`，aclnn 自动生成的 API 期望 `aclIntArray*`（非 `aclTensor*`）。修复将 1-D int64 tensor 转到 CPU、转 `at::kLong`、取 `contiguous()`，再构造 `at::IntArrayRef` 传给 `ACLNN_CMD`
+2. **ACLNN_CMD 参数顺序修正**：属性顺序从 `layoutQ, layoutK, topk, poolSize, maskMode, quantMode, returnValue` 改为 `topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue`（对齐 aclnn IR 声明）
+3. **`block_table` / `q_descale` / `k_descale` 直接传 `c10::optional<at::Tensor>`**：不再用 `get_valid_tensor` 转换，`ConvertType` 直接处理 optional
+
+### 验证结果
+
+| 项目 | 结果 |
+|------|------|
+| `simple_test.py` 2 用例 | 全部 PASSED（历史 0 通过） |
+| 9 组 shape 变体（1核/8核/64核、S2=4096、topk=2048/4096、B=2、pool16+causal、G=1） | 9/9 通过 |
+| 重复运行 ×3 | 稳定通过 |
+| 官方 pytest `test_pool_key_indexer.py` | 9/12 通过（3 个 TND 失败为 golden 脚本侧 `actual_seq_k` 语义问题） |
+| LIV2 同包回归 | 无影响 |
+
+### 经验教训
+
+1. **MIX 类算子 workspace 总量 = `GetLibApiWorkSpaceSize()`（系统保留区，arch22=16MB）+ 算子自用区域**，二者缺一不可
+2. host/kernel 的 workspace 布局公式必须逐字段镜像维护
+3. 越界踩踏系统保留区的故障表现极具迷惑性：崩溃核不固定、pc 漂移、拦截式检测工具假阴性。`mssanitizer` 的 `MEMORY_RECORD` 是对照"kernel 实际访问地址 vs 运行时分配边界"的最有效手段
+4. ValueDepend 输入在 aclnn 层面期望 `aclIntArray*`，C++ wrapper 需将 tensor 转 `IntArrayRef`
 
 ---
 
