@@ -14,23 +14,14 @@
  * \brief
  */
 
-// #if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
-// #define IS_BLAZE true
-// #else
-// #define IS_BLAZE false
-// #endif
-
 #ifdef __CCE_KT_TEST__
 #include "stub_def.h"
 #include "stub_fun.h"
 #endif
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-// #if IS_BLAZE
-#include "arch35/grouped_matmul_add_tensor_api_kernel.h"
-// #else
+#include "arch35/grouped_matmul_add_kernel.h"
 #include "arch35/grouped_matmul_add_basic_cgmct.h"
-// #endif
 #else
 #include "grouped_matmul_add_kernel.h"
 #endif
@@ -41,9 +32,7 @@
 #endif
 
 using namespace AscendC;
-// #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) && IS_BLAZE)
 using namespace matmul;
-// #endif
 
 /* pour changement co */
 
