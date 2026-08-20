@@ -491,7 +491,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
             if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<LAYOUT_T>>(
+                DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<LAYOUT_T>()>(
                     softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
                     {.gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
@@ -500,7 +500,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
                                                     actualSeqLengthsGmQ.GetValue(info.bIdx) -
                                                         actualSeqLengthsGmQ.GetValue(info.bIdx - 1U);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>>(
+                DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>()>(
                     softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
                     {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
@@ -511,7 +511,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
                     s1LeftPaddingSize =
                         constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
                 }
-                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>>(
+                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
                     softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
                     {.s1Size = constInfo.qSeqSize, .gSize = constInfo.gSize, .s1LeftPaddingSize = s1LeftPaddingSize});
             } else { // BNSD
@@ -522,7 +522,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ProcessVec1SingleBuf(const Run
                 if (constInfo.isQHasLeftPadding) {
                     s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
                 }
-                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>>(
+                DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
                     softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
                     {.s1Size = constInfo.qSeqSize, .qActSeqLens = qActSeqLens, .s1LeftPaddingSize = s1LeftPaddingSize});
             }

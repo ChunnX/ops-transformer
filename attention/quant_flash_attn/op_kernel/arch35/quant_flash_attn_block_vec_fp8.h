@@ -535,7 +535,7 @@ public:
 
         uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
         uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-        DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>>(
+        DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
             softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
             {.gSize = constInfo_.realGSize, .t1Size = constInfo_.t1Size});
 
