@@ -38,8 +38,8 @@
 #include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "../../matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
+#include "../../../tiling/quant_matmul_tiling_data.h"
 
 namespace AllGatherQuantMatmulImpl {
 
