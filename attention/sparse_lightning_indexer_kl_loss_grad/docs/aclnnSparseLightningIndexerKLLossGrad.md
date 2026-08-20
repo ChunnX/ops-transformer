@@ -236,7 +236,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
                 <td>表示每个batch实际使用的q长度。</td>
-                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的q分配长度。</td>
+                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的q分配长度；允许多个batch取0，但不支持所有batch均为0。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -461,15 +461,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-
-    <!-- npu="A3,910b" id8 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-    <!-- end id8 -->
-    <!-- npu="950" id9 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
-    <!-- end id9 -->
-
+  - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。

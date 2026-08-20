@@ -419,7 +419,7 @@ void SFAMlaTiling::FillTilingSplitKVMla()
 {
     tilingData_.splitKVParams.set_s2(kvSplitPart_);
 
-    tilingData_.splitKVParams.set_accumOutSize(aicNum_ * 2 * sfaInfo_->n2Size * mBaseSize_ *
+    tilingData_.splitKVParams.set_accumOutSize(aicNum_ * 2U * sfaInfo_->n2Size * mBaseSize_ *
                                                headDimAlign_); // 2:每个核可能有头规约和尾规约，一共两份规约信息
     tilingData_.splitKVParams.set_logSumExpSize(2 * aicNum_ * 2 * sfaInfo_->n2Size *
                                                 mBaseSize_ * // 2:每个核可能有头规约和尾规约，一共两份规约信息;sum + max
@@ -2150,11 +2150,11 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
 
         if (kvLayout_ == SFALayout::PA_BSND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
-            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) * static_cast<uint64_t>(keyShape_.GetDim(2)) *
-                        static_cast<uint64_t>(keyShape_.GetDim(3));
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) * static_cast<uint64_t>(keyShape_.GetDim(2U)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(3U));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
-            shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
+            shapeSize = static_cast<uint64_t>(context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize());
         }
         keyNonContiguous = (shapeSize != totalElements);
     }
@@ -2208,7 +2208,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     if (npuArch_ != NpuArch::DAV_3510) {
         sfaInfo.keyStride0 = 0; // 910无需使用stride
     } else {
-        if (keyStride0_ != 0) {
+        if ((keyStride0_ != 0) && (n2Size_ != 0) && (qkHeadDim_ != 0)) {
             sfaInfo.keyStride0 = keyStride0_ / (n2Size_ * qkHeadDim_);
         } else if (kvLayout_ == SFALayout::PA_BSND) {
             sfaInfo.keyStride0 = blockSize_;
