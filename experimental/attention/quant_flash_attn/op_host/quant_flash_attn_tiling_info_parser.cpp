@@ -549,10 +549,11 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
                                                               {"BNSD", FiaLayout::BNSD},
                                                               {"TND", FiaLayout::TND},
                                                               {"PA_BBND", FiaLayout::BnBsH},
-                                                              {"PA_BNBD", FiaLayout::BnNBsD}};
+                                                              {"PA_BNBD", FiaLayout::BnNBsD},
+                                                              {"PA_NZ", FiaLayout::NZ}};
         auto itKV = kvLayoutMap.find(tilingInfo_.opParamInfo.layoutKV);
         if (itKV == kvLayoutMap.end()) {
-            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD",
+            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD/PA_NZ",
                     tilingInfo_.opParamInfo.layoutKV);
             return ge::GRAPH_FAILED;
         }
@@ -614,7 +615,10 @@ void QuantFlashAttnTilingInfoParser::SetFaShape()
 
 void QuantFlashAttnTilingInfoParser::GetKvStorageMode()
 {
-    if (tilingInfo_.opParamInfo.blockTable.tensor != nullptr) {
+    bool isPaLayout = (tilingInfo_.layoutKV == FiaLayout::BnBsH || tilingInfo_.layoutKV == FiaLayout::BnNBsD ||
+                       tilingInfo_.layoutKV == FiaLayout::NZ);
+
+    if (isPaLayout) {
         tilingInfo_.kvStorageMode = KvStorageMode::PAGE_ATTENTION;
     } else {
         tilingInfo_.kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
