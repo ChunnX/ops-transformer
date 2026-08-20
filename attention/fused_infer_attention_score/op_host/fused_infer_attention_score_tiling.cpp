@@ -1064,9 +1064,9 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
                     return ge::GRAPH_FAILED);
     } else if (kDimNum == 4U || vDimNum == 4U) {
         OP_CHECK_IF(kDimNum != vDimNum,
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "When input layout is TND and paged cache and bnbd is used, the K and V must have four dims"),
-                return ge::GRAPH_FAILED);
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                                "When input layout is TND and paged cache and bnbd is used, the K and V must have four dims"),
+                    return ge::GRAPH_FAILED);
     } else if (kDimNum == 5U || vDimNum == 5U) {
         OP_CHECK_IF(kDimNum != vDimNum,
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
@@ -1602,7 +1602,7 @@ static bool CheckFAIDSizePA3Dim(int64_t tempD, const gert::Shape *tempKShape,
 }
 
 static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape,
-    const gert::Shape *tempVShape)
+                                const gert::Shape *tempVShape)
 {
     // BNBD layout: (numBlocks, kvHeads, blockSize, D), where H = N * D
     int64_t tempKD = tempKShape->GetDim(DIM_3);
@@ -1610,9 +1610,9 @@ static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape,
     int64_t blockSize = tempKShape->GetDim(DIM_2);
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
     bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-            (tempD == tempKD && tempD == tempVD);
+                      (tempD == tempKD && tempD == tempVD);
     bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
-            (blockSize <= MAX_BLOCK_SIZE);
+                              (blockSize <= MAX_BLOCK_SIZE);
     return isFAIDSize && blockSizeSupported;
 }
 

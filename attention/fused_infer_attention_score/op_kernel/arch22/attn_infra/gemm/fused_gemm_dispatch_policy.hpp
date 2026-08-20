@@ -14,8 +14,7 @@
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/arch/fused_arch.hpp"
 
-namespace NpuArch::Gemm
-{
+namespace NpuArch::Gemm {
 
 // Block Mmad Policies
 

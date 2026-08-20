@@ -187,8 +187,8 @@ public:
             } else if constexpr (BNBD_FLAG) {
                 kOffset = blockTableId * blockSize * strideKV + startOffset * embed;
             } else {
-                    kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
-                }
+                kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
+            }
         }
     }
 

@@ -619,7 +619,6 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_104000000200522220, FusedInf
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_104000000010522221, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_104000000210522221, FusedInferAttentionScoreTilingData)
 
-
 // Gqa NoQuant PA dtype: Q=FP16 KV=FP16 OUT=int8
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000000203000, FusedInferAttentionScoreTilingData)
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionScore_103000000200203000, FusedInferAttentionScoreTilingData)
@@ -933,7 +932,7 @@ int32_t GetLayoutGroup(const std::string &inputLayoutStr)
 }
 
 bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShape,
-    const gert::StorageShape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
+                            const gert::StorageShape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
 {
     if (layoutGroup == 0) { // 0: layout is "BNSD_BSND" || "BSND_BNSD" || "BNSD_NBSD" || "BSND_NBSD" || "BNSD" || "BSND"
         if (qStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
@@ -966,7 +965,7 @@ bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShap
 }
 
 bool GetValueDByLayoutGroup(int32_t layoutGroup, const gert::Shape &vStorageShape,
-    int64_t numKvHeads, int64_t &valueD)
+                            int64_t numKvHeads, int64_t &valueD)
 {
     if (layoutGroup == 0) { // 0: layout is "BNSD_BSND" || "BSND_BNSD" || "BNSD_NBSD" || "BSND_NBSD" || "BNSD" || "BSND"
         if (vStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
@@ -1169,7 +1168,7 @@ bool CheckSpecCondNoPA(int64_t tempQD, int64_t tempKD, int64_t tempVD)
 }
 
 bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
-    const gert::Shape &vShape, int64_t kvHeadNum)
+                         const gert::Shape &vShape, int64_t kvHeadNum)
 {
     int64_t tempKD = kShape.GetDim(DIM_2) / kvHeadNum;
     int64_t tempVD = vShape.GetDim(DIM_2) / kvHeadNum;
@@ -1182,7 +1181,7 @@ bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
 }
 
 bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape,
-    const gert::Shape &vShape)
+                         const gert::Shape &vShape)
 {
     int64_t tempKD = kShape.GetDim(DIM_3);
     int64_t tempVD = vShape.GetDim(DIM_3);
@@ -1195,7 +1194,7 @@ bool CheckSpecCondPA4Dim(int64_t tempQD, const gert::Shape &kShape,
 }
 
 bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
-    const gert::Shape &vShape)
+                         const gert::Shape &vShape)
 {
     int64_t tempKD = kShape.GetDim(DIM_2) * 16;
     int64_t tempVD = vShape.GetDim(DIM_2) * 16;
@@ -1203,7 +1202,7 @@ bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
     constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
     constexpr int64_t MAX_BLOCKSIZE = 512;
     bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-            (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
+                      (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
     isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U);
     bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
     return isFAIDSize && blockSizeSupported;
@@ -1376,7 +1375,7 @@ bool CheckRouteToFiaPrerequisites(gert::TilingContext *context)
 }
 
 bool IsLegacyTemplatePreferred(int64_t queryD, int64_t valueD, int64_t queryRopeD, int64_t queryS,
-    const std::string &inputLayoutStr, bool isPrefix, bool isMha, bool isPageAttention)
+                               const std::string &inputLayoutStr, bool isPrefix, bool isMha, bool isPageAttention)
 {
     return queryD == valueD && queryRopeD == 0 && queryS == 1 &&
            (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH") &&
@@ -1420,7 +1419,7 @@ bool RouteToFia(gert::TilingContext *context)
     const std::string inputLayoutStr =
         std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD,
-        queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
+                                  queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
         return false;
     }
     if (!isRopeSplit) {

@@ -310,7 +310,7 @@ public:
                         if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                             // BNBD: head offset = kvNIdx * blockSize * D
                             gmOffsetK = kBOffset + kNStartOffset +
-                                static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
                         }
                         uint64_t sWorkspaceIncreOffset =
                             static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
@@ -385,7 +385,7 @@ public:
                                              static_cast<uint64_t>(kvNIncreIdx * embedV);
                         if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                             gmOffsetV = vBOffset + vNStartOffset +
-                                static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
                         }
                         uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset +
                                              static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
@@ -585,7 +585,7 @@ public:
                             if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                                 // BNBD: head offset = kvNIdx * blockSize * D
                                 gmOffsetK = tailKBOffset + kNStartOffset +
-                                    static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                                            static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
                             }
                             uint64_t sWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
@@ -661,7 +661,7 @@ public:
                                                  static_cast<uint64_t>(kvNIncreIdx * embedV);
                             if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
                                 gmOffsetV = tailVBOffset + vNStartOffset +
-                                    static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
+                                            static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embedV);
                             }
                             uint64_t gmOffsetO = tailOBOffset + oSOffset + oNStartOffset +
                                                  static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);

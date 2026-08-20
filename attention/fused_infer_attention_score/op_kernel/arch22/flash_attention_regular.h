@@ -671,7 +671,7 @@ public:
             vRow = pagedBlockSize;
             vCol = blockStackNum * strideV;
             layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
-        }else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+        } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
             vRow = stackSeqTile;
             vCol = embedV;
             layoutVTemp = LayoutV(vRow, vCol);
