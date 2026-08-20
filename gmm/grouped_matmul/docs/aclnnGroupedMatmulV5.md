@@ -509,26 +509,34 @@ aclnnGroupedMatmulV5默认确定性实现。
 <details>
 <summary>S4S4 场景约束</summary>
 
-**数据类型要求：**
+- 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
+- 不为空的参数支持的数据类型组合要满足下表：
 
-| x | weight | bias | scale | perTokenScale | out |
-|:---|:---|:---|:---|:---|:---|
-| INT4 | INT4 (ND/NZ) | null | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
+| groupType | x | weight | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|
+| 0 | INT4 | INT4 (ND/NZ) | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
-> 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+- **weight 格式与转置子场景**：
 
-- **约束说明**
+| weight 格式 | 子场景 | 约束 |
+|:---:|:---|:---|
+| ND | 非转置 | 仅支持非转置；N 须为 8 的整数倍 |
+| NZ | 非转置/转置 | 支持非转置与转置；开启转置后 $K/G$ 按 64 对齐、K 按 64 对齐、N 按 16 对齐 |
+
+- **scaleOptional shape**（$g$=分组数）：
+
+| groupType | 子场景 | shape |
+|:---:|:---|:---|
+| 0 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, N]` |
+| 0 | <abbr title="简称G量化，在reduce轴上对数据分组，每组使用独立的量化参数">pergroup</abbr> | `[E, G, N]` |
+
+- **约束说明**：
 
   除平台约束外，S4S4场景其余约束如下：
-  - 仅支持groupType=0（M轴分组），actType=0，groupListType=0/1/2
-  - 当前仅支持x、weight、out均为长度为1的TensorList
-  - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
-  - x仅支持2维Tensor，Shape为（M，K）
-  - weight仅支持3维Tensor，Shape为（E，K，N）
-  - weight的数据格式为ND时，要求n为8的整数倍。
-  - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为 $[E, N]$，pergroup场景需为 $[E, G, N]$。
-  - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
-  - 开启右矩阵NZ转置后，$K/G$必须按照64对齐， K按照64对齐， N按照16对齐。
+
+  | groupType | actType | groupListType | x | weight | out | 转置 | 其余场景限制 |
+  |:---:|:---:|:---:|:---|:---|:---|:---|:---|
+  | 0（M轴分组） | 0 | 0/1/2 | 长度1的TensorList，2维，shape为（M，K） | 长度1的TensorList，3维，shape为（E，K，N） | 长度1的TensorList | x不支持转置；weight的ND格式仅支持非转置、NZ格式支持转置（见上表） | 1）pergroup场景下，$G$须能整除$K$，且$K/G$需为偶数 |
 
 </details>
 
@@ -541,30 +549,43 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 **S8S4场景：**
 
-**数据类型要求：**
+- 以下入参为空：antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
+- 不为空的参数支持的数据类型组合要满足下表：
 
-| x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | activationInput | activationQuantScale | activationQuantOffset | out |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | null | null | FLOAT | INT64 | null | null | null | BFLOAT16 |
-| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | null | null | FLOAT | INT64 | null | null | null | FLOAT16 |
+| groupType | x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | FLOAT | INT64 | BFLOAT16 |
+| 0 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | INT64 | FLOAT16 |
 
-**约束说明：**
+- **scaleOptional 与 offsetOptional shape**（$E$=组数）：
 
-除平台约束外，S8S4场景其余约束如下：
+| offsetOptional | 子场景 | scaleOptional shape | offsetOptional shape |
+|:---:|:---|:---|:---|
+| null | per-group 与 per-channel 离线融合 | `[E, K/256, N]` | - |
+| 非空 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, 1, N]` | `[E, 1, N]`（FLOAT32） |
 
-- 仅支持groupType=0（M轴分组）、splitItem=2/3、actType=0，groupListType仅支持1（count）。
-- 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList。
-- x和weight均不支持转置；x仅支持2维Tensor，shape为`[M,K]`；weight默认支持3维Tensor，shape为`[E,K,N]`。
-- perTokenScaleOptional的shape为`[M]`。
-- biasOptional为必选输入，shape为`[E,N]`。该输入是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
-- 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
-- offsetOptional为空时：
-  - K不大于18432且必须是256的整数倍。
-  - scaleOptional为per-group与per-channel离线融合后的结果，shape为`[E,K/256,N]`。
-- offsetOptional不为空时：
-  - 仅支持per-channel，scaleOptional的shape为`[E,1,N]`。
-  - offsetOptional为非对称量化离线计算的辅助结果，即`antiquantOffset × scale`，shape为`[E,1,N]`，数据类型为FLOAT32。
-- S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+- **约束说明**：
+
+  除平台约束外，S8S4场景其余约束如下：
+
+  | groupType | splitItem | actType | groupListType |
+  |:---:|:---:|:---:|:---|
+  | 0（M轴分组） | 2/3 | 0 | 1（count） |
+
+  - 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList（下表中省略该要求）。
+
+  | 输入输出 | 子场景 | shape限制 |
+  |:---:|:---|:---|
+  | x | 单Tensor | 2维，shape为`[M,K]`，不支持转置 |
+  | weight | 单Tensor | 3维，shape为`[E,K,N]`，不支持转置 |
+  | biasOptional | 必选输入 | 2维，shape为`[E,N]` |
+  | perTokenScaleOptional | 单Tensor | 1维，shape为`[M]` |
+  | out | 单Tensor | - |
+
+  - biasOptional为必选输入，是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
+  - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
+  - offsetOptional为空时，K不大于18432且必须是256的整数倍。
+  - S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
 
 **其他伪量化场景：**
 
