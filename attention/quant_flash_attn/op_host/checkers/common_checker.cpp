@@ -260,8 +260,10 @@ ge::graphStatus CommonChecker::CheckHeadNum(const QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qfaInfo.n1Size < qfaInfo.n2Size,
-                OP_LOGE(qfaInfo.opName, "numHeads(%ld) should be greater than or equal to numKeyValueHeads(%ld)!",
-                        qfaInfo.n1Size, qfaInfo.n2Size),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    qfaInfo.opName, "num_heads, num_key_value_heads",
+                    (std::to_string(qfaInfo.n1Size) + ", " + std::to_string(qfaInfo.n2Size)).c_str(),
+                    "The value of num_heads must be greater than or equal to num_key_value_heads"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
@@ -314,8 +316,9 @@ ge::graphStatus CommonChecker::CheckAxis(const QfaTilingInfo &qfaInfo)
             "When layout of query is not TND or NTD, S of query must be greater than or equal to 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(qfaInfo.s2Size < 0,
-                OP_LOGE(qfaInfo.opName, "The axis KV_S must be greater than or equal to 0, the current is %ld.",
-                        qfaInfo.s2Size),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis KV_S",
+                                                      std::to_string(qfaInfo.s2Size).c_str(),
+                                                      "The value of axis KV_S must be greater than or equal to 0"),
                 return ge::GRAPH_FAILED);
 
     const std::vector<int64_t> supportedHeadDims = {64, 72, 128, 256};
