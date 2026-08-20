@@ -35,6 +35,8 @@ constexpr size_t DIM_1 = 1;
 constexpr size_t DIM_2 = 2;
 constexpr size_t DIM_3 = 3;
 constexpr size_t DIM_4 = 4;
+// N<=64 有做L1常驻性能优化
+constexpr int64_t SFAG_HEAD_N_L1_RESIDENT = 64;
 
 enum class InputLayout : uint32_t {
     BSH = 0,
