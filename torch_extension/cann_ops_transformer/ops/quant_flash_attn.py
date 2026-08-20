@@ -150,16 +150,18 @@ def _validate_layout_dims(
         k_expected is not None,
         lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD/PA_BBND",
     )
-    torch._check(
-        k.dim() == k_expected,
-        lambda: f"k with layout {layout_kv} expects {k_expected} dims, but got {k.dim()} dims {tuple(k.shape)}",
-    )
+    if k is not None:
+        torch._check(
+            k.dim() == k_expected,
+            lambda: f"k with layout {layout_kv} expects {k_expected} dims, but got {k.dim()} dims {tuple(k.shape)}",
+        )
 
     # === V 维度校验 ===
-    torch._check(
-        v.dim() == k_expected,
-        lambda: f"v with layout {layout_kv} expects {k_expected} dims, but got {v.dim()} dims {tuple(v.shape)}",
-    )
+    if v is not None:
+        torch._check(
+            v.dim() == k_expected,
+            lambda: f"v with layout {layout_kv} expects {k_expected} dims, but got {v.dim()} dims {tuple(v.shape)}",
+        )
 
     # === descale 维度校验 (仅 MxFP8 quant_mode=1) ===
     if quant_mode == 1:
