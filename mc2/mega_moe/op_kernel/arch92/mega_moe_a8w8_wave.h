@@ -212,8 +212,8 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
-    UpdateWaveGmm2GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
-                               QuantScaleOutType, configureCombineCounter>(
+    UpdateWaveGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+                               configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
 

@@ -80,6 +80,15 @@ public:
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
                                 const L1Params &l1Params, bool isBias, bool enableL0cPingPong);
 
+    __aicore__ inline void EnableOneShotDebug(uint32_t markerBase, bool dumpPartialAccumulations)
+    {
+        if (!debugUsed_) {
+            debugEnabled_ = true;
+            debugMarkerBase_ = markerBase;
+            debugPartialAccumulations_ = dumpPartialAccumulations;
+        }
+    }
+
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
               typename TensorBias, typename TensorC>
     __aicore__ inline void operator()(const TensorA &tensorA, const TensorB &tensorB,
@@ -98,18 +107,32 @@ private:
         uint64_t scaleKOffsetInWindow;
     };
 
-    template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB>
+    template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
+              typename TensorC>
     __aicore__ inline void ProcessKBlock(const TensorA &tensorA, const TensorB &tensorB,
                                          const TensorScaleA &tensorScaleA,
-                                         const TensorScaleB &tensorScaleB, const TileParams &params);
+                                         const TensorScaleB &tensorScaleB, const TensorC &tensorC,
+                                         const TileParams &params, bool debugThisTile);
 
-    template <typename TensorAL1, typename TensorBL1, typename TensorScaleAL1, typename TensorScaleBL1>
+    template <typename TensorAL1, typename TensorBL1, typename TensorScaleAL1, typename TensorScaleBL1,
+              typename TensorC>
     __aicore__ inline void ProcessL0Tiles(const TensorAL1 &tensorAL1, const TensorBL1 &tensorBL1,
                                           const TensorScaleAL1 &tensorScaleAL1,
-                                          const TensorScaleBL1 &tensorScaleBL1, const TileParams &params);
+                                          const TensorScaleBL1 &tensorScaleBL1, const TensorC &tensorC,
+                                          const TileParams &params, bool debugThisTile);
 
     template <typename TensorC>
     __aicore__ inline void CopyOut(const TensorC &tensorC, uint64_t m, uint64_t n);
+
+    template <typename TensorC, typename TensorL0C>
+    __aicore__ inline void DebugDumpPartialL0C(
+        const TensorC &tensorC, const TensorL0C &tensorL0C, uint64_t completedK,
+        uint32_t marker, bool forceFinal = false);
+
+    __aicore__ inline static void DebugSetCondUint(uint64_t value)
+    {
+        set_cond(DEBUG_UINT_BIAS + static_cast<unsigned long>(value));
+    }
 
     __aicore__ inline uint64_t SelectKL1(uint64_t requestedKL1) const;
     __aicore__ inline uint64_t CalcL1BufferBytes(uint64_t kL1, uint64_t scaleKL1) const;
@@ -179,13 +202,15 @@ private:
     static constexpr uint64_t DEFAULT_K_L1 = 256U;
     static constexpr uint64_t MX_SCALE_GROUP_K = 64U;
     static constexpr uint64_t MX_SCALE_ELEMENTS_PER_GROUP = 2U;
-    static constexpr uint64_t L0_BUFFER_BYTES = 32U * 1024U;
+    static constexpr uint32_t DEBUG_VALUE_COUNT = 20U;
+    static constexpr unsigned long DEBUG_UINT_BIAS = 1000000UL;
     static constexpr uint64_t SCALE_C0 = 2U;
     static constexpr uint64_t L0C_C0 = 16U;
     static constexpr TEventID INPUT_BUFFER_EVENT_BASE = 0;
-    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 2;
+    // Match the native QBMM MX event partition: input buffers use 0-3, scales and MMAD release use 4-5.
+    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 4;
     static constexpr TEventID MTE2_TO_MTE1_EVENT_BASE = 0;
-    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 0;
+    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 4;
     static constexpr TEventID MTE1_TO_MMAD_EVENT_BASE = 0;
 
     static constexpr uint64_t C0_SIZE_A = AscendC::AuxGetC0Size<AType>();
@@ -212,7 +237,11 @@ private:
     uint64_t baseK_{128U};
     uint64_t l1BufferIndex_{0U};
     uint64_t scaleL1BufferIndex_{0U};
-    uint64_t l0BufferIndex_{0U};
+    bool debugEnabled_{false};
+    bool debugUsed_{false};
+    bool debugPartialAccumulations_{false};
+    uint32_t debugMarkerBase_{0U};
+    uint32_t debugStep_{0U};
     uint64_t l1AOffset_[BUFFER_COUNT]{};
     uint64_t l1BOffset_[BUFFER_COUNT]{};
     uint64_t l1ScaleAOffset_[BUFFER_COUNT]{};
@@ -301,6 +330,8 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Init(
         kL1_ = DEFAULT_K_L1;
         scaleKL1_ = kL1_;
     }
+    l1BufferIndex_ = 0U;
+    scaleL1BufferIndex_ = 0U;
     UpdateL1Offsets();
 
     // MegaMoe does not use bias or L0C ping-pong on this path. Keep the generic
@@ -320,6 +351,12 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::operato
 {
     uint64_t m = AscendC::Te::Get<M_INDEX>(singleShape);
     uint64_t n = AscendC::Te::Get<N_INDEX>(singleShape);
+    bool debugThisTile = debugEnabled_ && !debugUsed_;
+    if (debugThisTile) {
+        debugEnabled_ = false;
+        debugUsed_ = true;
+        debugStep_ = 0U;
+    }
     for (uint64_t kOffset = 0U; kOffset < k_; kOffset += kL1_) {
         uint64_t realK = Blaze::Gemm::Min(kL1_, k_ - kOffset);
         uint64_t scaleWindowStart = (kOffset / scaleKL1_) * scaleKL1_;
@@ -333,21 +370,26 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::operato
             Blaze::Gemm::CeilDiv(realScaleWindowK, MX_SCALE_GROUP_K) * MX_SCALE_ELEMENTS_PER_GROUP,
             Blaze::Gemm::CeilDiv(kOffset - scaleWindowStart, MX_SCALE_GROUP_K) *
                 MX_SCALE_ELEMENTS_PER_GROUP};
-        ProcessKBlock(tensorA, tensorB, tensorScaleA, tensorScaleB, params);
+        ProcessKBlock(tensorA, tensorB, tensorScaleA, tensorScaleB, tensorC, params,
+                      debugThisTile);
     }
     CopyOut(tensorC, m, n);
     (void)tensorBias;
 }
 
 MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
-template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB>
+template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
+          typename TensorC>
 __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::ProcessKBlock(
     const TensorA &tensorA, const TensorB &tensorB, const TensorScaleA &tensorScaleA,
-    const TensorScaleB &tensorScaleB, const TileParams &params)
+    const TensorScaleB &tensorScaleB, const TensorC &tensorC, const TileParams &params,
+    bool debugThisTile)
 {
     uint64_t bufferIndex = l1BufferIndex_ & (BUFFER_COUNT - 1U);
     uint64_t scaleBufferIndex = scaleL1BufferIndex_ & (BUFFER_COUNT - 1U);
     uint64_t alignedK = AlignK(params.realK);
+    uint64_t scaleWindowCapacity =
+        Blaze::Gemm::CeilDiv(scaleKL1_, MX_SCALE_GROUP_K) * MX_SCALE_ELEMENTS_PER_GROUP;
     WaitFlag<HardEvent::MTE1_MTE2>(INPUT_BUFFER_EVENT_BASE + bufferIndex);
 
     auto tensorAL1 = AscendC::Te::MakeTensor(
@@ -359,11 +401,11 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
     auto tensorScaleAL1 = AscendC::Te::MakeTensor(
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, fp8_e8m0_t>(
             l1ScaleAOffset_[scaleBufferIndex]),
-        MakeLayoutScaleAL1{}(params.m, params.scaleWindowLength));
+        MakeLayoutScaleAL1{}(params.m, scaleWindowCapacity));
     auto tensorScaleBL1 = AscendC::Te::MakeTensor(
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, fp8_e8m0_t>(
             l1ScaleBOffset_[scaleBufferIndex]),
-        MakeLayoutScaleBL1{}(params.scaleWindowLength, params.n));
+        MakeLayoutScaleBL1{}(scaleWindowCapacity, params.n));
 
     auto copyGM2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
     auto gmBlockA = tensorA.Slice(AscendC::Te::MakeCoord(0U, params.kOffset),
@@ -390,7 +432,8 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
 
     SetFlag<HardEvent::MTE2_MTE1>(MTE2_TO_MTE1_EVENT_BASE + bufferIndex);
     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_TO_MTE1_EVENT_BASE + bufferIndex);
-    ProcessL0Tiles(tensorAL1, tensorBL1, tensorScaleAL1, tensorScaleBL1, params);
+    ProcessL0Tiles(tensorAL1, tensorBL1, tensorScaleAL1, tensorScaleBL1, tensorC, params,
+                   debugThisTile);
     SetFlag<HardEvent::MTE1_MTE2>(INPUT_BUFFER_EVENT_BASE + bufferIndex);
     ++l1BufferIndex_;
     bool isScaleWindowEnd = params.kOffset + params.realK >= params.scaleWindowStart + scaleKL1_ ||
@@ -402,10 +445,12 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
 }
 
 MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
-template <typename TensorAL1, typename TensorBL1, typename TensorScaleAL1, typename TensorScaleBL1>
+template <typename TensorAL1, typename TensorBL1, typename TensorScaleAL1, typename TensorScaleBL1,
+          typename TensorC>
 __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::ProcessL0Tiles(
     const TensorAL1 &tensorAL1, const TensorBL1 &tensorBL1, const TensorScaleAL1 &tensorScaleAL1,
-    const TensorScaleBL1 &tensorScaleBL1, const TileParams &params)
+    const TensorScaleBL1 &tensorScaleBL1, const TensorC &tensorC, const TileParams &params,
+    bool debugThisTile)
 {
     for (uint64_t l0KOffset = 0U; l0KOffset < params.realK; l0KOffset += baseK_) {
         uint64_t realL0K = Blaze::Gemm::Min(baseK_, params.realK - l0KOffset);
@@ -415,8 +460,10 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
         uint64_t l0ScaleKOffset = params.scaleKOffsetInWindow +
                                   Blaze::Gemm::CeilDiv(l0KOffset, MX_SCALE_GROUP_K) *
                                       MX_SCALE_ELEMENTS_PER_GROUP;
-        uint64_t bufferIndex = l0BufferIndex_ & (BUFFER_COUNT - 1U);
-        uint64_t l0Offset = bufferIndex * L0_BUFFER_BYTES;
+        // The arch92 MX path currently uses one L0 slot. The second A5-style slot
+        // produces invalid A/B/scale operands on this target.
+        constexpr uint64_t bufferIndex = 0U;
+        constexpr uint64_t l0Offset = 0U;
         WaitFlag<HardEvent::M_MTE1>(MMAD_TO_MTE1_EVENT_BASE + bufferIndex);
 
         auto tensorAL0 = AscendC::Te::MakeTensor(
@@ -465,6 +512,24 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
         mmadParams.n = static_cast<uint16_t>(params.n);
         mmadParams.unitFlag = isLastK ? Blaze::Gemm::FINAL_ACCUMULATION : Blaze::Gemm::NON_FINAL_ACCUMULATION;
         mmadParams.cmatrixInitVal = isFirstK;
+        if (debugThisTile && debugPartialAccumulations_) {
+            constexpr uint64_t debugL0COffset = AscendC::TOTAL_L0C_SIZE / BUFFER_COUNT;
+            auto debugTensorL0C = AscendC::Te::MakeTensor(
+                AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(debugL0COffset),
+                AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<L0C_C0>>(
+                    params.m, params.n));
+            AscendC::Te::MmadParams debugMmadParams = mmadParams;
+            debugMmadParams.unitFlag = Blaze::Gemm::FINAL_ACCUMULATION;
+            debugMmadParams.cmatrixInitVal = true;
+            AscendC::Te::Mmad(
+                AscendC::Te::MmadAtom<
+                    AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, Blaze::Gemm::Tile::MmadTraitMX>>{}
+                    .with(debugMmadParams),
+                debugTensorL0C, tensorAL0, tensorBL0);
+            uint64_t completedK = params.kOffset + l0KOffset + realL0K;
+            DebugDumpPartialL0C(tensorC, debugTensorL0C, completedK,
+                                debugMarkerBase_ + 10U + debugStep_, true);
+        }
         AscendC::Te::Mmad(
             AscendC::Te::MmadAtom<
                 AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, Blaze::Gemm::Tile::MmadTraitMX>>{}
@@ -472,7 +537,45 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Process
             tensorL0C, tensorAL0, tensorBL0);
 
         SetFlag<HardEvent::M_MTE1>(MMAD_TO_MTE1_EVENT_BASE + bufferIndex);
-        ++l0BufferIndex_;
+        if (debugThisTile && (debugPartialAccumulations_ || isLastK)) {
+            uint64_t completedK = params.kOffset + l0KOffset + realL0K;
+            uint32_t partialMarker = debugMarkerBase_ + debugStep_;
+            DebugDumpPartialL0C(tensorC, tensorL0C, completedK, partialMarker);
+            ++debugStep_;
+        }
+    }
+}
+
+MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_TEMPLATE_PARAMS
+template <typename TensorC, typename TensorL0C>
+__aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::DebugDumpPartialL0C(
+    const TensorC &tensorC, const TensorL0C &tensorL0C, uint64_t completedK, uint32_t marker, bool forceFinal)
+{
+    if constexpr (AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorC>,
+                                          AscendC::Te::Location::GM>) {
+        SetFlag<HardEvent::M_FIX>(0);
+        WaitFlag<HardEvent::M_FIX>(0);
+        uint32_t unitFlag = forceFinal || completedK >= k_ ? Blaze::Gemm::FINAL_ACCUMULATION :
+                                                             Blaze::Gemm::NON_FINAL_ACCUMULATION;
+        AscendC::Te::Copy(
+            AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{})
+                .with(AscendC::Te::FixpipeParams(unitFlag)),
+            tensorC, tensorL0C);
+        SetFlag<HardEvent::FIX_S>(0);
+        WaitFlag<HardEvent::FIX_S>(0);
+
+        AscendC::GlobalTensor<uint16_t> debugGmBits;
+        debugGmBits.SetGlobalBuffer(
+            reinterpret_cast<__gm__ uint16_t *>(tensorC.Data().Get()));
+        set_cond(static_cast<unsigned long>(marker));
+        DebugSetCondUint(static_cast<uint64_t>(AscendC::GetBlockIdx()));
+        DebugSetCondUint(completedK);
+        for (uint32_t valueIdx = 0U; valueIdx < DEBUG_VALUE_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(debugGmBits.GetValue(valueIdx)));
+        }
+
+        SetFlag<HardEvent::FIX_M>(0);
+        WaitFlag<HardEvent::FIX_M>(0);
     }
 }
 
