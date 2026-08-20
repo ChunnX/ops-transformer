@@ -67,7 +67,7 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                          static_cast<int32_t>(baseN),
                                          static_cast<uint64_t>(gmmBaseParams.mTailCnt),
                                          static_cast<uint64_t>(gmmBaseParams.nTailCnt),
-                                         1U,
+                                         1U, // mTailAlign
                                          nTailAlign,
                                          static_cast<int32_t>(gmmBaseParams.groupType),
                                          static_cast<uint32_t>(gmmBaseParams.groupNum),
@@ -78,16 +78,16 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                         y,
                                         gmmBaseParams.hasBias == 0 ? nullptr : bias,
                                         groupList,
-                                        nullptr,
+                                        nullptr, // workspaceGmAddr
                                         baseM,
                                         baseN,
                                         kL1,
                                         static_cast<uint32_t>(baseM),
                                         static_cast<uint32_t>(baseN),
                                         static_cast<uint32_t>(baseK),
-                                        2U,
+                                        2U, // l1Stages
                                         static_cast<uint16_t>(mmTilingData.dbL0C),
-                                        nullptr};
+                                        nullptr}; // scaleGmAddr
 
     ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M), static_cast<int64_t>(mmTilingData.N),
                               static_cast<int64_t>(mmTilingData.Ka), static_cast<int64_t>(1)};

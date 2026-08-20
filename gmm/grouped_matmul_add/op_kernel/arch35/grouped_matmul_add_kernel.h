@@ -55,20 +55,20 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
 
     constexpr int32_t groupTypeSplitK = 2;
     GMMTiling gmmParams{static_cast<uint32_t>(gmmAddParams.groupNum),
-                        groupTypeSplitK,
+                        groupTypeSplitK, // grouptype
                         static_cast<uint32_t>(gmmAddParams.groupListType),
-                        1UL,
-                        1UL,
-                        1UL,
-                        0U,
-                        0U};
+                        1UL, // singleX
+                        1UL, // singleWeight
+                        1UL, // singleY
+                        0U,  // hasBias
+                        0U}; // weightNoL2Cache
     constexpr uint32_t nTailAlign =
         BlockMmad::WEIGHT_NZ_FORMAT ? static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) : 1U;
     BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
                                          static_cast<int32_t>(baseN),
                                          static_cast<uint64_t>(gmmAddParams.mTailCnt),
                                          static_cast<uint64_t>(gmmAddParams.nTailCnt),
-                                         1U,
+                                         1U, // mTailAlign
                                          nTailAlign,
                                          groupTypeSplitK,
                                          static_cast<uint32_t>(gmmAddParams.groupNum),
@@ -77,18 +77,18 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     typename BlockMmad::Params mmParams{x,
                                         weight,
                                         y,
-                                        nullptr,
+                                        nullptr, // biasGmAddr
                                         groupList,
-                                        nullptr,
+                                        nullptr, // workspaceGmAddr
                                         baseM,
                                         baseN,
                                         kL1,
                                         static_cast<uint32_t>(baseM),
                                         static_cast<uint32_t>(baseN),
                                         static_cast<uint32_t>(baseK),
-                                        2U,
+                                        2U, // l1Stages
                                         static_cast<uint16_t>(mmTilingData.dbL0C),
-                                        nullptr};
+                                        nullptr}; // scaleGmAddr
 
     ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M), static_cast<int64_t>(mmTilingData.N),
                               static_cast<int64_t>(mmTilingData.Ka), static_cast<int64_t>(1)};
