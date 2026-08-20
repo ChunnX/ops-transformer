@@ -28,18 +28,6 @@ namespace Apace {
 
 constexpr uint32_t MAX_MATMUL_REDUCE_SCATTER_HCOMM_HANDLE = 64;
 
-template <typename T>
-constexpr AscendC::HcclDataType GetMatmulReduceScatterV2HcclDataType()
-{
-    if constexpr (AscendC::IsSameType<T, float>::value) {
-        return AscendC::HCCL_DATA_TYPE_FP32;
-    } else if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
-        return AscendC::HCCL_DATA_TYPE_BFP16;
-    } else {
-        return AscendC::HCCL_DATA_TYPE_FP16;
-    }
-}
-
 template <bool BTrans>
 struct MatmulReduceScatterV2BLayout {
     using Type = AscendC::Te::NDExtLayoutPtn;
@@ -72,6 +60,13 @@ public:
     using L1Params = typename Kernel::L1Params;
     using BlockSchedulerParams = typename Kernel::BlockSchedulerParams;
     using QBMMTiling = typename Kernel::QBMMTiling;
+
+    // Follow the proven AllToAll Hcomm pattern: keep the communication dtype
+    // as an integral compile-time constant, then cast at the HCCL call site.
+    static constexpr uint64_t outputHcclDataType_ =
+        AscendC::IsSameType<CType, float>::value ? AscendC::HCCL_DATA_TYPE_FP32 :
+        (AscendC::IsSameType<CType, bfloat16_t>::value ? AscendC::HCCL_DATA_TYPE_BFP16 :
+                                                        AscendC::HCCL_DATA_TYPE_FP16);
 
     __aicore__ inline explicit MatmulReduceScatterV2MxQuantHcommImpl(TilingDataType *tilingData)
         : tilingData_(tilingData)
@@ -146,7 +141,6 @@ private:
         const uint64_t outputBase = isTail ? tileCnt * tileM * rankN : 0;
         const uint32_t handleShift = isTail ? static_cast<uint32_t>(tileCnt) : 0;
         const uint64_t stride = perRankM * rankN;
-        constexpr auto dataType = GetMatmulReduceScatterV2HcclDataType<CType>();
 
         for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
             const uint64_t sliceStart = isTail
@@ -156,7 +150,8 @@ private:
             GM_ADDR recvBuffer = yGM_ +
                 (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * rankN) * sizeof(CType);
             handles_[sliceIdx + handleShift] = hccl_.template ReduceScatter<true>(
-                sendBuffer, recvBuffer, sliceM * rankN, dataType,
+                sendBuffer, recvBuffer, sliceM * rankN,
+                static_cast<AscendC::HcclDataType>(outputHcclDataType_),
                 AscendC::HcclReduceOp::HCCL_REDUCE_SUM, stride, 1);
         }
         handleCount_ += sliceCount;
