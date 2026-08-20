@@ -43,7 +43,7 @@ namespace Apace {
 
 // PostComputeCommPolicy: 在Blaze kernel内部每个tile计算开始前，
 // 异步下发上一个tile的AllToAll通信（上一个tile的matmul结果已写完到GM）
-// 实现逐tile通算掩盖：tile N的matmul与tile N-1的AllToAll并行
+// 同时Wait上上个tile的AllToAll（pipeline深度2），实现逐tile通算掩盖
 template <typename HcclType, typename YType, typename TilingDataType>
 struct PostComputeCommPolicy {
     HcclType *hccl_{nullptr};
@@ -53,27 +53,61 @@ struct PostComputeCommPolicy {
     uint64_t rankDim_{0};
     uint64_t nonSplitAxisSize_{0};
     uint64_t yHcclDataType_{0};
-    AscendC::HcclHandle lastHandle_{0};
-    uint32_t lastTileIdx_{0xFFFFFFFF};
+    // pipeline深度2: 当前handle和前一个handle
+    AscendC::HcclHandle curHandle_{0};
+    AscendC::HcclHandle prevHandle_{0};
+    uint32_t lastCommTileIdx_{0xFFFFFFFF}; // 去重: 已下发通信的最大tileIdx
+
+    __aicore__ inline uint64_t CalcTileOffset(uint32_t tileIdx)
+    {
+        // 累计偏移: 头块部分 + 尾块部分
+        auto &&ct = tilingData_->commTilingData;
+        uint32_t headCnt = ct.splitAxisTileCnt;
+        if (tileIdx < headCnt) {
+            return static_cast<uint64_t>(tileIdx) * ct.splitAxisTileSize;
+        } else {
+            return static_cast<uint64_t>(headCnt) * ct.splitAxisTileSize +
+                   static_cast<uint64_t>(tileIdx - headCnt) * ct.splitAxisTailSize;
+        }
+    }
+
+    __aicore__ inline uint32_t CalcTileM(uint32_t tileIdx)
+    {
+        auto &&ct = tilingData_->commTilingData;
+        return (tileIdx < ct.splitAxisTileCnt) ? ct.splitAxisTileSize : ct.splitAxisTailSize;
+    }
+
+    __aicore__ inline void IssueAllToAll(uint32_t tileIdx)
+    {
+        uint32_t tileM = CalcTileM(tileIdx);
+        uint64_t perRankN = nonSplitAxisSize_ / rankDim_;
+        uint64_t tileOffset = CalcTileOffset(tileIdx);
+        // 逐行发送: sendCount=perRankN, strideCount=rankN(行间隔), batchCnt=tileM(行数)
+        curHandle_ = hccl_->template AlltoAll<true>(
+            mmResultGM_ + tileOffset * nonSplitAxisSize_ * sizeof(YType),
+            y_ + tileOffset * perRankN * sizeof(YType),
+            perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+            nonSplitAxisSize_, static_cast<uint8_t>(tileM));
+    }
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
-        // tileIdx > 0 时，上一个tile的matmul结果已写完，异步下发其AllToAll
-        if (tileIdx > 0 && hccl_ != nullptr) {
-            uint32_t prevTileIdx = tileIdx - 1;
-            uint32_t prevTileM = (prevTileIdx < tilingData_->commTilingData.splitAxisTileCnt)
-                                     ? tilingData_->commTilingData.splitAxisTileSize
-                                     : tilingData_->commTilingData.splitAxisTailSize;
-            uint64_t perRankN = nonSplitAxisSize_ / rankDim_;
-            uint64_t tileOffset = static_cast<uint64_t>(prevTileIdx) * tilingData_->commTilingData.splitAxisTileSize;
-            // 逐行发送: sendCount=perRankN, strideCount=rankN(行间隔), batchCnt=prevTileM(行数)
-            lastHandle_ = hccl_->template AlltoAll<true>(
-                mmResultGM_ + tileOffset * nonSplitAxisSize_ * sizeof(YType),
-                y_ + tileOffset * perRankN * sizeof(YType),
-                perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                nonSplitAxisSize_, static_cast<uint8_t>(prevTileM));
-            lastTileIdx_ = prevTileIdx;
+        // 去重: 同一tileIdx只处理一次
+        if (tileIdx <= lastCommTileIdx_) {
+            return;
         }
+
+        // tileIdx > 0: 上一个tile的matmul已写完，异步下发其AllToAll
+        if (tileIdx > 0) {
+            uint32_t prevTileIdx = tileIdx - 1;
+            // pipeline深度2: 先Wait上上个tile的handle，再下发上个tile的AllToAll
+            if (lastCommTileIdx_ != 0xFFFFFFFF) {
+                hccl_->Wait(prevHandle_);
+            }
+            prevHandle_ = curHandle_;
+            IssueAllToAll(prevTileIdx);
+        }
+        lastCommTileIdx_ = tileIdx;
     }
 };
 
@@ -219,19 +253,17 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareLastTileAllToAll()
 {
     // Blaze kernel遍历完所有tile后，最后一个tile的AllToAll还未下发
-    // （WaitTile只在下一个tile开始时才下发上一个tile的通信）
     auto &&commTiling = tilingData_->commTilingData;
     uint32_t lastTileIdx = totalTileCnt_ - 1;
-    uint32_t lastTileM = (lastTileIdx < headTileCnt_) ? commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
-    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-    uint64_t tileOffset = static_cast<uint64_t>(lastTileIdx) * commTiling.splitAxisTileSize;
 
-    commPolicy_.lastHandle_ = hccl_.template AlltoAll<true>(
-        mmResultGM_ + tileOffset * commTiling.nonSplitAxisSize * sizeof(YType),
-        y_ + tileOffset * perRankN * sizeof(YType),
-        perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-        commTiling.nonSplitAxisSize, static_cast<uint8_t>(lastTileM));
-    commPolicy_.lastTileIdx_ = lastTileIdx;
+    // pipeline深度2: 先Wait倒数第二个tile的handle
+    if (commPolicy_.lastCommTileIdx_ != 0xFFFFFFFF) {
+        hccl_.Wait(commPolicy_.prevHandle_);
+    }
+    commPolicy_.prevHandle_ = commPolicy_.curHandle_;
+    // 下发最后一个tile的AllToAll
+    commPolicy_.IssueAllToAll(lastTileIdx);
+    commPolicy_.lastCommTileIdx_ = lastTileIdx;
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -345,10 +377,11 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         PrepareLastTileAllToAll();
     }
 
-    // Phase 3: 等待所有tile通信完成
+    // Phase 3: 等待所有tile通信完成（pipeline深度2: Wait最后两个handle）
     AscendC::SyncAll();
-    if (commPolicy_.lastTileIdx_ != 0xFFFFFFFF) {
-        hccl_.Wait(commPolicy_.lastHandle_);
+    if (commPolicy_.lastCommTileIdx_ != 0xFFFFFFFF) {
+        hccl_.Wait(commPolicy_.prevHandle_);
+        hccl_.Wait(commPolicy_.curHandle_);
     }
 
     // Phase 4: Finalize
