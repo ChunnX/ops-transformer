@@ -37,9 +37,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetShapeAttrsInfo()
     */
     opName = context_->GetNodeName();
     OP_CHECK_IF(context_ == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "context is nullptr."),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "GetAttrs is nullptr."),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
 
     auto status = GetBaseShapeInfo();
     if (status != ge::GRAPH_SUCCESS) {
@@ -47,9 +47,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetShapeAttrsInfo()
     }
 
     OP_LOGI(context_, "SparseFlashAttentionGrad with shape b[%ld] n2[%ld] g[%ld] s1[%ld] s2[%ld] d[%ld] d1[%ld]!",
-              baseParams_->get_b(), baseParams_->get_n2(), baseParams_->get_g(),
-              baseParams_->get_s1(), baseParams_->get_s2(), baseParams_->get_d(),
-              baseParams_->get_d1());
+            baseParams_->get_b(), baseParams_->get_n2(), baseParams_->get_g(),
+            baseParams_->get_s1(), baseParams_->get_s2(), baseParams_->get_d(),
+            baseParams_->get_d1());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -60,7 +60,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseFlashAttentionGradCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compile_info is null."),
-                   return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aicoreParams_.numBlocks = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -82,16 +82,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetPlatformInfo()
     }
 
     OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                                           aicoreParams_.numBlocks, aicoreParams_.aicNum),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 bool SparseFlashAttentionGradBs1Regbase::IsCapable()
 {
@@ -135,9 +134,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
     OP_CHECK_IF(blockdim == 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "blockdim is 0, aicNum is %lu, aivNum is %lu.",
-                                           aicoreParams_.aicNum, aicoreParams_.numBlocks),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "blockdim is 0, aicNum is %lu, aivNum is %lu.",
+                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
+                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
 
     // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
@@ -148,7 +147,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
 
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = 128 * tmpData.d * B16;
-    
+
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
@@ -189,16 +188,16 @@ uint64_t SparseFlashAttentionGradBs1Regbase::GetTilingKey() const
     uint64_t tilingKey = 0;
 
     OP_LOGI(context_,
-              "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d]",
-              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
-    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小 
-    tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM), 
-        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+            "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d]",
+            inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
+    tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),
+                                   static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
 
     OP_LOGI(context_,
-              "SparseFlashAttentionGrad DoTiling success, tilingkey is"
-              " %lu.",
-              tilingKey);
+            "SparseFlashAttentionGrad DoTiling success, tilingkey is"
+            " %lu.",
+            tilingKey);
     return tilingKey;
 }
 
@@ -272,14 +271,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoCastTiling()
 
     OP_CHECK_IF(qPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(usedCoreNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "castUsedCoreNum is 0."),
-               return ge::GRAPH_FAILED);
-    
+                return ge::GRAPH_FAILED);
+
     int64_t qPreBlockFactor = (allNumQuery + usedCoreNum - 1) / usedCoreNum;
     int64_t qPreBlockTotal = (allNumQuery + qPreBlockFactor - 1) / qPreBlockFactor;
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
-    int64_t kPreBlockFactor = (allNumKey + usedCoreNum - 1) / usedCoreNum;;
+    int64_t kPreBlockFactor = (allNumKey + usedCoreNum - 1) / usedCoreNum;
+    ;
     int64_t kPreBlockTotal = (allNumKey + kPreBlockFactor - 1) / kPreBlockFactor;
     int64_t kPreBlockTailTmp = allNumKey % kPreBlockFactor;
     int64_t kPreBlockTail = kPreBlockTailTmp == 0 ? kPreBlockFactor : kPreBlockTailTmp;
@@ -345,25 +345,23 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoCastTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName, 
-                                                                    const gert::Shape &outputshape, const char *inputLayout)
+ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+                                                                      const gert::Shape &outputshape, const char *inputLayout)
 {
     if (strcmp(inputLayout, TND_STR) == 0) {
-        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) 
-            || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2)) {
-            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2),
-                inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2));
+        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2)) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]",
+                    inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2),
+                    inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2));
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) 
-            || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2) || inputshape.GetDim(DIM_3) != outputshape.GetDim(DIM_3)){
-            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2), inputshape.GetDim(DIM_3),
-                inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2), outputshape.GetDim(DIM_3));
+        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2) || inputshape.GetDim(DIM_3) != outputshape.GetDim(DIM_3)) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]",
+                    inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2), inputshape.GetDim(DIM_3),
+                    inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2), outputshape.GetDim(DIM_3));
             return ge::GRAPH_FAILED;
-        }    
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -372,10 +370,10 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
-               return ge::GRAPH_FAILED);
+                 (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
+                 (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
+                return ge::GRAPH_FAILED);
     // input
     // TND: query [t1, n1, d]   k [t2, n2, d]  v [t2, n2, d1]   dy/attentionIn [t1, n1, d1]
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d1]   dy/attentionIn [b, s1, n1, d1]
@@ -407,7 +405,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.", selected_block_size);
         return ge::GRAPH_FAILED;
     }
-       
+
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
     if (sparse_mode == 3 || sparse_mode == 0) {
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
@@ -431,8 +429,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
     if (static_cast<size_t>(dimSize) != strlen(inputLayout)) {
         OP_LOGE(context_,
-                  "SparseFlashAttentionGrad layout dims is not equal to the input's dim, now the query of dim is %u.",
-                  dimSize);
+                "SparseFlashAttentionGrad layout dims is not equal to the input's dim, now the query of dim is %u.",
+                dimSize);
         return ge::GRAPH_FAILED;
     }
     // 对输入shape进行校验
@@ -504,7 +502,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGE(context_, "g (N1 / N2) should be larger than 0, but got g=%ld.", tmpData.g);
         return ge::GRAPH_FAILED;
     }
-   
+
     int64_t n1 = tmpData.n2 * tmpData.g;
     std::set<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128};
     if (tmpData.n2 != 1 || n1 > 128 || !gSizeSupportList.count(n1)) {
@@ -515,6 +513,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_b(tmpData.b);
     baseParams_->set_g(tmpData.g);
     OP_CHECK_IF(baseParams_->get_g() == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
+    baseParams_->set_isHeadNLe64(tmpData.g <= SFAG_HEAD_N_L1_RESIDENT ? 1 : 0);
     baseParams_->set_n2(tmpData.n2);
     baseParams_->set_s1(tmpData.s1);
     baseParams_->set_s2(tmpData.s2);
@@ -534,7 +533,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
     tmpData.selected_block_count = selected_block_count;
     tmpData.selected_block_size = selected_block_size;
-    
+
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_, "SparseFlashAttentionGrad the dtype of input is invalid.");
