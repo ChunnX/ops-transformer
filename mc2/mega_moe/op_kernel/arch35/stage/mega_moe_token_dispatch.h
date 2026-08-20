@@ -39,9 +39,6 @@ struct TokenDispatchScratch {
     GlobalTensor<int32_t> cumsumInfoGlobalTensor;
     LocalTensor<int32_t> topkIndexTensor;
     LocalTensor<int32_t> sendCntTensor;
-    // 二层路由专用 workspace。每个 source rank 独占 32B，生命周期覆盖一个 Dispatch wave，
-    // 不与 SendCount、mask、copy ring 或 Combine scratch 复用。
-    LocalTensor<int32_t> routeCacheTensor;
     LocalTensor<uint8_t> maskBatchTensor;
     LocalTensor<uint32_t> maskBatchU32Tensor;
     LocalTensor<int32_t> expertTokenCntTensor;
@@ -126,7 +123,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
     int32_t dstIdx, GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor, GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t copyStartIdx, int32_t copyIdx, int32_t copyIndexStride = 1, int32_t dstRowStride = 1)
+    int32_t copyStartIdx, int32_t copyIdx)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -137,20 +134,18 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
-            copyStartIdx + copyIdx * copyIndexStride);
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx);
         int32_t weightBits =
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(context.common.topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
     }
-    DataCopyPad(tokenRevGlobalTensor[dstIdx * dstRowStride * scratch.revTokenElemCnt], tokenScaleBuffer,
+    DataCopyPad(tokenRevGlobalTensor[dstIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
-    DataCopyPad(scaleRevGlobalTensor[dstIdx * dstRowStride * scratch.revScaleElemCnt], scaleBuffer,
+    DataCopyPad(scaleRevGlobalTensor[dstIdx * scratch.revScaleElemCnt], scaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
     WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
-    DataCopy(metaInfoGlobalTensor[dstIdx * dstRowStride * INT32_PER_256B],
-             scratch.metaInfoTensor[bufferIdx * INT32_PER_256B],
+    DataCopy(metaInfoGlobalTensor[dstIdx * INT32_PER_256B], scratch.metaInfoTensor[bufferIdx * INT32_PER_256B],
              INT32_PER_256B);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
@@ -161,8 +156,7 @@ template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPref
 __aicore__ inline void CopyTokensAndMetaForDispatch(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, int32_t rowDstOffset, int32_t remoteRankIdx,
-    int32_t copyStartIdx, int32_t copyNum,
-    int32_t copyIndexStride = 1, int32_t dstRowStride = 1)
+    int32_t copyStartIdx, int32_t copyNum)
 {
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t bufferCount = bufferConfig.bufferCount;
@@ -193,73 +187,35 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
         int32_t copyIdx = issueIdx - 1;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
-            copyStartIdx + issueIdx * copyIndexStride);
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
         FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, scratch, issueIdx, topkIndex, remoteRankIdx,
                                                                   remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx, copyIndexStride, dstRowStride);
+            copyStartIdx, copyIdx);
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
         int32_t copyIdx = issueIdx - 1;
         int32_t issueBufferIdx = issueIdx % bufferCount;
         int32_t copyBufferIdx = copyIdx % bufferCount;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
-            copyStartIdx + issueIdx * copyIndexStride);
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
         FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(context, scratch, issueBufferIdx, topkIndex,
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyBufferIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx, copyIndexStride, dstRowStride);
+            copyStartIdx, copyIdx);
     }
 
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, scratch, (copyNum - 1) % bufferCount, copyNum - 1, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1, copyIndexStride, dstRowStride);
+        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
     }
-}
-
-// 发布一个等差 expert-row 序列覆盖到的 GMM1 tile ready 计数。
-// firstExpertRow + n * expertRowStride 是本次批量 Copy 的真实目标行。
-__aicore__ inline uint32_t PublishGmm1TileReadySequence(
-    const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
-    int32_t gmm1TileRowCount, int32_t firstExpertRow,
-    int32_t selectedRowCount, int32_t expertRowStride)
-{
-    if (selectedRowCount <= 0 || expertRowStride <= 0) {
-        return 0U;
-    }
-    uint32_t atomicAddCount = 0U;
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-    __gm__ int32_t *readyBase =
-        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
-        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    int32_t lastExpertRow = firstExpertRow + (selectedRowCount - 1) * expertRowStride;
-    int32_t firstTileIdx = firstExpertRow / gmm1TileRowCount;
-    int32_t lastTileIdx = lastExpertRow / gmm1TileRowCount;
-    for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
-        int32_t tileBegin = tileIdx * gmm1TileRowCount;
-        int32_t tileEnd = tileBegin + gmm1TileRowCount;
-        int32_t firstSelectedIdx = tileBegin <= firstExpertRow ? 0 :
-            Ops::Base::CeilDiv(tileBegin - firstExpertRow, expertRowStride);
-        int32_t endSelectedIdx = tileEnd <= firstExpertRow ? 0 :
-            Ops::Base::CeilDiv(tileEnd - firstExpertRow, expertRowStride);
-        firstSelectedIdx = firstSelectedIdx < selectedRowCount ? firstSelectedIdx : selectedRowCount;
-        endSelectedIdx = endSelectedIdx < selectedRowCount ? endSelectedIdx : selectedRowCount;
-        int32_t tileRowCount = endSelectedIdx - firstSelectedIdx;
-        if (tileRowCount > 0) {
-            AtomicAdd(readyBase + static_cast<int64_t>(tileIdx) * INT_CACHELINE, tileRowCount);
-            ++atomicAddCount;
-        }
-    }
-    return atomicAddCount;
 }
 
 /** 根据当前 core 的专家 row range 定位相交的 source-rank segment。 */
