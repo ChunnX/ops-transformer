@@ -21,6 +21,7 @@
 #include "mc2_common_log.h"
 #include "mc2_moe_context.h"
 #include "graph/operator_factory.h"
+#include "graph/attr_value.h"
 
 namespace {
 constexpr const char *CONTEXT_NAME = "Mc2MoeGraphContext";
@@ -101,6 +102,9 @@ bool Mc2MoeGraphContext::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
+        {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
     };
     for (auto &sym : symbols) {
         *(sym.ptr) = GetHcclLibFunc<void *>(hcclLibHandle_, sym.name);
@@ -132,8 +136,8 @@ bool Mc2MoeGraphContext::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t ne
     uint32_t netLinkNum = 0;
     auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
     if (hcclRet != HCCL_SUCCESS || netLinkNum == 0) {
-        OPS_LOG_E(CONTEXT_NAME, "Get HCCL link failed, srcRankId %u, dstRankId %u, layerId %u.", srcRankId,
-                  dstRankId, netLayerId);
+        OPS_LOG_E(CONTEXT_NAME, "Get HCCL link failed, srcRankId %u, dstRankId %u, layerId %u.", srcRankId, dstRankId,
+                  netLayerId);
         return false;
     }
     for (uint32_t index = 0; index < netLinkNum; ++index) {
@@ -346,6 +350,10 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
         }
         context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
     }
+    // [lijd-dbg] 定位整网 epWinBuf=80100000801：对比 host 填充值 vs device kernel 读到的 epWinBuf
+    OPS_LOG_I(CONTEXT_NAME, "[lijd-dbg] BuildCtx rank=%u rsps=%u buf0=%llx bufSelf=%llx", context.epRankId,
+              context.rankSizePerServer, (unsigned long long)context.epHcclBuffer_[0],
+              (unsigned long long)context.epHcclBuffer_[context.epRankId]);
 
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));
     memcpy(contextData.data(), &context, sizeof(Mc2Aclnn::Mc2MoeContext));
@@ -412,9 +420,108 @@ ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::
     for (auto &gNode : graph.GetDirectNode()) {
         ge::AscendString name;
         ge::AscendString type;
-        if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr &&
-            constName == name.GetString() && gNode.GetType(type) == ge::GRAPH_SUCCESS &&
-            type.GetString() != nullptr && std::string(type.GetString()) == "Const") {
+        if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr && constName == name.GetString() &&
+            gNode.GetType(type) == ge::GRAPH_SUCCESS && type.GetString() != nullptr &&
+            std::string(type.GetString()) == "Const") {
+            return gNode;
+        }
+    }
+    return ge::GNode();
+}
+
+bool Mc2MoeGraphContext::GetContextDeviceAddr(const std::string &groupEp, const std::string &opName, void *&ctx,
+                                              uint64_t &ctxSize)
+{
+    Mc2MoeGraphContext &manager = GetInstance();
+    if (!manager.LoadHcclSymbols()) {
+        OPS_LOG_E(CONTEXT_NAME, "Load HCCL symbols failed.");
+        return false;
+    }
+    HcclComm hcclHandle;
+    if (!manager.GetCommHandle(groupEp.c_str(), hcclHandle)) {
+        OPS_LOG_E(CONTEXT_NAME, "Get HCCL handle failed, groupEp %s.", groupEp.c_str());
+        return false;
+    }
+    const std::string mc2ContextTag = groupEp + opName;
+    const CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    // 与单算子路径一致：先查 HCCL engine-ctx 注册表，命中直接返回固定地址
+    ctx = nullptr;
+    ctxSize = 0;
+    if (manager.HcclEngineCtxGet != nullptr &&
+        manager.HcclEngineCtxGet(hcclHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize) == HCCL_SUCCESS &&
+        ctx != nullptr) {
+        OPS_LOG_I(CONTEXT_NAME, "Found cached HCCL context, groupEp %s, ctx %p, size %lu.", groupEp.c_str(), ctx,
+                  ctxSize);
+        return true;
+    }
+    // 未命中：组 host 快照 → 分配并注册 HCCL ctx → H2D 一次性写入
+    std::vector<int32_t> contextData;
+    int64_t hcclBuffSize = 0;
+    if (!GetContextData(groupEp, contextData, hcclBuffSize)) {
+        OPS_LOG_E(CONTEXT_NAME, "Build context data failed, groupEp %s.", groupEp.c_str());
+        return false;
+    }
+    ctxSize = contextData.size() * sizeof(int32_t);
+    auto hcclRet = manager.HcclEngineCtxCreate(hcclHandle, mc2ContextTag.c_str(), engine, ctxSize, &ctx);
+    if (hcclRet != HCCL_SUCCESS || ctx == nullptr) {
+        OPS_LOG_E(CONTEXT_NAME, "Create HCCL context failed, groupEp %s.", groupEp.c_str());
+        return false;
+    }
+    hcclRet = manager.HcclEngineCtxCopy(hcclHandle, engine, mc2ContextTag.c_str(), contextData.data(), ctxSize, 0);
+    if (hcclRet != HCCL_SUCCESS) {
+        OPS_LOG_E(CONTEXT_NAME, "Copy context to device failed, groupEp %s.", groupEp.c_str());
+        return false;
+    }
+    OPS_LOG_I(CONTEXT_NAME, "Create HCCL context success, groupEp %s, ctx %p, size %lu.", groupEp.c_str(), ctx,
+              ctxSize);
+    return true;
+}
+
+ge::graphStatus Mc2MoeGraphContext::CreateContextPlaceHolderNode(ge::Graph &graph, const std::string &groupEp,
+                                                                 void *ctxAddr, uint64_t ctxSize,
+                                                                 ge::GNode &placeholderNode)
+{
+    const std::string nodeName = kContextConstNamePrefix + groupEp;
+    const int64_t elementCnt = static_cast<int64_t>(ctxSize / sizeof(int32_t));
+    ge::Shape shape({elementCnt});
+    ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
+    std::vector<int64_t> shapeList = {elementCnt};
+
+    auto placeholderOp = ge::OperatorFactory::CreateOperator(nodeName, "ConstPlaceHolder");
+    if (placeholderOp.IsEmpty()) {
+        OPS_LOG_E(CONTEXT_NAME, "ConstPlaceHolder op not found in factory.");
+        return ge::GRAPH_FAILED;
+    }
+    placeholderOp.UpdateOutputDesc(0U, tensorDesc);
+    placeholderOp.SetAttr("origin_shape", shapeList);
+    placeholderOp.SetAttr("origin_format", static_cast<int64_t>(ge::FORMAT_ND));
+    placeholderOp.SetAttr("storage_shape", shapeList);
+    placeholderOp.SetAttr("storage_format", static_cast<int64_t>(ge::FORMAT_ND));
+    placeholderOp.SetAttr("expand_dim_rules", std::string(""));
+    // dtype 必须是 DataType 类型 attr（GE GetConstPlaceHolderAddr 用 AttrUtils::GetDataType 读取），
+    // SetAttr(int64) 存的是 int 类型不匹配，需用 AttrValue 显式存 DataType
+    ge::AttrValue dtypeAttrValue;
+    (void)dtypeAttrValue.SetAttrValue(ge::DT_INT32);
+    placeholderOp.SetAttr("dtype", std::move(dtypeAttrValue));
+    placeholderOp.SetAttr("placement", static_cast<int64_t>(ge::kPlacementDevice));
+    placeholderOp.SetAttr("addr", static_cast<int64_t>(reinterpret_cast<uintptr_t>(ctxAddr)));
+    placeholderOp.SetAttr("size", static_cast<int64_t>(ctxSize));
+
+    placeholderNode = graph.AddNodeByOp(placeholderOp);
+    OPS_LOG_I(CONTEXT_NAME, "Context PlaceHolder node %s added, addr %p, size %lu.", nodeName.c_str(), ctxAddr,
+              ctxSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::GNode Mc2MoeGraphContext::FindContextPlaceHolderNode(ge::Graph &graph, const std::string &groupEp)
+{
+    const std::string constName = kContextConstNamePrefix + groupEp;
+    for (auto &gNode : graph.GetDirectNode()) {
+        ge::AscendString name;
+        ge::AscendString type;
+        if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr && constName == name.GetString() &&
+            gNode.GetType(type) == ge::GRAPH_SUCCESS && type.GetString() != nullptr &&
+            std::string(type.GetString()) == "ConstPlaceHolder") {
             return gNode;
         }
     }

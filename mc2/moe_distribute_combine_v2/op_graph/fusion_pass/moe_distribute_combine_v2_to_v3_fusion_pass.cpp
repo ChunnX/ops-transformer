@@ -319,12 +319,20 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
-            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
+            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "moe_distribute_v2"）：
+            // 复用 HCCL 持有的固定 device buffer，避免每图拷贝一份 context 进 weight 池
+            void *ctxAddr = nullptr;
+            uint64_t ctxSize = 0;
+            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupEpStr, "moe_distribute_v2", ctxAddr, ctxSize)) {
+                OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context device addr failed, V2 node kept as-is.");
+                continue;
+            }
+            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context 节点
+            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextPlaceHolderNode(*graph, groupEpStr);
             ge::AscendString tmpType;
             if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+                if (ops::Mc2MoeGraphContext::CreateContextPlaceHolderNode(*graph, groupEpStr, ctxAddr, ctxSize,
+                                                                          contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }
