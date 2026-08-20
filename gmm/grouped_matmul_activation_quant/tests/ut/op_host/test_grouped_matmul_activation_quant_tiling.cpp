@@ -45,8 +45,8 @@ constexpr size_t INPUT_TENSOR_COUNT = 6U;
 constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
 constexpr size_t SCALAR_FIELD_COUNT = 19U;
-constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
-                                                             TENSOR_FIELD_COUNT;
+constexpr size_t CSV_COLUMN_COUNT =
+    SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) * TENSOR_FIELD_COUNT;
 constexpr uint32_t DEFAULT_L1_SIZE = 512288U;
 constexpr uint32_t DEFAULT_L2_SIZE = 134217728U;
 constexpr uint32_t DEFAULT_L0C_SIZE = 262144U;
@@ -92,8 +92,7 @@ struct GroupedMatmulActivationQuantTilingCase {
         TilingInfo tilingInfo;
         ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo)) << "prefix=" << prefix;
         EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey) << "prefix=" << prefix;
-        ASSERT_GE(tilingInfo.tilingDataSize,
-                  sizeof(GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams));
+        ASSERT_GE(tilingInfo.tilingDataSize, sizeof(GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams));
         const auto *tilingData =
             reinterpret_cast<const GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams *>(
                 tilingInfo.tilingData.get());
@@ -243,13 +242,10 @@ const vector<GroupedMatmulActivationQuantTilingCase> &GetAscend950Cases()
     return cases;
 }
 
-class TestGroupedMatmulActivationQuantTiling950 : public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {
-};
+class TestGroupedMatmulActivationQuantTiling950
+    : public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {};
 
-TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase)
-{
-    GetParam().Run();
-}
+TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase) { GetParam().Run(); }
 
 INSTANTIATE_TEST_SUITE_P(GMM_ACTIVATION_QUANT_TILING_950, TestGroupedMatmulActivationQuantTiling950,
                          testing::ValuesIn(GetAscend950Cases()), MakeParamName);
