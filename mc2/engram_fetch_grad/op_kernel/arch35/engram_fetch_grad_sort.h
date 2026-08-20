@@ -136,14 +136,6 @@ private:
         uint32_t byteRound, uint32_t batchCount,
         AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe);
 
-    __aicore__ inline void ScatterOneKey(
-        uint32_t keyStart, uint32_t keyCount, int32_t gmPos,
-        AscendC::LocalTensor<int32_t> &tmpBufA, AscendC::LocalTensor<int32_t> &tmpBufB,
-        AscendC::LocalTensor<int32_t> &valueLocal, AscendC::LocalTensor<int32_t> &indexLocal,
-        AscendC::LocalTensor<uint32_t> &sortIndices,
-        AscendC::GlobalTensor<int32_t> *dstValue, AscendC::GlobalTensor<int32_t> *dstIndex,
-        AscendC::TPipe &pipe);
-
     __aicore__ inline void ProcessScatter(
         uint32_t byteRound, uint32_t batchCount,
         AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &indexGm,
@@ -187,8 +179,6 @@ private:
     uint32_t coreCount_{0};
     uint32_t byteRounds_{BYTES_PER_INT32};
     int32_t valueOffset_{0};
-    event_t evtVMte3_{};
-    event_t evtMte3V_{};
 
     AscendC::GlobalTensor<int32_t> valueGm_;
     AscendC::GlobalTensor<int32_t> indexGm_;
@@ -583,60 +573,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(
     sortHistMte3Cycle_[byteRound] += mte3Total;
 }
 
-__aicore__ inline void EngramFetchGradSort::ScatterOneKey(
-    uint32_t keyStart, uint32_t keyCount, int32_t gmPos,
-    AscendC::LocalTensor<int32_t> &tmpBufA, AscendC::LocalTensor<int32_t> &tmpBufB,
-    AscendC::LocalTensor<int32_t> &valueLocal, AscendC::LocalTensor<int32_t> &indexLocal,
-    AscendC::LocalTensor<uint32_t> &sortIndices,
-    AscendC::GlobalTensor<int32_t> *dstValue, AscendC::GlobalTensor<int32_t> *dstIndex,
-    AscendC::TPipe &pipe)
-{
-    AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-
-    __ubuf__ uint32_t *idxPtr = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
-    __ubuf__ int32_t *valPtr = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
-    __ubuf__ int32_t *idxDataPtr = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
-    __ubuf__ int32_t *bufAPtr = (__ubuf__ int32_t *)tmpBufA.GetPhyAddr();
-    __ubuf__ int32_t *bufBPtr = (__ubuf__ int32_t *)tmpBufB.GetPhyAddr();
-
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(evtMte3V_);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(evtMte3V_);
-
-    __VEC_SCOPE__
-    {
-        using namespace AscendC::Reg;
-        for (uint16_t off = 0; off < (uint16_t)keyCount; off += VECTOR_LEN_INT32) {
-            uint32_t cnt = MinU32(VECTOR_LEN_INT32, keyCount - off);
-            MaskReg mask = UpdateMask<uint32_t>(cnt);
-            RegTensor<uint32_t> indexReg;
-            RegTensor<int32_t> dstReg;
-            Load(indexReg, idxPtr + keyStart + off);
-            Gather(dstReg, valPtr, indexReg, mask);
-            StoreAlign(bufAPtr + off, dstReg, mask);
-        }
-    }
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3_);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3_);
-    AscendC::DataCopyPad((*dstValue)[gmPos], tmpBufA, dcp);
-
-    __VEC_SCOPE__
-    {
-        using namespace AscendC::Reg;
-        for (uint16_t off = 0; off < (uint16_t)keyCount; off += VECTOR_LEN_INT32) {
-            uint32_t cnt = MinU32(VECTOR_LEN_INT32, keyCount - off);
-            MaskReg mask = UpdateMask<uint32_t>(cnt);
-            RegTensor<uint32_t> indexReg;
-            RegTensor<int32_t> dstReg;
-            Load(indexReg, idxPtr + keyStart + off);
-            Gather(dstReg, idxDataPtr, indexReg, mask);
-            StoreAlign(bufBPtr + off, dstReg, mask);
-        }
-    }
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3_);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3_);
-    AscendC::DataCopyPad((*dstIndex)[gmPos], tmpBufB, dcp);
-}
-
 __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     uint32_t byteRound, uint32_t batchCount,
     AscendC::GlobalTensor<int32_t> *srcValueGm, AscendC::GlobalTensor<int32_t> &indexGm,
@@ -754,12 +690,9 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             __gm__ int32_t *dstValPtr = (__gm__ int32_t *)(*dstValue).GetPhyAddr();
             __gm__ int32_t *dstIdxPtr = (__gm__ int32_t *)(*dstIndex).GetPhyAddr();
             __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
-            __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
-            __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
-            __ubuf__ int32_t *posUb = (__ubuf__ int32_t *)globalPosUb.GetPhyAddr();
-
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+            __ubuf__ int32_t  *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
+            __ubuf__ int32_t  *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
+            __ubuf__ int32_t  *posUb = (__ubuf__ int32_t *)globalPosUb.GetPhyAddr();
 
             asc_vf_call<ScatterSimt>(dim3(SIMT_THREAD_NUM), tileLen,
                 sortedIdxUb, valUb, idxUb, posUb, dstValPtr, dstIdxPtr);
@@ -771,7 +704,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
         }
         AscendC::SyncAll<true>();
     }
-    AscendC::SyncAll<true>();
     sortScatterMte2Cycle_[byteRound] += mte2Total;
     sortScatterKeyCycle_[byteRound] += keyTotal;
     sortScatterWriteCycle_[byteRound] += writeTotal;
