@@ -124,8 +124,6 @@ def _validate_layout_dims(
 ):
     """根据 layout 校验 q/k/v/descale 的维度数，不合法时通过 torch._check 抛出拦截信息。
 
-    仅在 MxFP8 (quant_mode=1) 场景下校验 descale 维度; 其他模式 (如 GQA_FP8_FULLQUANT) 跳过 descale 校验。
-
     维度约定:
       Q  TND:(T,N,D)  BSND:(B,S,N,D)  BNSD:(B,N,S,D)  NTD:(N,T,D)
       KV TND:(T,Nkv,D) BSND:(B,S,Nkv,D) BNSD:(B,Nkv,S,D)
