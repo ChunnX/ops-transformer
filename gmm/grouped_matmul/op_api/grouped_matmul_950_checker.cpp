@@ -1546,6 +1546,18 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         GMM_CHECK_REPORT(gmmParams_.groupType == SPLIT_M,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "groupType",
                 std::to_string(gmmParams_.groupType), "A4W4 only supports SPLIT_M(0)"));
+        GMM_CHECK_REPORT(!gmmParams_.transposeX,
+                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                             GetAclnnOpName(), xName_.c_str(), ViewShapeToString(GetInputTensor(gmmParams_.x)),
+                             "in A4W4 quant case, the transposition of x is not supported"));
+        if (gmmParams_.transposeWeight) {
+            GMM_CHECK_REPORT(
+                GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    GetAclnnOpName(), weightName_.c_str(), ViewShapeToString(GetInputTensor(gmmParams_.weight)),
+                    "in A4W4 quant case, the transposition of weight is only supported in NZ format, "
+                    "ND format does not support transposition"));
+        }
         return ACLNN_SUCCESS;
     } else {
         std::string quantDtypes =
