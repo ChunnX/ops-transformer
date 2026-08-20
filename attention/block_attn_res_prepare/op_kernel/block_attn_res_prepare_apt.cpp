@@ -42,6 +42,7 @@ __aicore__ inline Blaze::Transformer::BlockAttnResPrepareParams MakeBlockAttnRes
     params.tilingParams.usedCoreNum = tiling.usedCoreNum;
     params.tilingParams.bigCoreNum = tiling.bigCoreNum;
     params.tilingParams.blockFactor = tiling.blockFactor;
+    params.tilingParams.baseT = tiling.baseT;
     params.tilingParams.baseS = tiling.baseS;
     params.tilingParams.baseD = tiling.baseD;
     params.tilingParams.baseDAlign = tiling.baseDAlign;
@@ -49,6 +50,7 @@ __aicore__ inline Blaze::Transformer::BlockAttnResPrepareParams MakeBlockAttnRes
     params.tilingParams.dTileNum = tiling.dTileNum;
     params.tilingParams.sAlign = tiling.sAlign;
     params.tilingParams.nAlign = tiling.nAlign;
+    params.tilingParams.mm1NAlign = tiling.mm1NAlign;
     params.tilingParams.vUbBufferNum = tiling.vUbBufferNum;
     params.tilingParams.eWorkspaceElems = tiling.eL1Elems;
     params.tilingParams.vUbElems = tiling.vUbElems;
