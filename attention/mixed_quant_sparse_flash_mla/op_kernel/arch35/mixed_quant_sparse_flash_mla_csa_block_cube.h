@@ -193,10 +193,10 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
     WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId);
     WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2U);
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2U);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -365,7 +365,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
-    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
+    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3U;
 
     outputBuf.WaitCrossCore();                             // 占用
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
