@@ -81,7 +81,6 @@ struct MxBaseConstInfo {
     uint32_t realN2Size = 0U;
     uint32_t coreNum = 0U;
     uint32_t aicIdx = 0U;
-    uint32_t aivIdx = 0U;
     uint8_t subBlockIdx = 0U;
     uint32_t n2GD = 0U;
     uint32_t qScaleN1D = 0U;
