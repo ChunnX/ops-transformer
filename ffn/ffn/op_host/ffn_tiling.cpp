@@ -554,8 +554,10 @@ ge::graphStatus FFNTiling::GetInputShape(const gert::TilingContext *context)
             const int64_t w2Dim0 = weight2Shape->GetStorageShape().GetDim(0);
             const int64_t w2Dim1 = weight2Shape->GetStorageShape().GetDim(1);
             bool isLinearW = false;
+            const bool isSwigluAct =
+                tilingData.ffnBaseParams.get_activeType() == static_cast<uint32_t>(ActiveType::SWIGLU);
             if (!FFNArch35Tiling::DetectLayout(context, weight1Shape, weight2Shape,
-                                               static_cast<int64_t>(k1), xDataType, isLinearW)) {
+                                               static_cast<int64_t>(k1), isSwigluAct, isLinearW)) {
                 return ge::GRAPH_FAILED;
             }
             if (isLinearW) {

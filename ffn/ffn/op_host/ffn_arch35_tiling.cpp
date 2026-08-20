@@ -16,6 +16,8 @@
 
 #include "ffn_arch35_tiling.h"
 
+#include "ffn_layout.h"
+
 #include <algorithm>
 #include <climits>
 
@@ -137,51 +139,31 @@ public:
 bool FFNArch35Tiling::DetectLayout(const gert::TilingContext *context,
                                    const gert::StorageShape *weight1Shape,
                                    const gert::StorageShape *weight2Shape,
-                                   int64_t xK, ge::DataType xDtype, bool &isLinear)
+                                   int64_t xK, bool isSwiglu, bool &isLinear)
 {
     isLinear = false;
     if (weight1Shape == nullptr || weight2Shape == nullptr ||
         weight1Shape->GetStorageShape().GetDimNum() < 2 || weight2Shape->GetStorageShape().GetDimNum() < 2) {
         return false;
     }
-    const int64_t w1Dim0 = weight1Shape->GetStorageShape().GetDim(0);
-    const int64_t w1Dim1 = weight1Shape->GetStorageShape().GetDim(1);
-    const int64_t w2Dim0 = weight2Shape->GetStorageShape().GetDim(0);
-    const int64_t w2Dim1 = weight2Shape->GetStorageShape().GetDim(1);
+    // 维度统一取最后两维（与 infershape/aclnn 一致，为将来 >2 维权重留门）。
+    const auto &w1Shape = weight1Shape->GetStorageShape();
+    const auto &w2Shape = weight2Shape->GetStorageShape();
+    const int64_t w1Dim0 = w1Shape.GetDim(w1Shape.GetDimNum() - 2);
+    const int64_t w1Dim1 = w1Shape.GetDim(w1Shape.GetDimNum() - 1);
+    const int64_t w2Dim0 = w2Shape.GetDim(w2Shape.GetDimNum() - 2);
+    const int64_t w2Dim1 = w2Shape.GetDim(w2Shape.GetDimNum() - 1);
 
-    // swiglu 的隐藏宽是 w1 边长的一半，其余激活隐藏宽=w1 边长。
-    const char *actAttr = nullptr;
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    if (attrs != nullptr) {
-        actAttr = attrs->GetAttrPointer<char>(FFN_ATTR_INDEX_ACTIVATION);
-    }
-    const bool isSwiglu = (actAttr != nullptr) && (actAttr[0] == 's' || actAttr[0] == 'S') &&
-                          (actAttr[1] == 'w' || actAttr[1] == 'W') &&
-                          (actAttr[2] == 'i' || actAttr[2] == 'I') &&
-                          (actAttr[3] == 'g' || actAttr[3] == 'G') &&
-                          (actAttr[4] == 'l' || actAttr[4] == 'L') &&
-                          (actAttr[5] == 'u' || actAttr[5] == 'U') && actAttr[6] == '\0';
-    const int64_t hiddenW = isSwiglu ? w1Dim0 / 2 : w1Dim0;
-    const int64_t hiddenW2 = isSwiglu ? w1Dim1 / 2 : w1Dim1;
-
-    // 1) w1 非方阵直接判；2) w1 方阵用 w2 消歧；3) 全方阵/均不匹配按 dtype 兜底。
-    if (w1Dim1 == xK && w1Dim0 != xK) {
-        isLinear = true;
-    } else if (w1Dim0 == xK && w1Dim1 != xK) {
-        isLinear = false;
-    } else if (w1Dim0 == xK && w1Dim1 == xK) {
-        if (w2Dim1 == hiddenW && w2Dim0 != hiddenW2) {
-            isLinear = true;
-        } else if (w2Dim0 == hiddenW2 && w2Dim1 != hiddenW) {
-            isLinear = false;
-        } else {
-            isLinear = (xDtype == ge::DT_BF16);
-        }
-    } else {
+    // 布局识别统一走公共规则（ffn_layout.h，与 infershape/aclnn/op_api/binding 同一
+    // 实现）。swiglu 隐藏宽=w1 边长一半，isSwiglu 由调用方按 ActiveType 枚举传入。
+    const ffnlayout::FfnLayout layout =
+        ffnlayout::FfnDetectLayout(w1Dim0, w1Dim1, w2Dim0, w2Dim1, xK, isSwiglu);
+    if (layout == ffnlayout::FfnLayout::INVALID) {
         OP_LOGE(context, "FFN arch35 weight1 shape [%ld, %ld] does not match x K=%ld",
                 static_cast<long>(w1Dim0), static_cast<long>(w1Dim1), static_cast<long>(xK));
         return false;
     }
+    isLinear = (layout == ffnlayout::FfnLayout::LINEAR);
     return true;
 }
 
@@ -346,8 +328,9 @@ ge::graphStatus FFNArch35Tiling::Tiling(gert::TilingContext *context,
         }
     }
     bool downStreamK = false;
-    if (!isSwiglu && xDataType == ge::DT_BF16) {
-        // down StreamK（3rd 内核仅 bf16），fp16 走 basic
+    if (!isSwiglu) {
+        // down StreamK：2026-08-20 起放开 fp16（3rd streamK 内核 dtype 泛化，官方
+        // mat_mul_v3 StreamK 的 IsCapable 无 dtype 门槛，fp16 对齐分支齐备）
         // gelu/silu down：先算官方 basic 切分作基准，再决定是否切换官方 StreamK split-K。
         OP_CHECK_IF(computeOneStage(bs, downK, n2, true, false, down) != ge::GRAPH_SUCCESS,
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "compute down matmul tiling failed"),

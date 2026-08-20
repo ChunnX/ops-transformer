@@ -389,9 +389,16 @@ public:
             });
             const uint64_t halfW = swigluTailHalfRaw_ > 0 ? swigluTailHalfRaw_ : curNL1 / 2;
             const uint64_t halfPadded = curNL1 / 2;
+            // rightPadding 补到 32B 对齐：MTE 搬运粒度 32B，补齐数 = Align(halfW, 8 元素)
+            // 的差值，天然 ≤ 28B(fp32)/30B(bf16)，不触 rightPadding 32B 上限——超出该上限
+            // 会触发 aicore 507015（H=1095/1110/1111 实测，fp32 pad ≥9 元素=36B 崩）。
+            // 对齐后剩余 pad 区域保留 L1 旧值：pad 列仅进入 mmad/epilogue 补齐帧，epilogue
+            // 只写有效半宽，元素级运算不跨界，旧值不会影响输出。
+            const uint64_t alignElems = 32 / sizeof(Bias_T); // fp32: 8, bf16: 16
+            const uint64_t rp = (alignElems - halfW % alignElems) % alignElems;
             AscendC::DataCopyPadParams padParams;
-            padParams.isPad = (halfPadded > halfW);
-            padParams.rightPadding = static_cast<uint8_t>(halfPadded - halfW);
+            padParams.isPad = (rp > 0);
+            padParams.rightPadding = static_cast<uint8_t>(rp);
             AscendC::DataCopyParams biasParam{1, static_cast<uint16_t>(halfW * sizeof(Bias_T)), 0, 0};
             AscendC::DataCopyPad(cl1Local, biasGlobal, biasParam, padParams);                          // gate bias
             AscendC::DataCopyPad(cl1Local[curNL1 / 2], biasGlobal[n_ / 2], biasParam, padParams);      // up bias
