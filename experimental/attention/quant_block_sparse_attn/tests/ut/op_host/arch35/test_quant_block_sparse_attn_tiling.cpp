@@ -103,9 +103,11 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
             if (param.mismatchValueStride) {
                 value.stride_.SetStride(0U, value.stride_.GetStride(0U) + 1U);
             }
+            }
+            }
         }
     }
-    if (param.provideFp8Metadata && param.metadata.dtype_ == ge::DT_UNDEFINED) {
+    if (param.provideFp8Metadata && param.metadata.dtype_ == ge::DT_UNDEFINED) { // 讲metadata提到循环外
             metadata = DefaultMetadata;
         } else if (!param.provideFp8Metadata) {
             metadata = param.metadata;
