@@ -567,7 +567,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     OP_LOGD(OP_NAME, "isMegaMoe=%d", isMegaMoe);
 
     if (isMegaMoe) {
-        // MegaMoe structured dump: copy metadata first, then compact the selected GM regions on host.
+        // MegaMoe: 结构化 dump（从 device 按 3 阶段搬运到 host）
         OP_LOGD(OP_NAME, "MegaMoe structured dump: getting peermem base");
         void *peermemBase = GetPeermemBase(socName, argsAddr);
         if (peermemBase == nullptr) {
