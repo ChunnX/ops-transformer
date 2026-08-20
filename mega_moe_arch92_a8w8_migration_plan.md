@@ -465,13 +465,15 @@ Combine(current wave expert，在GMM2阶段)
 
 这不是三段并行流水。SwiGLU/量化会占用大部分或全部UB，Dispatch和Combine必须在函数边界上与其串行。
 
-### 8.2 cumsum必须落GM
+### 8.2 首版cumsum落GM
 
-Dispatch的 `cumsumInfoTensor` 位于UB，而Activation会覆盖UB。A6必须像A8W4一样：
+Dispatch的 `cumsumInfoTensor` 位于UB，而首版Activation布局会覆盖256KB范围内的Dispatch UB。首版A6像A8W4一样：
 
 - 每次需要时从 `cumsumInfoPtr` 恢复前序cumsum。
 - 当前专家SendCount计算完成后写回GM。
 - arch92 本地副本将 `EnableA8W4` 中与数据类型无关的持久化语义抽象为 `PersistDispatchCumsum`；A5 原文件不修改。
+
+这只是首版在尚未划分arch92常驻UB区时的保守实现，不是A6最终必须保留的GM协议。A6额外128KB UB为cumsum常驻提供了条件，后续优化见9.8节。
 
 ### 8.3 Scratch对象只保存视图和标量状态
 
@@ -636,16 +638,46 @@ A6前处理可用AIV数是A5的一半，该优化在大BS场景可能获得更�
 
 A5 arch35 继续使用未修改的 256KB 布局，arch92 本地 stage 实例化 384KB 布局。后续对稳定 Blaze 头文件做 UB layout 抽象时，应使用独立兼容性 PR，不在 A6 迁移中修改 A5 热路径。
 
-### 9.8 优化实施优先级
+### 9.8 后续TODO：Dispatch cumsum常驻UB并删除无效策略分支
+
+`cumsumInfoTensor`的实际容量为：
+
+```text
+Align32(moeExpertPerRank * epWorldSize * sizeof(int32_t))
+= Align32(moeExpertNum * 4B)
+```
+
+当前Host约束`moeExpertNum <= 2048`，因此每个AIV所需的cumsum常驻区最多只有8KB。与A6新增的128KB UB相比，该容量很小，优先考虑从高地址UB划出独立持久区，使它在Dispatch、Activation、Combine串行切换期间不被覆盖。
+
+目标布局和行为：
+
+1. 由arch92 UB layout policy从平台报告的可用UB顶端预留`Align32(moeExpertNum * 4B)`，不要在Kernel中直接写死384KB地址。
+2. Dispatch、Activation、Combine及后续384KB专项布局均不得占用该区；UB复用只发生在持久区以下。
+3. `cumsumInfoTensor`在本轮算子执行期间始终指向该常驻区。专家`e`完成后，专家`e + 1`直接读取UB中的历史前缀，不再执行GM到UB恢复和UB到GM备份。
+4. 最终`ExportExpertTokenCounts`直接读取常驻UB，不再以`ReloadCumsumFromGm=true`重新加载。
+5. 确认所有路径都不再依赖GM副本后，从arch92 Workspace布局中删除`cumsumInfoPtr`及对应的`aicNum * Align32(moeExpertNum * 4B)`空间；Host和Kernel公式必须在同一次修改中更新。
+6. 需要验证普通A8W8 Wave、topk weights预取、Combine 0/3/4、空专家、专家截断和最大`moeExpertNum=2048`场景，并检查所有stage的最大UB地址没有越过持久区边界。
+
+这项优化不仅减少最多8KB的一次搬运。当前实现对专家`e`会恢复前`e`个专家的prefix并回写前`e + 1`个专家的prefix，累计搬运量随本卡专家数近似二次增长，而且每个Dispatch AIV都会重复执行。常驻UB可以同时消除这些MTE2/MTE3操作及其相关等待。
+
+无论是否立即实施常驻UB，arch92都应收敛掉`PersistDispatchCumsum`模板维度：
+
+- `MegaMoeArch92ArchitecturePolicy::PERSIST_DISPATCH_CUMSUM`当前恒为`true`，arch92也只保留A8W8路径，不存在第二种有效实例化。
+- 现有`if constexpr (PersistDispatchCumsum)`不会产生运行时分支，因此单纯删除判断没有直接性能收益；收益是减少无效模板参数和错误配置空间。
+- 若暂时继续落GM，arch92本地`ComputeExpertTokenCountAndNotify`直接无条件恢复/写回cumsum。
+- 若启用常驻UB，则直接删除两次GM搬运和`cumsumInfoGlobalTensor`，而不是把策略常量改成`false`后继续保留双路径代码。
+
+### 9.9 优化实施优先级
 
 建议顺序如下：
 
 1. 第一版：平台UB容量驱动的Dispatch、SendMask和Unpermute自适应配置。
-2. 后续第一优先级：GMM1输出到Activation的128行双缓冲。
-3. 后续第二优先级：非量化GMM2输出到Combine的tile双缓冲。
-4. 后续第三优先级：前后处理阶段独占UB和Quant多token batch。
-5. Profiling驱动：量化Combine扩大ring。
-6. 最后评估：Dispatch/Activation/Combine跨阶段MTE重叠。
+2. 后续低风险优先项：预留最多8KB高地址持久区，使Dispatch cumsum常驻UB并删除GM副本。
+3. 后续第一优先级：GMM1输出到Activation的128行双缓冲。
+4. 后续第二优先级：非量化GMM2输出到Combine的tile双缓冲。
+5. 后续第三优先级：前后处理阶段独占UB和Quant多token batch。
+6. Profiling驱动：量化Combine扩大ring。
+7. 最后评估：Dispatch/Activation/Combine跨阶段MTE重叠。
 
 每项优化均应独立提交和测试，并同时记录AIC等待、AIV Vector占用、MTE2/MTE3等待及端到端耗时，避免将UB容量优化与Wave调度变化混在同一次验证中。
 
