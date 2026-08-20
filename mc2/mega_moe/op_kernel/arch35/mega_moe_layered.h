@@ -380,6 +380,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     rankPerServer_ = mc2Context_->rankSizePerServer;
+    rankPerServer_ = 1;
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
@@ -1240,6 +1241,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
         int32_t scanCursor = cursor;
         // SEND_SCAN_WINDOW only bounds each polling pass; keep the batch open across windows until it is full.
         uint32_t preparedDataCount = 0;
+        bool computeDone = false;
         while (true) {
             int32_t endCount = ReadGmByPassDCache(countPtr);
             if (scanCursor < cursor || scanCursor >= endCount) {
@@ -1266,19 +1268,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 scanCursor = cursor;
             }
 
-            bool computeDone = DispatchSyncWithCompute(realComputeCoreNum, roundTag);
+            // A partial tail batch can only be committed after reaching the current queue end. Polling all compute
+            // done flags on intermediate scan windows cannot change any decision in this iteration.
+            if (!computeDone && scannedToEnd) {
+                computeDone = DispatchSyncWithCompute(realComputeCoreNum, roundTag);
+            }
             bool batchFull = preparedDataCount == DISPATCH_BATCH_COMMIT_SIZE;
             bool tailBatchReady = preparedDataCount != 0U && computeDone && scannedToEnd;
             if (batchFull || tailBatchReady) {
                 CommitPreparedDispatchBatch(targetServerForSender, peerRank, activeBatchHandle, preparedDescTensor,
                                             preparedDataCount);
                 preparedDataCount = 0;
-            }
-
-            int32_t oldCursor = cursor;
-            cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
-            if (cursor != oldCursor) {
-                WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
+                // Slot state changes to DONE only in CommitPreparedDispatchBatch. Without a commit, rescanning the
+                // contiguous DONE prefix cannot advance cursor.
+                int32_t oldCursor = cursor;
+                cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
+                if (cursor != oldCursor) {
+                    WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
+                }
             }
             if (computeDone && preparedDataCount == 0U && cursor == ReadGmByPassDCache(countPtr)) {
                 break;
