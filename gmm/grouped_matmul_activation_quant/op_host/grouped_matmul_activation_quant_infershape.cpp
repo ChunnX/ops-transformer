@@ -52,8 +52,7 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
     bool transposeWeight = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
 
     OP_CHECK_IF(xShape->GetDimNum() < MIN_X_DIM_NUM,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x",
-                                                      std::to_string(xShape->GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
                                                       "x dim num must be greater than or equal to 1"),
                 return GRAPH_FAILED);
     OP_CHECK_IF(weightScaleShape->GetDimNum() != WEIGHT_SCALE_DIM_NUM,
@@ -62,9 +61,8 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
                                                       "weightScale dim num must be 4"),
                 return GRAPH_FAILED);
     int64_t m = xShape->GetDim(M_DIM_INDEX);
-    int64_t n =
-        transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
-                          weightScaleShape->GetDim(WEIGHT_SCALE_N_DIM_INDEX);
+    int64_t n = transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                                  weightScaleShape->GetDim(WEIGHT_SCALE_N_DIM_INDEX);
 
     auto outShape = context->GetOutputShape(OUT_Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);

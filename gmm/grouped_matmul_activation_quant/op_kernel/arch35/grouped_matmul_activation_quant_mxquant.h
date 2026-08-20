@@ -55,15 +55,13 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using BiasType = float;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<
-        0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMxActivationQuant>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        BlockMmadPolicy, AType, LayoutA, BType, LayoutB, MmadCType, LayoutC, BiasType, LayoutC>;
-    using BlockEpilogue =
-        Blaze::Epilogue::Block::BlockEpilogueGeluTanhMxQuant<OutputType, MmadCType>;
+    using BlockMmadPolicy =
+        Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMxActivationQuant>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, MmadCType, LayoutC,
+                                                    BiasType, LayoutC>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueGeluTanhMxQuant<OutputType, MmadCType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
-    using QGmmKernel =
-        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using QGmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
     GMMTiling gmmParams{gmmActivationQuantParams_.groupNum,
@@ -84,16 +82,14 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
                         static_cast<uint8_t>(gmmActivationQuantParams_.groupListType),
                         static_cast<uint8_t>(1)};
     GM_ADDR weightData = reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<BType>(weight));
-    GM_ADDR weightScaleData =
-        reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<AscendC::fp8_e8m0_t>(weightScale));
-    Params params = {
-        {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
-         DEFAULT_PROBLEM_SHAPE_VALUE},
-        {x, weightData, y, nullptr, xScale, weightScaleData},
-        {y, yScale, static_cast<uint32_t>(mmTilingData_.baseM), static_cast<uint32_t>(mmTilingData_.baseN),
-         static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax},
-        groupList,
-        gmmParams};
+    GM_ADDR weightScaleData = reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<AscendC::fp8_e8m0_t>(weightScale));
+    Params params = {{DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
+                      DEFAULT_PROBLEM_SHAPE_VALUE},
+                     {x, weightData, y, nullptr, xScale, weightScaleData},
+                     {y, yScale, static_cast<uint32_t>(mmTilingData_.baseM), static_cast<uint32_t>(mmTilingData_.baseN),
+                      static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax},
+                     groupList,
+                     gmmParams};
     QGmmKernel op;
     op(params);
 }
