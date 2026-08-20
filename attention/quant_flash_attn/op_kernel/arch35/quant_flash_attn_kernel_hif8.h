@@ -17,15 +17,15 @@
 #define QUANT_FLASH_ATTN_KERNEL_HIF8_H_
 
 #include "quant_flash_attn_common_def.h"
-#include "memory_copy_arch35.h"
+#include "quant_flash_attn_block_cube_hif8.h"
+#include "quant_flash_attn_block_vec_hif8.h"
+#include "quant_flash_attn_block_vec_flashdecode.h"
+#include "memory_copy_arch35_quant_flash_attn.h"
 #if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
 #else
 #include "../../common/op_kernel/vector_common.h"
 #endif
-#include "quant_flash_attn_block_cube_hif8.h"
-#include "quant_flash_attn_block_vec_hif8.h"
-#include "quant_flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
