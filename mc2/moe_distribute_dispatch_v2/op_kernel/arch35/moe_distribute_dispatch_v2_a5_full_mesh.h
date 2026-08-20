@@ -1830,12 +1830,12 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         LocalTensor<float> sumLocalTensor = sumLocalBuf_.Get<float>();
         DataCopyParams sumCopyParams{static_cast<uint16_t>(aivId_), 1, 0, 0};
         DataCopy(sumLocalTensor, cumsumWsGMTensor_, sumCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        LocalTensor<float> prefixSumOut = scalarBuf_.Get<float>();
-        LocalTensor<float> prefixWorkTensor = sumContinueBuf_.Get<float>();
-        ReduceSum(prefixSumOut, sumLocalTensor, prefixWorkTensor, 1, aivId_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        recvCntBeforeStart_ = static_cast<uint32_t>(prefixSumOut.ReinterpretCast<int32_t>().GetValue(0));
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        LocalTensor<int32_t> sumLocalInt32Tensor = sumLocalTensor.ReinterpretCast<int32_t>();
+        for (uint32_t index = 0; index < aivId_; ++index) {
+            recvCntBeforeStart_ +=
+                static_cast<uint32_t>(sumLocalInt32Tensor.GetValue(index * UB_ALIGN_DATA_COUNT));
+        }
     }
     uint32_t curPrefix = recvCntBeforeStart_;
     for (uint32_t index = startId_; index < endId_; ++index) {
