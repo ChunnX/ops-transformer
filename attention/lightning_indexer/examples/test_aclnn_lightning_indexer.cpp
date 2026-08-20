@@ -12,7 +12,6 @@
  * \file test_aclnn_lightning_indexer.cpp
  * \brief
  */
-// testci
 #include <iostream>
 #include <vector>
 #include <cmath>
