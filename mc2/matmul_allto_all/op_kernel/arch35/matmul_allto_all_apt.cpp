@@ -95,7 +95,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             MatmulAlltoAllPipeLine<MxComputationType, TransposeType, CommunicationType, SchedulerContextType>;         \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
         Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,                                    \
-                                                QuantMatmulAlltoAllTilingData, isMxFp4>                                \
+                                                QuantMatmulAlltoAllTilingData>                                \
             op(&SchedulerImpl, hcclDataType);                                                                          \
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                                   \
         op.Process();                                                                                                  \
