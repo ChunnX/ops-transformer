@@ -58,8 +58,8 @@ public:
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
     __aicore__ inline void PrepareForComputeVec();
     __aicore__ inline void ComputeVec1();
-    __aicore__ inline bool HasLayerNorm() const;
-    __aicore__ inline void ApplyLayerNorm();
+    __aicore__ inline bool HasKeyTransform() const;
+    __aicore__ inline void TransformKeysBeforePool();
     __aicore__ inline void ComputeFullHistoryPool();
 
 protected:
@@ -243,13 +243,13 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::Init(
 }
 
 template <typename COMP>
-__aicore__ inline bool KeyPoolBlockVectorFullLoad<COMP>::HasLayerNorm() const
+__aicore__ inline bool KeyPoolBlockVectorFullLoad<COMP>::HasKeyTransform() const
 {
     return hasLayerNorm_;
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ApplyLayerNorm()
+__aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::TransformKeysBeforePool()
 {
     if (!hasLayerNorm_) {
         return;
@@ -258,7 +258,7 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ApplyLayerNorm()
     LocalTensor<T> mean = output[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> gamma = mean[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> beta = gamma[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    ApplyKeyPoolLayerNormToCache<COMP, decltype(inputQue1), HIDDEN_STATES_T>(
+    TransformKeyCacheBeforePool<COMP, decltype(inputQue1), HIDDEN_STATES_T>(
         stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
         static_cast<uint32_t>(COMP::coff), inputQue1, output, mean, gamma, beta);
 }
@@ -1266,7 +1266,7 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ComputeFullHistoryPool(
     for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
         // With LayerNorm, the cache is normalized after the streaming path.
         // Rebuild first-pass pools from the normalized cache as well.
-        if (GetStartPos(bIdx) == 0 && !HasLayerNorm()) {
+        if (GetStartPos(bIdx) == 0 && !HasKeyTransform()) {
             continue;
         }
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;

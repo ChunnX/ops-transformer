@@ -523,8 +523,8 @@ __aicore__ inline void KeyPoolKernel<COMP>::Process()
     if ASCEND_IS_AIV {
         PipeBarrier<PIPE_ALL>();
         SyncAll();
-        if (blockVec_.HasLayerNorm()) {
-            blockVec_.ApplyLayerNorm();
+        if (blockVec_.HasKeyTransform()) {
+            blockVec_.TransformKeysBeforePool();
             SyncAll();
         }
         blockVec_.ComputeFullHistoryPool();

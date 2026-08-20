@@ -56,8 +56,35 @@ __aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &out, const Loc
     PipeBarrier<PIPE_V>();
 }
 
+__aicore__ inline void ApplyKeyPoolRotaryPlaceholder(const LocalTensor<float> &, uint32_t)
+{
+    // RoPE inputs are rejected by the Host in this version. Keep the transform
+    // boundary explicit so a later RoPE implementation is inserted between
+    // normalization and cache writeback without changing the Pool stage.
+}
+
+template <typename INPUT_QUEUE, typename HIDDEN_STATES_T>
+__aicore__ inline void WriteTransformedKeyToStateCache(
+    const GlobalTensor<float> &stateCache, uint64_t stateOffset, uint32_t headDim, uint32_t coff,
+    INPUT_QUEUE &inputQue, const LocalTensor<float> &key)
+{
+    LocalTensor<HIDDEN_STATES_T> rounded = inputQue.template AllocTensor<HIDDEN_STATES_T>();
+    Cast(rounded, key, RoundMode::CAST_ROUND, coff * headDim);
+    PipeBarrier<PIPE_V>();
+    Cast(key, rounded, RoundMode::CAST_NONE, coff * headDim);
+    PipeBarrier<PIPE_V>();
+    inputQue.FreeTensor(rounded);
+    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    DataCopy(stateCache[stateOffset], key, headDim);
+    if (coff == 2) {
+        DataCopy(stateCache[stateOffset + headDim], key[headDim], headDim);
+    }
+    PipeBarrier<PIPE_MTE3>();
+}
+
 template <typename COMP, typename INPUT_QUEUE, typename HIDDEN_STATES_T>
-__aicore__ inline void ApplyKeyPoolLayerNormToCache(
+__aicore__ inline void TransformKeyCacheBeforePool(
     const GlobalTensor<float> &stateCache, const GlobalTensor<int32_t> &blockTable,
     const GlobalTensor<float> &normWeight, const GlobalTensor<float> &normBias, KeyPoolTools<COMP> &tools,
      const ConstInfo &constInfo, uint32_t coff, INPUT_QUEUE &inputQue, const LocalTensor<float> &output,
@@ -101,22 +128,10 @@ __aicore__ inline void ApplyKeyPoolLayerNormToCache(
 
             KeyPoolLayerNorm(output, input, mean, gamma, beta, constInfo.normEps, hiddenDim);
 
-            // Match the BF16/FP16 projection contract before storing the
-            // normalized result in the FP32 state cache.
             inputQue.FreeTensor(input);
-            LocalTensor<HIDDEN_STATES_T> rounded = inputQue.template AllocTensor<HIDDEN_STATES_T>();
-            Cast(rounded, output, RoundMode::CAST_ROUND, hiddenDim);
-            PipeBarrier<PIPE_V>();
-            Cast(output, rounded, RoundMode::CAST_NONE, hiddenDim);
-            PipeBarrier<PIPE_V>();
-            inputQue.FreeTensor(rounded);
-            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            DataCopy(stateCache[stateOffset], output, headDim);
-            if (coff == 2) {
-                DataCopy(stateCache[stateOffset + headDim], output[headDim], headDim);
-            }
-            PipeBarrier<PIPE_MTE3>();
+            ApplyKeyPoolRotaryPlaceholder(output, hiddenDim);
+            WriteTransformedKeyToStateCache<INPUT_QUEUE, HIDDEN_STATES_T>(
+                stateCache, stateOffset, headDim, coff, inputQue, output);
         }
     }
 }
