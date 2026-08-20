@@ -701,7 +701,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CrossRankSyncIn
     }
     __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr);
     __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(
-        params_.peermemInfo.rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(aivCoreIdx_) * 64U);
+        params_.peermemInfo.rankSyncInWorldPtr + AIV_SYNC_COUNT_OFFSET + static_cast<uint64_t>(aivCoreIdx_) * 64U);
     int32_t count = ReadGmByPassDCache(syncCount) + 1;
     for (uint32_t rankIdx = aivCoreIdx_; rankIdx < worldSize_; rankIdx += blockAivNum_) {
         __gm__ int32_t *remoteSyncAddr =
