@@ -59,7 +59,6 @@ private:
     using MegaMoeBase::ProcessInputPreparationStage;
     using MegaMoeBase::ProcessSharedExpertGmm1;
     using MegaMoeBase::ProcessSharedExpertGmm2;
-    using MegaMoeBase::PrepareGmmExpertState;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
@@ -209,7 +208,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
@@ -231,7 +230,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             uint32_t sliceTokenStartIndexInExpert =
                 expertIdx == waveBeginPosition.expertIdx ? waveBeginPosition.tokenIndexInExpert : 0U;
             if (sliceTokenStartIndexInExpert == 0U) {
-                PrepareGmmExpertState<false>(gmm2State, expertIdx);
+                this->template PrepareGmmExpertState<false>(gmm2State, expertIdx);
             }
             uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
             uint32_t sliceTokenEndIndexInExpert =
