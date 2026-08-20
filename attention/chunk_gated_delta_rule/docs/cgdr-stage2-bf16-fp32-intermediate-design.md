@@ -20,18 +20,18 @@ AIC: CalVPrime (BF16 matmul, accum=1) → vInner (BF16, GM)
 
 **修改后**：
 ```
-AIC: CalVPrime (FP32 output matmul, accum=0) → wsFp32 (FP32, GM, per-core)
+AIC: CalVPrime (BF16 output matmul, accum=0) → wsFp32 (BF16, GM, per-core)
 AIV: 
   1. Read U (BF16) from vInner → cast to FP32 in UB
-  2. Read W@S (FP32) from wsFp32 → UB
+  2. Read W@S (BF16) from wsFp32 → cast to FP32 in UB
   3. Sub: U - W@S (FP32, in UB)
   4. Cast (U-WS) to BF16 → vInner (GM) for stage3
 ```
 
 关键改动：
-- `CalVPrime` 改用 `mm1Fp32`（BF16→BF16→FP32 matmul），`accum=0`（不累加）
-- 新增 `CalVPrimeAiv` 方法：在 UB 中按 FP32 计算 U-WS，再 cast 到 BF16 输出到 GM
-- 新增 `wsFp32` workspace（per-core，`chunkSize × Dv` FP32）
+- `CalVPrime` 改用 `mm1Bf16`（BF16 output matmul），`accum=0`（不累加）
+- 新增 `CalVPrimeAiv` 方法：将 BF16 结果 cast 到 FP32，在 UB 中按 FP32 计算 U-WS，再 cast 回 BF16 输出到 GM
+- 新增 `wsFp32` workspace（per-core，`chunkSize × Dv` BF16）
 
 ### 2.2 State 中间计算改为 FP32（需求2）
 
@@ -66,17 +66,17 @@ AIC: CalStateNew (BF16 matmul, accum=1) → stateOut (BF16, GM, atomicAdd)
 
 **修改后**：
 ```
-AIC: CalStateNew (FP32 output matmul, accum=0) → wsStateFp32 (FP32, GM, per-core)
+AIC: CalStateNew (BF16 output matmul, accum=0) → wsStateFp32 (BF16, GM, per-core)
 AIV:
-  1. Read (U-WS)@K (FP32) from wsStateFp32 → UB (tiled)
+  1. Read (U-WS)@K (BF16) from wsStateFp32 → UB, cast to FP32
   2. Add: stateFp32Ub_ + (U-WS)@K (FP32, in UB)
   3. Write stateFp32Ub_ → stateFp32Wk (FP32, GM)
 ```
 
 关键改动：
-- `CalStateNew` 改用 `mm1Fp32`（BF16→BF16→FP32 matmul），`accum=0`（不累加）
-- 新增 `CalStateAdd` 方法：在 UB 中按 FP32 做 Add，分 tile 处理大矩阵
-- 新增 `wsStateFp32` workspace（per-core，`Dv × Dk` FP32）
+- `CalStateNew` 改用 `mm1Bf16`（BF16 output matmul），`accum=0`（不累加）
+- 新增 `CalStateAdd` 方法：将 BF16 结果 cast 到 FP32，在 UB 中按 FP32 做 Add，分 tile 处理大矩阵
+- 新增 `wsStateFp32` workspace（per-core，`Dv × Dk` BF16）
 - 完全移除 `SetAtomicAdd` 调用
 
 ## 3. 数据流图
@@ -159,7 +159,7 @@ BF16-state 路径的 AIC-AIV 同步流程：
 |------|---------|
 | `op_host/chunk_gated_delta_rule_tiling.cpp` | 新增 BF16-state workspace；始终计算 matmulTilingFp32C |
 | `op_kernel/arch35/chunk_gated_delta_rule_arch35.h` | 新增 stateFp32Wk/curStateBf16 分配；新增 Cast 方法；Process() 增加首尾 cast；RunStage2 传参 |
-| `op_kernel/arch35/chunk_gated_delta_rule_stage2_arch35.h` | 重写 ProcessAivBf16/ProcessAic；新增 CalVPrimeAiv/CalStateAdd；CalVPrime/CalStateNew 改用 FP32 output |
+| `op_kernel/arch35/chunk_gated_delta_rule_stage2_arch35.h` | 重写 ProcessAivBf16/ProcessAic；新增 CalVPrimeAiv/CalStateAdd；CalVPrime/CalStateNew 改用 BF16 output (accum=0)，AIV cast 到 FP32 做 Sub/Add |
 
 ### 6.2 不受影响
 
