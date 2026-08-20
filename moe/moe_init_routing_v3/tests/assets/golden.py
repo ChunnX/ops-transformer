@@ -19,6 +19,7 @@ __input__ = {
 }
 
 __spec__ = {
+    "moe_init_routing_v3": "MoeInitRoutingV3KernelSpec",
     "aclnnMoeInitRoutingV3": "AclnnMoeInitRoutingV3Spec",
 }
 
@@ -963,6 +964,48 @@ def _numpy_to_torch(arr, template):
         except (TypeError, RuntimeError):
             pass
     return result
+
+
+class MoeInitRoutingV3KernelSpec:
+    """Kernel/GEIR spec — pre_compare truncates NPU output to golden size on shape mismatch.
+
+    When all outputs have matching shapes (kernel mode), pre_compare returns None
+    and the framework falls back to its default comparators (stat_rel_err / binary_equal).
+    When any output has a shape mismatch (GEIR mode with padded outputs), pre_compare
+    truncates NPU output to golden's size, then the framework compares the truncated data.
+    """
+
+    tolerance = {
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+        "float32": {"standard": "stat_rel_err"},
+    }
+
+    def pre_compare(*outputs, **kwargs):
+        half = len(outputs) // 2
+        npu_outs = list(outputs[:half])
+        golden_outs = list(outputs[half:])
+        modified = False
+        for i in range(half):
+            if npu_outs[i] is None or golden_outs[i] is None:
+                continue
+            npu_arr = numpy.asarray(_torch_to_numpy(npu_outs[i]))
+            golden_arr = numpy.asarray(_torch_to_numpy(golden_outs[i]))
+            if npu_arr.size != golden_arr.size and golden_arr.size > 0:
+                npu_flat = npu_arr.reshape(-1)
+                golden_flat = golden_arr.reshape(-1)
+                min_len = golden_flat.size
+                truncated = npu_flat[:min_len].reshape(golden_arr.shape)
+                if hasattr(npu_outs[i], "detach"):
+                    import torch
+                    npu_outs[i] = torch.from_numpy(truncated.copy()).to(
+                        device=npu_outs[i].device, dtype=npu_outs[i].dtype)
+                else:
+                    npu_outs[i] = truncated
+                modified = True
+        if not modified:
+            return None
+        return tuple(npu_outs) + tuple(golden_outs)
 
 
 class AclnnMoeInitRoutingV3Spec:
