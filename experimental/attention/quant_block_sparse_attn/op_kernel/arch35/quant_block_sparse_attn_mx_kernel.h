@@ -352,9 +352,12 @@ private:
         if ASCEND_IS_AIC {
             // AIC 先生产当前 C1；随后消费两轮前的 P，生产 C2 留给下一轮 V2。
             if (likely(runInfoCur.isValid)) {
-                const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
-                for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
-                    cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
+                if (likely(runInfoCur.actSingleLoopS2Size > S2_SPLIT)) {
+                    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &c1Out0 = bmm1Buffers.Get();
+                    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &c1Out1 = bmm1Buffers.Get();
+                    cubeBlock.IterateBmm1ReuseQ(c1Out0, c1Out1, runInfoCur, constInfo);
+                } else {
+                    cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, 0U);
                 }
             }
             if (likely(loop >= C2_DELAY)) {
