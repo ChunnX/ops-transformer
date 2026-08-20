@@ -422,6 +422,9 @@ private:
         TORCH_CHECK(localBuffer != nullptr && localBufferSize > 0,
                     "HCCL default buffer is null or empty, size=", localBufferSize);
 
+        aclError ar = aclrtMemset(localBuffer, localBufferSize, 0, localBufferSize);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(HCCL buffer, size=", localBufferSize, ") failed, ret=", ar);
+
         resources.commBufferSize = static_cast<int64_t>(localBufferSize);
         resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(localBuffer);
 

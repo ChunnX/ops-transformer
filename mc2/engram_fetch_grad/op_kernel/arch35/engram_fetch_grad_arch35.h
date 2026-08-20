@@ -674,6 +674,9 @@ __aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
     RecvGradFromPeers();
 
     SyncAll<true>();
+
+    ClearWinCounters();
+    SyncAll<true>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
@@ -1068,10 +1071,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         InitFlagsAndDispls();
         SyncAll<true>();
 
-        ClearWinCounters();
-        SyncAll<true>();
-
-        CrossRankBarrier();
         UnsortGrad();
         SyncAll<true>();
 

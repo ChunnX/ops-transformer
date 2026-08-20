@@ -102,6 +102,7 @@ private:
     __aicore__ inline void ReorderAndSaveCtx();
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
+    __aicore__ inline void ClearAllMetaData();
     __aicore__ inline GM_ADDR GetRemoteWinAddr(uint32_t dstRank, uint64_t offset);
     __aicore__ inline uint64_t GetCommHandle(uint32_t dstRank);
     __aicore__ inline int32_t ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t srcRank);
@@ -465,6 +466,27 @@ __aicore__ inline void EngramFetchTrainArch35::ClearStatusFlags(GM_ADDR statusWi
     EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
 }
 
+__aicore__ inline void EngramFetchTrainArch35::ClearAllMetaData()
+{
+    if (aivId_ != 0) {
+        return;
+    }
+
+    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
+    LocalTensor<int32_t> cleanLocal = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(cleanLocal, 0, numRanks_ * STATE_OFFSET / sizeof(int32_t));
+    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
+
+    uint32_t cleanSize = numRanks_ * STATE_OFFSET / sizeof(int32_t);
+    uint32_t numBlocks = static_cast<uint32_t>(indicesDataOffset_) / (numRanks_ * STATE_OFFSET);
+    for (uint32_t i = 0; i < numBlocks; i++) {
+        GlobalTensor<int32_t> metaGM;
+        metaGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + i * numRanks_ * STATE_OFFSET));
+        DataCopy(metaGM, cleanLocal, cleanSize);
+    }
+    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+}
+
 __aicore__ inline void EngramFetchTrainArch35::SendCountPhase()
 {
     SendCountToPeers();
@@ -779,6 +801,9 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeToken()
         ClearStatusFlags(localFlagBase);
     }
 
+    SyncAll<true>();
+
+    ClearAllMetaData();
     SyncAll<true>();
 }
 
