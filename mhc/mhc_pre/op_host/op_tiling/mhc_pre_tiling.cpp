@@ -140,23 +140,24 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     auto shapeBias = context_->GetInputShape(3);
     int64_t biasFirstDim = shapeBias->GetStorageShape().GetDim(0);
     int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
-    
-    // 
+
+    //
     if (hasResi) {
         OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow,
-                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac,
-                        nn_pow, hcMix_),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac,
+                            nn_pow, hcMix_),
+                    return ge::GRAPH_FAILED);
         if (hcMix_ == nn_fac) {
             isFac = true;
         } else {
             isFac = false;
         }
-        
+
     } else {
-        OP_CHECK_IF(hcMix_ != 2 * hcMult_,
-                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld, but is %ld", 2 * hcMult_, hcMix_),
-                return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            hcMix_ != 2 * hcMult_,
+            OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld, but is %ld", 2 * hcMult_, hcMix_),
+            return ge::GRAPH_FAILED);
         isFac = false;
     }
 
@@ -164,9 +165,10 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
                 OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
                         d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(biasFirstDim != expectedBias,
-                OP_LOGE(context_->GetNodeName(), "Bias dim 0 should be equal with %ld, but is %ld", expectedBias, biasFirstDim),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        biasFirstDim != expectedBias,
+        OP_LOGE(context_->GetNodeName(), "Bias dim 0 should be equal with %ld, but is %ld", expectedBias, biasFirstDim),
+        return ge::GRAPH_FAILED);
 
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
