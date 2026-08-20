@@ -13,4 +13,4 @@ import torch_npu
 from . import ops
 from .ops import *
 
-torch_npu.k_pool_npu = ops.k_pool_npu
+torch_npu.key_pool = ops.key_pool
