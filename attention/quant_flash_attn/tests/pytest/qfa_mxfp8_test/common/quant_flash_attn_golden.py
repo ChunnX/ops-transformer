@@ -1532,10 +1532,10 @@ def prepare_npu_inputs(
             block_table_torch,
             is_scale=False,
             kv_layout=KV_CACHE_LAYOUT,
-        )
+        ) if v_fp8 is not None else None
         k_npu = k_pa.contiguous().view(FP8_DTYPE).npu()
-        v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
-        if not IS_CONTIGUOUS:
+        v_npu = v_pa.contiguous().view(FP8_DTYPE).npu() if v_pa is not None else None
+        if not IS_CONTIGUOUS and v_pa is not None:
             # ---- 构造kv不连续 ----
             kv_cache = torch.stack([k_pa, v_pa], dim=2)
             kv_cache = kv_cache.npu()
@@ -1562,15 +1562,15 @@ def prepare_npu_inputs(
             is_scale=True,
             is_vscale=True,
             kv_layout=KV_CACHE_LAYOUT,
-        )
+        ) if v_descale is not None else None
 
         k_scale_e8m0_pa = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA scale")
-        v_scale_e8m0_pa = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA scale")
+        v_scale_e8m0_pa = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA scale") if v_scale_pa is not None else None
 
         deq_k_npu = k_scale_e8m0_pa.npu()
-        deq_v_npu = v_scale_e8m0_pa.npu()
+        deq_v_npu = v_scale_e8m0_pa.npu() if v_scale_e8m0_pa is not None else None
         # ---- 构造kvscale不连续 ----
-        if not IS_CONTIGUOUS:
+        if not IS_CONTIGUOUS and v_scale_e8m0_pa is not None:
             fake_kscale_tensor = torch.ones_like(k_scale_e8m0_pa)
             fake_vscale_tensor = torch.ones_like(v_scale_e8m0_pa)
             double_kscale = torch.stack([k_scale_e8m0_pa, fake_kscale_tensor], dim=2)
@@ -1584,8 +1584,8 @@ def prepare_npu_inputs(
             )
 
         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
-        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
-        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
+        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None)
+        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape if deq_v_npu is not None else None)
 
         block_table_npu = (
             block_table_torch.npu()
@@ -1643,8 +1643,8 @@ def prepare_npu_inputs(
         .contiguous()
         .view(FP8_DTYPE)
         .npu()
-    )
-    logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape)
+    ) if v_fp8 is not None else None
+    logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape if v_npu is not None else None)
 
     k_scale_e8m0 = fp32_to_e8m0fnu_safe(
         convert_k_scale_bnsd_to_layout(
@@ -1655,14 +1655,14 @@ def prepare_npu_inputs(
     v_scale_e8m0 = fp32_to_e8m0fnu_safe(
         convert_v_scale_bnsd_to_layout(v_descale, act_seqused_kv, npu_input_layout),
         "V scale",
-    )
+    ) if v_descale is not None else None
     deq_k_npu = k_scale_e8m0.npu()
-    deq_v_npu = v_scale_e8m0.npu()
+    deq_v_npu = v_scale_e8m0.npu() if v_scale_e8m0 is not None else None
     logger.info(
         "[NPU %s] K scale shape=%s, V scale shape=%s",
         npu_input_layout,
         k_scale_e8m0.shape,
-        v_scale_e8m0.shape,
+        v_scale_e8m0.shape if v_scale_e8m0 is not None else None,
     )
 
     logger.info("[NPU] prepare non-PA inputs done.")

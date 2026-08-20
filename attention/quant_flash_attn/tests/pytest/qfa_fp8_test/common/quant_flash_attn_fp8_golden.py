@@ -901,7 +901,7 @@ def prepare_npu_inputs_gqa_fp8(
 
     q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, LAYOUT_Q)
     deq_q_npu = convert_scale_to_layout(dequant_scale_q, actual_seq_q, "deq_q")
-    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v")
+    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v") if dequant_scale_v is not None else None
     mask_arg = _build_mask()
 
     if block_table_torch is not None:
@@ -923,9 +923,9 @@ def prepare_npu_inputs_gqa_fp8(
     )
     v_pa = bnsd_to_v_cache(
         v_fp8, actual_seq_kv, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS
-    )
+    ) if v_fp8 is not None else None
 
-    if not IS_CONTIGUOUS:
+    if not IS_CONTIGUOUS and v_pa is not None:
         kv_cache = torch.stack([k_pa, v_pa], dim=2)
         kv_cache = kv_cache.npu()
         k_pa = kv_cache[:, :, 0]
@@ -1097,7 +1097,7 @@ def npu_fp8_full_quant(
     cache_info = None
     if NUM_BLOCKS != 0:
         k_pa_clone = inputs["k"].clone()
-        v_pa_clone = inputs["v"].clone()
+        v_pa_clone = inputs["v"].clone() if inputs["v"] is not None else None
         bt_clone = inputs["block_table"].cpu().numpy().copy()
         cache_info = (k_pa_clone, v_pa_clone, bt_clone)
 
