@@ -1,0 +1,9 @@
+testcase_name,op_name,input_shapes,input_dtypes,output_shapes,output_dtypes,attributes,absolute_precision,precision_tolerances,input_data_ranges
+moe_compute_test_0,moe_compute_expert_tokens,"((65536,))",('int32'),"((8,))",('int32'),{'num_experts': 8},0.00001,"((0.0001, 0.0001),)","((1,7))"
+moe_compute_test_104,moe_compute_expert_tokens,"((14906,))",('int32'),"((30    ,))",('int32'),{'num_experts': 30   },0.00001,"((0.0001, 0.0001),)","((6, 16))"
+moe_compute_test_205,moe_compute_expert_tokens,"((768000,))",('int32'),"((126   ,))",('int32'),{'num_experts': 126  },0.00001,"((0.0001, 0.0001),)","((48, 102))"
+moe_compute_test_1,moe_compute_expert_tokens,"((53274,))",('int32'),"((842,))",('int32'),{'num_experts': 842},0.00001,"((0.0001, 0.0001),)","((239,418))"
+moe_compute_test_2,moe_compute_expert_tokens,"((37440,))",('int32'),"((145,))",('int32'),{'num_experts': 145},0.00001,"((0.0001, 0.0001),)","((79,100))"
+moe_compute_test_3,moe_compute_expert_tokens,"((65536,))",('int32'),"((64,))",('int32'),{'num_experts': 64},0.00001,"((0.0001, 0.0001),)","((1,63))"
+moe_compute_test_4,moe_compute_expert_tokens,"((64,))",('int32'),"((8,))",('int32'),{'num_experts': 8},0.00001,"((0.0001, 0.0001),)","((1,7))"
+moe_compute_test_6,moe_compute_expert_tokens,"((3072,))",('int32'),"((7     ,))",('int32'),{'num_experts': 7    },0.00001,"((0.0001, 0.0001),)","((1, 3))"
