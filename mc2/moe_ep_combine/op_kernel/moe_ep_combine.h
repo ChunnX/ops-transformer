@@ -398,11 +398,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
     uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
 
-    uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
     GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(srcRank, combineDataWinOffset_);
     GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(srcRank, combineStateWinOffset_);
 
     if (srcRank != static_cast<int32_t>(rankId_)) {
+        uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         PrepareWrite<DEFAULT_WQE_CONFIG>(
             commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
@@ -451,9 +451,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
 {
     uint32_t baseGroupSize = totalBlocks / epWorldSize_;
     uint32_t remainder = totalBlocks % epWorldSize_;
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
+    // Keep channelsPerRank_ cores for every remote rank and give all excess AIVs to the local rank.
+    bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
+    uint32_t localGroupSize =
+        assignRemainingToLocal ? totalBlocks - (epWorldSize_ - 1U) * channelsPerRank_ : 0U;
     uint32_t accumulated = 0;
     for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-        uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
+        uint32_t currentGroupSize = assignRemainingToLocal
+                                        ? (rank == rankId_ ? localGroupSize : channelsPerRank_)
+                                        : baseGroupSize + ((rank < remainder) ? 1U : 0U);
         if (aivId_ < accumulated + currentGroupSize) {
             targetRank = rank;
             groupSize = currentGroupSize;
@@ -475,9 +482,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     uint32_t activeAivNum = aivNum_;
     uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    if (activeAivNum > maxChannelAivNum) {
-        activeAivNum = maxChannelAivNum;
-    }
+    bool useRemainingAivForLocal = activeAivNum > maxChannelAivNum;
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
@@ -493,6 +498,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
 
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
+    bool sendsLocalTokens = sendsTokens &&
+                            (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
     if (sendsTokens) {
         // 区间分片: splitRankTokens=true 时，同组 groupSize 个核各扫 1/groupSize 区间
         // 合起来覆盖全量 actualA_，不漏 token
@@ -569,8 +576,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     // Append one ODR 6 completion write after all payload writes on this channel.
     // Channels without payload also publish completion so the receiver cannot wait forever.
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-    if (aivId_ < activeAivNum) {
+    if (sendsLocalTokens) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+    if (useRemainingAivForLocal) {
+        // Extra local AIVs do not publish additional flags. Wait for their local MTE3 writes before
+        // the configured channel AIVs publish the original number of completion flags.
+        SyncAll<true>();
+    }
+    uint32_t completionChannelCount = useRemainingAivForLocal ? channelsPerRank_ : groupSize;
+    bool publishesChannelFlag = aivId_ < activeAivNum &&
+                                (!splitRankTokens || coreIndexInGroup < completionChannelCount);
+    if (publishesChannelFlag) {
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -579,7 +596,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         if (splitRankTokens) {
-            SendChannelFlag(targetRank, channelIndex, groupSize);
+            SendChannelFlag(targetRank, channelIndex, completionChannelCount);
         } else {
             for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
                 SendChannelFlag(dstRank, 0U, 1U);
@@ -698,11 +715,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     uint32_t activeAivNum = aivNum_;
     uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    if (activeAivNum > maxChannelAivNum) {
-        activeAivNum = maxChannelAivNum;
-    }
     uint32_t completionChannelCount = 1U;
-    if (activeAivNum >= epWorldSize_) {
+    if (activeAivNum > maxChannelAivNum) {
+        completionChannelCount = channelsPerRank_;
+    } else if (activeAivNum >= epWorldSize_) {
         completionChannelCount =
             activeAivNum / epWorldSize_ + (rankId_ < activeAivNum % epWorldSize_ ? 1U : 0U);
     }
