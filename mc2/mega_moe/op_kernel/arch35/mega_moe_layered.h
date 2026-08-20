@@ -130,8 +130,9 @@ private:
     __aicore__ inline void ResetDispatchState();
     __aicore__ inline void DispatchTokenToRmtServer(int32_t localExpertId);
     __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag);
-    __aicore__ inline void DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId,
-                                                uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
+    __aicore__ inline void DispatchComputeToken(const LocalTensor<int32_t> &topkIdsTensor, int32_t localExpertId,
+                                                uint32_t tokenIdx, uint32_t tokenInChunk, uint32_t tokenStart,
+                                                uint32_t dedupWordsPerServer);
     __aicore__ inline void DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                               uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline bool PrepareDispatchData(uint32_t targetServerForSender, uint32_t peerRank,
@@ -150,7 +151,9 @@ private:
                                                     int64_t widthA, int64_t widthAScale, uint32_t copyInNum);
     __aicore__ inline void CopyTokensFromRemoteRelay(int32_t rowDstOffsetInCore, uint32_t relayRank, uint32_t srcServer,
                                                      int32_t copyNum, int64_t widthA, int64_t widthAScale);
-    __aicore__ inline void QuantTokenToLocalRelay(uint32_t tokenIdx);
+    __aicore__ inline void QuantTokenToLocalRelay(uint32_t tokenIdx, uint32_t bufferIdx, TEventID event);
+    __aicore__ inline void QuantTokensToLocalRelay(const LocalTensor<int32_t> &tokenList, uint32_t tokenCount,
+                                                   uint32_t tokenStart, uint32_t dedupWordsPerServer);
     __aicore__ inline uint64_t SendWorkspaceServerOffset(uint32_t targetServer);
     __aicore__ inline uint64_t RelayTokenOffset(uint32_t sourceServer, uint32_t tokenId);
     __aicore__ inline uint64_t RelayFlagOffset(uint32_t sourceServer, uint32_t tokenId);
@@ -265,6 +268,7 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_UB_BYTES = 8U * 1024U;
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
+    static constexpr uint32_t DISPATCH_QUANT_TOKEN_CHUNK = 32U;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     static constexpr uint32_t SEND_MASK_UB_LIMIT = 248U * 1024U;
     static constexpr uint32_t MAX_CORENUM_USE_SEND = 8U;
@@ -597,6 +601,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     uint32_t urmaXInTensorSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     xInTensor1_ =
         LocalTensor<bfloat16_t>(TPosition::VECCALC, urmaXInTensorAddr, urmaXInTensorSize / sizeof(bfloat16_t));
+    // Dispatch 量化与后续 relay 搬运不重叠。第二路量化 buffer 复用 copyTmp 起始区域，
+    // 第一套仍保留在独立区域，避免双 buffer 直接叠加到 UB high-water mark。
+    xOutTensor2_ = LocalTensor<ActivationType>(TPosition::VECCALC, copyTmpBaseAddr,
+                                               urmaXOutTensorSize / sizeof(ActivationType));
+    xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, copyTmpBaseAddr + urmaXOutTensorSize,
+                                          urmaXInTensorSize / sizeof(bfloat16_t));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：moeExpertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = urmaXInTensorAddr + urmaXInTensorSize;
@@ -1014,9 +1024,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetDisp
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantTokenToLocalRelay(uint32_t tokenIdx)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantTokenToLocalRelay(
+    uint32_t tokenIdx, uint32_t bufferIdx, TEventID event)
 {
-    LocalTensor<uint8_t> xOutBytesTensor = xOutTensor1_.template ReinterpretCast<uint8_t>();
+    LocalTensor<bfloat16_t> xInTensor = (bufferIdx == 0U) ? xInTensor1_ : xInTensor2_;
+    LocalTensor<ActivationType> xOutTensor = (bufferIdx == 0U) ? xOutTensor1_ : xOutTensor2_;
+    LocalTensor<uint8_t> xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
         params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
@@ -1027,18 +1040,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
 
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
-    DataCopyPad(xInTensor1_, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    LoadTopkWeightsToUb(xOutTensor1_, 0, tokenIdx, EVENT_ID0);
+    DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+    LoadTopkWeightsToUb(xOutTensor, 0, tokenIdx, event);
 
-    __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(xInTensor1_.GetPhyAddr());
+    __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(xInTensor.GetPhyAddr());
     __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(mxTempTensor_.GetPhyAddr());
     __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
         mxTempTensor_[Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))]
             .GetPhyAddr());
-    __ubuf__ int8_t *outDataAddr = reinterpret_cast<__ubuf__ int8_t *>(xOutTensor1_.GetPhyAddr());
+    __ubuf__ int8_t *outDataAddr = reinterpret_cast<__ubuf__ int8_t *>(xOutTensor.GetPhyAddr());
     __ubuf__ uint16_t *mxScaleAddr =
-        reinterpret_cast<__ubuf__ uint16_t *>(xOutTensor1_[mxQuantTokenAlignBytes_].GetPhyAddr());
+        reinterpret_cast<__ubuf__ uint16_t *>(xOutTensor[mxQuantTokenAlignBytes_].GetPhyAddr());
 
     Quant::ComputeMaxExp(srcAddr, maxExpAddr, k_);
     Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, mxQuantScaleNumAlignPerToken_);
@@ -1050,22 +1062,63 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
             srcAddr, halfScaleAddr, outDataAddr, k_);
     }
 
-    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
+    SetFlag<AscendC::HardEvent::V_MTE3>(event);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(event);
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor, {1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
-    __gm__ uint64_t *readyFlag =
-        reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr + RelayFlagOffset(serverId_, tokenIdx));
-    WriteGmByPassDCache(readyFlag, uint64_t(1));
-    PipeBarrier<PIPE_ALL>();
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+    SetFlag<AscendC::HardEvent::MTE3_S>(event);
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantTokensToLocalRelay(
+    const LocalTensor<int32_t> &tokenList, uint32_t tokenCount, uint32_t tokenStart, uint32_t dedupWordsPerServer)
+{
+    if (tokenCount == 0U) {
+        return;
+    }
+
+    constexpr TEventID quantEvents[DOUBLE_BUFFER] = {EVENT_ID0, EVENT_ID1};
+    for (uint32_t quantIdx = 0U; quantIdx < tokenCount; ++quantIdx) {
+        uint32_t bufferIdx = quantIdx % DOUBLE_BUFFER;
+        TEventID event = quantEvents[bufferIdx];
+        if (quantIdx >= DOUBLE_BUFFER) {
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+            WaitFlag<AscendC::HardEvent::MTE3_S>(event);
+        }
+        QuantTokenToLocalRelay(static_cast<uint32_t>(tokenList.GetValue(quantIdx)), bufferIdx, event);
+    }
+
+    uint32_t usedBufferCount = tokenCount < DOUBLE_BUFFER ? tokenCount : DOUBLE_BUFFER;
+    for (uint32_t bufferIdx = 0U; bufferIdx < usedBufferCount; ++bufferIdx) {
+        TEventID event = quantEvents[bufferIdx];
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(event);
+    }
+
+    // 所有量化数据写回完成后才统一发布 ready；发送核看到队列 metadata 时，relay 数据一定已经可见。
+    for (uint32_t quantIdx = 0U; quantIdx < tokenCount; ++quantIdx) {
+        uint32_t tokenIdx = static_cast<uint32_t>(tokenList.GetValue(quantIdx));
+        __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(
+            params_.peermemInfo.dispatchFlagPtr + RelayFlagOffset(serverId_, tokenIdx));
+        WriteGmByPassDCache(readyFlag, uint64_t(1));
+
+        uint32_t localTokenIdx = tokenIdx - tokenStart;
+        uint32_t localDedupWordIdx =
+            serverId_ * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
+        uint32_t dedupBit = 1U << (localTokenIdx & (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
+        uint32_t localDedupWord = sendDedupMaskTensor_.GetValue(localDedupWordIdx);
+        sendDedupMaskTensor_.SetValue(localDedupWordIdx, localDedupWord | dedupBit);
+        PipeBarrier<PIPE_ALL>();
+    }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchComputeToken(
-    GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart,
-    uint32_t dedupWordsPerServer)
+    const LocalTensor<int32_t> &topkIdsTensor, int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenInChunk,
+    uint32_t tokenStart, uint32_t dedupWordsPerServer)
 {
     for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
-        int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
+        int32_t globalExpertId = topkIdsTensor.GetValue(tokenInChunk * topK_ + topkIdx);
         if ((globalExpertId % static_cast<int32_t>(moeExpertPerRank_)) != localExpertId) {
             continue;
         }
@@ -1080,12 +1133,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
             continue;
         }
 
-        uint32_t localDedupWordIdx = serverId_ * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
-        uint32_t localDedupWord = sendDedupMaskTensor_.GetValue(localDedupWordIdx);
-        if ((localDedupWord & dedupBit) == 0U) {
-            QuantTokenToLocalRelay(tokenIdx);
-            sendDedupMaskTensor_.SetValue(localDedupWordIdx, localDedupWord | dedupBit);
-        }
         if (targetServer == serverId_) {
             continue;
         }
@@ -1119,8 +1166,46 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
 
     GlobalTensor<int32_t> topkIdsGlobal;
     topkIdsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.expertIdxGmAddr));
-    for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
-        DispatchComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
+    uint32_t quantChunkTokenCount = dispatchRoundSendTotalNum_ / topK_;
+    quantChunkTokenCount = quantChunkTokenCount < DISPATCH_QUANT_TOKEN_CHUNK ?
+                               quantChunkTokenCount :
+                               DISPATCH_QUANT_TOKEN_CHUNK;
+    quantChunkTokenCount = quantChunkTokenCount == 0U ? 1U : quantChunkTokenCount;
+
+    for (uint32_t chunkStart = tokenStart; chunkStart < tokenEnd; chunkStart += quantChunkTokenCount) {
+        uint32_t chunkTokenCount = tokenEnd - chunkStart;
+        chunkTokenCount = chunkTokenCount < quantChunkTokenCount ? chunkTokenCount : quantChunkTokenCount;
+        uint32_t chunkTopkCount = chunkTokenCount * topK_;
+        DataCopyPad(validTopkIndexTensor_, topkIdsGlobal[static_cast<uint64_t>(chunkStart) * topK_],
+                    {1U, static_cast<uint32_t>(chunkTopkCount * sizeof(int32_t)), 0U, 0U, 0U},
+                    {false, 0U, 0U, 0U});
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+
+        uint32_t quantTokenCount = 0U;
+        for (uint32_t tokenInChunk = 0U; tokenInChunk < chunkTokenCount; ++tokenInChunk) {
+            uint32_t tokenIdx = chunkStart + tokenInChunk;
+            uint32_t localTokenIdx = tokenIdx - tokenStart;
+            uint32_t localDedupWordIdx =
+                serverId_ * dedupWordsPerServer + localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
+            uint32_t dedupBit = 1U << (localTokenIdx & (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
+            if ((sendDedupMaskTensor_.GetValue(localDedupWordIdx) & dedupBit) != 0U) {
+                continue;
+            }
+            for (uint32_t topkIdx = 0U; topkIdx < topK_; ++topkIdx) {
+                int32_t globalExpertId = validTopkIndexTensor_.GetValue(tokenInChunk * topK_ + topkIdx);
+                if ((globalExpertId % static_cast<int32_t>(moeExpertPerRank_)) == localExpertId) {
+                    topkIndexTensor_.SetValue(quantTokenCount, static_cast<int32_t>(tokenIdx));
+                    ++quantTokenCount;
+                    break;
+                }
+            }
+        }
+
+        QuantTokensToLocalRelay(topkIndexTensor_, quantTokenCount, tokenStart, dedupWordsPerServer);
+        for (uint32_t tokenInChunk = 0U; tokenInChunk < chunkTokenCount; ++tokenInChunk) {
+            DispatchComputeToken(validTopkIndexTensor_, localExpertId, chunkStart + tokenInChunk, tokenInChunk,
+                                 tokenStart, dedupWordsPerServer);
+        }
     }
     __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
@@ -1234,7 +1319,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
-        PipeBarrier<PIPE_ALL>();
         // Sender cores do not use the dispatch-compute dedup mask. Reuse its first bytes for compact
         // {slot, tokenIdx} descriptors so this optimization does not increase the UB high-water mark.
         LocalTensor<int32_t> preparedDescTensor = sendDedupMaskTensor_.template ReinterpretCast<int32_t>();
