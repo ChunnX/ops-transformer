@@ -695,7 +695,10 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     }
     uint32_t usedCoreNum = 0;
     if (usingApaceImpl_) {
-        usedCoreNum = apaceTilingData_.tileQbmmTilingData.usedCoreNum;
+        usedCoreNum = apaceTilingData_.headQbmmTilingData.usedCoreNum;
+        if (apaceTilingData_.commTilingData.splitAxisTailCnt > 0) {
+            usedCoreNum = std::max(usedCoreNum, apaceTilingData_.tailQbmmTilingData.usedCoreNum);
+        }
     } else {
         usedCoreNum = std::max(MutableTCubeTileTilingData().usedCoreNum, MutableTCubeTailTilingData().usedCoreNum);
     }
@@ -792,18 +795,39 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
     commTiling.splitAxisTailSize = cfg.tailM;
     commTiling.splitAxisTailCnt = cfg.tailCnt;
     commTiling.nonSplitAxisSize = args_.nValue;
-    auto &tileTiling = apaceTilingData_.tileQbmmTilingData;
+    auto &headTiling = apaceTilingData_.headQbmmTilingData;
+    auto &tailTiling = apaceTilingData_.tailQbmmTilingData;
+    constexpr uint64_t FRAGMENT_M_ALIGN = 16;
+    const uint64_t paddedTailM =
+        cfg.tailCnt > 0 ? mc2tiling::AlignUp<uint64_t>(cfg.tailM, FRAGMENT_M_ALIGN) : 0;
+    const uint64_t headLogicalM = static_cast<uint64_t>(cfg.rankDim) * tileM;
+    const uint64_t tailLogicalM = static_cast<uint64_t>(cfg.rankDim) * paddedTailM;
+    apaceTilingData_.paddedTailM = static_cast<uint32_t>(paddedTailM);
 
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(cfg.rankM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        // FragmentTensor assembles rankDim independent M fragments into one
+        // logical scheduler domain. Keep M-tail splitting fragment-safe.
+        tilingSwat.SetOptimizeEnable(false);
+        tilingSwat.SetMTailAlignEnable(true);
+        tilingSwat.GetTilingData(headLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, headTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
     } else {
         // E4M3 and E5M2 have the same B8 storage and share the APACE tiling strategy.
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(cfg.rankM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        tilingSwat.SetOptimizeEnable(false);
+        tilingSwat.SetMTailAlignEnable(true);
+        tilingSwat.GetTilingData(headLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, headTiling);
+        if (cfg.tailCnt > 0) {
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+        }
     }
-    OP_LOGD(opName_, "APACE MX tiling: rankM=%u, tileM=%lu, tailM=%u, N=%lu, K=%lu", cfg.rankM, tileM,
-            cfg.tailM, args_.nValue, args_.kValue);
+    OP_LOGD(opName_,
+            "APACE MX pipeline tiling: rankM=%u, tileM=%lu, headLogicalM=%lu, tailM=%u, paddedTailM=%lu, "
+            "tailLogicalM=%lu, N=%lu, K=%lu",
+            cfg.rankM, tileM, headLogicalM, cfg.tailM, paddedTailM, tailLogicalM, args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
 }
 
