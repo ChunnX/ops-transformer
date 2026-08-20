@@ -261,7 +261,8 @@ constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
 constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
-// 非 layered 路径统一使用的 Combine 行环。Dispatch 阶段结束后才在同一 UB 区域构造这些视图。
+// 非 layered 路径统一使用的 Combine 行环。常规 Wave 只有 AIV1 建立并使用这些 UB 视图；
+// 最后一轮不再与 GMM1/SwiGLU 并行时，调用方才为 AIV0 补充初始化。
 template <uint8_t CombineMode, bool IncludeAiv0 = false>
 __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const MoeStageCommonConfig &common,
                                                                  WaveCombineScratch &scratch)
@@ -312,6 +313,21 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const MoeStageC
     return bufferConfig;
 }
 
+// AIV1 复用既有配置；AIV0 仅在最终 Combine 到来时绑定同布局的私有 UB 视图。
+template <uint8_t CombineMode>
+__aicore__ inline WaveCombineBufferConfig PrepareFinalWaveCombineBuffers(
+    const MoeStageCommonConfig &common, const WaveCombineBufferConfig &currentBufferConfig,
+    WaveCombineScratch &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return currentBufferConfig;
+    }
+    if (GetSubBlockIdx() == 0U) {
+        return InitWaveCombineBuffers<CombineMode, true>(common, scratch);
+    }
+    return currentBufferConfig;
+}
+
 // 构造量化 Unpermute 输入记录的单 token 存储布局。
 __aicore__ inline QuantTokenBufferConfig CreateQuantTokenBufferConfig(uint32_t tokenHiddenDim)
 {
@@ -323,18 +339,45 @@ __aicore__ inline QuantTokenBufferConfig CreateQuantTokenBufferConfig(uint32_t t
     return {quantTokenSizeBytes};
 }
 
+template <bool UseAllAivCores>
+__aicore__ inline bool IsWaveCombineWorker()
+{
+    return UseAllAivCores || GetSubBlockIdx() == 1U;
+}
+
+// 常规 Wave 只使用每个 AIC 配对的 AIV1；最后一轮把同组 AIV0/AIV1 展开成两个独立任务。
+template <bool UseAllAivCores>
+__aicore__ inline AivJobContext GetWaveCombineJob(const AivJobContext &job)
+{
+    if constexpr (UseAllAivCores) {
+        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
+        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+        return {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx,
+                job.totalJobs * AIV_CORE_COUNT_PER_AIC};
+    }
+    return job;
+}
+
 // 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
+template <bool UseAllAivCores = false>
 __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, uint32_t tokenCount,
                                                      uint64_t expertRowPrefix)
 {
-    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
+    if constexpr (g_coreType == AIC) {
         return {};
     }
-    uint32_t firstOwnerJob = expertRowPrefix % job.totalJobs;
-    uint32_t logicalJobIndex = job.jobIndex >= firstOwnerJob ?
-                                   job.jobIndex - firstOwnerJob :
-                                   job.jobIndex + job.totalJobs - firstOwnerJob;
-    return GetBalancedTokenRange(tokenCount, logicalJobIndex, job.totalJobs);
+    if (!IsWaveCombineWorker<UseAllAivCores>()) {
+        return {};
+    }
+    AivJobContext combineJob = GetWaveCombineJob<UseAllAivCores>(job);
+    if (combineJob.totalJobs == 0U || combineJob.jobIndex >= combineJob.totalJobs) {
+        return {};
+    }
+    uint32_t firstOwnerJob = expertRowPrefix % combineJob.totalJobs;
+    uint32_t logicalJobIndex = combineJob.jobIndex >= firstOwnerJob ?
+                                   combineJob.jobIndex - firstOwnerJob :
+                                   combineJob.jobIndex + combineJob.totalJobs - firstOwnerJob;
+    return GetBalancedTokenRange(tokenCount, logicalJobIndex, combineJob.totalJobs);
 }
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
@@ -401,7 +444,7 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
 }
 
 // 使用行级流水发送当前逻辑 AIV 任务负责的已就绪 token 区间。
-template <uint8_t CombineMode>
+template <uint8_t CombineMode, bool UseAllAivCores = false>
 __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
                                              const Params &params, GM_ADDR gmm2OutGlobal, uint32_t tokenStart,
@@ -410,7 +453,7 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || tokenCount == 0U) {
+    if (!IsWaveCombineWorker<UseAllAivCores>() || tokenCount == 0U) {
         return;
     }
     GlobalTensor<bfloat16_t> gmm2OutGm;
@@ -972,12 +1015,13 @@ __aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Param
 }
 
 // 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
+template <bool UseAllAivCores = false>
 __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params &params, uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
+    if (!IsWaveCombineWorker<UseAllAivCores>() || job.totalJobs == 0U) {
         return;
     }
     uint32_t readyElements = job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
@@ -1005,7 +1049,7 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
     }
 }
 
-template <uint8_t CombineMode>
+template <uint8_t CombineMode, bool UseAllAivCores = false>
 __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
                                                  const WaveCombineBufferConfig &bufferConfig,
                                                  WaveCombineScratch &scratch, const Params &params,
@@ -1013,10 +1057,10 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
                                                  uint32_t expertIdx, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-    WorkRange currentCoreTokenRange =
-        GetWaveCombineOwnedRange(job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
+    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(
+        job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
     if (currentCoreTokenRange.count != 0U) {
-        WaitWaveGmm2Ready(job, params, expertIdx);
+        WaitWaveGmm2Ready<UseAllAivCores>(job, params, expertIdx);
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
@@ -1027,9 +1071,9 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
             params, scratch,
             static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
             chunkTokenNum, 0U);
-        CombineWaveTokenRange<CombineMode>(common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
-                                           currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U,
-                                           rowSequence);
+        CombineWaveTokenRange<CombineMode, UseAllAivCores>(
+            common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
+            currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
         processedTokenNum += chunkTokenNum;
     }
 }
