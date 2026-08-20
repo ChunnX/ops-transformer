@@ -717,7 +717,7 @@ def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
 
     bench_state = None
     if bench_outputs and len(bench_outputs) > 1:
-        bench_state = _to_torch(bench_outputs[1])
+        bench_state = _to_torch(bench_outputs[3])
     sc_npu, sc_golden, sc_bench = _split_state_cache_sub_outputs(
         npu_state_cache, cpu_state_cache, bench_state, update_kv, update_score
     )
@@ -780,7 +780,7 @@ def _split_e2e_outputs(outputs, kwargs, bench_outputs):
 
     bench_state = None
     if bench_outputs and len(bench_outputs) > 1:
-        bench_state = _to_torch(bench_outputs[1]).to(torch.float32)
+        bench_state = _to_torch(bench_outputs[1])
     sc_npu, sc_golden, sc_bench = _split_state_cache_sub_outputs(
         npu_state_cache, cpu_state_cache, bench_state, update_kv, update_score
     )
