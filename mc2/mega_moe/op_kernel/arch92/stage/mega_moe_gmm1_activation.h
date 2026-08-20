@@ -216,6 +216,11 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
+        if constexpr (!IsShared) {
+            if (expertIdx == 0U && mLoc == 0U && nLoc == 0U) {
+                blockMmad.EnableOneShotDebug(912201U, false);
+            }
+        }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
