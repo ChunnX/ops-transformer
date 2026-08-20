@@ -198,6 +198,15 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
             AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+            if (groupIdx == 0U && tokenStart + i == 0U &&
+                gmm2OutAddr == params.workspaceInfo.gmm2MmadResPtr) {
+                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
+                auto gmm2DebugBitsTensor = ubBf16.template ReinterpretCast<uint16_t>();
+                set_cond(910004UL);
+                for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                    set_cond(static_cast<unsigned long>(gmm2DebugBitsTensor.GetValue(valueIdx)));
+                }
+            }
             Mxfp8::QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
         }
@@ -692,6 +701,13 @@ __aicore__ inline void Gmm2AivGmHandoffEpilogue(
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        if (gmmAddrInfo.gmm2OutGlobal == params.workspaceInfo.gmm2MmadResPtr && mLoc == 0U && nLoc == 0U) {
+            auto gmm2DebugBitsTensor = l0cOutUbGMM2.template ReinterpretCast<uint16_t>();
+            set_cond(910004UL);
+            for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                set_cond(static_cast<unsigned long>(gmm2DebugBitsTensor.GetValue(valueIdx)));
+            }
+        }
         CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
             nLoc, config.n, metaInfoTensor, l0cOutUbGMM2, actualShape, L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
