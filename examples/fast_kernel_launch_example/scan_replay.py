@@ -62,15 +62,9 @@ with torch.npu.graph(g):
     for _ in range(op_iters):
         run()
 
-if op_type == "add":
-    torch.npu.synchronize()
-    print(f"replay once ({op_type}, {op_iters} iters)...")
-    g.replay()
-    torch.npu.synchronize()
-    print(f"replay done")
-else:
-    # gemm: sync segfault on A3, 用 sleep + os._exit 绕过
-    time.sleep(2)
-    sys.stdout.flush()
-    print(f"capture done ({op_type})")
-    os._exit(0)
+# gemm sync segfault 已修复 (grouped_matmul.cpp 悬垂引用修复), 统一走完整 replay 路径
+torch.npu.synchronize()
+print(f"replay once ({op_type}, {op_iters} iters)...")
+g.replay()
+torch.npu.synchronize()
+print(f"replay done")

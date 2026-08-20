@@ -14,7 +14,7 @@
 #   NPU_SOC_VERSION  编译目标 SoC (默认: ascend910_93)
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
-#   RUN_GMM          是否跑 grouped_matmul (默认: 0, add 验证通过后再开)
+#   RUN_GMM          是否跑 grouped_matmul (默认: 1)
 # ----------------------------------------------------------------------------
 set -e
 
@@ -24,7 +24,7 @@ SOC_VERSION="${NPU_SOC_VERSION:-ascend910_93}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/head_overhead_results}"
 LAUNCH_COUNT=101
 RUN_ADD="${RUN_ADD:-1}"
-RUN_GMM="${RUN_GMM:-0}"
+RUN_GMM="${RUN_GMM:-1}"
 
 # 根据 SOC_VERSION 选择源码目录后缀
 if [ "$SOC_VERSION" = "ascend950" ]; then
@@ -171,12 +171,10 @@ collect_add() {
 
 collect_gmm() {
     local label=$1 outdir=$2
-    echo "[COLLECT] 采集 grouped_matmul ($label, eager 模式)..."
+    echo "[COLLECT] 采集 grouped_matmul ($label, capture 模式)..."
     rm -rf "$outdir"
-    # gemm (Cube 核) msprof 无 op_summary, 用 msopprof 采集
-    msopprof --output="$outdir" \
-        --application="python3 tests/grouped_matmul/test_groupedmatmul.py" \
-        --aic-metrics=PipeUtilization --launch-count=$LAUNCH_COUNT 2>&1 | tail -1
+    # gemm 悬垂引用修复后 capture 可用; Cube 核 capture 模式 msprof 可正常生成 op_summary
+    OP_TYPE=gemm msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" 2>&1 | tail -1
 }
 
 # ============================================================
