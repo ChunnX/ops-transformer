@@ -318,6 +318,11 @@ protected:
             OP_LOGE_WITH_INVALID_ATTR(opName, "x1_quant_dtype", std::to_string(*x1QdPtr).c_str(), "fp8_e8m0");
             return false;
         }
+        auto *pmPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PRECISION_MODE);
+        if (pmPtr != nullptr && (*pmPtr < 0 || *pmPtr > 2)) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "precision_mode", std::to_string(*pmPtr).c_str(), "0/1/2");
+            return false;
+        }
         return CheckGroupSizeAttr(opName);
     }
 
