@@ -22,6 +22,127 @@ _FAIL_RATIO_LIMIT = 0.005
 _MAX_NORMALIZED_ERROR = 10.0
 _NORMALIZATION_EPSILON = 1e-10
 _NORMALIZATION_FLOOR = (1.0 / (1 << 14)) / _FP32_RTOL
+_DISPLAY_ROW_LIMIT = 20
+
+
+def _print_log(message):
+    print(f"[precision_compare] {message}")
+
+
+def _failure_result(output_name, precision, error_info):
+    """Print and return a non-numeric comparison failure."""
+    _print_log(f"Compare output: {output_name}")
+    _print_log(f"Failed: {error_info}")
+    return {
+        "pass": False,
+        "precision": precision,
+        "error_info": error_info,
+    }
+
+
+def _display_indices(indices):
+    """Limit large comparison tables to their first and last rows."""
+    index_count = len(indices)
+    if index_count <= _DISPLAY_ROW_LIMIT:
+        return list(indices)
+    half = _DISPLAY_ROW_LIMIT // 2
+    return list(indices[:half]) + [None] + list(indices[-half:])
+
+
+def _value_error(npu_value, golden_value):
+    """Return display-friendly absolute and normalized errors for one pair."""
+    npu_value = float(npu_value)
+    golden_value = float(golden_value)
+    if np.isfinite(npu_value) and np.isfinite(golden_value):
+        abs_diff = abs(npu_value - golden_value)
+        denominator = (
+            max(abs(npu_value), abs(golden_value), _NORMALIZATION_FLOOR)
+            + _NORMALIZATION_EPSILON
+        )
+        return abs_diff, abs_diff / denominator
+
+    both_nan = np.isnan(npu_value) and np.isnan(golden_value)
+    same_infinity = np.isinf(npu_value) and npu_value == golden_value
+    if both_nan or same_infinity:
+        return 0.0, 0.0
+    return float("inf"), float("inf")
+
+
+def _display_rows(title, npu_data, golden_data, indices):
+    _print_log(title)
+    _print_log(
+        "Index     Golden          NPU             AbsDiff         "
+        "NormalizedError"
+    )
+    _print_log("-" * 82)
+    for index in _display_indices(indices):
+        if index is None:
+            _print_log("...       ...             ...             ...             ...")
+            continue
+        abs_diff, normalized_error = _value_error(
+            npu_data[index], golden_data[index]
+        )
+        _print_log(
+            f"{index:<9d} "
+            f"{float(golden_data[index]):<15.7g} "
+            f"{float(npu_data[index]):<15.7g} "
+            f"{abs_diff:<15.7g} "
+            f"{normalized_error:.7g}"
+        )
+
+
+def _display_comparison_result(
+    output_name,
+    npu_data,
+    golden_data,
+    mismatch,
+    *,
+    rtol,
+    atol,
+    precision,
+    max_normalized_error,
+    passed,
+):
+    """Print the comparison process and detailed mismatches on failure."""
+    _print_log(f"Compare output: {output_name}")
+    _print_log(
+        f"element_count:{golden_data.size}; mismatch_count:{np.count_nonzero(mismatch)};"
+    )
+    _display_rows(
+        "Comparison Data", npu_data, golden_data, range(golden_data.size)
+    )
+    _print_log("-" * 82)
+    _print_log(
+        "Rtol       Atol        PctThd       PctRlt       "
+        "MaxNormalizedError   Result"
+    )
+    _print_log("-" * 82)
+    result = "Pass" if passed else "Failed"
+    precision_threshold = (1.0 - _FAIL_RATIO_LIMIT) * 100.0
+    _print_log(
+        f"{rtol:<10.6g} {atol:<11.6g} {precision_threshold:<12.6f}% "
+        f"{precision:<12.6f}% {max_normalized_error:<20.7g} {result}"
+    )
+
+    if passed:
+        return
+
+    error_indices = np.flatnonzero(mismatch)
+    _print_log("Error Line" + "-" * 72)
+    _display_rows(
+        "Failed Precision Comparison", npu_data, golden_data, error_indices
+    )
+    if error_indices.size:
+        error_values = np.array(
+            [
+                _value_error(npu_data[index], golden_data[index])[1]
+                for index in error_indices
+            ]
+        )
+        max_error_index = int(error_indices[int(np.argmax(error_values))])
+        _display_rows(
+            "Max-Error Line", npu_data, golden_data, [max_error_index]
+        )
 
 
 def _as_numpy(value):
@@ -56,20 +177,29 @@ def _numpy_compare(npu_out, golden_out, output_name):
     golden = _as_numpy(golden_out)
 
     if npu.shape != golden.shape:
-        return {
-            "pass": False,
-            "precision": "shape_mismatch",
-            "error_info": (
-                f"{output_name} shape mismatch: "
-                f"npu_shape={tuple(npu.shape)}, "
-                f"golden_shape={tuple(golden.shape)}"
-            ),
-        }
-
-    if npu.size == 0:
-        return {"pass": True, "precision": 100.0}
+        error_info = (
+            f"{output_name} shape mismatch: "
+            f"npu_shape={tuple(npu.shape)}, "
+            f"golden_shape={tuple(golden.shape)}"
+        )
+        return _failure_result(output_name, "shape_mismatch", error_info)
 
     rtol, atol = _compare_tolerance(npu_out, golden_out)
+    if npu.size == 0:
+        empty_data = npu.astype(np.float32, copy=False).reshape(-1)
+        _display_comparison_result(
+            output_name,
+            empty_data,
+            empty_data,
+            np.zeros(0, dtype=bool),
+            rtol=rtol,
+            atol=atol,
+            precision=100.0,
+            max_normalized_error=0.0,
+            passed=True,
+        )
+        return {"pass": True, "precision": 100.0}
+
     npu_f32 = npu.astype(np.float32, copy=False).reshape(-1)
     golden_f32 = golden.astype(np.float32, copy=False).reshape(-1)
     close_mask = np.isclose(
@@ -129,9 +259,22 @@ def _numpy_compare(npu_out, golden_out, output_name):
             f"has_nonfinite_mismatch={has_nonfinite_mismatch}"
         )
 
+    precision = (element_count - diff_count) / element_count * 100.0
+    _display_comparison_result(
+        output_name,
+        npu_f32,
+        golden_f32,
+        mismatch,
+        rtol=rtol,
+        atol=atol,
+        precision=precision,
+        max_normalized_error=max_normalized_error,
+        passed=passed,
+    )
+
     return {
         "pass": passed,
-        "precision": (element_count - diff_count) / element_count * 100.0,
+        "precision": precision,
         "diff_indices": np.flatnonzero(mismatch)[:1000].tolist(),
         "error_info": error_info,
         "metrics": {
@@ -172,11 +315,11 @@ def _is_absent_lse(value):
 
 def _compare_outputs(outputs, *, return_softmax_lse=None):
     if len(outputs) < 2 or len(outputs) % 2 != 0:
-        return {
-            "pass": False,
-            "precision": "invalid",
-            "error_info": f"compare expects even number of outputs, got {len(outputs)}",
-        }
+        return _failure_result(
+            "output_contract",
+            "invalid",
+            f"compare expects even number of outputs, got {len(outputs)}",
+        )
 
     half = len(outputs) // 2
     npu_outputs = outputs[:half]
@@ -206,14 +349,12 @@ def _compare_outputs(outputs, *, return_softmax_lse=None):
             unexpected.append(f"golden shape={tuple(_as_numpy(golden_lse).shape)}")
         if unexpected:
             results.append(
-                {
-                    "pass": False,
-                    "precision": "unexpected_lse",
-                    "error_info": (
-                        "return_softmax_lse=False requires LSE to be absent "
-                        f"or an empty/scalar placeholder; got {', '.join(unexpected)}"
-                    ),
-                }
+                _failure_result(
+                    "softmax_lse",
+                    "unexpected_lse",
+                    "return_softmax_lse=False requires LSE to be absent "
+                    f"or an empty/scalar placeholder; got {', '.join(unexpected)}",
+                )
             )
             return results
         return results[0]
@@ -227,14 +368,12 @@ def _compare_outputs(outputs, *, return_softmax_lse=None):
         if golden_lse is None:
             missing.append("golden")
         results.append(
-            {
-                "pass": False,
-                "precision": "missing_lse",
-                "error_info": (
-                    "return_softmax_lse=True requires both NPU and golden "
-                    f"LSE outputs; missing {', '.join(missing)} LSE"
-                ),
-            }
+            _failure_result(
+                "softmax_lse",
+                "missing_lse",
+                "return_softmax_lse=True requires both NPU and golden "
+                f"LSE outputs; missing {', '.join(missing)} LSE",
+            )
         )
         return results
 
@@ -247,14 +386,12 @@ def _compare_outputs(outputs, *, return_softmax_lse=None):
         invalid.append(f"golden shape={tuple(golden_lse_array.shape)}")
     if invalid:
         results.append(
-            {
-                "pass": False,
-                "precision": "invalid_lse",
-                "error_info": (
-                    "return_softmax_lse=True requires non-scalar, non-empty "
-                    f"LSE outputs; invalid {', '.join(invalid)}"
-                ),
-            }
+            _failure_result(
+                "softmax_lse",
+                "invalid_lse",
+                "return_softmax_lse=True requires non-scalar, non-empty "
+                f"LSE outputs; invalid {', '.join(invalid)}",
+            )
         )
         return results
 
