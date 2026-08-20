@@ -212,8 +212,8 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
-    UpdateWaveGmm2GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType,
-                               QuantScaleOutType, configureCombineCounter>(
+    UpdateWaveGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+                               configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
 
@@ -404,6 +404,32 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
 
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize();
+        if (tokenUnpermuteConfig_.job.jobIndex == 0U) {
+            set_cond(910005UL);
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                GlobalTensor<uint16_t> combineDebugGm;
+                LocalTensor<uint16_t> combineDebugUb(TPosition::VECIN, 0U, 32U);
+                combineDebugGm.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ uint16_t *>(params_.peermemInfo.combineSendPtr));
+                DataCopy(combineDebugUb, combineDebugGm, 32U);
+                SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID1>();
+                set_cond(0UL);
+                for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                    set_cond(static_cast<unsigned long>(combineDebugUb.GetValue(valueIdx)));
+                }
+            } else {
+                GlobalTensor<uint8_t> combineDebugGm;
+                LocalTensor<uint8_t> combineDebugUb(TPosition::VECIN, 0U, ALIGN_32);
+                combineDebugGm.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ uint8_t *>(params_.peermemInfo.combineSendPtr));
+                DataCopy(combineDebugUb, combineDebugGm, static_cast<uint32_t>(ALIGN_32));
+                SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID1>();
+                set_cond(1UL);
+                for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                    set_cond(static_cast<unsigned long>(combineDebugUb.GetValue(valueIdx)));
+                }
+            }
+        }
         auto unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);

@@ -198,6 +198,15 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
             AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+            if (groupIdx == 0U && tokenStart + i == 0U &&
+                gmm2OutAddr == params.workspaceInfo.gmm2MmadResPtr) {
+                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
+                auto gmm2DebugBitsTensor = ubBf16.template ReinterpretCast<uint16_t>();
+                set_cond(910004UL);
+                for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                    set_cond(static_cast<unsigned long>(gmm2DebugBitsTensor.GetValue(valueIdx)));
+                }
+            }
             Mxfp8::QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
         }
@@ -223,6 +232,13 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
 constexpr int32_t MAX_AICORE_NUM = 36;
+constexpr uint32_t GMM2_DEBUG_WINDOW_COUNT = 4U;
+constexpr uint32_t GMM2_DEBUG_COPY_BYTES = 32U;
+constexpr uint32_t GMM2_DEBUG_DATA_COUNT = 20U;
+constexpr uint32_t GMM2_DEBUG_SCALE_COUNT = 8U;
+constexpr uint32_t GMM2_DEBUG_WINDOW_BYTES = GMM2_DEBUG_WINDOW_COUNT * GMM2_DEBUG_COPY_BYTES;
+constexpr uint32_t GMM2_DEBUG_INPUT_UB_ADDR = L1_TILE_M_256 * L1_TILE_N * sizeof(bfloat16_t);
+constexpr unsigned long GMM2_DEBUG_UINT_BIAS = 1000000UL;
 
 using Gmm2ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using Gmm2BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
@@ -655,6 +671,112 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
     }
 }
 
+// 由首个 GMM2 tile 的实际承载 block 打印消费侧 A/ScaleA 与 Weight2/Scale2，避免硬编码物理 block。
+template <typename Config>
+__aicore__ inline void DebugFirstGmm2InputWindows(const GMMAddrInfo &gmmAddrInfo, const Config &config)
+{
+    using KernelConfig = typename Config::KernelConfig;
+    using ElementA = typename KernelConfig::ElementAType;
+    using ElementB = typename KernelConfig::ElementBType;
+    using ElementMxScaleA = typename KernelConfig::ElementMxScaleAType;
+    using ElementMxScaleB = typename KernelConfig::ElementMxScaleBType;
+    static_assert(sizeof(ElementA) == 1U && sizeof(ElementB) == 1U,
+                  "GMM2 input debug expects byte-sized A/B elements");
+    static_assert(sizeof(ElementMxScaleA) == 1U && sizeof(ElementMxScaleB) == 1U,
+                  "GMM2 input debug expects byte-sized MX scales");
+
+    uint32_t maxSampleStart = config.k > GMM2_DEBUG_COPY_BYTES ? config.k - GMM2_DEBUG_COPY_BYTES : 0U;
+    uint32_t lastWindowStart = config.k > L1_TILE_N ? config.k - L1_TILE_N : 0U;
+    uint32_t kOffsets[GMM2_DEBUG_WINDOW_COUNT] = {
+        0U,
+        L1_TILE_N < maxSampleStart ? L1_TILE_N : maxSampleStart,
+        2U * L1_TILE_N < maxSampleStart ? 2U * L1_TILE_N : maxSampleStart,
+        lastWindowStart};
+    uint32_t scaleOffsets[GMM2_DEBUG_WINDOW_COUNT]{};
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        scaleOffsets[windowIdx] =
+            kOffsets[windowIdx] / MXFP_DIVISOR_SIZE * MXFP_MULTI_BASE_SIZE;
+    }
+
+    GlobalTensor<uint8_t> aDebugGm;
+    GlobalTensor<uint8_t> aScaleDebugGm;
+    GlobalTensor<uint8_t> bDebugGm;
+    GlobalTensor<uint8_t> bScaleDebugGm;
+    aDebugGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gmmAddrInfo.aGlobal));
+    aScaleDebugGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gmmAddrInfo.aScaleGlobal));
+    bDebugGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gmmAddrInfo.bGlobal));
+    bScaleDebugGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(gmmAddrInfo.bScaleGlobal));
+
+    constexpr uint32_t aUbOffset = 0U;
+    constexpr uint32_t aScaleUbOffset = aUbOffset + GMM2_DEBUG_WINDOW_BYTES;
+    constexpr uint32_t bUbOffset = aScaleUbOffset + GMM2_DEBUG_WINDOW_BYTES;
+    constexpr uint32_t bScaleUbOffset = bUbOffset + GMM2_DEBUG_WINDOW_BYTES;
+    constexpr uint32_t debugUbBytes = bScaleUbOffset + GMM2_DEBUG_WINDOW_BYTES;
+    LocalTensor<uint8_t> debugUb(TPosition::VECIN, GMM2_DEBUG_INPUT_UB_ADDR, debugUbBytes);
+    DataCopyExtParams dataCopyParams{1U, GMM2_DEBUG_DATA_COUNT, 0U, 0U, 0U};
+    DataCopyExtParams scaleCopyParams{1U, GMM2_DEBUG_SCALE_COUNT, 0U, 0U, 0U};
+    DataCopyPadExtParams<uint8_t> copyPadParams{false, 0U, 0U, 0U};
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        uint32_t ubWindowOffset = windowIdx * GMM2_DEBUG_COPY_BYTES;
+        DataCopyPad(debugUb[aUbOffset + ubWindowOffset], aDebugGm[kOffsets[windowIdx]],
+                    dataCopyParams, copyPadParams);
+        DataCopyPad(debugUb[aScaleUbOffset + ubWindowOffset], aScaleDebugGm[scaleOffsets[windowIdx]],
+                    scaleCopyParams, copyPadParams);
+        DataCopyPad(debugUb[bUbOffset + ubWindowOffset], bDebugGm[kOffsets[windowIdx]],
+                    dataCopyParams, copyPadParams);
+        DataCopyPad(debugUb[bScaleUbOffset + ubWindowOffset], bScaleDebugGm[scaleOffsets[windowIdx]],
+                    scaleCopyParams, copyPadParams);
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+
+    set_cond(910006UL);
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.blockIdx));
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.m));
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.n));
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.k));
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.scaleK));
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(kOffsets[windowIdx]));
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(scaleOffsets[windowIdx]));
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        uint32_t ubWindowOffset = aUbOffset + windowIdx * GMM2_DEBUG_COPY_BYTES;
+        for (uint32_t valueIdx = 0U; valueIdx < GMM2_DEBUG_DATA_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(debugUb.GetValue(ubWindowOffset + valueIdx)));
+        }
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        uint32_t ubWindowOffset = aScaleUbOffset + windowIdx * GMM2_DEBUG_COPY_BYTES;
+        for (uint32_t valueIdx = 0U; valueIdx < GMM2_DEBUG_SCALE_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(debugUb.GetValue(ubWindowOffset + valueIdx)));
+        }
+    }
+
+    set_cond(910007UL);
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(config.blockIdx));
+    set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(KernelConfig::IS_WEIGHT_NZ));
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(kOffsets[windowIdx]));
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        set_cond(GMM2_DEBUG_UINT_BIAS + static_cast<unsigned long>(scaleOffsets[windowIdx]));
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        uint32_t ubWindowOffset = bUbOffset + windowIdx * GMM2_DEBUG_COPY_BYTES;
+        for (uint32_t valueIdx = 0U; valueIdx < GMM2_DEBUG_DATA_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(debugUb.GetValue(ubWindowOffset + valueIdx)));
+        }
+    }
+    for (uint32_t windowIdx = 0U; windowIdx < GMM2_DEBUG_WINDOW_COUNT; ++windowIdx) {
+        uint32_t ubWindowOffset = bScaleUbOffset + windowIdx * GMM2_DEBUG_COPY_BYTES;
+        for (uint32_t valueIdx = 0U; valueIdx < GMM2_DEBUG_SCALE_COUNT; ++valueIdx) {
+            set_cond(static_cast<unsigned long>(debugUb.GetValue(ubWindowOffset + valueIdx)));
+        }
+    }
+}
+
 // arch92 的唯一 AIV 消费 AIC 写入 GM 的 GMM2 tile，并执行后处理。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void Gmm2AivGmHandoffEpilogue(
@@ -692,6 +814,14 @@ __aicore__ inline void Gmm2AivGmHandoffEpilogue(
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        if (gmmAddrInfo.gmm2OutGlobal == params.workspaceInfo.gmm2MmadResPtr && mLoc == 0U && nLoc == 0U) {
+            auto gmm2DebugBitsTensor = l0cOutUbGMM2.template ReinterpretCast<uint16_t>();
+            set_cond(910004UL);
+            for (uint32_t valueIdx = 0U; valueIdx < 20U; ++valueIdx) {
+                set_cond(static_cast<unsigned long>(gmm2DebugBitsTensor.GetValue(valueIdx)));
+            }
+            DebugFirstGmm2InputWindows(gmmAddrInfo, config);
+        }
         CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
             nLoc, config.n, metaInfoTensor, l0cOutUbGMM2, actualShape, L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
@@ -973,8 +1103,7 @@ __aicore__ inline Gmm2ExpertLoopState CreateGmm2ExpertLoopState(const Gmm2Config
  * 动态 Wave 使用 rowOffset 索引紧凑 token buffer，使用 expertIdx 索引定长资源。Dispatch 与 GMM
  * 以不同 Wave 进度推进时，无需继续累加旧的 Gmm2BlockOffset。
  */
-template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool ConfigureCombineCounter>
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool ConfigureCombineCounter>
 __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace, const ExpertWeightTensorListAddrs &weights,
     GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx,
@@ -998,7 +1127,7 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
         rowOffset * activationOutputWidth / activationOutputElementsPerByte * sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
         workspace.activationQuantScalePtr + rowOffset * activationScaleWidth * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, expertIdx,
         static_cast<uint64_t>(expertIdx) * tokenHiddenDim * activationOutputWidth / weightElementsPerByte);
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1084,7 +1213,7 @@ __aicore__ inline bool PrepareSharedExpertGmm2State(const Gmm2Config &context,
     return Get<M_VALUE>(state.problemShape) != 0;
 }
 
-template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType,
           bool ConfigureGmm2Output, bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace,
@@ -1102,7 +1231,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
         workspace.activationQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
         workspace.activationQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, expertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1131,7 +1260,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
     }
 }
 
-template <typename ActivationType, typename QuantScaleType, uint32_t Gmm1TileM,
+template <typename ActivationType, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
           bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
     const Gmm2Config &context, const WorkspaceInfo &workspace,
@@ -1144,7 +1273,7 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
         workspace.sharedExpertActivationDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal =
         workspace.sharedExpertActivationScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, context.isPerExpertWeightTensor, sharedExpertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
@@ -1201,7 +1330,7 @@ __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &pa
     }
 }
 
-template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
           uint32_t ActivationOutputElementsPerByte, bool ConfigureGmm2Output,
           bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
@@ -1214,7 +1343,7 @@ __aicore__ inline bool PrepareMoeExpertGmm2Stage(
                                    ActivationOutputElementsPerByte>(context, scratch, state, expertIdx)) {
         return false;
     }
-    UpdateMoeExpertGmm2GlobalBuffer<ActivationType, ActivationOutType, QuantScaleType,
+    UpdateMoeExpertGmm2GlobalBuffer<WeightType, ActivationOutType, QuantScaleType,
                                     ConfigureGmm2Output, ConfigureCombineCounter,
                                     ConfigureGmmToEpilogue>(
         context, workspace, weights, gmmAddrInfo, state, expertIdx);
@@ -1252,7 +1381,7 @@ __aicore__ inline bool RunSharedExpertGmm2Stage(
             context, state, sharedExpertIdx)) {
         return false;
     }
-    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
+    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, WeightType, QuantScaleType, Gmm1TileM,
                                        EnableA8W4 || EnableA4W4>(
         context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
     RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType,

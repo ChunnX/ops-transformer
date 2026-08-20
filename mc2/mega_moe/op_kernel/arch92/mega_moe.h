@@ -736,7 +736,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
         ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT;
     constexpr bool configureCombineCounter = CombineQuantMode != COMBINE_NO_QUANT;
     for (uint32_t expertIdx = 0U; expertIdx < gmm2Config_.common.moeExpertPerRank; ++expertIdx) {
-        if (!PrepareMoeExpertGmm2Stage < ActivationType, ActivationQuantOutType, QuantScaleOutType,
+        if (!PrepareMoeExpertGmm2Stage < Weight1Type, ActivationQuantOutType, QuantScaleOutType,
             PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE,
             PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE,
             PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE,
