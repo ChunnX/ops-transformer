@@ -91,6 +91,29 @@ def _register_compressor_api_params():
         "cann_ops_transformer.ops.compressor", params, source="manual_compress"
     )
 
+    aclnn_params = [
+        ParamInfo(name="x", type="Tensor"),
+        ParamInfo(name="wkv", type="Tensor"),
+        ParamInfo(name="wgate", type="Tensor"),
+        ParamInfo(name="stateCacheRef", type="Tensor"),
+        ParamInfo(name="ape", type="Tensor"),
+        ParamInfo(name="stateBlockTable", type="Tensor"),
+        ParamInfo(name="cuSeqlens", type="Tensor"),
+        ParamInfo(name="seqused", type="Tensor"),
+        ParamInfo(name="startPos", type="Tensor"),
+        ParamInfo(name="cmpRatio", type="int"),
+        ParamInfo(name="coff", type="int"),
+        ParamInfo(name="cacheMode", type="int"),
+        ParamInfo(name="stateCacheStrideDim0", type="int"),
+        ParamInfo(name="gradEnabled", type="int"),
+        ParamInfo(name="cmpKv", type="Tensor"),
+        ParamInfo(name="softmaxScoreOut", type="Tensor"),
+        ParamInfo(name="kvOut", type="Tensor"),
+    ]
+    register_api_params(
+        "aclnnCompressor", aclnn_params, source="manual_compress"
+    )
+
 
 _register_compressor_api_params()
 

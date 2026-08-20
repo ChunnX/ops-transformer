@@ -34,6 +34,92 @@ inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
 
+def _register_quant_compressor_api_params():
+    try:
+        from ttk.utilities.simple_param_extractor import (
+            ParamInfo,
+            register_api_params,
+        )
+    except Exception:
+        return
+
+    e2e_params = [
+        ParamInfo(name="x", type="Tensor"),
+        ParamInfo(name="wkv", type="Tensor"),
+        ParamInfo(name="wgate", type="Tensor"),
+        ParamInfo(name="state_cache", type="Tensor"),
+        ParamInfo(name="ape", type="Tensor"),
+        ParamInfo(name="quant_mode", type="int"),
+        ParamInfo(name="cmp_ratio", type="int"),
+        ParamInfo(name="x_descale", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="wkv_descale", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="wgate_descale", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="state_block_table", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="cu_seqlens", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="seqused", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="start_pos", type="Tensor", default=None,
+                  is_optional=True, is_keyword_only=True),
+        ParamInfo(name="coff", type="int", default=1, is_optional=True,
+                  is_keyword_only=True),
+        ParamInfo(name="cache_mode", type="int", default=1, is_optional=True,
+                  is_keyword_only=True),
+    ]
+    register_api_params(
+        "cann_ops_transformer.ops.quant_compressor", e2e_params, source="manual_quant_compress"
+    )
+
+    kernel_params = [
+        ParamInfo(name="x", type="Tensor"),
+        ParamInfo(name="wkv", type="Tensor"),
+        ParamInfo(name="wgate", type="Tensor"),
+        ParamInfo(name="state_cache", type="Tensor"),
+        ParamInfo(name="ape", type="Tensor"),
+        ParamInfo(name="x_descale", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="wkv_descale", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="wgate_descale", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="state_block_table", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="cu_seqlens", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="seqused", type="Tensor", default=None, is_optional=True),
+        ParamInfo(name="start_pos", type="Tensor", default=None, is_optional=True),
+    ]
+    register_api_params(
+        "quant_compressor", kernel_params, source="manual_quant_compress"
+    )
+
+    aclnn_params = [
+        ParamInfo(name="x", type="Tensor"),
+        ParamInfo(name="wkv", type="Tensor"),
+        ParamInfo(name="wgate", type="Tensor"),
+        ParamInfo(name="stateCacheRef", type="Tensor"),
+        ParamInfo(name="ape", type="Tensor"),
+        ParamInfo(name="xDescale", type="Tensor"),
+        ParamInfo(name="wkvDescale", type="Tensor"),
+        ParamInfo(name="wgateDescale", type="Tensor"),
+        ParamInfo(name="stateBlockTable", type="Tensor"),
+        ParamInfo(name="cuSeqlens", type="Tensor"),
+        ParamInfo(name="seqused", type="Tensor"),
+        ParamInfo(name="startPos", type="Tensor"),
+        ParamInfo(name="quantMode", type="int"),
+        ParamInfo(name="cmpRatio", type="int"),
+        ParamInfo(name="coff", type="int"),
+        ParamInfo(name="cacheMode", type="int"),
+        ParamInfo(name="stateCacheStrideDim0", type="int"),
+        ParamInfo(name="cmpKv", type="Tensor"),
+    ]
+    register_api_params(
+        "aclnnQuantCompressor", aclnn_params, source="manual_quant_compress"
+    )
+
+
+_register_quant_compressor_api_params()
+
+
 class QuantCompressorSpec:
     golden = golden_module.cpu_quant_compressor
     customize_inputs = inputs_module.generate_quant_compressor_inputs
