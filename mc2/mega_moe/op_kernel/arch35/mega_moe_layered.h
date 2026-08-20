@@ -331,6 +331,7 @@ private:
         .inlineEn = 0};
     static constexpr uint32_t HCOMM_BATCH_CAPACITY = 512;
     static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
+    static constexpr uint32_t DISPATCH_BATCH_COMMIT_SIZE = 256;
     // Local send-slot protocol: producer READY -> sender DATA_PREPARED -> FLAG_PREPARED -> DONE.
     static constexpr int32_t DISPATCH_SLOT_READY = 1;
     static constexpr int32_t DISPATCH_SLOT_DATA_PREPARED = 2;
@@ -1261,7 +1262,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
                 scanEnd = endCount;
             }
             int32_t slot = scanCursor;
-            while (slot < scanEnd && preparedDataCount < HCOMM_BATCH_CAPACITY) {
+            while (slot < scanEnd && preparedDataCount < DISPATCH_BATCH_COMMIT_SIZE) {
                 if (PrepareDispatchData(targetServerForSender, peerRank, activeBatchHandle, slot)) {
                     if (preparedDataCount == 0U) {
                         preparedScanStart = slot;
@@ -1281,7 +1282,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             }
 
             bool computeDone = DispatchSyncWithCompute(realComputeCoreNum, roundTag);
-            bool batchFull = preparedDataCount == HCOMM_BATCH_CAPACITY;
+            bool batchFull = preparedDataCount == DISPATCH_BATCH_COMMIT_SIZE;
             bool tailBatchReady = preparedDataCount != 0U && computeDone && scannedToEnd;
             if (batchFull || tailBatchReady) {
                 CommitPreparedDispatchBatch(targetServerForSender, peerRank, activeBatchHandle, preparedScanStart,
