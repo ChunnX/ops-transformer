@@ -65,7 +65,7 @@
       - TND: [BTkv//64, Nkv, D, 2]。
 
       $$
-      BTkv = \sum_{b=0}^{B-1} \left\lceil \frac{S2_b}{64} \right\rceil
+      BTkv = \sum_{b=0}^{B-1} \left\lceil \frac{Skv_b}{64} \right\rceil
       $$
 
 ## 函数原型
@@ -228,8 +228,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
         </ul>
         当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
-          <li>blockShapeX: Q方向块大小，值必须大于0。</li>
-          <li>blockShapeY: KV方向块大小，值必须大于0且为128的倍数。</li>
+          <li>blockShapeX: Q方向块大小，值必须大于0，MXFP4的量化时只支持64的倍数。</li>
+          <li>blockShapeY: KV方向块大小，值必须大于0；在Ascend 950PR/Ascend 950DT上须为16的倍数，MXFP4的量化时只支持64的倍数，在Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品上须为128的倍数。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -421,7 +421,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
         <ul>
           <li>0：表示online softmax和rescale全部采取fp32数据类型，适合追求计算精度的场景使用。</li>
           <li>1：仅支持输入的query、key、value均为fp16数据类型时配置，表示online softmax和rescale全部采取fp16数据类型，性能更好，但精度较低，且可能发生计算时的数值溢出，使用者需根据值域范围自行判断是否使用。</li>
-          <li>4：表示混合精度运算，在性能与精度上取得一个折中。online softmax采取fp16/bf16数据类型（与query、key、value数据类型相同），rescale采取fp32数据类型，在online softmax阶段可能发生数值溢出。</li>
+          <li>4：表示混合精度运算，在性能与精度上取得一个折中。online softmax采取fp16/bf16数据类型（与query、key、value数据类型相同），rescale采取fp32数据类型，在online softmax阶段可能发生数值溢出。mxfp4量化模式下（quantMode=2/3），online softmax仅支持fp16数据类型。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -699,6 +699,15 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
   - D仅支持64/128;
   - attentionOut数据类型仅支持FLOAT16或BFLOAT16；
   - 暂不支持attenMaskOptional、PagedAttention、softmaxLse等高阶特性。
+  - **量化公式**
+    - 以P的量化为例, 其中 $P_{\text{max}}$ 为一个group（32个元素）内元素绝对值的最大值。
+    - **OCP 量化公式**
+
+      $$ P_{\text{Scale}} = 2^{\lfloor \log_2 P_{\text{max}} \rfloor / 4} = 2^{\lfloor \log_2 P_{\text{max}} \rfloor - 2} $$
+
+    - **CX量化公式**
+
+      $$ P_{\text{Scale}} = 2^{\lceil \log_2 \left( P_{\text{max}} / dstTypeMax \right) \rceil} = 2^{\lceil \log_2 P_{\text{max}} - \log_2 dstTypeMax \rceil} $$
 
 ## 调用示例
 
