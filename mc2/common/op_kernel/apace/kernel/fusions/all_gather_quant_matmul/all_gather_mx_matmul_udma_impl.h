@@ -17,13 +17,13 @@
 
 #include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "all_gather_mx_matmul_tiling_data.h"
-#include "../../matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
+#include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
 #include "adv_api/hcomm/hcomm.h"
-#include "../../../core/aiv_comm/collective_comm_context.h"
-#include "../../../core/aiv_comm/collective_comm_api.h"
-#include "../../../core/aiv_comm/barrier/barrier_ubmem.h"
-#include "../../../tiling/comm_tiling_data.h"
+#include "apace/core/aiv_comm/collective_comm_context.h"
+#include "apace/core/aiv_comm/collective_comm_api.h"
+#include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#include "apace/tiling/comm_tiling_data.h"
 #include "include/tensor_api/tensor.h"
 
 namespace AllGatherQuantMatmulImpl {
