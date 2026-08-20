@@ -63,7 +63,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaI
                                               std::to_string(quantModeVal).c_str(),
                                               "The value of quant_mode must be 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
                                               "or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
-                                              "or 7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)"
+                                              "or 7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

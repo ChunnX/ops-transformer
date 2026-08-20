@@ -55,6 +55,7 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
                       //    false / true
                       ASCENDC_TPL_BOOL_DECL(IsFd, false, true));
 
+#if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
 ASCENDC_TPL_SEL(
     // MXFP8
     ASCENDC_TPL_ARGS_SEL(
@@ -78,8 +79,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BNBD),
         ASCENDC_TPL_BOOL_SEL(IsFd, false),
         ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)), );
-
-#if (ORIG_DTYPE_Q == DT_HIFLOAT8)
+#elif (ORIG_DTYPE_Q == DT_HIFLOAT8)
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND_BSND,
                          InOutLayoutType_BNSD_BNSD, InOutLayoutType_TND_TND),

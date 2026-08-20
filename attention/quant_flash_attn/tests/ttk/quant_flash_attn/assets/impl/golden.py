@@ -1035,6 +1035,14 @@ def cpu_qfa_hif8(
             lse_compare_layout,
             cu_seqlens=lse_cu_q,
         )
+        # TND padding 位置填 inf 以匹配 NPU 行为：NPU 对超出实际序列长度的 Q 位置输出 inf LSE
+        if lse_compare_layout == "TND" and lse_cu_q is not None:
+            cpu_lse_aligned = hif8_golden_mod.fill_tnd_padding(
+                cpu_lse_aligned,
+                actual_seq_q,
+                list(lse_cu_q),
+                fill_value=float("inf"),
+            )
         while cpu_lse_aligned.ndim > 1 and cpu_lse_aligned.shape[-1] == 1:
             cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
         if compare_layout == "TND" and cpu_lse_aligned.ndim == 2:
