@@ -794,14 +794,19 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::AllToAllDispatchSerial()
 {
+    PRINTF("[SER aiv=%u] InitBuf start\n", aivId_);
     TQue<QuePosition::VECIN, 1> inQueue;
     TBuf<> outBuf;
     InitDispatchBuffers(inQueue, outBuf);
-    // 先发数据后发count，利用同核MTE3保序保证数据先于count到达
+    PRINTF("[SER aiv=%u] InitBuf done activeMaskBs=%llu\n", aivId_, activeMaskBsCnt_);
     if (activeMaskBsCnt_ > 0) {
+        PRINTF("[SER aiv=%u] AllToAllA5 start\n", aivId_);
         AllToAllDispatchA5(inQueue, outBuf);
+        PRINTF("[SER aiv=%u] AllToAllA5 done\n", aivId_);
     }
+    PRINTF("[SER aiv=%u] CalAndSendCnt start\n", aivId_);
     CalAndSendCnt();
+    PRINTF("[SER aiv=%u] CalAndSendCnt done\n", aivId_);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1182,9 +1187,12 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitDispatchAndCalcPrefix()
 {
+    PRINTF("[SER aiv=%u] WDP reset\n", aivId_);
     tpipe_->Reset();
     SplitToCore(rscvStatusNum_, aivNum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, true);
+    PRINTF("[SER aiv=%u] WDP split rscv=%u start=%u end=%u perCore=%u\n", aivId_, rscvStatusNum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_);
     BufferInit();
+    PRINTF("[SER aiv=%u] WDP BufferInit done\n", aivId_);
     // 等待本核负责区间的count到达（数据先于count发送，count到达则数据必然已到达）
     LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
     LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
@@ -1197,6 +1205,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         float sumOfFlag = static_cast<float>(-1.0);
         DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
         SyncFunc<AscendC::HardEvent::S_V>();
+        PRINTF("[SER aiv=%u] WDP waitLoop target=%f\n", aivId_, compareTarget);
         while (sumOfFlag != compareTarget) {
             DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
                      intriParams);
@@ -1205,7 +1214,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             SyncFunc<AscendC::HardEvent::V_S>();
             sumOfFlag = statusSumOutTensor.GetValue(0);
         }
+        PRINTF("[SER aiv=%u] WDP waitLoop done flag=%f\n", aivId_, sumOfFlag);
     }
+    PRINTF("[SER aiv=%u] WDP fullStatus size=%u\n", aivId_, Ceil(rscvStatusNum_ * UB_ALIGN, SIZE_ALIGN_256) * SIZE_ALIGN_256);
     // 每个核独立读完整的window status，自己算全局前缀和，不需要workspace跨核聚合
     TBuf<> fullStatusBuf;
     uint32_t fullStatusSize = Ceil(rscvStatusNum_ * UB_ALIGN, SIZE_ALIGN_256) * SIZE_ALIGN_256;
@@ -1215,9 +1226,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     SyncFunc<AscendC::HardEvent::S_MTE2>();
     DataCopy(fullStatusTensor, windowInstatusFp32Tensor_, fullCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    // 清状态（只清本核负责区间）
+    PRINTF("[SER aiv=%u] WDP fullStatus DataCopy done\n", aivId_);
     if (recStatusNumPerCore_ > 0) {
         WaitDispatchClearStatus();
+        PRINTF("[SER aiv=%u] WDP clearStatus done\n", aivId_);
     }
     // 从完整status计算全局前缀和
     waitStatusTensor_ = fullStatusBuf.Get<int32_t>();
@@ -1241,6 +1253,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             expertEndStatusId += epWorldSize_;
         }
     }
+    PRINTF("[SER aiv=%u] WDP prefix done curCnt=%u prefixNum=%u firstExp=%u\n", aivId_, curCnt, expertTokenPrefixNum, firstLocalExpertId);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     // 写epRecvCnt输出和workspace前缀和（供SetValidExpertInfo读取）
     GlobalTensor<int32_t> workspaceGlobal;
@@ -1251,15 +1264,19 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(recStatusNumPerCore_ * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(sendCountsGlobal[startStatusIndex_], outCountLocal, dataCopyOutParams);
         DataCopyPad(workspaceGlobal[startStatusIndex_], outCountLocal, dataCopyOutParams);
+        PRINTF("[SER aiv=%u] WDP writeWS[%u] done\n", aivId_, startStatusIndex_);
     }
     if (expertTokenPrefixNum > 0U) {
         DataCopyExtParams expertTokenPrefixCopyParams{
             1U, static_cast<uint32_t>(expertTokenPrefixNum * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(workspaceGlobal[rscvStatusNum_ + firstLocalExpertId], expertTokenPrefixTensor,
                     expertTokenPrefixCopyParams);
+        PRINTF("[SER aiv=%u] WDP writeExpPrefix[%u] done\n", aivId_, rscvStatusNum_ + firstLocalExpertId);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PRINTF("[SER aiv=%u] WDP SyncAll\n", aivId_);
     SyncAll<true>();
+    PRINTF("[SER aiv=%u] WDP SyncAll done\n", aivId_);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1441,8 +1458,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
                 expertTokenNumsLocalTensor(localExpertIdx) = currentPrefix - previousPrefix;
                 previousPrefix = currentPrefix;
             }
-        }
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
                                                     0U};
         DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
@@ -1740,10 +1757,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::LocalWindowCopySerial()
 {
-    // Serial模式: 前缀和已在WaitDispatchAndCalcPrefix中写好，直接从workspace读取并拷贝数据
+    PRINTF("[SER aiv=%u] LWC reset\n", aivId_);
     tpipe_->Reset();
     TBuf<> cumSumBuf;
     SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
+    PRINTF("[SER aiv=%u] LWC split startId=%u endId=%u sendNum=%u\n", aivId_, startId_, endId_, sendNum_);
     uint32_t firstRequiredPrefixId = startId_ == 0U ? 0U : startId_ - 1U;
     recvCntPrefixStartId_ = firstRequiredPrefixId / UB_ALIGN_DATA_COUNT * UB_ALIGN_DATA_COUNT;
     uint32_t recvCntPrefixNum = sendNum_ == 0U ? 0U : endId_ - recvCntPrefixStartId_;
@@ -1753,27 +1771,28 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     tpipe_->InitBuffer(cumSumBuf, recvCntPrefixSize);
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
     if (sendNum_ == 0) {
+        PRINTF("[SER aiv=%u] LWC sendNum=0 return\n", aivId_);
         return;
     }
-    // 连续化
     TBuf<> expertMapBuf, expertFinishBuf, expertLeftBuf, tBuf;
     uint32_t validNum = 0;
     uint32_t expInfoSize = Ceil(sendNum_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(expertMapBuf, expInfoSize);
     tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
     tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
-    // Serial模式不需要statusWaitBuf和statusCleanBuf（无WaitCumSumFlag）
     tBufRealSize_ = FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + recvCntPrefixSize) - (expInfoSize * 3);
     tpipe_->InitBuffer(tBuf, tBufRealSize_);
+    PRINTF("[SER aiv=%u] LWC tBufRealSize=%u\n", aivId_, tBufRealSize_);
     expertMapTensor_ = expertMapBuf.Get<uint32_t>();
     expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
     expertLeftNumTensor_ = expertLeftBuf.Get<uint32_t>();
+    PRINTF("[SER aiv=%u] LWC SetValidExpertInfo start\n", aivId_);
     SetValidExpertInfo(expInfoSize, validNum);
+    PRINTF("[SER aiv=%u] LWC SetValidExpertInfo done validNum=%u\n", aivId_, validNum);
     if (validNum == 0) {
         return;
     }
     SyncFunc<AscendC::HardEvent::V_S>();
-    // Serial模式: 数据先于count发送，count到达则数据必然到达，直接拷贝无需CheckDataArriveWithFlag
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1 : moeExpertNumPerRank_;
     uint32_t srcExpertId, dstPosition, copyCnt, srcDataBlockIdx;
     uint64_t packedTokenSize = static_cast<uint64_t>(blockCntPerToken_) * SPLIT_BLOCK_DATA_SIZE;
@@ -1793,6 +1812,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         maxCopyTokenCnt = 1;
         dataBufferSize = static_cast<uint32_t>(packedTokenSize);
     }
+    PRINTF("[SER aiv=%u] LWC maxCopy=%u bufSize=%u\n", aivId_, maxCopyTokenCnt, dataBufferSize);
 
     LocalTensor<XOutType> xTmpPingTensor = tBuf.GetWithOffset<XOutType>(dataBufferSize / sizeof(XOutType), 0);
     LocalTensor<XOutType> xTmpPongTensor =
@@ -1811,6 +1831,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             dstPosition = srcExpertId != 0 ? GetRecvCntPrefix(srcExpertId - 1U) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
+            PRINTF("[SER aiv=%u] LWC Copy idx=%u srcExp=%u srcBlock=%u dstPos=%u copyCnt=%u\n", aivId_, index, srcExpertId, srcDataBlockIdx, dstPosition, copyCnt);
             uint32_t dataBufferId = copyBatchId % LOCAL_COPY_BUFFER_NUM;
             LocalTensor<XOutType> xTmpTensor = xTmpPingTensor;
             if (dataBufferId != 0) {
@@ -1829,11 +1850,14 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             break;
         }
     }
+    PRINTF("[SER aiv=%u] LWC copy done batchId=%u\n", aivId_, copyBatchId);
     uint32_t usedDataBufferNum = copyBatchId > LOCAL_COPY_BUFFER_NUM ? LOCAL_COPY_BUFFER_NUM : copyBatchId;
     for (uint32_t dataBufferId = 0; dataBufferId < usedDataBufferNum; ++dataBufferId) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dataBufferId);
     }
+    PRINTF("[SER aiv=%u] LWC ClearFlags start\n", aivId_);
     ClearLocalWindowDataFlags(tBuf, validNum, localExpertNum);
+    PRINTF("[SER aiv=%u] LWC ClearFlags done\n", aivId_);
     RunPosRecord(RUNPOS_ARRIVECNT);
 }
 
@@ -2098,10 +2122,15 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::ProcessSerial()
 {
+    PRINTF("[SER aiv=%u] 1.AllToAllDispatchSerial\n", aivId_);
     AllToAllDispatchSerial();
+    PRINTF("[SER aiv=%u] 2.PipeBarrier\n", aivId_);
     PipeBarrier<PIPE_ALL>();
+    PRINTF("[SER aiv=%u] 3.WaitDispatchAndCalcPrefix\n", aivId_);
     WaitDispatchAndCalcPrefix();
+    PRINTF("[SER aiv=%u] 4.LocalWindowCopySerial\n", aivId_);
     LocalWindowCopySerial();
+    PRINTF("[SER aiv=%u] 5.done\n", aivId_);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
