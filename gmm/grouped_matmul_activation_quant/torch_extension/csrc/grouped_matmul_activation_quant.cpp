@@ -54,9 +54,6 @@ int64_t NormalizeGeDtype(int64_t dtype)
     if (dtype == static_cast<int64_t>(at::ScalarType::Float8_e4m3fn)) {
         return GE_DTYPE_FLOAT8_E4M3FN;
     }
-    if (dtype == static_cast<int64_t>(at::ScalarType::Float8_e8m0fnu)) {
-        return GE_DTYPE_FLOAT8_E8M0;
-    }
     return dtype;
 }
 

@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch_npu
@@ -28,7 +28,12 @@ ACL_DTYPE_OFFSET = 256
 FLOAT8_E8M0_DTYPE = getattr(
     torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
 )
-FLOAT4_E2M1_DTYPE = getattr(torch, "float4_e2m1fn_x2", None)
+FLOAT4_E2M1_DTYPE = getattr(
+    torch_npu, "float4_e2m1fn_x2", getattr(torch, "float4_e2m1fn_x2", None)
+)
+FLOAT4_E1M2_DTYPE = getattr(
+    torch_npu, "float4_e1m2fn_x2", getattr(torch, "float4_e1m2fn_x2", None)
+)
 
 _TORCH_DTYPE_TO_GE_DTYPE = {
     torch.float32: GE_DTYPE_FLOAT,
@@ -38,6 +43,8 @@ _TORCH_DTYPE_TO_GE_DTYPE = {
 }
 if FLOAT4_E2M1_DTYPE is not None:
     _TORCH_DTYPE_TO_GE_DTYPE[FLOAT4_E2M1_DTYPE] = GE_DTYPE_FLOAT4_E2M1
+if FLOAT4_E1M2_DTYPE is not None:
+    _TORCH_DTYPE_TO_GE_DTYPE[FLOAT4_E1M2_DTYPE] = GE_DTYPE_FLOAT4_E1M2
 
 _GE_DTYPE_TO_TORCH_DTYPE = {
     GE_DTYPE_FLOAT8_E5M2: torch.float8_e5m2,
@@ -281,7 +288,7 @@ def grouped_matmul_activation_quant(
     group_list_type: int = 0,
     tuning_config: Optional[List[int]] = None,
     quant_mode: Optional[str] = None,
-    y_dtype: Optional[torch.dtype] = None,
+    y_dtype: Optional[Union[torch.dtype, int]] = None,
     round_mode: str = "rint",
     scale_alg: int = 0,
     dst_type_max: float = 0.0,
@@ -312,11 +319,12 @@ def grouped_matmul_activation_quant(
         group_list_type (int): group_list语义类型，当前支持0或1。
         tuning_config (List[int], optional): 预留调优参数。
         quant_mode (str, optional): 量化模式，torch层不做解析，直接透传到aclnn层处理。
-        y_dtype (torch.dtype, optional): 输出y的数据类型，支持两种FP8和两种FP4类型；为None时
-            默认推导为x的数据类型。FP4输出以打包 ``torch.uint8`` 返回，末维物理长度为 ``N / 2``。
+        y_dtype (torch.dtype | int, optional): 输出y的数据类型，可传两种FP8/两种FP4的 ``torch.dtype``
+            或对应GE dtype整数；为None时默认推导为x的逻辑数据类型。FP4输出以打包 ``torch.uint8`` 返回，
+            末维物理长度为 ``ceil(N / 2)``。
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。
-        scale_alg (int): scale算法，当前支持0或1。
-        dst_type_max (float): 预留参数，当前仅支持0.0。
+        scale_alg (int): scale算法，支持0、1、2；1仅支持FP8输出，2仅支持FLOAT4_E2M1输出。
+        dst_type_max (float): ``scale_alg=2``时支持0.0或[6.0, 12.0]，其他算法仅支持0.0。
         x_dtype (int, optional): x的dtype wrapper覆盖值。MXFP4传入
             ``torch_npu.float4_e2m1fn_x2`` 或 ``torch_npu.float4_e1m2fn_x2``。
         weight_dtype (int, optional): weight的dtype wrapper覆盖值。MXFP4传入
@@ -325,8 +333,9 @@ def grouped_matmul_activation_quant(
         x_scale_dtype (int, optional): x_scale的dtype wrapper覆盖值，传入torch_npu dtype枚举。
 
     Returns:
-        Tuple[Tensor, Tensor]: ``(y, y_scale)``，其中 ``y`` shape为 ``(M, N)``，
-        ``y_scale`` shape为 ``(M, ceil(N / 64), 2)``。
+        Tuple[Tensor, Tensor]: ``(y, y_scale)``。FP8 ``y`` shape为 ``(M, N)``；FP4的Torch载体shape为
+        ``(M, ceil(N / 2))``，其ACL/GE逻辑shape仍为 ``(M, N)``。``y_scale`` shape为
+        ``(M, ceil(N / 64), 2)``。
     """
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
@@ -335,11 +344,10 @@ def grouped_matmul_activation_quant(
     weight_dtype = _normalize_wrapper_dtype(weight_dtype)
     weight_scale_dtype = _normalize_wrapper_dtype(weight_scale_dtype)
     x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
-    y_dtype = (
-        None
-        if y_dtype is None
-        else _normalize_wrapper_dtype(y_dtype) - ACL_DTYPE_OFFSET
-    )
+    # y_dtype is an operator attribute (GE dtype), unlike the tensor wrapper
+    # dtype overrides below.  Normalize it once and never subtract an ACL
+    # wrapper offset from an already-normalized GE value.
+    y_dtype = None if y_dtype is None else _normalize_attr_dtype(y_dtype)
     return torch.ops.cann_ops_transformer.grouped_matmul_activation_quant(
         x,
         group_list,

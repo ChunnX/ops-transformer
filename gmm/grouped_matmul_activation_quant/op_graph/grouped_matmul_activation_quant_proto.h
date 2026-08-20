@@ -29,9 +29,11 @@ namespace ge {
 * the format supports ND, and the data type supports int64.
 * @li weight: A dynamic tensor list. The right matrix of grouped matmul. The data type supports
 * float8_e4m3fn, float4_e2m1 and float4_e1m2, and the format supports FRACTAL_NZ. The view shape supports (e, k, n) when
-* transpose_weight is false and (e, n, k) when transpose_weight is true. The storage shape supports
+* transpose_weight is false and (e, n, k) when transpose_weight is true. For FLOAT8, the storage shape supports
 * (e, ceildiv(n, 32), ceildiv(k, 16), 16, 32) when transpose_weight is false and
-* (e, ceildiv(k, 32), ceildiv(n, 16), 16, 32) when transpose_weight is true.
+* (e, ceildiv(k, 32), ceildiv(n, 16), 16, 32) when transpose_weight is true. For FLOAT4, the last storage
+* dimension is 64, namely (e, ceildiv(n, 64), ceildiv(k, 16), 16, 64) and
+* (e, ceildiv(k, 64), ceildiv(n, 16), 16, 64), respectively.
 * @li weight_scale: A dynamic tensor list. The MX scale of weight. The format supports ND,
 * and the data type supports float8_e8m0. The shape supports (e, ceildiv(k, 64), n, 2) when
 * transpose_weight is false and (e, n, ceildiv(k, 64), 2) when transpose_weight is true.
@@ -41,8 +43,10 @@ namespace ge {
 * supports (m, ceildiv(k, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
 * @par Outputs:
-* @li y: A tensor. The quantized output after grouped matmul and activation. The shape supports (m, n),
+* @li y: A tensor. The quantized output after grouped matmul and activation. The logical shape supports (m, n),
 * the format supports ND, and the data type supports float8_e4m3fn, float8_e5m2, float4_e2m1 and float4_e1m2.
+* In the Torch raw carrier, FLOAT4 is packed as uint8 with physical shape (m, ceildiv(n, 2)); this does not
+* change the ACL/GE logical shape.
 * @li y_scale: A tensor. The MX scale of y. The shape supports
 * (m, ceildiv(n, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
