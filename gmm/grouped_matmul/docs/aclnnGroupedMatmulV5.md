@@ -193,7 +193,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |--------|:---:|------|------|----------|:---:|:---|:---:|
-  | x（aclTensorList *） | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
+  | x（aclTensorList *） | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
   | weight（aclTensorList *） | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲和排布）">NZ</abbr> | 2~3 | √ |
   | biasOptional（aclTensorList *） | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
   | scaleOptional（aclTensorList *） | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
@@ -219,7 +219,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
-    - 输入参数 x、weight均不支持INT16 类型，且 x不支持INT4 类型
+    - 输入参数 x、weight均不支持INT16 类型
   <!-- end id8 -->
   <!-- npu="A3,910b" id11 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -509,34 +509,20 @@ aclnnGroupedMatmulV5默认确定性实现。
 <details>
 <summary>S4S4 场景约束</summary>
 
+- weight仅支持非转置的ND格式，并且N 须为 8 的整数倍
 - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
 - 不为空的参数支持的数据类型组合要满足下表：
 
 | groupType | x | weight | scaleOptional | perTokenScaleOptional | out |
 |:---:|:---:|:---:|:---|:---|:---|
-| 0 | INT4 | INT4 (ND/NZ) | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
-
-- **weight 格式与转置子场景**：
-
-| weight 格式 | 子场景 | 约束 |
-|:---:|:---|:---|
-| ND | 非转置 | 仅支持非转置；N 须为 8 的整数倍 |
-| NZ | 非转置/转置 | 支持非转置与转置；开启转置后 $K/G$ 按 64 对齐、K 按 64 对齐、N 按 16 对齐 |
+| 0 | INT4 | INT4 | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
 
 - **scaleOptional shape**（$g$=分组数）：
 
-| groupType | 子场景 | shape |
-|:---:|:---|:---|
-| 0 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, N]` |
-| 0 | <abbr title="简称G量化，在reduce轴上对数据分组，每组使用独立的量化参数">pergroup</abbr> | `[E, G, N]` |
-
-- **约束说明**：
-
-  除平台约束外，S4S4场景其余约束如下：
-
-  | groupType | actType | groupListType | x | weight | out | 转置 | 其余场景限制 |
-  |:---:|:---:|:---:|:---|:---|:---|:---|:---|
-  | 0（M轴分组） | 0 | 0/1/2 | 长度1的TensorList，2维，shape为（M，K） | 长度1的TensorList，3维，shape为（E，K，N） | 长度1的TensorList | x不支持转置；weight的ND格式仅支持非转置、NZ格式支持转置（见上表） | 1）pergroup场景下，$G$须能整除$K$，且$K/G$需为偶数 |
+| groupType | 子场景 | shape | 约束 |
+|:---:|:---|:---|:---|
+| 0 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, N]` | |
+| 0 | <abbr title="简称G量化，在reduce轴上对数据分组，每组使用独立的量化参数">pergroup</abbr> | `[E, G, N]` | $G$须能整除$K$，且$K/G$需为偶数 |
 
 </details>
 
@@ -554,8 +540,8 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 | groupType | x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 0 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | FLOAT | INT64 | BFLOAT16 |
-| 0 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | INT64 | FLOAT16 |
+| 0 | INT8 | INT4 | FLOAT | UINT64 | null | FLOAT | INT64 | BFLOAT16 |
+| 0 | INT8 | INT4 | FLOAT | UINT64 | FLOAT/null | FLOAT | INT64 | FLOAT16 |
 
 - **scaleOptional 与 offsetOptional shape**（$E$=组数）：
 

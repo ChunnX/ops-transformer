@@ -195,7 +195,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -633,8 +633,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
       |groupType| x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
       |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT8|INT4 (NZ)|FLOAT|UINT64|null|FLOAT|INT64|BFLOAT16|
-      |0|INT8|INT4 (NZ)|FLOAT|UINT64|FLOAT/null|FLOAT|INT64|FLOAT16|
+      |0|INT8|INT4|FLOAT|UINT64|null|FLOAT|INT64|BFLOAT16|
+      |0|INT8|INT4|FLOAT|UINT64|FLOAT/null|FLOAT|INT64|FLOAT16|
 
     - scaleOptional与offsetOptional要满足下表（其中E为分组数）：
 
@@ -762,24 +762,19 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
       |groupType| x | weight | scaleOptional | perTokenScaleOptional | out |
       |:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT4|INT4 (NZ)|UINT64|FLOAT32/null|FLOAT16/BFLOAT16|
+      |0|INT4|INT4|UINT64|FLOAT32/null|FLOAT16/BFLOAT16|
 
     - scaleOptional要满足下表：
 
-      |groupType| 使用场景 | shape限制 |
-      |:---:|:---:| :------ |
-      |0|perchannel|每个tensor 2维，shape为（E, N）|
-      |0|pergroup|每个tensor 3维，shape为（E, G, N）|
+      |groupType| 使用场景 | shape限制 | 其他限制 |
+      |:---:|:---:|:---:| :------ |
+      |0|perchannel|每个tensor 2维，shape为（E, N）| |
+      |0|pergroup|每个tensor 3维，shape为（E, G, N）| $G$必须要能整除$K$，且$k/G$需为偶数 |
 
     - 约束说明：
 
-      |groupType| actType | groupListType |
-      |:---:|:---:|:---|
-      |0|0|0/1/2|
-
       - 仅支持x、weight、out均为长度为1的TensorList。
-      - x不支持转置；weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐，ND不支持转置输入。
-      - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+      - weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐，ND不支持转置输入。
 
   - 不同groupType支持场景:
 
