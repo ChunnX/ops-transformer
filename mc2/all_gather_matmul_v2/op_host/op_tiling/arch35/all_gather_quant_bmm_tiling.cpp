@@ -160,7 +160,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                         opName_, "scale1", (Ops::Base::ToString(scaleInv1Desc->GetDataType())).c_str(),
                         "The dtypes of scale1 must be float8_e8m0 when x1/x2 is float4_e2m1"),
                     return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
