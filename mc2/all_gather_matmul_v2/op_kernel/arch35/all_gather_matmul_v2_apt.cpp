@@ -75,16 +75,13 @@ using namespace AllGatherMatmulImpl;
         op.Process();                                                                                                  \
     } while (0)
 
-#define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(isMxFp4)                       \
-    do {                                                                                \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);              \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::AllGatherMatmulTilingDataFp8, tilingData, tilingGM); \
-        AllGatherQuantMatmulImpl::AllGatherMxQuantMatmulHcommImpl<                     \
-            DTYPE_X1, DTYPE_X2, DTYPE_Y,                                               \
-            AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU,                             \
-            Mc2Tiling::AllGatherMatmulTilingDataFp8, isMxFp4> impl(&tilingData);       \
-        impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, workspaceGM);                   \
-        impl.Run();                                                                     \
+#define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(ImplClass, isMxFp4, hcclServerType)    \
+    do {                                                                                        \
+        REGISTER_TILING_DEFAULT(hcommAllGatherMatmulTilingData);                                \
+        GET_TILING_DATA_WITH_STRUCT(hcommAllGatherMatmulTilingData, tilingData, tilingGM);     \
+        ImplClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcclServerType, isMxFp4> impl(&tilingData);      \
+        impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, workspaceGM);                            \
+        impl.Run();                                                                             \
     } while (0)
 
 template <TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM, TPL_HCCL_COMM_MODE>
@@ -95,6 +92,8 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
+    constexpr AscendC::HcclServerType hcclServerType = HCCL_COMM_MODE == HCCL_COMM_MODE_CCU ?
+        AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU : AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
@@ -106,9 +105,11 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_0);
         if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&
             ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) {
-            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(false);
+            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(
+                AllGatherQuantMatmulImpl::AllGatherMxQuantMatmulHcommImpl, false, hcclServerType);
         } else if ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)) {
-            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(true);
+            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(
+                AllGatherQuantMatmulImpl::AllGatherMxQuantMatmulHcommImpl, true, hcclServerType);
         }
     }
 #endif
