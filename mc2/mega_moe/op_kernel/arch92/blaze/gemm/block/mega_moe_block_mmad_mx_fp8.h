@@ -183,9 +183,10 @@ private:
     static constexpr uint64_t SCALE_C0 = 2U;
     static constexpr uint64_t L0C_C0 = 16U;
     static constexpr TEventID INPUT_BUFFER_EVENT_BASE = 0;
-    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 2;
+    // Match the native QBMM MX event partition: input buffers use 0-3, scales and MMAD release use 4-5.
+    static constexpr TEventID SCALE_BUFFER_EVENT_BASE = 4;
     static constexpr TEventID MTE2_TO_MTE1_EVENT_BASE = 0;
-    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 0;
+    static constexpr TEventID MMAD_TO_MTE1_EVENT_BASE = 4;
     static constexpr TEventID MTE1_TO_MMAD_EVENT_BASE = 0;
 
     static constexpr uint64_t C0_SIZE_A = AscendC::AuxGetC0Size<AType>();
@@ -301,6 +302,9 @@ __aicore__ inline void MEGA_MOE_ARCH92_BLOCK_MMAD_MX_FP8_SPECIALIZATION::Init(
         kL1_ = DEFAULT_K_L1;
         scaleKL1_ = kL1_;
     }
+    l1BufferIndex_ = 0U;
+    scaleL1BufferIndex_ = 0U;
+    l0BufferIndex_ = 0U;
     UpdateL1Offsets();
 
     // MegaMoe does not use bias or L0C ping-pong on this path. Keep the generic
