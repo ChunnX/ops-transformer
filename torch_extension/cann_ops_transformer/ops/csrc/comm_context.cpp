@@ -462,7 +462,7 @@ public:
         return rankSize;
     }
 
-    // ---- Channel management helpers ----
+    // ---- Channel management helpers ---
 
     void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, const CommProtocol &protocol,
                          std::vector<HcclChannelDesc> &channelDesc)
