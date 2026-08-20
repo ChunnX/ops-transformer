@@ -66,7 +66,10 @@ constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t MX_SCALE_GROUP_SIZE = 64;
 constexpr uint32_t MXFP4_PACK_FACTOR = 2;
-constexpr uint64_t MX_EPILOGUE_MAX_TILE_ELEMENTS = 128UL * 256UL;
+// One AIC is paired with two AIVs.  Each AIV processes ceil(baseM / 2) rows,
+// while its epilogue buffers hold at most 128 * 256 elements.
+constexpr uint64_t MX_EPILOGUE_MAX_ELEMENTS_PER_AIV = 128UL * 256UL;
+constexpr uint64_t MX_EPILOGUE_AIV_COUNT = 2UL;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint32_t FP4_E2M1_VALUE = 40;
@@ -467,7 +470,8 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
                 OP_LOGE(context_->GetNodeName(), "baseN must be greater than zero."),
                 return ge::GRAPH_FAILED);
     const uint64_t maxBaseMByUb =
-        (MX_EPILOGUE_MAX_TILE_ELEMENTS / basicTiling_.baseN / GmmConstant::CUBE_BLOCK) *
+        (MX_EPILOGUE_AIV_COUNT * MX_EPILOGUE_MAX_ELEMENTS_PER_AIV / basicTiling_.baseN /
+         GmmConstant::CUBE_BLOCK) *
         GmmConstant::CUBE_BLOCK;
     OP_CHECK_IF(maxBaseMByUb == 0,
                 OP_LOGE(context_->GetNodeName(), "baseN=%lu exceeds the MX epilogue UB capacity.",
