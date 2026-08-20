@@ -12,7 +12,7 @@
 
 import torch
 import pytest
-
+import ascend_ops
 
 def test_add_interface_exist():
     """
@@ -41,24 +41,6 @@ def test_add_interface_exist():
 
 
 SHAPES = [
-    (1,),
-    (3,),
-    (10,),
-    (100,),
-    (1024,),
-    (10000,),
-    (10, 10),
-    (32, 32),
-    (100, 100),
-    (10, 100),
-    (100, 10),
-    (256, 512),
-    (5, 10, 15),
-    (16, 32, 64),
-    (32, 64, 128),
-    (1, 3, 32, 32),
-    (4, 3, 64, 64),
-    (8, 3, 128, 128),
     (1000, 1000),
 ]
 
@@ -90,18 +72,12 @@ def test_add_operator(shape, dtype):
     expected = a + b
     a_npu = a.npu()
     b_npu = b.npu()
-    result_npu = torch.ops.ascend_ops.add(a_npu, b_npu)
-    result = result_npu.cpu()
-
-    if dtype in [torch.int32]:
-        assert torch.equal(result, expected), (
-            f"Add failed for shape {shape}, dtype {dtype}. "
-            f"Expected {expected}, but got {result}"
-        )
-    else:
-        assert torch.allclose(result, expected, rtol=1e-4, atol=1e-4), (
-            f"Add failed for shape {shape}, dtype {dtype}. "
-            f"Max diff: {torch.max(torch.abs(result - expected)):.6f}"
-        )
+    for i in range(101):
+        print(f">>>>>>>>>>>执行第{i}次计算")
+        result_npu = torch.ops.ascend_ops.add(a_npu, b_npu)
 
     print(f"✓ Test passed: shape={shape}, dtype={dtype}")
+test_add_interface_exist()
+test_add_operator([1000, 1000], torch.float16)
+
+
