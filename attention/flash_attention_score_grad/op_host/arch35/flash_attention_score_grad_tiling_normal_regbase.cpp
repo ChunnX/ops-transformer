@@ -656,14 +656,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
     // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
-    bool templateSupportCond =
-        (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
-        (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
-         (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
-          (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
-           fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE_1)) &&
-         (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
+    bool templateSupportCond = (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
+                                fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) ||
+                               (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+                                (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
+                                 (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
+                                  fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE_1)) &&
+                                (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
