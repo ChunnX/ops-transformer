@@ -140,8 +140,13 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, AscendC::HCCL_DATA_TYPE_UINT8);
     }
 #else
-    REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
-    GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
+    if constexpr (USING_APACE_IMPL) {
+        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
+        GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
+    } else {
+        REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
+        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
+    }
 
     if constexpr (QUANTMODE == KC_QUANT_MODE) {
         MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
@@ -151,8 +156,6 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
             hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
         }
         if constexpr (USING_APACE_IMPL) {
-            REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
-            GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
             Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
                                                   hcommAllToAllMatmulTilingData, commServerType, false>
                 op(&tilingData);
