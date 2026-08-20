@@ -664,7 +664,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::HashGatherWithSmallKAlig
             MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<uint32_t>(k);
             MicroAPI::LoadAlign(vreg1, expertIdxAddr);
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
-            MicroAPI::Reduce<ReduceType::SUM>(vreg3, vreg2, preg0);
+            MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vreg3, vreg2, preg0);
             MicroAPI::Adds(vreg3, vreg3, eps, preg0);
             MicroAPI::Duplicate(vreg4, vreg3, preg0);
             MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
@@ -717,7 +717,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::HashGatherWithSmallKNotA
 
             MicroAPI::LoadAlign(vreg1, expertIdxAddr);
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
-            MicroAPI::Reduce<ReduceType::SUM>(vreg3, vreg2, preg0);
+            MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vreg3, vreg2, preg0);
             MicroAPI::Adds(vreg3, vreg3, eps, preg0);
             MicroAPI::Duplicate(vreg4, vreg3, preg0);
             MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
@@ -1108,7 +1108,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVFWithNorm(L
         MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(k);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr);
         MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
-        MicroAPI::Reduce<ReduceType::SUM>(vreg3, vreg2, preg0);
+        MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vreg3, vreg2, preg0);
         MicroAPI::Adds(vreg3, vreg3, eps, preg0);
         MicroAPI::Duplicate(vreg4, vreg3, preg0);
         MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
@@ -1198,7 +1198,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKAlignEVFWithNorm(L
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
             MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
         }
-        MicroAPI::Reduce<ReduceType::SUM>(vregSum, vregSum, preg1);
+        MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vregSum, vregSum, preg1);
         MicroAPI::Adds(vregSum, vregSum, eps, preg1);
         MicroAPI::Duplicate(vreg4, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
@@ -1298,7 +1298,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKNotAlignEVFWithNor
         MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(k);
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr);
         MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
-        MicroAPI::Reduce<ReduceType::SUM>(vreg3, vreg2, preg0);
+        MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vreg3, vreg2, preg0);
         MicroAPI::Adds(vreg3, vreg3, eps, preg0);
         MicroAPI::Duplicate(vreg4, vreg3, preg0);
         MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
@@ -1401,7 +1401,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKNotAlignEVFWithNor
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
             MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
         }
-        MicroAPI::Reduce<ReduceType::SUM>(vregSum, vregSum, preg1);
+        MicroAPI::Reduce<AscendC::Reg::ReduceType::SUM>(vregSum, vregSum, preg1);
         MicroAPI::Adds(vregSum, vregSum, eps, preg1);
         MicroAPI::Duplicate(vreg4, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
