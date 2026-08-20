@@ -392,7 +392,6 @@ public:
                                 dstRank, layer.layer);
                     isSupportUBG = true;
                     rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBG, layer.layer};
-                    break;
                 }
             }
         }
