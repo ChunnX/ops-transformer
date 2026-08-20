@@ -520,42 +520,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// when return_softmax_lse is true, key layout do not support PA_BSND.
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
-{
-    struct SparseFlashAttentionCompileInfo {
-    } compileInfo;
-    int64_t actual_seq_qlist[] = {1, 1, 1, 1};
-    int64_t actual_seq_kvlist[] = {65536, 65536, 65536, 65536};
-    gert::TilingContextPara tilingContextPara(
-        "SparseFlashAttention",
-        {{{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-         {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-         {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-         {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
-         {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
-         {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-         {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
-        {{{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{{4, 1, 128, 128}, {4, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
-         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
-         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
+// when return_softmax_lse is true, key layout supports PA_BSND.
 
 // Tensor query only supports dtype DT_FLOAT16, DT_BFLOAT16, but got DT_FLOAT
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
@@ -589,7 +557,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
 }
 
 // The dimensions of query and query_rope should be equal, but query has dimension 2 while query_rope has dimension 4.
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
@@ -623,7 +591,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
 }
 
 // oftmax_max dimension is 3, expected dimension is 4.
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
@@ -657,7 +625,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
 }
 
 // query_rope layout is TND, shape is [2, 1, 64], expected shape is [2, 128, 64].
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
@@ -691,7 +659,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
 }
 
 // split kv try
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
+TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
 {
     struct SparseFlashAttentionCompileInfo {
     } compileInfo;
