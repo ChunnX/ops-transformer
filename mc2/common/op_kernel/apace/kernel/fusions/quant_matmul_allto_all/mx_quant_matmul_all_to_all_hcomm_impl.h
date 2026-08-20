@@ -194,7 +194,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
         dataStrideCount, static_cast<uint8_t>(curTileM));
 }
-}
 
 template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
