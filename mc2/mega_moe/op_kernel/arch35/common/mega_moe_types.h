@@ -16,7 +16,9 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
+#endif
 
 namespace MegaMoeImpl {
 
@@ -70,11 +72,13 @@ struct GMMAddrInfo {
     __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
     uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext *mc2Context;
 };
+#endif
 
 // 保存 TensorList 入口地址，供按 expert 布局解析当前专家权重。
 struct ExpertWeightTensorListAddrs {
@@ -101,7 +105,9 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
     CombineCommParams combineCommParams;
+#endif
 };
 
 enum class AddrUpdateMode : int32_t {
