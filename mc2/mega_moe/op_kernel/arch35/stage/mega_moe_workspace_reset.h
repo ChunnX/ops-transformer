@@ -25,11 +25,10 @@ struct ResetWorkspaceConfig {
 
 __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
-    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE && (isA8W8 || isA8W4);
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     int64_t maxWavesPerExpert =
