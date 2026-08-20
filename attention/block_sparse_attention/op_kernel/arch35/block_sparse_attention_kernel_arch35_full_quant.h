@@ -634,8 +634,8 @@ public:
                 CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
         }
         if constexpr (RESCALE_ON_CUBE) {
-            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽 = qS/2 运行期、每批按 L0_TILE_M 切分、
-            // diag 双子核块一次搬满 1 个 stage；与 PV 内部 counter 结构（mL0×kL0 + frGrp×mL0 / nL0×kL0 + 1）严格对应）
+            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽与 S_trans 双子核切分一致、
+            // diag 对角 16×16 块紧凑打包到 1 个 L0B stage；与 PV 内部 counter 结构严格对应）
             mm2L0ATotalStages_ = CeilDiv(embed_, BlockMmadPV::L0_TILE_M) *
                 CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) +
                 CeilDiv(qBaseTile_, qBaseTile_ / 2) * CeilDiv(embed_, BlockMmadPV::L0_TILE_M);
