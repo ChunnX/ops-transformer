@@ -103,6 +103,33 @@ GQADenseScheduleResult SelectGQADenseSchedule(int64_t k, int64_t m, int64_t n, i
     return result;
 }
 
+bool IsTndDeterSwizzleScheduleSafe(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (params.aicNum == 0 || params.n1 <= 0) {
+        return false;
+    }
+
+    const uint64_t n1 = static_cast<uint64_t>(params.n1);
+    if (params.aicNum % n1 != 0) {
+        return false;
+    }
+
+    const int64_t cubeBaseM = static_cast<int64_t>(params.s1Inner) * params.s1CvRatio;
+    if (cubeBaseM <= 0) {
+        return false;
+    }
+
+    // Each head receives aicNum / n1 active cores in one round.  There must be at least that many
+    // different S1 blocks in every batch, otherwise two cores necessarily accumulate to the same dQ block.
+    const int64_t coreSlotsPerHead = static_cast<int64_t>(params.aicNum / n1);
+    for (const int64_t actualSeqQLen : params.actualSeqQlen) {
+        if (actualSeqQLen <= 0 || PositiveCeilDiv(actualSeqQLen, cubeBaseM) < coreSlotsPerHead) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int64_t CalcCausalSingleBatchRound(int64_t k, int64_t causalSize)
 {
     if (k <= 0 || causalSize <= 0) {
@@ -708,10 +735,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
            fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
-    // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
-    bool templateSupportCond =
+    // TND场景下，仅确定性计算+MHA+BN2GS1S2模板，以及非确定性计算+BN2S2模板支持swizzle优化。
+    // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
+    const bool deterTndSwizzleSafe = !fBaseParams.isDeterministic || IsTndDeterSwizzleScheduleSafe(fBaseParams);
+    const bool templateSupportCond =
         (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && fBaseParams.g == 1 &&
+         deterTndSwizzleSafe) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
          (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
           (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
@@ -720,9 +750,12 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
-    OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d], isNzOut = [%d].",
+    OP_LOGI(context_,
+            "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], "
+            "deterTndSwizzleSafe=[%d], isTndSwizzle=[%d], isNzOut=[%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
-            static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
+            static_cast<int>(fBaseParams.enableSwizzle), static_cast<int>(deterTndSwizzleSafe),
+            tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
 
     ret = InitTilingData();
     if (ret != ge::GRAPH_SUCCESS) {
