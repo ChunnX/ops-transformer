@@ -114,8 +114,7 @@ private:
     GM_ADDR mmResultGM_;  // matmul 输出缓冲区
 
     AscendC::Hccl<ServerType> hccl_;
-    static constexpr uint32_t MAX_TILE_CNT = 64;
-    AscendC::HcclHandle tileCommHandles_[MAX_TILE_CNT];
+    AscendC::HcclHandle *tileCommHandles_{nullptr};
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
     uint64_t splitAxisSize_{0};  // 本卡 M 大小（= rankM = M/rankDim）
@@ -163,8 +162,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     x2Scale_ = x2_scale;
     workspaceGM_ = workspaceGM;
 
-    // workspace 布局: mmResult 用于存储 matmul 输出
-    mmResultGM_ = workspaceGM;
+    // workspace 布局: [tileCommHandles (totalTileCnt * sizeof(HcclHandle))] [mmResult]
+    // handle数组放在workspace开头，mmResult紧跟其后
+    tileCommHandles_ = reinterpret_cast<AscendC::HcclHandle *>(workspaceGM);
+    uint64_t handleArraySize = static_cast<uint64_t>(totalTileCnt_) * sizeof(AscendC::HcclHandle);
+    handleArraySize = (handleArraySize + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM; // 512对齐
+    mmResultGM_ = workspaceGM + handleArraySize;
 
     // 初始化 HCCL
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
