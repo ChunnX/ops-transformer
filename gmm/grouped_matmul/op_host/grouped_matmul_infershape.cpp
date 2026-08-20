@@ -56,15 +56,12 @@ static const GmmPlatformCache& GetGmmPlatformCache(const bool refresh = false)
 {
     static GmmPlatformCache cache;
     if (refresh) {
-        fe::PlatFormInfos platformInfo;
-        fe::OptionalInfos optionalInfo;
+        fe::PlatformInfo platformInfo;
+        fe::OptionalInfo optionalInfo;
         cache.ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(
             platformInfo, optionalInfo);
         if (cache.ret == GRAPH_SUCCESS) {
-            platformInfo.GetPlatformRes(
-                "version", "Short_SoC_version", cache.shortSocVersion);
-            OP_LOGD("GetGmmPlatformCache", "Platform cache initialized, short_soc_version=%s.",
-                cache.shortSocVersion.c_str());
+            cache.shortSocVersion = optionalInfo.soc_version;
         } else {
             OP_LOGD("GetGmmPlatformCache", "Platform cache initialization failed, platform_ret=%d.",
                 cache.ret);
@@ -170,8 +167,12 @@ static ge::graphStatus UpdateMultipleShapeY(gert::InferShapeContext* context, co
     OP_CHECK_NULL_WITH_CONTEXT(context, x0Shape);
     const gert::Shape* weight0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weight0Shape);
+    // For SPARSEM (groupListType=2), groupList shape is [E, 2], so loop count should be E (first dim)
+    // For CUMSUM/COUNT (groupListType=0/1), groupList is 1D, loop count is shape size
+    int64_t loopCount = (*groupListTypePtr == GROUP_LIST_SPARSE) ?
+        groupListTensor->GetStorageShape().GetDim(0) : groupListTensor->GetShapeSize();
     int64_t preOffset = 0;
-    for (int idx = 0; idx < groupListTensor->GetShapeSize(); ++idx) {
+    for (int idx = 0; idx < loopCount; ++idx) {
         const gert::Shape* weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, idx);
         if (weightShape == nullptr) {
             weightShape = weight0Shape;
@@ -188,15 +189,16 @@ static ge::graphStatus UpdateMultipleShapeY(gert::InferShapeContext* context, co
             std::vector<int64_t> yDims;
             if (*groupListTypePtr == 0) {
                 yDims = {groupListData[idx] - preOffset, weightShape->GetDim(weightDimN)};
+                preOffset = groupListData[idx];
             } else if (*groupListTypePtr == 1) {
                 yDims = {groupListData[idx], weightShape->GetDim(weightDimN)};
-            } else {
-                OP_LOGE(context->GetNodeName(), "Invalid groupListType = %ld", *groupListTypePtr);
-                return GRAPH_FAILED;
+            } else if (*groupListTypePtr == GROUP_LIST_SPARSE) {
+                // SPARSEM: groupList shape is [E, 2], second column (idx*2+1) is token count per group
+                yDims = {groupListData[idx * GROUP_LIST_SPARSE + GROUP_LIST_SPARSE_OFFSET],
+                         weightShape->GetDim(weightDimN)};
             }
             OP_CHECK_IF(UpdateShapeY(context, GMM_INDEX_OUT_Y + idx, yDims) != GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(),
                       "Failed to update shape of y."), return GRAPH_FAILED);
-            preOffset = groupListData[idx];
         }
     }
 
@@ -664,8 +666,9 @@ static int64_t GetPergroupSize(const GMMAttrs& gmmAttrs, bool isSingleWeight,
   return pergroupSize;
 }
 
-static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
-                                                            const GMMParamsInfo &paramsInfo, bool hasAntiquantOffset)
+static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(const gert::InferShapeContext *context,
+                                                            const GMMAttrs &gmmAttrs, const GMMParamsInfo &paramsInfo,
+                                                            bool hasAntiquantOffset)
 {
     auto antiquantScale0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
     auto dimNum = antiquantScale0Shape->GetDimNum();
@@ -1329,9 +1332,10 @@ static ge::graphStatus CheckParamDifferentGroupType(gert::InferShapeContext* con
     OP_CHECK_IF(groupTensorOptionalShape != nullptr && (groupTensorOptionalShape->GetDimNum() > validGroupTensorDimNum ||
               groupTensorOptionalShape->GetDim(0) < 1),
               OP_LOGE(context->GetNodeName(),
-                        "When groupList is a tensor, its dim only supports 1 or 2(only when groupListType is 2) and "
-                        "size of elements should be larger than 0, but now are %zu and %ld, respectively.",
-                        groupTensorOptionalShape->GetDimNum(), groupTensorOptionalShape->GetDim(0)),
+                        "If groupList is a tensor, its dim num must be 1, or 2 when groupListType is 2, and the "
+                        "size of the first dimension must be greater than 0. Current values: groupListType=%ld, "
+                        "dim num=%zu, dim0=%ld.",
+                        *groupListTypePtr, groupTensorOptionalShape->GetDimNum(), groupTensorOptionalShape->GetDim(0)),
               return GRAPH_FAILED);
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P && !(groupType == GMM_SPLIT_M && paramsInfo.numX == 1 &&
               paramsInfo.numWeight == 1 && paramsInfo.numY == 1),
@@ -1488,7 +1492,7 @@ static graphStatus IsDavidQuantGMMByShape(T context) {
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleDesc);
     DataType xDtype = xDesc->GetDataType();
     DataType weightDtype = weightDesc->GetDataType();
-    if (xDtype == ge::DT_FLOAT4_E1M2 || xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_INT4) {
+    if (xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_INT4 || xDtype == ge::DT_FLOAT4_E1M2) {
         return GRAPH_SUCCESS;
     }
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
