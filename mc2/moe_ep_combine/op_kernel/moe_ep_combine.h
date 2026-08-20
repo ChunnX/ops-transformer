@@ -81,7 +81,6 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
-constexpr uint32_t TOKENS_PER_CHANNEL = 15000U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .odr = 5,
     .fence = 1,
@@ -139,11 +138,6 @@ private:
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId, uint64_t offset)
     {
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
-    }
-    __aicore__ inline uint32_t GetActiveChannelCount() const
-    {
-        uint32_t activeChannelCount = Ceil(numMaxTokensPerRank_, TOKENS_PER_CHANNEL);
-        return activeChannelCount < channelsPerRank_ ? activeChannelCount : channelsPerRank_;
     }
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
@@ -480,8 +474,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         return;
     }
     uint32_t activeAivNum = aivNum_;
-    uint32_t activeChannelCount = GetActiveChannelCount();
-    uint32_t maxChannelAivNum = epWorldSize_ * activeChannelCount;
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
     if (activeAivNum > maxChannelAivNum) {
         activeAivNum = maxChannelAivNum;
     }
@@ -704,7 +697,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * GetActiveChannelCount();
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
     if (activeAivNum > maxChannelAivNum) {
         activeAivNum = maxChannelAivNum;
     }
