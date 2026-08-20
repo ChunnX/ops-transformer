@@ -274,7 +274,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     GM_ADDR cGMOffset = mmResultGM_ + mmResultElemOffset * sizeof(YType);
 
     // 计算 scale 偏移: tileIdx * tileM * ceilDiv(rankK, GROUP_SIZE) * 2
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(mmTile.k, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
     uint64_t scaleElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * scaleKLen;
     GM_ADDR scaleAOffset = x1Scale_ + scaleElemOffset * sizeof(AscendC::fp8_e8m0_t);
 
