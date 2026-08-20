@@ -80,14 +80,14 @@ constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
-static const std::string X_NAME = "query";
+static const std::string X_NAME = "x";
 static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
 static const std::string STATE_CACHE_NAME = "state_cache";
 static const std::string APE_NAME = "ape";
 static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
 static const std::string CU_SEQLENS_NAME = "cu_seqlens";
-static const std::string SEQUSED_NAME = "seq_used";
+static const std::string SEQUSED_NAME = "seqused";
 static const std::string START_POS_NAME = "start_pos";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
