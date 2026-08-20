@@ -410,14 +410,9 @@ class GeneralizedSFAQuant:
             pass
         left_bound = min(left_bound, cur_act_kv)
 
+        valid_count = min(topk_id.shape[0], right_bound)
         if ori_topk_length_bnsd is not None:
-            valid_count = min(
-                int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), topk_id.shape[0]
-            )
-        else:
-            raise ValueError(
-                "ori_topk_length_bnsd cann not be None when template_run_mode is ORI_SPARSE or ORI_CMP_SPARSE"
-            )
+            valid_count = min(int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), valid_count)
 
         for i_valid in range(valid_count):
             cur_topk_id = topk_id[i_valid]
