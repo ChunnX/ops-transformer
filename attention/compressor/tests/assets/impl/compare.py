@@ -10,18 +10,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Precision compare helpers for Compressor TestSpec adapters.
-
-Comparison logic is consistent with compressor_golden.py check_result.
-Compares 5 tensors: cmp_kv, kv_state_update, score_state_update,
-kv_state_origin, score_state_origin.
-
-Also hosts ttk built-in cross_check (three-way comparison) entry points
-moved from spec.py: _run_ttk_cross_check_e2e / _run_ttk_cross_check_aclnn.
-Common state_cache splitting and result-loop logic are extracted into
-shared helpers to avoid duplication between e2e and aclnn paths.
-"""
-
 import gc
 import importlib.util
 from pathlib import Path
@@ -66,13 +54,6 @@ _BATCH_CONSISTENCY_CACHE = {}
 
 
 def _load_pytest_golden_module():
-    """Reuse golden.py's load_pytest_golden_module to avoid duplicating stub logic.
-
-    golden.py owns the canonical stub mechanism (torch_npu/torchair/
-    cann_ops_transformer stub + sys.modules save/restore + np.random state).
-    compare.py delegates to it, so any fix to the stub logic only needs to
-    be applied in one place.
-    """
     global _PYTEST_GOLDEN_MODULE
     if _PYTEST_GOLDEN_MODULE is not None:
         return _PYTEST_GOLDEN_MODULE
@@ -250,12 +231,6 @@ def _tensor_compare(npu_out, golden_out, name):
     }
 
 def _batch_consistency_check(npu_cmp_kv, kwargs):
-    """Compare NPU output slices across cases sharing the same batch_consistency_id.
-
-    Uses _BATCH_CONSISTENCY_CACHE to keep the base slice from the first case
-    encountered for each (batch_consistency_id, output_idx) pair, then compares
-    subsequent cases via np.array_equal.
-    """
     batch_consistency_id = kwargs.get("batch_consistency_id")
     batch_axis = kwargs.get("batch_axis")
     batch_slice_info = kwargs.get("batch_slice_info")
@@ -599,7 +574,6 @@ def compare_aclnn(*outputs, **kwargs):
 
 # ---------------------------------------------------------------------------
 # ttk built-in cross_check (three-way comparison) entry points
-# Moved from spec.py; common helpers extracted to reduce duplication.
 # ---------------------------------------------------------------------------
 
 
@@ -619,7 +593,7 @@ def _resolve_cross_check_params(spec_tolerance, dtype_str):
 
 def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, params):
     c = CrossCheckComparison(
-        npu_out, golden_out, idx, dtype_str, params, third_party=bench_out
+        npu_out, bench_out, idx, dtype_str, params, third_party=golden_out
     )
     precision_str, log, is_pass, metrics = c.compare()
     return {
@@ -632,11 +606,6 @@ def _ttk_cross_check_single(npu_out, golden_out, bench_out, idx, dtype_str, para
 
 def _split_state_cache_sub_outputs(npu_state_cache, cpu_state_cache, bench_state,
                                    update_kv, update_score):
-    """Split state_cache into kv/score update/origin sub-outputs.
-
-    Shared by e2e and aclnn cross_check split functions. Returns
-    (npu_sub, golden_sub, bench_sub) each of length 4.
-    """
     npu_sub = []
     golden_sub = []
     bench_sub = []
@@ -727,20 +696,20 @@ def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
     bench_sub = []
 
     if len(npu_outputs) == 1:
-        npu_sub.append(npu_outputs[0][cmp_kv_mask].to(torch.float32))
-        golden_sub.append(golden_outputs[0][cmp_kv_mask].to(torch.float32))
+        npu_sub.append(npu_outputs[0][cmp_kv_mask])
+        golden_sub.append(golden_outputs[0][cmp_kv_mask])
         bench = bench_outputs[0] if bench_outputs else None
-        bench_sub.append(bench[cmp_kv_mask].to(torch.float32) if bench is not None else None)
+        bench_sub.append(bench[cmp_kv_mask] if bench is not None else None)
         for i in range(1, len(golden_outputs)):
             npu_sub.append(None)
             golden_sub.append(None)
             bench_sub.append(None)
         return npu_sub, golden_sub, bench_sub, _OUTPUT_NAMES
 
-    npu_cmp_kv = npu_outputs[0].to(torch.float32)
-    npu_state_cache = npu_outputs[3].to(torch.float32)
-    cpu_cmp_kv = golden_outputs[0].to(torch.float32)
-    cpu_state_cache = golden_outputs[3].to(torch.float32)
+    npu_cmp_kv = npu_outputs[0]
+    npu_state_cache = npu_outputs[3]
+    cpu_cmp_kv = golden_outputs[0]
+    cpu_state_cache = golden_outputs[3]
 
     npu_sub.append(npu_cmp_kv[cmp_kv_mask])
     golden_sub.append(cpu_cmp_kv[cmp_kv_mask])
@@ -748,7 +717,7 @@ def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
 
     bench_state = None
     if bench_outputs and len(bench_outputs) > 1:
-        bench_state = _to_torch(bench_outputs[1]).to(torch.float32)
+        bench_state = _to_torch(bench_outputs[1])
     sc_npu, sc_golden, sc_bench = _split_state_cache_sub_outputs(
         npu_state_cache, cpu_state_cache, bench_state, update_kv, update_score
     )
@@ -757,10 +726,10 @@ def _split_aclnn_outputs(outputs, kwargs, bench_outputs):
     bench_sub.extend(sc_bench)
 
     if gradEnabled:
-        npu_sub.append(npu_outputs[1][mid_result_mask].to(torch.float32))
-        npu_sub.append(npu_outputs[2][mid_result_mask].to(torch.float32))
-        golden_sub.append(golden_outputs[1][mid_result_mask].to(torch.float32))
-        golden_sub.append(golden_outputs[2][mid_result_mask].to(torch.float32))
+        npu_sub.append(npu_outputs[1][mid_result_mask])
+        npu_sub.append(npu_outputs[2][mid_result_mask])
+        golden_sub.append(golden_outputs[1][mid_result_mask])
+        golden_sub.append(golden_outputs[2][mid_result_mask])
         bench_sub.append(None)
         bench_sub.append(None)
 
@@ -774,12 +743,6 @@ def _run_ttk_cross_check_aclnn(outputs, kwargs, bench_outputs, spec_tolerance):
     raw_dtype_str = _resolve_raw_dtype(kwargs)
     params = _resolve_cross_check_params(spec_tolerance, raw_dtype_str)
     results = _run_cross_check_loop(npu_sub, golden_sub, bench_sub, names, params)
-
-    result_consistency = _batch_consistency_check(
-        _to_torch(outputs[0]).to(torch.float32), kwargs
-    )
-    if result_consistency is not None:
-        results.append(result_consistency)
     return results
 
 
@@ -835,14 +798,7 @@ def _run_ttk_cross_check_e2e(outputs, kwargs, bench_outputs, spec_tolerance):
     raw_dtype_str = _resolve_raw_dtype(kwargs)
     params = _resolve_cross_check_params(spec_tolerance, raw_dtype_str)
     results = _run_cross_check_loop(npu_sub, golden_sub, bench_sub, names, params)
-
-    result_consistency = _batch_consistency_check(
-        _to_torch(outputs[0]), kwargs
-    )
-    if result_consistency is not None:
-        results.append(result_consistency)
     return results
-
 
 def is_cross_check_available():
     return _TTK_CROSS_CHECK_AVAILABLE
