@@ -565,6 +565,15 @@ ge::graphStatus CompressorTiling::CheckSingleParaX() const
         ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->x.shape, X_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) > MAX_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) < MIN_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) % ALIGN_FACTOR_HIDDEN_SIZE != 0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_NAME,
+                    "dim " + std::to_string(context_->x.shape->GetStorageShape().GetDimNum() - 1) + "=" +
+                    std::to_string(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1)),
+                    "x hiddenSize should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
+                    std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -572,6 +581,10 @@ ge::graphStatus CompressorTiling::CheckSingleParaWkv() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wkv.desc, WKV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coff;
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&headDim, HEAD_DIM, "headDim")) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -592,6 +605,23 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateCache() const
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->stateCache.shape, STATE_CACHE_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    uint32_t blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    OP_CHECK_IF(blockSize > MAX_BLOCK_SIZE || blockSize < MIN_BLOCK_SIZE,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
+                    "dim 1=" + std::to_string(blockSize),
+                    "state_cache blockSize should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
+                    std::to_string(MAX_BLOCK_SIZE) + "]"),
+                return ge::GRAPH_FAILED);
+    uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
+                                 context_->stateCache.shape->GetShape().GetDim(2);
+    uint64_t stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
+    OP_CHECK_IF(stateCacheStrideDim0 < contiguousStride0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
+                    "stride0=" + std::to_string(stateCacheStrideDim0),
+                    "state_cache stride0 must be greater than or equal to contiguous stride " +
+                    std::to_string(contiguousStride0) +
+                    ", only axis 0 non-contiguous is supported"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -772,35 +802,6 @@ ge::graphStatus CompressorTiling::CheckRequiredAttrExistence() const
 
 ge::graphStatus CompressorTiling::CheckFeature() const
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&baseParams_->headDim, HEAD_DIM, "headDim")) {
-        return ge::GRAPH_FAILED;
-    }
-    OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
-                    baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "hiddenSize",
-                                                      std::to_string(baseParams_->hiddenSize),
-                                                      "hiddenSize should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
-                                                          std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "blockSize",
-                                                      std::to_string(pageAttentionParams_->blockSize),
-                                                      "blockSize should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
-                                                          std::to_string(MAX_BLOCK_SIZE) + "]"),
-                return ge::GRAPH_FAILED);
-    // state_cache stride0 must be greater than or equal to contiguous stride (dim1 * dim2).
-    // Only axis 0 non-contiguous is supported; axis 1 and 2 must remain contiguous.
-    // Full per-axis validation via GetInputStride is in ConvertContext (ascend950)
-    // and via IsContiguousAxes in torch_extension csrc.
-    uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
-                                 context_->stateCache.shape->GetShape().GetDim(2);
-    OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < contiguousStride0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "state_cache_stride_dim0",
-                                                      std::to_string(baseParams_->stateCacheStrideDim0),
-                                                      "state_cache stride0 must be greater than or equal to contiguous stride " +
-                                                          std::to_string(contiguousStride0) +
-                                                          ", only axis 0 non-contiguous is supported"),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

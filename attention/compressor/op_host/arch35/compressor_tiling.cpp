@@ -552,6 +552,15 @@ ge::graphStatus CompressorTiling::CheckSingleParaX() const
         ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->x.shape, X_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) > MAX_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) < MIN_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) % ALIGN_FACTOR_HIDDEN_SIZE != 0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, X_NAME,
+                    "dim " + std::to_string(context_->x.shape->GetStorageShape().GetDimNum() - 1) + "=" +
+                    std::to_string(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1)),
+                    "x hiddenSize should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
+                    std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -559,6 +568,10 @@ ge::graphStatus CompressorTiling::CheckSingleParaWkv() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wkv.desc, WKV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coff;
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&headDim, HEAD_DIM, "headDim")) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -578,6 +591,39 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateCache() const
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->stateCache.desc, STATE_CACHE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->stateCache.shape, STATE_CACHE_NAME)) {
         return ge::GRAPH_FAILED;
+    }
+    uint32_t blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    OP_CHECK_IF(blockSize > MAX_BLOCK_SIZE || blockSize < MIN_BLOCK_SIZE,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
+                    "dim 1=" + std::to_string(blockSize),
+                    "state_cache blockSize should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
+                    std::to_string(MAX_BLOCK_SIZE) + "]"),
+                return ge::GRAPH_FAILED);
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
+        uint32_t blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
+        uint32_t batchSize = context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3 ?
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) :
+            context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
+        OP_CHECK_IF(blockNum < batchSize,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME,
+                        "dim 0=" + std::to_string(blockNum),
+                        "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
+                        ", state_cache blockNum should not be less than batchSize(" +
+                        std::to_string(batchSize) + ")"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
+                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                std::to_string(COMPRESSOR_DIM_NUM_1)),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
+                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                std::to_string(COMPRESSOR_DIM_NUM_2)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -791,43 +837,6 @@ ge::graphStatus CompressorTiling::CheckRequiredAttrExistence() const
 
 ge::graphStatus CompressorTiling::CheckFeature() const
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&baseParams_->headDim, HEAD_DIM, "headDim")) {
-        return ge::GRAPH_FAILED;
-    }
-    OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
-                    baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "hiddenSize",
-                    std::to_string(baseParams_->hiddenSize),
-                    "hiddenSize should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
-                    std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "blockSize",
-                    std::to_string(pageAttentionParams_->blockSize),
-                    "blockSize should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
-                    std::to_string(MAX_BLOCK_SIZE) + "]"),
-                return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
-        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "blockNum",
-                        std::to_string(pageAttentionParams_->blockNum),
-                        "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
-                        ", blockNum should not be less than batchSize(" + std::to_string(baseParams_->batchSize) + ")"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
-                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                std::to_string(COMPRESSOR_DIM_NUM_1)),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
-                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                std::to_string(COMPRESSOR_DIM_NUM_2)),
-            return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
