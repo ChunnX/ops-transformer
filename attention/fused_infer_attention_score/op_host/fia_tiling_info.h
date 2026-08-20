@@ -347,6 +347,9 @@ public:
     FiaLayout qLayout = FiaLayout::BSND;
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
+
+    // NZ layout D0 from KV shape last dim (e.g. 16 for fp16, 32 for int8)
+    uint32_t kvCacheNzD0 = 0;
 };
 } // namespace optiling
 #endif // FIA_TILING_INFO_H

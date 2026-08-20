@@ -22,7 +22,7 @@
 #include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/fia_tiling_data_fullquant.h"
 #include "../../../common/op_host/split_core_v2.h"
-#include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
+#include "../../op_kernel/arch35/fused_infer_attention_score_template_tiling_key.h"
 
 namespace optiling {
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
@@ -71,8 +71,6 @@ protected:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
@@ -84,16 +82,11 @@ private:
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
-    void GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
     void InitImplParam();
     bool IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
-    bool CheckQKVActualSeqLengthsRight();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
@@ -115,7 +108,6 @@ private:
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
     bool needInit_ = false;
-    bool enableS1OutSplit = false;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

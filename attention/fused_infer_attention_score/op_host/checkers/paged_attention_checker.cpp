@@ -313,32 +313,19 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape4D(const FiaTilingInfo &
 }
 
 ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTilingInfo &fiaInfo,
-                                                                    const std::string &inputName,
-                                                                    const std::string &shapeStr, uint32_t compareD,
-                                                                    int64_t tempD0, int64_t tempD1) const
+                                                                     const std::string &inputName,
+                                                                     const std::string &shapeStr, uint32_t compareD,
+                                                                     int64_t tempD0, int64_t tempD1) const
 {
-    uint32_t d0Size = NUM_16;
-    if (fiaInfo.inputKvType == ge::DT_INT4) {
-        if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of " + inputName + " must be " +
-                 std::to_string(d0Size / NUM8) + "; if input kv dataType is INT4, the last dim of " + inputName +
-                 " must be " + std::to_string(d0Size))
-                    .c_str());
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        if (tempD0 != d0Size) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When PA_NZ is enabled, if input kv dataType is INT32, the last dim of " + inputName + " must be " +
-                 std::to_string(d0Size / NUM8) + "; if input kv dataType is INT4, the last dim of " + inputName +
-                 " must be " + std::to_string(d0Size))
-                    .c_str());
-            return ge::GRAPH_FAILED;
-        }
+    if (tempD0 != NUM_16 && tempD0 != NUM_32) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
+            ("When PA_NZ is enabled, the last dim of " + inputName + " must be 16 or 32, but got " +
+             std::to_string(tempD0))
+                .c_str());
+        return ge::GRAPH_FAILED;
     }
+    uint32_t d0Size = static_cast<uint32_t>(tempD0);
     if (tempD1 != compareD / d0Size) {
         std::string reasonMsg = "When PA_NZ is enabled, in " + std::string(QuantModeToSerialString(fiaInfo.quantMode)) +
                                 " " + std::string(SituationToSerialString(fiaInfo.ropeMode)) +
@@ -622,6 +609,14 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
                                               reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
+    // D0=32 PA_NZ antiquant: block_size must be 128 or 512
+    if (fiaInfo.kvCacheNzD0 == NUM_32 && fiaInfo.blockSize != NUM_128 && fiaInfo.blockSize != NUM_512) {
+        std::string reasonMsg = "When PA_NZ D0=32 antiquant is enabled, block_size must be 128 or 512, but got " +
+                                std::to_string(fiaInfo.blockSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -644,12 +639,15 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
             return ge::GRAPH_FAILED;
         }
 
-        // mxfp8 仅支持blocksize等于512或者1024
+        // mxfp8 仅支持blocksize等于64、128、256、512或1024
         if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
-            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
+            (fiaInfo.blockSize != BLOCK_SIZE_64_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_128_FOR_MXFP8 &&
+            fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
+            fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                "In MXFP8 fullquant scenario, when page attention is enabled, block_size must be 512 or 1024");
+                "In MXFP8 fullquant scenario, when page attention is enabled, "
+                "block_size must be in [64, 128, 256, 512, 1024]");
             return ge::GRAPH_FAILED;
         }
 
@@ -831,7 +829,8 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
 ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const
 {
     // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, page attention is not supported.
-    if (fiaInfo.s1Size > 1) {
+    // D0=32 (INT8 PA_NZ) antiquant path supports s1>1, skip this check.
+    if (fiaInfo.s1Size > 1 && fiaInfo.kvCacheNzD0 != NUM_32) {
         int64_t keyAntiquantMode = 0;
         if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
             keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;

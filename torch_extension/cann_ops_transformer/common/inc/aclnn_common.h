@@ -593,6 +593,15 @@ inline aclIntArray *ConvertType(const at::IntArrayRef &at_array)
     return array;
 }
 
+inline aclFloatArray *ConvertType(const std::vector<float> &value)
+{
+    static const auto aclCreateFloatArray = GET_OP_API_FUNC(aclCreateFloatArray);
+    if (aclCreateFloatArray == nullptr) {
+        return nullptr;
+    }
+    return aclCreateFloatArray(value.data(), value.size());
+}
+
 template <std::size_t N>
 inline aclBoolArray *ConvertType(const std::array<bool, N> &value)
 {
@@ -791,6 +800,16 @@ inline void Release(aclIntArray *p)
     }
 
     aclDestroyIntArray(p);
+}
+
+inline void Release(aclFloatArray *p)
+{
+    static const auto aclDestroyFloatArray = GET_OP_API_FUNC(aclDestroyFloatArray);
+    if (aclDestroyFloatArray == nullptr) {
+        return;
+    }
+
+    aclDestroyFloatArray(p);
 }
 
 inline void Release(aclBoolArray *p)
@@ -1014,7 +1033,10 @@ inline void ApplyDeterministicConfig()
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
-        TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
+        if (workspace_status != 0) { \
+            ReleaseConvertTypes(converted_params); \
+            TORCH_CHECK(false, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
+        } \
         at::Tensor workspace_tensor; \
         void *workspace_addr = nullptr; \
         if (workspace_size != 0) { \
@@ -1026,12 +1048,12 @@ inline void ApplyDeterministicConfig()
             typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, const aclrtStream); \
             OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr); \
             auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream); \
-            TORCH_CHECK(api_ret == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
             ReleaseConvertTypes(converted_params); \
             ReleaseHugeMem releaseMemFunc = reinterpret_cast<ReleaseHugeMem>(releaseMemAddr); \
             if (releaseMemFunc) { \
                 releaseMemFunc(nullptr, false); \
             } \
+            TORCH_CHECK(api_ret == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
             return api_ret; \
         }; \
         at_npu::native::OpCommand cmd; \
