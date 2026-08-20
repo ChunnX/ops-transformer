@@ -141,6 +141,7 @@ static const int64_t D2_SIZE_L1CARRY_MAX = 256L;
 static const int64_t SOFTMAX_OUT_LAYOUT_INDEX = 12L;
 static const int64_t B4_SEQ_LIMIT = 48000L;
 static const int64_t SINK_INPUT_INDEX = 17L;
+static const int64_t DYNA_BASICBLOCK_S1_MAX = 32000;
 
 enum LayoutType : uint8_t {
     None = 0,
@@ -158,7 +159,12 @@ enum AttenMaskShapeType : uint8_t {
     ATTEN_1_1_1_T_T = 99,
 };
 
-enum PseShapeType : uint8_t { PSE_B_N2_G_S1_S2 = 0, PSE_B_N2_G_1_S2 = 1, PSE_B_N2_G_SLOPE, PSE_1_N2_G_SLOPE };
+enum PseShapeType : uint8_t {
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE,
+    PSE_1_N2_G_SLOPE
+};
 
 enum SparseMode : uint8_t {
     NO_MASK = 0,
@@ -182,7 +188,11 @@ enum AttenMaskCompressMode : uint8_t {
     BAND_LEFT_UP_CAUSAL_MODE
 };
 
-enum ImplMode : uint8_t { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
+enum ImplMode : uint8_t {
+    AA_HIGH_PRECISION = 0,
+    AA_HIGH_PERFORMANCE = 1,
+    AA_INVALID_LINE_HIGH_PRECISION = 2
+};
 
 enum PseType : uint8_t {
     PSE_OUTER_MUL_ADD_TYPE = 0,
@@ -225,7 +235,10 @@ struct MatmulConstParams {
     DTemplateType dType;
 };
 
-enum MatmulPolicyType : uint8_t { MATMUL_POLICY_NORMAL = 0, MATMUL_POLICY_UNSPLITK = 1 };
+enum MatmulPolicyType : uint8_t {
+    MATMUL_POLICY_NORMAL = 0,
+    MATMUL_POLICY_UNSPLITK = 1
+};
 
 template <typename T>
 static T AlignUp(T num1, T num2)
@@ -278,7 +291,15 @@ static T CalcTailSize(T num1, T num2)
 
 class TilingKey {
 public:
-    TilingKey() : splitS1(0), splitS2(0), splitD(0), dtype(0), layoutType(0), sparseType(0), reserved(0) {}
+    TilingKey()
+        : splitS1(0),
+          splitS2(0),
+          splitD(0),
+          dtype(0),
+          layoutType(0),
+          sparseType(0),
+          reserved(0)
+    {}
 
     void Reset()
     {
@@ -326,7 +347,11 @@ public:
 
 class FlashAttentionScoreTilingBase : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
+    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
     ~FlashAttentionScoreTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -2597,7 +2622,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetWorkspaceSize()
 
 class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1;
         expectTemplate.splitD = 1;
@@ -2931,7 +2957,8 @@ protected:
 
 class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingB(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingB(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         templateName = "FlashAttentionScoreB";
     }
@@ -3202,7 +3229,8 @@ protected:
 
 class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -3219,12 +3247,55 @@ protected:
 
     void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
 
+    int64_t find_optimal_s1BasicBlock()
+    {
+        int64_t target_basic_block = 128;
+        int64_t s1OuterSize = CeilDiv(s1Size, target_basic_block);
+        int64_t total_size = bSize * n2Size * gSize * s1OuterSize;
+
+        int64_t splitFactor = CeilDiv(total_size, static_cast<int64_t>(aivNum));
+        int64_t expectBasicBlock = CeilDiv(bSize * n2Size * gSize * s1Size, splitFactor * aivNum);
+        int64_t s1BasicBlock = AlignUp(expectBasicBlock, FRACTAL_NUM);
+        if (tilingData->inputParams.get_layoutType() == LAYOUT_BSND) {
+            int64_t opt_s1OuterSize = CeilDiv(s1Size, s1BasicBlock);
+            int64_t opt_total_size = bSize * n2Size * gSize * opt_s1OuterSize;
+
+            int64_t opt_splitFactor = CeilDiv(opt_total_size, static_cast<int64_t>(aivNum));
+            if (opt_s1OuterSize % opt_splitFactor != 0 || s1OuterSize % splitFactor == 0) {
+                s1BasicBlock = 128;
+            }
+        }
+        return s1BasicBlock;
+    }
+
+    bool isExecDynBasicBlock()
+    {
+        bool isBSNDInRange = bSize * s1Size * n2Size * gSize <= DYNA_BASICBLOCK_S1_MAX && dSize == 128;
+        bool isBNSDInRange = bSize == 1 && n2Size == 1 && gSize == 1 && s1Size <= DYNA_BASICBLOCK_S1_MAX &&
+                             s1Size == s2Size && dSize == 128;
+        bool noMask = sparseMode == static_cast<int64_t>(NO_MASK);
+        bool isNotCausal = preTokens < s1Size || nextTokens != 0;
+
+        bool isSupportBSND = tilingData->inputParams.get_layoutType() == LAYOUT_BSND && isBSNDInRange;
+
+        bool isSupportBNSD = tilingData->inputParams.get_layoutType() == LAYOUT_BNSD && isBNSDInRange;
+
+        bool isSupportAttrs = pseExistFlag == 0 && dropMaskExistFlag == 0 && noMask && isNotCausal;
+
+        return (isSupportBSND || isSupportBNSD) && isSupportAttrs;
+    }
+
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
         s1BasicBlock = std::min(64L, alignedS1);
         // d轴为64
         if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) > static_cast<int64_t>(aivNum)) {
-            s1BasicBlock = std::min(128L, alignedS1);
+            if (isExecDynBasicBlock()) {
+                OP_LOGD(context_, "Start dynamic calculation of s1BasicBlock");
+                s1BasicBlock = find_optimal_s1BasicBlock();
+            } else {
+                s1BasicBlock = std::min(128L, alignedS1);
+            }
         }
         s2BasicBlock = std::min(128L, alignedS2);
         if (s2Size % S2_NZTOND_SIZE_64 != 0 && dSize != D_SPECIFIC_SIZE) {
@@ -3800,7 +3871,8 @@ protected:
 
 class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -4568,7 +4640,9 @@ protected:
 
 class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context) {}
+    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
+    {}
     ~FlashAttentionScoreTilingDropMask() override = default;
 
 protected:
