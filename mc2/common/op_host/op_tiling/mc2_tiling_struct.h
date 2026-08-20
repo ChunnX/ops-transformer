@@ -34,33 +34,6 @@ constexpr uint32_t DOUBLE_RING_FACTOR = 2;
 constexpr int64_t KVALUE_MIN = 256;
 constexpr int64_t KVALUE_MAX = 65535;
 
-// Workspace 段布局常量
-constexpr uint32_t MAX_WORKSPACE_SEGMENTS = 8U;
-
-// Workspace 段类型
-enum WorkspaceSegType : uint8_t {
-    WS_SEG_LIB_API       = 0,
-    WS_SEG_ND2NZ         = 1,
-    WS_SEG_GATHER        = 2,
-    WS_SEG_GATHER_SCALE1 = 3,
-    WS_SEG_GATHER_SCALE  = 4,
-    WS_SEG_COMM_OUT      = 5,
-    WS_SEG_PERMUTE_OUT   = 6,
-    WS_SEG_BIAS          = 7,
-    WS_SEG_MM_RESULT     = 8,
-    WS_SEG_RECV_BUF      = 9,
-    WS_SEG_COMM_INT8     = 10,
-    WS_SEG_DYNAMIC_QUANT = 11,
-    WS_SEG_RUNTIME_INFO  = 12,
-    WS_SEG_RESERVED      = 255,
-};
-
-// Runtime Info 常量
-constexpr uint32_t RUNTIME_INFO_CORE_MAX = 128U;
-constexpr uint32_t RUNTIME_INFO_PER_CORE_SIZE = 512U;
-constexpr uint32_t RUNTIME_INFO_TOTAL_SIZE =
-    RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE; // 64KB
-
 /**
  * @deprecated MC2ServerCfg 结构体在后续版本中将不再支持，请不要使用
  */
@@ -239,24 +212,6 @@ TILING_DATA_FIELD_DEF(uint32_t, isHf32);
 TILING_DATA_FIELD_DEF(uint32_t, aswWindowLen);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(Mc2MMV3TilingDataOp, MC2MatmulV3TilingData);
-
-// ==================== Workspace 段布局信息 ====================
-
-BEGIN_TILING_DATA_DEF(WorkspaceSegInfo)
-TILING_DATA_FIELD_DEF(uint64_t, offset);
-TILING_DATA_FIELD_DEF(uint64_t, size);
-TILING_DATA_FIELD_DEF(uint8_t, type);
-TILING_DATA_FIELD_DEF_ARR(uint8_t, 7, reserved);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(WorkspaceSegInfoOp, WorkspaceSegInfo);
-
-BEGIN_TILING_DATA_DEF(WorkspaceLayoutInfo)
-TILING_DATA_FIELD_DEF(uint64_t, totalSize);
-TILING_DATA_FIELD_DEF(uint32_t, segCount);
-TILING_DATA_FIELD_DEF(uint32_t, reserved);
-TILING_DATA_FIELD_DEF_ARR(WorkspaceSegInfo, MAX_WORKSPACE_SEGMENTS, segments);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(WorkspaceLayoutInfoOp, WorkspaceLayoutInfo);
 
 } // namespace optiling
 

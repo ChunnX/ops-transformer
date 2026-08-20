@@ -50,13 +50,13 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            slotIdx_ = GetBlockIdx();
+            slotIdx_ = AscendC::GetBlockIdx();
         } else {
-            slotIdx_ = aicCoreNum + GetBlockIdx();
+            slotIdx_ = aicCoreNum + AscendC::GetBlockIdx();
         }
 
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
-        mySlot->magicNum = 0x4D433252U;
+        mySlot->magicNum = 0x5A5A5A5AU;
         mySlot->coreId = static_cast<uint16_t>(slotIdx_);
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
@@ -90,10 +90,10 @@ public:
 private:
     __aicore__ inline void FlushCache()
     {
-        GlobalTensor<uint8_t> cacheLine;
+        AscendC::GlobalTensor<uint8_t> cacheLine;
         cacheLine.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(&runtimeInfoBase_[slotIdx_]),
                                   Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE);
-        DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(cacheLine);
+        DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
     }
 
     __gm__ Mc2Tiling::RuntimeInfoPerCore *runtimeInfoBase_ = nullptr;
