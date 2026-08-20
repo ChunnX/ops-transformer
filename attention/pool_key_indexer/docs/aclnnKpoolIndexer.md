@@ -459,11 +459,11 @@ aclnnStatus aclnnPoolKeyIndexer(
     <tr>
       <td>sparseValuesOut</td>
       <td>输出</td>
-      <td>公式中的PoolScores输出，选中pool的分数值。</td>
+      <td>公式中的SparseValues输出，即选中pool对应的分数值。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
-                <li>仅当returnValue为true时输出有效结果。</li>
+                <li>当returnValue为true时，输出有效结果，不支持空tensor。</li>
+                <li>当returnValue为false时，输出shape为(0,)的空tensor。</li>
           </ul>
       </td>
       <td>FLOAT</td>
@@ -599,7 +599,7 @@ aclnnStatus aclnnPoolKeyIndexer(
   - block_size取值为16的倍数，最大支持1024。
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
-  - 参数query、poolKey、weights的数据类型应保持一致。
+  - 非量化场景（quantMode为-1）下，参数weights的数据类型应与query、poolKey保持一致；量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16。
   - <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
 - 输入数据布局限制：
@@ -723,8 +723,8 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> poolKeyShape = {1, 2, 1, 128};
     std::vector<int64_t> weightsShape = {1, 2, 1};
     std::vector<int64_t> poolTailKShape = {1};
-    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2063};
-    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 128};
+    std::vector<int64_t> sparseIndicesShape = {1, 2, 2063};
+    std::vector<int64_t> sparseValuesShape = {1, 2, 128};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t poolKeyShapeSize = GetShapeSize(poolKeyShape);
@@ -919,8 +919,8 @@ int main() {
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2063};
-    std::vector<int64_t> sparseValuesShape = {1, 2, 1, 128};
+    std::vector<int64_t> sparseIndicesShape = {1, 2, 2063};
+    std::vector<int64_t> sparseValuesShape = {1, 2, 128};
     int ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream

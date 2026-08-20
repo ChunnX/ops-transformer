@@ -7,6 +7,8 @@
 (quantMode=-1,          (tiling读运行时stride +                    (参考LIV2 cmp_ratio/               (Expand + Append)           (quantMode=0/1)           (参考LIV2 OpBuilder模式
  pool_tail_k=0,          arch22接线KeyNd2NzForPA)                    cmp_residual_k,                   输出维度:                    arch35 only              JIT编译 + PrivateUse1 dispatch)
  pool_size=1)                                                       不做索引展开)                       topk+pool_size-1)
+
+  8补: 910B编译修复(已实施) — 15类编译问题修复，跨步骤1-3 + 模板TilingKey + torch_extension
 ```
 
 **核心原则**：每步可独立编译验证，前步通过后才进入下一步。
@@ -867,6 +869,69 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 | 步骤5 graph_convert 移植真实 GE converter | 旧 torch_ops_extension 的 `torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub） |
 | 步骤5 无独立 metadata 子算子 | PKI aclnn 接口无 metadata 分离（不同于 LIV2），单算子即可 |
 | 步骤5 输出 values dtype 固定 FLOAT | 规格要求，不跟随 query dtype，C++ 显式 `at::kFloat` |
+| 8补: quant_mode +1 偏移映射 | def.cpp 属性 `-1` 是用户接口约定不改；tiling.h `int32_t` 保持一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 统一映射为非负值，实现用户接口与 kernel 内部编码解耦 |
+| 8补: 模板常量加 TPL_ 前缀 | `PKI_TPL_QUANT_*` / `PKI_TPL_MASK_*` 消除与 tiling.h `constexpr` 同名冲突，防止 `#define` 静默覆盖 |
+| 8补: ExpandAndAppendIndices 值传递 | `LocalTensor` 是轻量包装器（指针+偏移），按值传递无性能开销，且解决临时值无法绑定左值引用问题 |
+
+---
+
+## 八·补、910B 编译修复（已实施）
+
+在 ascend910B 上执行 `bash build.sh --pkg --soc=ascend910b --vendor_name=custom --ops=pool_key_indexer` 编译时发现并修复了 15 类编译问题。详细记录见 `docs/build_fix_record.md`。
+
+### 修复类别总览
+
+| 类别 | 文件 | 根因 | 修复方式 |
+|------|------|------|---------|
+| #1 宏参数过多 | infershape.cpp | `OP_LOGE_FOR_INVALID_VALUE_WITH_REASON` 传 6 参，宏仅接受 4 参 | 移除多余格式化参数，信息编码到 reason 字符串 |
+| #2 常量重复定义 | tiling.h | `PKI_TOPK_6K` 在同文件定义两次 | 删除重复定义 |
+| #3 Shape 类型不匹配 | tiling.cpp | `GetInputShape()` 返回 `StorageShape*`，代码用 `Shape*` | 改为 `StorageShape*` + `GetStorageShape().` 访问 |
+| #4 TilingData 字段访问 | tiling.cpp | `TILING_DATA_FIELD_DEF` 生成私有字段+getter/setter，代码直接访问公有字段 | 改用 `set_` / `get_` 方法 |
+| #5 Platform API 不存在 | tiling.cpp | `GetNpuArch`/`GetCoreNumPerAicore`/`CalcTschBlockDim`(静态) 不存在 | 改用 `GetCurNpuArch`/`GetCoreNumAiv`/`GetCoreNumAic`/`GetCoreMemSize(2参)`/实例方法 |
+| #6 Workspace API 不存在 | tiling.cpp | `GetWorkspaceSize/SetWorkspaceSize` 不存在 | 改用 `GetWorkspaceSizes(1)` 返回指针 |
+| #7 格式化字符串类型 | tiling.cpp | `%lu` 用于 `int64_t`（有符号） | 改为 `%ld` |
+| #8 模板 Tiling Key 宏不存在 | template_tiling_key.h | `ASCENDC_TPL_INT_DECL/SEL` 不存在，导致文本泄漏 | 改用 `ASCENDC_TPL_UINT_DECL/SEL` + `ASCENDC_TPL_4_BW` + `ASCENDC_TPL_UI_LIST` |
+| #9 未声明标识符 | arch22/kernel.h | Init 参数名与函数体引用名不一致 | 统一为 snake_case |
+| #10 左值引用绑定临时值 | arch22/service_vector.h | `ExpandAndAppendIndices` 引用参数接收临时 `LocalTensor` | 改为值传递 |
+| #11 宿主编译缺语句终结符 | template_tiling_key.h | `ASCENDC_TPL_ARGS_DECL/SEL` 宿主模式展开为 `static` 变量缺 `;` | 宏调用末尾补 `;` |
+| #12 缺失 GET_TPL_TILING_KEY | tiling.cpp | tiling 未调用 `GET_TPL_TILING_KEY` + `SetTilingKey` | 补充 8 参数 Tiling Key 计算和 SetTilingKey |
+| #13 quant_mode 值冲突+同名重定义 | tiling.h + template_tiling_key.h + tiling.cpp | `int32_t(-1)` → `uint32_t(0xFFFFFFFF)` + `PKI_QUANT_NONE` 同名双重定义 | 模板常量加 `TPL_` 前缀 + `quantMode + 1` 偏移映射 |
+| #14 左值引用绑定临时值 | arch35/service_vector.h | 同 #10（arch35 遗漏） | 改为值传递 |
+| #15 mask 常量同名冲突 | template_tiling_key.h | `PKI_MASK_*` 同名双重定义 | 模板常量加 `TPL_` 前缀 |
+
+### quant_mode 值映射设计
+
+```
+用户接口 (def.cpp)     host 内部 (tiling.h)      TilingData / 模板 (template_tiling_key.h)
+                      info.quantMode            tplQuantMode = quantMode + 1
+─────────────────     ─────────────────────     ─────────────────────────────────
+quant_mode = -1   →   -1                  →   0  (PKI_TPL_QUANT_NONE)
+quant_mode = 0    →    0                  →   1  (PKI_TPL_QUANT_FP8_PER_TOKEN)
+quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
+```
+
+**设计原则**：def.cpp 属性值（`-1`）是用户接口约定不改；tiling.h `int32_t` 保持与属性一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 偏移统一映射，实现用户接口与 kernel 内部编码解耦。
+
+### 修复文件清单
+
+| 文件 | 修改内容 |
+|------|----------|
+| `op_host/pool_key_indexer_infershape.cpp` | 宏参数从 6 改为 4 |
+| `op_host/pool_key_indexer_tiling.h` | 删除重复 `PKI_TOPK_6K` |
+| `op_host/pool_key_indexer_tiling.cpp` | StorageShape + set_/get_ + Platform API + Workspace API + %ld + GET_TPL_TILING_KEY + SetTilingKey + quant_mode +1 映射 |
+| `op_kernel/pool_key_indexer_template_tiling_key.h` | UINT_DECL + TPL_ 前缀 + 末尾分号 |
+| `op_kernel/arch22/pool_key_indexer_kernel.h` | 参数名 snake_case 对齐 |
+| `op_kernel/arch22/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递 |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递 |
+| `op_host/pool_key_indexer_def.cpp` | 无需修改（属性值 -1 通过 tiling.cpp +1 映射） |
+
+### 参考模式来源
+
+- `attention/sparse_flash_mla` — `ASCENDC_TPL_UINT_DECL` 正确用法 + `GET_TPL_TILING_KEY` 调用模式
+- `attention/flash_attention_score` — `ASCENDC_TPL_UINT_DECL` 多值列表 + Platform API
+- `ffn/ffn` — `GetCoreNumAiv/Aic`、`GetCoreMemSize` 2 参、`CalcTschBlockDim` 实例方法
+- `common/src/op_host/tiling_util.cpp` — `GetCurNpuArch()` 正确用法
+- `attention/lightning_indexer/op_host/lightning_indexer_tiling.cpp` — dtype 到模板值的 if-else 映射模式
 
 ---
 
