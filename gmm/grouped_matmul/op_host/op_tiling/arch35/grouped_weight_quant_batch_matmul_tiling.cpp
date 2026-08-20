@@ -23,6 +23,14 @@ constexpr size_t LAST_DIM = 1;             // 倒数第1维
 constexpr size_t FOURTH_FROM_LAST_DIM = 4; // 倒数第4维
 constexpr uint32_t ND_WEIGHT_DIM_NUM = 2;  // ND weight形如(K, N)
 constexpr uint32_t NZ_WEIGHT_DIM_NUM = 4;  // NZ weight为4维，具体轴顺序由transB_决定
+constexpr uint32_t MX_A8W4_BASE_N_STEP = 32;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_NUMERATOR = 8;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_DENOMINATOR = 10;
+constexpr double MX_A8W4_COMPUTE_PER_AIC_TFLOPS = 27.36;
+constexpr double MX_A8W4_L2_BW_TBPS = 5.3;
+constexpr double MX_A8W4_HBM_BW_TBPS = 4.0;
+constexpr double MX_A8W4_A_BYTES_IN_SCALE_GROUP = 33.0;
+constexpr double MX_A8W4_B_BYTES_IN_SCALE_GROUP = 17.0;
 } // namespace
 
 enum class GmmTrans {
@@ -867,7 +875,90 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
                 return false);
 
     cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
-    if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
+    bool bandwidthModelSelected = false;
+    uint64_t selectedNBlockCount = 0UL;
+    uint64_t selectedNBlockSize = 0UL;
+    if (IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 0) {
+        uint64_t expectedGroupM = GroupedMatmul::CeilDiv(mSize_, static_cast<uint64_t>(groupNum_));
+        uint64_t configuredBaseM = hasBias_ ? static_cast<uint64_t>(BASIC_BLOCK_BASE_M_WITH_BIAS) :
+                                              static_cast<uint64_t>(BASIC_BLOCK_BASE_M);
+        uint64_t mBlockCount = expectedGroupM == 0UL ? 1UL : GroupedMatmul::CeilDiv(expectedGroupM, configuredBaseM);
+        uint64_t effectiveBaseM =
+            expectedGroupM == 0UL ? 0UL : GroupedMatmul::CeilDiv(expectedGroupM, mBlockCount);
+        if (effectiveBaseM >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
+            for (uint64_t candidateBaseN = BASIC_BLOCK_BASE_N;
+                 candidateBaseN >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN);
+                 candidateBaseN -= MX_A8W4_BASE_N_STEP) {
+                uint64_t candidateNBlockCount = GroupedMatmul::CeilDiv(nSize_, candidateBaseN);
+                uint64_t taskNum = static_cast<uint64_t>(groupNum_) * mBlockCount * candidateNBlockCount;
+                uint64_t tailCoreNum = taskNum % static_cast<uint64_t>(coreNum_);
+                bool fullyBalanced = tailCoreNum == 0UL;
+                bool tailUsageHigh =
+                    tailCoreNum * MX_A8W4_TAIL_USAGE_DENOMINATOR >
+                    static_cast<uint64_t>(coreNum_) * MX_A8W4_TAIL_USAGE_NUMERATOR;
+                if (taskNum < static_cast<uint64_t>(coreNum_) || (!fullyBalanced && !tailUsageHigh)) {
+                    continue;
+                }
+
+                double requestedA = static_cast<double>(candidateNBlockCount * expectedGroupM) *
+                                    MX_A8W4_A_BYTES_IN_SCALE_GROUP;
+                double requestedB = static_cast<double>(mBlockCount * nSize_) * MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+                double uniqueA = static_cast<double>(expectedGroupM) * MX_A8W4_A_BYTES_IN_SCALE_GROUP;
+                double uniqueB = static_cast<double>(nSize_) * MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+                double l2CacheHitRate = 1.0 - (uniqueA + uniqueB) / (requestedA + requestedB);
+                double estimatedBandwidth =
+                    1.0 / (l2CacheHitRate / MX_A8W4_L2_BW_TBPS +
+                           (1.0 - l2CacheHitRate) / MX_A8W4_HBM_BW_TBPS);
+                double computeTflops = MX_A8W4_COMPUTE_PER_AIC_TFLOPS * static_cast<double>(coreNum_);
+                double cubeBoundMinBandwidth =
+                    computeTflops / 2.0 *
+                    (1.0 / static_cast<double>(candidateBaseN) + 1.0 / (2.0 * static_cast<double>(effectiveBaseM)));
+                if (estimatedBandwidth <= cubeBoundMinBandwidth) {
+                    continue;
+                }
+
+                selectedNBlockCount = candidateNBlockCount;
+                selectedNBlockSize = GroupedMatmul::CeilAlign(
+                    GroupedMatmul::CeilDiv(nSize_, candidateNBlockCount), c0Size);
+                bandwidthModelSelected =
+                    selectedNBlockSize >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN) &&
+                    selectedNBlockSize <= static_cast<uint64_t>(BASIC_BLOCK_BASE_N);
+                if (bandwidthModelSelected) {
+                    OP_LOGD(context->GetNodeName(),
+                            "Select MX A8W4 baseN[%lu], effectiveBaseM[%lu], taskNum[%lu], tailCoreNum[%lu], "
+                            "l2CacheHitRate[%f], estimatedBandwidth[%f], cubeBoundMinBandwidth[%f].",
+                            selectedNBlockSize, effectiveBaseM, taskNum, tailCoreNum, l2CacheHitRate,
+                            estimatedBandwidth, cubeBoundMinBandwidth);
+                    break;
+                }
+            }
+        }
+    }
+
+    uint64_t nBlockCount = GroupedMatmul::CeilDiv(nSize_, static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
+    uint64_t groupDistributedTaskNum = static_cast<uint64_t>(groupNum_) * nBlockCount;
+    uint64_t groupDistributedTailCoreNum = groupDistributedTaskNum % static_cast<uint64_t>(coreNum_);
+    bool groupDistributedLoadBalanced =
+        groupDistributedTailCoreNum == 0UL ||
+        groupDistributedTailCoreNum >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), 2UL);
+    bool preferGroupDistributedNBlock =
+        IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 1 &&
+        nSize_ >= static_cast<uint64_t>(MX_A8W4_GROUP_DISTRIBUTED_N_MIN) &&
+        nSize_ % static_cast<uint64_t>(BASIC_BLOCK_BASE_N) == 0UL &&
+        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_)) &&
+        groupDistributedLoadBalanced;
+    if (bandwidthModelSelected) {
+        resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
+        resplitParam_.mainBlockCount = 0UL;
+        resplitParam_.firstTailBlockSize = static_cast<uint16_t>(selectedNBlockSize);
+        resplitParam_.firstTailBlockCount = static_cast<uint16_t>(selectedNBlockCount);
+        resplitParam_.secondTailBlockSize = 0U;
+        resplitParam_.secondTailBlockCount = 0U;
+        cubeNumBlocksN_ = static_cast<uint8_t>(selectedNBlockCount);
+    } else if (preferGroupDistributedNBlock) {
+        // Prefer 256x256 blocks only when the group-distributed tail wave keeps at least half of the Cubes active.
+        CalcNoFullNumBlocksResplitTiling(c0Size);
+    } else if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
         resplitParam_.mainBlockCount = nSize_ / (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
     } else if (nSize_ > coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {

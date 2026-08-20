@@ -54,6 +54,7 @@ constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
 constexpr uint32_t BASIC_BLOCK_BASE_N = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_K = 64;
 constexpr uint32_t BASIC_BLOCK_BASE_N_MIN = 128;
+constexpr uint32_t MX_A8W4_GROUP_DISTRIBUTED_N_MIN = 4096;
 constexpr uint32_t STEP_K_4 = 4;
 constexpr uint32_t STEP_K_3 = 3;
 constexpr uint32_t DEPTH_8 = 8;

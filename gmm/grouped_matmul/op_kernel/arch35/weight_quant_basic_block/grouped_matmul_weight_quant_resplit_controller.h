@@ -275,7 +275,11 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
             weightGm_ += nSize * kSize;
         }
 
-        if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP || wqmmConfig.antiQuantType == QuantType::MX) {
+        if constexpr (wqmmConfig.antiQuantType == QuantType::MX) {
+            antiquantScaleGm_ += CeilAlign(nSize, static_cast<uint64_t>(BLOCK_CUBE)) *
+                                 CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+            antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        } else if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
             antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
             antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
         } else {
@@ -288,7 +292,8 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
     }
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        perTokenScaleGm_ += CeilAlign(mSize, static_cast<uint64_t>(BLOCK_CUBE)) *
+                            CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
     } else {
         perTokenScaleGm_ += mSize;
     }
