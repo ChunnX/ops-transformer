@@ -401,7 +401,6 @@ public:
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
                 MMParam param = {(uint32_t)mBaseSize, tileN, (uint32_t)runInfo.actSingleLoopS2Size, true, false};
-                param.realM = (uint32_t)runInfo.actMSize;
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
                 uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
