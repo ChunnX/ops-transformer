@@ -40,6 +40,9 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> curStateBf16; // (Nv, Dv, Dk) BF16 state for AIC
     GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
+    GlobalTensor<float> stateFp32Wk;       // (Nv, Dv, Dk) FP32 state workspace (BF16-state FP32-intermediate path)
+    GlobalTensor<float> wsFp32;            // (chunkSize, Dv) FP32 W@S temp per core (BF16-state path)
+    GlobalTensor<float> wsStateFp32;       // (Dv, Dk) FP32 (U-WS)@K temp per core (BF16-state path)
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
@@ -75,6 +78,7 @@ public:
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
+        dvAligned_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
@@ -100,16 +104,20 @@ public:
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
         } else {
-            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE,
-                              Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
-            uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
+            pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, chunkSize_ * dvAligned_ * sizeof(bfloat16_t));
+            uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * dvAligned_ * sizeof(bfloat16_t),
                                              (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) *
-                                            sizeof(float));
+            uint64_t stateFp32Size = Dv_ * curDk_ * sizeof(float);
+            uint64_t uFp32Size = chunkSize_ * dvAligned_ * sizeof(float);
+            pipe_->InitBuffer(tmpBuff_, stateFp32Size + uFp32Size * 2 + BLOCK_FLOAT_NUM * sizeof(float));
             uint32_t buffOffset = 0;
-            tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
-            buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+            stateFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
+            buffOffset += Ceil(stateFp32Size, BLOCK_SIZE) * BLOCK_SIZE;
+            uFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * dvAligned_), buffOffset);
+            buffOffset += Ceil(uFp32Size, BLOCK_SIZE) * BLOCK_SIZE;
+            wsFp32Ub_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * dvAligned_), buffOffset);
+            buffOffset += Ceil(uFp32Size, BLOCK_SIZE) * BLOCK_SIZE;
             lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
         }
     }
@@ -181,18 +189,42 @@ public:
 
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
     {
-        auto curState = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
-        auto finalState = sTP_->stateOut[nvId * Dv_ * Dk_];
+        auto stateFp32 = sTP_->stateFp32Wk[nvId * Dv_ * Dk_];
+        auto curStateBf16 = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         if (GetSubBlockIdx() == 0) {
-            CopyIn(curState, Dv_, Dk_);
-            CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
+            // Read FP32 state from GM → stateFp32Ub_
+            DataCopyExtParams stateInParams{static_cast<uint16_t>(Dv_),
+                                            static_cast<uint32_t>(Dk_ * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> stateInPad{true, 0, static_cast<uint8_t>(curDk_ - Dk_), 0};
+            DataCopyPad(stateFp32Ub_, stateFp32, stateInParams, stateInPad);
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            // Apply g_cum decay to state (FP32, in-place)
+            CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
+            // Cast stateFp32Ub_ to BF16 → curStateBf16 (GM) for AIC matmul
+            auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
+            Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
+            SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+            outQueue_.EnQue(bf16State);
+            CopyOut<bfloat16_t>(curStateBf16, Dv_, Dk_, false, curDk_);
         }
-        CrossCoreWaitFlag(0x2);
-        if (GetSubBlockIdx() == 0) {
-            CopyOutState(finalState);
-        }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
+        // Signal AIC: curStateBf16 ready
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x2);
+        // Wait for AIC: W@S (CalVPrime) ready in wsFp32
         CrossCoreWaitFlag(0x4);
+        if (GetSubBlockIdx() == 0) {
+            // Compute U-WS in UB (FP32), cast to BF16, write vInner to GM
+            CalVPrimeAiv(nvId, length);
+        }
+        // Signal AIC: vInner (U-WS) ready
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
+        // Wait for AIC: (U-WS)@K (CalStateNew) ready in wsStateFp32
+        CrossCoreWaitFlag(0x6);
+        if (GetSubBlockIdx() == 0) {
+            // Compute S + (U-WS)@K in UB (FP32), write to stateFp32Wk (GM)
+            CalStateAdd(nvId);
+        }
     }
 
     __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
@@ -205,20 +237,31 @@ public:
             CrossCoreWaitFlag(0x3);
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
-            stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
+            CrossCoreWaitFlag(0x2);
+            stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         }
-        CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
-        CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-        CrossCoreWaitFlag(0x5);
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
         } else {
-            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
-            SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-            WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+            // W@S → wsFp32 (FP32, no accumulate); AIV will compute U-WS in UB
+            CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->wsFp32);
         }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+        CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
+        if constexpr (!kIsFp32) {
+            // Signal AIV: W@S ready
+            CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+            // Wait for AIV: vInner (U-WS) ready
+            CrossCoreWaitFlag(0x5);
+            // (U-WS)@K → wsStateFp32 (FP32, no accumulate); AIV will Add to S in UB
+            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], sTP_->wsStateFp32);
+            // Signal AIV: (U-WS)@K ready
+            CrossCoreSetFlag<0x2, PIPE_FIX>(0x6);
+        } else {
+            CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
+            CrossCoreWaitFlag(0x5);
+            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+        }
     }
 
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
@@ -306,7 +349,8 @@ public:
         if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
+            // BF16-state path: W@S as FP32 output (no accumulate), AIV computes U-WS in UB
+            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 0);
         }
     }
 
@@ -317,8 +361,75 @@ public:
         if constexpr (kIsFp32) {
             RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            // BF16-state path: (U-WS)@K as FP32 output (no accumulate), AIV adds to S in UB
+            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 0);
         }
+    }
+
+    __aicore__ inline void CalVPrimeAiv(int64_t nvId, int64_t length)
+    {
+        uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
+        // Read U (BF16) from GM → inQueue_, cast to FP32 → uFp32Ub_
+        auto uBf16 = inQueue_.AllocTensor<bfloat16_t>();
+        DataCopyExtParams uInParams{static_cast<uint16_t>(curChunkSize_),
+                                    static_cast<uint32_t>(Dv_ * sizeof(bfloat16_t)), 0, 0, 0};
+        DataCopyPadExtParams<bfloat16_t> uInPad{true, 0, static_cast<uint8_t>(dvAligned_ - Dv_), 0};
+        DataCopyPad(uBf16, sTP_->vInner[mm_offset1], uInParams, uInPad);
+        inQueue_.EnQue(uBf16);
+        uBf16 = inQueue_.DeQue<bfloat16_t>();
+        SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        Cast(uFp32Ub_, uBf16, RoundMode::CAST_NONE, curChunkSize_ * dvAligned_);
+        inQueue_.FreeTensor(uBf16);
+        PipeBarrier<PIPE_V>();
+        // Read W@S (FP32) from wsFp32 (GM) → wsFp32Ub_
+        DataCopyExtParams wsInParams{static_cast<uint16_t>(curChunkSize_),
+                                     static_cast<uint32_t>(Dv_ * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> wsInPad{true, 0, static_cast<uint8_t>(dvAligned_ - Dv_), 0};
+        DataCopyPad(wsFp32Ub_, sTP_->wsFp32, wsInParams, wsInPad);
+        SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+        // Sub: U - W@S (FP32, in-place in uFp32Ub_)
+        Sub(uFp32Ub_, uFp32Ub_, wsFp32Ub_, curChunkSize_ * dvAligned_);
+        PipeBarrier<PIPE_V>();
+        // Cast (U-WS) to BF16 → outQueue_ → vInner (GM)
+        auto vInnerOut = outQueue_.AllocTensor<bfloat16_t>();
+        Cast(vInnerOut, uFp32Ub_, RoundMode::CAST_RINT, curChunkSize_ * dvAligned_);
+        SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        outQueue_.EnQue(vInnerOut);
+        CopyOut<bfloat16_t>(sTP_->vInner[mm_offset1], curChunkSize_, Dv_, false, dvAligned_);
+    }
+
+    __aicore__ inline void CalStateAdd(int64_t nvId)
+    {
+        auto stateFp32 = sTP_->stateFp32Wk[nvId * Dv_ * Dk_];
+        // Read (U-WS)@K in tiles, Add to stateFp32Ub_ (FP32)
+        int64_t maxTileRows = chunkSize_ * dvAligned_ / curDk_;
+        int64_t tileRows = (Dv_ < maxTileRows) ? Dv_ : maxTileRows;
+        if (tileRows <= 0) { tileRows = 1; }
+        DataCopyExtParams inParams{static_cast<uint16_t>(tileRows),
+                                   static_cast<uint32_t>(Dk_ * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> inPad{true, 0, static_cast<uint8_t>(curDk_ - Dk_), 0};
+        for (int64_t rowStart = 0; rowStart < Dv_; rowStart += tileRows) {
+            int64_t rows = (rowStart + tileRows > Dv_) ? (Dv_ - rowStart) : tileRows;
+            inParams.blockCount = static_cast<uint16_t>(rows);
+            DataCopyPad(wsFp32Ub_, sTP_->wsStateFp32[rowStart * Dk_], inParams, inPad);
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            Add(stateFp32Ub_[rowStart * curDk_], stateFp32Ub_[rowStart * curDk_], wsFp32Ub_, rows * curDk_);
+            PipeBarrier<PIPE_V>();
+        }
+        // Write stateFp32Ub_ → stateFp32Wk (GM)
+        SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
+        uint32_t actualReadBytes = Ceil(Dk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+        uint32_t srcRowBytes = curDk_ * sizeof(float);
+        uint32_t srcStride = (srcRowBytes >= actualReadBytes && (srcRowBytes - actualReadBytes) % BLOCK_SIZE == 0)
+                                 ? (srcRowBytes - actualReadBytes) / BLOCK_SIZE : 0;
+        DataCopyExtParams outParams{static_cast<uint16_t>(Dv_), static_cast<uint32_t>(Dk_ * sizeof(float)),
+                                    srcStride, 0, 0};
+        DataCopyPad(stateFp32, stateFp32Ub_, outParams);
     }
 
     template <typename srcType, typename dstType>
@@ -424,6 +535,8 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> lastGCum_;
     LocalTensor<float> stateFp32Ub_;
+    LocalTensor<float> uFp32Ub_;
+    LocalTensor<float> wsFp32Ub_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;
@@ -432,6 +545,7 @@ private:
     int32_t chunkSize_;
     int32_t curChunkSize_;
     int32_t curDk_;
+    int32_t dvAligned_;
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
