@@ -20,7 +20,7 @@
 #include <memory>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "base_checker_quant_flash_attn.h"
 #include "../qfa_tiling_shape.h"
 
 namespace optiling {
@@ -75,7 +75,7 @@ private:
     int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: layout 匹配关系校验 (文档: layout匹配关系表) ---
-    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
+    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BBND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
     ge::graphStatus CheckLayoutConstraint(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: q/k/v/attn_out shape 校验 (文档: q/k/v/attn_out shape匹配关系表) ---

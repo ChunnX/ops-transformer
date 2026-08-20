@@ -44,12 +44,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
 namespace BaseApi {
-struct CubeCoordInfo {
-    uint32_t curBIdx;
-    uint32_t s1Coord;
-    uint32_t s2Coord;
-};
-
 template <QSMLA_LAYOUT LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
@@ -68,37 +62,42 @@ public:
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t dBaseSize = 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
+    static constexpr uint32_t rightBufNum = 3;
+    static constexpr uint32_t rightBufSingleSize = s2BaseSize * dBaseSize;
+    static constexpr uint32_t rightBufTotalSize = rightBufSingleSize * rightBufNum;
 
-    __aicore__ inline CSABlockCube() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, \
-        __gm__ uint8_t *query);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, \
-        const ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-        RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline CSABlockCube(){};
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager,
+                                         __gm__ uint8_t *query);
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                         const ConstInfo &constInfo);
+    __aicore__ inline void IterateLoadQK(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+                                         RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+                                       bool notLastTwoLoop, RunInfo &runInfoNext, RunInfo &runInfo,
+                                       ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent();
 
-    __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
+    __aicore__ inline void IterateBmm2(
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
         ConstInfo &constInfo);
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, \
-        const ConstInfo &constInfo);
-    __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
-
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                        const ConstInfo &constInfo);
+    __aicore__ inline void CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void IterateBmm1CSA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-        RunInfo &runInfo, ConstInfo &constInfo);
+                                          Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+                                          bool notLastTwoLoop, RunInfo &runInfoNext, RunInfo &runInfo,
+                                          ConstInfo &constInfo);
 
     // --------------------Bmm2--------------------------
-    __aicore__ inline void IterateBmm2CSA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
+    __aicore__ inline void IterateBmm2CSA(
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
         ConstInfo &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
@@ -107,29 +106,39 @@ private:
     FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_WITH_ZERO_HEAD> queryGm;
 
     /* =====================运行时变量==================== */
-    CubeCoordInfo coordInfo[3];
-    TEventID mte1ToMte2Id[3];
-    TEventID mte2ToMte1Id[3];
+    uint32_t l0CBufId = 0;
+    uint32_t l1QBufId = 0;
+    uint32_t l1KLoadBufId = 0;
+    uint32_t l1KMatmul1BufId = 0;
+    uint32_t l1KMatmul2BufId = 0;
+    uint32_t l0CFixToMFlagId = 0;
+    uint32_t l0CMToFixFlagId = 0;
+    uint32_t l1QMte1ToMte2FlagId = 0;
+    uint32_t l1QMte2ToMte1FlagId = 0;
+    uint32_t l1KMte1ToMte2FlagId = 3;
+    uint32_t l1KMte2ToMte1FlagId = 3;
     /* =====================LocalBuffer变量==================== */
-    BufferManager<BufferType::L1> *l1BufferManagerPtr;
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
-    BufferManager<BufferType::L0C> l0cBufferManager;
-
-    // D小于等于256 mm1左矩阵Q，GS1循环内左矩阵复用, GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
-    BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
 
     // L0A
     BuffersPolicyDB<BufferType::L0A> mmL0ABuffers;
     // L0B
     BuffersPolicyDB<BufferType::L0B> mmL0BBuffers;
-    // L0C
-    BuffersPolicyDB<BufferType::L0C> mmL0CBuffers;
+    TBuf<TPosition::A1> l1QBuffers;
+    LocalTensor<Q_T> l1QTensor;
+
+    TBuf<TPosition::B1> l1RightBuffers;
+    LocalTensor<Q_T> l1RightTensor;
+
+    TBuf<TPosition::CO1> mmL0CBuffers;
+    LocalTensor<T> mmL0CTensor;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, __gm__ uint8_t *query)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
+                                                                  BufferManager<BufferType::L1> &l1BufferManager,
+                                                                  __gm__ uint8_t *query)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
@@ -139,149 +148,173 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeInput(
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, const ConstInfo &constInfo)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                                                  const ConstInfo &constInfo)
 {
     if ASCEND_IS_AIC {
         InitGmTensor(cuSeqlensQ, sequsedQ, constInfo);
-        if constexpr (IS_SPLIT_G) {
-            mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager)
 {
-    constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init((l1BufferManager), mm1LeftSize);
+    tPipe->InitBuffer(l1QBuffers, BUFFER_SIZE_96K);
+    l1QTensor = l1QBuffers.Get<Q_T>();
+
+    tPipe->InitBuffer(l1RightBuffers, rightBufTotalSize * sizeof(Q_T));
+    l1RightTensor = l1RightBuffers.Get<Q_T>();
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
     l0bBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
-    l0cBufferManager.Init(tPipe, L0C_SHARED_SIZE_256K);
 
     mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
     mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
-    mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
+    tPipe->InitBuffer(mmL0CBuffers, BUFFER_SIZE_256K);
+    mmL0CTensor = mmL0CBuffers.Get<T>();
+
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId);
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId);
+    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2U);
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2U);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
+{
+    mmL0ABuffers.Uninit(l0aBufferManager);
+    mmL0BBuffers.Uninit(l0bBufferManager);
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId);
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, const ConstInfo &constInfo)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                                                 const ConstInfo &constInfo)
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
-        this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
-            constInfo.s1Size, constInfo.dSize);
-    } else {  // QSMLA_LAYOUT::TND
+        this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                            constInfo.dSize);
+    } else { // QSMLA_LAYOUT::TND
         uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
         parser.Init(cuSeqlensQ, constInfo.bSize + 1, sequsedQ, sequsedQSize);
-        this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-            parser);
+        this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, parser);
     }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo &runInfo,
-    ConstInfo &constInfo)
-{
-    // 计算s1方向偏移
-    coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
-    CalcS1Coord(runInfo, constInfo);
-
-    IterateBmm1CSA(outputBuf, inputRightBuf, v0ResGm, runInfo, constInfo);
+    IterateBmm1CSA(outputBuf, v0ResGm, notLastTwoLoop, runInfoNext, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
-    IterateBmm2CSA(outputBuf, inputLeftBuffers, inputRightBuf, runInfo, constInfo);
+    IterateBmm2CSA(outputBuf, inputLeftBuffers, runInfo, constInfo);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
+{
+    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+                                                                 runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
+    for (uint32_t i = 0; i < 2U; i++) {
+        uint32_t curL1QBufId = (l1QBufId + i) % 3U;
+        WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
+        uint64_t curGmOffset = gmOffset + i * (constInfo.dSize >> 1);
+        CopyToL1Nd2Nz<Q_T>(l1QTensor[curL1QBufId * BUFFER_SIZE_16K], this->queryGm.gmTensor[curGmOffset],
+                           runInfo.mRealSize, constInfo.dSize >> 1, constInfo.mm1Ka);
+        SetFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo &runInfo, ConstInfo &constInfo,
+    bool isFirstLoop)
+{
+    if (unlikely(isFirstLoop)) {
+        CopyQGmToL1(runInfo, constInfo);
+    }
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KLoadBufId);
+    LocalTensor<Q_T> dst = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
+    v0ResGm.WaitCrossCore();
+    if constexpr (IS_SPLIT_G) {
+        CrossCoreSetFlag<0, PIPE_MTE2>(15U);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(15U);
+    }
+    GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
+    DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
+    SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
+    l1KLoadBufId = (l1KLoadBufId + 1) % 3U;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
-    Buffer<BufferType::L1> inputLeftBuf;
-    // 左矩阵复用，S2的第一次循环加载左矩阵
-    // 加载左矩阵到L1, 全载
-    // query对ori_kv, cmp_kv都一样，无需区分
-    if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
-        inputLeftBuf = l1QBuffers.Get();
-        inputLeftBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
-        LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
-
-        uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-            coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[gmOffset], runInfo.mRealSize, constInfo.dSize,
-            constInfo.mm1Ka);
-
-        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
-    } else { // 非S2的第一次循环直接复用Q
-        inputLeftBuf = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
-        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
+    WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
+    l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3U;
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    MMParam param = {
+        static_cast<uint32_t>(runInfo.mRealSize),    // singleM
+        static_cast<uint32_t>(runInfo.s2RealSize),   // singleN
+        static_cast<uint32_t>(constInfo.dSize >> 1), // singleK
+        0,                                           // isLeftTranspose
+        1                                            // isRightTranspose
+    };
+    uint32_t curL1QBufId = l1QBufId;
+    if (unlikely(runInfo.s2LoopCount == 0)) {
+        WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
     }
+    LocalTensor<Q_T> curL1RightTensor = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], curL1RightTensor, mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
 
-    // 加载当前轮的右矩阵到L1
-    if constexpr (IS_SPLIT_G) {
-        SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-
-        LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
-        v0ResGm.WaitCrossCore(); // N1 > 64 时出核，v0将kv直接搬运至GM
-        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
-        SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-    } else {
-        // N1 < 64时不出核，v0将kv直接搬运至L1
-        inputRightBuf.WaitCrossCore();
+    curL1QBufId = (curL1QBufId + 1) % 3U;
+    if (unlikely(runInfo.s2LoopCount == 0)) {
+        WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
     }
-
-    inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
-    Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-    mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
-                     static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
-                     static_cast<uint32_t>(constInfo.dSize),   // singleK
-                     0,    // isLeftTranspose
-                     1     // isRightTranspose
-                    };
-    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
-        inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
-        mmL0ABuffers, mmL0BBuffers,
-        mm1ResL0C.GetTensor<T>(),
-        param);
+    param.singleK = constInfo.dSize - param.singleK;
+    param.isOutKFisrt = false;
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
+        curL1RightTensor[(constInfo.dSize >> 1) * Align16Func(runInfo.s2RealSize)], mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
+        SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + l1QBufId);
+        SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
+        l1QBufId = (l1QBufId + 2U) % 3U;
+        if (notLastTwoLoop) {
+            CopyQGmToL1(runInfoNext, constInfo);
+        }
     }
 
-    mm1ResL0C.Set<HardEvent::M_FIX>();    // 通知
-    mm1ResL0C.Wait<HardEvent::M_FIX>();   // 等待L0C
+    SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
+    WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
 
     outputBuf.WaitCrossCore();
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
@@ -289,62 +322,69 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     fixpipeParams.nSize = Align8Func(runInfo.s2RealSize);
     // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
     fixpipeParams.mSize = Align2Func(runInfo.mRealSize);
-    // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+    // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) //
+    // 源Nz矩阵中相邻大Z排布的起始地址偏移
     fixpipeParams.srcStride = Align16Func(fixpipeParams.mSize);
-    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
+    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到,
+                                          // ND方案(S1*S2)时脏数据用mask剔除
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
 
     // 将matmul结果从L0C搬运到UB
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams);
-    mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+                                        fixpipeParams);
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    l0CBufId ^= 1;
     outputBuf.SetCrossCore();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> inputLeftBuf = inputLeftBuffers.Get(); // P直接用无需搬运
-    inputLeftBuf.WaitCrossCore();
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffer = inputLeftBuffers.Get();
+    l1PBuffer.WaitCrossCore();
 
-    Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
-    mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize), // singleM 64
-                     static_cast<uint32_t>(constInfo.dSizeV), // singleN 512
-                     static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
-                     0,    // isLeftTranspose
-                     0     // isRightTranspose
-                     };
+    WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    MMParam param = {
+        static_cast<uint32_t>(runInfo.mRealSize),  // singleM 64
+        static_cast<uint32_t>(constInfo.dSizeV),   // singleN 512
+        static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
+        0,                                         // isLeftTranspose
+        0                                          // isRightTranspose
+    };
+    LocalTensor<Q_T> curL1RightTensor = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
     MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        inputLeftBuf.GetTensor<Q_T>(),
-        inputRightBuf.GetTensor<Q_T>(),
-        mmL0ABuffers,
-        mmL0BBuffers,
-        mm2ResL0C.GetTensor<T>(),
-        param);
+        l1PBuffer.GetTensor<Q_T>(), curL1RightTensor, mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], param);
 
-    mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
-    mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
+    SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
+    WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
+    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
 
-    outputBuf.WaitCrossCore(); // 占用
+    outputBuf.WaitCrossCore();                             // 占用
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
-    fixpipeParams.nSize = Align8Func(constInfo.dSizeV); // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
-    fixpipeParams.mSize = Align2Func(runInfo.mRealSize); // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
-    fixpipeParams.srcStride = Align16Func(fixpipeParams.mSize); // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+    fixpipeParams.nSize =
+        Align8Func(constInfo.dSizeV); // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
+    fixpipeParams.mSize = Align2Func(
+        runInfo
+            .mRealSize); // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
+    fixpipeParams.srcStride = Align16Func(
+        fixpipeParams.mSize); // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
     fixpipeParams.dstStride = Align16Func(constInfo.dSizeV);
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(
-        outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
-    mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+                                        fixpipeParams);
+    SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
+    l0CBufId ^= 1;
 
     outputBuf.SetCrossCore();
 }
@@ -352,15 +392,17 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
 TEMPLATES_DEF
 class CSABlockCubeDummy {
 public:
-    __aicore__ inline CSABlockCubeDummy() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, \
-        __gm__ uint8_t *query) {}
+    __aicore__ inline CSABlockCubeDummy(){};
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager,
+                                         __gm__ uint8_t *query)
+    {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-        const ConstInfo& constInfo) {}
+                                         const ConstInfo &constInfo)
+    {}
 };
 
 template <typename T>
-struct CubeBlockTraits;  // 声明
+struct CubeBlockTraits; // 声明
 
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
@@ -382,5 +424,5 @@ DEFINE_CUBE_BLOCK_TRAITS(CSABlockCubeDummy);
 #define ARGS_TRAITS \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
-}
+} // namespace BaseApi
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_CSA_BLOCK_CUBE_H

@@ -17,8 +17,8 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
-#include "arch35/sparse_flash_mla_csa_kernel.h"
-#include "arch35/sparse_flash_mla_swa_kernel.h"
+#include "arch35/sparse_flash_mla_csa_kernel_arch35.h"
+#include "arch35/sparse_flash_mla_swa_kernel_arch35.h"
 #include "sparse_flash_mla_metadata.h"
 #else
 #include "kernel_operator.h"
@@ -56,9 +56,9 @@ using namespace SMLAKernel;
         templateClass<SMLAType<__VA_ARGS__>> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in; \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, \
-                cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, sinks, metadata, attentionOut, \
-                softmaxLse, user, tiling_data, tiling, &tPipe); \
+        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, oriTopkLength, \
+                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe); \
         op.Process(); \
     } while (0)
 #endif

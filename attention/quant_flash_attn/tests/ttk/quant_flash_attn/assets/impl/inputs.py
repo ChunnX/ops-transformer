@@ -69,6 +69,10 @@ def generate_qfa_mxfp8_inputs(
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
+    layout_q: str = "TND",
+    layout_q_descale: str = "TND",
+    layout_kv: str = "TND",
+    layout_out: str = "TND",
     **kwargs,
 ):
     # cu_seqlens -> actual_seq (差分还原)
@@ -114,6 +118,10 @@ def generate_qfa_mxfp8_inputs(
         ("BLOCK_SIZE", block_size),
         ("Q_SCALE_LAYOUT", q_scale_layout),
         ("INPUT_LAYOUT", input_layout),
+        ("LAYOUT_Q", layout_q),
+        ("LAYOUT_Q_DESCALE", layout_q_descale),
+        ("LAYOUT_KV", layout_kv),
+        ("LAYOUT_OUT", layout_out),
     ]:
         setattr(mxfp8_golden_mod, gkey, gval)
 
@@ -195,7 +203,11 @@ def generate_qfa_mxfp8_inputs(
 
     if enable_pa:
         total_blocks_k = int(dequant_scale_k.shape[0])
-        total_blocks_v = int(dequant_scale_v.shape[0])
+        total_blocks_v = (
+            int(dequant_scale_v.shape[0])
+            if dequant_scale_v is not None
+            else total_blocks_k
+        )
         total_blocks = min(total_blocks_k, total_blocks_v)
 
         if block_table.size == 0:
@@ -291,9 +303,12 @@ def generate_qfa_mxfp8_inputs(
     k_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
         k_scale_final_layout, "K scale"
     )
-    v_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
-        v_scale_final_layout, "V scale"
-    )
+    if dequant_scale_v is not None:
+        v_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
+            v_scale_final_layout, "V scale"
+        )
+    else:
+        v_scale_e8m0 = None
 
     def _inplace_write(dst_np, src_torch, slot_name):
         if tuple(dst_np.shape) != tuple(src_torch.shape):
@@ -322,7 +337,8 @@ def generate_qfa_mxfp8_inputs(
     _inplace_write(v, v_fp8_final, "v (slot 2)")
     _inplace_write(dequant_scale_q, q_scale_e8m0, "descale_q (slot 3)")
     _inplace_write(dequant_scale_k, k_scale_e8m0, "descale_k (slot 4)")
-    _inplace_write(dequant_scale_v, v_scale_e8m0, "descale_v (slot 5)")
+    if dequant_scale_v is not None and v_scale_e8m0 is not None:
+        _inplace_write(dequant_scale_v, v_scale_e8m0, "descale_v (slot 5)")
 
     # ----- p_scale: in-place 写 fp32 -----
     p_scale_value = kwargs.get("p_scale_value", 1.0)
@@ -341,7 +357,7 @@ def generate_qfa_mxfp8_inputs(
         tuple(q.shape),
         tuple(dequant_scale_q.shape),
         tuple(dequant_scale_k.shape),
-        tuple(dequant_scale_v.shape),
+        tuple(dequant_scale_v.shape) if dequant_scale_v is not None else None,
         enable_pa,
     )
 
