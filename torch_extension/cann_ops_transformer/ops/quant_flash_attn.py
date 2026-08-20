@@ -93,6 +93,18 @@ _LAYOUT_EXPECTED_NDIM = {
     "N2TGD": 5,
 }
 
+# descale 各 layout 期望的 tensor 维度数 (基于 TTK 实际生成)
+# q_descale/k_descale: per-token-group packing (D//2, 2); v_descale: per-channel-group packing
+# PA 模式下 K/V scale 有额外的 block 内分组维度
+_DESCALE_EXPECTED_NDIM = {
+    "TND": 4,       # (T, N, D//2, 2)
+    "BSND": 5,      # (B, S, N, D//2, 2)
+    "BNSD": 5,      # (B, N, S, D//2, 2)
+    "N2TGD": 5,     # (N_kv, T, G, D//2, 2)
+    "PA_NZ": 6,     # (Bn, N, Bs//16, D//64, 16, 2)
+    "PA_BNBD": 5,   # (Bn, N, Bs, D//64, 2)
+}
+
 
 def _validate_layout_dims(
     q: torch.Tensor,
@@ -146,14 +158,11 @@ def _validate_layout_dims(
 
     # === q_descale 维度校验 ===
     if q_descale is not None:
-        dq_expected = _LAYOUT_EXPECTED_NDIM.get(layout_q_descale)
+        dq_expected = _DESCALE_EXPECTED_NDIM.get(layout_q_descale)
         torch._check(
             dq_expected is not None,
             lambda: f"Unsupported layout_q_descale: {layout_q_descale!r}, expected one of TND/BSND/BNSD/N2TGD",
         )
-        # q_descale 在 TND 时比 q 多一维 group; N2TGD 本身已含 group 维, 无需 +1
-        if layout_q_descale == "TND":
-            dq_expected += 1
         torch._check(
             q_descale.dim() == dq_expected,
             lambda: f"q_descale with layout {layout_q_descale} expects {dq_expected} dims, "
@@ -162,17 +171,27 @@ def _validate_layout_dims(
 
     # === k_descale 维度校验 ===
     if k_descale is not None:
+        dk_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
         torch._check(
-            k_descale.dim() == k_expected,
-            lambda: f"k_descale with layout {layout_kv} expects {k_expected} dims, "
+            dk_expected is not None,
+            lambda: f"Unsupported layout_kv for k_descale: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+        )
+        torch._check(
+            k_descale.dim() == dk_expected,
+            lambda: f"k_descale with layout {layout_kv} expects {dk_expected} dims, "
             f"but got {k_descale.dim()} dims {tuple(k_descale.shape)}",
         )
 
     # === v_descale 维度校验 ===
     if v_descale is not None:
+        dv_expected = _DESCALE_EXPECTED_NDIM.get(layout_kv)
         torch._check(
-            v_descale.dim() == k_expected,
-            lambda: f"v_descale with layout {layout_kv} expects {k_expected} dims, "
+            dv_expected is not None,
+            lambda: f"Unsupported layout_kv for v_descale: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+        )
+        torch._check(
+            v_descale.dim() == dv_expected,
+            lambda: f"v_descale with layout {layout_kv} expects {dv_expected} dims, "
             f"but got {v_descale.dim()} dims {tuple(v_descale.shape)}",
         )
 
