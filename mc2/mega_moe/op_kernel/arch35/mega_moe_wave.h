@@ -344,24 +344,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig(commonConfig_);
 
-    exceptionDump_.Init(dumpBase, tilingGM);
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::INIT);
-    constexpr size_t syncSlotBytes = INT_CACHELINE * sizeof(int32_t);
-    exceptionDump_.Dump(params_.peermemInfo.rankSyncInWorldPtr, worldSize_, sizeof(int32_t), syncSlotBytes);
-    exceptionDump_.Dump(params_.peermemInfo.rankSyncInWorldPtr + 48U * 1024U, blockAivNum_, sizeof(int32_t),
-                        syncSlotBytes);
-    const size_t maskSlotSize = sendMaskConfig_.maskAlignSize + ALIGN_32;
-    exceptionDump_.Dump(params_.peermemInfo.maskRecvPtr + sendMaskConfig_.maskAlignSize,
-                        static_cast<size_t>(moeExpertPerRank_) * worldSize_, sizeof(int32_t), maskSlotSize);
-    exceptionDump_.Dump(reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId), sizeof(uint32_t));
-    if (tilingData->topoType == TOPO_TYPE_MTE) {
-        const size_t maskRecvSize = static_cast<size_t>(Ops::Base::CeilAlign(
-            static_cast<int64_t>(moeExpertPerRank_) * static_cast<int64_t>(worldSize_) *
-                static_cast<int64_t>(maskSlotSize),
-            static_cast<int64_t>(ALIGN_512)));
-        exceptionDump_.Dump(params_.peermemInfo.rankSyncInWorldPtr, static_cast<size_t>(PEERMEM_DATA_OFFSET));
-        exceptionDump_.Dump(params_.peermemInfo.maskRecvPtr, maskRecvSize);
-    }
+    MC2MegaMoeA5Dump::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
+                                                  params_.peermemInfo, sendMaskConfig_.maskAlignSize,
+                                                  reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // =================================================================================================
