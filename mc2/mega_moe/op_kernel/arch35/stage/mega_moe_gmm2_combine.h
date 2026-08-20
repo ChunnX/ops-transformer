@@ -301,6 +301,7 @@ __aicore__ inline void CombineQuantizedTokenRange(
 struct WaveCombineConfig {
     MoeStageCommonConfig common;
     AivJobContext job;
+    uint32_t readySlotsPerExpert = 0U;
 };
 
 struct WaveCombineBufferConfig {
@@ -1302,7 +1303,14 @@ __aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const WaveCombineConfig &c
     return static_cast<uint64_t>(context.job.totalJobs) * INT_CACHELINE;
 }
 
-// 每个 AIC 在 GMM2 写入可见后发布一个独占 cache line 的完成标记。
+// 一个专家可能跨多个 GMM wave；以专家内 M-group 序号定位唯一的分段完成槽。
+__aicore__ inline uint32_t GetWaveGmm2SegmentReadySlot(
+    const WaveCombineConfig &context, uint32_t expertIdx, uint32_t segmentRowBegin)
+{
+    return expertIdx * context.readySlotsPerExpert + segmentRowBegin / GMM1_TILE_M;
+}
+
+// 每个 AIC 在当前专家分段的 GMM2 写入可见后发布一个独占 cache line 的完成标记。
 __aicore__ inline void NotifyWaveGmm2Ready(const WaveCombineConfig &context,
                                            const Params &params, uint32_t slotIdx)
 {
@@ -1318,7 +1326,7 @@ __aicore__ inline void NotifyWaveGmm2Ready(const WaveCombineConfig &context,
     }
 }
 
-// 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
+// 一个 AIV Combine 任务等待全部 AIC 完成指定专家分段。
 __aicore__ inline void WaitWaveGmm2Ready(const WaveCombineConfig &context,
                                          const Params &params, uint32_t slotIdx)
 {
@@ -1366,7 +1374,8 @@ __aicore__ inline void RunWaveExpertCombineStage(
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange(context, currentExpertTokenNum);
     if (currentCoreTokenRange.count != 0U) {
-        WaitWaveGmm2Ready(context, params, expertIdx);
+        WaitWaveGmm2Ready(
+            context, params, GetWaveGmm2SegmentReadySlot(context, expertIdx, 0U));
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
