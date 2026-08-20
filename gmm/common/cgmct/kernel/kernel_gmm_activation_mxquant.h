@@ -218,8 +218,7 @@ public:
         if (m <= 0) {
             return;
         }
-        const int64_t safeBaseM =
-            baseM > 0 ? static_cast<int64_t>(baseM) : static_cast<int64_t>(AscendC::BLOCK_CUBE);
+        const int64_t safeBaseM = baseM > 0 ? static_cast<int64_t>(baseM) : static_cast<int64_t>(AscendC::BLOCK_CUBE);
         const int64_t mTileCount = CeilDiv(m, safeBaseM);
         curBaseM_ = Align16(CeilDiv(m, mTileCount));
         bs.UpdateBaseM(curBaseM_);
