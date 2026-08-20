@@ -278,7 +278,9 @@ def _run_benchmark(
     del kv_state, score_state
     gc.collect()
 
-    return [cmp_kv, softmax, kv, bench_state_cache]
+    if grad_enabled:
+        return [cmp_kv, softmax, kv, bench_state_cache]
+    return [cmp_kv, bench_state_cache]
 
 
 def cpu_compressor(
