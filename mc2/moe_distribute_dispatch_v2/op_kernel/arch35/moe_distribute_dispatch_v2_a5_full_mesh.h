@@ -1786,17 +1786,36 @@ template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SetExpertTokenNumsSerial()
 {
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    uint32_t startLocalExpertId = 0U;
+    uint32_t endLocalExpertId = localExpertNum;
+    if (expertTokenNumsType_ != 0U) {
+        constexpr uint32_t expertNumPerGroup = UB_ALIGN / sizeof(int64_t);
+        uint32_t startGroupId, endGroupId, groupNum;
+        SplitToCore(Ceil(localExpertNum, expertNumPerGroup), aivNum_, startGroupId, endGroupId, groupNum, true);
+        if (groupNum == 0U) {
+            return;
+        }
+        startLocalExpertId = startGroupId * expertNumPerGroup;
+        endLocalExpertId = endGroupId * expertNumPerGroup;
+        endLocalExpertId = endLocalExpertId > localExpertNum ? localExpertNum : endLocalExpertId;
+    } else if (aivId_ != 0U) {
+        return;
+    }
+    uint32_t expertNum = endLocalExpertId - startLocalExpertId;
+    uint32_t statusNum = expertNum * epWorldSize_;
     LocalTensor<float> countTensorFp32 = recvCountTensor_.ReinterpretCast<float>();
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(rscvStatusNum_), sizeof(float),
-                                      STATE_OFFSET - sizeof(float), 0U, 0U};
+    DataCopyExtParams countCopyParams{static_cast<uint16_t>(statusNum), sizeof(float), STATE_OFFSET - sizeof(float), 0U,
+                                      0U};
     DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    DataCopyPad<float, PaddingMode::Compact>(countTensorFp32,
-                                             windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET],
-                                             countCopyParams, countCopyPadParams);
+    DataCopyPad<float, PaddingMode::Compact>(
+        countTensorFp32,
+        windowInstatusFp32Tensor_[startLocalExpertId * epWorldSize_ * STATE_OFFSET / sizeof(float) +
+                                  STATUS_BLOCK_COUNT_FIELD_OFFSET],
+        countCopyParams, countCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
     int64_t expertTokenNumCumsum = 0;
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+    for (uint32_t localExpertIdx = 0; localExpertIdx < expertNum; ++localExpertIdx) {
         int64_t expertTokenNum = 0;
         for (uint32_t rankIdx = 0; rankIdx < epWorldSize_; ++rankIdx) {
             expertTokenNum += static_cast<int64_t>(recvCountTensor_.GetValue(localExpertIdx * epWorldSize_ + rankIdx));
@@ -1809,9 +1828,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
-                                                0U};
-    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
+    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(expertNum * sizeof(int64_t)), 0U, 0U, 0U};
+    DataCopyPad(expertTokenNumsOutGMTensor_[startLocalExpertId], expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1856,9 +1874,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     DataCopyExtParams sendCountsCopyParams{1U, static_cast<uint32_t>(sendNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(sendCountsGlobal[startId_], sendCntTensor_, sendCountsCopyParams);
-    if (aivId_ == 0U) {
-        SetExpertTokenNumsSerial();
-    }
+    SetExpertTokenNumsSerial();
     // 连续化
     if (validNum == 0) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
