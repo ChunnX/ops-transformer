@@ -70,9 +70,10 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
+static constexpr uint32_t HCOMM_BATCH_HEADER_BYTES = 32;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES =
-    HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+    HCOMM_BATCH_HEADER_BYTES + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -438,9 +439,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
                            static_cast<uint64_t>(rankId_) * completionChannelCount + channelIndex) * WIN_ADDR_ALIGN;
     GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + flagOffset;
     if (dstRank == rankId_) {
-        GlobalTensor<uint32_t> localFlag;
-        localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagAddr));
-        DataCopy(localFlag, statusTensor_, FLOAT_PER_UB_ALIGN);
+        GlobalTensor<uint64_t> localFlag;
+        localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
+        localFlag.SetValue(0, 1U);
+        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(
@@ -574,13 +576,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     // Channels without payload also publish completion so the receiver cannot wait forever.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     if (aivId_ < activeAivNum) {
-        Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(0), FLOAT_PER_UB_ALIGN);
-        statusTensor_.SetValue(0, 1U);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        GlobalTensor<uint32_t> flagWorkspace;
-        flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
-        DataCopy(flagWorkspace, statusTensor_, FLOAT_PER_UB_ALIGN);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        GlobalTensor<uint64_t> flagWorkspace;
+        flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+        flagWorkspace.SetValue(0, 1U);
+        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagWorkspace);
         if (splitRankTokens) {
             SendChannelFlag(targetRank, channelIndex, groupSize);
         } else {
@@ -648,8 +647,8 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
     DataCopyExtParams params = {
-        static_cast<uint16_t>(completionFlagCount), STATE_OFFSET, WIN_ADDR_ALIGN - STATE_OFFSET, 0, 0};
-    DataCopyPadExtParams<uint32_t> padParams = {false, 0, 0, 0};
+        static_cast<uint16_t>(completionFlagCount), sizeof(uint32_t), WIN_ADDR_ALIGN - sizeof(uint32_t), 0, 0};
+    DataCopyPadExtParams<uint32_t> padParams = {true, 0, 0, 0};
 
     DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -727,6 +726,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
         DataCopyExtParams clearParams = {
             static_cast<uint16_t>(completionFlagCount), STATE_OFFSET, 0, WIN_ADDR_ALIGN - STATE_OFFSET, 0};
         DataCopyPad<uint32_t>(stateGMTensor, stateTensor, clearParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
     SyncAll<true>();
     for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
