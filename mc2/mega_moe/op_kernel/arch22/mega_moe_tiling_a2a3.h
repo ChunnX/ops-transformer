@@ -14,7 +14,7 @@
  */
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
+#include "moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 
 #ifndef ASCENDC_MEGA_MOE_TILING_H
 #define ASCENDC_MEGA_MOE_TILING_H
@@ -56,6 +56,8 @@ struct MegaMoeA2A3TilingData {
     uint32_t numMaxTokensPerRank;
     uint32_t activationCode;
     float activationClamp;
+    float activationParams1;
+    float activationParams2;
     uint32_t isTransposeW1;
     uint32_t isTransposeW2;
 

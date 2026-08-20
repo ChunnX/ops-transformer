@@ -17,16 +17,16 @@
 
 #include "kernel_operator.h"
 
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
-#include "memory_copy_arch35.h"
+#include "memory_copy_arch35_fused_infer.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -69,7 +69,7 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 3; // C1 C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
@@ -78,14 +78,13 @@ public:
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
 
     static constexpr bool USE_DN = useDn;
-    static constexpr uint8_t KV_LAYOUT = 4; // 4: K与K_Scale在同一物理内存中交叉排列
     static constexpr bool IS_PER_TOEKN_HEAD = true;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
     static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN, IS_PER_TOEKN_HEAD>();
-    static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KV_LAYOUT, PAGE_ATTENTION>();
+    static constexpr GmFormat K_SCALE_FORMAT = GmFormat::PA_BnNBs;
     using pseShiftType = half;
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
@@ -134,9 +133,9 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
-    TBuf<> softmaxMaxBuf[PRELOAD_N + 1];
-    TBuf<> softmaxSumBuf[PRELOAD_N + 1];
-    TBuf<> softmaxExpBuf[PRELOAD_N + 1];
+    TBuf<> softmaxMaxBuf[PRELOAD_N];
+    TBuf<> softmaxSumBuf[PRELOAD_N];
+    TBuf<> softmaxExpBuf[PRELOAD_N];
     TBuf<> vselrIndexesBuf[4];
     TBuf<> mm2InBuf;
     /* 用来做Broadcast[S1,1]->[S2,8]的临时UB区域 */
@@ -148,15 +147,16 @@ public:
     TQue<QuePosition::VECOUT, 1> FDResOutputQue;
     TQue<QuePosition::VECIN, 1> accumOutInputQue;
 
-    TBuf<> queryAntiqScaleInputQue;
-    TBuf<> keyAntiqScaleInputQue[2]; // 2:DB
+    TBuf<> queryAntiqScaleInputBuf;
+    TBuf<> keyAntiqScaleInputBuf[2]; // 2:DB
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
     float pScaleValue{1.0f};
     bool isSkipMask{false};
 
     // ==================== Functions ======================
-    __aicore__ inline FAFullQuantGqaBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FAFullQuantGqaBlockVec(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
@@ -236,10 +236,8 @@ public:
                                             uint64_t bnStrides, uint64_t n2Strides)
     {
         kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
-        if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_BnNBs_KS) {
-            kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, blockTableGm, constInfo.maxBlockNumPerBatch,
-                                                 bnStrides, n2Strides);
-        }
+        kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, blockTableGm, constInfo.maxBlockNumPerBatch,
+                                             bnStrides, n2Strides);
     }
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -255,8 +253,6 @@ public:
 
         if constexpr (USE_DN) {
             ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo);
-        } else {
-            // ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo);
         }
     }
 
@@ -352,7 +348,6 @@ public:
         CopyQueryScaleSlice(dstTensor, 0, 1, runInfo);
     }
 
-
     __aicore__ inline void CopyKeyScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                              RunInfoX &runInfo, bool isPreload)
     {
@@ -380,7 +375,7 @@ public:
     __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<float, K_SCALE_FORMAT> &srcTensor,
                                           AntiqGmCoord &antiqGmCoord)
     {
-        OffsetCalculator<K_SCALE_FORMAT> &offsetCal = srcTensor.offsetCalculator;
+        auto &offsetCal = srcTensor.offsetCalculator;
 
         uint64_t dstOffset = 0;
         uint32_t copyFinishElmeCnt = 0;
@@ -428,10 +423,10 @@ public:
             maskLine = ComputeMaskLineDN(runInfo, 0);
         }
 
-        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
-        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
+        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % PRELOAD_N].template Get<float>()[0];
+        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % PRELOAD_N].template Get<float>()[0];
 
-        auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>()[0];
+        auto expUb = this->softmaxExpBuf[runInfo.loop % PRELOAD_N].template Get<T>()[0];
         int64_t stage1Offset = runInfo.loop % DB;
         int64_t kscaleOffset = (runInfo.s2Idx >> 8) & 1;
 
@@ -441,12 +436,12 @@ public:
         LocalTensor<float> qScaleUbTensor;
         LocalTensor<float> kScaleUbTensor;
         if (unlikely(runInfo.isFirstS2Loop)) {
-            qScaleUbTensor = queryAntiqScaleInputQue.template Get<float>();
+            qScaleUbTensor = queryAntiqScaleInputBuf.template Get<float>();
             CopyQueryScaleTile(qScaleUbTensor, runInfo);
-            kScaleUbTensor = keyAntiqScaleInputQue[kscaleOffset].template Get<float>();
+            kScaleUbTensor = keyAntiqScaleInputBuf[kscaleOffset].template Get<float>();
             CopyKeyScaleTile(kScaleUbTensor, runInfo, false);
         } else {
-            kScaleUbTensor = keyAntiqScaleInputQue[kscaleOffset].template Get<float>();
+            kScaleUbTensor = keyAntiqScaleInputBuf[kscaleOffset].template Get<float>();
         }
 
         event_t mte2VEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
@@ -500,7 +495,7 @@ public:
         }
 
         if (likely(!runInfo.isLastS2Loop)) {
-            LocalTensor<float> kScaleUbNextTensor = keyAntiqScaleInputQue[1 - kscaleOffset].template Get<float>();
+            LocalTensor<float> kScaleUbNextTensor = keyAntiqScaleInputBuf[1 - kscaleOffset].template Get<float>();
             CopyKeyScaleTile(kScaleUbNextTensor, runInfo, true);
         }
 
@@ -613,7 +608,7 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
-            LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
+            LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % PRELOAD_N].template Get<T>();
             LocalTensor<T> pScaleUb;
 
             if (!runInfo.isLastS2Loop) {
@@ -629,13 +624,13 @@ public:
             } else {
                 if (unlikely(runInfo.s2Idx == s2BaseSize)) { // s2方向第二轮循环更新第一轮循环的deScaleV
                     LocalTensor<float> sumUb =
-                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                        this->softmaxSumBuf[runInfo.mloop % PRELOAD_N].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
                         deScaleVValue, deScaleVValue);
                 } else {
                     LocalTensor<float> sumUb =
-                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                        this->softmaxSumBuf[runInfo.mloop % PRELOAD_N].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
                         deScaleVValue, deScaleVValue);
@@ -645,7 +640,7 @@ public:
         bmm2ResBuf.SetCrossCore();
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % PRELOAD_N].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deScaleVValue);
             }
@@ -682,7 +677,6 @@ public:
     {
         return;
     }
-
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
@@ -753,7 +747,7 @@ public:
 
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
-                    softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+                    softmaxMaxBuf[runInfo.mloop % PRELOAD_N].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
                     RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
                                               static_cast<uint32_t>(dSizeAligned64));
@@ -849,9 +843,7 @@ public:
             return;
         }
         int64_t calculateSize = runInfo.actVecMSize * fp32BaseSize;
-        // 是否要改成halfMRealSize
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
-        // flashDecodeS2Idx?nBufferStartM?
         // Copy sum to gm
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
@@ -908,10 +900,10 @@ public:
             tPipe->InitBuffer(mm2InBuf, 32768); // bmm2结果在Gm，vector2开启多层循环，每次处理32KB
         }
         SoftmaxInitBuffer();
-        tPipe->InitBuffer(queryAntiqScaleInputQue, (mBaseSize >> 1U) * sizeof(float));
+        tPipe->InitBuffer(queryAntiqScaleInputBuf, (mBaseSize >> 1U) * sizeof(float));
         // 4: 4份解bank冲突
-        tPipe->InitBuffer(keyAntiqScaleInputQue[0], (s2BaseSize + (FA_BYTE_BLOCK / sizeof(T))) * sizeof(float) * 4);
-        tPipe->InitBuffer(keyAntiqScaleInputQue[1], (s2BaseSize + (FA_BYTE_BLOCK / sizeof(T))) * sizeof(float) * 4);
+        tPipe->InitBuffer(keyAntiqScaleInputBuf[0], (s2BaseSize + (FA_BYTE_BLOCK / sizeof(T))) * sizeof(float) * 4);
+        tPipe->InitBuffer(keyAntiqScaleInputBuf[1], (s2BaseSize + (FA_BYTE_BLOCK / sizeof(T))) * sizeof(float) * 4);
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
         tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);

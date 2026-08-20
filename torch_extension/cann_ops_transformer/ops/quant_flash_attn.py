@@ -224,7 +224,6 @@ class QuantFlashAttnOpBuilder(OpBuilder):
 
 # Instantiate the builder
 quant_flash_attn_op_builder = QuantFlashAttnOpBuilder()
-op_module = quant_flash_attn_op_builder.load()
 
 
 @impl(AS_LIBRARY, QFA_METADATA_OP_NAME, "PrivateUse1")
@@ -253,6 +252,12 @@ def quant_flash_attn_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
+
+    if layout_q == "TND":
+        torch._check(
+            batch_size == None,
+            lambda: f"When the layout of query is TND, the attribute batch_size of quant_flash_attn_metadata must be None, but got {batch_size}.",
+        )
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
@@ -268,6 +273,7 @@ def quant_flash_attn_metadata(
     metadata_size = _calculate_metadata_size()
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
+    op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn_metadata(
         cu_seqlens_q,
         cu_seqlens_kv,
@@ -374,6 +380,7 @@ def quant_flash_attn(
     """
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
+    op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
         q,
         k,

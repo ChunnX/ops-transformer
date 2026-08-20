@@ -18,16 +18,16 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
+#include "../quant_flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
+#include "../quant_flash_attn_tiling_constants.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace arch35FIA;
+using namespace arch35QFA;
 constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
 
 void QuantFlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
@@ -63,7 +63,6 @@ ge::graphStatus QuantFlashAttnTilingImpl::DoOpTiling()
     CalcScheduleMode();
     CalcWorkspaceSize();
     GenTilingKey();
-
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
@@ -119,8 +118,13 @@ void QuantFlashAttnTilingImpl::InitImplParam()
 
 void QuantFlashAttnTilingImpl::SplitPolicy()
 {
-    sOuterFactor_ = SOUTER_64;
-    sInnerFactor_ = SINNER_512;
+    if (qfaInfo_->qkHeadDim == DSIZE_256) {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_256;
+    } else {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_512;
+    }
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }
@@ -134,6 +138,8 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dSize <= DSIZE_64) {
         dSize = DSIZE_64;
+    } else if (dSize <= 72) {
+        dSize = DSIZE_72;
     } else if (dSize <= DSIZE_128) {
         dSize = DSIZE_128;
     } else if (dSize <= DSIZE_256) {
@@ -146,6 +152,8 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dVsize <= DSIZE_64) {
         dVsize = DSIZE_64;
+    } else if (dVsize <= 72) {
+        dVsize = DSIZE_72;
     } else if (dVsize <= DSIZE_128) {
         dVsize = DSIZE_128;
     } else if (dVsize <= DSIZE_256) {
@@ -156,8 +164,12 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_72 && dVsize == DSIZE_72) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72;
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256;
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }

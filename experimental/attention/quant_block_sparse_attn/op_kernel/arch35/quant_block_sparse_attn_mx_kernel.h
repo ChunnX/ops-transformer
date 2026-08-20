@@ -50,8 +50,8 @@ public:
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
-                  "MXFullQuantMode currently only supports TND query and PA_BNSD KV");
+    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
+                  "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
     // 延迟两个 task 执行 C2/V2。
@@ -69,6 +69,9 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // 跨核 Buffer ID 由核内状态生成，ACL 图重放会复用该状态；每次启动时需重置计数器，
+        // 保证 AIC 与 AIV 使用相同的事件 ID 序列。
+        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
@@ -86,7 +89,9 @@ public:
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size);
+        __gm__ uint8_t *pScalePtr = (tilingData->scaleParams.pScaleShapeSize == 0U) ? nullptr : pScale;
+        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask,
+                      tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()

@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 include(cmake/fetch_cann_cmake.cmake)
 if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
@@ -61,6 +61,12 @@ set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 
 set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
+set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
+set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
+set(SUPPORTED_PACKAGE_TYPES run rpm deb all)
+if(NOT PACKAGE_TYPE IN_LIST SUPPORTED_PACKAGE_TYPES)
+  message(FATAL_ERROR "PACKAGE_TYPE only supports run/rpm/deb/all, got: ${PACKAGE_TYPE}")
+endif()
 
 # 获取基础 CANN 路径
 if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
@@ -103,7 +109,7 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
     list(GET ARCH_DIRECTORY_LIST ${INDEX} VAL)
     list(APPEND ARCH_DIRECTORY ${VAL})
   else()
-    message(STATUS "unsupport chip type")
+    message(STATUS "unsupported chip type")
     if ((NOT BUILD_OPS_RTY_KERNEL) AND (BUILD_OPEN_PROJECT))
       include(cmake/build_empty_package.cmake)
       cpack_empty_package()
@@ -157,7 +163,7 @@ if (ENABLE_TEST)
     set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     add_cann_third_party(gtest)
-    if (TARGET GTest::gtest)
+    if (TARGET GTest::gtest AND NOT TARGET gtest)
         add_library(gtest ALIAS GTest::gtest)
     endif()
 
