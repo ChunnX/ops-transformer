@@ -85,7 +85,7 @@ private:
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};
     bool isFp4_ = false;
-    hcommAllGatherMatmulTilingData hcommTilingData_{};
+    Apace::hcommAllGatherMatmulTilingData hcommTilingData_{};
 };
 
 class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling {

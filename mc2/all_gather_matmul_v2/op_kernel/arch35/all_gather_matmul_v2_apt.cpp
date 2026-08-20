@@ -77,8 +77,8 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(ImplClass, isMxFp4, hcclServerType)    \
     do {                                                                                        \
-        REGISTER_TILING_DEFAULT(hcommAllGatherMatmulTilingData);                                \
-        GET_TILING_DATA_WITH_STRUCT(hcommAllGatherMatmulTilingData, tilingData, tilingGM);     \
+        REGISTER_TILING_DEFAULT(Apace::hcommAllGatherMatmulTilingData);                                \
+        GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllGatherMatmulTilingData, tilingData, tilingGM);     \
         ImplClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcclServerType, isMxFp4> impl(&tilingData);      \
         impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, workspaceGM);                            \
         impl.Run();                                                                             \

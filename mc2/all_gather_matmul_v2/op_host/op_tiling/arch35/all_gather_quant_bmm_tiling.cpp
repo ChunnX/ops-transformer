@@ -726,7 +726,7 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
         SetHcommTilingInfo();
         hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
         hcommTilingData_.mc2CcTiling = allGatherMatmulTilingDataFp8_->mc2CcTiling;
-        hcommAllGatherMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllGatherMatmulTilingData>();
+        Apace::hcommAllGatherMatmulTilingData *outTilingData = context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
         OP_TILING_CHECK(outTilingData == nullptr,
                         OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                         return ge::GRAPH_FAILED);
@@ -739,7 +739,7 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
         OP_TILING_CHECK(ret != EOK,
                         OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret),
                         return ge::GRAPH_FAILED);
-        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllGatherMatmulTilingData));
+        context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllGatherMatmulTilingData));
         context_->SetBlockDim(args_.aicCoreNum);
         context_->SetScheduleMode(1);
         OP_LOGI(opName_, "PostTiling: output hcommAllGatherMatmulTilingData, size=%zu.", sizeof(hcommTilingData_));

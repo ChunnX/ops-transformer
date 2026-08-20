@@ -94,7 +94,7 @@ struct HcommCommWaitPolicy {
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 class AllGatherMxQuantMatmulHcommImpl {
 public:
-    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(hcommAllGatherMatmulTilingData *tilingData)
+    explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(Apace::hcommAllGatherMatmulTilingData *tilingData)
         : tilingData_(tilingData) {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
@@ -112,7 +112,7 @@ private:
     __aicore__ inline void CommitAllGather();
     __aicore__ inline void SetupKernelParams(KernelParams &params);
 
-    hcommAllGatherMatmulTilingData *tilingData_;
+    Apace::hcommAllGatherMatmulTilingData *tilingData_;
 
     GM_ADDR aGM_{};
     GM_ADDR aScaleGM_{};
@@ -195,7 +195,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(hcommAllGatherMatmulTilingData, mc2CcTiling)));
+        static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
