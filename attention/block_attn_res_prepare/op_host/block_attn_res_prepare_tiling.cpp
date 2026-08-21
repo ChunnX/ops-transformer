@@ -337,6 +337,11 @@ bool BlockAttnResPrepareCubeTiling::IsCapable()
         aivCoreNum_ < 2U || l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
         return false;
     }
+    // MM2 Fixpipe writes a strided [S, D] tile directly into O[S, T, D]. The destination row stride is T * D
+    // elements and is encoded by the hardware interface as uint32_t.
+    if (totalT_ > std::numeric_limits<uint32_t>::max() / totalD_) {
+        return false;
+    }
     return SelectCubeTileShape();
 }
 
@@ -469,17 +474,17 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     const uint32_t blockFactor = static_cast<uint32_t>(totalWorkUnits / usedCoreNum_);
     const uint32_t bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum_);
 
-    // MM1 produces [baseS, baseT * N]. AIV consumes each token's columns sequentially, so E and the MM2 output
-    // each reuse one tile after the corresponding AIC/AIV handshake.
+    // MM1 produces [baseS, baseT * N]. AIV and AIC use two E slots to overlap the next token's softmax with the
+    // current token's MM2. MM2 Fixpipe writes O directly and therefore needs no output workspace.
     const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * baseT_ * totalN_;
     const uint64_t eWorkspaceElems = static_cast<uint64_t>(sAlign_) * nAlign_;
-    const uint64_t mm2WorkspaceElems = static_cast<uint64_t>(sAlign_) * baseDAlign_;
-    OP_CHECK_IF(dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceElems ||
-                    dotWorkspaceElems + eWorkspaceElems >
-                        std::numeric_limits<uint64_t>::max() - mm2WorkspaceElems,
+    const uint64_t eWorkspaceBufferNum = baseT_ > 1U ? 2U : 1U;
+    OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
+                    dotWorkspaceElems > std::numeric_limits<uint64_t>::max() -
+                                            eWorkspaceBufferNum * eWorkspaceElems,
                 OP_LOGE(context_->GetNodeName(), "Cube per-core workspace size overflows uint64"),
                 return ge::GRAPH_FAILED);
-    workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceElems + mm2WorkspaceElems;
+    workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceBufferNum * eWorkspaceElems;
     OP_CHECK_IF(workspacePerCoreElems_ > std::numeric_limits<uint64_t>::max() / usedCoreNum_ / FP32_BYTES,
                 OP_LOGE(context_->GetNodeName(), "Cube workspace size overflows uint64"), return ge::GRAPH_FAILED);
     const uint64_t cubeWorkspaceSize = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
