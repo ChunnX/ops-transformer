@@ -1156,8 +1156,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
         maxPoolCount = max(maxPoolCount, 1U);
         uint32_t actDealTcSize =
             min(maxPoolCount, splitInfo.dealTcSize - tcIdx);
-        Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
         sliceIterator.SetNeedDealTcSize(actDealTcSize);
+        Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
         uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
         StatisticInfo &statisticInfo =
             sliceIterator.template FullIteratorSlice<true>();
