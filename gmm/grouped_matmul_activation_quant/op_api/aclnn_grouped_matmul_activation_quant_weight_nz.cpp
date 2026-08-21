@@ -139,16 +139,15 @@ void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
 
 aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
 {
-    GMMAQ_CHECK_WITH_LOG(
-        tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, name, "nullptr", "the tensorList can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, name, "does not support nullptr"));
     GMMAQ_CHECK_WITH_LOG(
         tensorList->Size() == gmaq::SINGLE_TENSOR_SIZE, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_TENSORNUM(OP_NAME, name, tensorList->Size(), std::to_string(gmaq::SINGLE_TENSOR_SIZE)));
     const std::string tensorName = std::string(name) + "[0]";
-    GMMAQ_CHECK_WITH_LOG((*tensorList)[gmaq::FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, tensorName.c_str(), "nullptr",
-                                                               "the tensor in tensorList can not be nullptr"));
+    GMMAQ_CHECK_WITH_LOG(
+        (*tensorList)[gmaq::FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, tensorName.c_str(), "does not support nullptr"));
     return ACLNN_SUCCESS;
 }
 
@@ -456,22 +455,20 @@ aclnnStatus CheckRequiredParams(const aclTensor *x, const aclTensor *groupList, 
                                 const aclTensor *yScale)
 {
     GMMAQ_CHECK_WITH_LOG(x != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "x", "nullptr", "x can not be nullptr"));
-    GMMAQ_CHECK_WITH_LOG(
-        groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupList", "nullptr", "groupList can not be nullptr"));
+                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "x", "does not support nullptr"));
+    GMMAQ_CHECK_WITH_LOG(groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "groupList", "does not support nullptr"));
     aclnnStatus checkTensorListRet = CheckTensorList(weight, "weight");
     CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
     checkTensorListRet = CheckTensorList(weightScale, "weightScale");
     CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
     GMMAQ_CHECK_WITH_LOG(y != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "y", "nullptr", "y can not be nullptr"));
+                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "y", "does not support nullptr"));
+    GMMAQ_CHECK_WITH_LOG(yScale != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "yScale", "does not support nullptr"));
     GMMAQ_CHECK_WITH_LOG(
-        yScale != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "yScale", "nullptr", "yScale can not be nullptr"));
-    GMMAQ_CHECK_WITH_LOG(activationType != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "activationType", "nullptr",
-                                                               "activationType can not be nullptr"));
+        activationType != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "activationType", "does not support nullptr"));
     return ACLNN_SUCCESS;
 }
 
@@ -636,8 +633,7 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
 {
     GMMAQ_CHECK_WITH_LOG(
         xScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "xScaleOptional", "nullptr",
-                                              "when the quantization mode is mx, xScaleOptional can not be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "xScaleOptional", "does not support nullptr"));
     const aclTensor *w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
 
@@ -672,9 +668,7 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                         const aclTensor *yScale, aclOpExecutor *executor, const char *&effectiveQuantMode,
                         const char *&effectiveRoundMode, int64_t &effectiveYDtype)
 {
-    aclnnStatus checkRet = CheckRequiredParams(x, groupList, weight, weightScale, activationType, y, yScale);
-    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    checkRet = CheckActivationType(activationType);
+    aclnnStatus checkRet = CheckActivationType(activationType);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     checkRet = ResolveAndCheckQuantMode(x, xScaleOptional, quantMode, effectiveQuantMode);
@@ -718,10 +712,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     aclTensor *y, aclTensor *yScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
-                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, groupListType,
-                          tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax),
-                   DFX_OUT(y, yScale));
+    aclnnStatus checkRet = CheckRequiredParams(x, groupList, weight, weightScale, activationType, y, yScale);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     bool transposeWeight = false;
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -729,11 +721,16 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     const char *effectiveQuantMode = nullptr;
     const char *effectiveRoundMode = nullptr;
     int64_t effectiveYDtype = 0L;
-    aclnnStatus checkRet =
-        CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, transposeWeight,
-                    groupListType, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale, uniqueExecutor.get(),
-                    effectiveQuantMode, effectiveRoundMode, effectiveYDtype);
+    checkRet = CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, transposeWeight,
+                           groupListType, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale, uniqueExecutor.get(),
+                           effectiveQuantMode, effectiveRoundMode, effectiveYDtype);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
+    // Required external inputs are checked before DFX traverses them.
+    L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
+                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, groupListType,
+                          tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax),
+                   DFX_OUT(y, yScale));
 
     if (y->IsEmpty() || groupList->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;

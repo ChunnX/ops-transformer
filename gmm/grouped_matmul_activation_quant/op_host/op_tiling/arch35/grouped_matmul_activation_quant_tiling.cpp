@@ -502,6 +502,10 @@ uint64_t GroupedMatmulActivationQuantTiling950::GetTilingKey() const
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::GetWorkspaceSize()
 {
+    OP_CHECK_IF(
+        context_ == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulActivationQuant", "context", "does not support nullptr"),
+        return ge::GRAPH_FAILED);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = SYS_WORKSPACE_SIZES;
@@ -535,8 +539,10 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGroupedMatmulActivationQuant(ge
 
 static ge::graphStatus GroupedMatmulActivationQuantTilingFunc(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("GroupedMatmulActivationQuant", "tiling context is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulActivationQuant", "context", "does not support nullptr"),
+        return ge::GRAPH_FAILED);
     std::vector<int32_t> registerList = {0};
     return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
 }
