@@ -142,21 +142,11 @@ static bool CheckInputNotNullImpl(const aclTensor *tensor, const char *name)
     return true;
 }
 
-// format校验：仅支持ND格式，不支持私有格式（FRACTAL_NZ等）
-static bool IsPrivateFormat(ge::Format format)
-{
-    if (format == ge::FORMAT_NC1HWC0 || format == ge::FORMAT_FRACTAL_Z || format == ge::FORMAT_NDC1HWC0 ||
-        format == ge::FORMAT_FRACTAL_Z_3D || format == ge::FORMAT_FRACTAL_NZ || format == ge::FORMAT_NC1HWC0_C04) {
-        return true;
-    }
-    return false;
-}
-
 static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
 {
-    if (IsPrivateFormat(tensor->GetViewFormat())) {
+    if (tensor->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND, but got %s", name,
-                op::ToString(tensor->GetViewFormat()).GetString());
+                op::ToString(tensor->GetStorageFormat()).GetString());
         return false;
     }
     return true;
