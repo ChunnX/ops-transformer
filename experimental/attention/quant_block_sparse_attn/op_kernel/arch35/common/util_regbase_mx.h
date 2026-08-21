@@ -46,13 +46,11 @@ struct MxRunInfo {
     uint64_t actS1Size = 1U;
     uint64_t actS2Size = 1U;
     uint32_t actMSize = 0U;
-    uint32_t actMSizeAlign32 = 0U;
     uint32_t actVecMSize = 0U;
     uint32_t vecMbaseIdx = 0U;
 
-    // 拼接后 logical S2 tile 的有效长度及 64 对齐长度。
+    // 拼接后 logical S2 tile 的有效长度。
     uint32_t actSingleLoopS2Size = 0U;
-    uint32_t actSingleLoopS2SizeAlign = 0U;
 
     // Sparse block 索引与拼接信息，单 task 最多 8 个 block。
     uint32_t sparseBlockCount = 0U;

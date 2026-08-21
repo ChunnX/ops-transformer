@@ -240,7 +240,6 @@ private:
         // 构造一个 512-token logical S2 tile 的运行参数。
         // 仅清零必要的字段
         runInfo.actSingleLoopS2Size = 0U;
-        runInfo.attenMaskSubLoopBits = 0U;
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
         runInfo.isValid = true;
@@ -258,12 +257,15 @@ private:
             runInfo.actMSize = static_cast<uint32_t>(runInfo.actS1Size) - runInfo.s1Idx;
         }
         if ASCEND_IS_AIV {
-            runInfo.actMSizeAlign32 = (runInfo.actMSize + 31U) >> 5U << 5U;
-            runInfo.actVecMSize = runInfo.actMSize <= 16U ? runInfo.actMSize : (runInfo.actMSizeAlign32 >> 1U);
+            const uint32_t actMSizeAlign32 = (runInfo.actMSize + 31U) >> 5U << 5U;
+            runInfo.actVecMSize = runInfo.actMSize <= 16U ? runInfo.actMSize : (actMSizeAlign32 >> 1U);
             runInfo.vecMbaseIdx = 0U;
             if (constInfo.subBlockIdx == 1U) {
                 runInfo.vecMbaseIdx = runInfo.actVecMSize;
                 runInfo.actVecMSize = runInfo.actMSize - runInfo.actVecMSize;
+            }
+            if constexpr (HAS_ATTEN) {
+                runInfo.attenMaskSubLoopBits = 0U;
             }
         }
         runInfo.sparseBlockCount = sparseBlockCount;
@@ -312,7 +314,6 @@ private:
             }
             runInfo.actSingleLoopS2Size += sparseBlockRealSize;
         }
-        runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.isFirstS2Loop = isFirstValidS2Loop;
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         if ASCEND_IS_AIC {
