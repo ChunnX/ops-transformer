@@ -1,0 +1,55 @@
+# MegaMoe A8W8 Wave 关键路径打点
+
+该诊断构建记录 AIC、AIV0、AIV1 在各个 wave 上的 Dispatch、GMM1、Activation、GMM2、Combine，
+并把显式轮询等待保存为父阶段内部的独立时间区间。
+
+协议和报告结构参考 `ascendc-agent-toolkit` 的 `instrument-ascendc-critical-path` skill，
+基准版本为 `b14f3bd`；解析器基于其中已验证的 MegaMoe v3 工具适配。
+
+## 注意
+
+- `MEGA_MOE_ENABLE_WAVE_TRACE=1` 时，算子正常计算完成后会用 trace 覆盖输出 `y`，不能检查精度。
+- 事件先写入业务 workspace 末尾已有的 50 MiB 保留区；只有 kernel 结束时才复制到 `y`。
+- 每条 record 最多 512 个事件，并同时受实际 `y` 容量限制；超出时只设置 `truncated`，不会越界。
+- 打点不会在业务阶段新增 `X_S`；最终发布 trace 时会执行全角色同步。
+- `active = stage - 已记录的显式 wait`，仍包含地址计算、调度和未拆分同步，不等同于纯计算时间。
+
+## 导出 raw
+
+在 MegaMoe 调用完成且 `torch.npu.synchronize()` 之后、任何精度检查或 `y` 切片之前保存原始字节：
+
+```python
+def dump_critical_path_trace(y, rank, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    raw_path = os.path.join(output_dir, f"rank{rank}.raw")
+    y.detach().contiguous().cpu().view(torch.uint8).numpy().tofile(raw_path)
+    print(f"[TRACE] rank {rank}: {raw_path}", flush=True)
+```
+
+不要把 BF16/FP16 输出转换成 FP32 后再落盘。
+
+## 生成报告
+
+目录中存在 `rank0.raw`、`rank1.raw` 等文件时执行：
+
+```bash
+python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py <raw-directory>
+```
+
+默认生成 `<raw-directory>/trace-report/index.html`，并为每个 rank 生成：
+
+- `index.html`：交互时间线；
+- `events.csv`：逐事件数据；
+- `trace.json`：完整协议数据；
+- `timeline.svg`：静态时间线。
+
+当前报告按已验证环境的 `1000 cycles = 1 us` 展示。不同平台需先确认 SYS_CNT 频率。
+
+## 当前等待覆盖
+
+- AIC GMM1 等 Dispatch：`WaitForGmm1InputReady`；
+- AIV0 Activation 等 GMM1：`WaitGmm1TileStatus`，仅 prefetch 路径；
+- AIC GMM2 等 Activation：`WaitForGmm2InputReady`；
+- AIV1 Combine 等 GMM2：`WaitWaveGmm2GroupReady`。
+
+Dispatch 内部 buffer/MTE 握手、非 prefetch Activation 的硬件事件等待目前未拆分。
