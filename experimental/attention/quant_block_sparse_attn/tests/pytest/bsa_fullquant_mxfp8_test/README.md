@@ -6,9 +6,10 @@ Golden 将“存在稀疏 KV 位置”和“已建立数值 softmax 状态”分
 均为 `-Inf`，则与 kernel 一致保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
 触发的有效 softmax 行仍传播 `NaN`。
 
-STC 的 Q/K/V 数据范围支持标量 `inf`、`-inf` 和 `nan`。`±Inf` 使用 E4M3FN 的
-`±448` 与最大有限 E8M0 descale `2^127` 配对，使 FP32 反量化得到同符号 Inf；`NaN`
-保留在 E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 1）。
+STC 的 Q/K/V 数据范围支持标量 `inf`、`-inf`、`nan` 以及区间 `[-inf, inf]`。
+无界区间会在每个 D 向量中同时放入两个无穷端点；`±Inf` 使用 E4M3FN 的 `±448`
+与最大有限 E8M0 descale `2^127` 配对，使 FP32 反量化得到同符号 Inf。`NaN` 保留在
+E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 1）。
 
 ## 文件结构
 

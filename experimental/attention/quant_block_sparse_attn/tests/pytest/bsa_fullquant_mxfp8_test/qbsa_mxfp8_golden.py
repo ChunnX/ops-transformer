@@ -220,11 +220,17 @@ def _parse_case_field(field_name, value):
     if field_name in _CASE_INT_FIELDS:
         return int(value)
     if field_name in _CASE_RANGE_FIELDS:
-        parsed = (
-            json.loads(value)
-            if isinstance(value, str) and value.startswith("[")
-            else value
-        )
+        parsed = value
+        if isinstance(value, str) and value.startswith("["):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                if not value.endswith("]"):
+                    raise
+                # JSON deliberately rejects IEEE spellings such as inf and
+                # nan.  Range columns are MXFP8 test data, so accept those
+                # tokens through float() while keeping ordinary JSON ranges.
+                parsed = [item.strip() for item in value[1:-1].split(",")]
         if isinstance(parsed, (list, tuple)):
             if len(parsed) != 2:
                 raise ValueError(
@@ -561,12 +567,11 @@ def _normalize_data_range(data_range):
             )
         low, high = float(data_range[0]), float(data_range[1])
         explicit_bounds = True
-        if not math.isfinite(low) or not math.isfinite(high):
-            same_nan = math.isnan(low) and math.isnan(high)
-            if not same_nan and low != high:
+        if math.isnan(low) or math.isnan(high):
+            if not (math.isnan(low) and math.isnan(high)):
                 raise ValueError(
-                    "non-finite data_range bounds must describe one constant "
-                    f"value, got: [{low}, {high}]"
+                    "nan data_range bounds must describe a constant nan value, "
+                    f"got: [{low}, {high}]"
                 )
             return low, high, explicit_bounds
     else:
@@ -591,10 +596,32 @@ def _rand_float(shape, generator, data_range=1.0):
     if low == high or (math.isnan(low) and math.isnan(high)):
         return torch.full(shape, low, dtype=torch.float32)
 
+    random_low, random_high = low, high
+    if not math.isfinite(low) or not math.isfinite(high):
+        # An unbounded interval has no uniform distribution.  Generate finite
+        # interior samples and pin the endpoints below so ranges such as
+        # [-inf, inf] contain both requested infinities deterministically.
+        if math.isinf(low):
+            random_low = min(high, 0.0) - 1.0 if math.isfinite(high) else -1.0
+        if math.isinf(high):
+            random_high = max(low, 0.0) + 1.0 if math.isfinite(low) else 1.0
+
     result = (
-        torch.rand(shape, dtype=torch.float32, generator=generator) * (high - low) + low
+        torch.rand(shape, dtype=torch.float32, generator=generator)
+        * (random_high - random_low)
+        + random_low
     )
     if explicit_bounds and result.numel() > 0:
+        if low == float("-inf") and high == float("inf"):
+            # Q/K/V all use D as their last dimension.  Cover both unbounded
+            # endpoints in every vector so an actually consumed token, rather
+            # than merely the global tensor boundary, exercises both signs.
+            result[..., 0] = low
+            if result.shape[-1] > 1:
+                result[..., 1] = high
+            else:
+                result.reshape(-1)[-1] = high
+            return result
         # 显式 [a, b] 表示闭区间，固定首尾元素以确保两个端点都被覆盖。
         flattened = result.view(-1)
         flattened[0] = low

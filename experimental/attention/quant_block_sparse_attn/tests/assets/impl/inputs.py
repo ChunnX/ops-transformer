@@ -124,9 +124,6 @@ def customize_inputs(
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
     quant_matmul=False,
-    data_range_q_value=None,
-    data_range_k_value=None,
-    data_range_v_value=None,
     sparse_mode=None,
     seed=None,
     input_ranges=None,
@@ -154,18 +151,6 @@ def customize_inputs(
     data_range_v = data_ranges[2] if len(data_ranges) > 2 else 1.0
 
     if int(quant_mode) == 2:
-        # Non-finite range overrides belong exclusively to MXFP8.  FP8 keeps
-        # consuming the original TTK input_ranges even if callers provide
-        # these compatibility attributes.
-        mxfp8_data_range_q = (
-            data_range_q if data_range_q_value is None else data_range_q_value
-        )
-        mxfp8_data_range_k = (
-            data_range_k if data_range_k_value is None else data_range_k_value
-        )
-        mxfp8_data_range_v = (
-            data_range_v if data_range_v_value is None else data_range_v_value
-        )
         _mxfp8_customize_inputs(
             query,
             key,
@@ -195,9 +180,9 @@ def customize_inputs(
             seed=mxfp8_seed,
             blocknum=int(key.shape[0]),
             max_block_per_batch=int(block_table.shape[1]),
-            data_range_q=mxfp8_data_range_q,
-            data_range_k=mxfp8_data_range_k,
-            data_range_v=mxfp8_data_range_v,
+            data_range_q=data_range_q,
+            data_range_k=data_range_k,
+            data_range_v=data_range_v,
             testcase_name=testcase_name,
             **kwargs,
         )
@@ -292,12 +277,11 @@ def _mxfp8_normalize_data_range(data_range):
                 f"data_range must be a scalar or [min, max], got: {data_range}"
             )
         low, high = float(data_range[0]), float(data_range[1])
-        if not math.isfinite(low) or not math.isfinite(high):
-            same_nan = math.isnan(low) and math.isnan(high)
-            if not same_nan and low != high:
+        if math.isnan(low) or math.isnan(high):
+            if not (math.isnan(low) and math.isnan(high)):
                 raise ValueError(
-                    "non-finite data_range bounds must describe one constant "
-                    f"value, got: [{low}, {high}]"
+                    "nan data_range bounds must describe a constant nan value, "
+                    f"got: [{low}, {high}]"
                 )
             return [low, high]
         if low > high:

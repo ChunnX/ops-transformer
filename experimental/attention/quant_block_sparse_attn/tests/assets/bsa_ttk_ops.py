@@ -239,21 +239,13 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
         layout_sparse_indices: str = "B_N_Qb_Kb",
         return_softmax_lse: bool = False,
         quant_matmul: bool = False,
-        data_range_q_value=None,
-        data_range_k_value=None,
-        data_range_v_value=None,
         batch_size: int = 0,
         num_heads_q: int = 0,
         num_heads_kv: int = 0,
         head_dim: int = 0,
     ):
         super().__init__()
-        del (
-            quant_matmul,
-            data_range_q_value,
-            data_range_k_value,
-            data_range_v_value,
-        )  # Input/golden-only switches; never forward them to the operator.
+        del quant_matmul  # MXFP8 golden-only switch; never forward it to the operator.
         _ensure_cann_ops()
         _synchronize_npu(query)
         key, value, k_descale, p_scale, metadata = _prepare_operator_inputs(
@@ -374,21 +366,13 @@ def quant_block_sparse_attn(
     layout_sparse_indices: str = "B_N_Qb_Kb",
     return_softmax_lse: bool = False,
     quant_matmul: bool = False,
-    data_range_q_value=None,
-    data_range_k_value=None,
-    data_range_v_value=None,
     batch_size: int = 0,
     num_heads_q: int = 0,
     num_heads_kv: int = 0,
     head_dim: int = 0,
 ):
     """Adapt the shared CSV inputs and call the installed QBSA operator."""
-    del (
-        quant_matmul,
-        data_range_q_value,
-        data_range_k_value,
-        data_range_v_value,
-    )  # Input/golden-only switches; never forward them to the operator.
+    del quant_matmul  # MXFP8 golden-only switch; never forward it to the operator.
     _ensure_cann_ops()
     key, value, k_descale, p_scale, metadata = _prepare_operator_inputs(
         query,
