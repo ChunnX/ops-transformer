@@ -79,6 +79,7 @@ struct BasicBlockOffsetParam {
 struct VecAntiQuantConfig {
     uint64_t ubMte2BufferNum = 2;
     uint64_t ubMte2InnerSize = 512;
+    bool useVectorScaleA = false;
 };
 
 struct UbConsumeConfig {

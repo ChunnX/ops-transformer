@@ -292,8 +292,10 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
     }
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        perTokenScaleGm_ += CeilAlign(mSize, static_cast<uint64_t>(BLOCK_CUBE)) *
-                            CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        uint64_t scaleKSize = CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        // ScaleA is always contiguous ND in GM. Both the Vector and direct
+        // DN2NZ paths therefore advance by the logical rows only.
+        perTokenScaleGm_ += mSize * scaleKSize;
     } else {
         perTokenScaleGm_ += mSize;
     }

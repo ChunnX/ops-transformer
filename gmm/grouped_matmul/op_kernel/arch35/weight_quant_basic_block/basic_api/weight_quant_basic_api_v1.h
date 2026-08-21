@@ -45,6 +45,8 @@ struct BasicApiParamsV1 {
     uint64_t l1KbSize;
     uint64_t l0NSize;
     uint64_t l0MSize;
+    uint64_t scaleAKL1Size;
+    uint64_t scaleBKL1Size;
 };
 
 #define WQBMM_BASIC_API_V1_TEMPLATE_PARAM                                                                              \
@@ -150,13 +152,13 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadAL1ToL0A(uint64_t baseK, ui
 
     AscendC::LoadData2DMxParams aL0Load2dMx;
     aL0Load2dMx.xStartPosition = 0;
-    aL0Load2dMx.yStartPosition = CeilDivide(l1KOffset % basicApiParams.l1KbSize,
+    aL0Load2dMx.yStartPosition = CeilDivide((l1KOffset + basicApiParams.gmKOffset) % basicApiParams.scaleAKL1Size,
                                             MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
     aL0Load2dMx.xStep =
         CeilDivide(basicApiParams.l0MSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形
     aL0Load2dMx.yStep =
         CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES); // mxK = K/32, (baseK / MX_GROUP_SIZE) / MX_UNIT_BYTES
-    aL0Load2dMx.srcStride = CeilDivide(basicApiParams.l1KbSize, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    aL0Load2dMx.srcStride = CeilDivide(basicApiParams.scaleAKL1Size, MX_GROUP_SIZE * MX_UNIT_BYTES);
     aL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
     AscendC::LoadData(l0a_[loopId * L0_BUF_OFFSET_B8], aL1Tensor, scaleAL1Tensor, aL0Load2dParams, aL0Load2dMx);
 }
@@ -178,12 +180,12 @@ __aicore__ inline void WQBMM_BASIC_API_V1_CLASS::LoadBL1ToL0B(uint64_t baseK, ui
 
     AscendC::LoadData2DMxParams bL0Load2dMx;
     bL0Load2dMx.xStartPosition = 0;
-    bL0Load2dMx.yStartPosition = CeilDivide(l1KOffset % basicApiParams.l1KbSize,
+    bL0Load2dMx.yStartPosition = CeilDivide(l1KOffset % basicApiParams.scaleBKL1Size,
                                             MX_GROUP_SIZE * MX_UNIT_BYTES); // 单位是32B
     bL0Load2dMx.xStep =
         CeilDivide(basicApiParams.l0NSize, static_cast<uint64_t>(AscendC::BLOCK_CUBE)); // 单位是1个32B分形，
     bL0Load2dMx.yStep = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);               // baseK / 32 / 2
-    bL0Load2dMx.srcStride = CeilDivide(basicApiParams.l1KbSize, MX_GROUP_SIZE * MX_UNIT_BYTES);
+    bL0Load2dMx.srcStride = CeilDivide(basicApiParams.scaleBKL1Size, MX_GROUP_SIZE * MX_UNIT_BYTES);
     bL0Load2dMx.dstStride = CeilDivide(baseK, MX_GROUP_SIZE * MX_UNIT_BYTES);
     AscendC::LoadData(l0b_[loopId * L0_BUF_OFFSET_B8], bL1Tensor, scaleBL1Tensor, bL0Load2dParams, bL0Load2dMx);
 }
