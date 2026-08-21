@@ -97,13 +97,12 @@ ge::graphStatus DistributeBarrierFusionPass::AddAttr(ge::GNode &barrierNode, ge:
 }
 
 ge::graphStatus DistributeBarrierFusionPass::CreateFusionNode(ge::Graph &graph, ge::GNode &barrierNode,
-                                                              const ge::TensorDesc &contextDesc,
-                                                              ge::GNode &fusionNode)
+                                                              const ge::TensorDesc &contextDesc, ge::GNode &fusionNode)
 {
     ge::AscendString nameStr;
     barrierNode.GetName(nameStr);
-    auto fusionOp = ge::OperatorFactory::CreateOperator(std::string(nameStr.GetString()) + "_Extend",
-                                                        FUSED_OP_TYPE_EXTEND);
+    auto fusionOp =
+        ge::OperatorFactory::CreateOperator(std::string(nameStr.GetString()) + "_Extend", FUSED_OP_TYPE_EXTEND);
     if (fusionOp.IsEmpty()) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: %s op not found in factory.", nameStr.GetString(),
                   FUSED_OP_TYPE_EXTEND.c_str());
@@ -232,6 +231,10 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    ge::AscendString graphName;
+    (void)graph->GetName(graphName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter fusion pass %s, graph %s", FUSION_PASS_NAME.c_str(),
+              graphName.GetString());
     // 9.0.0 版本前运行降级空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
