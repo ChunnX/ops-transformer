@@ -52,12 +52,6 @@ constexpr uint32_t MX_QUANT = 4;
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
-// ============================ 输入/输出打印 ============================
-// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
-// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
-// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
-constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
-
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchTeardown {
 public:
@@ -184,103 +178,6 @@ private:
     DataCopyExtParams floatDataCopyParams_;
     DataCopyExtParams expandXCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
-
-    // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_T IoDumpUI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_T IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
-        const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_T IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void IoDumpI32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_T IoDumpI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_T IoDumpI32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_T IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpF32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_T IoDumpF32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<float> t;
-        t.SetGlobalBuffer((__gm__ float *)addr);
-        DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_T IoDumpF32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_T IoDumpF32 2 epRankId_:%u, %s[%u]=%f\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_T IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int64_t> t;
-        t.SetGlobalBuffer((__gm__ int64_t *)addr);
-        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_T IoDumpI64 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_T IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo)
-    {
-        if (aivId_ != 0U) {
-            return;
-        }
-        printf("D_T IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
-            "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u expertTokenNumsType=%u "
-            "totalWinSize=%llu\n",
-            epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
-            axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
-            expertTokenNumsType_, static_cast<uint64_t>(tempTotalWinSize_));
-        // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpF32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpF32("IN_y", y, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
-        IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
-    }
-
-    __aicore__ inline void DumpOutputs()
-    {
-        if (aivId_ != 0U) {
-            return;
-        }
-        // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
-        IoDumpF32("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpF32("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
-        // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
-        IoDumpI32("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
-        IoDumpI64("OUT_expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
-    }
-    // =============================== Log Dump =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -327,8 +224,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     expertTokenNumsOutGM_ = expertTokenNumsOut;
     recvCntWorkspaceGM_ = workspaceGM;
 
-    DumpInputs(x, y, expertIds, commCmdInfo);
-
     uint32_t hSize = axisH_ * sizeof(XType);
     hOutSize_ = axisH_ * sizeof(ExpandXOutType);
     QuantInit();
@@ -347,9 +242,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     moeUsedAivNum_ = aivNum_ - sharedUsedAivNum_;
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
     dataState_ = selfDataStatusTensor(0); // 本轮仍使用该 bank，GM 待 Wait 成功后再翻
-    // D_S 直接当 bank 乘数用，非 0/1 时会等错状态区、读错数据区，表现为卡死；窗口不保证清零，必须校验
-    ascendc_assert(dataState_ <= 1U, "dispatch_teardown D_S corrupted, rank=%u aiv=%u D_S=%u", epRankId_, aivId_,
-                   dataState_);
     if constexpr (IsShareExpertRank) { // 接收状态数
         rscvStatusNum_ = epWorldSize_;
     } else {
@@ -724,8 +616,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         SyncAll<true>();
         LocalWindowCopy();
         UpdateTokenNumsOut();
-        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
-        DumpOutputs();
     }
 }
 

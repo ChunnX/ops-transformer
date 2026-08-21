@@ -72,12 +72,6 @@ struct BatchWriteItem {
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
-// ============================ 输入/输出打印 ============================
-// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
-// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
-// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
-constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
-
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchSetup {
 public:
@@ -276,102 +270,6 @@ private:
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
     // =============================== Urma =============================== //
-
-    // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_S IoDumpUI32 error epRankId_:%u, %s: addr=null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_S IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
-        const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_S IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void IoDumpI32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_S IoDumpI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_S IoDumpI32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_S IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpF32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_S IoDumpF32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<float> t;
-        t.SetGlobalBuffer((__gm__ float *)addr);
-        DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_S IoDumpF32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_S IoDumpF32 2 epRankId_:%u, %s[%u]=%f\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("D_S IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int64_t> t;
-        t.SetGlobalBuffer((__gm__ int64_t *)addr);
-        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_S IoDumpI64 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_S IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask)
-    {
-        if (aivId_ != 0U) {
-            return;
-        }
-        printf("D_S IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
-            "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u isActiveMask=%d "
-            "scalesCount=%llu totalWinSize=%llu\n",
-            epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
-            axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
-            static_cast<int32_t>(isInputActiveMaskFlag_), static_cast<uint64_t>(scalesCount_),
-            static_cast<uint64_t>(totalWinSize_));
-        // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpF32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
-        IoDumpF32("IN_scales", scales, static_cast<uint32_t>(scalesCount_));
-        //IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
-    }
-
-    __aicore__ inline void DumpOutputs()
-    {
-        if (aivId_ != 0U) {
-            return;
-        }
-        // YOut 的 dim0 由分发结果决定，不在 tiling 里，只打头部
-        IoDumpF32("OUT_YOut", yOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpI32("OUT_expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
-        IoDumpI32("OUT_commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
-    }
-    // =============================== Log Dump =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -426,7 +324,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     expandIdxOutGM_ = expandIdxOut;
     commCmdInfoOutGM_ = commCmdInfoOut;
 
-    DumpInputs(x, expertIds, scales, xActiveMask);
     hOutSize_ = axisH_ * sizeof(YOutType);
     QuantInit();
     hAlignWinSize_ = Ceil(hOutSizeAlign_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
@@ -444,10 +341,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     stateOffset_ = ((recvWinBlockNum_ > 512) ? (STATE_OFFSET / 2) : STATE_OFFSET);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
     dataState_ = selfDataStatusTensor(0);
-    // D_S 直接当 bank 乘数用，非 0/1 时算出的地址仍可能落在注册段内，
-    // WriteNbi 会正常返回成功，对端却永远等不到。窗口不保证清零，必须校验。
-    ascendc_assert(dataState_ <= 1U, "dispatch_setup D_S corrupted, rank=%u aiv=%u D_S=%u", epRankId_, aivId_,
-                   dataState_);
     rscvStatusNum_ = recvWinBlockNum_;
     recStatusNumPerCore_ = rscvStatusNum_ / aivNum_; // 每个aiv需要处理的专家数
     remainderRankNum_ = rscvStatusNum_ % aivNum_;
@@ -1045,10 +938,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
     uint32_t calCnt = 0;
     for (uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; expertIdx++) {
         uint32_t tokenNum = static_cast<uint32_t>(statusTensor_((preExpertNum + expertIdx) * 8 + 1));
-        // 目的槽只有 expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_，超了会侵入下一个 expert
-        ascendc_assert(tokenNum <= axisMaxBS_,
-                       "dispatch_setup tokenNum exceeds slot capacity, rank=%u dst=%u expert=%u tokenNum=%u max=%u",
-                       epRankId_, epRankId_, expertIdx, tokenNum, axisMaxBS_);
         uint64_t sendBytes = static_cast<uint64_t>(tokenNum) * hAlignWinSize_;
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> copyPadExtParams{false, 0U, 0U, 0U};
@@ -1085,20 +974,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
     }
     moeStartToken += calCnt;
 }
-
-// 方案 1：改派到别的 expert/副本执行
-// 这种不是在 Communication() 里改 remoteAddr 就行。因为到这里时：
-// yOutGM_ 已经按原 expert 排序好了
-// statusTensor_ 已经按原 expert 统计好了
-// moeStartToken 也是按原 expert count 累加出来的
-// 如果要把 token 改派到另一个 rank/expert，应该在更早的路由阶段完成，
-// 比如生成 packed (rankId, expertId) 时就决定最终目标，然后重新按最终目标排序、统计 status。
-// 否则 Communication() 里临时改地址，会导致 status 和真实数据位置不一致。
-
-// 方案 2：中转绕路
-// 如果“绕路”是先写到一张非热点 rank 做中转，再由它转发/聚合到原目标 expert，那么可以在 Communication() 里处理 overflow token，
-// 但不能写到中转 rank 的普通 expert window。应该写到一个专门的 reroute/overflow buffer，并额外写 metadata，
-// 例如原始目标 (dstRankId, dstExpertId)、原始 slot、token 数等。
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
@@ -1163,11 +1038,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             for (uint32_t dstExpertId = 0; dstExpertId < moeExpertNumPerRank_; ++dstExpertId) {
                 // 当前rank --> dstExpertId 的所有 token 数量
                 uint32_t tokenNum = statusTensor_((preExpertNum + dstExpertId) * 8 + 1);
-                // 目的槽只有 expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_，超了会侵入下一个 expert
-                ascendc_assert(tokenNum <= axisMaxBS_,
-                               "dispatch_setup tokenNum exceeds slot capacity, rank=%u dst=%u expert=%u tokenNum=%u "
-                               "max=%u",
-                               epRankId_, dstRankId, dstExpertId, tokenNum, axisMaxBS_);
 
                 // 发送token
                 if (tokenNum > 0) {
@@ -1211,9 +1081,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process(
         SetStatus();
         SyncAll<true>();
         Communication();
-
-        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
-        DumpOutputs();
     }
 }
 

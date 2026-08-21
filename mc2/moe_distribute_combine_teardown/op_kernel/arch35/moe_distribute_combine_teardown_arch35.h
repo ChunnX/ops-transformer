@@ -40,12 +40,6 @@ using namespace Mc2Aclnn;
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
-// ============================ 输入/输出打印 ============================
-// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
-// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
-// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
-constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
-
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineTeardown {
     constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
@@ -134,108 +128,6 @@ private:
     TBuf<> statusSumOutBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-
-    // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
-    {
-        if (addr == nullptr) {
-            printf("C_T IoDumpUI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_T IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
-        const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("C_T IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void IoDumpI32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("C_T IoDumpI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int32_t> t;
-        t.SetGlobalBuffer((__gm__ int32_t *)addr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_T IoDumpI32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("C_T IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpF32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("C_T IoDumpF32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<float> t;
-        t.SetGlobalBuffer((__gm__ float *)addr);
-        DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_T IoDumpF32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("C_T IoDumpF32 2 epRankId_:%u, %s[%u]=%f\n", epRankId_, tag, i, t.GetValue(i));
-        }
-    }
-
-    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
-    {
-        if (addr == nullptr) {
-            printf("C_T IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
-            return;
-        }
-        GlobalTensor<int64_t> t;
-        t.SetGlobalBuffer((__gm__ int64_t *)addr);
-        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_T IoDumpI64 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
-        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-        for (uint32_t i = 0U; i < n; ++i) {
-            printf("C_T IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
-        }
-    }
-
-    __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-        GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX)
-    {
-        if (coreIdx_ != 0U) {
-            return;
-        }
-        const MoeDistributeCombineTeardownInfo *t = moeDistributeCombineTeardownInfo_;
-        printf("C_T IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
-            "moeExpertPerRankNum=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u isActiveMask=%d hasSharedExpertX=%d "
-            "totalUbSize=%llu totalWinSize=%llu\n",
-            epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
-            t->moeExpertPerRankNum, t->globalBs, t->bs, t->k, t->h, t->aivNum, static_cast<int32_t>(t->isActiveMask),
-            static_cast<int32_t>(t->hasSharedExpertX), static_cast<uint64_t>(t->totalUbSize),
-            static_cast<uint64_t>(t->totalWinSize));
-        // expandX / quantExpandX / sharedExpertX 的 dim0 不在 tiling 里，只打头部
-        IoDumpF32("IN_expandX", expandX, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_expertIds", expertIds, t->bs * t->k);
-        IoDumpI32("IN_expandIdx", expandIdx, t->bs * t->k);
-        IoDumpF32("IN_expertScales", expertScales, t->bs * t->k);
-        //IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
-        //IoDumpF32("IN_sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
-    }
-
-    __aicore__ inline void DumpOutputs()
-    {
-        if (coreIdx_ != 0U) {
-            return;
-        }
-        // XOut 是 [bs, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
-        IoDumpF32("OUT_XOut", xOutGM_,
-            static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->bs) *
-            moeDistributeCombineTeardownInfo_->h * sizeof(ExpandXType) / sizeof(int32_t));
-    }
-    // =============================== Log Dump =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -250,7 +142,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    DumpInputs(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMask, sharedExpertX);
     xOutGM_ = XOut;
 
     // 获取win状态区地址，并保证数据一致
@@ -262,11 +153,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
                    CTRL_COMBINE_STATE_OFFSET;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
-
     dataState_ = selfDataStatusTensor(0); // C_S，本轮仍使用该 bank
-    ascendc_assert(dataState_ <= 1U, "combine_teardown C_S corrupted, rank=%u aiv=%u C_S=%u", epRankId_, coreIdx_,
-                   dataState_);
-
     expertIdsGlobal_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
     expertScalesGlobal_.SetGlobalBuffer((__gm__ float *)expertScales);
@@ -408,12 +295,12 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     auto index = static_cast<uint64_t>(startRankId_) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         // URMA 写入 GM 后需 DCCI，否则可能一直读到 cache 中的 0 导致死等
-        for (uint32_t rankIdx = 0U; rankIdx < sendRankNum_; ++rankIdx) {
-            const uint64_t slotIndex =
-                index + static_cast<uint64_t>(rankIdx) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
-            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                epStatusSpaceGlobal[slotIndex]);
-        }
+        // for (uint32_t rankIdx = 0U; rankIdx < sendRankNum_; ++rankIdx) {
+        //     const uint64_t slotIndex =
+        //         index + static_cast<uint64_t>(rankIdx) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
+        //     DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+        //         epStatusSpaceGlobal[slotIndex]);
+        // }
         DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, 1,
@@ -537,9 +424,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Proces
 
         CopyIn();
         LocalWindowCopy(); // 拷出数据
-
-        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
-        DumpOutputs();
     }
 }
 
