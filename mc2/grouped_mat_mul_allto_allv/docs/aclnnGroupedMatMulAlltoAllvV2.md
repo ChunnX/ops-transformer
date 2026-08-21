@@ -47,10 +47,15 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  <!-- npu="950" id7 -->
-  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
+  <!-- npu="A3" id7 -->
+  - <term>Atlas A3系列产品</term>：支持`ai_cpu`和`aiv`。
 
   <!-- end id7 -->
+
+  <!-- npu="950" id8 -->
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
+
+  <!-- end id8 -->
 
 ## 函数原型
 
@@ -185,7 +190,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     <td>commMode(char*)</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入"ai_cpu"和"ccu"。</td>
+    <td><term>Atlas A3系列产品</term>支持"ai_cpu"和"aiv"；<term>Ascend 950DT</term>支持"ai_cpu"和"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -361,13 +366,13 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
   - aclnnGroupedMatMulAlltoAllvV2默认确定性实现。
 - 通信引擎约束：
 
-  <!-- npu="A3" id8 -->
+  <!-- npu="A3" id9 -->
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
-  <!-- end id8 -->
-  <!-- npu="950" id9 -->
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
   - Ascend 950DT：支持 CCU 通信和 AI_CPU 通信，CCU 仅支持单机 UB 域内互联，AI_CPU 可支持跨机 UB 域内互联。
 
-  <!-- end id9 -->
+  <!-- end id10 -->
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -381,10 +386,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
   - A：本卡发送的token数，是sendCounts参数累加之和。
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
-<!-- npu="A3" id10 -->
+<!-- npu="A3" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：单卡通信量在2MB以下可能存在性能劣化。
 
-<!-- end id10 -->
+<!-- end id11 -->
 
 ## 调用示例
 
@@ -392,7 +397,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 说明：本示例代码调用了部分 HCCL 集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy，请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-<!-- npu="950,A3" id11 -->
+<!-- npu="950,A3" id12 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：
 
     ```Cpp
@@ -655,4 +660,4 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     }
     ```
 
-<!-- end id11 -->
+<!-- end id12 -->
