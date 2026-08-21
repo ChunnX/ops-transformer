@@ -83,7 +83,9 @@ constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FULL = 5;
 constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
-constexpr uint32_t GSA_FD_MAX_SPLIT_NUM = 16U;
+constexpr uint32_t GSA_MAX_SPARSE_BLOCK_CAPACITY = 256U;
+constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;
+constexpr uint32_t GSA_FD_MAX_PARTIAL_PER_BASE_TASK = 32U;
 constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;
 constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;
 
@@ -445,7 +447,14 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
     kvHeads_ = static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_HEAD));
     qBlockNum_ =
         static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_Q_BLOCK)); // totalQBlocks
-    topK_ = static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK));
+    const int64_t sparseBlockCapacity = sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK);
+    if (sparseBlockCapacity <= 0 ||
+        static_cast<uint64_t>(sparseBlockCapacity) > GSA_MAX_SPARSE_BLOCK_CAPACITY) {
+        OP_LOGE(context->GetNodeName(), "sparseBlockIdx.shape[-1]=%ld must be in [1, %u].", sparseBlockCapacity,
+                GSA_MAX_SPARSE_BLOCK_CAPACITY);
+        return ge::GRAPH_FAILED;
+    }
+    topK_ = static_cast<uint32_t>(sparseBlockCapacity);
     if (kvHeads_ == 0 || numHeads_ % kvHeads_ != 0) {
         OP_LOGE(context->GetNodeName(), "numHeads=%u must be divisible by kvHeads=%u (and kvHeads > 0).", numHeads_,
                 kvHeads_);
@@ -457,12 +466,6 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 "Unsupported groupSize=%u (numHeads=%u, kvHeads=%u), currently only groupSize <= %u is supported to "
                 "avoid kernel L0C/UB overflow.",
                 groupSize_, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
-        return ge::GRAPH_FAILED;
-    }
-    constexpr uint32_t GBSA_MAX_TOPK = 256U;
-    if (topK_ > GBSA_MAX_TOPK) {
-        OP_LOGE(context->GetNodeName(), "Unsupported topK=%u, only topK<=%u is supported on this build.", topK_,
-                GBSA_MAX_TOPK);
         return ge::GRAPH_FAILED;
     }
 
@@ -575,7 +578,9 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
     if (fdStaticEnabled_) {
         const uint32_t maxSparseBaseTasks = aicNum_ == 0U ? 0U :
             std::min(GSA_FD_MAX_COMBINE_TASK_NUM, (aicNum_ * 3U - 1U) / 10U);
-        fdPartialCapacity_ = maxSparseBaseTasks * GSA_FD_MAX_SPLIT_NUM;
+        const uint32_t maxPartialPerBaseTask =
+            std::min(std::min(aicNum_, GSA_FD_MAX_ACTIVE_CORE_NUM), GSA_FD_MAX_PARTIAL_PER_BASE_TASK);
+        fdPartialCapacity_ = maxSparseBaseTasks * maxPartialPerBaseTask;
         fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
         fdPartialLseOffset_ = AlignUp(pipelineWorkspaceSize, GSA_FD_WORKSPACE_ALIGNMENT);
         const uint64_t partialLseSize = static_cast<uint64_t>(fdPartialCapacity_) * 2U *

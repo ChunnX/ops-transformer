@@ -23,10 +23,11 @@ constexpr uint32_t METADATA_TOTAL_SIZE = 1024U;
 constexpr uint32_t MAX_AIC_CORE_NUM = 36U;
 constexpr uint32_t MAX_DECODE_CORE_NUM = 32U;
 constexpr uint32_t MAX_COMBINE_TASK_NUM = 32U;
-constexpr uint32_t MAX_FD_SPLIT_NUM = 16U;
+constexpr uint32_t MAX_FD_ACTIVE_CORE_NUM = MAX_DECODE_CORE_NUM;
+constexpr uint32_t MAX_FD_PARTIAL_PER_BASE_TASK = MAX_DECODE_CORE_NUM;
 constexpr uint32_t MAX_SPARSE_BLOCK_CAPACITY = 256U;
 constexpr MetadataType METADATA_MAGIC = 0x5341534D;
-constexpr MetadataType METADATA_VERSION = 7;
+constexpr MetadataType METADATA_VERSION = 8;
 
 enum FdScheduleFlag : uint32_t {
     FD_SCHEDULE_ENABLED = 1U << 0,

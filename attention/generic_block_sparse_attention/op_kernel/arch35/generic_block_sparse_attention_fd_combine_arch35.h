@@ -16,7 +16,7 @@ namespace GsaKernelArch35 {
 template <class ElementO, class Resource>
 class GenericBlockSparseAttentionFdCombineArch35 {
 public:
-    static constexpr uint32_t MAX_SPLIT_NUM = 16U;
+    static constexpr uint32_t MAX_SPLIT_NUM = GsaMetadata::MAX_DECODE_CORE_NUM;
     static constexpr uint32_t MAX_ROW_TILE = 8U;
     static constexpr uint32_t FLOATS_PER_BLOCK = 8U;
     static constexpr uint32_t HEAD_DIM = 128U;

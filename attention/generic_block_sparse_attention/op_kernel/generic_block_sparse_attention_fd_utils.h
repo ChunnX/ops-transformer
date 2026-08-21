@@ -62,7 +62,7 @@ __aicore__ inline bool ValidateMetadata(
         return meta->fdActiveCoreNum == 0 && meta->combineTaskNum == 0 && meta->fdPartialTaskNum == 0;
     }
     if (meta->fdActiveCoreNum <= 0 ||
-        meta->fdActiveCoreNum > static_cast<int32_t>(GsaMetadata::MAX_FD_SPLIT_NUM) ||
+        meta->fdActiveCoreNum > static_cast<int32_t>(GsaMetadata::MAX_FD_ACTIVE_CORE_NUM) ||
         meta->fdActiveCoreNum > static_cast<int32_t>(physicalAicNum) || meta->decodePerCoreTaskNum <= 0 ||
         meta->fdTotalFlatTaskNum <= 0 || meta->combineTaskNum < 0 ||
         meta->combineTaskNum > static_cast<int32_t>(GsaMetadata::MAX_COMBINE_TASK_NUM) ||
@@ -85,7 +85,8 @@ __aicore__ inline bool ValidateMetadata(
         const __gm__ GsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
         if (combine.baseTask < 0 || combine.baseTask >= meta->saTotalTaskNum || combine.firstCore < 0 ||
             combine.partialCount <= 1 ||
-            combine.partialCount > static_cast<int32_t>(GsaMetadata::MAX_FD_SPLIT_NUM) ||
+            combine.partialCount > static_cast<int32_t>(GsaMetadata::MAX_FD_PARTIAL_PER_BASE_TASK) ||
+            combine.partialCount > meta->fdActiveCoreNum ||
             combine.firstCore + combine.partialCount > meta->fdActiveCoreNum || combine.partialStart < 0 ||
             combine.partialStart + combine.partialCount > meta->fdPartialTaskNum) {
             return false;
