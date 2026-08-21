@@ -12,8 +12,8 @@
  * \file common.h
  * \brief
  */
-#ifndef MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
-#define MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
+#ifndef MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH22_COMMON_H
+#define MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH22_COMMON_H
 
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -21,15 +21,12 @@
 #include "register/tilingdata_base.h"
 
 inline std::map<ge::DataType, uint64_t> kDataSizeMap = {
-    {ge::DT_FLOAT, sizeof(float)},
-    {ge::DT_INT32, sizeof(int32_t)},
-    {ge::DT_INT64, sizeof(int64_t)}
-};
+    {ge::DT_FLOAT, sizeof(float)}, {ge::DT_INT32, sizeof(int32_t)}, {ge::DT_INT64, sizeof(int64_t)}};
 
 /**
  * if b is 0, return a
  */
-template<typename T>
+template <typename T>
 inline T DivCeil(T a, T b)
 {
     if (b == 0) {
@@ -41,7 +38,7 @@ inline T DivCeil(T a, T b)
 /**
  * if b is 0, return 0
  */
-template<typename T>
+template <typename T>
 inline T CeilAlign(T a, T b)
 {
     if (b == 0) {
@@ -53,7 +50,7 @@ inline T CeilAlign(T a, T b)
 /**
  * if b is 0, return a
  */
-template<typename T>
+template <typename T>
 inline T DivFloor(T a, T b)
 {
     return b == 0 ? a : a / b;
@@ -62,10 +59,10 @@ inline T DivFloor(T a, T b)
 /**
  * if b is 0, return 0
  */
-template<typename T>
+template <typename T>
 inline T FloorAlign(T a, T b)
 {
     return b == 0 ? 0 : a / b * b;
 }
 
-#endif // MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
+#endif // MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH22_COMMON_H
