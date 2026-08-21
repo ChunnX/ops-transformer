@@ -545,13 +545,13 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
             <tr>
-                <td><!-- npu="950" id25 -->N大于8或小于等于0。<!-- end id25 --><!-- npu="A3,910b" id26 -->N不等于4。<!-- end id26 --></td>
+                <td><term>Ascend 950PR/Ascend 950DT</term>：N大于8或小于等于0；<term>Atlas A2/A3</term>：N不等于4。</td>
             </tr>
             <tr>
                 <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
             </tr>
             <tr>
-                <td>3D（TND）输入格式在非<term>Ascend 950PR/Ascend 950DT</term>场景下不支持。</td>
+                <td>3D（TND）输入格式仅<term>Ascend 950PR/Ascend 950DT</term>支持。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -632,7 +632,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
   <!-- end id7 -->
 
   <!-- npu="A3,910b" id8 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：默认非确定性实现，支持通过`aclrtSetSysParamOpt`开启确定性。
   <!-- end id8 -->
 
 ## 调用示例
