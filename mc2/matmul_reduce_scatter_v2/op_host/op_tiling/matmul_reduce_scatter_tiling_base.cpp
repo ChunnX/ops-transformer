@@ -241,13 +241,39 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
 
-    // 如果是 A2A 路径，需要额外的 recvBuf (mmResultLen_)，否则只需要 senBuf
-    workspaceSize_ = libApiWorkSpaceSize_ + mmResultLen_ + (isA2APath_ ? mmResultLen_ : 0);
-
-    workspaces[0] = workspaceSize_;
+    BuildWorkspaceLayout();
+    workspaces[0] = workspaceLayout_.totalSize;
     OP_LOGD(opName_, "workspaces[0] size %ld.", workspaces[0]);
 
     return ge::GRAPH_SUCCESS;
+}
+
+void MatmulReduceScatterTilingBase::BuildWorkspaceLayout()
+{
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    offset += libApiWorkSpaceSize_;
+
+    workspaceLayout_.segments[idx++] = {offset, mmResultLen_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    offset += mmResultLen_;
+
+    if (isA2APath_) {
+        workspaceLayout_.segments[idx++] = {offset, mmResultLen_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        offset += mmResultLen_;
+    }
+
+    // Runtime Info 段 (64KB)
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
 }
 
 uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const

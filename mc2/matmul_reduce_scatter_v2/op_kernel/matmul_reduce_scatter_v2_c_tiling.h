@@ -34,6 +34,7 @@ struct MatmulReduceScatterV2TilingData {
     uint32_t debugMode;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct QuantBatchMatmulV3ReduceScatterTilingData {
@@ -44,6 +45,7 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     uint32_t debugMode;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 } // namespace Mc2Tiling
 #endif

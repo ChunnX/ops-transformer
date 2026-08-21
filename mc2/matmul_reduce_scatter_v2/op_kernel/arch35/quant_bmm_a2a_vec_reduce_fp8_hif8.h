@@ -25,6 +25,7 @@
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 
 #define TEMPLATE_CLASS_PARAMS                                                                                          \
     template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,      \
@@ -100,9 +101,10 @@ private:
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
     uint64_t aivNum_{0};
-    uint64_t tileMN_{0};
+        uint64_t tileMN_{0};
     uint64_t tailMN_{0};
     uint64_t tileOffset_{0};
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -138,9 +140,11 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     }
 
     // all2all 通信相关参数, 划分workspace
-    sendBuf_ = workspaceGM;                    // [0, fullMN)
+        sendBuf_ = workspaceGM;                    // [0, fullMN)
     recvBuf_ = sendBuf_ + cfg.cToFloatLen;     // [fullMN, 2*fullMN)
     workspaceGM_ = recvBuf_ + cfg.cToFloatLen; // [2*fullMN, 3*fullMN)
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -220,6 +224,7 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess(); // 核心计算+通信
+    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
     PostProcess();  // 等待计算与通信完成, 终止hcclserver
 }
 

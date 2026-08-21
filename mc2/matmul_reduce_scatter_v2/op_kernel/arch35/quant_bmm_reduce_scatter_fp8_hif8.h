@@ -23,6 +23,7 @@
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 #include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 
 #define TEMPLATE_CLASS_PARAMS                                                                                          \
@@ -77,8 +78,9 @@ private:
     uint8_t debugMode_{0};
     typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE]; // 最大支持64个handleId
-    uint64_t preCoreNum_ = 0;
+        uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -106,9 +108,11 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;
     }
-    // 划分workspace
+        // 划分workspace
     gmToFloat_ = workspaceGM;
     workspaceGM_ = gmToFloat_ + cfg.cToFloatLen;
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -129,6 +133,7 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess();
+    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
     PostProcess();
 }
 

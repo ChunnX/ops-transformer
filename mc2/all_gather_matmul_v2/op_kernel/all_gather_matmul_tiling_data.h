@@ -31,6 +31,7 @@ struct AllGatherMatmulTilingDataV2 {
     Mc2MatMulV3TilingData mc2MmV3LocalTilingData;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData;
     Mc2MatMulV3TilingData mc2MmV3TailTilingData;
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct AllGatherMatmulTilingDataFp8 {
@@ -42,6 +43,7 @@ struct AllGatherMatmulTilingDataFp8 {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3LocalTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \

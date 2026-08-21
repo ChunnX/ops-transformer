@@ -742,10 +742,41 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
 
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_ + biasLen_;
-    workspaces[0] = workspaceSize_;
+    BuildWorkspaceLayout();
+    workspaces[0] = workspaceLayout_.totalSize;
     OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%d", workspaces[0], biasLen_);
 
     return ge::GRAPH_SUCCESS;
+}
+
+void AllGatherMatmulTilingBase::BuildWorkspaceLayout()
+{
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    offset += libApiWorkSpaceSize_;
+
+    // storageA_ 包含 nd2NzLen + gmcFloat + gatherLen (在 A5 平台 nd2NzLen=0, gmcFloat=0, storageA_=gatherLen)
+    if (storageA_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, storageA_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_GATHER), {}};
+        offset += storageA_;
+    }
+    if (biasLen_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, biasLen_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_BIAS), {}};
+        offset += biasLen_;
+    }
+
+    // Runtime Info 段 (64KB)
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
 }
 
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
