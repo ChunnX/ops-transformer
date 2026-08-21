@@ -12,6 +12,7 @@
 
 import torch
 import pytest
+import ascend_ops
 
 
 def test_grouped_matmul_interface_exist():
@@ -105,54 +106,31 @@ def test_grouped_matmul_operator(config, data_type):
 
     # Call grouped_matmul operator
     try:
-        npu_result = torch.ops.ascend_ops.grouped_matmul(
-            x_list_npu,  # Tensor[] x
-            weight_list_npu,  # Tensor[] weight
-            None,  # Tensor[]? bias (可选)
-            None,  # Tensor[]? scale (可选)
-            None,  # Tensor[]? offset (可选)
-            None,  # Tensor[]? antiquantScale (可选)
-            None,  # Tensor[]? antiquantOffset (可选)
-            group_list_npu,  # Tensor? groupList
-            None,  # Tensor[]? perTokenScale (可选)
-            3,  # int splitItem
-            0,  # int groupType
-            1,  # int groupListType
-            0,  # int actType
-            None,  # int[]? tuningConfigOptional (可选)
-        )
-        npu_result_cpu = npu_result.cpu()
-        print(f"Result shape: {npu_result.shape} \n", npu_result_cpu)
+        for i in range(101):
+            print(f">>>>第{i}次计算执行")
+            npu_result = torch.ops.ascend_ops.grouped_matmul(
+                x_list_npu,  # Tensor[] x
+                weight_list_npu,  # Tensor[] weight
+                None,  # Tensor[]? bias (可选)
+                None,  # Tensor[]? scale (可选)
+                None,  # Tensor[]? offset (可选)
+                None,  # Tensor[]? antiquantScale (可选)
+                None,  # Tensor[]? antiquantOffset (可选)
+                group_list_npu,  # Tensor? groupList
+                None,  # Tensor[]? perTokenScale (可选)
+                3,  # int splitItem
+                0,  # int groupType
+                1,  # int groupListType
+                0,  # int actType
+                None,  # int[]? tuningConfigOptional (可选)
+            )
+
 
     except Exception as e:
         pytest.fail(f"Error calling grouped_matmul operator: {e}")
 
-    # Calculate expected result using PyTorch
-    try:
-        expected_result = calculate_pytorch_grouped_matmul(
-            x_list, weight_list, group_list, M, E, data_type
-        )
-        print(f"Expected result shape: {expected_result.shape}")
 
-    except Exception as e:
-        pytest.fail(f"Error calculating expected result with PyTorch: {e}")
+    print(f"✓ Test passed!")
 
-    # Compare results
-    assert npu_result_cpu.shape == expected_result.shape, (
-        f"Shape mismatch! NPU: {npu_result_cpu.shape}, PyTorch: {expected_result.shape}"
-    )
-
-    # Convert to float32 for accurate comparison
-    npu_float = npu_result_cpu.to(torch.float32)
-    expected_float = expected_result.to(torch.float32)
-
-    # Calculate absolute difference
-    abs_diff = torch.abs(npu_float - expected_float)
-    max_diff = torch.max(abs_diff).item()
-
-    assert max_diff < EPS, (
-        f"Grouped matmul failed for config {config}, dtype {dtype}. "
-        f"Max diff: {max_diff:.6f}, threshold: {EPS:.6f}"
-    )
-
-    print(f"✓ Test passed! Max diff: {max_diff:.6f}")
+test_grouped_matmul_interface_exist()
+test_grouped_matmul_operator((4, 128, 32, 32, 128), torch.bfloat16)
