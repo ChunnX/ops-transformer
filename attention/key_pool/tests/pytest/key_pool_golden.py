@@ -231,9 +231,6 @@ def _pool_one_batch_loop(
     current_gate: torch.Tensor,
     cmp_ratio: int,
     ape: torch.Tensor,
-    norm_weight: Optional[torch.Tensor],
-    norm_bias: Optional[torch.Tensor],
-    norm_eps: float,
     output: torch.Tensor,
 ) -> None:
     width = state_cache.size(-1) // 2
@@ -252,7 +249,7 @@ def _pool_one_batch_loop(
                 key, gate = _read_cache(state_cache, cache_block_table, batch, logical_pos)
             keys.append(key)
             gates.append(gate + ape[relative])
-        key_tensor = _normalize_key(torch.stack(keys, dim=0), norm_weight, norm_bias, norm_eps)
+        key_tensor = torch.stack(keys, dim=0)
         logits = torch.stack(gates, dim=0)
         probabilities = torch.softmax(logits, dim=0)
         probabilities = probabilities.to(torch.bfloat16).float()
@@ -293,6 +290,7 @@ def run_key_pool_golden(
     gate_parts = []
     for hidden in batch_hidden:
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k = _normalize_key(k, norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
     for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
@@ -314,9 +312,6 @@ def run_key_pool_golden(
             gate_parts[batch],
             cmp_ratio,
             ape,
-            norm_weight,
-            norm_bias,
-            norm_eps,
             output,
         )
     intermediates = {
@@ -359,6 +354,7 @@ def run_key_pool_oracle(
     gate_parts = []
     for batch, hidden in enumerate(batch_hidden):
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k = _normalize_key(k, norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
         _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
@@ -405,7 +401,6 @@ def run_key_pool_oracle(
             current_index[current_mask]
         ].float()
     keys = gathered[..., : wk.size(0)]
-    keys = _normalize_key(keys, norm_weight, norm_bias, norm_eps)
     gates = gathered[..., wk.size(0) :]
     valid = logical_positions.view(batch_size, pcap, cmp_ratio) < updated_lens[:, None, None]
     logits = gates + ape.view(1, 1, cmp_ratio, -1)
