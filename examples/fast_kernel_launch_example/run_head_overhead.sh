@@ -186,20 +186,6 @@ collect_gmm() {
 }
 
 # ============================================================
-# 1核: 构建 + 采集
-# ============================================================
-echo "========== 1核 =========="
-build_wheel 1 1
-if [ "$RUN_ADD" = "1" ]; then
-    collect_add "1核" "$OUTPUT_DIR/add_1core"
-    echo ""
-fi
-if [ "$RUN_GMM" = "1" ]; then
-    collect_gmm "1核" "$OUTPUT_DIR/gmm_1core"
-    echo ""
-fi
-
-# ============================================================
 # 满核: 构建 + 采集
 # add 用 Vector 核数, gmm 用 Cube 核数
 # ============================================================
@@ -288,14 +274,12 @@ print("============================================")
 print()
 
 results = []
-if os.path.isdir(os.path.join(output_dir, 'add_1core')):
+if os.path.isdir(os.path.join(output_dir, 'add_full')):
     print("add (Vector):")
-    results.append(('add', 'Vector', '1核', analyze_add(os.path.join(output_dir, 'add_1core'), 'add 1核')))
     results.append(('add', 'Vector', '满核', analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')))
     print()
-if os.path.isdir(os.path.join(output_dir, 'gmm_1core')):
+if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     print("grouped_matmul (Cube):")
-    results.append(('gmm', 'Cube', '1核', analyze_gmm(os.path.join(output_dir, 'gmm_1core'), 'gmm 1核')))
     results.append(('gmm', 'Cube', '满核', analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')))
     print()
 
