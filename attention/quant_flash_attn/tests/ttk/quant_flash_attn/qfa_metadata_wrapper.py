@@ -315,7 +315,7 @@ def run_metadata(
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
             v_descale=inputs["dequant_scale_v"],
-            batch_size=batch_size,
+            batch_size=batch_size if not is_tnd_q else None,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],

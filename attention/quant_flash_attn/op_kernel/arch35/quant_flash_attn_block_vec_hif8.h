@@ -461,13 +461,13 @@ public:
                                                                      gmDealRowCount, constInfo_);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.realN2Size * constInfo_.realGSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
+                                 runInfo.realN2Idx * constInfo_.realGSize * constInfo_.s1Size;
             uint64_t s1LeftPaddingSize = 0;
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                         constInfo_, s1LeftPaddingSize);
         } else {
             uint64_t bN2Offset = runInfo.bIdx * constInfo_.realN2Size * constInfo_.realGSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.realGSize * constInfo_.s1Size;
+                                 runInfo.realN2Idx * constInfo_.realGSize * constInfo_.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, gmDealRowCount,

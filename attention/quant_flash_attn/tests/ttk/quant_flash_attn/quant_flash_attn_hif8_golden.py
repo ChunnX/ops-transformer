@@ -588,7 +588,7 @@ def _call_npu_fa_op(
         layout_out=layout_out,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
-        batch_size=B,
+        batch_size=B if not is_tnd_q else None,
     )
 
     main_kwargs = dict(
