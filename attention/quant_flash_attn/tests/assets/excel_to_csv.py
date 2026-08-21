@@ -101,6 +101,13 @@ CSV_PROFILES_GQA_FP8 = [
     ("qfa_gqa_fp8_excel_main.csv", "qfa_main_wrapper.run_main", "_gqa_fp8_main"),
 ]
 
+# 3 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=7)
+CSV_PROFILES_HIF8 = [
+    ("qfa_hif8_excel.csv", "qfa_wrapper.npu_qfa", "_hif8"),
+    ("qfa_hif8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_hif8_metadata"),
+    ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main", "_hif8_main"),
+]
+
 # 向后兼容别名 (现有脚本若 import CSV_PROFILES)
 CSV_PROFILES = CSV_PROFILES_MXFP8
 
@@ -113,7 +120,8 @@ DTYPE_MAP = {
     "FLOAT8_E8M0": "float8_e8m0",
     "FP8_E8M0": "float8_e8m0",
     "FLOAT4_E2M1": "float4_e2m1",
-    "HIFLOAT8": "hifloat8",
+    "HIFLOAT8": "uint8",
+    "HFLOAT8": "uint8",
     "BF16": "bfloat16",
     "FP16": "float16",
     "FP32": "float32",
@@ -348,7 +356,7 @@ def _build_tensor_lists(row, cols, quant_mode):
     dtypes = []
     data_ranges = []
 
-    descale_default = "float32" if quant_mode == 6 else "float8_e8m0"
+    descale_default = "float32" if quant_mode in (6, 7) else "float8_e8m0"
 
     for (
         shape_col,
@@ -371,8 +379,12 @@ def _build_tensor_lists(row, cols, quant_mode):
         if shape is None:
             shape = (0,)
 
-        # GQA FP8: p_scale 空 shape → 标量 (1,) float32（与原脚本 GQA 分支一致）
-        if shape_col == "p_scale_shape" and shape == (0,) and quant_mode == 6:
+        # HIF8 (quant_mode=7): descale 是 per-tensor 标量 (1,), Excel 可能不填 shape
+        if shape_col in ("q_descale_shape", "k_descale_shape", "v_descale_shape") and shape == (0,) and quant_mode == 7:
+            shape = (1,)
+
+        # GQA FP8 / HIF8: p_scale 空 shape → 标量 (1,) float32（与原脚本分支一致）
+        if shape_col == "p_scale_shape" and shape == (0,) and quant_mode in (6, 7):
             shape = (1,)
             dtype = "float32"
 
@@ -456,6 +468,9 @@ def _build_attributes(row, cols):
     # --- wrapper 接口适配参数（不是 op 参数推导，是 wrapper 签名必选参数） ---
     layout_kv = _strip_or_none(row.get(cols.get("layout_kv")))
     layout_q_descale = _strip_or_none(row.get(cols.get("layout_q_descale")))
+    if layout_q_descale is None:
+        quant_mode = _str_to_int(row.get(cols.get("quant_mode"))) or 1
+        layout_q_descale = "BSND" if quant_mode == 7 else "TND"
     # batch_size: Excel pure passthrough (可为 -1/正整数/None)，透传给 metadata 的 batch_size。
     # wrapper 内部从 cu_seqlens_q 推导正整数 B 供 inputs/golden 生成 BNSD 张量。
     _set_force(
@@ -551,7 +566,7 @@ def _parse_sheet_arg(s):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="redline.xlsx → 3 个 ttk 标准 CSV (mxfp8 或 gqa_fp8)"
+        description="redline.xlsx → 3 个 ttk 标准 CSV (mxfp8 / gqa_fp8 / hif8)"
     )
     parser.add_argument(
         "--sheet",
@@ -597,12 +612,15 @@ def main():
     if a_header != "testcase_name":
         raise RuntimeError(f"unexpected header A: {a_header!r}")
 
-    # 检测整 sheet 的 quant_mode (redline.xlsx 单 mode 约定: 全 mxfp8 或全 gqa_fp8)
+    # 检测整 sheet 的 quant_mode (redline.xlsx 单 mode 约定: 全 mxfp8 或全 gqa_fp8 或全 hif8)
     # 取首数据行 quant_mode 列判断; 省略默认 1 (MXFP8)
     first_qm = _str_to_int(data_rows[0].get(cols.get("quant_mode"))) or 1
     if first_qm == 6:
         profiles = CSV_PROFILES_GQA_FP8
         mode_label = "GQA FP8 (quant_mode=6)"
+    elif first_qm == 7:
+        profiles = CSV_PROFILES_HIF8
+        mode_label = "HIF8 (quant_mode=7)"
     else:
         profiles = CSV_PROFILES_MXFP8
         mode_label = "MXFP8 (quant_mode=1)"
