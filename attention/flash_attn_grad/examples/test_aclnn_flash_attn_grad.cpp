@@ -97,6 +97,9 @@ struct Shape {
     int64_t n2 = 1;
     int64_t g = 1;
     int64_t d = 128;
+    // Unequal head dims: q/k/dq/dk are d wide, v/dout/attn_out/dv are dv wide.
+    // dv == d is the equal-length case. dv > d is rejected (see main).
+    int64_t dv = 128;
 };
 
 // Deterministic pseudo-random input so host golden and device see the same data.
@@ -138,6 +141,26 @@ inline size_t IdxKv(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
     return static_cast<size_t>(((b * sh.s2 + s) * sh.n2 + n) * sh.d + d);
 }
 
+// Dv-wide variants for the tensors whose last dim is dv rather than d:
+// dout/attn_out/dq-side Q layout (IdxV) and v/dv on the KV side (IdxKvV).
+// They differ from Idx/IdxKv only in the trailing stride, so when dv == d the
+// two families coincide.
+inline size_t IdxV(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
+{
+    if (g_layout == Layout::BNSD) {
+        return static_cast<size_t>(((b * sh.n + n) * sh.s1 + s) * sh.dv + d);
+    }
+    return static_cast<size_t>(((b * sh.s1 + s) * sh.n + n) * sh.dv + d);
+}
+
+inline size_t IdxKvV(const Shape &sh, int64_t b, int64_t s, int64_t n, int64_t d)
+{
+    if (g_layout == Layout::BNSD) {
+        return static_cast<size_t>(((b * sh.n2 + n) * sh.s2 + s) * sh.dv + d);
+    }
+    return static_cast<size_t>(((b * sh.s2 + s) * sh.n2 + n) * sh.dv + d);
+}
+
 // Host reference in fp32. Also produces softmax_lse = max + log(sum(exp(s-max)))
 // which matches the Dao-AILab/flash-attention convention the kernel expects.
 struct Golden {
@@ -153,7 +176,8 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
 {
     Golden g;
     g.lse.assign(static_cast<size_t>(sh.b * sh.n * sh.s1), 0.0F);
-    g.attnOut.assign(q.size(), 0.0F);
+    // attn_out is Dv wide (it is P@V), same element count as dout.
+    g.attnOut.assign(dout.size(), 0.0F);
     g.dq.assign(q.size(), 0.0F);
     g.dk.assign(k.size(), 0.0F);
     g.dv.assign(v.size(), 0.0F);
@@ -188,29 +212,32 @@ Golden ComputeGolden(const Shape &sh, const std::vector<uint16_t> &q, const std:
                     p[j] /= sumExp;
                 }
 
-                // attn_out = P @ V; dV += P^T @ dO
-                for (int64_t d = 0; d < sh.d; ++d) {
+                // attn_out = P @ V; dV += P^T @ dO.
+                // V/dO/attn_out/dV are Dv wide, so these loops run over sh.dv
+                // and use the Dv-strided index helpers.
+                for (int64_t d = 0; d < sh.dv; ++d) {
                     float acc = 0.0F;
                     for (int64_t j = 0; j < sh.s2; ++j) {
-                        acc += p[j] * HalfToFloat(v[IdxKv(sh, b, j, n2i, d)]);
+                        acc += p[j] * HalfToFloat(v[IdxKvV(sh, b, j, n2i, d)]);
                     }
-                    g.attnOut[Idx(sh, b, i, n, d)] = acc;
+                    g.attnOut[IdxV(sh, b, i, n, d)] = acc;
                 }
                 for (int64_t j = 0; j < sh.s2; ++j) {
-                    for (int64_t d = 0; d < sh.d; ++d) {
-                        g.dv[IdxKv(sh, b, j, n2i, d)] += p[j] * HalfToFloat(dout[Idx(sh, b, i, n, d)]);
+                    for (int64_t d = 0; d < sh.dv; ++d) {
+                        g.dv[IdxKvV(sh, b, j, n2i, d)] += p[j] * HalfToFloat(dout[IdxV(sh, b, i, n, d)]);
                     }
                 }
 
                 // dP = dO @ V^T ; sfmg = rowsum(dO * attn_out) ; dS = P * (dP - sfmg)
+                // Both reductions contract over Dv (dO and V are Dv wide).
                 float sfmg = 0.0F;
-                for (int64_t d = 0; d < sh.d; ++d) {
-                    sfmg += HalfToFloat(dout[Idx(sh, b, i, n, d)]) * g.attnOut[Idx(sh, b, i, n, d)];
+                for (int64_t d = 0; d < sh.dv; ++d) {
+                    sfmg += HalfToFloat(dout[IdxV(sh, b, i, n, d)]) * g.attnOut[IdxV(sh, b, i, n, d)];
                 }
                 for (int64_t j = 0; j < sh.s2; ++j) {
                     float acc = 0.0F;
-                    for (int64_t d = 0; d < sh.d; ++d) {
-                        acc += HalfToFloat(dout[Idx(sh, b, i, n, d)]) * HalfToFloat(v[IdxKv(sh, b, j, n2i, d)]);
+                    for (int64_t d = 0; d < sh.dv; ++d) {
+                        acc += HalfToFloat(dout[IdxV(sh, b, i, n, d)]) * HalfToFloat(v[IdxKvV(sh, b, j, n2i, d)]);
                     }
                     dp[j] = p[j] * (acc - sfmg);
                 }
@@ -308,6 +335,13 @@ int main()
     sh.g = EnvInt("FAG_G", sh.g);   // GQA group size; 1 == plain MHA
     sh.s1 = EnvInt("FAG_S1", sh.s1);
     sh.s2 = EnvInt("FAG_S2", sh.s2);
+    sh.d = EnvInt("FAG_D", sh.d);     // head dim of q/k/dq/dk
+    // FAG_DV defaults to FAG_D, i.e. the equal-length case.
+    sh.dv = EnvInt("FAG_DV", sh.d);   // head dim of v/dout/attn_out/dv
+    if (sh.dv > sh.d) {
+        printf("FAG_DV (%ld) must not exceed FAG_D (%ld)\n", sh.dv, sh.d);
+        return -1;
+    }
     if (sh.g <= 0 || sh.n % sh.g != 0) {
         printf("FAG_N (%ld) must be a positive multiple of FAG_G (%ld)\n", sh.n, sh.g);
         return -1;
@@ -327,10 +361,15 @@ int main()
     const float scale = 1.0F / std::sqrt(static_cast<float>(sh.d));
     const size_t qCount = static_cast<size_t>(sh.b * sh.s1 * sh.n * sh.d);
     const size_t kvCount = static_cast<size_t>(sh.b * sh.s2 * sh.n2 * sh.d);
+    // Dv-wide counterparts: dout/attn_out/dq-side and v/dv on the KV side.
+    // Equal to qCount/kvCount when dv == d.
+    const size_t qCountV = static_cast<size_t>(sh.b * sh.s1 * sh.n * sh.dv);
+    const size_t kvCountV = static_cast<size_t>(sh.b * sh.s2 * sh.n2 * sh.dv);
     const size_t lseCount = static_cast<size_t>(sh.b * sh.n * sh.s1);
 
-    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N1=%ld N2=%ld G=%ld D=%ld scale=%.6f layout=%s\n",
-           sh.b, sh.s1, sh.s2, sh.n, sh.n2, sh.g, sh.d, scale, layoutStr.c_str());
+    printf("FlashAttnGrad aclnn test: B=%ld S1=%ld S2=%ld N1=%ld N2=%ld G=%ld D=%ld Dv=%ld "
+           "scale=%.6f layout=%s\n",
+           sh.b, sh.s1, sh.s2, sh.n, sh.n2, sh.g, sh.d, sh.dv, scale, layoutStr.c_str());
 
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
@@ -339,8 +378,8 @@ int main()
 
     auto qHost = MakeInput(qCount, 11U);
     auto kHost = MakeInput(kvCount, 22U);
-    auto vHost = MakeInput(kvCount, 33U);
-    auto doutHost = MakeInput(qCount, 44U);
+    auto vHost = MakeInput(kvCountV, 33U);
+    auto doutHost = MakeInput(qCountV, 44U);
 
     Golden golden;
     if (checkGolden) {
@@ -349,18 +388,18 @@ int main()
     } else {
         printf("  skipping host golden (large shape); checking execution + magnitude only\n");
         golden.lse.assign(lseCount, 0.0F);
-        golden.attnOut.assign(qCount, 0.0F);
+        golden.attnOut.assign(qCountV, 0.0F);
         golden.dq.assign(qCount, 0.0F);
         golden.dk.assign(kvCount, 0.0F);
-        golden.dv.assign(kvCount, 0.0F);
+        golden.dv.assign(kvCountV, 0.0F);
         // lse=0 with attn_out=0 keeps the kernel numerically well-defined
         // (P = exp(S*scale - 0)) without needing the full forward pass.
     }
 
     // attn_out feeds the kernel's softmaxGradFront, so it must be the fp16
     // rounding of the same forward output the golden used.
-    std::vector<uint16_t> attnOutHost(qCount);
-    for (size_t i = 0; i < qCount; ++i) {
+    std::vector<uint16_t> attnOutHost(qCountV);
+    for (size_t i = 0; i < qCountV; ++i) {
         attnOutHost[i] = FloatToHalf(golden.attnOut[i]);
     }
 
@@ -369,19 +408,25 @@ int main()
                                                : std::vector<int64_t>{sh.b, sh.s1, sh.n, sh.d};
     const std::vector<int64_t> kvShape = isBnsd ? std::vector<int64_t>{sh.b, sh.n2, sh.s2, sh.d}
                                                 : std::vector<int64_t>{sh.b, sh.s2, sh.n2, sh.d};
+    // v/dv are Dv wide; dout/attn_out follow the Q axes but with Dv as last dim.
+    const std::vector<int64_t> qShapeV = isBnsd ? std::vector<int64_t>{sh.b, sh.n, sh.s1, sh.dv}
+                                                : std::vector<int64_t>{sh.b, sh.s1, sh.n, sh.dv};
+    const std::vector<int64_t> kvShapeV = isBnsd ? std::vector<int64_t>{sh.b, sh.n2, sh.s2, sh.dv}
+                                                 : std::vector<int64_t>{sh.b, sh.s2, sh.n2, sh.dv};
     // softmax_lse is [B,N,S1] regardless of layout
     const std::vector<int64_t> lseShape = {sh.b, sh.n, sh.s1};
 
     DeviceTensor q, k, v, dout, attnOut, lse, dq, dk, dv;
     CHECK_RET(CreateTensor(q, qShape, ACL_FLOAT16, qHost.data(), qCount * 2) == 0, "q\n");
     CHECK_RET(CreateTensor(k, kvShape, ACL_FLOAT16, kHost.data(), kvCount * 2) == 0, "k\n");
-    CHECK_RET(CreateTensor(v, kvShape, ACL_FLOAT16, vHost.data(), kvCount * 2) == 0, "v\n");
-    CHECK_RET(CreateTensor(dout, qShape, ACL_FLOAT16, doutHost.data(), qCount * 2) == 0, "dout\n");
-    CHECK_RET(CreateTensor(attnOut, qShape, ACL_FLOAT16, attnOutHost.data(), qCount * 2) == 0, "attn_out\n");
+    CHECK_RET(CreateTensor(v, kvShapeV, ACL_FLOAT16, vHost.data(), kvCountV * 2) == 0, "v\n");
+    CHECK_RET(CreateTensor(dout, qShapeV, ACL_FLOAT16, doutHost.data(), qCountV * 2) == 0, "dout\n");
+    CHECK_RET(CreateTensor(attnOut, qShapeV, ACL_FLOAT16, attnOutHost.data(), qCountV * 2) == 0,
+              "attn_out\n");
     CHECK_RET(CreateTensor(lse, lseShape, ACL_FLOAT, golden.lse.data(), lseCount * 4) == 0, "lse\n");
     CHECK_RET(CreateTensor(dq, qShape, ACL_FLOAT16, nullptr, qCount * 2) == 0, "dq\n");
     CHECK_RET(CreateTensor(dk, kvShape, ACL_FLOAT16, nullptr, kvCount * 2) == 0, "dk\n");
-    CHECK_RET(CreateTensor(dv, kvShape, ACL_FLOAT16, nullptr, kvCount * 2) == 0, "dv\n");
+    CHECK_RET(CreateTensor(dv, kvShapeV, ACL_FLOAT16, nullptr, kvCountV * 2) == 0, "dv\n");
 
     // The three layout attrs must agree (enforced by CheckLayout on the host)
     std::vector<char> layoutBuf(layoutStr.begin(), layoutStr.end());
@@ -415,10 +460,10 @@ int main()
     CHECK_ACL(aclrtSynchronizeStream(stream));
     printf("  kernel executed\n");
 
-    std::vector<uint16_t> dqHost(qCount), dkHost(kvCount), dvHost(kvCount);
+    std::vector<uint16_t> dqHost(qCount), dkHost(kvCount), dvHost(kvCountV);
     CHECK_ACL(aclrtMemcpy(dqHost.data(), qCount * 2, dq.addr, qCount * 2, ACL_MEMCPY_DEVICE_TO_HOST));
     CHECK_ACL(aclrtMemcpy(dkHost.data(), kvCount * 2, dk.addr, kvCount * 2, ACL_MEMCPY_DEVICE_TO_HOST));
-    CHECK_ACL(aclrtMemcpy(dvHost.data(), kvCount * 2, dv.addr, kvCount * 2, ACL_MEMCPY_DEVICE_TO_HOST));
+    CHECK_ACL(aclrtMemcpy(dvHost.data(), kvCountV * 2, dv.addr, kvCountV * 2, ACL_MEMCPY_DEVICE_TO_HOST));
 
     // Guard against a silently-zero kernel: an all-zero output would still pass
     // a loose tolerance if every golden value happened to be tiny. Report the

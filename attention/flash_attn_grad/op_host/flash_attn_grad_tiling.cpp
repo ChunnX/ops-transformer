@@ -258,15 +258,25 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
                 OP_LOGE(context->GetNodeName(),
                         "head dim of q (%ld) is not supported; only D <= 192 is implemented.", dSize),
                 return ge::GRAPH_PARAM_INVALID);
+    // Dv gets its own bucket for the same reason D does: the UB block holding
+    // y/dy/prod/tmp is Dv wide, and the vector function that builds
+    // softmaxGradFront walks it in trace-time-constant 128-element segments, so
+    // the segment count is baked into the binary. Dispatching a Dv=192 shape
+    // into the Dv=128 binary silently under-walks that buffer.
+    // dvAlign <= dAlign always holds (CheckParams rejects Dv > D), which is
+    // what keeps the added bit from doubling the combination count: the kernel's
+    // is_valid prunes dv_align > d_align, so the total is 36, not 64.
+    int64_t dvAlign = (dvSize <= 128) ? 128 : 192;
     // TilingKey: bit[1:0]=template(0=bn2gs1s2,1=bn2,2=bn2s2,3=bn2multiblk),
     //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask,
     //            bit4=swizzle(0=linear split, 1=s2-column strided),
-    //            bit5=d_align(0=128, 1=192)
+    //            bit5=d_align(0=128, 1=192), bit6=dv_align(0=128, 1=192)
     uint64_t tilingKey = static_cast<uint64_t>(0) |
                          (static_cast<uint64_t>(layout) << 2) |
                          (static_cast<uint64_t>(hasAttenMask) << 3) |
                          (static_cast<uint64_t>(swizzle) << 4) |
-                         (static_cast<uint64_t>(dAlign == 192 ? 1 : 0) << 5);
+                         (static_cast<uint64_t>(dAlign == 192 ? 1 : 0) << 5) |
+                         (static_cast<uint64_t>(dvAlign == 192 ? 1 : 0) << 6);
     context->SetTilingKey(tilingKey);
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
