@@ -255,7 +255,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(inputQue2, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(inputQue3, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(tmpBuff1, BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(tmpBuff2, BUFFER_SIZE_BYTE_32K);
+    // Norm-on can hold one full FP32 compression group here:
+    // cmp_ratio=128 and head_dim=128 require 64 KiB.
+    pipe->InitBuffer(tmpBuff2, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(outputQue1, 1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(outputQue2, 1, BUFFER_SIZE_BYTE_16K);
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
