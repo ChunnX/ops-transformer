@@ -317,6 +317,9 @@ __aicore__ inline WaveCombineBufferConfig PrepareFinalWaveCombineBuffers(
         return currentBufferConfig;
     }
     if (GetSubBlockIdx() == 0U) {
+        // AIV0 此前承担 GMM1/SwiGLU（A8W4 为 prologue）。最后一轮虽然不再产生新任务，
+        // 但函数返回只表示指令已下发，复用同一片 UB 前仍需等待本核流水真正完成。
+        PipeBarrier<PIPE_ALL>();
         return InitWaveCombineBuffers<CombineMode, true>(context, scratch);
     }
     return currentBufferConfig;
