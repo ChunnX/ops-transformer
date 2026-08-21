@@ -584,13 +584,6 @@ protected:
         }
         auto &x1ss = x1sh->GetStorageShape();
         auto &x2ss = x2sh->GetStorageShape();
-        if (x1ss.GetDimNum() < 2 || x2ss.GetDimNum() < 2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                opName, "x1, x2",
-                (std::to_string(x1ss.GetDimNum()) + "D," + std::to_string(x2ss.GetDimNum()) + "D").c_str(),
-                "x1 and x2 must have at least 2D");
-            return ge::GRAPH_FAILED;
-        }
         // x1 shape: [M_total, Ka]; kernel expects M_per_rank = M_total / world_size
         auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_WORLD_SIZE);
         if (!wsPtr || *wsPtr <= 0) {
@@ -611,13 +604,6 @@ protected:
     {
         const char *opName = context_->GetNodeName();
         if (CheckOpInputInfo() != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        if (m_ == 0 || k_ == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "m, k",
-                (std::to_string(m_) + ", " + std::to_string(k_)).c_str(),
-                "The value of m and k must be non-zero.");
             return ge::GRAPH_FAILED;
         }
         uint64_t ka = k_; // Ka = per-rank K
