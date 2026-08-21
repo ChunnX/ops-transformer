@@ -31,7 +31,7 @@ if _TORCHAIR_AVAILABLE:
         [False, False, False, False, False, False],
         [False, False, True, True, True, True],
     )
-    def MoeFinalizeRoutingGrad(
+    def _moe_finalize_routing_grad(
         grad_y: Tensor,
         expanded_row_idx: Tensor,
         expanded_x: Optional[Tensor],
@@ -119,7 +119,7 @@ if _TORCHAIR_AVAILABLE:
         expert_capacity: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        return MoeFinalizeRoutingGrad(
+        return _moe_finalize_routing_grad(
             grad_y=grad_y,
             expanded_row_idx=expanded_row_idx,
             expanded_x=expanded_x,

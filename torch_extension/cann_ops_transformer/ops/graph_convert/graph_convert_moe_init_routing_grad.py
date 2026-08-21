@@ -30,7 +30,7 @@ if _TORCHAIR_AVAILABLE:
         [False, False],
         [False, False],
     )
-    def MoeInitRoutingGrad(
+    def _moe_init_routing_grad(
         grad_expanded_x: Tensor,
         expanded_row_idx: Tensor,
         *,
@@ -91,7 +91,7 @@ if _TORCHAIR_AVAILABLE:
         active_num: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        return MoeInitRoutingGrad(
+        return _moe_init_routing_grad(
             grad_expanded_x=grad_expanded_x,
             expanded_row_idx=expanded_row_idx,
             top_k=top_k,
