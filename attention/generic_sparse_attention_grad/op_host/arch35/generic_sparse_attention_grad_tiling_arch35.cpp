@@ -70,7 +70,7 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override
     {
         // Inputs: query=0, key=1, value=2, ..., rsvd_block_idx=6, rsvd_block_count=7, metadata=8
-        // Optional: atten_mask=9, cu_seq_lengths=10, cu_seq_lengths_kv=11
+        // Optional: atten_mask=9, cu_seq_lengths=10, cu_seq_lengths_kv=11, seqused_q=12, seqused_kv=13.
         auto qInputDesc = context_->GetInputDesc(0);
         const gert::StorageShape *queryShape = context_->GetInputShape(0);
         const gert::StorageShape *keyShape = context_->GetInputShape(1);
@@ -133,6 +133,8 @@ protected:
                 OP_LOGE(context_->GetNodeName(), "TND requires cu_seq_lengths and cu_seq_lengths_kv.");
                 return ge::GRAPH_FAILED;
             }
+            // seqused_q/kv (inputs 12/13) are dynamic device values. They are
+            // consumed by the kernel, while cu tensors retain packed-TND offsets.
             qSeqLen_ = queryShape->GetStorageShape().GetDim(0);
             qHeadNum_ = queryShape->GetStorageShape().GetDim(1);
             headDim_ = queryShape->GetStorageShape().GetDim(2);
@@ -247,6 +249,9 @@ protected:
         usrOffset += dkSize * sizeof(float);
         tilingData_.set_dvWorkspaceOffset(usrOffset);
         usrOffset += dkSize * sizeof(float);
+        // Per-cube dQ_sel scratch (2 ping-pong slots): Fixpipe [baseM, D] then Vector scatter.
+        tilingData_.set_dqSelWorkspaceOffset(usrOffset);
+        usrOffset += tilingData_.get_cubeCoreNum() * 2 * tilingData_.get_baseM() * headDim_ * sizeof(float);
 
         context_->GetWorkspaceSizes(1)[0] = sysWorkspaceSize + usrOffset;
         return ge::GRAPH_SUCCESS;

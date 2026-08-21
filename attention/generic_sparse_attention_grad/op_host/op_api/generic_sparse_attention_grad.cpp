@@ -27,7 +27,8 @@ const std::array<const aclTensor *, 3> GenericSparseAttentionGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout, const aclTensor *out,
     const aclTensor *lse, const aclTensor *rsvdBlockIdx, const aclTensor *rsvdBlockCount, const aclTensor *metadata,
     const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional,
-    const aclTensor *cuSeqLengthsKvOptional, const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
+    const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+    const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
     char *kvInputLayout, double scaleValue, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
     int64_t windowSizeRight, aclOpExecutor *executor)
 {
@@ -48,15 +49,18 @@ const std::array<const aclTensor *, 3> GenericSparseAttentionGrad(
         (cuSeqLengthsKvOptional != nullptr) ?
             cuSeqLengthsKvOptional :
             executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
+    const aclTensor *sequsedQTensor =
+        (sequsedQOptional != nullptr) ?
+            sequsedQOptional :
+            executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    const aclTensor *sequsedKvTensor =
+        (sequsedKvOptional != nullptr) ?
+            sequsedKvOptional :
+            executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    FVector<int64_t> blockShapeVec;
-    if (blockShape != nullptr) {
-        for (uint64_t i = 0; i < blockShape->Size(); ++i) {
-            blockShapeVec.push_back((*blockShape)[i]);
-        }
-    } else {
-        blockShapeVec = {1, 128};
-    }
+    const int64_t defaultBlockShape[] = {1, 128};
+    const aclIntArray *blockShapeAttr =
+        (blockShape != nullptr) ? blockShape : executor->AllocIntArray(defaultBlockShape, 2);
 
     auto dQuery = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto dKey = executor->AllocTensor(key->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
@@ -65,9 +69,9 @@ const std::array<const aclTensor *, 3> GenericSparseAttentionGrad(
     auto ret = INFER_SHAPE(
         GenericSparseAttentionGrad,
         OP_INPUT(query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMaskTensor,
-                 cuSeqTensor, cuSeqKvTensor),
+                 cuSeqTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor),
         OP_OUTPUT(dQuery, dKey, dValue),
-        OP_ATTR(blockShapeVec, static_cast<int64_t>(isPackedGqa), qInputLayout, safeKvLayout,
+        OP_ATTR(blockShapeAttr, static_cast<int64_t>(isPackedGqa), qInputLayout, safeKvLayout,
                 static_cast<float>(scaleValue), static_cast<int64_t>(maskType), static_cast<int64_t>(softmaxPrecision),
                 static_cast<int64_t>(windowSizeLeft), static_cast<int64_t>(windowSizeRight)));
     if (ret != ACLNN_SUCCESS) {
@@ -78,9 +82,9 @@ const std::array<const aclTensor *, 3> GenericSparseAttentionGrad(
     ADD_TO_LAUNCHER_LIST_AICORE(
         GenericSparseAttentionGrad,
         OP_INPUT(query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMaskTensor,
-                 cuSeqTensor, cuSeqKvTensor),
+                 cuSeqTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor),
         OP_OUTPUT(dQuery, dKey, dValue),
-        OP_ATTR(blockShapeVec, static_cast<int64_t>(isPackedGqa), qInputLayout, safeKvLayout,
+        OP_ATTR(blockShapeAttr, static_cast<int64_t>(isPackedGqa), qInputLayout, safeKvLayout,
                 static_cast<float>(scaleValue), static_cast<int64_t>(maskType), static_cast<int64_t>(softmaxPrecision),
                 static_cast<int64_t>(windowSizeLeft), static_cast<int64_t>(windowSizeRight)));
 

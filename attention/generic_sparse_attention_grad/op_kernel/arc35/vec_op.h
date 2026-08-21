@@ -53,7 +53,11 @@ private:
     GM_ADDR rsvd_block_idx_;
     GlobalTensor<float> lse_gm_;
     GlobalTensor<float> sftg_workspace_;
+    GlobalTensor<float> dq_workspace_;
+    GlobalTensor<float> dq_sel_workspace_;
     GlobalTensor<int32_t> sparse_idx_gm_;
+    uint64_t dq_sel_workspace_offset_ { 0 };
+    int64_t dq_sel_core_elems_ { 0 };
     int32_t q_stride_lse_ { 1 };
     LocalTensor<float> lse_tensor_;
     LocalTensor<float> lse_tensor_ping_;
@@ -96,6 +100,7 @@ private:
     int64_t lse_gm_offset_;
     int64_t sftg_gm_offset_;
     int64_t l1_offset_;
+    int32_t runTimeMaskType_ { 0 };
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
     TEventID event_id;
@@ -132,6 +137,14 @@ public:
         // gm_tensor
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
+        dq_sel_workspace_offset_ = tilingData->dqSelWorkspaceOffset;
+        dq_sel_core_elems_ = static_cast<int64_t>(base_m) * head_dim_align_;
+        // AIV GetBlockIdx is 2*cubeIdx(+1); map to Cube scratch base (see AddrCompute).
+        const int64_t cubeBlk = static_cast<int64_t>(GetBlockIdx() / 2);
+        dq_sel_workspace_.SetGlobalBuffer(
+            (__gm__ float *)(workspace + dq_sel_workspace_offset_) + cubeBlk * 2 * dq_sel_core_elems_,
+            2 * dq_sel_core_elems_);
         sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
         (void)rsvdBlockCount;
         (void)metadata;
@@ -145,10 +158,10 @@ public:
         (void)dk;
         (void)dv;
         // local_tensor
-        softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
-        sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
+        softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>((vec_base_m + 1) * vec_base_n, ub_offset);
+        ub_offset += (vec_base_m + 1) * vec_base_n * sizeof(INPUT_TYPE);
+        sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>((vec_base_m + 1) * vec_base_n, ub_offset);
+        ub_offset += (vec_base_m + 1) * vec_base_n * sizeof(INPUT_TYPE);
         lse_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
         lse_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
@@ -229,7 +242,7 @@ public:
             int64_t last_seq_total_len;
             if constexpr (INPUT_LAYOUT == TND) {
                 current_q_seqlen = GetSeqLen(b_idx, act_seq_q_len);
-                last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx - 1, act_seq_q_len);
+                last_seq_total_len = GetSeqPrefix(b_idx, act_seq_q_len);
             } else {
                 current_q_seqlen = q_seq_len_;
                 last_seq_total_len = 0;
@@ -296,10 +309,14 @@ public:
                 int64_t lseOff = 0;
                 int64_t sftgOff = 0;
                 if constexpr (INPUT_LAYOUT == TND) {
+                    // LSE user tensor is TND [T, N]; sftg workspace is written as
+                    // prefix*N*8 + n1*S*8 + t*8 (same as GetSftgGmOffset / SendVecSftgFront).
                     lseOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ + runTimeInfo.n1Idx;
-                    sftgOff = ((static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ +
-                               runTimeInfo.n1Idx) *
-                              8;
+                    sftgOff = GetSftgGmOffset<INPUT_LAYOUT>(
+                        static_cast<int64_t>(runTimeInfo.last_q_seq_sum),
+                        static_cast<int64_t>(runTimeInfo.cur_q_seq_len), q_head_num_,
+                        static_cast<int64_t>(runTimeInfo.bIdx), static_cast<int64_t>(qTok),
+                        static_cast<int64_t>(runTimeInfo.n1Idx));
                 } else {
                     lseOff = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len +
                              runTimeInfo.n1Idx * runTimeInfo.cur_q_seq_len + qTok;
@@ -339,21 +356,42 @@ public:
         }
     }
 
+    __aicore__ inline void GsagVecDbg(int32_t step) const
+    {
+        AscendC::printf("[GSAG-V] blk=%d sub=%d step=%d hr=%d ha=%d sa=%d mt=%d\n",
+                        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()), step,
+                        half_s1_process_real_, half_s1_process_align_, s2_process_align_, runTimeMaskType_);
+    }
+
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
         if (half_s1_process_real_ <= 0) {
+            GsagVecDbg(600);
             return;
         }
 
+        runTimeMaskType_ = runTimeInfo.mask_type;
+        GsagVecDbg(601);
         ApplyCausalAttenMask(src_ub_tensor, runTimeInfo);
+        GsagVecDbg(602);
 
+        // Softmax on real rows only; pad [real, align) to 0 so CastND2NZ/DataCopy
+        // can use half_s1_process_align_ (must match NZ fractal / BSAG).
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
-                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
+                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_real_, s2_process_align_);
+        GsagVecDbg(603);
+        if (half_s1_process_real_ < half_s1_process_align_) {
+            const int32_t padElems =
+                (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
+            Duplicate(src_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
+            PipeBarrier<PIPE_V>();
+        }
 
         CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
+        GsagVecDbg(604);
 
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
@@ -362,6 +400,7 @@ public:
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
+        GsagVecDbg(605);
     }
 
     __aicore__ inline void SendVecSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
@@ -376,6 +415,14 @@ public:
          */
         if (half_s1_process_real_ <= 0) {
             return;
+        }
+        // Pad rows beyond real must be 0 so align-sized SoftmaxGrad/Cast stay in-bounds.
+        if (half_s1_process_real_ < half_s1_process_align_) {
+            const int32_t padElems =
+                (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
+            Duplicate(src_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
+            Duplicate(softmax_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
+            PipeBarrier<PIPE_V>();
         }
         ComputeSoftmaxGrad((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                            (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
@@ -394,6 +441,52 @@ public:
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
         SET_FLAG(V, MTE2, event_id);
+    }
+
+    /**
+     * After Cube Fixpipes dQ_sel [mAlign,D] to per-core scratch, AIV0 scatters
+     * real rows into dq workspace via UB AtomicAdd (design §2.5).
+     */
+    __aicore__ inline void ScatterDqSel(const RunTimeInfo &runTimeInfo, TBuf<TPosition::VECCALC> &ub_buffer,
+                                        const uint32_t ping_pong_idx)
+    {
+        if (!runTimeInfo.use_sparse_gather || !runTimeInfo.need_compute) {
+            return;
+        }
+        // One Cube : two AIV — only sub0 scatters to avoid double AtomicAdd.
+        if (GetSubBlockIdx() != 0) {
+            return;
+        }
+        const int32_t m = runTimeInfo.s1Len;
+        if (m <= 0) {
+            return;
+        }
+        LocalTensor<float> rowUb = ub_buffer.GetWithOffset<float>(head_dim_align_, 0);
+        const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_core_elems_;
+        for (int32_t r = 0; r < m; ++r) {
+            const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
+            int64_t gmOff = 0;
+            if constexpr (INPUT_LAYOUT == TND) {
+                gmOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ * head_dim_ +
+                        static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
+            } else if constexpr (INPUT_LAYOUT == BSND) {
+                gmOff = static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
+                        static_cast<int64_t>(qTok) * q_head_num_ * head_dim_ +
+                        static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
+            } else {
+                gmOff = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +
+                        static_cast<int64_t>(runTimeInfo.n1Idx) * runTimeInfo.cur_q_seq_len * head_dim_ +
+                        static_cast<int64_t>(qTok) * head_dim_;
+            }
+            DataCopy(rowUb, dq_sel_workspace_[slotOff + r * head_dim_], head_dim_);
+            SET_FLAG(MTE2, MTE3, EVENT_ID0);
+            WAIT_FLAG(MTE2, MTE3, EVENT_ID0);
+            AscendC::SetAtomicAdd<float>();
+            DataCopy(dq_workspace_[gmOff], rowUb, head_dim_);
+            AscendC::SetAtomicNone();
+            SET_FLAG(MTE3, MTE2, EVENT_ID0);
+            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        }
     }
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,

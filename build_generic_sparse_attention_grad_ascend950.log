@@ -1,0 +1,955 @@
+[2026-08-14 14:44:19] Warning: The current environment is configured for ascend950, Please use Ascend 950PR/Ascend 950DT series hardware for optimal performance.
+[2026-08-14 14:44:20] [2026-08-14 14:44:20] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=generic_sparse_attention_grad -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/usr/local/Ascend/cann-9.1.0 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/bin/ccache -DASCEND_COMPUTE_UNIT=ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-08-14 14:44:21] -- The C compiler identification is GNU 13.3.0
+[2026-08-14 14:44:21] -- The CXX compiler identification is GNU 13.3.0
+[2026-08-14 14:44:21] -- Detecting C compiler ABI info
+[2026-08-14 14:44:21] -- Detecting C compiler ABI info - done
+[2026-08-14 14:44:21] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-08-14 14:44:21] -- Detecting C compile features
+[2026-08-14 14:44:21] -- Detecting C compile features - done
+[2026-08-14 14:44:21] -- Detecting CXX compiler ABI info
+[2026-08-14 14:44:21] -- Detecting CXX compiler ABI info - done
+[2026-08-14 14:44:21] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-08-14 14:44:21] -- Detecting CXX compile features
+[2026-08-14 14:44:21] -- Detecting CXX compile features - done
+[2026-08-14 14:44:21] -- Initialization summary: Found ccache, TARGET_ARCH: x86_64
+[2026-08-14 14:44:21] -- ASCEND_CANN_PACKAGE_PATH=/usr/local/Ascend/cann-9.1.0
+[2026-08-14 14:44:21] -- compile project with library
+[2026-08-14 14:44:21] -- Find opbase source dir: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/opbase
+HEAD is now at ec8c387 修改初始化时对stype的判断逻辑
+[2026-08-14 14:44:21] D	aicpu_common/context/CMakeLists.txt
+[2026-08-14 14:44:21] D	aicpu_common/context/common/async_cpu_kernel.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/async_event_util.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/context.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/cpu_kernel_cache.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/cpu_kernel_register.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/cpu_kernel_utils.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/device.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/device_cpu_kernel.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/device_sharder.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/eigen_threadpool.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/host_sharder.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/common/node_def_builder.cpp
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/attr_value.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/node_def.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/node_def_impl.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/tensor.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/tensor_impl.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/tensor_shape.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cust_op/cust_dlog_record.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/cust_op/cust_dlog_record.h
+[2026-08-14 14:44:21] D	aicpu_common/context/cust_op/cust_op_log.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/device/CMakeLists.txt
+[2026-08-14 14:44:21] D	aicpu_common/context/host/CMakeLists.txt
+[2026-08-14 14:44:21] D	aicpu_common/context/utils/bcast.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/utils/eigen_tensor.cc
+[2026-08-14 14:44:21] D	aicpu_common/context/utils/kernel_util.cc
+[2026-08-14 14:44:21] -- Found Python3: /opt/miniforge3/envs/cjz/bin/python3 (found version "3.13.13") found components: Interpreter 
+[2026-08-14 14:44:21] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/bin/ccache
+[2026-08-14 14:44:21] -- CCACHE_PROGRAM=/usr/bin/ccache
+[2026-08-14 14:44:21] -- ASCEND_COMPUTE_UNIT=ascend950
+[2026-08-14 14:44:21] -- ASCEND_OP_NAME=generic_sparse_attention_grad
+[2026-08-14 14:44:21] -- TILING_KEY=
+[2026-08-14 14:44:21] -- TESTS_UT_OPS_TEST=
+[2026-08-14 14:44:21] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-08-14 14:44:21] -- CMAKE_BUILD_TYPE=Release
+[2026-08-14 14:44:21] -- VERSION=
+HEAD is now at ec8c387 修改初始化时对stype的判断逻辑
+[ThirdParty][eigen] package needs to be downloaded.
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] PROTOC_PROGRAM : /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /usr/local/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /usr/local/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_host_static] host static build.
+LIBASAN_PATH = 
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/cmake/scripts/util/ascendc_impl_build.py:240: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-08-14 14:44:25] -- Found json: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/json/include  
+[2026-08-14 14:44:25] -- [ThirdPartyLib][json] build json end, JSON_SOURCE_PATH: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/json.
+[2026-08-14 14:44:25] -- Start building custom package.
+[2026-08-14 14:44:25] -- Search libs under install path /usr/local/Ascend/cann-9.1.0
+[2026-08-14 14:44:25] -- CMAKE_MODULE_PATH            :/home/cjz/ops-transformer/add_gsag/ops-transformer_2/cmake/modules;/usr/local/Ascend/cann-9.1.0/include/ge/cmake
+[2026-08-14 14:44:25] -- compile option:   -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-08-14 14:44:25] -- Found dlog: /usr/local/Ascend/cann-9.1.0/pkg_inc/base  
+[2026-08-14 14:44:25] -- Transformer Variables in dlog module:
+[2026-08-14 14:44:25] -- dlog_TRANSFORMER_INCLUDE_DIR="/usr/local/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-08-14 14:44:25] -- dlog_SHARED_LIBRARY="/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:25] -- 
+[2026-08-14 14:44:25]  Properties for TARGET dlog:
+[2026-08-14 14:44:25]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-08-14 14:44:25]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-08-14 14:44:25]    dlog.IMPORTED_LOCATION = "/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:25] 
+[2026-08-14 14:44:25] -- 
+[2026-08-14 14:44:25]  Properties for TARGET dlog_headers:
+[2026-08-14 14:44:25]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/usr/local/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-08-14 14:44:25] 
+[2026-08-14 14:44:25] -- Found securec: /usr/local/Ascend/cann-9.1.0/include  
+[2026-08-14 14:44:25] -- Found OPBASE: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/opbase/include  
+[2026-08-14 14:44:25] -- Found OPABSE include:/home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/opbase/include
+[2026-08-14 14:44:25] -- Found OPABSE lib:
+[2026-08-14 14:44:25] -- Found platform: /usr/local/Ascend/cann-9.1.0/include  
+[2026-08-14 14:44:25] -- Found platform include:/usr/local/Ascend/cann-9.1.0/x86_64-linux/include
+[2026-08-14 14:44:25] -- Found register library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libregister.so
+[2026-08-14 14:44:25] -- Found opp_registry library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libopp_registry.so
+[2026-08-14 14:44:25] -- Found exe_graph library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libexe_graph.so
+[2026-08-14 14:44:25] -- Found graph_base library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libgraph_base.so
+[2026-08-14 14:44:25] -- Found error_manager library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/liberror_manager.so
+[2026-08-14 14:44:25] -- Found metadef library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libmetadef.so
+[2026-08-14 14:44:25] -- Found rt2_registry library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/librt2_registry.a
+[2026-08-14 14:44:25] -- Found metadef: /usr/local/Ascend/cann-9.1.0/include  
+[2026-08-14 14:44:25] -- Found source metadef include dir:  /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/exe_graph
+[2026-08-14 14:44:25] -- Found graph library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libgraph.so
+[2026-08-14 14:44:25] -- Found mmpa library:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libmmpa.so
+[2026-08-14 14:44:25] -- Found source acl include dir:  /usr/local/Ascend/cann-9.1.0/x86_64-linux/include
+[2026-08-14 14:44:25] -- [transformer]Found source npuruntime include dir: /usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/runtime
+[2026-08-14 14:44:25] -- Found aclnn include dir:  /usr/local/Ascend/cann-9.1.0/x86_64-linux/include
+[2026-08-14 14:44:25] -- Found opdev include dir:  /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aclnn
+[2026-08-14 14:44:25] -- Found tilingapi include:/usr/local/Ascend/cann-9.1.0/x86_64-linux/include
+[2026-08-14 14:44:25] -- TILINGAPI_INC_DIRS: /usr/local/Ascend/cann-9.1.0/x86_64-linux/include;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc/include;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc/include/highlevel_api;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc/include/highlevel_api/lib;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc/include/highlevel_api/impl;/usr/local/Ascend/cann-9.1.0/x86_64-linux/ascendc/include/highlevel_api/tiling
+[2026-08-14 14:44:25] -- Found tilingapi lib:/usr/local/Ascend/cann-9.1.0/x86_64-linux/lib64/libtiling_api.a
+[2026-08-14 14:44:25] -- Using AICPU include dirs: /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/experiment;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/experiment/cce;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/experiment/msprof;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/aicpu_common/context;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/aicpu_common/context/common;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/aicpu_common/context/cpu_proto;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/aicpu_common/context/utils;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aicpu_common/context;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aicpu_common/context/common;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aicpu_common/context/cpu_proto;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aicpu_common/context/utils;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/experiment/datagw/aicpu/common;/usr/local/Ascend/cann-9.1.0/x86_64-linux/include/experiment/datagw/aicpu/common;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc;/usr/local/Ascend/cann-9.1.0/x86_64-linux/pkg_inc/aicpu
+[2026-08-14 14:44:25] -- Finding gen es pkg
+[2026-08-14 14:44:25] -- [add_es_library] Module loaded from: /usr/local/Ascend/cann-9.1.0/include/ge/cmake
+[2026-08-14 14:44:25] -- Find ops-tensor source dir: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/ops-tensor
+[2026-08-14 14:44:25] -- ops-tensor fetched 602d648ae62e0bb7b51494451e32e5c7bd50c1c3
+[ThirdParty][eigen] package needs to be downloaded.
+[2026-08-14 14:44:26] -- Found abseil-cpp: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/abseil-cpp  
+[2026-08-14 14:44:26] -- [ThirdPartyLib][abseil-cpp] Found abseil-cpp in: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/abseil-cpp
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] PROTOC_PROGRAM : /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /home/cjz/ops-transformer/add_gsag/ops-transformer_2/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /usr/local/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /usr/local/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_host_static] host static build.
+[2026-08-14 14:44:26] -- Found alog: /usr/local/Ascend/cann-9.1.0/include  
+[2026-08-14 14:44:26] -- Variables in alog module:
+[2026-08-14 14:44:26] -- alog_a_INCLUDE_DIR="/usr/local/Ascend/cann-9.1.0/include"
+[2026-08-14 14:44:26] -- slog_a_SHARED_LIBRARY="/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:26] -- alog_a_SHARED_LIBRARY="/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26]  Properties for TARGET slog_a:
+[2026-08-14 14:44:26]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-08-14 14:44:26]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-08-14 14:44:26]    slog_a.IMPORTED_LOCATION = "/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26]  Properties for TARGET alog_a:
+[2026-08-14 14:44:26]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-08-14 14:44:26]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-08-14 14:44:26]    alog_a.IMPORTED_LOCATION = "/usr/local/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26]  Properties for TARGET alog_headers:
+[2026-08-14 14:44:26]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/usr/local/Ascend/cann-9.1.0/include;/usr/local/Ascend/cann-9.1.0/include/base"
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-08-14 14:44:26] -- Generated helper script: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/cmake/run_gen_esb_with_lock.sh
+[2026-08-14 14:44:26] -- Using existing Python3: /opt/miniforge3/envs/cjz/bin/python3
+[2026-08-14 14:44:26] -- _add_es_library_impl: OUTPUT_PATH is /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages_math
+[2026-08-14 14:44:26] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-08-14 14:44:26] -- add_es_package: OPP_PROTO_TARGET output directory: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+[2026-08-14 14:44:26] -- add_es_package: Derived ASCEND_OPP_PATH: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+LIBASAN_PATH = 
+[2026-08-14 14:44:26] --   - Created standard OPP path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:26] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-08-14 14:44:26] --     Found gen_esb in PATH (environment variables configured)
+[2026-08-14 14:44:26] --     - gen_esb path: /usr/local/Ascend/cann-9.1.0/bin/gen_esb
+[2026-08-14 14:44:26] --     - library path: /usr/local/Ascend/cann-9.1.0/lib64
+[2026-08-14 14:44:26] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:26] -- add_es_package: Module name for gen_esb: math
+[2026-08-14 14:44:26] -- [add_es_library] No history registry found at /usr/local/Ascend/cann-9.1.0/opp/history_registry/math, skipping
+[2026-08-14 14:44:26] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-08-14 14:44:26] --   Found library in run package: /usr/local/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-08-14 14:44:26] -- Configuring ES package: es_math
+[2026-08-14 14:44:26] --   - Exported target: es_math (public interface)
+[2026-08-14 14:44:26] --   - Internal .obj target: es_math_obj (compile once)
+[2026-08-14 14:44:26] --   - Internal .so target: es_math_so
+[2026-08-14 14:44:26] --   - Internal .a target: es_math_a
+[2026-08-14 14:44:26] --   - Module name (for gen_esb): math
+[2026-08-14 14:44:26] --   - OPP proto target: proto_math (type: SHARED_LIBRARY)
+[2026-08-14 14:44:26] --   - OPP proto path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:26] --   - Output path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages_math (artifacts will be copied)
+[2026-08-14 14:44:26] --   - Library files: libes_math.so, libes_math.a
+[2026-08-14 14:44:26] --   - Python package: es_math
+[2026-08-14 14:44:26] -- ES package 'es_math' using single-file compilation mode
+[2026-08-14 14:44:26] --   - Wrapper file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-08-14 14:44:26] --   - Module name: math
+[2026-08-14 14:44:26] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-08-14 14:44:26] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-08-14 14:44:26] -- add_es_library: Deduced header base path from cmake file: /usr/local/Ascend/cann-9.1.0
+[2026-08-14 14:44:26] -- add_es_library: metadef_headers target not found, skipping
+[2026-08-14 14:44:26] -- add_es_library: Found c_sec target
+[2026-08-14 14:44:26] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-08-14 14:44:26] -- add_es_package: 'build_es_math' is the first ES package (will be built first)
+[2026-08-14 14:44:26] -- ES package 'es_math' configured successfully (single-file mode):
+[2026-08-14 14:44:26] --   - Exported target (for linking): es_math
+[2026-08-14 14:44:26] --   - Build target: build_es_math
+[2026-08-14 14:44:26] --   - Wrapper file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-08-14 14:44:26] --   - Internal targets:
+[2026-08-14 14:44:26] --     * Code generation: generate_es_math_code
+[2026-08-14 14:44:26] --     * Object library: es_math_obj (compiled once)
+[2026-08-14 14:44:26] --     * Shared library: es_math_so
+[2026-08-14 14:44:26] --     * Static library: es_math_a
+[2026-08-14 14:44:26] --     * Wheel generation: generate_es_math_whl
+[2026-08-14 14:44:26] --     * Install: install_es_math
+[2026-08-14 14:44:26] --   - Library files: libes_math.so, libes_math.a
+[2026-08-14 14:44:26] --   - Python package: es_math
+[2026-08-14 14:44:26] --   - ES base library: /usr/local/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Quick start:
+[2026-08-14 14:44:26] --   1. Link:    target_link_libraries(your_target PRIVATE es_math)
+[2026-08-14 14:44:26] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Start Generating es transformer for custom pkg
+[2026-08-14 14:44:26] -- _add_es_library_impl: OUTPUT_PATH is /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages
+[2026-08-14 14:44:26] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-08-14 14:44:26] -- add_es_package: Using default output directory: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+[2026-08-14 14:44:26] -- add_es_package: OPP_PROTO_TARGET output directory: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+[2026-08-14 14:44:26] -- add_es_package: Derived ASCEND_OPP_PATH: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+[2026-08-14 14:44:26] --   - Created standard OPP path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:26] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-08-14 14:44:26] --     Found gen_esb in PATH (environment variables configured)
+[2026-08-14 14:44:26] --     - gen_esb path: /usr/local/Ascend/cann-9.1.0/bin/gen_esb
+[2026-08-14 14:44:26] --     - library path: /usr/local/Ascend/cann-9.1.0/lib64
+[2026-08-14 14:44:26] -- Using proto library path (derived from OPP_PROTO_TARGET): /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:26] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-08-14 14:44:26] -- [add_es_library] No history registry found at /usr/local/Ascend/cann-9.1.0/opp/history_registry/transformer_cust, skipping
+[2026-08-14 14:44:26] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-08-14 14:44:26] --   Found library in run package: /usr/local/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-08-14 14:44:26] -- Configuring ES package: es_transformer_cust
+[2026-08-14 14:44:26] --   - Exported target: es_transformer_cust (public interface)
+[2026-08-14 14:44:26] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-08-14 14:44:26] --   - Internal .so target: es_transformer_cust_so
+[2026-08-14 14:44:26] --   - Internal .a target: es_transformer_cust_a
+[2026-08-14 14:44:26] --   - Module name (for gen_esb): transformer_cust
+[2026-08-14 14:44:26] --   - OPP proto target: proto_transformer_cust (type: SHARED_LIBRARY)
+[2026-08-14 14:44:26] --   - OPP proto path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:26] --   - Output path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages (artifacts will be copied)
+[2026-08-14 14:44:26] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-08-14 14:44:26] --   - Python package: es_transformer_cust
+[2026-08-14 14:44:26] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-08-14 14:44:26] --   - Wrapper file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-08-14 14:44:26] --   - Module name: transformer_cust
+[2026-08-14 14:44:26] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-08-14 14:44:26] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-08-14 14:44:26] -- add_es_library: Deduced header base path from cmake file: /usr/local/Ascend/cann-9.1.0
+[2026-08-14 14:44:26] -- add_es_library: metadef_headers target not found, skipping
+[2026-08-14 14:44:26] -- add_es_library: Found c_sec target
+[2026-08-14 14:44:26] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-08-14 14:44:26] -- add_es_package: 'build_es_transformer_cust' depends on 'build_es_math' to avoid concurrent builds of shared dependencies
+[2026-08-14 14:44:26] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-08-14 14:44:26] --   - Exported target (for linking): es_transformer_cust
+[2026-08-14 14:44:26] --   - Build target: build_es_transformer_cust
+[2026-08-14 14:44:26] --   - Wrapper file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-08-14 14:44:26] --   - Internal targets:
+[2026-08-14 14:44:26] --     * Code generation: generate_es_transformer_cust_code
+[2026-08-14 14:44:26] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-08-14 14:44:26] --     * Shared library: es_transformer_cust_so
+[2026-08-14 14:44:26] --     * Static library: es_transformer_cust_a
+[2026-08-14 14:44:26] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-08-14 14:44:26] --     * Install: install_es_transformer_cust
+[2026-08-14 14:44:26] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-08-14 14:44:26] --   - Python package: es_transformer_cust
+[2026-08-14 14:44:26] --   - ES base library: /usr/local/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Quick start:
+[2026-08-14 14:44:26] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-08-14 14:44:26] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-08-14 14:44:26] -- 
+[2026-08-14 14:44:26] -- Detected architecture: x86_64
+[2026-08-14 14:44:26] -- End building custom package.
+[2026-08-14 14:44:26] -- create aclnn master header file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/aclnn_ops_transformer_custom.h
+[2026-08-14 14:44:26] -- no operator info to generate
+[2026-08-14 14:44:26] -- Start building custom package.
+[2026-08-14 14:44:26] -- No aicpu opdef/json files to merge, skipping.
+[2026-08-14 14:44:26] -- No aicpu cust obj targets found, skipping.
+[2026-08-14 14:44:26] -- Configuring done (6.1s)
+[2026-08-14 14:44:26] -- Generating done (0.0s)
+[2026-08-14 14:44:26] -- Build files have been written to: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build
+[2026-08-14 14:44:26] [  1%] Generating op_host_aclnn_inner_stub.cpp
+[2026-08-14 14:44:26] [  2%] Generating op_host_aclnn_stub.cpp
+[2026-08-14 14:44:26] [  3%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
+[2026-08-14 14:44:26] [  5%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
+[2026-08-14 14:44:26] [  6%] Creating directories for 'external_eigen'
+[2026-08-14 14:44:26] [  7%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
+[2026-08-14 14:44:26] [  8%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
+[2026-08-14 14:44:26] [ 10%] Generating version.ops-transformer.info
+[2026-08-14 14:44:26] [ 11%] Building CXX object CMakeFiles/op_host_aclnnExc.dir/attention/generic_sparse_attention_grad/op_host/generic_sparse_attention_grad_def.cpp.o
+[2026-08-14 14:44:26] [ 12%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/generic_sparse_attention_grad_tiling.cpp.o
+[2026-08-14 14:44:26] [ 13%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
+[2026-08-14 14:44:26] [ 16%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/generic_sparse_attention_grad_tiling_arch35.cpp.o
+[2026-08-14 14:44:26] [ 16%] Building CXX object common/stub/op_graph/CMakeFiles/proto_math.dir/math_proto_stub.cpp.o
+[2026-08-14 14:44:26] [ 17%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/generic_sparse_attention_grad_infershape.cpp.o
+[2026-08-14 14:44:26] [ 20%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/runtime_kb_api.cpp.o
+[2026-08-14 14:44:26] [ 20%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/generic_sparse_attention_grad_metadata/op_host/proto_stub.cpp.o
+[2026-08-14 14:44:26] [ 21%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm.cpp.o
+[2026-08-14 14:44:26] [ 22%] Generating binary/ascend950/bin/generic_sparse_attention_grad
+[2026-08-14 14:44:26] [ 25%] Generating scripts/install.sh, scripts/upgrade.sh
+[2026-08-14 14:44:26] [ 26%] Generating version.info
+[2026-08-14 14:44:26] [ 26%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
+[2026-08-14 14:44:26] [ 27%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/op_host/tiling_util.cpp.o
+[2026-08-14 14:44:26] [ 28%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
+[2026-08-14 14:44:26] [ 28%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
+[2026-08-14 14:44:26] [ 28%] Built target update_proto_target
+[2026-08-14 14:44:26] [ 31%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm_2stages.cpp.o
+[2026-08-14 14:44:26] [ 31%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
+[2026-08-14 14:44:26] [ 32%] Generating binary/ascend950/src/generic_sparse_attention_grad/GenericSparseAttentionGrad.py
+[2026-08-14 14:44:26] [ 33%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/tbe_tiling_api.cpp.o
+[2026-08-14 14:44:26] [ 35%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
+[2026-08-14 14:44:26] [ 35%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/op_host_aclnn_inner_stub.cpp.o
+[2026-08-14 14:44:26] [ 35%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-08-14 14:44:26] [ 35%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
+[2026-08-14 14:44:26] [ 36%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
+[2026-08-14 14:44:26] [ 37%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+[2026-08-14 14:44:26] [ 38%] Generating binary/ascend950/src/ascendc/common/.utils_copy.stamp
+[2026-08-14 14:44:26] [ 38%] Built target generic_sparse_attention_grad_ascend950_mkdir
+[2026-08-14 14:44:26] [ 40%] Linking CXX shared library libop_host_aclnnExc.so
+[2026-08-14 14:44:26] [ 40%] Built target opbase_util_objs
+[2026-08-14 14:44:26] [ 40%] Built target generic_sparse_attention_grad_ascend950_py_copy
+[2026-08-14 14:44:26] [ 41%] Linking CXX shared library ../../../libproto_math.so
+[2026-08-14 14:44:26] [ 42%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-08-14 14:44:26] [ 42%] Built target ophost_transformer_infer_obj
+[2026-08-14 14:44:26] [ 42%] Built target common_transformer_fallback_obj
+[2026-08-14 14:44:26] [ 42%] Built target opbase_tiling_objs
+[2026-08-14 14:44:26] [ 42%] Built target gen_version_info
+[2026-08-14 14:44:26] [ 43%] Linking CXX shared library libop_host_aclnn.so
+[2026-08-14 14:44:26] [ 43%] Built target common_transformer_obj
+[2026-08-14 14:44:26] [ 45%] Performing download step (download, verify and extract) for 'external_eigen'
+[2026-08-14 14:44:26] [ 46%] Linking CXX shared library ../../../liboptiling.so
+[2026-08-14 14:44:26] [ 46%] Built target opbase_infer_objs
+[2026-08-14 14:44:26] [ 47%] Linking CXX shared library ../../../libopapi_math.so
+[2026-08-14 14:44:26] -- Downloading...
+[2026-08-14 14:44:26]    dst='/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-08-14 14:44:26]    timeout='none'
+[2026-08-14 14:44:26]    inactivity timeout='none'
+[2026-08-14 14:44:26] -- Using src='https://gitcode.com/cann-src-third-party/eigen/releases/download/5.0.0-h0.trunk/eigen-5.0.0.tar.gz'
+[2026-08-14 14:44:26] [ 48%] Running C++ protocol buffer compiler on /usr/local/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+[2026-08-14 14:44:26] [ 48%] Built target modify_vendor
+[2026-08-14 14:44:26] [ 48%] Built target version_ops-transformer_info
+[2026-08-14 14:44:26] [ 48%] Built target op_host_aclnnInner
+[2026-08-14 14:44:26] generate proto cpp_out onnx by /usr/local/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+[2026-08-14 14:44:26] [ 48%] Built target op_host_aclnn
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/cmake/scripts/util/ascendc_impl_build.py:240: SyntaxWarning: invalid escape sequence '\d'
+  ascendc_api_version = re.findall(r"#define ASCENDC_API_VERSION (\d+)", ascendc_api_version_file.read())
+[2026-08-14 14:44:26] [ 48%] Built target op_host_aclnnExc
+[2026-08-14 14:44:26] [ 48%] Built target opbuild_gen_inner
+[2026-08-14 14:44:26] [ 48%] Built target proto_math
+[2026-08-14 14:44:26] [ 48%] Built target optiling
+[2026-08-14 14:44:26] [ 48%] Built target opapi_math
+[2026-08-14 14:44:26] [ 48%] Built target opbuild_gen_default
+[2026-08-14 14:44:26] [ 50%] Generating ops_aclnn_src_stub.cpp
+[2026-08-14 14:44:26] [ 50%] Built target opbuild_gen_exc
+[2026-08-14 14:44:26] [ 51%] Copying OPP proto library to standard path...
+[2026-08-14 14:44:26] [ 52%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/exc/generic_sparse_attention_grad_proto.cpp.o
+[2026-08-14 14:44:26] [ 53%] Building CXX object CMakeFiles/ops_aclnn.dir/ops_aclnn_src_stub.cpp.o
+[2026-08-14 14:44:26] [ 55%] Filtering proto srcs from update files
+[2026-08-14 14:44:26] [ 56%] Generating autogen/aic-ascend950-ops-info.json
+[2026-08-14 14:44:26] [ 57%] Linking CXX static library libops_aclnn.a
+[2026-08-14 14:44:26] [ 57%] Built target generate_proto_filtered_target
+[2026-08-14 14:44:26] [ 57%] Linking CXX shared library libproto_transformer_cust.so
+[2026-08-14 14:44:26] [ 58%] Generating ES API code for 'es_math' using run package gen_esb...
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] ==============check valid for ops info start==============
+[2026-08-14 14:44:26] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-08-14 14:44:26] ==============check valid for ops info end================
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] [ES-GEN] Lock file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-08-14 14:44:26] 
+[2026-08-14 14:44:26] [ES-GEN] Gen ESB: /usr/local/Ascend/cann-9.1.0/bin/gen_esb
+[2026-08-14 14:44:26] Compile op info cfg successfully.
+[2026-08-14 14:44:26] Generating ES code for package: es_math
+[2026-08-14 14:44:26] [ES-GEN] OPP path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:26] [ES-GEN] Output dir: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code
+[2026-08-14 14:44:26] [ 58%] Built target generate_ops_info_ascend950
+[2026-08-14 14:44:26] INFO: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/autogen/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-08-14 14:44:26] [ES-GEN] Module: math
+[2026-08-14 14:44:26] [ 58%] Built target ops_utils_inc_kernel_ascend950
+[2026-08-14 14:44:26] [ 58%] Built target generate_ops_info
+[2026-08-14 14:44:26] [ES-GEN] Lib path: /usr/local/Ascend/cann-9.1.0/lib64
+[2026-08-14 14:44:26] [ 58%] Built target generate_transformer_adapt_py
+[2026-08-14 14:44:26] [ES-GEN] Exclude ops: 
+[2026-08-14 14:44:26] [ 58%] Generating binary/ascend950/src/generic_sparse_attention_grad_metadata/generic_sparse_attention_grad_metadata_ascend950_src_copy.done
+[2026-08-14 14:44:26] [ES-GEN] ========== Main Logic Started ==========
+[2026-08-14 14:44:26] [ES-GEN] Using flock file locking mechanism
+[2026-08-14 14:44:26] [ES-GEN] [flock] Acquired lock immediately
+[2026-08-14 14:44:26] [ 60%] Built target proto_transformer_cust
+[2026-08-14 14:44:26] INFO: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/autogen/inner/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-08-14 14:44:26] [ES-GEN] Waiting for filesystem sync...
+[2026-08-14 14:44:26] [ 60%] Built target generic_sparse_attention_grad_metadata_ascend950_src_copy
+[2026-08-14 14:44:26] [ 60%] Copying OPP proto library to standard path...
+[2026-08-14 14:44:26] [ 60%] Built target ops_aclnn
+[2026-08-14 14:44:26] [ 61%] Generating binary/ascend950/src/generic_sparse_attention_grad/generic_sparse_attention_grad_ascend950_src_copy.done
+[2026-08-14 14:44:26] [ 62%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/op_api/generic_sparse_attention_grad.cpp.o
+[2026-08-14 14:44:26] [ 62%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/generic_sparse_attention_grad_metadata/op_host/op_api/aclnn_generic_sparse_attention_grad_metadata.cpp.o
+In file included from /home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad_metadata/op_host/op_api/aclnn_generic_sparse_attention_grad_metadata.cpp:29:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad_metadata/op_host/op_api/../generic_sparse_attention_grad_metadata_check.h: In function ‘aclnnStatus {anonymous}::CheckExistence(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const char*, const char*, const aclTensor*)’:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad_metadata/op_host/op_api/../generic_sparse_attention_grad_metadata_check.h:121:61: warning: unused parameter ‘layoutKv’ [-Wunused-parameter]
+  121 |                            const char *layoutQ, const char *layoutKv, const aclTensor *metadata)
+      |                                                 ~~~~~~~~~~~~^~~~~~~~
+[2026-08-14 14:44:26] [ 63%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/op_api/aclnn_generic_sparse_attention_grad.cpp.o
+In file included from /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aclnn/opdev/pool_allocator.h:18,
+                 from /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aclnn/opdev/fast_vector.h:14,
+                 from /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aclnn/opdev/common_types.h:29,
+                 from /usr/local/Ascend/cann-9.1.0/x86_64-linux/include/aclnn/opdev/op_executor.h:20,
+                 from /home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/generic_sparse_attention_grad.h:15,
+                 from /home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:17:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp: In function ‘aclnnStatus {anonymous}::Validate(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, int64_t, char*, char*, int64_t, int64_t, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:57:22: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   57 |     CHECK_RET(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID);
+      |               ~~~~~~~^~~~~~~~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:57:47: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   57 |     CHECK_RET(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID);
+      |                                        ~~~~~~~^~~~~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:61:34: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   61 |     CHECK_RET(lse->GetDataType() == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID);
+      |               ~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:62:43: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   62 |     CHECK_RET(rsvdBlockIdx->GetDataType() == ACL_INT32 && rsvdBlockCount->GetDataType() == ACL_INT32,
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:62:89: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   62 |     CHECK_RET(rsvdBlockIdx->GetDataType() == ACL_INT32 && rsvdBlockCount->GetDataType() == ACL_INT32,
+      |                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/op_api/aclnn_generic_sparse_attention_grad.cpp:64:39: warning: comparison between ‘using op::DataType = enum ge::DataType’ {aka ‘enum ge::DataType’} and ‘enum aclDataType’ [-Wenum-compare]
+   64 |     CHECK_RET(metadata->GetDataType() == ACL_INT64, ACLNN_ERR_PARAM_INVALID);
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~
+[2026-08-14 14:44:26] [ 65%] Building CXX object attention/generic_sparse_attention_grad/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/generic_sparse_attention_grad_metadata/op_host/op_api/generic_sparse_attention_grad_metadata.cpp.o
+[2026-08-14 14:44:26] [ 66%] Generating ES API code for 'es_transformer_cust' using run package gen_esb...
+[2026-08-14 14:44:26] Generating ES code for package: es_transformer_cust
+[2026-08-14 14:44:26] [ 66%] Built target generate_compile_cmd_ascend950
+[2026-08-14 14:44:26] [ 66%] Built target generic_sparse_attention_grad_ascend950_src_copy
+[2026-08-14 14:44:26] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-08-14 14:44:26] [ES-GEN] Lock file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-08-14 14:44:26] [ 66%] Built target generate_compile_cmd
+[2026-08-14 14:44:26] [ES-GEN] Gen ESB: /usr/local/Ascend/cann-9.1.0/bin/gen_esb
+[2026-08-14 14:44:26] [ES-GEN] OPP path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:26] [ES-GEN] Output dir: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code
+[2026-08-14 14:44:26] [ES-GEN] Module: transformer_cust
+[2026-08-14 14:44:26] [ES-GEN] Lib path: /usr/local/Ascend/cann-9.1.0/lib64
+[2026-08-14 14:44:26] [ES-GEN] Exclude ops: 
+[2026-08-14 14:44:26] [ES-GEN] ========== Main Logic Started ==========
+[2026-08-14 14:44:26] [ES-GEN] Using flock file locking mechanism
+[2026-08-14 14:44:26] [ 66%] Built target prepare_build
+[2026-08-14 14:44:26] [ES-GEN] [flock] Acquired lock immediately
+[2026-08-14 14:44:26] [ 66%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/embedding_bag_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 67%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/fillwindowcache_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ES-GEN] Waiting for filesystem sync...
+[2026-08-14 14:44:26] [ 68%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_fwd_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 70%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/multi_head_attention_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 70%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_masked_softmax_with_relposbias_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 71%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_scaled_masked_softmax_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 72%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 73%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/tfidf_vectorizer_onnx_plugin.cpp.o
+[2026-08-14 14:44:26] [ 73%] Built target oponnx_plugin_transformer_obj
+[2026-08-14 14:44:26] -- [download 1% complete]
+[2026-08-14 14:44:26] -- [download 2% complete]
+[2026-08-14 14:44:26] -- [download 3% complete]
+[2026-08-14 14:44:26] -- [download 4% complete]
+[2026-08-14 14:44:26] -- [download 5% complete]
+[2026-08-14 14:44:26] -- [download 6% complete]
+[2026-08-14 14:44:26] -- [download 7% complete]
+[2026-08-14 14:44:26] -- [download 8% complete]
+[2026-08-14 14:44:26] -- [download 9% complete]
+[2026-08-14 14:44:26] -- [download 10% complete]
+[2026-08-14 14:44:26] -- [download 11% complete]
+[2026-08-14 14:44:26] -- [download 12% complete]
+[2026-08-14 14:44:26] -- [download 13% complete]
+[2026-08-14 14:44:26] -- [download 14% complete]
+[2026-08-14 14:44:26] -- [download 15% complete]
+[2026-08-14 14:44:26] -- [download 16% complete]
+[2026-08-14 14:44:26] -- [download 17% complete]
+[2026-08-14 14:44:26] -- [download 18% complete]
+[2026-08-14 14:44:26] -- [download 19% complete]
+[2026-08-14 14:44:26] -- [download 20% complete]
+[2026-08-14 14:44:26] -- [download 21% complete]
+[2026-08-14 14:44:26] -- [download 22% complete]
+[2026-08-14 14:44:26] -- [download 23% complete]
+[2026-08-14 14:44:26] -- [download 24% complete]
+[2026-08-14 14:44:26] -- [download 25% complete]
+[2026-08-14 14:44:26] -- [download 26% complete]
+[2026-08-14 14:44:26] -- [download 27% complete]
+[2026-08-14 14:44:26] -- [download 28% complete]
+[2026-08-14 14:44:26] -- [download 29% complete]
+[2026-08-14 14:44:26] -- [download 30% complete]
+[2026-08-14 14:44:26] -- [download 31% complete]
+[2026-08-14 14:44:26] -- [download 32% complete]
+[2026-08-14 14:44:26] -- [download 33% complete]
+[2026-08-14 14:44:26] -- [download 34% complete]
+[2026-08-14 14:44:26] -- [download 35% complete]
+[2026-08-14 14:44:26] -- [download 36% complete]
+[2026-08-14 14:44:26] -- [download 37% complete]
+[2026-08-14 14:44:26] -- [download 38% complete]
+[2026-08-14 14:44:26] -- [download 39% complete]
+[2026-08-14 14:44:26] -- [download 40% complete]
+[2026-08-14 14:44:26] -- [download 41% complete]
+[2026-08-14 14:44:26] -- [download 42% complete]
+[2026-08-14 14:44:26] -- [download 43% complete]
+[2026-08-14 14:44:26] -- [download 44% complete]
+[2026-08-14 14:44:26] -- [download 45% complete]
+[2026-08-14 14:44:26] -- [download 46% complete]
+[2026-08-14 14:44:26] -- [download 47% complete]
+[2026-08-14 14:44:26] -- [download 48% complete]
+[2026-08-14 14:44:26] -- [download 49% complete]
+[2026-08-14 14:44:26] -- [download 50% complete]
+[2026-08-14 14:44:26] -- [download 51% complete]
+[2026-08-14 14:44:26] -- [download 52% complete]
+[2026-08-14 14:44:26] -- [download 53% complete]
+[2026-08-14 14:44:26] -- [download 54% complete]
+[2026-08-14 14:44:26] -- [download 55% complete]
+[2026-08-14 14:44:26] -- [download 56% complete]
+[2026-08-14 14:44:26] -- [download 57% complete]
+[2026-08-14 14:44:26] -- [download 58% complete]
+[2026-08-14 14:44:26] -- [download 59% complete]
+[2026-08-14 14:44:26] -- [download 60% complete]
+[2026-08-14 14:44:26] -- [download 61% complete]
+[2026-08-14 14:44:26] -- [download 62% complete]
+[2026-08-14 14:44:26] -- [download 63% complete]
+[2026-08-14 14:44:26] -- [download 64% complete]
+[2026-08-14 14:44:26] -- [download 65% complete]
+[2026-08-14 14:44:26] -- [download 66% complete]
+[2026-08-14 14:44:26] -- [download 67% complete]
+[2026-08-14 14:44:26] -- [download 68% complete]
+[2026-08-14 14:44:26] -- [download 69% complete]
+[2026-08-14 14:44:26] -- [download 70% complete]
+[2026-08-14 14:44:26] -- [download 71% complete]
+[2026-08-14 14:44:26] -- [download 72% complete]
+[2026-08-14 14:44:26] -- [download 73% complete]
+[2026-08-14 14:44:26] -- [download 74% complete]
+[2026-08-14 14:44:26] -- [download 75% complete]
+[2026-08-14 14:44:26] -- [download 76% complete]
+[2026-08-14 14:44:26] -- [download 77% complete]
+[2026-08-14 14:44:26] -- [download 78% complete]
+[2026-08-14 14:44:26] -- [download 79% complete]
+[2026-08-14 14:44:26] -- [download 80% complete]
+[2026-08-14 14:44:26] -- [download 81% complete]
+[2026-08-14 14:44:26] -- [download 82% complete]
+[2026-08-14 14:44:26] -- [download 83% complete]
+[2026-08-14 14:44:26] -- [download 84% complete]
+[2026-08-14 14:44:26] -- [download 85% complete]
+[2026-08-14 14:44:26] -- [download 86% complete]
+[2026-08-14 14:44:26] -- [download 87% complete]
+[2026-08-14 14:44:26] -- [download 88% complete]
+[2026-08-14 14:44:26] -- [download 89% complete]
+[2026-08-14 14:44:26] -- [download 90% complete]
+[2026-08-14 14:44:26] -- [download 91% complete]
+[2026-08-14 14:44:26] -- [download 92% complete]
+[2026-08-14 14:44:26] -- [download 93% complete]
+[2026-08-14 14:44:26] -- [download 94% complete]
+[2026-08-14 14:44:26] -- [download 95% complete]
+[2026-08-14 14:44:26] -- [download 96% complete]
+[2026-08-14 14:44:26] -- [download 97% complete]
+[2026-08-14 14:44:26] -- [download 98% complete]
+[2026-08-14 14:44:26] -- [download 99% complete]
+[2026-08-14 14:44:26] -- [download 100% complete]
+[2026-08-14 14:44:26] -- Downloading... done
+[2026-08-14 14:44:26] -- extracting...
+[2026-08-14 14:44:26]      src='/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/download/eigen/eigen-5.0.0.tar.gz'
+[2026-08-14 14:44:26]      dst='/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/third_party/src/external_eigen'
+[2026-08-14 14:44:26] -- extracting... [tar xfz]
+[2026-08-14 14:44:26] -- extracting... [analysis]
+[2026-08-14 14:44:26] -- extracting... [rename]
+[2026-08-14 14:44:26] -- extracting... [clean up]
+[2026-08-14 14:44:26] -- extracting... done
+[2026-08-14 14:44:26] [ 73%] No update step for 'external_eigen'
+[2026-08-14 14:44:26] [ 75%] No patch step for 'external_eigen'
+[2026-08-14 14:44:26] [ 75%] Performing configure step for 'external_eigen'
+[2026-08-14 14:44:27] -- The C compiler identification is GNU 13.3.0
+[2026-08-14 14:44:27] -- The CXX compiler identification is GNU 13.3.0
+[2026-08-14 14:44:27] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-08-14 14:44:27] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-08-14 14:44:27] [ES-GEN] Command: LD_LIBRARY_PATH=/usr/local/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/usr/local/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-08-14 14:44:27] [ES-GEN] Command: LD_LIBRARY_PATH=/usr/local/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/usr/local/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""     
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] ES Graph Builder Generator v1.0
+[2026-08-14 14:44:27] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] Starting code generation...
+[2026-08-14 14:44:27] Environment variable check: ASCEND_OPP_PATH = /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:27] Environment variable check: LD_LIBRARY_PATH = /usr/local/Ascend/cann-9.1.0/lib64:/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build:/usr/local/Ascend/cann-9.1.0/lib64:/usr/local/Ascend/cann-9.1.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.1.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-08-14 14:44:27] Output directory: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-08-14 14:44:27] Module name: math
+[2026-08-14 14:44:27] [ES-GEN] [Success] gen_esb executed successfully
+[2026-08-14 14:44:27] [ES-GEN] [Success] gen_esb executed successfully
+[2026-08-14 14:44:27] ASCEND_OPP_PATH is: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-14 14:44:27] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-08-14 14:44:27] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-08-14 14:44:27] ops proto path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] ES Graph Builder Generator v1.0
+[2026-08-14 14:44:27] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] Starting code generation...
+[2026-08-14 14:44:27] Environment variable check: ASCEND_OPP_PATH = /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:27] Environment variable check: LD_LIBRARY_PATH = /usr/local/Ascend/cann-9.1.0/lib64:/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build:/usr/local/Ascend/cann-9.1.0/lib64:/usr/local/Ascend/cann-9.1.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.1.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+[2026-08-14 14:44:27] Output directory: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/
+[2026-08-14 14:44:27] Module name: transformer_cust
+[2026-08-14 14:44:27] ASCEND_OPP_PATH is: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-08-14 14:44:27] ops proto path: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/custom/:/home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/built-in/
+[2026-08-14 14:44:27] -- Detecting C compiler ABI info
+[2026-08-14 14:44:27] Get ops num: 1
+[2026-08-14 14:44:27] Get ops num: 1
+[2026-08-14 14:44:27] Generate done, generated num 1, unsupported: 
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-08-14 14:44:27] Generated C generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-08-14 14:44:27] Generated C++ generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-08-14 14:44:27] Generate done, generated num 1, unsupported: 
+[2026-08-14 14:44:27] Generated Python generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-08-14 14:44:27] Generated aggregate files:
+[2026-08-14 14:44:27]   C generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-08-14 14:44:27]   C++ generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-08-14 14:44:27]   Python generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-08-14 14:44:27] Generated util files:
+[2026-08-14 14:44:27]   Utils generator:
+[2026-08-14 14:44:27]     /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+[2026-08-14 14:44:27] Generated files in: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-08-14 14:44:27] 
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] Code generation completed!
+[2026-08-14 14:44:27] Module name: math
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-08-14 14:44:27] Generated C generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-08-14 14:44:27] Generated C++ generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-08-14 14:44:27] Write to file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-08-14 14:44:27] Generated Python generator aggregate file: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-08-14 14:44:27] Generated aggregate files:
+[2026-08-14 14:44:27]   C generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-08-14 14:44:27]   C++ generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-08-14 14:44:27]   Python generator: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-08-14 14:44:27] Generated util files:
+[2026-08-14 14:44:27]   Utils generator:
+[2026-08-14 14:44:27]     /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_log.h
+[2026-08-14 14:44:27] Generated files in: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/
+[2026-08-14 14:44:27] 
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] Code generation completed!
+[2026-08-14 14:44:27] Module name: transformer_cust
+[2026-08-14 14:44:27] ==========================================
+[2026-08-14 14:44:27] -- [ES Wrapper] Generated: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-08-14 14:44:27] -- [ES Wrapper] Total operators included: 1
+[2026-08-14 14:44:27] -- [ES Wrapper] Generated: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-08-14 14:44:27] -- [ES Wrapper] Total operators included: 1
+[2026-08-14 14:44:27] [ 75%] Built target generate_es_transformer_cust_code
+[2026-08-14 14:44:27] [ 75%] Built target generate_es_math_code
+[2026-08-14 14:44:27] [ 76%] Building CXX object CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+[2026-08-14 14:44:27] [ 77%] Building Python wheel package for 'es_math'...
+[2026-08-14 14:44:27] [ 78%] Skipping Python wheel package generation for 'es_transformer_cust'
+[2026-08-14 14:44:27] [ 80%] Building CXX object common/stub/op_graph/CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+[2026-08-14 14:44:27] Building Python wheel for package: es_math
+[2026-08-14 14:44:27] Skipping wheel generation
+[2026-08-14 14:44:27] [ 80%] Built target es_transformer_cust_obj
+[2026-08-14 14:44:27] [ 80%] Built target es_math_obj
+[2026-08-14 14:44:27] -- Detecting C compiler ABI info - done
+[2026-08-14 14:44:27] [ 80%] Built target generate_es_transformer_cust_whl
+[2026-08-14 14:44:27] [ 81%] Linking CXX shared library libes_transformer_cust.so
+[2026-08-14 14:44:27] [ 81%] Linking CXX static library libes_transformer_cust.a
+[2026-08-14 14:44:27] [ 82%] Linking CXX static library libes_math.a
+[2026-08-14 14:44:27] [ 83%] Linking CXX shared library ../../../libes_math.so
+[2026-08-14 14:44:27] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-08-14 14:44:27] -- Detecting C compile features
+[2026-08-14 14:44:27] -- Detecting C compile features - done
+[2026-08-14 14:44:27] -- Copied: es_Transpose.py
+[2026-08-14 14:44:27] -- Copied: es_math_ops.py
+[2026-08-14 14:44:27] -- Detecting CXX compiler ABI info
+[2026-08-14 14:44:27] -- Created setup.py for package 'es_math'
+[2026-08-14 14:44:27] [ 83%] Built target es_transformer_cust_so
+[2026-08-14 14:44:27] [ 83%] Built target es_math_so
+[2026-08-14 14:44:27] [ 83%] Built target es_transformer_cust_a
+[2026-08-14 14:44:27] [ 83%] Built target es_math_a
+[2026-08-14 14:44:27] [ 85%] Installing ES package 'es_transformer_cust' to /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages
+[2026-08-14 14:44:27] Installing ES package: es_transformer_cust
+[2026-08-14 14:44:27] -- Copied header: es_GenericSparseAttentionGrad.h
+[2026-08-14 14:44:27] -- Copied header: es_GenericSparseAttentionGrad_c.h
+[2026-08-14 14:44:27] -- Copied header: es_log.h
+[2026-08-14 14:44:27] -- Copied header: es_transformer_cust_ops.h
+[2026-08-14 14:44:27] -- Copied header: es_transformer_cust_ops_c.h
+[2026-08-14 14:44:27] -- Detecting CXX compiler ABI info - done
+[2026-08-14 14:44:27] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-08-14 14:44:27] -- Detecting CXX compile features
+[2026-08-14 14:44:27] -- Detecting CXX compile features - done
+[2026-08-14 14:44:27] [ 85%] Built target install_es_transformer_cust
+[2026-08-14 14:44:27] Looking in indexes: https://mirrors.huaweicloud.com/repository/pypi/simple
+[2026-08-14 14:44:27] Processing ./.
+[2026-08-14 14:44:27]   Installing build dependencies: started
+[2026-08-14 14:44:27] [ 85%] Built target ophost_transformer_opapi_obj
+[2026-08-14 14:44:27] [ 85%] Generating cust_opapi_stub.cpp
+[2026-08-14 14:44:27] [ 86%] Building CXX object CMakeFiles/cust_opapi.dir/cust_opapi_stub.cpp.o
+[2026-08-14 14:44:27] [ 87%] Linking CXX shared library libcust_opapi.so
+[2026-08-14 14:44:27] [ 87%] Built target cust_opapi
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp: In constructor ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling::GenericSparseAttentionGradArch35Tiling(gert::TilingContext*)’:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp:36:74: warning: declaration of ‘context_’ shadows a member of ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling’ [-Wshadow]
+   36 |     explicit GenericSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
+      |                                                     ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+In file included from /home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp:18:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/common/include/op_host/tiling_base.h:252:26: note: shadowed declaration is here
+  252 |     gert::TilingContext *context_ = nullptr;
+      |                          ^~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp: In constructor ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling::GenericSparseAttentionGradArch35Tiling(gert::TilingContext*)’:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp:36:74: warning: declaration of ‘context_’ shadows a member of ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling’ [-Wshadow]
+   36 |     explicit GenericSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
+      |                                                     ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/common/include/op_host/tiling_base.h:252:26: note: shadowed declaration is here
+  252 |     gert::TilingContext *context_ = nullptr;
+      |                          ^~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp: In constructor ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling::GenericSparseAttentionGradArch35Tiling(gert::TilingContext*)’:
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/attention/generic_sparse_attention_grad/op_host/arch35/generic_sparse_attention_grad_tiling_arch35.cpp:36:74: warning: declaration of ‘context_’ shadows a member of ‘optiling::GSAG_ARC35::GenericSparseAttentionGradArch35Tiling’ [-Wshadow]
+   36 |     explicit GenericSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
+      |                                                     ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+/home/cjz/ops-transformer/add_gsag/ops-transformer_2/common/include/op_host/tiling_base.h:252:26: note: shadowed declaration is here
+  252 |     gert::TilingContext *context_ = nullptr;
+      |                          ^~~~~~~~
+[2026-08-14 14:44:28] [ 87%] Built target ophost_transformer_tiling_obj
+[2026-08-14 14:44:28] [ 88%] Linking CXX shared library libcust_opmaster_rt2.0.so
+[2026-08-14 14:44:28] -- The Fortran compiler identification is unknown
+[2026-08-14 14:44:28]   Installing build dependencies: finished with status 'done'
+[2026-08-14 14:44:28]   Getting requirements to build wheel: started
+[2026-08-14 14:44:28] -- Performing Test standard_math_library_linked_to_automatically
+[2026-08-14 14:44:28] [ 88%] Built target cust_opmaster
+[2026-08-14 14:44:28] [ 88%] Generating compat/liboptiling.so
+[2026-08-14 14:44:28] [ 88%] Built target optiling_compat
+[2026-08-14 14:44:28] [ 90%] Generating binary/ascend950/gen/generic_sparse_attention_grad_ascend950_1.done
+[2026-08-14 14:44:28] [ 90%] Generating binary/ascend950/gen/generic_sparse_attention_grad_ascend950_0.done
+[2026-08-14 14:44:28] [ascend950] Generating GenericSparseAttentionGrad_2ce553b7a7f4c653636a812b63ab1f44 ...
+[2026-08-14 14:44:28] [ascend950] Generating GenericSparseAttentionGrad_3221dc9e2c0e107c9e7b7389506f5327 ...
+[2026-08-14 14:44:28] -- Performing Test standard_math_library_linked_to_automatically - Success
+[2026-08-14 14:44:28] -- Standard libraries to link to explicitly: none
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_WERROR
+[2026-08-14 14:44:28]   Getting requirements to build wheel: finished with status 'done'
+[2026-08-14 14:44:28]   Preparing metadata (pyproject.toml): started
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_WERROR - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_pedantic
+[2026-08-14 14:44:28]   Preparing metadata (pyproject.toml): finished with status 'done'
+[2026-08-14 14:44:28] Building wheels for collected packages: es_math
+[2026-08-14 14:44:28]   Building wheel for es_math (pyproject.toml): started
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_pedantic - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wall
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wall - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wextra
+[2026-08-14 14:44:28]   Building wheel for es_math (pyproject.toml): finished with status 'done'
+[2026-08-14 14:44:28]   Created wheel for es_math: filename=es_math-1.0.0-py3-none-any.whl size=3844 sha256=5bfd7a41e17c89739176242b955d1aec1ebdeb2732652d5674ae56fc47a44176
+[2026-08-14 14:44:28]   Stored in directory: /tmp/pip-ephem-wheel-cache-a9xvbpfd/wheels/25/9f/72/297e09ff79393af7b68736a93fdc44cd8db92d7c4c14030a18
+[2026-08-14 14:44:28] Successfully built es_math
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wextra - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wundef
+[2026-08-14 14:44:28] [ 90%] Built target generate_es_math_whl
+[2026-08-14 14:44:28] [ 91%] Installing ES package 'es_math' to /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/es_packages_math
+[2026-08-14 14:44:28] Installing ES package: es_math
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wundef - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wcastalign
+[2026-08-14 14:44:28] -- Copied header: es_Transpose.h
+[2026-08-14 14:44:28] -- Copied header: es_Transpose_c.h
+[2026-08-14 14:44:28] -- Copied header: es_log.h
+[2026-08-14 14:44:28] -- Copied header: es_math_ops.h
+[2026-08-14 14:44:28] -- Copied header: es_math_ops_c.h
+[2026-08-14 14:44:28] -- Copied wheel: es_math-1.0.0-py3-none-any.whl
+[2026-08-14 14:44:28] [ 91%] Built target install_es_math
+[2026-08-14 14:44:28] [ 91%] ES package 'es_math' build completed (single-file mode)
+[2026-08-14 14:44:28] [ 91%] Built target build_es_math
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wcastalign - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts
+[2026-08-14 14:44:28] [ 92%] ES package 'es_transformer_cust' build completed (single-file mode)
+[2026-08-14 14:44:28] [ 92%] Built target build_es_transformer_cust
+[2026-08-14 14:44:28] [ 92%] Building CXX object CMakeFiles/cust_proto.dir/autogen/exc/generic_sparse_attention_grad_proto.cpp.o
+[2026-08-14 14:44:28] [ 93%] Linking CXX shared library libcust_opsproto_rt2.0.so
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts - Success
+[2026-08-14 14:44:28] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor
+[2026-08-14 14:44:28] [ 95%] Built target cust_proto
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wpointerarith
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wpointerarith - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wwritestrings
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wwritestrings - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wformatsecurity
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wformatsecurity - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wshorten64to32
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wshorten64to32 - Failed
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wlogicalop
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wlogicalop - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wenumconversion
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wenumconversion - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wshadow
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wshadow - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wnopsabi
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wnopsabi - Success
+[2026-08-14 14:44:29] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros - Success
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_Wnolonglong
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_Wnolonglong - Success
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fnocommon
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fnocommon - Success
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fstrictaliasing
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fstrictaliasing - Success
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_wd981
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_wd981 - Failed
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_wd2304
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_wd2304 - Failed
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fnochecknew
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_fnochecknew - Success
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_OPENMP
+[2026-08-14 14:44:30] -- Performing Test COMPILER_SUPPORT_OPENMP - Success
+[2026-08-14 14:44:30] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[2026-08-14 14:44:30] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[2026-08-14 14:44:30] -- Found Threads: TRUE  
+[2026-08-14 14:44:30] -- Could NOT find CHOLMOD (missing: CHOLMOD_INCLUDES CHOLMOD_LIBRARIES) 
+[2026-08-14 14:44:30] -- Could NOT find UMFPACK (missing: UMFPACK_INCLUDES UMFPACK_LIBRARIES) 
+[2026-08-14 14:44:30] -- Could NOT find KLU (missing: KLU_INCLUDES KLU_LIBRARIES) 
+[2026-08-14 14:44:30] -- Could NOT find SuperLU (missing: SUPERLU_INCLUDES SUPERLU_LIBRARIES SUPERLU_VERSION_OK) (Required is at least version "4.0")
+[2026-08-14 14:44:30] -- Checking for one of the modules 'hwloc'
+[2026-08-14 14:44:30] -- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+[2026-08-14 14:44:30] -- Could NOT find SPQR (missing: SPQR_INCLUDES SPQR_LIBRARIES) 
+[2026-08-14 14:44:30] -- Could NOT find Accelerate (missing: Accelerate_INCLUDES Accelerate_LIBRARIES) 
+[2026-08-14 14:44:30] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-08-14 14:44:31] -- Performing Test COMPILER_SUPPORT_FASTMATH
+[2026-08-14 14:44:31] -- Performing Test COMPILER_SUPPORT_FASTMATH - Success
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-08-14 14:44:31] -- Could NOT find Boost (missing: Boost_DIR)
+[2026-08-14 14:44:31] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-08-14 14:44:31] -- ************************************************************
+[2026-08-14 14:44:31] -- ***    Eigen's unit tests configuration summary          ***
+[2026-08-14 14:44:31] -- ************************************************************
+[2026-08-14 14:44:31] -- 
+[2026-08-14 14:44:31] -- Build type:        Release
+[2026-08-14 14:44:31] -- Build site:        sz-blue-950pr-13-241
+[2026-08-14 14:44:31] -- Build string:      linux-6.8.0-136-generic-_-13.3.0-sse2-64bit
+[2026-08-14 14:44:31] -- Enabled backends:  
+[2026-08-14 14:44:31] -- Disabled backends: CHOLMOD,  UMFPACK,  KLU,  SuperLU,  PaStiX,  METIS,  SPQR,  Accelerate,  Qt4 support,  Boost.Multiprecision, 
+[2026-08-14 14:44:31] -- Default order:     Column-major
+[2026-08-14 14:44:31] -- Maximal matrix/vector size: 320
+[2026-08-14 14:44:31] -- SSE2:              Using architecture defaults
+[2026-08-14 14:44:31] -- SSE3:              Using architecture defaults
+[2026-08-14 14:44:31] -- SSSE3:             Using architecture defaults
+[2026-08-14 14:44:31] -- SSE4.1:            Using architecture defaults
+[2026-08-14 14:44:31] -- SSE4.2:            Using architecture defaults
+[2026-08-14 14:44:31] -- AVX:               Using architecture defaults
+INFO  DUCCFFT-NOTFOUND
+[2026-08-14 14:44:31] -- AVX2:              Using architecture defaults
+[2026-08-14 14:44:31] -- FMA:               Using architecture defaults
+[2026-08-14 14:44:31] -- AVX512:            Using architecture defaults
+[2026-08-14 14:44:31] -- AVX512DQ:          Using architecture defaults
+[2026-08-14 14:44:31] -- Altivec:           Using architecture defaults
+[2026-08-14 14:44:31] -- VSX:               Using architecture defaults
+[2026-08-14 14:44:31] -- MIPS MSA:          Using architecture defaults
+[2026-08-14 14:44:31] -- ARM NEON:          Using architecture defaults
+[2026-08-14 14:44:31] -- ARMv8 NEON:        Using architecture defaults
+[2026-08-14 14:44:31] -- S390X ZVECTOR:     Using architecture defaults
+[2026-08-14 14:44:31] -- LSX:               Using architecture defaults
+[2026-08-14 14:44:31] -- SYCL:              OFF
+[2026-08-14 14:44:31] -- CUDA:              OFF
+[2026-08-14 14:44:31] -- HIP:               OFF
+[2026-08-14 14:44:31] -- 
+[2026-08-14 14:44:31] CXX:               /usr/bin/c++
+[2026-08-14 14:44:31]  CXX_VERSION:       c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[2026-08-14 14:44:31]  CXX_FLAGS:          -pedantic -Wall -Wextra -Wundef -Wcast-align -Wchar-subscripts -Wnon-virtual-dtor -Wunused-local-typedefs -Wpointer-arith -Wwrite-strings -Wformat-security -Wlogical-op -Wenum-conversion -Wc++11-extensions -Wdouble-promotion -Wshadow -Wno-psabi -Wno-variadic-macros -Wno-long-long -fno-common -fstrict-aliasing -fno-check-new
+[2026-08-14 14:44:31]  Sparse lib flags:   
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-08-14 14:44:31] 
+[2026-08-14 14:44:31] -- ************************************************************
+[2026-08-14 14:44:31] -- Could NOT find GoogleHash (missing: GOOGLEHASH_INCLUDES GOOGLEHASH_COMPILE) 
+[2026-08-14 14:44:31] -- Could NOT find Adolc (missing: ADOLC_INCLUDES ADOLC_LIBRARIES) 
+[2026-08-14 14:44:31] -- Could NOT find MPFR (missing: MPFR_INCLUDES MPFR_LIBRARIES MPFR_VERSION_OK) (Required is at least version "1.0.0")
+[2026-08-14 14:44:31] -- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+[2026-08-14 14:44:31] -- Could NOT find FFTW (missing: FFTW_INCLUDES FFTW_LIBRARIES) 
+[2026-08-14 14:44:31] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-08-14 14:44:31] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-08-14 14:44:31] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-08-14 14:44:31] -- Qt4 not found, so disabling the mandelbrot and opengl demos
+[2026-08-14 14:44:31] -- Available targets (use: make TARGET):
+[2026-08-14 14:44:31] -- ------------+--------------------------------------------------------------
+[2026-08-14 14:44:31] -- Target      |   Description
+[2026-08-14 14:44:31] -- ------------+--------------------------------------------------------------
+[2026-08-14 14:44:31] -- install     | Install Eigen. Headers will be installed to:
+[2026-08-14 14:44:31] --             |     <CMAKE_INSTALL_PREFIX>/<INCLUDE_INSTALL_DIR>
+[2026-08-14 14:44:31] --             |   Using the following values:
+[2026-08-14 14:44:31] --             |     CMAKE_INSTALL_PREFIX: /usr/local
+[2026-08-14 14:44:31] --             |     INCLUDE_INSTALL_DIR:  include/eigen3
+[2026-08-14 14:44:31] --             |   Change the install location of Eigen headers using:
+[2026-08-14 14:44:31] --             |     cmake . -DCMAKE_INSTALL_PREFIX=yourprefix
+[2026-08-14 14:44:31] --             |   Or:
+[2026-08-14 14:44:31] --             |     cmake . -DINCLUDE_INSTALL_DIR=yourdir
+[2026-08-14 14:44:31] -- uninstall   | Remove files installed by the install target
+[2026-08-14 14:44:31] -- doc         | Generate the API documentation, requires Doxygen & LaTeX
+[2026-08-14 14:44:31] -- install-doc | Install the API documentation
+[2026-08-14 14:44:31] -- check       | Build and run the unit-tests. Read this page:
+[2026-08-14 14:44:31] --             |   http://eigen.tuxfamily.org/index.php?title=Tests
+[2026-08-14 14:44:31] -- ------------+--------------------------------------------------------------
+[2026-08-14 14:44:31] -- 
+[2026-08-14 14:44:31] -- 
+[2026-08-14 14:44:31] -- Configured Eigen 5.0.0-dev
+[2026-08-14 14:44:31] -- 
+[2026-08-14 14:44:31] -- Configuring done (4.3s)
+[2026-08-14 14:44:32] -- Generating done (0.9s)
+[2026-08-14 14:44:32] -- Build files have been written to: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/third_party/src/external_eigen-build
+[2026-08-14 14:44:32] [ 96%] No build step for 'external_eigen'
+[2026-08-14 14:44:32] [ 97%] Performing install step for 'external_eigen'
+[2026-08-14 14:44:32] [ 98%] Completed 'external_eigen'
+[2026-08-14 14:44:32] [ 98%] Built target external_eigen
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225081,python3):2026-08-14-14:44:29.130.865 [task_fail_callback_data_manager.cc:93] 2225081 TaskFailCallBackManager: Constructor.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225081,python3):2026-08-14-14:44:29.130.883 [xpu_task_fail_callback_data_manager.cc:59] 2225081 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[2026-08-14 14:44:33] Opc tool start working now, please wait for a moment.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225081,python3):2026-08-14-14:44:33.238.329 [xpu_task_fail_callback_data_manager.cc:64] 2225081 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225081,python3):2026-08-14-14:44:33.238.346 [task_fail_callback_data_manager.cc:98] 2225081 ~TaskFailCallBackManager: Destructor.
+[2026-08-14 14:44:33] [INFO] ATRACE(2225081,python3):2026-08-14-14:44:33.250.213 [stacktrace_signal.c:199](tid:2225081) unregister all signal handlers, can not capture signal.
+[2026-08-14 14:44:33] [ascend950] Generating GenericSparseAttentionGrad_3221dc9e2c0e107c9e7b7389506f5327 Done
+[2026-08-14 14:44:33] /usr/bin/gmake
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225079,python3):2026-08-14-14:44:29.144.314 [task_fail_callback_data_manager.cc:93] 2225079 TaskFailCallBackManager: Constructor.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225079,python3):2026-08-14-14:44:29.144.335 [xpu_task_fail_callback_data_manager.cc:59] 2225079 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[2026-08-14 14:44:33] Opc tool start working now, please wait for a moment.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225079,python3):2026-08-14-14:44:33.277.909 [xpu_task_fail_callback_data_manager.cc:64] 2225079 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
+[2026-08-14 14:44:33] [INFO] RUNTIME(2225079,python3):2026-08-14-14:44:33.277.927 [task_fail_callback_data_manager.cc:98] 2225079 ~TaskFailCallBackManager: Destructor.
+[2026-08-14 14:44:33] [INFO] ATRACE(2225079,python3):2026-08-14-14:44:33.291.118 [stacktrace_signal.c:199](tid:2225079) unregister all signal handlers, can not capture signal.
+[2026-08-14 14:44:33] [ 98%] Built target generic_sparse_attention_grad_ascend950_0
+[2026-08-14 14:44:33] [ascend950] Generating GenericSparseAttentionGrad_2ce553b7a7f4c653636a812b63ab1f44 Done
+[2026-08-14 14:44:33] /usr/bin/gmake
+[2026-08-14 14:44:33] [ 98%] Built target generic_sparse_attention_grad_ascend950_1
+[2026-08-14 14:44:33] [ 98%] Built target generic_sparse_attention_grad_ascend950
+[2026-08-14 14:44:33] [100%] Generating binary/ascend950/bin/binary_info_config.json
+[2026-08-14 14:44:33] [100%] Built target generic_sparse_attention_grad
+[2026-08-14 14:44:33] [100%] Built target ops_config_ascend950
+[2026-08-14 14:44:33] [100%] Built target ops_transformer_config
+[2026-08-14 14:44:33] [100%] Built target ops_transformer_kernel
+[2026-08-14 14:44:33] Run CPack packaging tool...
+[2026-08-14 14:44:33] CPack: Create package using External
+[2026-08-14 14:44:33] CPack: Install projects
+[2026-08-14 14:44:33] CPack: - Run preinstall target for: cann_ops-transformer
+[2026-08-14 14:44:35] CPack: - Install project: cann_ops-transformer []
+[2026-08-14 14:44:35] CPack: Create package
+[2026-08-14 14:44:35] 
+[2026-08-14 14:44:35] About to compress 18692 KB of data...
+[2026-08-14 14:44:35] Adding files to archive named "cann-ops-transformer-custom_linux-x86_64.run"...
+[2026-08-14 14:44:36] CRC: 1458648453
+[2026-08-14 14:44:36] SHA256: 79ab37e4087713bf4c5a661d08ee70cf68d787850797e6d86504e895de879214
+[2026-08-14 14:44:36] Skipping md5sum at user request
+[2026-08-14 14:44:36] 
+[2026-08-14 14:44:36] Self-extractable archive "cann-ops-transformer-custom_linux-x86_64.run" successfully created.
+[2026-08-14 14:44:36] Copy /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run/cann-ops-transformer-custom_linux-x86_64.run to /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/
+[2026-08-14 14:44:36] Copy /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run/cann-ops-transformer-custom_linux-x86_64.run to /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build_out/
+[2026-08-14 14:44:36] CPack: - package: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/cann-ops-transformer-custom_linux-x86_64.run.json generated.
+[2026-08-14 14:44:36] CPack: - package: /home/cjz/ops-transformer/add_gsag/ops-transformer_2/build/cann-ops-transformer-custom_linux-x86_64.run generated.

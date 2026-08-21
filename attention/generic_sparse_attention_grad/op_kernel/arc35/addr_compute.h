@@ -31,11 +31,14 @@ class AddrComputeModule {
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, __gm__ uint8_t *cuSeqQ, __gm__ uint8_t *cuSeqKv,
-                                __gm__ uint8_t *rsvdBlockIdx, __gm__ uint8_t *rsvdBlockCount, __gm__ uint8_t *metadata)
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *rsvdBlockIdx,
+                                __gm__ uint8_t *rsvdBlockCount, __gm__ uint8_t *metadata)
     {
         tilingData_ = tilingData;
         cuSeqQ_ = cuSeqQ;
         cuSeqKv_ = cuSeqKv;
+        sequsedQ_ = sequsedQ;
+        sequsedKv_ = sequsedKv;
         rsvdBlockIdx_ = rsvdBlockIdx;
         rsvdBlockCount_ = rsvdBlockCount;
         metadata_ = reinterpret_cast<__gm__ int64_t *>(metadata);
@@ -107,8 +110,8 @@ private:
             if constexpr (INPUT_LAYOUT == TND) {
                 curQPrefix_ = GetSeqPrefix(curB_, cuSeqQ_);
                 curKvPrefix_ = GetSeqPrefix(curB_, cuSeqKv_);
-                curActS1_ = GetSeqLen(curB_, cuSeqQ_);
-                curActS2_ = GetSeqLen(curB_, cuSeqKv_);
+                curActS1_ = GetSeqUsedLen(curB_, sequsedQ_, cuSeqQ_);
+                curActS2_ = GetSeqUsedLen(curB_, sequsedKv_, cuSeqKv_);
             } else {
                 curQPrefix_ = 0;
                 curKvPrefix_ = 0;
@@ -163,6 +166,7 @@ private:
         info.cur_kv_seq_len = static_cast<int32_t>(curActS2_);
         info.s1Len = m;
         info.s2Len = curKvBlockLen_;
+        // Align with BSAG: RoundUp(m, 16) for NZ fractal / Fixpipe mSize.
         info.s1LenAlign = RoundUp(static_cast<int64_t>(m), static_cast<int64_t>(16));
         info.s2LenAlign = RoundUp(static_cast<int64_t>(curKvBlockLen_), static_cast<int64_t>(16));
         info.sparseIdxOffset = curIdxBase_ + s1Offset_;
@@ -200,6 +204,8 @@ private:
     const TILING_CLASS *tilingData_ { nullptr };
     __gm__ uint8_t *cuSeqQ_ { nullptr };
     __gm__ uint8_t *cuSeqKv_ { nullptr };
+    __gm__ uint8_t *sequsedQ_ { nullptr };
+    __gm__ uint8_t *sequsedKv_ { nullptr };
     __gm__ uint8_t *rsvdBlockIdx_ { nullptr };
     __gm__ uint8_t *rsvdBlockCount_ { nullptr };
     __gm__ int64_t *metadata_ { nullptr };

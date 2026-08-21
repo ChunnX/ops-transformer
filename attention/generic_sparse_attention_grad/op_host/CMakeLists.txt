@@ -9,6 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(generic_sparse_attention_grad_depends attention/generic_sparse_attention_grad_metadata CACHE INTERNAL
+    "Dependencies for generic_sparse_attention_grad")
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         generic_sparse_attention_grad_def.cpp
@@ -23,6 +26,12 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
 endif()
+
+# Device printf is compiled out unless ASCENDC_DUMP!=0.
+add_ops_compile_options(
+        OP_NAME GenericSparseAttentionGrad
+        OPTIONS -DASCENDC_DUMP=1
+)
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(

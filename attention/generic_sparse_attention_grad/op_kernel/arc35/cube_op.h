@@ -57,12 +57,20 @@ private:
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
     GlobalTensor<int32_t> sparse_idx_gm_;
+    GlobalTensor<float> dq_sel_workspace_;
+    LocalTensor<float> dq_sel_row_l1_;
     int32_t q_token_stride_ { 0 };
+    int32_t base_m_ { 128 };
+    int64_t dq_sel_slot_elems_ { 0 };
 
 public:
     __aicore__ inline CubeOp(){};
     __aicore__ inline void Init(const TILING_CLASS *tilingData, TPipe *tPipe, TBuf<TPosition::A1> &l1_buffer,
-                                uint32_t l1_offset, __gm__ uint8_t *rsvdBlockIdx = nullptr)
+                                uint32_t l1_offset, const LocalTensor<INPUT_TYPE> &query_l1_tensor_ping,
+                                const LocalTensor<INPUT_TYPE> &query_l1_tensor_pong,
+                                const LocalTensor<INPUT_TYPE> &dy_l1_tensor_ping,
+                                const LocalTensor<INPUT_TYPE> &dy_l1_tensor_pong,
+                                __gm__ uint8_t *rsvdBlockIdx = nullptr, __gm__ uint8_t *workspace = nullptr)
     {
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
@@ -72,6 +80,7 @@ public:
         this->kv_head_num_ = tilingData->kvHeadNum;
         this->head_dim_ = tilingData->headDim;
         this->head_dim_align_ = RoundUp(head_dim_, 16);
+        this->base_m_ = static_cast<int32_t>(tilingData->baseM);
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
         if constexpr (INPUT_LAYOUT == BSND) {
@@ -91,11 +100,10 @@ public:
         tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_c_buffer_, L0_C_SIZE);
-        // query_l1
-        query_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
-        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
-        query_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
-        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        // Q/dO L1 is allocated by the parent kernel because AIV0/AIV1 fill
+        // it through UB before AIC starts MM12.
+        query_l1_tensor_ping_ = query_l1_tensor_ping;
+        query_l1_tensor_pong_ = query_l1_tensor_pong;
         // key_l1
         key_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
@@ -106,11 +114,11 @@ public:
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
-        // dy_l1
-        dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
-        dy_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        dy_l1_tensor_ping_ = dy_l1_tensor_ping;
+        dy_l1_tensor_pong_ = dy_l1_tensor_pong;
+        // One-row bounce buffer for dQ_sel GM → L1 → AtomicAdd GM scatter.
+        dq_sel_row_l1_ = l1_buffer.GetWithOffset<float>(head_dim_align_, l1_offset);
+        l1_offset += head_dim_align_ * sizeof(float);
         // l0
         l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_a_tensor_pong_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
@@ -127,6 +135,14 @@ public:
         q_token_stride_ = q_stride_;
         if (rsvdBlockIdx != nullptr) {
             sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
+        }
+        if (workspace != nullptr) {
+            // Two ping-pong slots so Vec can scatter last tile while Cube Fixpipes current.
+            const int64_t selElems = static_cast<int64_t>(base_m_) * head_dim_align_;
+            dq_sel_workspace_.SetGlobalBuffer(
+                (__gm__ float *)(workspace + tilingData->dqSelWorkspaceOffset) + GetBlockIdx() * 2 * selElems,
+                2 * selElems);
+            dq_sel_slot_elems_ = selElems;
         }
     }
 
@@ -180,10 +196,9 @@ public:
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
         if (runTimeInfo.use_sparse_gather) {
-            GatherSparseRowsToL1(queryGm, l1_a_tensor, runTimeInfo);
-            // Force MM12 to reuse L1 A (already gathered); still copy KV when needed
+            // AIV0/AIV1 have already gathered Q through their MM1 UB scratch
+            // buffer and converted it to NZ in this L1 ping/pong slot.
             RunTimeInfo infoCopy = runTimeInfo;
-            // Pass a dummy GM; load path uses L1 for A via modified ComputeMM12Sparse
             ComputeMM12Sparse(l1_a_tensor, keyGm[runTimeInfo.keyGmOffset], l1_b_tensor, mm1OutUb, infoCopy);
         } else {
             ComputeMM12(queryGm[runTimeInfo.queryGmOffset], keyGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
@@ -192,16 +207,27 @@ public:
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
+    // todo:test
+    __aicore__ inline void GsagCubeDbg(int32_t step, const RunTimeInfo &runTimeInfo, int32_t copyKv) const
+    {
+        AscendC::printf("[GSAG-C] blk=%d step=%d m=%d n=%d ma=%d na=%d kv=%d pp=%d\n",
+                        static_cast<int32_t>(GetBlockIdx()), step, static_cast<int32_t>(runTimeInfo.s1Len),
+                        static_cast<int32_t>(runTimeInfo.s2Len), static_cast<int32_t>(runTimeInfo.s1LenAlign),
+                        static_cast<int32_t>(runTimeInfo.s2LenAlign), copyKv, event_ping_pong_flag);
+    }
+
     __aicore__ inline void SendMatmulDyV(const GlobalTensor<INPUT_TYPE> &dyGm, const GlobalTensor<INPUT_TYPE> &valueGm,
                                          LocalTensor<float> &mm2OutUb, const RunTimeInfo &runTimeInfo,
                                          const uint32_t ping_pong_idx)
     {
+        GsagCubeDbg(320, runTimeInfo, runTimeInfo.need_copy_kv);
         LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
 
         if (runTimeInfo.use_sparse_gather) {
-            GatherSparseRowsToL1(dyGm, l1_a_tensor, runTimeInfo);
+            // AIV0/AIV1 have already gathered dO through their MM2 UB scratch
+            // buffer and converted it to NZ in this L1 ping/pong slot.
             RunTimeInfo infoCopy = runTimeInfo;
             infoCopy.need_copy_kv = 0; // KV already loaded in SendMatmulQK for same ping if shared
             // Value may still need first copy when need_copy_kv was set on QK
@@ -213,6 +239,7 @@ public:
             ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                         mm2OutUb, runTimeInfo);
         }
+        GsagCubeDbg(321, runTimeInfo, runTimeInfo.need_copy_kv);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -231,13 +258,12 @@ public:
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
         if (runTimeInfo.use_sparse_gather) {
-            // Design §2.5: dQ_sel = dS @ K, then Scatter AtomicAdd by idx
-            ComputeMMDQSparse(ds_l1_tensor, l1_b_tensor, outGm, runTimeInfo);
+            // Design §2.5: dQ_sel = dS @ K, then Vector Scatter AtomicAdd by idx
+            ComputeMMDQSparse(ds_l1_tensor, l1_b_tensor, outGm, runTimeInfo, ping_pong_idx);
         } else {
             ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
         }
         event_ping_pong_flag = 1 - event_ping_pong_flag;
-        (void)ping_pong_idx;
     }
 
     __aicore__ inline void SendMatmulDk(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
@@ -274,21 +300,26 @@ private:
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
 
+        GsagCubeDbg(501, runTimeInfo, runTimeInfo.need_copy_kv);
         WAIT_FLAG(M, MTE1, evnet_id);
+        GsagCubeDbg(502, runTimeInfo, runTimeInfo.need_copy_kv);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);
         WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
         load_data_l1_2_l0_nz(l0_a_tensor, l1_a_tensor, mProcessAlign, head_dim_align_);
+        GsagCubeDbg(503, runTimeInfo, runTimeInfo.need_copy_kv);
         if (runTimeInfo.need_copy_kv) {
             load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
                                            head_dim_align_, kv_stride_);
         } else {
             load_data_l1_2_l0_nz(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
         }
+        GsagCubeDbg(504, runTimeInfo, runTimeInfo.need_copy_kv);
 
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
         WAIT_FLAG(FIX, M, evnet_id);
+        GsagCubeDbg(505, runTimeInfo, runTimeInfo.need_copy_kv);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
@@ -300,15 +331,17 @@ private:
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.mSize = mProcessAlign;
-        fixpipeParams.nSize = nProcessAlign;
-        fixpipeParams.srcStride = mProcessAlign;
-        fixpipeParams.dstStride = nProcessAlign;
+        // Same as BSAG: Fixpipe mSize/srcStride use s1LenAlign (= RoundUp(m, 16)).
+        fixpipeParams.mSize = static_cast<uint16_t>(mProcessAlign);
+        fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
+        fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
+        fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
         SET_FLAG(FIX, M, evnet_id);
+        GsagCubeDbg(506, runTimeInfo, runTimeInfo.need_copy_kv);
     }
 
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
@@ -350,10 +383,11 @@ private:
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.mSize = mProcessAlign;
-        fixpipeParams.nSize = nProcessAlign;
-        fixpipeParams.srcStride = mProcessAlign;
-        fixpipeParams.dstStride = nProcessAlign;
+        // Same as BSAG ComputeMM12: Fixpipe mSize/srcStride = mProcessAlign (RoundUp(m, 16)).
+        fixpipeParams.mSize = static_cast<uint16_t>(mProcessAlign);
+        fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
+        fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
+        fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
@@ -454,7 +488,8 @@ private:
      */
     __aicore__ inline void ComputeMMDQSparse(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                              const LocalTensor<INPUT_TYPE> &l1_b_tensor,
-                                             const GlobalTensor<float> &outGm, const RunTimeInfo &runTimeInfo)
+                                             const GlobalTensor<float> &outGm, const RunTimeInfo &runTimeInfo,
+                                             const uint32_t ping_pong_idx)
     {
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
@@ -482,20 +517,18 @@ private:
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        AscendC::SetAtomicType<float>();
-        AscendC::FixpipeParamsV220 fixpipeParamsV220;
-        fixpipeParamsV220.mSize = 1;
-        fixpipeParamsV220.nSize = head_dim_;
-        fixpipeParamsV220.srcStride = mProcessAlign;
-        fixpipeParamsV220.dstStride = q_stride_;
-        fixpipeParamsV220.unitFlag = 3;
-        for (int32_t r = 0; r < mProcess; ++r) {
-            const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
-            const int64_t gmOff = GetSparseTokenGmOffset(runTimeInfo, qTok);
-            AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[gmOff], l0_c_tensor[r], fixpipeParamsV220);
-        }
-        AscendC::SetAtomicNone();
+        // Fixpipe full dQ_sel [mAlign, D] into ping-pong scratch slot for Vector scatter.
+        AscendC::FixpipeParamsV220 fixToSel;
+        fixToSel.mSize = static_cast<uint16_t>(mProcessAlign);
+        fixToSel.nSize = static_cast<uint16_t>(head_dim_);
+        fixToSel.srcStride = static_cast<uint16_t>(mProcessAlign);
+        fixToSel.dstStride = static_cast<uint32_t>(head_dim_);
+        fixToSel.unitFlag = 3;
+        const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_slot_elems_;
+        AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(dq_sel_workspace_[slotOff], l0_c_tensor, fixToSel);
         SET_FLAG(FIX, M, evnet_id);
+        (void)outGm;
+        (void)mProcess;
     }
 
     __aicore__ inline void load_data_gm_2_l1(const LocalTensor<INPUT_TYPE> &dstL1Tensor,
@@ -520,7 +553,9 @@ private:
                                                 const int32_t kSizeAlign)
     {
         /*
-         * Load 左矩阵非转置 or 右矩阵转置
+         * L1 NZ layout from AIV CopyQAndDoutToL1 / load_data_gm_2_l1:
+         * [K1, M_align, C0], M_align = s1LenAlign (multiple of 16, same as BSAG).
+         * srcStride / mStep are in 16-row fractal units.
          */
         AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.mStartPosition = 0;

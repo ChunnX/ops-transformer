@@ -37,6 +37,16 @@ static constexpr uint32_t FLAG_C2_V2 = 1;
 static constexpr uint32_t FLAG_V1_C3 = 2;
 static constexpr uint32_t FLAG_V2_C45 = 3;
 static constexpr uint32_t FLAG_CUBE_POST = 4;
+// Cube → Vec: Cube finished prior work and is about to Wait gather (taskId>0).
+// Vec SoftmaxGrad of the previous task blocks on this before next gather so
+// Cube's mode-4 Wait is armed before Vec Set (avoids lost wakeup).
+static constexpr uint32_t FLAG_C_MM345_DONE = 5;
+// Ping-pong gather sync (FAG-style IDs 7/9): Q/dO L1 handoff Vector → Cube.
+static constexpr uint32_t FLAG_V_GATHER_C_PING = 7;
+static constexpr uint32_t FLAG_V_GATHER_C_PONG = 9;
+// FAG arch35: mode=4 + flag / flag+16 for AIV0/AIV1 subblock isolation.
+static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
+static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;
 
 struct ConstInfo {
     int32_t q_head_num { 0 };
@@ -103,18 +113,29 @@ inline __aicore__ T RoundUp(const T val, const T align)
 
 __aicore__ inline int64_t GetSeqLen(int32_t i, __gm__ uint8_t *seqLen)
 {
-    if (i == 0) {
-        return ((__gm__ int64_t *)seqLen)[0];
+    if (seqLen == nullptr) {
+        return 0;
     }
-    return ((__gm__ int64_t *)seqLen)[i] - ((__gm__ int64_t *)seqLen)[i - 1];
+    const __gm__ int64_t *cu = (__gm__ int64_t *)seqLen;
+    return cu[i + 1] - cu[i];
 }
 
 __aicore__ inline int64_t GetSeqPrefix(int32_t i, __gm__ uint8_t *seqLen)
 {
-    if (i <= 0) {
+    if (i <= 0 || seqLen == nullptr) {
         return 0;
     }
-    return ((__gm__ int64_t *)seqLen)[i - 1];
+    return ((__gm__ int64_t *)seqLen)[i];
+}
+
+// seqused stores per-batch compute lengths; cu stores packed-TND offsets.
+// If seqused is absent, the effective compute length equals the packed length.
+__aicore__ inline int64_t GetSeqUsedLen(int32_t i, __gm__ uint8_t *seqused, __gm__ uint8_t *cuSeqLen)
+{
+    if (seqused != nullptr) {
+        return static_cast<int64_t>(((__gm__ int32_t *)seqused)[i]);
+    }
+    return GetSeqLen(i, cuSeqLen);
 }
 
 template <uint32_t INPUT_LAYOUT>

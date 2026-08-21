@@ -38,6 +38,7 @@ TILING_DATA_FIELD_DEF(uint64_t, dqWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dkWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dvWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, sftgWorkspaceOffset);
+TILING_DATA_FIELD_DEF(uint64_t, dqSelWorkspaceOffset);
 TILING_DATA_FIELD_DEF(float, softmaxScale);
 TILING_DATA_FIELD_DEF(uint32_t, sftgTmpSpaceSize);
 TILING_DATA_FIELD_DEF(uint32_t, BlockX);
@@ -50,12 +51,6 @@ TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradFrontTilingData);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1000, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1001, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1002, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1003, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1004, GenericSparseAttentionGradTilingDataArch35)
-REGISTER_TILING_DATA_CLASS(GenericSparseAttentionGrad_1005, GenericSparseAttentionGradTilingDataArch35)
 
 struct GenericSparseAttentionGradCompileInfo {
     uint32_t inputDataByte = 2;

@@ -71,7 +71,8 @@ aclnnStatus aclnnGenericSparseAttentionGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout, const aclTensor *out,
     const aclTensor *lse, const aclTensor *rsvdBlockIdx, const aclTensor *rsvdBlockCount, const aclTensor *metadata,
     const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional,
-    const aclTensor *cuSeqLengthsKvOptional, const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
+    const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+    const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
     char *kvInputLayout, double scaleValue, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
     int64_t windowSizeRight, aclTensor *dQuery, aclTensor *dKey, aclTensor *dValue, uint64_t *workspaceSize,
     aclOpExecutor **executor)
@@ -79,7 +80,8 @@ aclnnStatus aclnnGenericSparseAttentionGradGetWorkspaceSize(
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     L2_DFX_PHASE_1(aclnnGenericSparseAttentionGrad,
                    DFX_IN(query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMaskOptional,
-                          cuSeqLengthsOptional, cuSeqLengthsKvOptional, blockShape, isPackedGqa, qInputLayout,
+                          cuSeqLengthsOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
+                          blockShape, isPackedGqa, qInputLayout,
                           kvInputLayout, scaleValue, maskType, softmaxPrecision, windowSizeLeft, windowSizeRight),
                    DFX_OUT(dQuery, dKey, dValue));
 
@@ -117,10 +119,21 @@ aclnnStatus aclnnGenericSparseAttentionGradGetWorkspaceSize(
         cuKvC = l0op::Contiguous(cuSeqLengthsKvOptional, uniqueExecutor.get());
         CHECK_RET(cuKvC != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
+    const aclTensor *sequsedQC = nullptr;
+    if (sequsedQOptional != nullptr) {
+        sequsedQC = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedQC != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    const aclTensor *sequsedKvC = nullptr;
+    if (sequsedKvOptional != nullptr) {
+        sequsedKvC = l0op::Contiguous(sequsedKvOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedKvC != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     auto outs = l0op::GenericSparseAttentionGrad(
-        queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC, attenC, cuQC, cuKvC, blockShape, isPackedGqa,
-        qInputLayout, kvInputLayout, scaleValue, maskType, softmaxPrecision, windowSizeLeft, windowSizeRight,
+        queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC, attenC, cuQC, cuKvC, sequsedQC, sequsedKvC,
+        blockShape, isPackedGqa, qInputLayout, kvInputLayout, scaleValue, maskType, softmaxPrecision,
+        windowSizeLeft, windowSizeRight,
         uniqueExecutor.get());
     CHECK_RET(outs[0] != nullptr && outs[1] != nullptr && outs[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
