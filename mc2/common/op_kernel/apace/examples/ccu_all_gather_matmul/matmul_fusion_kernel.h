@@ -25,7 +25,13 @@
 
 #pragma once
 
+// 与 Blaze block_mmad_qbmm_mx.h 一致的条件 include，确保 fp8_e4m3fn_t / fp8_e8m0_t 可用
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#include "kernel_operator_intf.h"
+#endif
 
 // ---- Blaze MXFP8 matmul 组件 ----
 #ifndef K_MAX_SHAPE_DIM
@@ -78,8 +84,8 @@ struct alignas(8) MatmulTilingData {
 // 使用 MatmulWithScaleMx dispatch policy + BlockSchedulerQuantBatchMatmulV3 scheduler
 // GemmUniversal 的 MX 特化（kernel_qbmm_mx.h）内置 if ASCEND_IS_AIV { return; }，天然纯 AIC
 // ============================================================================
-using MmTypeA = AscendC::fp8_e4m3fn_t;
-using MmTypeB = AscendC::fp8_e4m3fn_t;
+using MmTypeA = fp8_e4m3fn_t;
+using MmTypeB = fp8_e4m3fn_t;
 using MmTypeC = bfloat16_t;
 using MmBiasType = float;
 using MmLayoutA = AscendC::Te::NDExtLayoutPtn;  // ND row-major
