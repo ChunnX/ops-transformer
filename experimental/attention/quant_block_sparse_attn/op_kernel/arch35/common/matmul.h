@@ -638,11 +638,11 @@ template <bool LOAD_B, bool RELEASE_B, typename A, typename B, typename C, uint3
           uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
           typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
           typename L0BDType = B>
-__aicore__ inline void MxMatmulFullReuseB(
-    const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb, L0BType &bL0BuffsDb,
-    const LocalTensor<C> &cL0Tensor, MMParam &param,
-    const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
+__aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+                                          L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor,
+                                          MMParam &param,
+                                          const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                          const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     static_assert(LOAD_B || RELEASE_B, "a reused MX L0B tile must be loaded or released");
 
@@ -651,8 +651,7 @@ __aicore__ inline void MxMatmulFullReuseB(
     LocalTensor<L0ADType> l0aTensor = l0aBuffer.GetTensor<L0ADType>();
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(l0aTensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
-                                     param.singleM);
+        LoadDataToL0AMx<A, L0ADType>(l0aTensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
     } else
 #endif
     {
@@ -667,8 +666,7 @@ __aicore__ inline void MxMatmulFullReuseB(
         LocalTensor<L0BDType> l0bTensor = l0bBuffer.GetTensor<L0BDType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(l0bTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK,
-                                         param.singleN);
+            LoadDataToL0BMx<B, L0BDType>(l0bTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
         } else
 #endif
         {
