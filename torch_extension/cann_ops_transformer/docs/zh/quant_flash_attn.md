@@ -209,11 +209,11 @@ cann_ops_transformer.quant_flash_attn(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的Q | float8_e4m3fn | ND | (Q_T, Q_N, D) | × |
-| k | Tensor | 必选 | <ul><li>公式中的K</li><li>仅PA场景支持非连续tensor</li></ul> | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √ |
-| v | Tensor | 必选 | <ul><li>公式中的V</li><li>仅PA场景支持非连续tensor</li></ul> | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √ |
+| k | Tensor | 必选 | <ul><li>公式中的K</li><li>仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验</li></ul> | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √ |
+| v | Tensor | 必选 | <ul><li>公式中的V</li><li>仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验</li></ul> | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √ |
 | q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0/float32 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li><li>(Q_N, Q_T)</li></ul> | × |
-| k_descale | Tensor | 必选 | <ul><li>k的反量化scale</li><li>仅PA场景支持非连续tensor</li></ul> | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li><li>(Bn, KV_N, Bs)</li></ul> | √ |
-| v_descale | Tensor | 必选 | <ul><li>v的反量化scale</li><li>仅PA场景支持非连续tensor</li></ul> | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li><li>(KV_N,)</li></ul> | √ |
+| k_descale | Tensor | 必选 | <ul><li>k的反量化scale</li><li>仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验</li></ul> | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li><li>(Bn, KV_N, Bs)</li></ul> | √ |
+| v_descale | Tensor | 必选 | <ul><li>v的反量化scale</li><li>仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验</li></ul> | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li><li>(KV_N,)</li></ul> | √ |
 | quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
 | block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, Bn) | × |
 | cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
@@ -961,7 +961,7 @@ mask_mode参数解释
 >
 > 算子不校验 `seqused_kv` 中的最大值是否与 `max_seqlen_kv` 一致。若同时传入这两个参数，用户需自行保证 `max(seqused_kv) <= max_seqlen_kv`。
 
-#### Paged Attention参数组
+#### Paged Attention参数组 <a name="Paged Attention参数组"></a>
 
 当block_table不为空时，开启Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px">
