@@ -102,6 +102,9 @@ struct MoeV3Arch35CountingSortTilingData {
     int64_t csColsLoops{0};         // Phase C gather 列方向循环数
     int64_t csLastLoopCols{0};      // Phase C gather 尾轮列数
     int64_t maxPerLoopEntries{0};   // CutOrigin 单 chunk 处理上限
+    int64_t csAggrEnable{0};        // 聚合搬出开关：0=逐行(现状), 1=按专家k行切批
+    int64_t csAggrOutRows{0};       // 搬出聚合 UB 容纳行数 k
+    int64_t csAggrOutBufBytes{0};  // 搬出聚合区字节数 = k * colsAligned * sizeof(T)
 };
 
 // Arch35用的TilingData
