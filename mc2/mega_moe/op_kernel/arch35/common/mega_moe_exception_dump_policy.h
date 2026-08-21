@@ -46,23 +46,14 @@ __aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine,
 {
     engine.Init(dumpBase, tilingGM);
     engine.UpdateStage(Stage::INIT);
-    constexpr size_t syncSlotBytes = MegaMoeImpl::INT_CACHELINE * sizeof(int32_t);
-    engine.Dump(peermemInfo.rankSyncInWorldPtr, tilingData->epWorldSize, sizeof(int32_t), syncSlotBytes);
-    engine.Dump(peermemInfo.rankSyncInWorldPtr + MegaMoeImpl::AIV_SYNC_COUNT_OFFSET, tilingData->blockAivNum,
-                sizeof(int32_t), syncSlotBytes);
-    const size_t maskSlotSize = maskAlignSize + MegaMoeImpl::ALIGN_32;
-    engine.Dump(peermemInfo.maskRecvPtr + maskAlignSize,
-                static_cast<size_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize, sizeof(int32_t),
-                maskSlotSize);
     engine.Dump(epRankIdAddr, sizeof(uint32_t));
-    if (tilingData->topoType == MegaMoeImpl::TOPO_TYPE_MTE) {
-        const size_t maskRecvSize = static_cast<size_t>(
-            Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->moeExpertPerRank) *
-                                     static_cast<int64_t>(tilingData->epWorldSize) * static_cast<int64_t>(maskSlotSize),
-                                 static_cast<int64_t>(MegaMoeImpl::ALIGN_512)));
-        engine.Dump(peermemInfo.rankSyncInWorldPtr, static_cast<size_t>(MegaMoeImpl::PEERMEM_DATA_OFFSET));
-        engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
-    }
+    const size_t maskSlotSize = maskAlignSize + MegaMoeImpl::ALIGN_32;
+    const size_t maskRecvSize = static_cast<size_t>(
+        Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->moeExpertPerRank) *
+                                 static_cast<int64_t>(tilingData->epWorldSize) * static_cast<int64_t>(maskSlotSize),
+                             static_cast<int64_t>(MegaMoeImpl::ALIGN_512)));
+    engine.Dump(peermemInfo.rankSyncInWorldPtr, static_cast<size_t>(MegaMoeImpl::PEERMEM_DATA_OFFSET));
+    engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
 }
 
 static_assert(MC2ExceptionDump::DUMP_HEADER_REGION_SIZE + MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
