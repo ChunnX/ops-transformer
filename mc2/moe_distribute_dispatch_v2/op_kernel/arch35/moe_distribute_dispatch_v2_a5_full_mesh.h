@@ -409,7 +409,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     expertPerSizeOnWin_ = axisMaxBS_ * hCommuSize_;
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
-    useAllCoreCount_ = axisBS_ < ALL_CORE_COUNT_BS_THRESHOLD;
+    useAllCoreCount_ = axisMaxBS_ < ALL_CORE_COUNT_BS_THRESHOLD;
+    useSerialMode_ = axisMaxBS_ < SERIAL_MODE_BS_THRESHOLD;
     if (useAllCoreCount_) {
         // 小BS时全部核分摊专家计数，CumSum核只按接收状态数分配
         aivUsedCumSum_ = Ceil(rscvStatusNum_, CUMSUM_STATUS_PER_CORE);
@@ -424,6 +425,12 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     aivUsedCumSum_ = (aivUsedCumSum_ >= rscvStatusNum_) ? rscvStatusNum_ : aivUsedCumSum_;
     if (useAllCoreCount_) {
         uint32_t countNumPerCore = Ceil(totalExpertNum_, aivNum_);
+        if (useSerialMode_) {
+            uint32_t rankNumPerCore = Ceil(epWorldSize_, aivNum_);
+            uint32_t expertNumPerRank = moeExpertNumPerRank_ > 1U ? moeExpertNumPerRank_ : 1U;
+            uint32_t serialCountNumPerCore = rankNumPerCore * expertNumPerRank;
+            countNumPerCore = countNumPerCore > serialCountNumPerCore ? countNumPerCore : serialCountNumPerCore;
+        }
         statusCntAlign_ = Ceil(countNumPerCore, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
     } else {
         statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
@@ -436,7 +443,6 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
     }
     moeUsedAivNum_ = aivUsedAllToAll_ - sharedUsedAivNum_;
-    useSerialMode_ = (axisBS_ < SERIAL_MODE_BS_THRESHOLD);
     if (useSerialMode_) {
         aivUsedAllToAll_ = aivNum_;
         moeUsedAivNum_ = aivNum_ - sharedUsedAivNum_;
@@ -1719,9 +1725,18 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalAndSendCntSerial()
 {
-    uint32_t startExpertId, endExpertId, sendExpertNum;
-    SplitToCore(totalExpertNum_, aivNum_, startExpertId, endExpertId, sendExpertNum, true);
-    if (sendExpertNum > 0) {
+    uint32_t startRankId, endRankId, sendRankNum;
+    SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum, true);
+    uint32_t startExpertId = startRankId;
+    if (startRankId >= sharedExpertRankNum_) {
+        startExpertId = sharedExpertRankNum_ + (startRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+    }
+    uint32_t endExpertId = endRankId;
+    if (endRankId >= sharedExpertRankNum_) {
+        endExpertId = sharedExpertRankNum_ + (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+    }
+    uint32_t sendExpertNum = endExpertId - startExpertId;
+    if (sendRankNum > 0) {
         uint32_t maskCnt = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
         // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
         uint64_t mask[2] = {0x101010101010101, 0};
@@ -1730,42 +1745,37 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusCntAlign_ / 8, 1,
                            8); // 0x3F800000为float的1 8为一次操作8个block
         PipeBarrier<PIPE_ALL>();
-        for (uint32_t expertId = startExpertId; expertId < endExpertId; ++expertId) {
-            int32_t expertCnt = CalExpertCnt(expertId, maskCnt);
+        for (uint32_t expertId = startExpertId; expertId < endExpertId && expertId < sharedExpertRankNum_; ++expertId) {
+            int32_t expertCnt = 0;
+            if ((activeMaskBsCnt_ > 0) && (expertId % rankNumPerSharedExpert_ == epRankId_ % rankNumPerSharedExpert_)) {
+                expertCnt = activeMaskBsCnt_;
+            }
             // 一个block有8个int32的元素，第一个元素为flag位，第二个为发送token数
             int32_t cntPosIndex = (expertId - startExpertId) * UB_ALIGN_DATA_COUNT + 1;
             statusTensor_.SetValue(cntPosIndex, expertCnt);
         }
+        if (sendToMoeExpTokenCnt_ > 0) {
+            for (uint32_t index = 0; index < maskCnt; ++index) {
+                int32_t moeExpertId = validExpertIdsTensor_.GetValue(index);
+                if ((moeExpertId < 0) || (moeExpertId >= static_cast<int32_t>(moeExpertNum_))) {
+                    continue;
+                }
+                int32_t expertId = moeExpertId + sharedExpertRankNum_;
+                if ((expertId >= static_cast<int32_t>(startExpertId)) &&
+                    (expertId < static_cast<int32_t>(endExpertId))) {
+                    int32_t cntPosIndex = (expertId - startExpertId) * UB_ALIGN_DATA_COUNT + 1;
+                    statusTensor_.SetValue(cntPosIndex, statusTensor_.GetValue(cntPosIndex) + 1);
+                }
+            }
+        }
     }
-    // 所有核完成token发送和count计算后，再统一发布count
+    // 本核count计算完成后立即发布
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
     if (sendExpertNum == 0) {
         return;
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    if (!hasElasticInfoFlag_) {
-        SendExpertCntRange(startExpertId, endExpertId);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        return;
-    }
-
-    GlobalTensor<int32_t> rankGMTensor;
-    for (uint32_t expertId = startExpertId; expertId < endExpertId; ++expertId) {
-        uint32_t dstRankId = expertId;
-        uint32_t offset = STATE_OFFSET * epRankId_;
-        if (expertId >= sharedExpertRankNum_) {
-            dstRankId = ((expertId - sharedExpertRankNum_) / moeExpertNumPerRank_ + sharedExpertRankNum_);
-            offset += ((expertId - sharedExpertRankNum_) % moeExpertNumPerRank_ * epWorldSize_ * STATE_OFFSET);
-        }
-        if (isScalingDownFlag_) {
-            dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
-        }
-        GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindStateAddrByRankId(dstRankId) + offset);
-        rankGMTensor.SetGlobalBuffer((__gm__ int32_t *)rankGM);
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertId - startExpertId) * UB_ALIGN_DATA_COUNT],
-                          UB_ALIGN_DATA_COUNT);
-    }
+    SendExpertCntRange(startExpertId, endExpertId);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
