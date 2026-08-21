@@ -536,8 +536,8 @@ AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum til
 
 ---
 
-> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换）
+> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换 + N 分段）
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32 中间转换)
-> **精度验证**：10/12 case ALL PASS（R=2, R=4），2 个 N=12288 case 因 float32 UB 超限待优化
-> **性能**：msprof Task Duration 10 case 中位数, vs 旧基线平均 -11.1%, float32 vs BF16 平均 +0.4%
+> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32+N分段)
+> **精度验证**：12/12 case ALL PASS（R=2, R=4, 含 N=12288）
+> **性能**：msprof Task Duration 12 case 中位数, vs 旧基线平均 -11.1%, float32 vs BF16 平均 +0.6%
