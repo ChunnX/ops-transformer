@@ -183,9 +183,16 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
+enum class LayoutType {
+    LAYOUT_BSH,
+    LAYOUT_TH
+};
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t {
+    NORMAL = 0,
+    EMPTY_X = 1,
+    FULL_LOAD = 2
+};
 
 CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context);
 struct QuantCompressorBaseShapeInfo {
@@ -206,9 +213,14 @@ const std::vector<int> COFF{1, 2};
 const std::vector<uint32_t> HEAD_DIM{128, 512};
 const std::vector<int> CACHE_MODE{1, 2};
 
-enum class CACHE_MODE : uint8_t { LINEAR_BUFFER = 1, RING_BUFFER = 2 };
+enum class CACHE_MODE : uint8_t {
+    LINEAR_BUFFER = 1,
+    RING_BUFFER = 2
+};
 
-enum class QUANT_MODE : uint8_t { A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1 };
+enum class QUANT_MODE : uint8_t {
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1
+};
 
 struct QuantCompressorContext {
     const char *opName;
@@ -247,7 +259,9 @@ struct QuantCompressorContext {
 
 class QuantCompressorTiling {
 public:
-    explicit QuantCompressorTiling(QuantCompressorContext *context) : context_(context) {}
+    explicit QuantCompressorTiling(QuantCompressorContext *context)
+        : context_(context)
+    {}
     ~QuantCompressorTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &compressorContext);

@@ -773,7 +773,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_th_without_cu_seqlens)
     gert::TilingContextPara tilingContextPara(
         "QuantCompressor",
         {
-            {{{128, 4096}, {128, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},        // TH layout
+            {{{128, 4096}, {128, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND}, // TH layout
             {{{256, 4096}, {256, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{256, 4096}, {256, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{1, 128, 512}, {1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -782,7 +782,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_th_without_cu_seqlens)
             {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},                              // cu_seqlens absent in TH
+            {{}, ge::DT_UNDEFINED, ge::FORMAT_ND}, // cu_seqlens absent in TH
             {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
             {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
         },
@@ -808,7 +808,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_bsh_x_wrong_dimnum)
     gert::TilingContextPara tilingContextPara(
         "QuantCompressor",
         {
-            {{{128, 4096}, {128, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},        // x 2D but no cu_seqlens -> BSH expected 3D
+            {{{128, 4096}, {128, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND}, // x 2D but no cu_seqlens -> BSH expected 3D
             {{{256, 4096}, {256, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{256, 4096}, {256, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{1, 128, 512}, {1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -953,7 +953,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_quant_mode1_without_xdesca
             {{{256, 4096}, {256, 4096}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{1, 128, 512}, {1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{4, 256}, {4, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},                              // x_descale absent
+            {{}, ge::DT_UNDEFINED, ge::FORMAT_ND}, // x_descale absent
             {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
