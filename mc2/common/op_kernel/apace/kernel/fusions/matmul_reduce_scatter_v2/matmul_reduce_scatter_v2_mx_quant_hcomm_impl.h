@@ -26,8 +26,6 @@
 
 namespace Apace {
 
-constexpr uint32_t MAX_MATMUL_REDUCE_SCATTER_HCOMM_HANDLE = 64;
-
 template <bool BTrans>
 struct MatmulReduceScatterV2BLayout {
     using Type = AscendC::Te::NDExtLayoutPtn;
@@ -84,37 +82,49 @@ public:
         workspaceGM_ = workspaceGM;
         hccl_.InitV2(contextGM, &tilingData_->mc2InitTiling);
         hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
+        rankDim_ = hccl_.GetRankDim();
     }
 
     __aicore__ inline void Run()
     {
         const auto &commTiling = tilingData_->commTilingData;
-        RunMatmul(&tilingData_->tileQbmmTilingData);
-        AscendC::SyncAll();
-        RunReduceScatterSlices(static_cast<uint32_t>(commTiling.splitAxisTileCnt), false);
+        const uint64_t tileCount = static_cast<uint64_t>(commTiling.splitAxisTileCnt);
+        const uint64_t tailCount = static_cast<uint64_t>(commTiling.splitAxisTailCnt);
+        const bool invalidTiling = rankDim_ == 0 ||
+            (tileCount > 0 && tilingData_->tileQbmmTilingData.m != commTiling.splitAxisTileSize) ||
+            (tailCount > 0 && tilingData_->tailQbmmTilingData.m != commTiling.splitAxisTailSize);
+        if (invalidTiling) {
+            hccl_.Finalize();
+            return;
+        }
+        RunMatmulReduceScatterSlices(&tilingData_->tileQbmmTilingData,
+                                     static_cast<uint32_t>(commTiling.splitAxisTileCnt), false);
         if (commTiling.splitAxisTailCnt > 0) {
-            RunReduceScatterSlices(static_cast<uint32_t>(commTiling.splitAxisTailCnt), true);
+            RunMatmulReduceScatterSlices(&tilingData_->tailQbmmTilingData,
+                                         static_cast<uint32_t>(commTiling.splitAxisTailCnt), true);
         }
-        if (AscendC::GetBlockIdx() == 0) {
-            for (uint32_t i = 0; i < handleCount_; ++i) {
-                hccl_.Wait(handles_[i]);
-            }
-        }
-        AscendC::SyncAll();
+        WaitPendingReduceScatter();
         hccl_.Finalize();
     }
 
 private:
-    __aicore__ inline void RunMatmul(const QuantMatmulTilingData *tiling)
+    __aicore__ inline void RunMatmul(const QuantMatmulTilingData *tiling, uint64_t globalMOffset)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
         BlockMmadParams mmParams;
-        mmParams.aGmAddr = aGM_;
-        mmParams.scaleAGmAddr = x1ScaleGM_;
+        const uint64_t aRowBytes = Blaze::Gemm::IsFp4<AType>() ?
+            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(tiling->k), 2UL) :
+            static_cast<uint64_t>(tiling->k) * sizeof(AType);
+        const uint64_t scaleK =
+            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(tiling->k),
+                                 static_cast<uint64_t>(Blaze::Gemm::MXFP_DIVISOR_SIZE)) *
+            Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+        mmParams.aGmAddr = aGM_ + globalMOffset * aRowBytes;
+        mmParams.scaleAGmAddr = x1ScaleGM_ + globalMOffset * scaleK * sizeof(AscendC::fp8_e8m0_t);
         mmParams.bGmAddr = bGM_;
         mmParams.scaleBGmAddr = x2ScaleGM_;
-        mmParams.cGmAddr = workspaceGM_;
+        mmParams.cGmAddr = workspaceGM_ + globalMOffset * tiling->n * sizeof(CType);
         mmParams.biasGmAddr = biasGM_;
         L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
                           tiling->scaleKL1, tiling->nBufferNum};
@@ -128,7 +138,8 @@ private:
         kernel_(params);
     }
 
-    __aicore__ inline void RunReduceScatterSlices(uint32_t sliceCount, bool isTail)
+    __aicore__ inline void RunMatmulReduceScatterSlices(
+        const QuantMatmulTilingData *tiling, uint32_t sliceCount, bool isTail)
     {
         const auto &commTiling = tilingData_->commTilingData;
         const uint64_t tileM = commTiling.splitAxisTileSize;
@@ -139,29 +150,69 @@ private:
         const uint64_t perRankM = tileM * tileCnt + tailM * tailCnt;
         const uint64_t sliceM = isTail ? tailM : tileM;
         const uint64_t outputBase = isTail ? tileCnt * tileM * rankN : 0;
-        const uint32_t handleShift = isTail ? static_cast<uint32_t>(tileCnt) : 0;
         const uint64_t stride = perRankM * rankN;
 
         for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
             const uint64_t sliceStart = isTail
                 ? tileCnt * tileM + static_cast<uint64_t>(sliceIdx) * tailM
                 : static_cast<uint64_t>(sliceIdx) * tileM;
+            // A ReduceScatter slice contains the same M interval from every
+            // rank segment. Compute those discontiguous row blocks first,
+            // then launch communication immediately. The async handle allows
+            // the next slice's Matmul to overlap the current communication.
+            for (uint32_t rankIdx = 0; rankIdx < rankDim_; ++rankIdx) {
+                const uint64_t globalMOffset = static_cast<uint64_t>(rankIdx) * perRankM + sliceStart;
+                RunMatmul(tiling, globalMOffset);
+            }
+            AscendC::SyncAll();
             GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankN * sizeof(CType);
             GM_ADDR recvBuffer = yGM_ +
                 (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * rankN) * sizeof(CType);
-            handles_[sliceIdx + handleShift] = hccl_.template ReduceScatter<true>(
-                sendBuffer, recvBuffer, sliceM * rankN,
-                static_cast<AscendC::HcclDataType>(outputHcclDataType_),
-                AscendC::HcclReduceOp::HCCL_REDUCE_SUM, stride, 1);
+            IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN, stride);
         }
-        handleCount_ += sliceCount;
+    }
+
+    __aicore__ inline void IssueReduceScatter(
+        GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint64_t recvCount, uint64_t stride)
+    {
+        // Keep at most two asynchronous ReduceScatter tasks in flight. Before
+        // reusing a slot, wait for the task issued two rounds earlier. This
+        // removes the fixed per-tile handle array while preserving a depth-2
+        // compute/communication pipeline.
+        const uint32_t slot = issuedHandleCount_ % HCOMM_PIPELINE_DEPTH;
+        if (issuedHandleCount_ >= HCOMM_PIPELINE_DEPTH) {
+            if (AscendC::GetBlockIdx() == 0) {
+                hccl_.Wait(pipelineHandles_[slot]);
+            }
+            AscendC::SyncAll();
+        }
+        pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
+            sendBuffer, recvBuffer, recvCount,
+            static_cast<AscendC::HcclDataType>(outputHcclDataType_),
+            AscendC::HcclReduceOp::HCCL_REDUCE_SUM, stride, 1);
+        ++issuedHandleCount_;
+    }
+
+    __aicore__ inline void WaitPendingReduceScatter()
+    {
+        if (AscendC::GetBlockIdx() == 0) {
+            const uint32_t pendingCount = issuedHandleCount_ < HCOMM_PIPELINE_DEPTH ?
+                issuedHandleCount_ : HCOMM_PIPELINE_DEPTH;
+            const uint32_t firstPending = issuedHandleCount_ - pendingCount;
+            for (uint32_t i = 0; i < pendingCount; ++i) {
+                const uint32_t slot = (firstPending + i) % HCOMM_PIPELINE_DEPTH;
+                hccl_.Wait(pipelineHandles_[slot]);
+            }
+        }
+        AscendC::SyncAll();
     }
 
 private:
     TilingDataType *tilingData_{nullptr};
     Kernel kernel_;
     AscendC::Hccl<ServerType> hccl_;
-    AscendC::HcclHandle handles_[MAX_MATMUL_REDUCE_SCATTER_HCOMM_HANDLE]{};
+    static constexpr uint32_t HCOMM_PIPELINE_DEPTH = 2U;
+    AscendC::HcclHandle pipelineHandles_[HCOMM_PIPELINE_DEPTH]{};
     GM_ADDR aGM_{nullptr};
     GM_ADDR bGM_{nullptr};
     GM_ADDR biasGM_{nullptr};
@@ -169,7 +220,8 @@ private:
     GM_ADDR x2ScaleGM_{nullptr};
     GM_ADDR yGM_{nullptr};
     GM_ADDR workspaceGM_{nullptr};
-    uint32_t handleCount_{0};
+    uint32_t issuedHandleCount_{0};
+    uint32_t rankDim_{0};
 };
 
 } // namespace Apace

@@ -25,6 +25,7 @@ constexpr double scatterLargerNKCommGrowRatio1 = 1.5;
 constexpr double scatterLargerNKCommGrowRatio2 = 1.2;
 constexpr uint64_t ONE_KILO = 1024;
 constexpr double UNBALANCE_RATIO = 1.5;
+constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
 
 class MMPlusReduceScatter : public OneCalcOneCommBase {
 public:
@@ -33,10 +34,24 @@ public:
     explicit MMPlusReduceScatter(
         const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
         SocVersion inputSocVersion = SocVersion::SOC910_B, bool deterministicFlag = false,
-        bool isAicpuComm = false) // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
+        bool isAicpuComm = false,
+        bool isApaceMxFp4 = false) // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
           deterministicSoc910B_(deterministicFlag), isAicpuComm_(isAicpuComm)
     {
+        // The generic formula model does not classify FLOAT4 as quant Matmul.
+        // Calibrate only the APACE MXFP4 route. The default false value keeps
+        // every legacy constructor call and its behavior unchanged.
+        if (isApaceMxFp4) {
+            matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+            matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+            matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+            matmulPerf_.mmShapeInfo_.computesPerCycle =
+                APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
+            clusterInfo_.inMatrixADtypeSize = matmulPerf_.mmShapeInfo_.inMatrixADtypeSize;
+            clusterInfo_.inMatrixBDtypeSize = matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize;
+            clusterInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
+        }
         commPerf_.SetCommShapeLen(clusterInfo_.nValue);
         commPerf_.SetCommDTypeSize(clusterInfo_.outMatrixCDtypeSize);
         if (deterministicSoc910B_) { // 通信拟合适配确定性算法

@@ -21,12 +21,15 @@
 #include "../../../tiling/comm_tiling_data.h"
 
 // Hcomm MX quantized Matmul + ReduceScatter tiling data.
-// QuantMatmulTilingData describes the complete [rankM, K] x [K, N] Matmul.
-// CommTilingData describes the subsequent per-rank output-M split, and
-// nonSplitAxisSize is the output N dimension.
+// The head/tail QuantMatmulTilingData entries describe one per-rank M slice.
+// CommTilingData describes how those slices cover each rank's output-M range,
+// and nonSplitAxisSize is the output N dimension.  Keeping a separate tail
+// tiling lets the kernel pipeline Matmul and ReduceScatter without running the
+// full [rankM, N] Matmul before communication starts.
 struct hcommMatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
+    QuantMatmulTilingData tailQbmmTilingData;
 };
