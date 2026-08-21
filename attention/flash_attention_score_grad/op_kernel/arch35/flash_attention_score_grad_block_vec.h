@@ -29,6 +29,42 @@ namespace FagBaseApi {
 constexpr uint32_t BIT_MASK_NUM = 8;
 constexpr uint32_t BIT32_ALIGN_NUM = 8;
 
+#ifndef __CCE_KT_TEST__
+constexpr static AscendC::MicroAPI::CastTrait DPSE_CAST_TRAIT_B32_TO_B16 = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+template <typename T>
+__simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue,
+                                      uint32_t dataSize)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<float> srcReg;
+    RegTensor<float> scaledReg;
+    RegTensor<T> dstReg;
+    uint32_t sreg = dataSize;
+    constexpr uint32_t regSize = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t repeatTimes = CeilDivision(dataSize, regSize);
+
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        MaskReg mask = UpdateMask<float>(sreg);
+        LoadAlign(srcReg, (__ubuf__ float *&)srcLocalInt + i * regSize);
+        Muls(scaledReg, srcReg, scaleValue, mask);
+        Cast<T, float, DPSE_CAST_TRAIT_B32_TO_B16>(dstReg, scaledReg, mask);
+        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T *&)dstLocalInt + i * regSize, dstReg, mask);
+    }
+}
+#else
+template <typename T>
+__aicore__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue,
+                                     uint32_t dataSize)
+{
+}
+#endif
+
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
@@ -557,10 +593,21 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDsToDpse(LocalTensor<CALC
         }
 
         LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
+        bool needPseScale =
+            pseInfoPtr.pseType == static_cast<uint32_t>(PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE);
         if constexpr (IsSameType<OUTDTYPE, CALC_TYPE>::value) {
-            DataCopy(dpseOutTensor, dsTensor, VECTOR_BASEM * VECTOR_BASEN);
+            if (needPseScale) {
+                Muls(dpseOutTensor, dsTensor, constInfo.scaleValue, VECTOR_BASEM * VECTOR_BASEN);
+            } else {
+                DataCopy(dpseOutTensor, dsTensor, VECTOR_BASEM * VECTOR_BASEN);
+            }
         } else {
-            Cast(dpseOutTensor, dsTensor, RoundMode::CAST_ROUND, VECTOR_BASEM * VECTOR_BASEN);
+            if (needPseScale) {
+                MulsCastDpseVF<OUTDTYPE>(dpseOutTensor.GetPhyAddr(), dsTensor.GetPhyAddr(), constInfo.scaleValue,
+                                        VECTOR_BASEM * VECTOR_BASEN);
+            } else {
+                Cast(dpseOutTensor, dsTensor, RoundMode::CAST_ROUND, VECTOR_BASEM * VECTOR_BASEN);
+            }
         }
         dSOutQue.EnQue(dpseOutTensor);
         dSOutQue.DeQue<OUTDTYPE>();
