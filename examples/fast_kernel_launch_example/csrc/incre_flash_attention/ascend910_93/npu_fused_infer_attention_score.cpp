@@ -58,7 +58,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 }
 
 #define LAUNCH_INCRE_FA(FD, LAYOUT, ANTIQ)                                                                             \
-    incre_flash_attention<FD, LAYOUT, ANTIQ><<<blockDim, nullptr, aclstream>>>(                                        \
+    incre_flash_attention<FD, LAYOUT, ANTIQ><<<16, nullptr, aclstream>>>(                                        \
         (GM_ADDR)(query.data_ptr()), (GM_ADDR)(key.data_ptr()), (GM_ADDR)(value.data_ptr()),                           \
         (GM_ADDR)(pse_shift.has_value() ? pse_shift->data_ptr() : nullptr),                                            \
         (GM_ADDR)(atten_mask.has_value() ? atten_mask->data_ptr() : nullptr),                                          \
