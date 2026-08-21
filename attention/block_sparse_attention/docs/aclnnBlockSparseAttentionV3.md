@@ -82,45 +82,45 @@
 
 每个算子分为[两段式接口](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionV3GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionV3"接口执行计算。
 
-```
-__attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *blockSparseMaskOptional,
-    const aclTensor *attenMaskOptional,
-    const aclIntArray *blockShapeOptional,
-    const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional,
-    const aclTensor *blockTableOptional,
-    const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional,
-    const aclTensor *vDequantScaleOptional,
-	const aclTensor *pQuantScaleOptional,
-    char *qInputLayout,
-    char *kvInputLayout,
-    int64_t numKeyValueHeads,
-    int64_t maskType,
-    double scaleValue,
-    int64_t innerPrecise,
-    int64_t blockSize,
-    int64_t preTokens,
-    int64_t nextTokens,
-    int64_t softmaxLseFlag,
-    int64_t quantMode,
-    double dstTypeMax,
-    aclTensor *attentionOut,
-    aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+```c++
+aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize(
+  const aclTensor   *query,
+  const aclTensor   *key,
+  const aclTensor   *value,
+  const aclTensor   *blockSparseMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclIntArray *blockShapeOptional,
+  const aclIntArray *actualSeqLengthsOptional,
+  const aclIntArray *actualSeqLengthsKvOptional,
+  const aclTensor   *blockTableOptional,
+  const aclTensor   *qDequantScaleOptional,
+  const aclTensor   *kDequantScaleOptional,
+  const aclTensor   *vDequantScaleOptional,
+  const aclTensor   *pQuantScaleOptional,
+  char              *qInputLayout,
+  char              *kvInputLayout,
+  int64_t            numKeyValueHeads,
+  int64_t            maskType,
+  double             scaleValue,
+  int64_t            innerPrecise,
+  int64_t            blockSize,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            softmaxLseFlag,
+  int64_t            quantMode,
+  double             dstTypeMax,
+  aclTensor         *attentionOut,
+  aclTensor         *softmaxLseOptional,
+  uint64_t          *workspaceSize,
+  aclOpExecutor    **executor)
 ```
 
-```
-__attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream);
+```c++
+aclnnStatus aclnnBlockSparseAttentionV3(
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
+  aclrtStream       stream)
 ```
 
 ## aclnnBlockSparseAttentionV3GetWorkspaceSize
@@ -732,7 +732,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```cpp
+```c++
 #include <iostream>
 #include <vector>
 #include <cstring>
