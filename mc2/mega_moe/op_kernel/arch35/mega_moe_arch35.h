@@ -623,10 +623,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
                                            ENABLE_A8W4>(commonConfig_, gmmExecutionConfig_, params_.workspaceInfo,
                                                         sharedWeightTensorListAddrs_, sharedEpilogueOp_, gmmAddrInfo,
                                                         sharedExpertIdx);
-        RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
-                                           ENABLE_A8W4, GMM1_TILE_M>(commonConfig_, gmmExecutionConfig_, params_,
-                                                                     sharedEpilogueOp_, gmmAddrInfo, problemShape,
-                                                                     runtimeState, sharedExpertIdx);
+        RunGmm1ActivationByMode<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+                                ENABLE_A8W4, GMM1_TILE_M, L1_TILE_M_256, false, true, false, false>(
+            gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
+            sharedExpertIdx * commonConfig_.tokenNum, runtimeState, sharedExpertIdx);
     }
     EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }

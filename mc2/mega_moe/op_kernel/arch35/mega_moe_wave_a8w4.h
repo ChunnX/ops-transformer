@@ -162,11 +162,15 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
-        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmTileSequence,
-        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+    uint32_t globalTokenStartIndex =
+        static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert;
+    int32_t dummyVecSetSyncCom = 0;
+    uint16_t dummyPingpongIdx = 0;
+    Gmm1ActivationState runtimeState{startBlockIdx, dummyVecSetSyncCom, gmTileSequence, dummyPingpongIdx};
+    RunGmm1ActivationByMode<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, true, GMM1_TILE_M,
+                            EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
+        gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape, globalTokenStartIndex,
+        runtimeState, state.expertIdx);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
@@ -183,10 +187,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                                                                    gmmAddrInfo, state, tokenStartIndexInExpert);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm2A8W4<CombineQuantMode, ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                GMM1_TILE_M, TopkWeightsPrefetch, false, false, true>(
-        params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, gmmExecutionConfig_.blockJob,
-        expertTokenCount, tokenStartIndexInExpert);
+    int32_t dummyVecSetSyncCom = 0;
+    uint16_t dummyPingpongIdx = 0;
+    Gmm2RuntimeState runtimeState{startBlockIdx, dummyVecSetSyncCom, gmTileSequence, dummyPingpongIdx};
+    RunGmm2ByMode<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType, true, false,
+                  GMM1TileM, TopkWeightsPrefetch, false, false, true>(
+        gmmExecutionConfig_, params_, gmmAddrInfo, sliceProblemShape, runtimeState);
     ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
         quantCombineConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo, expertTokenCount,
         static_cast<uint32_t>(state.globalTokenStartIndex), state.expertIdx, tokenStartIndexInExpert, sliceTokenCount);

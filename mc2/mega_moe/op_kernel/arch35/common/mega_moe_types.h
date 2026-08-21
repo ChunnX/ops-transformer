@@ -17,10 +17,13 @@
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
 #include "adv_api/hcomm/hcomm.h"
+#include "apace/kernel/matmul/moe_grouped_matmul/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+using BlockJobContext = Apace::Gemm::BlockJobContext;
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -99,11 +102,6 @@ struct Params {
 enum class AddrUpdateMode : int32_t {
     GMM1,
     GMM2
-};
-
-struct BlockJobContext {
-    uint32_t jobIndex;
-    uint32_t totalJobs;
 };
 
 // Count/flag workspace 的物理分区；当前与 BlockJobContext 同值，但其编号由 workspace 生产者和消费者共同约定。
