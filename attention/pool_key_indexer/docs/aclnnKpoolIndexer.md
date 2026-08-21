@@ -206,7 +206,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>
           <ul>
                 <li>不支持空tensor。</li>
-                <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
+                <li>block_num为PageAttention时block总数，block_size为一个block的pool数（块内每行为一个pool的key，行距为headDim，不做token展开）。</li>
                 <li>数据类型需与query保持一致。</li>
                 <li>数据布局需与query保持一致，PageAttention场景（layoutKeyOptional为PA_BBND）除外。</li>
           </ul>
@@ -275,8 +275,8 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>
           <ul>
                 <li>可选输入，不指定seqlen时可传入空指针，表示与poolKey的shape的S长度相同。</li>
-                <li>该参数中每个Batch的有效token数不超过poolKey中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
-                <li>当layoutKeyOptional为TND或PA_BBND时，该入参必须传入。layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值；layoutKeyOptional为PA_BBND时，该参数中每个元素的值表示当前batch的token数，非前缀和形式。</li>
+                <li>该参数中每个Batch的有效pool数不超过poolKey的维度S（BSND/TND）或blockSize总池数（PA_BBND）大小且不小于0，支持长度为B的一维tensor。</li>
+                <li>当layoutKeyOptional为TND或PA_BBND时，该入参必须传入。layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值；layoutKeyOptional为PA_BBND时，该参数中每个元素的值表示当前batch的pool数（即该batch有效token数除以pool_size后向下取整的池数，非前缀和形式）。</li>
           </ul>
       </td>
       <td>INT64</td>

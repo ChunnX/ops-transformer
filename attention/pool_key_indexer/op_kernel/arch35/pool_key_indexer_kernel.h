@@ -461,7 +461,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
         if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
-        keyGm.SetGlobalBuffer((__gm__ K_T *)key);
+        keyGm.SetGlobalBuffer((__gm__ K_T *)poolKey);
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
     InitBuffers();

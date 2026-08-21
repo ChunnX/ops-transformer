@@ -712,3 +712,200 @@ actual_seq_k = _make_actual_seq(k_pool_lens)   # 原： _make_actual_seq(k_lens)
 2. host/kernel 的 workspace 布局公式必须逐字段镜像维护，任何一侧改动都要同步另一侧（本次 host 公式与 kernel 完全不符是第一层 bug，漏加 16MB 是第二层）
 3. 越界踩踏系统保留区的故障表现极具迷惑性：崩溃核不固定、pc 漂移、拦截式检测工具假阴性。`mssanitizer` 的 `MEMORY_RECORD`（记录 RT 真实 MALLOC 边界）是对照"kernel 实际访问地址 vs 运行时分配边界"的最有效手段
 4. 同源参考算子（LIV2）A/B 是排除环境问题的最快路径；编译宏二分（屏蔽/独活）适合"多嫌疑点全崩"的场景
+
+---
+---
+
+# 精度修复记录（pool_size>1 索引错乱）
+
+> 2026-08-20 二轮排查。测试侧引入"强制 indices 集合对比"后暴露 7 个 ps>1 用例失败（values 全对、indices 错乱）。经系统性 code review ps>1 输出链路 vs LIV2 逐行差异，定位并修复 4 处 bug（3 处 kernel + 1 处 golden 测试侧）。
+
+## 问题现象
+
+- 仅 `pool_size > 1` 失败（ps=1 的 5 个用例全过），BSND/TND 均中招
+- values 输出全部正确（TopK 分数链路无损），仅 indices 错乱
+- 错误模式高度规律：错误值落在 `pos = value + C (mod N)` 的固定偏移处，如 ps16/topk128 时 C=113/129/2，跨构建输出会漂移但模式稳定
+
+## 定位过程（关键转折）
+
+前期 7 轮盲改（流水同步 V→MTE3/S→V/V→S、idx 数据源改直读排序对、Extract dstIndex 布局、事件链）全部无效——输出逐位不变，证明那些代码本来就对。教训：**修改无效应立即回退并更换定位策略，而不是继续叠加假设**。
+
+转折点是系统性 code review：LIV2 无 ps>1 展开逻辑，该分支为 PKI 新增代码，无参照实现。将输出链路所有偏移/步长公式列成表逐一审计，与"输出张量的真实行宽"对照后 4 处 bug 一次浮出。
+
+## Bug 1：indices 输出行基址按 sparseCount 而非 outputLen 计算（kernel，根因）
+
+**位置**：`op_kernel/arch22/pool_key_indexer_kernel.h` 的 `CalcRunInfo`（`indiceOutCoreOffset`）、`DealActSeqLenIsZero`（TND/BSND 清理偏移）、`ProcessInvalid`（totalOutputSize）三处同源错误。
+
+**根因**：LIV2 的输出行宽恰为 `sparseCount`（topk），其公式 `prefixSum × kHeadNum × sparseCount + n2Idx × sparseCount` 正确。PKI 的 ps>1 输出行宽为 `outputLen = sparseCount×poolSize + poolSize − 1`（如 8×16+15=143），沿抄 LIV2 公式导致 batch>0 的行基址大幅错位、单行写入跨界覆盖相邻行。
+
+**数学闭环**（TND, B=2, S1=32, sparseCount=8, outputLen=143, ps=16）：
+- batch1 行基址实写 `32×8=256`，正确应为 `32×143=4576`
+- 256 = 1×143 + **113** → 探针实测的 C=113 之谜精确解开
+- batch1 s1=7 的写入落在行8 pos113..142 + 行9 pos0..17，与 dump 逐位吻合
+- ps=1 全对的原因：`outputLen == sparseCount`，公式恰好成立
+
+**修复**：三处统一引入
+```cpp
+uint32_t idxOutStride = (constInfo.poolSize > 1)
+                            ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1)
+                            : constInfo.sparseCount;
+```
+（`ProcessVec` 的 `idxStride` 原本就写对了，可对照）
+
+## Bug 2：RunInfo.poolTailK 从未赋值（kernel）
+
+**位置**：`CalcRunInfo`。
+
+**根因**：`RunInfo.poolTailK` 声明默认 0，全代码无赋值点（kernel 仅在 `GetS1S2ActualSeqLen` 里读了局部 `tailK` 参与 `actS2SizeOrig` 计算，未传入 runInfo）→ `ExpandAndAppendIndices` 的 `if (poolTailK > 0)` 永假，**尾块永不输出**。症状：causal 用例 NPU 有效数恒 128 而 golden 为 129+ 递增。
+
+**修复**：
+```cpp
+runInfo.poolTailK = hasPoolTailK_ ? static_cast<int32_t>(poolTailKGm_.GetValue(tempLoopInfo.bIdx)) : 0;
+```
+
+## Bug 3：尾块按 8 对齐写越出 tail 容量（kernel）
+
+**位置**：`ExpandAndAppendIndices` 尾段。
+
+**根因**：原实现 `Duplicate(tokenIndices[tailPos], L_orig-poolTailK, Align(visibleTailK,8)) + Add(尾模板)`，对齐宽度会超出 tail 容量 `poolSize−1`。ps=8、tail=5 时写 8 个（多 3 个）；ps=16、tail=9 时写 16 个直接填满整行（143），症状为"整行有效 143"。
+
+**修复**：先按 8 对齐**清空**整个尾区，再标量精确写 `visibleTailK` 个（`SetValue(L_orig-poolTailK+t)`），末尾补 `S→MTE3` 同步（标量写后由 MTE3 搬出）。
+
+## Bug 4：golden 的 BSND 场景 L_orig 重复乘 pool_size（测试侧）
+
+**位置**：`tests/atk/pool_key_indexer_golden.py` `forward` 内 `l_orig = curr_k * pool_size + cur_pool_tail_k`。
+
+**根因**：TND 下 `actual_seq_k` 为累计 **pool 数**，`×pool_size` 还原 token 数正确；BSND 下无 `actual_seq_k`，`curr_k`（=k_seq）**本就是 token 数**，再乘 ps 得到 2053 而非 261，尾 token 算成 [2048..2052]（golden 错）而 NPU 的 [256..260] 才是对的。
+
+**修复**：
+```python
+if actual_seq_k is not None:      # TND: 累计 pool 数 → 还原 token 数
+    l_orig = curr_k * pool_size + cur_pool_tail_k
+else:                             # BSND: k_seq 已是 token 数
+    l_orig = curr_k + cur_pool_tail_k
+```
+
+## 验证结果
+
+| 项目 | 结果 |
+|------|------|
+| 官方 pytest（含强制 indices 集合对比 + 归一化 values 独立通道） | **12/12 通过** |
+| simple_test.py | ALL DONE |
+| 稳定性重复 ×3 + 9 组 shape 矩阵（1/8/64 核、S2=4096、topk 2048/4096、B=2、ps16 causal、G=1） | 全过 |
+| ps=1 场景回归 | 无影响 |
+
+## 经验教训
+
+1. **沿抄参考实现的公式时，必须核对其隐含前提**：LIV2 输出行宽 = sparseCount 恰好成立；PKI ps>1 行宽改变后，一切以 sparseCount 为 stride 的公式（行基址/清理/总量）都要重新推导
+2. **"修改无效应立即回退换策略"**：7 轮盲改同步/数据源不如一张偏移公式审计表。对确定性数据错乱，先做"输出布局数学反推"（pos−value 偏移统计）再动手，C 值规律直接指向基址错位
+3. 新增 struct 字段（如 RunInfo.poolTailK）若无赋值点，等于静默禁用对应功能——review 时对"声明未赋值"要专门扫一遍
+4. 测试侧 golden 与算子语义出现分歧时，先用独立第三实现（手写 torch）仲裁谁对，本轮 Bug 4 正是靠 NPU 与手工推导一致、golden 单方出错而定性
+
+---
+---
+
+# PA_BBND 场景修复记录（布局/寻址/语义）
+
+> 2026-08-21 三轮排查。simple_test 与 pytest 增加 PA 场景覆盖后暴露：模板 SEL 缺失(EZ1001)、TND/PA 组合假阳性（异步报错未同步）、indices 集合与 golden 不符。最终按 LIV2 权威语义完成修复。
+
+## Bug 1：模板 SEL 缺 TND/PA_BBND 组合（kernel）
+
+**现象**：TND/PA_BBND 调用报 `EZ1001 not find tilingKey[553844993]`，但 simple_test 显示"PASSED"——**假阳性**：aclnn 异步报错未抛到主流程，输出的 indices 实为未写入的 empty 垃圾张量。
+
+**修复**：
+- `pool_key_indexer_template_tiling_key.h` 新增 2 条 SEL（FP16/BF16 的 TND/PA_BBND，mask=default+causal、val=0/1）
+- simple_test.py 末尾补 `torch_npu.npu.synchronize()` + 输出有效性断言，堵住同类假阳性
+
+## Bug 2：PA keyStride0=0 导致物理块寻址塌缩（host）
+
+**根因**：`GetDynamicInputStride` 对连续 tensor 返回空 → `keyStride0=0` → `bt[blk]×0` 所有物理块基址塌缩为 0。对照实验（恒等 bt、全同物理块）实证：kernel 用了 bt 但块基址全 0。
+
+**修复**（tiling.cpp）：
+```cpp
+if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
+    info.keyStride0 = keyStridesVec_[0];              // 0轴非连续: 运行时 stride(LIV2 arch35 形态)
+} else {
+    info.keyStride0 = blockSize * n2Size * headDim;   // 连续: 按形状推导
+}
+```
+比 LIV2（缺失即 0，依赖输入必须非连续才拿到 stride）更稳：连续输入同样可用。
+
+## Bug 3：PA key 块内行语义——按 LIV2 权威语义重构（关键认知修正）
+
+**弯路**：初次修复时误判"PA key 块内是 token 展开"，把 `KeyNd2NzForPA` 改为池级取数（`srcDValue=poolSize×headDim`、代表 token 定位）+ 测试 helper 做了 token 展开。该方案在自造约定下自洽并通过全部测试。
+
+**纠正依据**（LIV2 golden `lightning_indexer_v2_golden.py:834`）：`key_bnsd` 的 S2 维直接是**池数**逐行填块——LIV2 权威语义为：
+
+> **PA key `(blockNum, blockSize, N2, D)` 块内每行 = 1 个池（key 不做 token 展开）；`actS2SizeOrig = 池数×poolSize + tail` 的 token 语义仅用于 causal 可见性换算，与 key 搬运无关。**
+
+**重构**（对齐 LIV2）：
+- kernel `KeyNd2NzForPA`：回退池级取数，恢复 LIV2 原样（`srcDValue=headDim` 连续池行、L0 分型）；正当差异仅保留 keyStride0 寻址（=arch35 形态）
+- 测试 helper `_pack_pa_key`/`_build_block_table`：改池粒度打包（每池一行、每 batch 独立连续填块、随机排布）；并修复两 helper 块数口径不一致导致的 bt 越界
+- golden：`_pa_bbnd_to_bnsd` 池行直取；`actual_seq_k` 不再乘 pool_size；`curr_k` 统一池数语义（BSND 由 `k_seq//pool_size` 换算）；`L_orig = 池数×poolSize + tail`
+
+**架构结论**（对照 LIV1/LIV2 arch22/arch35 四方审计）：
+- `keyStride0` 寻址是 arch35（950）形态，支持 0 轴非连续（KV cache 融合场景）；arch22 硬算 `bs×N2×D` 只对连续成立
+- 非 PA `KeyNd2Nz` 不需要 stride：host `CheckKeyContiguous` 对非 PA 全轴校验连续（非连续拒绝），PA 仅从轴 1 起校验（显式放行 0 轴非连续）——与两代 LIV2 能力边界一致
+- LIV2 的 `PA_BBND + cmp_ratio>1` 组合按代码推演存在同款列/池错位隐患，其测试固定 `cmp_ratio=1` 未暴露（已分析，待反馈维护者）
+
+## Bug 4：文档语义勘误（aclnnKpoolIndexer.md）
+
+- 279 行：PA 的 actual_seq_k 语义由"当前 batch 的 token 数"更正为"当前 batch 的 **pool 数**（有效 token 数除以 pool_size 下取整，非前缀和，与 lightning_indexer_v2 的 seqused_k 语义一致）"
+- 209 行：PA blockSize 语义由"一个 block 的 token 数"更正为"一个 block 的 **pool 数**（块内每行为一个 pool 的 key）"
+- 278 行：维度约束同步改为 pool 数口径
+
+## 验证
+
+| 项目 | 结果 |
+|------|------|
+| pytest（12 原有 + 4 PA） | **16/16 通过** |
+| simple_test.py（含 BSND/PA、TND/PA） | 4/4 PASSED，ALL DONE（含全局同步+有效性断言） |
+| ps=1 回归（与 LIV2 语义退化一致） | 无影响 |
+
+## 遗留
+
+1. PA 0 轴非连续（blockFusion 融合 KV cache）测试用例未覆盖（keyStride0 运行时 stride 分支）
+2. arch35（950）分支 PA 支持未验证、模板 SEL 未同步确认
+3. LIV2 `PA+cmp_ratio>1` 隐患待反馈维护者
+
+---
+
+## 遗留问题记录：arch35（Ascend 950）编译失败（存量问题，非本次引入）
+
+> 2026-08-21 排查 PA 场景 arch35 分支时发现。已用 `git stash` 验证：**HEAD 原样代码编译 950 同样失败**，与本次 PA/精度修复无关。
+
+### 现象
+
+`bash build.sh --pkg --soc=ascend950 --vendor_name=custom --ops=pool_key_indexer` 编译失败（exit=2）：
+
+1. **fp8 后端错误（214 处，根因）**：
+   ```
+   fatal error: error in backend: Error: fp8e8m0, fp8e5m2, fp8e4m3, fp4e2m1x2,
+   fp4e1m2x2, hifloat8, hifloat4x2 type only supports pointer operations,
+   scalar float type semantics are not supported!
+   bisheng: error: clang frontend command failed with exit code 70
+   ```
+   影响**所有**模板实例（含 FP16 主模板 0d4d6c），非仅 FP8 组合——arch35 vector 侧（疑为 VF radix/histogram TopK 路径，`op_kernel/arch35/vf/`）存在对任意 dtype 实例化都会生成 fp8 标量操作的代码，触发后端限制。.o 缺失导致 ld.lld 链接连锁失败。
+2. **参数名笔误（已修）**：`arch35/pool_key_indexer_kernel.h:464` `keyGm.SetGlobalBuffer((__gm__ K_T *)key)` 中 `key` 未声明，实际参数名为 `poolKey`——本次已修复（950 专项修改之一）。
+
+### 已完成的 arch35 侧工作
+
+- ✅ 修复 `key` → `poolKey` 笔误（编译前置阻塞）
+- ✅ 确认 `KeyNd2NzForPA`（arch35）与 LIV2 arch35 同构：`bt[blk]×keyStride0 + blkOffset×headDim` 池行连续寻址，无需修改
+- ✅ 确认 `GetS1S2ActualSeqLen`/模板入口与 arch22 同构；模板 SEL 为 soc 无关声明，新增 TND/PA_BBND 组合自动对 950 生效
+- ✅ host 侧 `keyStride0`（运行时 stride / 连续推导）为两 soc 共用，已生效
+
+### 待办（需 arch35 维护者处理）
+
+1. 定位并修复 arch35 vector（`vf/` 目录）的 fp8 标量语义问题——可参照报错 `exit code 70` + 二分法屏蔽 VF 段定位
+2. 修好后补 950 的 PA 场景编译验证（本机 910B 无 950 运行环境，只能编译验证）
+3. `arch35` 的 PA 运行时精度验证需在 950 设备进行（pytest 的 4 个 PA 用例可直接复用）
+
+### 复现方式
+
+```bash
+cd /opt/gjw/ops-transformer
+rm -rf build
+bash build.sh --pkg --soc=ascend950 --vendor_name=custom --ops=pool_key_indexer
+# 观察: grep "error in backend" build 日志 → 214 处 fp8 标量语义错误
+```

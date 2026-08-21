@@ -219,7 +219,7 @@ class PKIGoldenRef:
                 raise ValueError(f"act_seq must be non-decreasing: {seq_list}")
         return list_new
 
-    def _pa_bbnd_to_bnsd(self, key, block_table, act_seq_k):
+    def _pa_bbnd_to_bnsd(self, key, block_table, act_seq_k, pool_size=None):
         block_num, block_size, N2, D = key.shape
         if torch.is_tensor(block_table):
             B = block_table.shape[0]
@@ -228,6 +228,7 @@ class PKIGoldenRef:
             B = len(block_table)
             max_blocks = len(block_table[0])
 
+        # LIV2 语义: PA key 块内每行 = 1 个池, act_seq_k 已换算为每 batch 池数
         if torch.is_tensor(act_seq_k):
             max_s2 = int(act_seq_k.max().item())
         else:
@@ -260,8 +261,12 @@ class PKIGoldenRef:
         batch,
         pool_size,
         pool_tail_k,
+        actual_seq_k_is_token=False,
     ):
-        """因果掩码: validS2Len = (L_orig - S1 + i + 1) / pool_size, L_orig = S2*pool_size + tail_k"""
+        """因果掩码: validS2Len = (L_orig - S1 + i + 1) / pool_size, L_orig = S2*pool_size + tail_k
+
+        actual_seq_k_is_token=True 时 actualSeqLengthsK 已是 token 数(PA_BBND 入口换算后),
+        L_orig = tokens + tail_k, 不再乘 pool_size。"""
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         masks = []
@@ -277,7 +282,11 @@ class PKIGoldenRef:
                 else mask_s_kv
             )
             cur_tail_k = int(pool_tail_k[i_batch]) if pool_tail_k is not None else 0
-            L_orig = S2 * pool_size + cur_tail_k
+            L_orig = (
+                (S2 + cur_tail_k)
+                if actual_seq_k_is_token
+                else (S2 * pool_size + cur_tail_k)
+            )
             atten_mask = torch.zeros(mask_s_q, mask_s_kv, dtype=torch.uint8)
             tmp_pos_orig = L_orig - S1
             for i in range(S1):
@@ -584,11 +593,18 @@ class PKIGoldenRef:
         if layout_key == "TND":
             actual_seq_k = self._trans_tnd_actseq(actual_seq_k)
 
+        if layout_key == "PA_BBND" and actual_seq_k is not None:
+            # 算子约定 PA 的 actual_seq_k 为每 batch 池数(非前缀和, LIV2 语义),
+            # golden 内部 k_bnsd 构造直接按池数消费, 无需换算; 仅转为 list 便于索引
+            actual_seq_k = [int(x) for x in actual_seq_k]
+
         q_bnsd = self._trans_shape_to_bnsd(
             query, layout_query, q_head_num, actual_seq_q
         )
         if layout_key == "PA_BBND" and block_table is not None:
-            k_bnsd = self._pa_bbnd_to_bnsd(key, block_table, actual_seq_k)
+            k_bnsd = self._pa_bbnd_to_bnsd(
+                key, block_table, actual_seq_k, self.pool_size
+            )
         else:
             k_bnsd = self._trans_shape_to_bnsd(
                 key, layout_key, k_head_num, actual_seq_k
@@ -621,9 +637,12 @@ class PKIGoldenRef:
 
         for b_idx in range(batch):
             curr_q = actual_seq_q[b_idx] if actual_seq_q is not None else q_seq
-            curr_k = (
-                math.floor(actual_seq_k[b_idx]) if actual_seq_k is not None else k_seq
-            )
+            # k_bnsd 的 S2 维为池数: actual_seq_k(TND 累计池/PA 每 batch 池)已按池计;
+            # BSND 无 actual_seq_k, k_seq 为 token 数, 需换算为池数
+            if actual_seq_k is not None:
+                curr_k = math.floor(actual_seq_k[b_idx])
+            else:
+                curr_k = k_seq // pool_size
             cur_q = q_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]
             cur_k = k_bnsd[b_idx : (b_idx + 1), :, :curr_k, :]
             cur_wt = wt_bnsd[b_idx : (b_idx + 1), :, :curr_q, :]
@@ -653,12 +672,9 @@ class PKIGoldenRef:
 
             # 获取当前 batch 的参数
             cur_pool_tail_k = int(pool_tail_k[b_idx]) if pool_tail_k is not None else 0
-            # TND: actual_seq_k 为累计 pool 数, L_orig = pools*ps + tail;
-            # BSND: 无 actual_seq_k, k_seq 已是 token 数, L_orig = tokens + tail
-            if actual_seq_k is not None:
-                l_orig = curr_k * pool_size + cur_pool_tail_k
-            else:
-                l_orig = curr_k + cur_pool_tail_k
+            # curr_k 统一为池数语义; L_orig = 池数*poolSize + tail(token 数),
+            # 用于 causal 可见性与尾块定位
+            l_orig = curr_k * pool_size + cur_pool_tail_k
 
             # 计算 valid_s2_len
             s1_actual = curr_q

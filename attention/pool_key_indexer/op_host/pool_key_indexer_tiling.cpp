@@ -358,11 +358,13 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(3)) != info.headDim,
                     OP_LOGE(context_, "PA key D(%ld) must be %u(128)", keyShape->GetStorageShape().GetDim(3), info.headDim),
                     return ge::GRAPH_FAILED);
-        // keyStride0: use actual runtime stride[0] for 0-axis non-contiguous PA support
-        if (!keyStridesVec_.empty()) {
+        // keyStride0: use actual runtime stride[0] for 0-axis non-contiguous PA support;
+        // contiguous tensor has no dynamic stride reported, derive from shape:
+        // stride0 = blockSize * N2 * headDim (element units)
+        if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
             info.keyStride0 = keyStridesVec_[0];
         } else {
-            info.keyStride0 = 0;
+            info.keyStride0 = info.blockSize * info.n2Size * info.headDim;
         }
         // S2 computed at runtime from actual_seq_k
         info.s2Size = 0;
@@ -983,6 +985,10 @@ ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingI
     context_->SetBlockDim(blockDim);
     OP_LOGI(info.opName, "PoolKeyIndexer DoTiling: tilingKey=%lu, blockDim=%u, aicNum=%u, aivNum=%u, wsSize=%lu",
             tilingKey, blockDim, info.aicNum, info.aivNum, finalWsSize);
+    if (info.pageAttention) {
+        OP_LOGI(info.opName, "PoolKeyIndexer PA: keyStride0=%u, blockSize=%u, maxBlkPerBatch=%u, s2Size=%u",
+                info.keyStride0, info.blockSize, info.maxBlockNumPerBatch, info.s2Size);
+    }
 
     return ge::GRAPH_SUCCESS;
 }

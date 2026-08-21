@@ -287,7 +287,10 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         }
 
         uint32_t outOff = 0;
-        for (uint32_t k = 0; k < validS2Len; k++) {
+        // 展开轮数受 sparseCount(TopK 选池数)截断: validS2Len 为 causal 可见池数,
+        // 可见池多于选中池时, 多余池不应展开(否则越写 outputLen 之外污染尾区/相邻行)
+        uint32_t expandRounds = PkiCommon::Min(validS2Len, sparseCount);
+        for (uint32_t k = 0; k < expandRounds; k++) {
             int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
             Duplicate<int32_t>(tokenIndices[outOff], base, alignedPoolSize);
             PipeBarrier<PIPE_V>();
@@ -360,7 +363,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         valueULocal = outQueue_.DeQue<uint32_t>();
         GlobalTensor<uint32_t> valueOutGmTmp;
         valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-        PkiServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valueULocal, constInfo_.sparseCount);
+        // invalidS1offset 是 indices 行偏移(行宽 outputLen_/sparseCount);
+        // value 行宽为 sparseCount, 需换算行号后重算偏移, 否则越界写且本行 value 漏写
+        uint64_t idxStride = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
+        uint64_t valueOffset = (invalidS1offset / idxStride) * constInfo_.sparseCount;
+        PkiServiceVec::CopyOut(valueOutGmTmp[valueOffset], valueULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valueULocal);
     }
 }
@@ -556,7 +563,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                                            info.poolTailK, static_cast<int32_t>(info.actS2SizeOrig),
                                            static_cast<uint32_t>(cuS1Idx), info.actS1Size);
                     PipeBarrier<PIPE_V>();
-                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                    // V(Expand/Duplicate) 写 expandOutLocal_ 后由 MTE3(DataCopyPad) 搬出,
+                    // 必须真跨流水同步: SetFlag 排入 V 队尾, WaitFlag 在 MTE3 队列等待
+                    event_t evtVMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+                    SetFlag<HardEvent::V_MTE3>(evtVMte3);
+                    WaitFlag<HardEvent::V_MTE3>(evtVMte3);
                     DataCopyPad(indiceOutGm[info.indiceOutOffset + cuS1Idx * outputLen_],
                                 expandOutLocal_,
                                 {1, static_cast<uint16_t>(outputLen_ * sizeof(int32_t)), 0, 0});

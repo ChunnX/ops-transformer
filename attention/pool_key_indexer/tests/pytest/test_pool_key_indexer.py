@@ -39,6 +39,7 @@ from pool_key_indexer_golden import (
     PKIGoldenRef,
     _get_compute_dtype,
     _normalize_prefix_seq,
+    _construct_block_table,
 )
 
 # Import comparison utilities
@@ -98,6 +99,59 @@ def _build_tnd_inputs(q_lens, k_lens, n1, pool_size, dtype, seed=42):
     # last == key T2；golden 内部 L_orig = S2*pool_size + tail 同样按 pool 数解释）
     actual_seq_k = _make_actual_seq(k_pool_lens)
     return query, pool_key, weights, pool_tail_k, actual_seq_q, actual_seq_k
+
+
+def _make_actual_seq_noncum(pool_lens):
+    """PA_BBND: actual_seq_k 为每 batch pool 数(非前缀和)。"""
+    return torch.tensor(pool_lens, dtype=torch.int64)
+
+
+def _pack_pa_key(pool_key_bsnd, k_pool_lens, pool_size):
+    """将逻辑 (T2_pool, N2, D) 打包为 PA 物理块布局 (blockNum, blockSize=16, N2, D)。
+
+    与 LIV2 语义一致: PA key 块内每行 = 1 个池(key 不做 token 展开)。
+    每 batch 的池独立连续填块(与 _build_block_table 的块数口径一致),
+    物理块随机排布, 尾块不足补零。返回 (key_pa, block_size, block_num)。
+    """
+    block_size = 16
+    blocks_per_batch = [(pl + block_size - 1) // block_size for pl in k_pool_lens]
+    block_num = sum(blocks_per_batch)
+    n2, d = pool_key_bsnd.shape[1], pool_key_bsnd.shape[2]
+    blocks = torch.zeros(block_num, block_size, n2, d, dtype=pool_key_bsnd.dtype)
+    # 逐 batch 填块
+    pool_start = 0
+    blk_start = 0
+    for b, nb in enumerate(blocks_per_batch):
+        pools = k_pool_lens[b]
+        seg = pool_key_bsnd[pool_start : pool_start + pools]  # (pools, n2, d)
+        pad = nb * block_size - pools
+        if pad:
+            seg = torch.cat([seg, torch.zeros(pad, n2, d, dtype=seg.dtype)], dim=0)
+        blocks[blk_start : blk_start + nb] = seg.view(nb, block_size, n2, d)
+        pool_start += pools
+        blk_start += nb
+    perm = torch.randperm(block_num)
+    return blocks[perm].contiguous(), block_size, block_num
+
+
+def _build_block_table(batch, k_pool_lens, pool_size):
+    """构造 (B, maxBlocks) int32 物理块映射, 空槽 -1。
+
+    PA key 块内每行=1池(LIV2 语义): 每块容纳 16 个池, 块数 = ceil(pools/16)。
+    返回 (block_table, 物理块总数)。
+    """
+    block_size = 16
+    blocks_per_batch = [(pl + block_size - 1) // block_size for pl in k_pool_lens]
+    max_blocks = max(blocks_per_batch)
+    total_blocks = sum(blocks_per_batch)
+    perm = torch.randperm(total_blocks)
+    bt = torch.full((batch, max_blocks), -1, dtype=torch.int32)
+    cur = 0
+    for b, nb in enumerate(blocks_per_batch):
+        for i in range(nb):
+            bt[b, i] = perm[cur]
+            cur += 1
+    return bt, total_blocks
 
 
 def _run_npu(
@@ -383,6 +437,106 @@ TEST_CASES = [
         False,
         id="tnd_fp16_ps16_causal_noval_3batch",
     ),
+    # --- PA (layout_k=PA_BBND) ---
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        2,
+        32,
+        256,
+        8,
+        128,
+        8,
+        0,
+        True,
+        id="bsnd_pa_fp16_ps8_nocausal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        2,
+        32,
+        256,
+        8,
+        128,
+        16,
+        3,
+        True,
+        id="bsnd_pa_fp16_ps16_causal_val",
+    ),
+    pytest.param(
+        "TND",
+        "PA_BBND",
+        torch.float16,
+        [16, 16],
+        32,
+        [128, 128],
+        8,
+        128,
+        8,
+        0,
+        False,
+        id="tnd_pa_fp16_ps8_nocausal_noval",
+    ),
+    pytest.param(
+        "TND",
+        "PA_BBND",
+        torch.bfloat16,
+        [16, 16],
+        32,
+        [128, 128],
+        8,
+        128,
+        16,
+        3,
+        True,
+        id="tnd_pa_bf16_ps16_causal_val",
+    ),
+    # --- sparseCount=1 边界(topk == pool_size): 尾区越写/清理缺陷回归 ---
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        48,
+        800,
+        8,
+        16,
+        16,
+        3,
+        True,
+        id="bsnd_fp16_ps16_topk16_causal_sparse1",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        48,
+        48,
+        8,
+        16,
+        16,
+        3,
+        True,
+        id="bsnd_fp16_ps16_topk16_causal_L48",
+    ),
+    pytest.param(
+        "TND",
+        "TND",
+        torch.float16,
+        [16, 32],
+        48,
+        48,
+        8,
+        16,
+        16,
+        3,
+        True,
+        id="tnd_fp16_ps16_topk16_causal_L48",
+    ),
 ]
 
 
@@ -411,7 +565,40 @@ def test_pool_key_indexer(
     """End-to-end test: golden vs NPU torch extension."""
 
     # ---- Construct inputs ----
-    if layout_q == "BSND":
+    block_table = None
+    if layout_q == "BSND" and layout_k == "PA_BBND":
+        # PA + BSND: actual_seq_q 必须为 None; actual_seq_k 为每 batch pool 数(非前缀和)
+        query, pool_key, weights, pool_tail_k = _build_bsnd_inputs(
+            batch, q_seq, k_seq, n1, pool_size, dtype
+        )
+        actual_seq_q = None
+        k_pool_lens = [k_seq // pool_size] * batch
+        actual_seq_k = _make_actual_seq_noncum(k_pool_lens)
+        # pool_key: (B, pools, N2, D) -> (B*pools, N2, D) 再打包为物理块布局
+        pool_key = pool_key.reshape(-1, pool_key.shape[-2], pool_key.shape[-1])
+        pool_key, pa_block_size, pa_block_num = _pack_pa_key(
+            pool_key, k_pool_lens, pool_size
+        )
+        block_table, _ = _build_block_table(batch, k_pool_lens, pool_size)
+    elif layout_q == "TND" and layout_k == "PA_BBND":
+        # PA + TND: actual_seq_q 前缀和; actual_seq_k 为每 batch pool 数(非前缀和)
+        q_lens = batch if isinstance(batch, list) else [q_seq] * batch
+        k_lens = k_seq if isinstance(k_seq, list) else [k_seq] * len(q_lens)
+        query, _, weights, pool_tail_k, actual_seq_q, _ = _build_tnd_inputs(
+            q_lens, k_lens, n1, pool_size, dtype
+        )
+        k_pool_lens = [kl // pool_size for kl in k_lens]
+        actual_seq_k = _make_actual_seq_noncum(k_pool_lens)
+        pool_key, pa_block_size, pa_block_num = _pack_pa_key(
+            torch.randn(sum(k_pool_lens), N2, HEAD_DIM, dtype=dtype),
+            k_pool_lens,
+            pool_size,
+        )
+        q_seq = sum(q_lens)
+        k_seq = sum(k_lens)
+        batch = len(q_lens)
+        block_table, _ = _build_block_table(batch, k_pool_lens, pool_size)
+    elif layout_q == "BSND":
         assert layout_k == "BSND"
         query, pool_key, weights, pool_tail_k = _build_bsnd_inputs(
             batch, q_seq, k_seq, n1, pool_size, dtype
@@ -455,6 +642,7 @@ def test_pool_key_indexer(
         pool_tail_k,
         actual_seq_q=actual_seq_q,
         actual_seq_k=actual_seq_k,
+        block_table=block_table,
         layout_q=layout_q,
         layout_k=layout_k,
         batch=batch,
@@ -476,6 +664,7 @@ def test_pool_key_indexer(
         pool_tail_k,
         actual_seq_q=actual_seq_q,
         actual_seq_k=actual_seq_k,
+        block_table=block_table,
         layout_q=layout_q,
         layout_k=layout_k,
         topk=topk,
@@ -493,6 +682,7 @@ def test_pool_key_indexer(
         pool_tail_k,
         actual_seq_q=actual_seq_q,
         actual_seq_k=actual_seq_k,
+        block_table=block_table,
         layout_q=layout_q,
         layout_k=layout_k,
         batch=batch,
@@ -515,6 +705,7 @@ def test_pool_key_indexer(
         pool_tail_k,
         actual_seq_q=actual_seq_q,
         actual_seq_k=actual_seq_k,
+        block_table=block_table,
         layout_q=layout_q,
         layout_k=layout_k,
         batch=batch,

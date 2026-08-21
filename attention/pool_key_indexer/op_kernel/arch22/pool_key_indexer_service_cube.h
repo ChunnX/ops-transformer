@@ -45,7 +45,7 @@ public:
     static constexpr uint64_t L0_BUF_NUM = 2;
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID2;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5;         // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
@@ -130,8 +130,8 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::InitBuffers(TPipe *pipe)
 template <typename LIT>
 __aicore__ inline void
 PoolKeyIndexerServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
-                                   const GlobalTensor<K_T> &keyGm,
-                                   const GlobalTensor<Q_T> &queryGm, const GlobalTensor<float> &mm1ResGm)
+                                                    const GlobalTensor<K_T> &keyGm,
+                                                    const GlobalTensor<Q_T> &queryGm, const GlobalTensor<float> &mm1ResGm)
 {
     blkTableGm_ = blkTableGm;
     keyGm_ = keyGm;
@@ -151,7 +151,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
             s2GmOffset + S2_BASIC_BLOCK > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK;
         if (PAGE_ATTENTION) {
             KeyNd2NzForPA(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
-        }else {
+        } else {
             KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
         }
 
@@ -205,8 +205,9 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                    const PkiCommon::RunInfo &runInfo)
+                                                                const PkiCommon::RunInfo &runInfo)
 {
+    // 非PA key (B,S2_pool,N2,D)/(T2_pool,N2,D): S2 维本身即池, 每池一行, 行距 = headDim
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
         uint64_t keyGmOffset = runInfo.tensorKeyOffset + (s2GmOffset + s2L1Offset) * constInfo_.headDim;
@@ -218,7 +219,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1Rea
 
         Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = 1;
-        nd2nzPara.nValue = s2Mte2Size; // 行数
+        nd2nzPara.nValue = s2Mte2Size; // 行数(池数)
         nd2nzPara.dValue = constInfo_.headDim;
         nd2nzPara.srcDValue = constInfo_.headDim;
         nd2nzPara.dstNzC0Stride = s2L1Offset >= S2_BASIC_BLOCK_L0 ?
@@ -242,8 +243,11 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1Rea
 // blkNum, blkSize, N2, D
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                    const PkiCommon::RunInfo &runInfo)
+                                                                     const PkiCommon::RunInfo &runInfo)
 {
+    // PA key (blockNum, blockSize, N2, D): 块内每行 = 1 个池(与 LIV2 语义一致),
+    // srcDValue=headDim 连续行; actS2SizeOrig(池数*poolSize+tail) 的 token 语义仅用于
+    // causal 可见性换算, 与 key 搬运无关
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
@@ -260,7 +264,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2
                                                                               s2Mte2Size;
         Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = 1;
-        nd2nzPara.nValue = s2Mte2Size; // 行数
+        nd2nzPara.nValue = s2Mte2Size; // 行数(池数)
         nd2nzPara.dValue = constInfo_.headDim;
         nd2nzPara.srcDValue = constInfo_.headDim;
         nd2nzPara.dstNzC0Stride = s2L1Offset >= S2_BASIC_BLOCK_L0 ?
@@ -284,7 +288,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2
 // batch, s1, n2, g, d
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
-                                                 const PkiCommon::RunInfo &runInfo)
+                                                                  const PkiCommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -302,8 +306,8 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset,
-                                                     uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
-                                                     uint64_t s1gL0RealSize, const PkiCommon::RunInfo &runInfo)
+                                                                      uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
+                                                                      uint64_t s1gL0RealSize, const PkiCommon::RunInfo &runInfo)
 {
     LoadData3DParamsV2<Q_T> loadData3DParams;
     // SetFmatrixParams
@@ -339,8 +343,8 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t s
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L1Offset,
-                                                   uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-                                                   const PkiCommon::RunInfo &runInfo)
+                                                                    uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+                                                                    const PkiCommon::RunInfo &runInfo)
 {
     uint64_t keyL1Offset = s2L1Offset >= S2_BASIC_BLOCK_L0 ? S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 : 0;
     LoadData2DParams loadData2DParams;
@@ -355,7 +359,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComuteL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                                const PkiCommon::RunInfo &runInfo)
+                                                                 const PkiCommon::RunInfo &runInfo)
 {
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
@@ -373,8 +377,8 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComuteL0c(uint64_t s1gL0R
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffset,
-                                           uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                           uint64_t s2L0RealSize, const PkiCommon::RunInfo &runInfo)
+                                                            uint64_t s2GmOffset, uint64_t s1gL0RealSize,
+                                                            uint64_t s2L0RealSize, const PkiCommon::RunInfo &runInfo)
 {
     AscendC::DataCopyCO12DstParams intriParams;
     intriParams.mSize = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
