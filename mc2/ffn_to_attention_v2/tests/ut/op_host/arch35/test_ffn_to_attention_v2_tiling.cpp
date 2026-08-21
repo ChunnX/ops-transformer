@@ -22,6 +22,8 @@ using TensorDescription = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
 struct FFNToAttentionV2CompileInfo {};
+constexpr int64_t MB_SIZE = 1024LL * 1024LL;
+constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 2LL * MB_SIZE;
 
 enum class InvalidInput {
     NONE,
@@ -94,7 +96,8 @@ std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput inva
     return inputs;
 }
 
-std::vector<OpAttr> BuildAttrs(bool invalidBs = false, bool invalidMicroBatchNum = false)
+std::vector<OpAttr> BuildAttrs(bool invalidBs = false, bool invalidMicroBatchNum = false,
+                               int64_t cclBufferSize = DEFAULT_CCL_BUFFER_SIZE)
 {
     const std::vector<int64_t> tokenInfoTableShape = invalidMicroBatchNum ? std::vector<int64_t>{2, 16, 9}
                                                                          : std::vector<int64_t>{1, invalidBs ? 513 : 16, 9};
@@ -106,7 +109,20 @@ std::vector<OpAttr> BuildAttrs(bool invalidBs = false, bool invalidMicroBatchNum
         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
         {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tokenInfoTableShape)},
         {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tokenDataShape)},
-        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cclBufferSize)},
+    };
+}
+
+std::vector<OpAttr> BuildAlignmentBoundaryAttrs(int64_t cclBufferSize)
+{
+    return {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+        {"token_info_table_shape",
+         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15})},
+        {"token_data_shape",
+         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15, 7764})},
+        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cclBufferSize)},
     };
 }
 
@@ -159,6 +175,16 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidBs)
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidMicroBatchNum)
 {
     ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, true), ge::GRAPH_FAILED);
+}
+
+TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsBufferWithoutTokenInfoAlignmentSpace)
+{
+    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(2LL * MB_SIZE), ge::GRAPH_FAILED);
+}
+
+TEST_F(FFNToAttentionV2Arch35TilingTest, AcceptsBufferWithTokenInfoAlignmentSpace)
+{
+    ExecuteTilingCase(BuildInputs(true), BuildAlignmentBoundaryAttrs(4LL * MB_SIZE), ge::GRAPH_SUCCESS, 13UL);
 }
 
 } // namespace
