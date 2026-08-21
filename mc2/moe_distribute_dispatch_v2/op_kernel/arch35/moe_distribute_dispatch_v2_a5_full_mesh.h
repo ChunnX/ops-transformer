@@ -1756,9 +1756,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             }
         }
     }
-    // 所有核完成token发送和count计算后，再统一发布count
+    // 本核count计算完成后立即发布
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
     if (sendExpertNum == 0) {
         return;
     }
