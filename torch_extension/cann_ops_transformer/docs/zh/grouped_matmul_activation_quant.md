@@ -65,9 +65,9 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x` | Tensor | 必选 | 左矩阵。MXFP4时可用`torch.uint8`存放打包数据并通过`x_dtype`指定逻辑类型；PyTorch 2.8及以上版本直接传入原生`float4_e2m1` Tensor时可省略`x_dtype`。 | MXFP8：`torch.float8_e4m3fn`、`torch.float8_e5m2`；MXFP4：`torch.uint8`或原生`float4_e2m1` | MXFP8：`(M, K)`；MXFP4物理shape：`(M, K / 2)` |
+| `x` | Tensor | 必选 | 左矩阵。MXFP4时用`torch.uint8`存放两个一组的打包数据，并通过`x_dtype`指定逻辑类型。 | MXFP8：`torch.float8_e4m3fn`、`torch.float8_e5m2`；MXFP4：`torch.uint8` | MXFP8：`(M, K)`；MXFP4物理shape：`(M, K / 2)` |
 | `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置，最后一个值不大于M轴大小；`group_list_type=1`时表示每个group的M轴长度，数值总和不大于M轴大小。 | `torch.int64` | `(E,)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`；MXFP4用`torch.uint8`存放打包数据并通过`weight_dtype`指定逻辑类型。PyTorch 2.8及以上版本直接传入原生`float4_e2m1` Tensor时可省略`weight_dtype`。转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | MXFP8：`torch.float8_e4m3fn`；MXFP4：`torch.uint8`或原生`float4_e2m1` | 非转置逻辑shape：`(E, K, N)`；MXFP4物理shape：`(E, K, N / 2)`<br>转置源逻辑shape：`(E, N, K)`；MXFP4源物理shape：`(E, N, K / 2)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`；MXFP4用`torch.uint8`存放打包数据并通过`weight_dtype`指定逻辑类型。转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | MXFP8：`torch.float8_e4m3fn`；MXFP4：`torch.uint8` | 非转置逻辑shape：`(E, K, N)`；MXFP4物理shape：`(E, K, N / 2)`<br>转置源逻辑shape：`(E, N, K)`；MXFP4源物理shape：`(E, N, K / 2)` |
 | `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，tensorList长度仅支持1。转置场景由源scale对中间两维执行transpose后传入。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 传入算子的shape：`(E, ceil(K / 64), N, 2)`<br>转置源shape：`(E, N, ceil(K / 64), 2)` |
 | `activation_type` | str | 必选 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | string | - |
 | `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MX场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
@@ -79,8 +79,8 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
 | `scale_alg` | int | 可选 | MX量化scale算法，默认值为0；0表示OCP实现，1表示cuBLAS实现。 | int | - |
 | `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。当前MX场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。 | float | - |
-| `x_dtype` | int | 可选 | 当`x`为非原生Tensor（例如`torch.uint8`打包MXFP4）时必须传入；可传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。PyTorch 2.8及以上版本的原生`float4_e2m1` Tensor可省略。 | int | - |
-| `weight_dtype` | int | 可选 | 当`weight`为非原生Tensor时必须传入；可传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。PyTorch 2.8及以上版本的原生`float4_e2m1` Tensor可省略。 | int | - |
+| `x_dtype` | int | 可选 | `x`的dtype wrapper覆盖值。MXFP4传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
+| `weight_dtype` | int | 可选 | `weight`的dtype wrapper覆盖值。MXFP4传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
 | `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 | `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 
@@ -140,49 +140,3 @@ cann_ops_transformer.grouped_matmul_activation_quant(
       x_scale_dtype=torch_npu.float8_e8m0fnu,
   )
   ```
-
-- MXFP4 WeightNZ 转置、`scale_alg=2` 调用示例：
-
-  ```python
-  import math
-  import torch
-  import torch_npu
-  import cann_ops_transformer
-
-  E, M, K, N = 2, 64, 128, 128
-  group_list = torch.tensor([32, 32], dtype=torch.int64).npu()
-  # uint8 是打包载体，因此需要显式指定 x_dtype/weight_dtype。
-  x = torch.randint(0, 256, (M, K // 2), dtype=torch.uint8).npu()
-  weight_source = torch.randint(0, 256, (E, N, K // 2), dtype=torch.uint8).npu()
-  weight = torch_npu.npu_format_cast(weight_source, 29).transpose(-1, -2)
-  weight_scale_source = torch.randint(
-      124, 128, (E, N, math.ceil(K / 64), 2), dtype=torch.int8
-  ).npu()
-  weight_scale = weight_scale_source.transpose(-3, -2)
-  x_scale = torch.randint(124, 128, (M, math.ceil(K / 64), 2), dtype=torch.int8).npu()
-
-  y, y_scale = cann_ops_transformer.grouped_matmul_activation_quant(
-      x,
-      group_list,
-      [weight],
-      [weight_scale],
-      "gelu_tanh",
-      bias=None,
-      x_scale=x_scale,
-      group_list_type=1,
-      quant_mode="mx",
-      y_dtype=torch_npu.float4_e2m1fn_x2,
-      round_mode="rint",
-      scale_alg=2,
-      dst_type_max=9.0,
-      x_dtype=torch_npu.float4_e2m1fn_x2,
-      weight_dtype=torch_npu.float4_e2m1fn_x2,
-      weight_scale_dtype=torch_npu.float8_e8m0fnu,
-      x_scale_dtype=torch_npu.float8_e8m0fnu,
-  )
-  # y is the packed uint8 carrier with shape (M, N / 2); y_scale is (M, ceil(N / 64), 2).
-  ```
-
-  When `x` and `weight` are native PyTorch 2.8+ `float4_e2m1` tensors rather than
-  packed `torch.uint8` carriers, omit `x_dtype` and `weight_dtype`; the interface
-  infers the logical dtype from the tensors.
