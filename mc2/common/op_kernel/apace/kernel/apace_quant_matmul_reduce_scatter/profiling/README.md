@@ -24,6 +24,11 @@ profiling/
 │   ├── hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv  # hccl_mm 专用结果 (含时间分解)
 │   └── raw/                               # 原始 op_summary CSV (含 matmul + HcclReduceScatter 两个 op)
 │       └── m{M}k{K}n{N}r{R}/              # hccl_mm 的 op_summary 含两个 op, 可分析 matmul 与通信时间分布
+├── isolation_test/                       # 隔离测试 (tileCnt=1, ST 代码副本)
+│   └── raw/                               # COMM_ONLY + COMPUTE_ONLY op_summary CSV
+│       ├── COMM_m{M}k{K}n{N}r{R}/         # 纯通信 (注释 matmul)
+│       └── COMPUTE_m{M}k{K}n{N}r{R}/      # 纯计算 (注释通信)
+├── ANALYSIS.md                            # 三路径对比 + 加速比覆盖率 + 隔离测试分析
 └── comparison/
     └── mc2_test_vs_st_comparison.log      # 三路径性能对比报告
 ```
