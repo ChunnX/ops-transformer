@@ -88,6 +88,7 @@ private:
     GlobalTensor<MM1_OUT_T> vec1ScoreCacheGm;
     GlobalTensor<MM1_OUT_T> Vec1InputKvGm;
     GlobalTensor<MM1_OUT_T> Vec1InputScoreGm;
+    GlobalTensor<MM1_OUT_T> normalizedKvGm;
     GlobalTensor<VEC1_OUT_T> vec2InputGm;
     // ================================Task Info====================================
     KeyPoolTools<COMP> tools_;
@@ -159,7 +160,8 @@ __aicore__ inline void KeyPoolKernel<COMP>::Init(__gm__ uint8_t *hidden_states, 
         blockVec_.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable,
                        seqLens, seqUsed, startPos, pooledKeyOut);
         blockVec_.InitBuffers(pipe_);
-        blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
+        blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm,
+                                       normalizedKvGm);
     }
 }
 
@@ -414,6 +416,11 @@ __aicore__ inline void KeyPoolKernel<COMP>::InitWorkspace(__gm__ uint8_t *worksp
 
     vec1ScoreCacheGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
     offset += constInfo.dbWorkspaceRatio * constInfo.vec1TailCacheSize * sizeof(MM1_OUT_T);
+
+    normalizedKvGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
+    offset += static_cast<uint64_t>(constInfo.dbWorkspaceRatio) *
+              constInfo.usedCoreNum * 2U * constInfo.mm1KvResSize *
+              sizeof(MM1_OUT_T);
 }
 
 template <typename COMP>

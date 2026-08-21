@@ -179,7 +179,9 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
-    if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 128) {
+    if (context_->normWeight.desc == nullptr &&
+        context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 &&
+        baseParams_->tokenSize <= 128) {
         context_->templateId = TemplateId::FULL_LOAD;
     }
     return ge::GRAPH_SUCCESS;
@@ -250,6 +252,10 @@ ge::graphStatus KeyPoolTiling::CalcWorkSpace()
         workspaceParams_->vec1TailCacheSize * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio * 2; // 2 kv和score
     workspaceSize_ +=
         workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    if (context_->normWeight.desc != nullptr) {
+        workspaceSize_ += workspaceParams_->mm1KvResSize * baseParams_->usedCoreNum * 2U *
+                          MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+    }
 
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

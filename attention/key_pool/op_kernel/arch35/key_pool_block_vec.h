@@ -58,13 +58,15 @@ public:
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
     __aicore__ inline void ComputeIncrementalPool();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
-                                                GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
+                                                GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
+                                                GlobalTensor<T> normalizedKvGm);
 
 protected:
     GlobalTensor<T> scoreMm1ResGm_;
     GlobalTensor<T> kvMm1ResGm_;
     GlobalTensor<T> kvCacheTcGm_;
     GlobalTensor<T> scoreCacheTcGm_;
+    GlobalTensor<T> normalizedKvGm_;
 
 private:
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
@@ -143,6 +145,12 @@ private:
                                           const StatisticInfo &statisticInfo, const Vec1SliceInfo &originSliceInfo,
                                           uint32_t dStartIdx, uint32_t dDealSize, uint32_t dBaseSize,
                                           uint32_t needDealTcSize);
+    __aicore__ inline void GatherKvForNorm(const LocalTensor<T> &kvLocal, const Vec1RunInfo &info,
+                                          const LoopInfo &loopInfo, const StatisticInfo &statisticInfo,
+                                          const Vec1SliceInfo &originSliceInfo, uint32_t dStartIdx,
+                                          uint32_t dDealSize, uint32_t needDealTcSize);
+    __aicore__ inline void PrepareNormalizedKv(const Vec1RunInfo &info, const Vec1SplitInfo &splitInfo,
+                                               const LoopInfo &loopInfo);
     __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, const Vec1SliceInfo &sliceInfo,
                                                   uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void CalcGroupInfo(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo);
@@ -196,6 +204,8 @@ private:
     TQue<QuePosition::VECOUT, 1> outputQue1;
     TQue<QuePosition::VECOUT, 1> outputQue2;
     bool hasLayerNorm_ = false;
+    uint64_t normalizedKvDbOffset_ = 0;
+    uint32_t normalizedPoolBase_ = 0;
 };
 
 template <typename COMP>
@@ -265,12 +275,14 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm,
                                                                          GlobalTensor<T> scoreMm1ResGm,
                                                                          GlobalTensor<T> kvCacheTcGm,
-                                                                         GlobalTensor<T> scoreCacheTcGm)
+                                                                         GlobalTensor<T> scoreCacheTcGm,
+                                                                         GlobalTensor<T> normalizedKvGm)
 {
     this->kvMm1ResGm_ = kvMm1ResGm;
     this->scoreMm1ResGm_ = scoreMm1ResGm;
     this->kvCacheTcGm_ = kvCacheTcGm;
     this->scoreCacheTcGm_ = scoreCacheTcGm;
+    this->normalizedKvGm_ = normalizedKvGm;
 }
 
 template <typename COMP>
@@ -1030,24 +1042,152 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLapScoreKv(
         }
     }
 
-    GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+    if (hasLayerNorm_) {
+        GlobalTensor<T> kvDBMm1ResGm =
+            kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+        LocalTensor<T> rawKvUb = inputQue1.AllocTensor<T>();
+        FromWokrSpaceToUb(rawKvUb, kvDBMm1ResGm, originSliceInfo,
+                         statisticInfo, dStartIdx, dDealSize);
+        inputQue1.EnQue(rawKvUb);
+        inputQue1.DeQue<T>();
+        RoundToHiddenDtype(rawKvUb,
+                           statisticInfo.dealSeqCnt * coff_ * dDealSize);
+        overLapSliceIterator.Reset(originSliceInfo.bIdx,
+                                   originSliceInfo.sIdx, 0U, 0U);
+        overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
+        while (!overLapSliceIterator.IsEnd()) {
+            overLapSliceIterator.GetSlice();
+            SaveState(rawKvUb, stateCacheGm_, stateBlockTableGm_,
+                      overLapSliceInfo, dStartIdx, dDealSize, 0U);
+            overLapSliceIterator.IteratorSlice();
+        }
+        inputQue1.FreeTensor(rawKvUb);
+
+        uint64_t normalizedOffset =
+            normalizedKvDbOffset_ +
+            static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) *
+                cmpRatio_ * constInfo_.headDim +
+            dStartIdx;
+        DataCopyAlignGmToUb(kvLocal, normalizedKvGm_[normalizedOffset],
+                            statisticInfo.key_poolScCnt * cmpRatio_,
+                            dDealSize, constInfo_.headDim, dDealSize);
+        event_t eventIdMte2ToV =
+            static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+    } else {
+        GlobalTensor<T> kvDBMm1ResGm =
+            kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+        LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
+        FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo,
+                         statisticInfo, dStartIdx, dDealSize);
+        inputQue1.EnQue(kvUb);
+        inputQue1.DeQue<T>();
+        RoundToHiddenDtype(kvUb,
+                           statisticInfo.dealSeqCnt * coff_ * dDealSize);
+        overLapSliceIterator.Reset(originSliceInfo.bIdx,
+                                   originSliceInfo.sIdx, 0U, 0U);
+        overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
+        while (!overLapSliceIterator.IsEnd()) {
+            overLapSliceIterator.GetSlice();
+            OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
+                           stateBlockTableGm_, kvCacheTcGm_, info,
+                           overLapSliceInfo, loopInfo, dStartIdx,
+                           originSliceInfo.dealedSeqCnt, dDealSize);
+            overLapSliceIterator.IteratorSlice();
+        }
+        inputQue1.FreeTensor(kvUb);
+    }
+
+    PipeBarrier<PIPE_V>();
+}
+
+template <typename COMP>
+__aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
+    const LocalTensor<T> &kvLocal, const Vec1RunInfo &info,
+    const LoopInfo &loopInfo, const StatisticInfo &statisticInfo,
+    const Vec1SliceInfo &originSliceInfo, uint32_t dStartIdx,
+    uint32_t dDealSize, uint32_t needDealTcSize)
+{
+    GlobalTensor<T> kvDBMm1ResGm =
+        kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
+    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo,
+                     dStartIdx, dDealSize);
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
-    RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * coff_ * dDealSize);
+    RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * dDealSize);
+
+    KeyPoolVec1SliceIterator<COMP> overLapSliceIterator(tools_);
+    overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
-
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_, stateBlockTableGm_, kvCacheTcGm_, info,
-                       overLapSliceInfo, loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
+        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
+                       stateBlockTableGm_, kvCacheTcGm_, info,
+                       overLapSliceInfo, loopInfo, dStartIdx,
+                       originSliceInfo.dealedSeqCnt, dDealSize);
         overLapSliceIterator.IteratorSlice();
     }
     inputQue1.FreeTensor(kvUb);
-
     PipeBarrier<PIPE_V>();
+}
+
+template <typename COMP>
+__aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
+    const Vec1RunInfo &info, const Vec1SplitInfo &splitInfo,
+    const LoopInfo &loopInfo)
+{
+    normalizedKvDbOffset_ =
+        (static_cast<uint64_t>(info.c1v1DbIdx) * constInfo_.usedCoreNum * 2U +
+         GetBlockIdx()) * constInfo_.mm1KvResSize;
+    normalizedPoolBase_ = compressedCnt_;
+
+    KeyPoolVec1SliceIterator<COMP> sliceIterator(tools_);
+    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart,
+                        splitInfo.dealSeqStartIdx, 0U);
+    for (uint32_t tcIdx = 0; tcIdx < splitInfo.dealTcSize;) {
+        uint32_t maxPoolCount =
+            BUFFER_SIZE_BYTE_64K /
+            (cmpRatio_ * constInfo_.headDim * sizeof(T));
+        maxPoolCount = max(maxPoolCount, 1U);
+        uint32_t actDealTcSize =
+            min(maxPoolCount, splitInfo.dealTcSize - tcIdx);
+        Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
+        sliceIterator.SetNeedDealTcSize(actDealTcSize);
+        uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
+        StatisticInfo &statisticInfo =
+            sliceIterator.template FullIteratorSlice<true>();
+        if (statisticInfo.key_poolScCnt > 0) {
+            LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
+            GatherKvForNorm(kvLocal, info, loopInfo, statisticInfo,
+                            originSliceInfo, 0U, constInfo_.headDim,
+                            needDealTcSize);
+            LocalTensor<T> normScratch = inputQue1.AllocTensor<T>();
+            KeyPoolLayerNormRowsInplace(
+                kvLocal, normScratch, normWeightGm_, normBiasGm_,
+                constInfo_.normEps,
+                statisticInfo.key_poolScCnt * cmpRatio_,
+                constInfo_.headDim, constInfo_.headDim);
+            inputQue1.FreeTensor(normScratch);
+
+            uint64_t normalizedOffset =
+                normalizedKvDbOffset_ +
+                static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) *
+                    cmpRatio_ * constInfo_.headDim;
+            DataCopyAlignUbToGm(
+                normalizedKvGm_[normalizedOffset], kvLocal,
+                statisticInfo.key_poolScCnt * cmpRatio_,
+                constInfo_.headDim, constInfo_.headDim,
+                constInfo_.headDim);
+            PipeBarrier<PIPE_MTE3>();
+            compressedCnt_ += statisticInfo.key_poolScCnt;
+        }
+        tcIdx += actDealTcSize;
+    }
 }
 
 template <typename COMP>
@@ -1067,14 +1207,6 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1Run
 
     OverLapScoreKv(scoreLocal, kvLocal, info, loopInfo, statisticInfo, originSliceInfo, dStartIdx, dDealSize, dBaseSize,
                    needDealTcSize);
-
-    if (hasLayerNorm_ && coff_ == 1 && dDealSize == constInfo_.headDim &&
-        statisticInfo.key_poolScCnt > 0) {
-        LocalTensor<T> normScratch = inputQue2.AllocTensor<T>();
-        KeyPoolLayerNormRowsInplace(kvLocal, normScratch, normWeightGm_, normBiasGm_, constInfo_.normEps,
-                                    statisticInfo.key_poolScCnt * cmpRatio_, dDealSize, constInfo_.headDim);
-        inputQue2.FreeTensor(normScratch);
-    }
 
     if (statisticInfo.key_poolScCnt > 0) {
         AddApeToPooledScore(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
@@ -1227,6 +1359,11 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeVec1(const Vec1RunInfo &
 
     KeyPoolVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    if (hasLayerNorm_) {
+        compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
+        PrepareNormalizedKv(info, splitInfo, loopInfo);
+        compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
+    }
     // 切块循环
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
