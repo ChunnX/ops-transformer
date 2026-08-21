@@ -85,6 +85,7 @@ constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 32U;
 constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
 constexpr uint32_t A5_ALL_CORE_COUNT_BS_THRESHOLD = 128U;
+constexpr uint32_t A5_SERIAL_MODE_BS_THRESHOLD = 32U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t UB_ALIGN_INT32_NUM = UB_ALIGN_VAL / sizeof(int32_t);
 constexpr uint32_t RANK_LIST_NUM = 2;
@@ -1609,7 +1610,8 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t totalExpertNum = sharedExpertRankNum + moeExpertNum;
-    uint32_t bs = tilingData.moeDistributeDispatchV2Info.bs;
+    uint32_t epWorldSize = tilingData.moeDistributeDispatchV2Info.epWorldSize;
+    uint32_t maxBs = tilingData.moeDistributeDispatchV2Info.globalBs / epWorldSize;
     // kernel侧CumSum控制核最多使用8核，此处按上限估算发送核的UB占用。
     uint32_t aivUsedCumSum = A5_CUMSUM_MAX_CORE_NUM;
     aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
@@ -1626,8 +1628,16 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t expertMaskBufSize = maskSizePerExpert * Ceil(moeExpertNum, moeUsedAivNum, nodeName) / moeUsedAivNum;
     UbForMoe = UbForMoe + expertMaskBufSize;                                        // expertMaskBuf
     UbForMoe = UbForMoe + Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName); // tokenNumToExpertBuf
-    if (bs < A5_ALL_CORE_COUNT_BS_THRESHOLD) {
+    if (maxBs < A5_ALL_CORE_COUNT_BS_THRESHOLD) {
         uint32_t countNumPerCore = Ceil(totalExpertNum, aivNum, nodeName) / aivNum;
+        if (maxBs < A5_SERIAL_MODE_BS_THRESHOLD) {
+            uint32_t moeExpertRankNum = epWorldSize - sharedExpertRankNum;
+            uint32_t moeExpertNumPerRank = moeExpertNum / moeExpertRankNum;
+            uint32_t rankNumPerCore = Ceil(epWorldSize, aivNum, nodeName) / aivNum;
+            uint32_t expertNumPerRank = moeExpertNumPerRank > 1U ? moeExpertNumPerRank : 1U;
+            uint32_t serialCountNumPerCore = rankNumPerCore * expertNumPerRank;
+            countNumPerCore = countNumPerCore > serialCountNumPerCore ? countNumPerCore : serialCountNumPerCore;
+        }
         uint32_t statusCntAlign = Ceil(countNumPerCore, UB_ALIGN_INT32_NUM, nodeName);
         UbForMoe = UbForMoe + statusCntAlign * UB_ALIGN_VAL; // statusBuf_
     }
