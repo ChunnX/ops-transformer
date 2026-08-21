@@ -2038,11 +2038,11 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                 int64_t diagDStart = 0;
                 int64_t diagDEnd = 0;
                 if (isPostQuantDiagCase && runInfo.boIdx == 8 && runInfo.n2oIdx == 2) {
-                    targetGs1 = 1 * constInfo.s1Size + 300;
+                    targetGs1 = 1 * runInfo.actualS1Size + 300;
                     diagDStart = 8;
                     diagDEnd = 40;
                 } else if (isPostQuantDiagCase && runInfo.boIdx == 25 && runInfo.n2oIdx == 5) {
-                    targetGs1 = 4 * constInfo.s1Size + 446;
+                    targetGs1 = 4 * runInfo.actualS1Size + 446;
                     diagDStart = 49;
                     diagDEnd = 71;
                 }
@@ -2073,11 +2073,11 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                 int64_t diagDStart = 0;
                 int64_t diagDEnd = 0;
                 if (isPostQuantDiagCase && runInfo.boIdx == 8 && runInfo.n2oIdx == 2) {
-                    targetGs1 = 1 * constInfo.s1Size + 300;
+                    targetGs1 = 1 * runInfo.actualS1Size + 300;
                     diagDStart = 8;
                     diagDEnd = 40;
                 } else if (isPostQuantDiagCase && runInfo.boIdx == 25 && runInfo.n2oIdx == 5) {
-                    targetGs1 = 4 * constInfo.s1Size + 446;
+                    targetGs1 = 4 * runInfo.actualS1Size + 446;
                     diagDStart = 49;
                     diagDEnd = 71;
                 }

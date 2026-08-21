@@ -57,7 +57,7 @@ inline __aicore__ void FiaDiagPrintNoQuantEntry(
                         input.isKVHasLeftPadding, input.isPostQuantPerChnl, input.isPostQuantBF16);
 
         const bool isPaDiagCase = KvLayoutType != 0 && input.bSize == 36 && input.s1Size == 6998 &&
-                                  input.s2Size == 7920 && input.dSize == 64 && input.dSizeV == 64 &&
+                                  input.s2Size == 7936 && input.dSize == 64 && input.dSizeV == 64 &&
                                   input.blockSize == 128 && input.blockTableDim2 == 62;
         if (isPaDiagCase && actualSeqLengths != nullptr && actualSeqLengthsKV != nullptr && blockTable != nullptr) {
             __gm__ int64_t *actualQ = (__gm__ int64_t *)actualSeqLengths;
