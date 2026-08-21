@@ -360,6 +360,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_THREE) &&
                (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         quantMmMode_ = mc2tiling::Mc2QuantMode::PERTENSOR_MODE;
+        isMxScene_ = true;
         return ge::GRAPH_SUCCESS;
     } else if ((scaleInv1Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
@@ -541,7 +542,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
-    if (quantMmMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) {
+    if (isMxScene_) {
         MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
     } else {
         if (args_.nValue != 0) {
@@ -721,7 +722,7 @@ void Mc2PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cach
 
 ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 {
-    if (quantMmMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) {
+    if (isMxScene_) {
         // Hcomm 路径: 填充 hcommAllGatherMatmulTilingData 并输出
         SetHcommTilingInfo();
         hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
