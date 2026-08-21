@@ -498,6 +498,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                             (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     constexpr uint32_t metaChunkTokenMax = 2048U;
+    constexpr uint32_t indexStride = UB_ALIGN / sizeof(uint64_t);
     uint32_t metaChunkTokens = 0;
     uint32_t metaChunkBytes = 0;
     uint32_t sendIndexBytes = 0;
@@ -520,7 +521,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         sendIndexLocal = sendIndexBuf_.Get<uint64_t>();
         sendIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(combineSendDataWorkspaceAddr_));
 
-        constexpr uint32_t indexStride = UB_ALIGN / sizeof(uint64_t);
         uint32_t zeroIndexCount = metaChunkBytes / sizeof(uint64_t);
         uint32_t zeroSlotCount = zeroIndexCount / indexStride;
         LocalTensor<uint64_t> zeroIndexLocal = metadataLocal.ReinterpretCast<uint64_t>();
