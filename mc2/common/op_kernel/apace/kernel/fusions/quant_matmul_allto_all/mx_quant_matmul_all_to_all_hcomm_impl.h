@@ -55,7 +55,6 @@ struct PostComputeCommPolicy {
     uint64_t yHcclDataType_{0};
     // pipeline深度2: 当前handle和前一个handle
     AscendC::HcclHandle curHandle_{0};
-    AscendC::HcclHandle prevHandle_{0};
     uint32_t lastCommTileIdx_{0xFFFFFFFF}; // 去重: 已处理的最大tileIdx
     uint32_t lastIssuedTileIdx_{0xFFFFFFFF}; // 已下发AllToAll的最大tileIdx
 
@@ -92,9 +91,7 @@ struct PostComputeCommPolicy {
         lastIssuedTileIdx_ = tileIdx;
     }
 
-    // 记录Blaze kernel内部WaitTile调用的最大tileIdx（用于区分主循环和末尾循环）
-    // 主循环: WaitTile(tileIdx)在matmul之前调用，tileIdx-1的matmul已完成
-    // 末尾循环: 所有matmul已完成，连续调用WaitTile
+    // 记录已下发AllToAll的最大tileIdx
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         // 去重: 同一tileIdx只处理一次
@@ -102,22 +99,16 @@ struct PostComputeCommPolicy {
             return;
         }
 
-        // 方案B: WaitTile(tileIdx)下发tileIdx-1的通信
-        // 主循环中tileIdx-1的matmul已完成（因为Blaze kernel按M tile顺序遍历）
-        // 末尾循环中所有matmul已完成，但连续调用时pipeline深度2无法处理
-        // 解决: 末尾循环只更新lastCommTileIdx_，通信在PrepareLastTileAllToAll中统一下发
+        // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
+        // 不能在此处Wait——Blaze kernel内部未做SyncAll,rank间可能不同步,
+        // Wait会导致快的rank等待慢的rank下发AllToAll,形成死锁
         if (tileIdx > 0) {
             uint32_t prevTileIdx = tileIdx - 1;
-            // 只有prevTileIdx == lastCommTileIdx_时才下发（连续递增，说明是主循环）
+            // 主循环(连续递增): 下发prevTileIdx的AllToAll
             if (prevTileIdx == lastCommTileIdx_ || lastCommTileIdx_ == 0xFFFFFFFF) {
-                // pipeline深度2: 先Wait上上个tile的handle
-                if (lastCommTileIdx_ != 0xFFFFFFFF && prevTileIdx > 0) {
-                    hccl_->Wait(prevHandle_);
-                }
-                prevHandle_ = curHandle_;
                 IssueAllToAll(prevTileIdx);
             }
-            // 否则是末尾循环跳过的tile，在PrepareLastTileAllToAll中处理
+            // 末尾循环(跳跃): 跳过,在PrepareLastTileAllToAll中处理
         }
         lastCommTileIdx_ = tileIdx;
     }
@@ -263,23 +254,21 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareLastTileAllToAll()
 {
-    // Blaze kernel完成后，下发所有未下发的tile通信
-    // 主循环中只下发了部分tile（pipeline深度2），末尾循环跳过的tile在这里统一下发
+    // Blaze kernel完成后，下发剩余未下发的tile通信
+    // 主循环中已通过WaitTile下发了部分tile的AllToAll(异步,未Wait)
+    // 这里统一下发剩余tile并Wait所有通信
     auto &&commTiling = tilingData_->commTilingData;
 
-    // 先Wait pipeline中的pending handle
-    if (commPolicy_.lastIssuedTileIdx_ != 0xFFFFFFFF) {
-        hccl_.Wait(commPolicy_.prevHandle_);
-        hccl_.Wait(commPolicy_.curHandle_);
-        commPolicy_.prevHandle_ = 0;
-        commPolicy_.curHandle_ = 0;
+    // 下发最后一个tile的AllToAll（WaitTile只下发tileIdx-1,最后一个tile无后续触发）
+    uint32_t lastTileIdx = totalTileCnt_ - 1;
+    if (lastTileIdx != lastIssuedTileIdx_) {
+        commPolicy_.IssueAllToAll(lastTileIdx);
     }
 
-    // 逐个下发剩余未下发的tile（matmul已全部完成，直接同步下发+Wait）
-    for (uint32_t tileIdx = commPolicy_.lastIssuedTileIdx_ + 1; tileIdx < totalTileCnt_; tileIdx++) {
-        commPolicy_.IssueAllToAll(tileIdx);
-        hccl_.Wait(commPolicy_.curHandle_);
-    }
+    // Wait所有已下发的AllToAll
+    // 注意: 所有rank必须先完成下发(SyncAll保证),再统一Wait,避免死锁
+    AscendC::SyncAll();
+    hccl_.Wait(commPolicy_.curHandle_);
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -356,17 +345,15 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         quantMatmulKernelImpl_(params);
     }
 
-    // Phase 2: Blaze kernel完成后，下发最后一个tile的AllToAll
-    // （WaitTile只在下一个tile开始时才下发上一个tile的通信，最后一个tile没有后续触发）
-    AscendC::SyncAll();
+    // Phase 2: Blaze kernel完成后，下发剩余tile并Wait所有通信
+    // PrepareLastTileAllToAll内部会做SyncAll(确保所有rank完成下发)再Wait
     if (totalTileCnt_ > 0) {
         PrepareLastTileAllToAll();
     }
 
-    // Phase 3: 等待所有通信完成（PrepareLastTileAllToAll已统一下发+Wait剩余tile）
+    // Phase 3: Finalize
     AscendC::SyncAll();
-
-    // Phase 4: Finalize
+    hccl_.Finalize();
     AscendC::SyncAll();
     hccl_.Finalize();
 }
