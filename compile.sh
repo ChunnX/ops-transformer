@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -o pipefail
+
 # 定义全局变量：编译子进程PID、编译是否成功标识
 BUILD_CHILD_PID=0
 BUILD_SUCCESS=0  # 0=未完成/失败，1=成功
@@ -34,11 +36,13 @@ trap '' SIGTSTP  # 屏蔽Ctrl+Z，避免卡死
 echo "[$(date)] 开始执行编译流程（按Ctrl+C可强制终止并清理）..."
 rm -rf build
 source /home/z00939165/Ascend/cann/set_env.sh
-bash build.sh --pkg --soc=ascend950 --ops="matmul_allto_all" 2>&1 |tee 1.log
+bash build.sh --pkg --soc=ascend950 --ops="matmul_allto_all" 2>&1 | tee 1.log &
+BUILD_CHILD_PID=$!
 
 # 等待子进程执行，并捕获编译返回码
-wait $BUILD_CHILD_PID
+wait "$BUILD_CHILD_PID"
 BUILD_EXIT_CODE=$?  # 获取build.sh的退出码（0=成功，非0=失败）
+BUILD_CHILD_PID=0
 
 # ===================== 根据编译结果处理 =====================
 if [ $BUILD_EXIT_CODE -eq 0 ]; then
