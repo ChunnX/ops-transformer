@@ -261,7 +261,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     // 下发最后一个tile的AllToAll（WaitTile只下发tileIdx-1,最后一个tile无后续触发）
     uint32_t lastTileIdx = totalTileCnt_ - 1;
-    if (lastTileIdx != lastIssuedTileIdx_) {
+    if (lastTileIdx != commPolicy_.lastIssuedTileIdx_) {
         commPolicy_.IssueAllToAll(lastTileIdx);
     }
 
