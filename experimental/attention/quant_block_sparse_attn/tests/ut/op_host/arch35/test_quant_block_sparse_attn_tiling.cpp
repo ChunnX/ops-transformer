@@ -112,10 +112,22 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
     }
 
     std::vector<TensorDesc> inputTensorDesc({
-        NormalizeTd(param.query), key, value, NormalizeTd(param.qDescale), kDescale, NormalizeTd(param.vDescale),
-        NormalizeTd(param.pScale), NormalizeTd(param.cuSeqlensQ), NormalizeTd(param.cuSeqlensKv),
-        NormalizeTd(param.sequsedQ), NormalizeTd(param.sequsedKv), NormalizeTd(param.sparseIndices),
-        NormalizeTd(param.sparseSeqLen), NormalizeTd(param.blockTable), NormalizeTd(param.attenMask), metadata,
+        NormalizeTd(param.query),
+        key,
+        value,
+        NormalizeTd(param.qDescale),
+        kDescale,
+        NormalizeTd(param.vDescale),
+        NormalizeTd(param.pScale),
+        NormalizeTd(param.cuSeqlensQ),
+        NormalizeTd(param.cuSeqlensKv),
+        NormalizeTd(param.sequsedQ),
+        NormalizeTd(param.sequsedKv),
+        NormalizeTd(param.sparseIndices),
+        NormalizeTd(param.sparseSeqLen),
+        NormalizeTd(param.blockTable),
+        NormalizeTd(param.attenMask),
+        metadata,
     });
 
     std::vector<TensorDesc> outputTensorDesc({
@@ -137,7 +149,7 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
     });
 
     gert::TilingContextPara para(OP_NAME, inputTensorDesc, outputTensorDesc, attrs, &compileInfo, "Ascend950", 64,
-                                 262144, 65536);
+                                 262144, 262144);
     return ExecuteTiling(para, tilingInfo);
 }
 
