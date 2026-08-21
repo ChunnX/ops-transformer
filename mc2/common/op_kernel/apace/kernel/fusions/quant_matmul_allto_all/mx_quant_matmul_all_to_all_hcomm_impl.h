@@ -208,7 +208,6 @@ private:
     // 流水掩盖：逐 tile 计算+通信交替
     __aicore__ inline void SetupTileParams(Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset,
                                            GM_ADDR cGMOffset, GM_ADDR scaleAOffset);
-    __aicore__ inline void MatmulTileProcess(uint32_t tileIdx, uint32_t curTileM);
     __aicore__ inline void PrepareLastTileAllToAll();
 };
 
@@ -328,36 +327,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, isBias_};
 
     out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
-}
-
-template <typename X1Type, typename X2Type, typename YType,
-          typename QuantMatmulAllToAllTilingDataType,
-          AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void
-QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::MatmulTileProcess(
-    uint32_t tileIdx, uint32_t curTileM)
-{
-    auto &&commTiling = tilingData_->commTilingData;
-    const auto &mmTile = tilingData_->tileQbmmTilingData;
-    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;
-
-    // 计算 x1 偏移: tileIdx * tileM * rankK
-    uint64_t x1ElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * mmTile.k;
-    GM_ADDR aGMOffset = x1_ + x1ElemOffset * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-
-    // 计算 mmResult 偏移: tileIdx * tileM * rankN
-    uint64_t mmResultElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * nonSplitAxisSize;
-    GM_ADDR cGMOffset = mmResultGM_ + mmResultElemOffset * sizeof(YType);
-
-    // 计算 scale 偏移: tileIdx * tileM * ceilDiv(rankK, GROUP_SIZE) * 2
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    uint64_t scaleElemOffset = static_cast<uint64_t>(tileIdx) * commTiling.splitAxisTileSize * scaleKLen;
-    GM_ADDR scaleAOffset = x1Scale_ + scaleElemOffset * sizeof(AscendC::fp8_e8m0_t);
-
-    Params params;
-    SetupTileParams(params, tileIdx, curTileM, aGMOffset, cGMOffset, scaleAOffset);
-    quantMatmulKernelImpl_(params);
 }
 
 template <typename X1Type, typename X2Type, typename YType,
