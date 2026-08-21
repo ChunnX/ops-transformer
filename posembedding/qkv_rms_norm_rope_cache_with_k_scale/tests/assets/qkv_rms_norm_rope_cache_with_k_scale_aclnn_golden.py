@@ -1,7 +1,14 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+# ----------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This file is licensed under the CANN Open Software License Agreement Version 2.0.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
 
 """ACLNN TestSpec for QkvRmsNormRopeCacheWithKScale."""
 
@@ -14,19 +21,45 @@ import qkv_rms_norm_rope_cache_with_k_scale_kernel_golden as _kernel  # noqa: E4
 
 
 def aclnn_customize_inputs(
-    qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef,
-    kScaleCacheRef, queryStartLocOptional=None, seqLensOptional=None,
-    rotationOptional=None, vScaleOptional=None, mropePositionOptional=None,
-    headNums=None, layoutQkv="TND", layoutQOut="NTD", epsilon=1e-6,
-    mropeSectionOptional=None, qQuantMode="PerTokenPerHead", qOut=None,
-    qScaleOptional=None, **kwargs,
+    qkv,
+    qGamma,
+    kGamma,
+    cosSin,
+    slotMapping,
+    kCacheRef,
+    vCacheRef,
+    kScaleCacheRef,
+    queryStartLocOptional=None,
+    seqLensOptional=None,
+    rotationOptional=None,
+    vScaleOptional=None,
+    mropePositionOptional=None,
+    headNums=None,
+    layoutQkv="TND",
+    layoutQOut="NTD",
+    epsilon=1e-6,
+    mropeSectionOptional=None,
+    qQuantMode="PerTokenPerHead",
+    qOut=None,
+    qScaleOptional=None,
+    **kwargs,
 ):
     """ACLNN input entry; parameter names follow GetWorkspaceSize."""
 
     _kernel._prepare(
-        qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef,
-        kScaleCacheRef, queryStartLocOptional, seqLensOptional,
-        rotationOptional, vScaleOptional, mropePositionOptional,
+        qkv,
+        qGamma,
+        kGamma,
+        cosSin,
+        slotMapping,
+        kCacheRef,
+        vCacheRef,
+        kScaleCacheRef,
+        queryStartLocOptional,
+        seqLensOptional,
+        rotationOptional,
+        vScaleOptional,
+        mropePositionOptional,
         testcase_name=kwargs.get("testcase_name"),
     )
 
@@ -44,12 +77,28 @@ class AclnnQkvRmsNormRopeCacheWithKScaleTestSpec:
 
     @staticmethod
     def golden(
-        qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef,
-        kScaleCacheRef, queryStartLocOptional=None, seqLensOptional=None,
-        rotationOptional=None, vScaleOptional=None, mropePositionOptional=None,
-        headNums=None, layoutQkv="TND", layoutQOut="NTD", epsilon=1e-6,
-        mropeSectionOptional=None, qQuantMode="PerTokenPerHead", qOut=None,
-        qScaleOptional=None, **kwargs,
+        qkv,
+        qGamma,
+        kGamma,
+        cosSin,
+        slotMapping,
+        kCacheRef,
+        vCacheRef,
+        kScaleCacheRef,
+        queryStartLocOptional=None,
+        seqLensOptional=None,
+        rotationOptional=None,
+        vScaleOptional=None,
+        mropePositionOptional=None,
+        headNums=None,
+        layoutQkv="TND",
+        layoutQOut="NTD",
+        epsilon=1e-6,
+        mropeSectionOptional=None,
+        qQuantMode="PerTokenPerHead",
+        qOut=None,
+        qScaleOptional=None,
+        **kwargs,
     ):
         """ACLNN golden; output order follows the public ACLNN contract."""
 
@@ -59,12 +108,26 @@ class AclnnQkvRmsNormRopeCacheWithKScaleTestSpec:
             else _kernel.GE_DT_FLOAT8_E4M3FN
         )
         result = _kernel.numpy_result(
-            qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef,
-            kScaleCacheRef, queryStartLocOptional, seqLensOptional,
-            rotationOptional, vScaleOptional, mropePositionOptional,
-            head_nums=headNums, layout_qkv=layoutQkv, layout_q_out=layoutQOut,
-            epsilon=epsilon, mrope_section=mropeSectionOptional,
-            q_quant_mode=qQuantMode, q_out_dtype=q_out_dtype,
+            qkv,
+            qGamma,
+            kGamma,
+            cosSin,
+            slotMapping,
+            kCacheRef,
+            vCacheRef,
+            kScaleCacheRef,
+            queryStartLocOptional,
+            seqLensOptional,
+            rotationOptional,
+            vScaleOptional,
+            mropePositionOptional,
+            head_nums=headNums,
+            layout_qkv=layoutQkv,
+            layout_q_out=layoutQOut,
+            epsilon=epsilon,
+            mrope_section=mropeSectionOptional,
+            q_quant_mode=qQuantMode,
+            q_out_dtype=q_out_dtype,
         )
         outputs = [result.q_out]
         if result.q_scale is not None:
@@ -74,6 +137,5 @@ class AclnnQkvRmsNormRopeCacheWithKScaleTestSpec:
 
 
 __spec__ = {
-    "aclnnQkvRmsNormRopeCacheWithKScale":
-        "AclnnQkvRmsNormRopeCacheWithKScaleTestSpec",
+    "aclnnQkvRmsNormRopeCacheWithKScale": "AclnnQkvRmsNormRopeCacheWithKScaleTestSpec",
 }
