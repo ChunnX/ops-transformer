@@ -56,6 +56,8 @@
 纯 CPU torch 实现，不依赖 NPU。
 """
 
+import zlib
+
 import torch
 
 # TestSpec 注册：kernel 用 CSV 的 op_name，aclnn 用 CSV 的 api_name
@@ -662,9 +664,14 @@ def _torch_to_np(tensor, like_dtype):
 
 
 def _seed_of(kwargs):
-    """按用例名派生种子：同一条用例每次跑拿到同一组索引，便于复现。"""
+    """按用例名派生种子：同一条用例每次跑拿到同一组索引，便于复现。
+
+    用 crc32 而不是内置 hash()：str 的 hash 每个进程按 PYTHONHASHSEED 重新加盐，
+    同一条用例换个进程就换一组索引，改动前后的 A/B 比对因此不成立（除非调用方
+    自己去钉 PYTHONHASHSEED）。crc32 只依赖用例名。
+    """
     name = str(kwargs.get("testcase_name", "und_gen_qkv_rms_norm_rope_cache"))
-    return abs(hash(name)) % (2 ** 31)
+    return zlib.crc32(name.encode("utf-8"))
 
 
 def _gen_index_values(arrays, kwargs):
