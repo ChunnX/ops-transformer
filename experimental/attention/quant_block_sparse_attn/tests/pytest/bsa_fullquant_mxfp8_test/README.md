@@ -2,6 +2,10 @@
 
 本目录用于运行 QuantBlockSparseAttn 的 MXFP8 full-quant golden/NPU 对比用例。
 
+Golden 将“存在稀疏 KV 位置”和“已建立数值 softmax 状态”分开处理：若某行的所有合法 QK score
+均为 `-Inf`，则与 kernel 一致保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
+触发的有效 softmax 行仍传播 `NaN`。
+
 ## 文件结构
 
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。

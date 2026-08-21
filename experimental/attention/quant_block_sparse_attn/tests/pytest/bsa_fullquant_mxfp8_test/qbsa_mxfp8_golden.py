@@ -1523,6 +1523,17 @@ def _exp_sub(lhs, rhs, use_quant_matmul):
     return torch.exp(lhs_fp32 - rhs_fp32)
 
 
+def _softmax_row_is_active(local_max, has_valid_position):
+    """Match the VF state transition for rows whose valid scores are all -Inf.
+
+    The VF reduces each row from the finite ``-FLT_MAX`` sentinel.  Therefore
+    an all-``-Inf`` row cannot update the maximum and its probabilities remain
+    zero.  NaN is deliberately *not* filtered here: once a valid row produces
+    NaN (for example ``+Inf - +Inf``), the kernel propagates that NaN.
+    """
+    return has_valid_position & ~torch.isneginf(local_max)
+
+
 def _npu_mxfp8_pv_matmul_impl(p_fp8, v_fp8, p_scale, v_scale):
     """C2 PV matmul via npu_quant_matmul."""
 
@@ -1907,7 +1918,8 @@ def cpu_mxfp8_golden(
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
-                any_valid = torch.zeros((nq,), dtype=torch.bool)
+                any_position_valid = torch.zeros((nq,), dtype=torch.bool)
+                any_softmax_active = torch.zeros((nq,), dtype=torch.bool)
 
                 for task_chunks in all_task_chunks:
                     positions = [pos for chunk in task_chunks for pos in chunk]
@@ -1936,7 +1948,7 @@ def cpu_mxfp8_golden(
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )
-                    any_valid |= valid_mask.any(dim=-1)
+                    any_position_valid |= valid_mask.any(dim=-1)
                     scores = _qk_matmul(
                         q_block,
                         q_scale_block,
@@ -1964,14 +1976,13 @@ def cpu_mxfp8_golden(
                         # subtracted only from the value consumed by
                         # FusedExpSub; it is not part of the online max state.
                         m_subloop = m_run
-                        round_has = torch.zeros((nq,), dtype=torch.bool)
+                        round_active = torch.zeros((nq,), dtype=torch.bool)
                         round_end_idx = min(round_idx + 2, len(chunk_offsets))
                         for subloop_idx in range(round_idx, round_end_idx):
                             subloop_start, subloop_end = chunk_offsets[subloop_idx]
                             s_subloop = scores[:, subloop_start:subloop_end]
                             vm_subloop = valid_mask[:, subloop_start:subloop_end]
                             subloop_has = vm_subloop.any(dim=-1)
-                            round_has |= subloop_has
 
                             masked_scores = torch.where(
                                 vm_subloop,
@@ -1981,6 +1992,10 @@ def cpu_mxfp8_golden(
                             # VF order: score max -> softmax scale -> ceil to
                             # an ln2 multiple -> merge with the online max.
                             local_max = masked_scores.max(dim=-1).values
+                            subloop_active = _softmax_row_is_active(
+                                local_max, subloop_has
+                            )
+                            round_active |= subloop_active
                             local_max = _align_up_to_ln2(local_max, use_quant_matmul)
                             subloop_started = m_subloop != neg_inf
                             m_candidate = torch.where(
@@ -1988,7 +2003,9 @@ def cpu_mxfp8_golden(
                                 torch.maximum(m_subloop, local_max),
                                 local_max,
                             )
-                            m_subloop = torch.where(subloop_has, m_candidate, m_subloop)
+                            m_subloop = torch.where(
+                                subloop_active, m_candidate, m_subloop
+                            )
 
                             # VF subtracts ln(pScale) from the aligned max
                             # immediately before FusedExpSub. Therefore the
@@ -2000,7 +2017,7 @@ def cpu_mxfp8_golden(
                                 use_quant_matmul,
                             )
                             p_subloop = torch.where(
-                                vm_subloop & subloop_has.view(nq, 1),
+                                vm_subloop & subloop_active.view(nq, 1),
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
@@ -2047,18 +2064,20 @@ def cpu_mxfp8_golden(
 
                         acc = acc * history_rescale.view(nq, 1) + pv
                         l_run = l_run * history_rescale + round_sum
-                        m_run = torch.where(round_has, m_new, m_run)
+                        m_run = torch.where(round_active, m_new, m_run)
+                        any_softmax_active |= round_active
 
-                # Only empty rows use the neutral denominator.  A valid row
-                # with NaN must remain NaN: VF propagates it into LSE, while
-                # the old ``l_run > 0`` guard replaced it by 1 and turned the
-                # 00011 golden LSE into +inf instead of NaN.
-                safe_l = torch.where(any_valid, l_run, torch.ones_like(l_run))
+                # Position validity and numerical softmax state are distinct.
+                # Rows with positions but only -Inf scores stay at the kernel's
+                # empty output (0 / EMPTY_LSE).  Active rows with NaN keep NaN,
+                # preserving the existing 00011 propagation behavior.
+                row_active = any_position_valid & any_softmax_active
+                safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
 
                 for local_idx in range(nq):
-                    if not bool(any_valid[local_idx].item()):
+                    if not bool(row_active[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
                     attention_out[out_idx, head_idx] = attn[local_idx].to(
