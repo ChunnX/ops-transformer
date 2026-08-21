@@ -1893,7 +1893,7 @@ def cpu_mxfp8_golden(
     sparse_indices,
     sparse_seq_len,
     block_table_torch,
-    use_quant_matmul=True,
+    use_quant_matmul=False,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
     layout_q = "TND"
@@ -3019,7 +3019,7 @@ def run_one_case(
     rdv_cache_dir=None,
     debug=False,
     graph=False,
-    use_quant_matmul=True,
+    use_quant_matmul=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -3327,16 +3327,16 @@ if __name__ == "__main__":
         "例如 --case_range 100:200 跑第100到200行(含)的用例",
     )
     parser.add_argument(
-        "--matmul",
+        "--quant_matmul",
         action="store_true",
-        help="使用 CPU torch.matmul 而非 npu_quant_matmul 做 QK/PV 计算",
+        help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
     args = parser.parse_args()
 
-    use_quant_matmul = not args.matmul
+    use_quant_matmul = args.quant_matmul
     logger.info(
         "[Config] matmul backend: %s",
-        "torch.matmul (CPU)" if args.matmul else "npu_quant_matmul",
+        "npu_quant_matmul" if args.quant_matmul else "torch.matmul (CPU)",
     )
 
     raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
