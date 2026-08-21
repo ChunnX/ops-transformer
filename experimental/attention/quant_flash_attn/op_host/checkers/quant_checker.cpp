@@ -46,9 +46,9 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilin
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
-                                              std::to_string(quantModeVal).c_str(),
-                                              "The value of quant_mode must be A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 (5)"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            qfaInfo.opName, QUANT_MODE_NAME.c_str(), std::to_string(quantModeVal).c_str(),
+            "The value of quant_mode must be A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 (5)"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
