@@ -60,7 +60,8 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
+          bool UsingApaceImpl = false>
 class MxQuantMatmulAlltoAllArch35 {
 public:
     __aicore__ inline MxQuantMatmulAlltoAllArch35(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
@@ -89,18 +90,45 @@ private:
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
+    __aicore__ inline decltype(auto) GetTilingInfo()
+    {
+        if constexpr (UsingApaceImpl) {
+            return (tilingData_->matmulAllToAllTilingInfo);
+        } else {
+            return (tilingData_->quantMatmulAlltoAllTilingInfo);
+        }
+    }
+
+    __aicore__ inline auto GetTileTilingDataPtr()
+    {
+        if constexpr (UsingApaceImpl) {
+            return &(tilingData_->tileQbmmTilingData);
+        } else {
+            return &(tilingData_->mc2QuantBmmV3TileTilingData);
+        }
+    }
+
+    __aicore__ inline auto GetTailTilingDataPtr()
+    {
+        if constexpr (UsingApaceImpl) {
+            return &(tilingData_->tailQbmmTilingData);
+        } else {
+            return &(tilingData_->mc2QuantBmmV3TailTilingData);
+        }
+    }
 };
 
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
+          bool UsingApaceImpl>
 __aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Init(
+MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, UsingApaceImpl>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1Scale, GM_ADDR x2Scale, GM_ADDR workspaceGM,
     MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe)
 {
     // 获取tilingdata数据
     tilingData_ = tilingData;
-    auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
+    auto &&mc2Tiling_ = GetTilingInfo();
     // 管道初始化
     tPipe_ = tPipe;
     x1_ = x1;
@@ -118,11 +146,12 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
     pipeLine_->GetContext(&pipeLineContext_);
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
+          bool UsingApaceImpl>
 __aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Process()
+MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, UsingApaceImpl>::Process()
 {
-    auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
+    auto &&mc2Tiling_ = GetTilingInfo();
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
         ProcessTile(mc2Tiling_.tileCnt);
@@ -137,13 +166,14 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
     pipeLine_->End();
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
+          bool UsingApaceImpl>
 __aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTile(
+MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, UsingApaceImpl>::ProcessTile(
     uint32_t taskCnt)
 {
     // x1,x2,y,bias,x1_scale主轮地址偏移
-    auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
+    auto &&mc2Tiling_ = GetTilingInfo();
     pipeLineContext_.computationContext->baseData.aGM = x1_;
     pipeLineContext_.computationContext->baseData.bGM = x2_;
     pipeLineContext_.computationContext->baseData.cGM = tempComputeOutGM_;
@@ -161,7 +191,7 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
         (uint64_t)mc2Tiling_.tileM * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO);
     pipeLineContext_.computationContext->additionalData.x1Scale = x1Scale_;
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantBmmV3TileTilingData);
+    pipeLineContext_.computationContext->tilingDataPtr = GetTileTilingDataPtr();
 
     // 转置操作的输入输出地址，单轮转置内部数据块的偏移，到下一轮转置数据地址的偏移
     pipeLineContext_.transposeContext->transposeSrcAddr = tempComputeOutGM_;
@@ -194,12 +224,13 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
     pipeLine_->Process(taskCnt);
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
+          bool UsingApaceImpl>
 __aicore__ inline void
-MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::ProcessTail(
+MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, UsingApaceImpl>::ProcessTail(
     uint32_t taskCnt)
 {
-    auto &&mc2Tiling_ = tilingData_->quantMatmulAlltoAllTilingInfo;
+    auto &&mc2Tiling_ = GetTilingInfo();
 
     // 使用封装的 ComputeGMAddr 函数，自动处理 fp4/fp8 差异
     pipeLineContext_.computationContext->baseData.aGM =
@@ -223,7 +254,7 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
         x1Scale_,
         (uint64_t)mc2Tiling_.tileM * CeilDiv(mc2Tiling_.rankK, MXFP_GROUP_SIZE) * NUM_TWO * mc2Tiling_.tileCnt);
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantBmmV3TailTilingData);
+    pipeLineContext_.computationContext->tilingDataPtr = GetTailTilingDataPtr();
 
     pipeLineContext_.transposeContext->transposeSrcAddr =
         ComputeGMAddr<DTYPE_Y>(tempComputeOutGM_, (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankN * mc2Tiling_.tileCnt);
