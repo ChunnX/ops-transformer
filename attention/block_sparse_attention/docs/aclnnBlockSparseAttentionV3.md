@@ -127,16 +127,16 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1550px">
+  <table style="undefined;table-layout: fixed; width: 1300px">
   <colgroup>
-  <col style="width: 269px">
-  <col style="width: 132px">
-  <col style="width: 270px">
-  <col style="width: 350px">
-  <col style="width: 185px">
-  <col style="width: 119px">
-  <col style="width: 146px">
-  <col style="width: 145px">
+  <col style="width: 250px">
+  <col style="width: 90px">
+  <col style="width: 200px">
+  <col style="width: 340px">
+  <col style="width: 160px">
+  <col style="width: 80px">
+  <col style="width: 90px">
+  <col style="width: 90px">
   </colgroup>
   <thead>
     <tr>
