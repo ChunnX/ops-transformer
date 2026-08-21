@@ -63,7 +63,8 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
 template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 class MxQuantMatmulAlltoAllArch35 {
 public:
-    __aicore__ inline MxQuantMatmulAlltoAllArch35(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
+    __aicore__ inline MxQuantMatmulAlltoAllArch35(SchedulerType *pipeLine, uint64_t yHcclDataType)
+        : pipeLine_(pipeLine), yHcclDataType_(yHcclDataType){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1Scale, GM_ADDR x2Scale,
                                 GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe);
     __aicore__ inline void Process();
@@ -85,6 +86,7 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR tempComputeOutGM_;
     GM_ADDR transOutGM_;
+    uint64_t yHcclDataType_;
 
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
@@ -189,7 +191,7 @@ MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, MatmulAlltoAllT
     pipeLineContext_.communicationContext->sendCount =
         (uint64_t)mc2Tiling_.tileM * pipeLineContext_.transposeContext->innerAxis;
     pipeLineContext_.communicationContext->strideCount = pipeLineContext_.transposeContext->nextDstBlockOffset;
-    pipeLineContext_.communicationContext->hcclDataType = mc2Tiling_.hcclDataType;
+    pipeLineContext_.communicationContext->hcclDataType = yHcclDataType_;
 
     pipeLine_->Process(taskCnt);
 }

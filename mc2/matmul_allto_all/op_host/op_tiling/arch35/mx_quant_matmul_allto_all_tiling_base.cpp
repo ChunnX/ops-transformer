@@ -143,6 +143,9 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
+    // 判断是否使用apace实现: 卡数<=8
+    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
+    usingApaceImpl_ = (contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -618,11 +621,16 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetMxDataTypeInfo(const gert::T
  */
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 {
-    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
-                        mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                            static_cast<int32_t>(contextInfo.args_.geCType)),
-                    return ge::GRAPH_FAILED;);
+    ge::DataType hcclDtype = ge::DT_UNDEFINED;
+    if (isMxfp4_) {
+        hcclDtype = ge::DT_UINT8;
+    } else {
+        hcclDtype = contextInfo.args_.geAType;
+    }
+    OP_TILING_CHECK(
+        mc2tiling::ConvertGeTypeToHcclType(opName_, hcclDtype) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
+        OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(hcclDtype)),
+        return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
@@ -636,8 +644,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
-            .withReduceType(opName_, mc2tiling::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType,
-                            contextInfo.args_.geCType)
+            .withReduceType(opName_, mc2tiling::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype, hcclDtype)
             .withCommEngine(engineType)
             .build();
     if (!matmulAllToAllBuilder.isSuccess()) {
@@ -645,8 +652,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
                 matmulAllToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
     }
-    matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
-    matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
+    if (usingApaceImpl_) {
+        matmulAllToAllTilingConfig.GetTiling(hcommTilingData_.mc2InitTiling);
+        matmulAllToAllTilingConfig.GetTiling(hcommTilingData_.mc2CcTiling);
+    } else {
+        matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
+        matmulAllToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -657,6 +669,11 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
  */
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
 {
+    if (usingApaceImpl_) {
+        // hcomm 路径: 卡数<=8，使用 Blaze tiling
+        return DoHcommMxQuantMMTiling();
+    }
+    // arch35 主线路径: 使用 DequantBmm tiling
     // 设置MM切前信息
     mmMvalueLen_ = inferredInfo.tileM;
     MxQuantMatmulAlltoAllHelper mmTile(*this, localTilingData_.mc2QuantBmmV3TileTilingData, mmMvalueLen_);
@@ -667,6 +684,31 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
     mmMvalueLen_ = inferredInfo.tailM;
     MxQuantMatmulAlltoAllHelper mmTail(*this, localTilingData_.mc2QuantBmmV3TailTilingData, mmMvalueLen_);
     MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief hcomm路径: 生成Blaze quant matmul tiling
+ *
+ * @return ge::graphStatus
+ */
+ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
+{
+    uint64_t perRankM = contextInfo.args_.mValue;
+    uint64_t perRankK = contextInfo.args_.kValue;
+    uint64_t nValue = contextInfo.args_.nValue;
+    bool transB = contextInfo.args_.isBTrans;
+    constexpr uint32_t localMatmulDisabled = 0; // 不使用LOCAL前置, 默认为融合REMOTE模式
+
+    if (isMxfp4_) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+    } else {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+    }
+    hcommTilingData_.localMatmul = localMatmulDisabled;
+    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -912,25 +954,46 @@ void MxQuantMatmulAllToAllTilingBase::PrintMxQuantMatmulAlltoAllTilingData(Quant
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::PostTiling()
 {
     context_->SetScheduleMode(1);
-    SetTilingInfo(localTilingData_.quantMatmulAlltoAllTilingInfo);
-    QuantMatmulAlltoAllTilingData *outTilingData = context_->GetTilingData<QuantMatmulAlltoAllTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
-                    OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
-                            sizeof(localTilingData_)),
-                    return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
-    if (ret != EOK) {
-        OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
-        return ge::GRAPH_FAILED;
+    if (usingApaceImpl_) {
+        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
+        SetHcommTilingInfo(hcommTilingData_.commTilingData);
+        hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
+        OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
+                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
+                                tilingBufCap, sizeof(hcommTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+        if (ret != EOK) {
+            OP_LOGE(opName_, "MxQuantMatmulAlltoAll postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+            return ge::GRAPH_FAILED;
+        }
+        OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
+                sizeof(hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllToAllMatmulTilingData));
+    } else {
+        // arch35 主线路径: 输出 QuantMatmulAlltoAllTilingData
+        SetTilingInfo(localTilingData_.quantMatmulAlltoAllTilingInfo);
+        QuantMatmulAlltoAllTilingData *outTilingData = context_->GetTilingData<QuantMatmulAlltoAllTilingData>();
+        OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
+                        OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
+                                sizeof(localTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
+        if (ret != EOK) {
+            OP_LOGE(opName_, "MatmulAlltoAll postTiling: memcpy_s tiling data failed, ret=%d.", ret);
+            return ge::GRAPH_FAILED;
+        }
+        OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.",
+                sizeof(QuantMatmulAlltoAllTilingData), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(sizeof(QuantMatmulAlltoAllTilingData));
+        PrintMxQuantMatmulAlltoAllTilingData(*outTilingData);
     }
-    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(QuantMatmulAlltoAllTilingData),
-            context_->GetRawTilingData()->GetCapacity());
     context_->SetBlockDim(contextInfo.args_.aicCoreNum);
-    context_->GetRawTilingData()->SetDataSize(sizeof(QuantMatmulAlltoAllTilingData));
-    PrintMxQuantMatmulAlltoAllTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -959,6 +1022,20 @@ void MxQuantMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllTilingInfo &ti
 }
 
 /**
+ * @brief 设置hcomm路径的tilingInfo结构体
+ *
+ * @param tilingInfo 目标结构体
+ */
+void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingInfo) const
+{
+    tilingInfo.splitAxisTileSize = inferredInfo.tileM;
+    tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
+    tilingInfo.splitAxisTailSize = inferredInfo.tailM;
+    tilingInfo.splitAxisTailCnt = inferredInfo.tailCnt;
+    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue;
+}
+
+/**
  * @brief 获取对应的tilingKey
  * 使用QUANT_MODE来区分tilingKey,此处的QUANT_MODE指的是x1,x2的QUANT模式组合，以x1为pertoken量化(K)，x2为perchannel量化(C)
  * 为例子，K-C量化就代表一种组合
@@ -969,7 +1046,7 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    uint32_t biasDType = DTYPE_BIAS_FP32;
+    uint8_t biasDType = DTYPE_BIAS_FP32;
 
     uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
@@ -978,9 +1055,11 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     }
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
-    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,
-            x2TransposeFlag, biasDType, commMode, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode,
+                                                  usingApaceImpl_);
+    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL: [%d,%d,%d,0,%d,%d], "
+                     "TilingKey is [%lu].",
+            MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, tilingKey);
     return tilingKey;
 }
 
