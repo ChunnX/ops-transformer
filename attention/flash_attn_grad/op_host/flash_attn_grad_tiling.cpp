@@ -191,14 +191,52 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
             int64_t perHeadBytes = 3 * s1Size * dSize * FP16_BYTES + s1Size * dSize * FP32_BYTES +
                                    (2 * s2Size * dSize * FP16_BYTES + 2 * s2Size * dSize * FP32_BYTES) / gSize;
             int64_t liveBytes = static_cast<int64_t>(liveHeads.size()) * perHeadBytes;
-            // 2x L2, not 1x: the measured crossover is a 264 MB working set
-            // (N=12), not the N=6 that merely exceeds 128 MB. Just past L2 there
-            // is still substantial partial hitting, and there swizzle's coarser
-            // granularity (a whole s1Outer column) loses on load balance.
-            // Measured (S=8192, 36 cores, us, linear/swizzle): N=1 193/222,
-            // N=8 1556/1761, N=10 1904/2007, N=12 2833/2677, N=16 4121/3550,
-            // N=24 6483/4982. Linear wins through N=10, swizzle from N=12 on.
-            if (liveBytes > 2 * L2_CACHE_BYTES && fusedHeads * s2Outer >= 2 * cores) {
+            // The gate depends on the *direction* of S1 vs S2, not just on the
+            // working-set size. What swizzle buys is "one core walks a whole
+            // column of s1Outer blocks", i.e. K/V loaded once and dK/dV
+            // accumulated in resident L0C; what it costs is a coarser unit of
+            // work (a column is s1Outer blocks). That trade scales with how
+            // long a column is.
+            //
+            // 1) When S2 is the longer axis (s2Outer > s1Outer) swizzle never
+            //    wins: the column is only s1Outer blocks so the reuse window is
+            //    short, while the column count b*n*s2Outer is large enough that
+            //    linear splitting already stays inside one head. Measured 0/5
+            //    wins (36 cores, D=128, linear/swizzle us):
+            //      N8  1024/8192 106MB 237.2/250.3   N16 1024/8192 212MB 491.9/492.1
+            //      N16 2048/8192 232MB 848.2/858.4   N24 1024/8192 318MB 723.1/728.0
+            //      N32  512/8192 404MB 629.3/632.1
+            //    The last two are 318/404 MB working sets -- far past any
+            //    threshold, yet still linear. Hence a separate direction test;
+            //    no amount of threshold tuning recovers these.
+            //
+            // 2) When S1 dominates (s1Outer >= 2*s2Outer) the crossover comes
+            //    earlier than in the symmetric case, so the threshold drops to
+            //    1.25x L2. Measured boundary sits between 138 MB (linear) and
+            //    172 MB (swizzle):
+            //      N12 8192/512  129MB 194.9/245.9   N12 8192/1024 138MB 330.0/353.0
+            //      N24 4096/512  138MB 201.2/201.6   N16 8192/512  172MB 277.4/263.7
+            //      N16 8192/1024 184MB 509.3/474.3   N20 8192/1024 230MB 781.8/583.1
+            //      N24 8192/1024 276MB 994.6/698.5   N32 8192/512  344MB 725.9/523.4
+            //    1.1x-1.4x form one plateau (same 2 mispredictions); 1.25x is
+            //    the midpoint.
+            //
+            // 3) The symmetric case keeps the original 2x L2, which was
+            //    calibrated over N=8/10/12/16/24 and must not regress:
+            //      N=8 176MB 1556/1761, N=10 220MB 1904/2007,
+            //      N=12 264MB 2833/2677, N=16 352MB 4121/3550,
+            //      N=24 528MB 6483/4982
+            //    N=10 still prefers linear at 220 MB while the S1-heavy branch
+            //    should already switch at 172 MB -- the two crossovers genuinely
+            //    differ, so one global threshold cannot serve both.
+            //
+            // Over all 29 measured points: the old direction-agnostic 2x rule
+            // mispredicts 7 (67.7% cumulative cost), this one mispredicts 2
+            // (18.0%). Must stay identical to decide_swizzle() in the kernel.
+            bool s1Heavy = (s1Outer >= 2 * s2Outer);
+            // 1.25x expressed without floating point: 5*L2/4.
+            int64_t threshold = s1Heavy ? (5 * L2_CACHE_BYTES / 4) : (2 * L2_CACHE_BYTES);
+            if (s2Outer <= s1Outer && liveBytes > threshold && fusedHeads * s2Outer >= 2 * cores) {
                 swizzle = 1;
             }
         }

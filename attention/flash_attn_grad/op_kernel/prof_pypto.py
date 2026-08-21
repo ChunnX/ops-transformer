@@ -70,7 +70,7 @@ def main():
         coefN0=1 if IS_BNSD else 0,
         coefN2=0 if IS_BNSD else 1,
     )
-    swizzle = decide_swizzle(B, N1, S1, S2, D, CORES)
+    swizzle = decide_swizzle(B, N1, S1, S2, D, CORES, g_size=G)
     _force = os.environ.get("FAG_FORCE_SWIZZLE")
     if _force is not None:
         swizzle = int(_force)

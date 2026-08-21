@@ -482,9 +482,19 @@ int main()
     printf("    dQ %.6e vs %.6e | dK %.6e vs %.6e | dV %.6e vs %.6e\n",
            rmsHalf(dqHost), rms(golden.dq), rmsHalf(dkHost), rms(golden.dk),
            rmsHalf(dvHost), rms(golden.dv));
-    (void)rms;
-    CHECK_RET(rmsHalf(dqHost) > 1e-6 && rmsHalf(dkHost) > 1e-6 && rmsHalf(dvHost) > 1e-6,
-              "outputs are all (near) zero -- kernel wrote nothing\n");
+    // "Did the kernel run at all" guard. Compare each output against its own
+    // golden rather than against a fixed floor: at S2 == 1 softmax over a
+    // single key gives P == 1, so sfmg == dP and dS = P*(dP - sfmg) is exactly
+    // zero -- dQ and dK are *legitimately* all-zero there and the golden says
+    // so too. A fixed `> 1e-6` floor reports that correct result as "kernel
+    // wrote nothing". Only flag an output that is zero while its golden is not.
+    auto wroteNothing = [](double got, double want) {
+        return want > 1e-6 && got <= 1e-6;
+    };
+    CHECK_RET(!wroteNothing(rmsHalf(dqHost), rms(golden.dq)) &&
+              !wroteNothing(rmsHalf(dkHost), rms(golden.dk)) &&
+              !wroteNothing(rmsHalf(dvHost), rms(golden.dv)),
+              "an output is all (near) zero while its golden is not -- kernel wrote nothing\n");
 
     bool ok = true;
     if (checkGolden) {
