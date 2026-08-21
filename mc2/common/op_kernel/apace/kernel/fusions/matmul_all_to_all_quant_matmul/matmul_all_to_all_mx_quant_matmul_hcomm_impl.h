@@ -99,8 +99,11 @@ __aicore__ inline void MatmulAllToAllMxQuantMatmulComputation<X1Type, X2Type, YT
 } // namespace Apace
 
 #ifndef DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT
-#define DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(ContextType)                                      \
-    using ContextType = typename Apace::MatmulAllToAllMxQuantMatmulComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>::ContextType
+// The macro argument must not be named ContextType. Otherwise the preprocessor
+// also rewrites the nested ::ContextType on the right-hand side.
+#define DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(ContextTypeAlias)                                 \
+    using ContextTypeAlias =                                                                                          \
+        typename Apace::MatmulAllToAllMxQuantMatmulComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>::ContextType
 #endif
 
 #ifndef DEFINE_APACE_MATMUL_FOR_MATMUL_ALL_TO_ALL_MX_QUANT
