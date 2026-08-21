@@ -136,10 +136,11 @@ public:
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
             if (keyBnStride != 0) {
-                kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
                 if constexpr (BNBD_FLAG) {
                     // BNBD: token stride within block is embed
                     kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * embed;
+                } else {
+                    kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
                 }
             } else {
                 if constexpr (BNBD_FLAG) {
