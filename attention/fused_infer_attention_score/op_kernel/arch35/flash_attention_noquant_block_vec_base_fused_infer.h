@@ -2018,7 +2018,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
             constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
             constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
             constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
-        if (isPostQuantRouteDiagCase && (runInfo.boIdx == 8 || runInfo.boIdx == 25)) {
+        const bool isPostQuantRouteTarget =
+            (runInfo.boIdx == 8 && runInfo.n2oIdx == 2 && runInfo.goIdx == 1) ||
+            (runInfo.boIdx == 25 && runInfo.n2oIdx == 5 && runInfo.goIdx == 4);
+        if (isPostQuantRouteDiagCase && isPostQuantRouteTarget) {
             AscendC::PRINTF("[FIA_DIAG][KERNEL][COPYOUT_ROUTE] core=%d sub=%u b=%ld n2=%ld g=%ld "
                             "s1o=%ld sOuter=%ld actualS1=%ld vec2Idx=%ld vec2Base=%ld vec2Real=%ld "
                             "vec2Calc=%ld postQuant=%d sameType=%d\n",
@@ -2062,8 +2065,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                     diagDStart = 49;
                     diagDEnd = 71;
                 }
-                const int64_t blockGs1Start =
-                    runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
+                const int64_t blockGs1Start = runInfo.goIdx * runInfo.actualS1Size +
+                                              runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
                 if (targetGs1 >= blockGs1Start && targetGs1 < blockGs1Start + runInfo.vec2S1RealSize) {
                     const int64_t diagRow = targetGs1 - blockGs1Start;
                     AscendC::PipeBarrier<PIPE_V>();
@@ -2097,8 +2100,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                     diagDStart = 49;
                     diagDEnd = 71;
                 }
-                const int64_t blockGs1Start =
-                    runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
+                const int64_t blockGs1Start = runInfo.goIdx * runInfo.actualS1Size +
+                                              runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
                 if (targetGs1 >= blockGs1Start && targetGs1 < blockGs1Start + runInfo.vec2S1RealSize) {
                     const int64_t diagRow = targetGs1 - blockGs1Start;
                     AscendC::PipeBarrier<PIPE_V>();
