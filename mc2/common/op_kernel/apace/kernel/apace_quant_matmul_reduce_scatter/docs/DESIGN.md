@@ -279,7 +279,10 @@ using AllToAllComm = Apace::AivComm::CollectiveComm<
     TeamBarrier>;
 
 // localAddr = workspaceGM (PUT 源数据)
-// totalJobs = 1 (仅 block 0 执行通信)
+// AllToAll totalJobs = rankSize (后 R 核各负责 1 个 target, 并行 PUT)
+// teamBarrier totalJobs = 1 (仅 jobIndex=0 的核执行 CrossDevice, step=1 正确轮询所有 remote)
+// winOffset = 128 (PUT 数据跳过 win 区前 128B barrier counter, 避免覆盖)
+// jobIndex = BlockNum - 1 - blockIdx (block 27: jobIndex=0, block 26: jobIndex=1, ...)
 ```
 
 ### 6.3 通信+求和 per-tile 流水
@@ -291,9 +294,9 @@ AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1]   WaitFlag [co
 
 - **per-tile WaitFlag**：CrossCore flag 是计数式，T 次 Set 对应 T 次 Wait
 - **reduceSum BF16 直接累加**：BF16 直接 Add (950 硬件级精度), 无 Cast, pingpong 双 buffer
-- **V 核流水掩盖**：AllToAll(t) 与 ReduceSum(t-1) 并行, block 0 通信 + block 1-27 reduceSum
+- **严格分离流水**：后 R 核做 AllToAll(t), 前 (28-R) 核做 ReduceSum(t-1), 完全并行, 无 Phase 2
 - **自适应 headMSize**：R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好)
-- **仅 block 0 通信**：`totalJobs=1`，避免多核并发写同一 output
+- **多核并行通信**：后 rankSize 个核各负责 1 个 target rank 并行 PUT, 通信时间降为 1/R
 
 ### 6.4 同步机制
 
@@ -363,9 +366,10 @@ __global__ __aicore__ void ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma(
 
 1. 解析 Tiling 参数（commTilingData + mmTilingData + subMmTilingData）
 2. 初始化通信上下文（udmaCtx / ubmemCtx）
-3. 获取 selfWinAddr（本卡 win 区基址）
+3. 获取 selfWinAddr（本卡 win 区基址 + winOffset=128，跳过 barrier counter）
 4. UB 分配：commBuf (512B) + barrierBuf
-5. 初始化 AllToAll PUT 通信链（totalJobs=1，仅 block 0）
+5. 初始化 teamBarrier（totalJobs=1，仅 jobIndex=0 执行 CrossDevice）
+6. 初始化 AllToAll PUT 通信链（totalJobs=rankSize，后 R 核各负责 1 个 target）
 
 ### 8.3 Run 流程
 
@@ -396,18 +400,24 @@ for (t = 0..commTurn) {
 
 **RunAllToAllAndReduceSum (AIV)**:
 ```cpp
+// 方案B: 严格分离 — 后 R 核通信, 前 (28-R) 核计算
+// isCommBlock = (jobIndex < rankSize)     — 后 R 个核
+// isComputeBlock = (blockIdx < 28-R)     — 前 (28-R) 个核
+// rsCoreNum = 28 - rankSize              — reduceSum 核数
+
 for (t = 0..commTurn) {
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);  // 等 AIC tile t
     SyncAll<true>();
-    allToAllC_.Commit();      // PUT 推送 tile t (仅 block 0)
-    allToAllC_.Wait<BARRIER_DEVICE>();
+    if (isCommBlock) {
+        allToAllC_.Commit<BARRIER_NONE>();   // PUT 推送 tile t
+        allToAllC_.Wait<BARRIER_NONE>();      // Drain only (不做 CrossDevice)
+    } else if (isComputeBlock) {
+        reduceSum_.Init(..., rsCoreNum, ...); // 前 (28-R) 核做 ReduceSum(t-1)
+        reduceSum_.ExecuteReduceSum(tileM, nSize);
+    }
     SyncAll<true>();
-    // reduceSum: 所有 block 并行, 手动 UB 管理 (无 TPipe)
-    //   self 从 workspace 读, received 从 win 区读
-    //   多行 block: rowsPerBlock 行/block, BF16 直接累加
-    reduceSum_.Init(outputSize, stride, rankSize, rankId, usedCoreNum,
-                    srcAddr, selfAddr, dstAddr);
-    reduceSum_.ExecuteReduceSum(tileM, nSize);
+    teamBarrier_.CrossDevice();  // block 0 (jobIndex=0) 做跨设备 fence (step=1)
+    SyncAll<true>();
 }
 allToAllC_.Finalize();
 ```
@@ -419,6 +429,7 @@ allToAllC_.Finalize();
 | `CrossCoreSetFlag<0x2, PIPE_FIX>` | AIC → AIV | AIC tile t 完成, PIPE_FIX = AIC FixPipe |
 | `CrossCoreWaitFlag<0x2, PIPE_MTE2>` | AIV 等 AIC | per-tile WaitFlag, 计数式 flag (T 次 Set ↔ T 次 Wait) |
 | `SyncAll<true>()` | AIV 核间同步 | isAIVOnly=true, AIC 调用为 no-op |
+| `teamBarrier_.CrossDevice()` | 跨设备同步 | block 0 (jobIndex=0) 执行, step=1 轮询所有 remote localFlag |
 | `SetAtomicAdd` | **不使用** | 无跨卡部分和 |
 
 ---
@@ -460,16 +471,20 @@ allToAllC_.Finalize();
 - **Te::MakeTensor + 手动 UB 偏移**：用 `Te::MakeTensor(MakeMemPtr<UB,T>(off), FrameLayoutFormat<...>{})` 创建 tensor，字节偏移管理 buffer 布局 `[sum(float-sized, BF16 view) | inputA | inputB]`
 - **pingpong 双 buffer**：`pingPongCount_ & 1` 交替使用 input A/B 两份 buffer
 - **多行 block**：一次处理 `rowsPerBlock` 行（UB 容量自适应），减少 GM↔UB 同步次数
-- **所有 block 参与**：28 个 AIV block 全部参与 reduceSum
+- **所有计算核参与**：前 (28-R) 个 AIV block 参与 reduceSum (rsCoreNum = 28 - rankSize)
 - **性能**：相比旧实现平均 2.01x 加速（msprof Task Duration）
 - **无 TPipe 依赖**：不需要 `pipe_.Reset()` 清理，per-tile 调用无状态冲突
 
-### 9.6 V 核流水掩盖 + 自适应 headMSize
+### 9.6 多核并行通信 + 严格分离 (方案B)
 
-**V 核流水掩盖**：AllToAll(t) 与 ReduceSum(t-1) 并行执行
-- block 0 做 AllToAll(t)，block 1-27 做 ReduceSum(t-1)
-- SyncAll 后 block 0 补做 ReduceSum(t-1)
-- 每 tile 2 次 SyncAll 保证跨核数据可见性
+**后 R 核通信 + 前 (28-R) 核计算**：
+- 后 rankSize 个核（jobIndex = 0..R-1）专职 AllToAll PUT 通信
+- 前 (28-R) 个核（blockIdx = 0..27-R）专职 reduceSum 计算
+- AllToAll totalJobs=rankSize：每个通信核负责 1 个 target rank，并行 PUT
+- teamBarrier totalJobs=1：仅 jobIndex=0 的核执行 CrossDevice（step=1 正确轮询所有 remote）
+- winOffset=128：PUT 数据跳过 win 区前 128B barrier counter，避免覆盖
+- Wait<BARRIER_NONE>（Drain only）→ SyncAll → CrossDevice → SyncAll
+- 无 Phase 2：通信核不补做 reduceSum，消除关键路径串行
 
 **自适应 headMSize**：
 - R<=2: headMSize=512（大 tile, 少 SyncAll, 通信效率高）
@@ -477,10 +492,15 @@ allToAllC_.Finalize();
 
 ```
 AIC: [tile0 frag mm] SetFlag [tile1 frag mm] SetFlag ...
-AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1] ...
+AIV comm blocks:       WaitFlag [AllToAll0]   WaitFlag [AllToAll1]   ...
+AIV compute blocks:    WaitFlag [ReduceSum0]  WaitFlag [ReduceSum1]  ...
 ```
 
-AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算掩盖。
+AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum tile N-1——通信和求和延迟被计算掩盖。
+
+**性能**（msprof Task Duration, 12 case 中位数, 跨 rank max）：
+- vs 旧基线 (totalJobs=1)：平均 -11.1%（R=2 -7.4%, R=4 -14.7%）
+- 最佳 case：4096x3584x4096 R=4 = 307us vs 基线 415us（-26.0%）
 
 ---
 
@@ -496,7 +516,7 @@ AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算�
 
 - **卡数约束**：支持 2、4、8、16、32、64 卡
 
-- **通信约束**：通信数据总量受通信缓冲区大小限制；当前使用 PUT 模式（GET 在 4+rank 不稳定）
+- **通信约束**：通信数据总量受通信缓冲区大小限制；使用 PUT 模式 + winOffset=128 + 多核并行通信（方案B）
 
 - **硬件约束**：仅在 Apace 架构（Ascend 950 系列）上生效，`--npu-arch=dav-3510`，`ASC_DEVKIT_MAJOR >= 9`
 
@@ -507,15 +527,15 @@ AIC 计算 tile N 时，AIV 同时在通信 tile N-1——通信延迟被计算�
 ## 11. 未来扩展方向
 
 - **GET 模式**：解决 4+rank 稳定性后从 PUT 切换到 GET
-- **多核通信**：teamBarrier totalJobs=rankSize，让多 block 并行通信提升 cube_util
 - **bias 支持**：补充 bias 输入参数
 - **INT8 量化支持**：扩展非 MX 量化模式
 - **大 shape 优化**：M≥8192 时 FragmentTensor 的 L2 cache 效率提升
+- **SplitK**：每卡算 K/R，AIC 计算量减半，预期端到端 ~1.9x 加速（需 AllReduce 替代 ReduceScatter）
 
 ---
 
-> **文档状态**：已更新至 BF16 直接累加 + pingpong + V核流水掩盖 + 自适应 headMSize 版本
+> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128）
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：qmm_mx_kernel_rs_frag.h + FragmentTensor + reduce_sum.h (Te::MakeTensor, BF16 Add, pingpong)
-> **精度验证**：5/5 代表用例 ALL PASS
-> **性能**：msprof Task Duration, 相比旧实现平均 2.01x 加速 (自适应 headMSize)
+> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算)
+> **精度验证**：12/12 case ALL PASS（R=2, R=4）
+> **性能**：msprof Task Duration 12 case 中位数, vs 旧基线平均 -11.1%

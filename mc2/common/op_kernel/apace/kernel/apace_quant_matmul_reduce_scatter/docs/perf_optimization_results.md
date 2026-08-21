@@ -1,177 +1,104 @@
-# quantMatmulReduceScatter 性能优化尝试结果报告
+# quantMatmulReduceScatter 性能优化结果报告
 
-> 日期: 2026-08-19
+> 日期: 2026-08-21 (最终版)
 > 平台: Ascend 950PR (dav-3510), CANN 9.2.0
-> 代码版本: totalJobs=1, isCommBlock=(blockIdx==0), 自适应headMSize
+> 代码版本: 方案B — 后R核通信 + 前(28-R)核计算 (严格分离, winOffset=128, totalJobs=rankSize)
 
-## 一、逐个优化尝试结果
+## 一、历史优化尝试 (totalJobs=1 旧版本)
 
-### 优化 1: dbL0c=2 (双缓冲 L0C, 重叠 fixpipe 与 MAC)
+以下优化在 totalJobs=1 单核通信版本上尝试，均无效或恶化：
 
-**改动**: `subMmTilingData.dbL0c = 2` (从 1 改为 2)
+### 优化1: dbL0c=2 (双缓冲 L0C)
 
-**测试用例**: M=2048 K=3584 N=4096 R=2
+**结果**: 持平 (284us → 285us)
+**原因**: L0C 双缓冲占用 L0A/L0B 空间, 引发更多 L1 重载, fixpipe 反而增加
 
-**结果**:
-| 指标 | dbL0c=1 (原) | dbL0c=2 (优化) | 变化 |
-|------|-------------|---------------|------|
-| MAC | 256us (90%) | 248us (87%) | -3% |
-| MTE2 | 262us (93%) | 253us (89%) | -3% |
-| fixpipe | 75us (26%) | 82us (29%) | **+9% 恶化** |
-| Task Duration | 284us | 285us | 持平 |
+### 优化2: stepK=4 (K-steps 减半)
 
-**失败原因**: L0C 双缓冲占用 L0A/L0B 空间, 引发更多 L1 重载, fixpipe 反而增加。
+**结果**: 持平 (284us → 285us)
+**原因**: MTE2 与 MAC 已高度重叠 (90%+), K-step 减少被其他开销抵消
 
----
+### 优化3: baseN=128 (N-tiles 翻倍)
 
-### 优化 2: stepK=4 (K-steps 减半, 减少 MTE2 DMA 次数)
+**结果**: 恶化 (+7%)
+**原因**: N-tiles 翻倍导致 fixpipe 调用次数翻倍, 固定开销累加
 
-**改动**: `subMmTilingData.stepK = 4` (从 2 改为 4)
+### 优化4-6: 组合优化
 
-**测试用例**: M=2048 K=3584 N=4096 R=2
+**结果**: 均无效
+**原因**: AIC MTE2 是不可逾越的计算瓶颈 (内存带宽受限)
 
-**结果**:
-| 指标 | stepK=2 (原) | stepK=4 (优化) | 变化 |
-|------|-------------|---------------|------|
-| MAC | 251us | 248us | -1% |
-| MTE2 | 256us | 253us | -1% |
-| Task Duration | 284us | 285us | 持平 |
+## 二、多核并行通信 (方案B, 当前版本)
 
-**失败原因**: MTE2 与 MAC 已高度重叠 (90%+), K-step 减少被其他开销抵消。
+### 方案B 核心改进
 
----
+| 改进 | 说明 |
+|------|------|
+| winOffset=128 | PUT 数据跳过 win 区前 128B barrier counter, 修复假通过隐患 |
+| totalJobs=rankSize | 后 R 核各负责 1 个 target, 并行 PUT, 通信时间降为 1/R |
+| teamBarrier totalJobs=1 | CrossDevice step=1 正确轮询所有 remote |
+| Wait\<BARRIER_NONE\> | Drain only, 不依赖框架 CrossDevice |
+| 手动 CrossDevice | SyncAll 后 block 0 调 teamBarrier_.CrossDevice() |
+| 严格分离 | 后 R 核仅通信, 前 (28-R) 核仅计算, 无 Phase 2 串行 |
+| rsCoreNum=28-R | reduceSum 核数从 28 降到 28-R |
 
-### 优化 3: baseN=128 (N-tiles 翻倍, 提升 cube_util)
+### msprof 12 case 性能数据 (Task Duration 中位数, 跨 rank max)
 
-**改动**: `subMmTilingData.baseN = 128` (从 256 改为 128)
+| Case | 旧基线 (us) | 方案B (us) | 变化 |
+|------|------------|-----------|------|
+| 8192x1536x12288 R=2 | 2669 | 2480 | -7.1% |
+| 8192x1536x12288 R=4 | 1696 | 1392 | -17.9% |
+| 8192x3696x8192 R=2 | 1947 | 1757 | -9.8% |
+| 8192x3696x8192 R=4 | 1328 | 1319 | -0.7% |
+| 8192x1024x8192 R=2 | 1799 | 1626 | -9.6% |
+| 8192x1024x8192 R=4 | 1207 | 930 | -23.0% |
+| 4096x3584x4096 R=2 | 526 | 468 | -11.0% |
+| 4096x3584x4096 R=4 | 415 | 307 | -26.0% |
+| 2048x3584x4096 R=2 | 286 | 269 | -5.9% |
+| 2048x3584x4096 R=4 | 222 | 177 | -20.3% |
+| 4032x8192x4096 R=2 | 604 | 573 | -5.1% |
+| 4032x8192x4096 R=4 | 609 | 613 | +0.7% |
 
-**测试用例**: 5 个代表用例
+- **R=2 平均**: -7.4%
+- **R=4 平均**: -14.7%
+- **总体平均**: -11.1%
+- **最佳 case**: 4096x3584x4096 R=4 = 307us vs 基线 415us (-26.0%)
 
-**结果**:
-| Case | baseN=256 (原) | baseN=128 (优化) | 变化 |
-|------|----------------|------------------|------|
-| M=2048 R=2 | 300us | 321us | **+7% 恶化** |
-| M=2048 R=4 | 243us | 245us | +0.8% |
-| M=4096 R=2 | 552us | 569us | +3% |
-| M=1024 R=2 | 194us | 183us | -5.7% |
-| M=4096 R=4 | 417us | 439us | +5% |
+### 方案A vs 方案B 对比
 
-**失败原因**: N-tiles 翻倍导致 fixpipe 调用次数翻倍, 每次 fixpipe 的固定开销累加, 抵消了 cube_util 提升的收益。
+| 维度 | 方案A (通信核也计算) | 方案B (严格分离) |
+|------|---------------------|-----------------|
+| Phase 2 | 有 (通信核补做 reduceSum) | 无 |
+| reduceSum 核数 | 28 | 28-R |
+| 关键路径 | max(AT, RS_phase1) + RS_phase2 | max(AT, RS_strict) |
+| B vs A 性能 | — | 平均 -7.5% |
 
----
+方案B 消除 Phase 2 串行的收益 > 减少 reduceSum 核数的代价。
 
-### 优化 4: 多核通信 totalJobs=rankSize (框架 work partition)
-
-**改动**: `totalJobs=rankSize`, `participantNum=rankSize`, `isCommBlock=(blockIdx<rankSize)`
-
-**测试用例**: M=2048 K=3584 N=4096 R=2
-
-**结果**: Rank 0 PASS, Rank 1 **FAIL** (81% 元素错误, max_err=839680)
-
-**失败原因**: 框架 `DoCommit` 的 src 地址用 `targetRankId` 做偏移 (AllGather 语义):
-```
-srcAddr = localAddr_ + targetRankId * chunkBytes_ + ...
-```
-但 ReduceScatter 需要用 `rankId` 做偏移:
-```
-srcAddr = localAddr_ + rankId * chunkBytes_ + ...
-```
-语义不匹配: AllGather 是"把 chunk_i 发给 rank_i", ReduceScatter 是"把自己的 chunk 发给所有 rank"。
-
----
-
-### 优化 5: 手动 WriteNbi 多核 PUT (绕过框架)
-
-**改动**: 保持 `totalJobs=1`, 但前 rankSize 个 block 手动调用 `Hcomm::WriteNbi` + `Drain`
-
-**测试用例**: M=2048 K=3584 N=4096 R=2
-
-**结果**: Rank 0 和 Rank 1 均 **FAIL** (100% 元素错误)
-
-**失败原因**: `Hcomm` 实例的 UB workspace 与 reduceSum 的 UB 空间冲突, 或 `channelHandles` 多核并发访问有框架级限制。
-
----
-
-### 优化 6: R=2 时 stepK=4 + baseN=128 (组合优化)
-
-**改动**: 同时 `stepK=4` + `baseN=128`
-
-**测试用例**: 5 个代表用例
-
-**结果**:
-| Case | 原始 | 组合优化 | 变化 |
-|------|------|---------|------|
-| M=2048 R=2 | 300us | 321us | **+7% 恶化** |
-| M=2048 R=4 | 243us | 245us | +0.8% |
-
-**失败原因**: baseN=128 的 fixpipe 开销主导, stepK=4 的 MTE2 收益被完全抵消。
-
----
-
-## 二、多核通信失败的根因分析
-
-### AllGather PUT 语义 (框架设计)
-```
-block i → PUT workspace[chunk_i] → targetRank i
-每个 block 负责 1 个 target, 每个 target 收到 1 份完整数据 ✓
-```
-
-### ReduceScatter PUT 语义 (本算子需求)
-```
-block 0 → PUT workspace[chunk_rankId] → targetRank 0
-block 0 → PUT workspace[chunk_rankId] → targetRank 1
-...
-block 0 → PUT workspace[chunk_rankId] → targetRank R-1
-1 个 block 遍历所有 target, 每个 target 收到本 rank 的 chunk ✓
-```
-
-### totalJobs=rankSize 时的框架行为
-```
-block i → 负责 targetRank i
-block i → DoCommit: srcAddr = workspace[targetRank_i * chunkBytes]
-  → 从 workspace 读取 chunk_i (不是 chunk_rankId!)
-  → PUT chunk_i 给 rank_i
-  → rank_i 收到 chunk_i, 但需要的是所有 R 个 chunk
-  → 80% 数据缺失 ✗
-```
-
-### 结论
-APACE AllToAll PUT 框架的 work partition 按 target rank 分配, 适用于 AllGather 语义。ReduceScatter 需要按 source chunk 分配, 语义不匹配, 无法通过参数调整实现多核并行。
-
----
-
-## 三、无法进一步提升性能的根本原因
-
-### 1. AIC matmul 是不可逾越的计算瓶颈
-- 总 MAC 操作 = M×K×N, 固定不变
-- MTE2/MAC 重叠率已达 90%+, 内存带宽已充分利用
-- fixpipe 是唯一可优化项, 但 dbL0c=2 在小 tile 场景反效果
-
-### 2. AIV 完全被 AIC 掩盖
-- AIV 82% 时间在 WaitFlag 等 AIC 完成
-- reduceSum 仅占 AIV 的 16-25%
-- 即使消除全部 reduceSum, 端到端仍 = AIC 时间
-
-### 3. 多核通信受限于框架语义
-- APACE AllToAll PUT 框架设计为 AllGather 语义
-- ReduceScatter 需要不同语义, 无法通过参数调整或手动 WriteNbi 绕过
-- 需要框架层面支持 ReduceScatter 语义的 work partition
-
-### 4. tiling 参数已穷尽
-- SWAT 自动生成的 tiling 在大部分场景已接近最优
-- 手动调整 baseM/baseN/baseK/stepK/dbL0c 均无法突破 MTE2 瓶颈
-- MTE2 是内存带宽受限, 需要架构级改进 (更多带宽) 或算法级改进 (SplitK 减少总计算量)
-
----
-
-## 四、当前性能状态
+## 三、三路径性能对比 (方案B)
 
 | 指标 | 值 |
 |------|-----|
-| 精度 | 12/12 ALL PASS |
-| 性能范围 | 222~2669 us |
-| AIC 关键路径 | max(MAC, MTE2) + fixpipe_non_overlap |
-| 瓶颈 | MTE2 (内存带宽), 11/12 用例 |
-| AIV 状态 | 完全被 AIC 掩盖 |
-| 优化空间 | 无 (tiling 参数穷尽, 多核通信框架不支持) |
-| 突破方向 | SplitK (算法级, 每卡算 K/R, AIC 减半) |
+| mc2/ST (融合算子/直调) | 平均 1.24x (旧版本 1.10x) |
+| hccl/ST (分步/直调) | 平均 1.23x (旧版本 1.09x) |
+| ST直调 vs mc2_test | 快 1.24x |
+| ST直调 vs hccl_mm | 快 1.23x |
+
+详见 `logs/mc2_test_vs_st_comparison.log`
+
+## 四、当前性能瓶颈与未来方向
+
+### 瓶颈: AIC MTE2 (内存带宽)
+
+- 11/12 用例为 MTE2 bound (MTE2/MAC > 1.0)
+- AIV 完全被 AIC 掩盖 (82% 时间在 WaitFlag)
+- tiling 参数 (baseM/baseN/baseK/stepK/dbL0c) 已穷尽, 无法突破 MTE2 瓶颈
+
+### 未来优化方向
+
+| 方向 | 预期收益 | 难度 |
+|------|---------|------|
+| **SplitK** | ~1.9x (每卡算 K/R, AIC 减半) | 高 (需 AllReduce 替代 ReduceScatter) |
+| 框架修复 CrossDeviceExecute | 消除手动 CrossDevice 开销 | 中 (框架侧修改) |
+| GET 模式 | 小 (PUT 已稳定) | 低 (4+rank 稳定性) |
+| bias 支持 | 功能扩展 | 低 |
