@@ -82,12 +82,12 @@ struct PostComputeCommPolicy {
         uint32_t tileM = CalcTileM(tileIdx);
         uint64_t perRankN = nonSplitAxisSize_ / rankDim_;
         uint64_t tileOffset = CalcTileOffset(tileIdx);
-        // 逐行发送: sendCount=perRankN, strideCount=rankN(行间隔), batchCnt=tileM(行数)
+        // 逐行发送: sendCount=perRankN(每rank的数据量), strideCount=perRankN(行内相邻rank间距), batchCnt=tileM(行数)
         curHandle_ = hccl_->template AlltoAll<true>(
             mmResultGM_ + tileOffset * nonSplitAxisSize_ * sizeof(YType),
             y_ + tileOffset * perRankN * sizeof(YType),
             perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-            nonSplitAxisSize_, static_cast<uint8_t>(tileM));
+            perRankN, static_cast<uint8_t>(tileM));
         lastIssuedTileIdx_ = tileIdx;
     }
 
