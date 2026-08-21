@@ -1085,7 +1085,8 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::PrepareNormalizedKv(
             uint32_t tailRows =
                 (tailSlice.bStartPos + tailSlice.bSeqUsed) % cmpRatio_;
             tailRows = min(tailRows, tailSlice.validSeqCnt);
-            if (tailRows > 0 && tailSlice.isLast) {
+            if (tailRows > 0 &&
+                tailSlice.sIdx + tailSlice.validSeqCnt == tailSlice.bSeqUsed) {
                 uint64_t tailOffset =
                     static_cast<uint64_t>(originSliceInfo.dealedSeqCnt +
                                           tailSlice.dealedSeqCnt +
