@@ -70,10 +70,8 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
-static constexpr uint32_t HCOMM_BATCH_HEADER_BYTES = 32;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
-static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES =
-    HCOMM_BATCH_HEADER_BYTES + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -223,7 +221,7 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
-    using HcommBatchHandle = typename AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>::BatchHandleType;
+    using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
@@ -380,11 +378,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         FlushPreparedWrites();
     }
     if (preparedWriteCount_ == 0) {
-        activeBatchHandle_ =
-            hcomm_.MakeBatchHandle(commHandle, dstBase, nullptr, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
+        activeBatchHandle_ = hcomm_.MakeBatchHandle(
+            commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, dstBase);
         activeBatchChannel_ = commHandle;
-        ascendc_assert(
-            activeBatchHandle_.channelHandle == commHandle, "MakeBatchHandle failed, channel=%lu", commHandle);
     }
     int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
