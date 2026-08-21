@@ -10,27 +10,42 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import importlib.util
-from pathlib import Path
+"""TestSpec adapter for QuantFlashAttn TTK assets."""
 
+import importlib.util
+import sys
+from pathlib import Path
 
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 
 def load_impl_module(stem):
+    name = f"qfa_ttk_{stem}"
+    if name in sys.modules:
+        return sys.modules[name]
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise RuntimeError(
+            "Failed to load QuantFlashAttn assets module; "
+            f"stage=impl/{stem}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        ) from exc
     return module
 
 
+npu_preprocess_module = load_impl_module("npu_preprocess")
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+metadata_inputs_module = load_impl_module("metadata_inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 # ==============================================================================
@@ -65,9 +80,8 @@ class QfaMxfp8Spec:
 
     golden = _golden_dispatch
     customize_inputs = _inputs_dispatch
+    npu_preprocess = npu_preprocess_module.run
     compare = compare_module.compare
-
-    torch_graph = graph_module.QuantFlashAttnAclGraph
 
     tolerance = {
         "float16": {
@@ -84,59 +98,16 @@ class QfaMxfp8Spec:
 
 
 class QfaMetadataSpec:
-    """quant_flash_attn_metadata 独立测试规范 (T4 metadata/main 分离)。
+    """quant_flash_attn_metadata 独立测试规范。
 
-    复用 QfaMxfp8Spec 的 golden / customize_inputs / compare / tolerance:
-    输入生成与 golden 计算路径与合并测试一致, 仅 wrapper 分流到 metadata-only op。
-    按 quant_mode 派发到 MXFP8 或 GQA FP8 路径。
+    独立 metadata case 只生成 metadata 算子所需的 descriptor 向量
+    (cu_seqlens_q/kv, seqused_q/kv), 不跑主算子。
     """
 
-    golden = _golden_dispatch
-    customize_inputs = _inputs_dispatch
-    compare = compare_module.compare
-
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
-
-
-class QfaMainSpec:
-    """quant_flash_attn 主算子独立测试规范 (T4 metadata/main 分离)。
-
-    run_main 内部重建 metadata 后调主算子; golden / customize_inputs / compare
-    与合并测试一致, 仅 wrapper 分流到 main-only 路径。
-    按 quant_mode 派发到 MXFP8 或 GQA FP8 路径。
-    """
-
-    golden = _golden_dispatch
-    customize_inputs = _inputs_dispatch
-    compare = compare_module.compare
-
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
+    customize_inputs = metadata_inputs_module.generate_qfa_metadata_inputs
 
 
 __spec__ = {
-    "qfa_wrapper.npu_qfa": "QfaMxfp8Spec",
-    "qfa_metadata_wrapper.run_metadata": "QfaMetadataSpec",
-    "qfa_main_wrapper.run_main": "QfaMainSpec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn": "QfaMxfp8Spec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn_metadata": "QfaMetadataSpec",
 }

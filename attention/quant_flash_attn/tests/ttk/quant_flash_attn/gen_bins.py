@@ -174,8 +174,9 @@ def _torch_dtype_from_str(name):
 def _build_kwargs(attrs):
     """从 csv attributes 构造 inputs/golden 函数的 keyword 参数 dict。
 
-    与 qfa_wrapper.py / assets/impl/golden.py 接收的 keyword 参数对齐。
-    csv attributes 中的 layout_kv / layout_q_descale 已映射到 wrapper 签名的
+    与 assets/impl/inputs.py / assets/impl/golden.py 接收的 keyword 参数对齐
+    (去掉自注册 api_name 后, 入口为 torch.ops.cann_ops_transformer.quant_flash_attn)。
+    csv attributes 中的 layout_kv / layout_q_descale 已映射到 inputs 签名的
     enable_pa / kv_cache_layout / q_scale_layout；block_size 在 csv 未显式给出，
     PA 模式用 128（与 redline.xlsx PA 用例一致）。
     """

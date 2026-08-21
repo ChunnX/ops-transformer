@@ -1248,7 +1248,7 @@ def npu_gqa_fp8_fa(
     max_seqlen_kv,
     block_table_torch=None,
 ):
-    """GQA FP8 NPU 入口 (qfa_wrapper 调用).
+    """GQA FP8 NPU 入口 (assets/impl/npu_preprocess.py / golden.py 调用).
 
     入参为 final-layout fp8 + FP32 descale (inputs.py 已 in-place 写入 slot):
       q: NTD [N,T,D] FP8

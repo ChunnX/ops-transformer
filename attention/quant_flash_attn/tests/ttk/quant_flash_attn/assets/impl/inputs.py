@@ -29,9 +29,42 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+__input__ = {
+    "e2e": {
+        "torch.ops.cann_ops_transformer.quant_flash_attn": "generate_qfa_mxfp8_inputs",
+    }
+}
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
+
+
+def _load_metadata_protocol():
+    import importlib.util
+    from pathlib import Path
+
+    name = "qfa_ttk_metadata_protocol"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("metadata_protocol.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot create import spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+def _save_qfa_metadata_inputs(testcase_name, **metadata_kwargs):
+    """Persist metadata API scalar arguments for npu_preprocess replay."""
+    metadata_input = {k: v for k, v in metadata_kwargs.items() if v is not None}
+    _load_metadata_protocol().save_metadata_inputs(
+        "quant_flash_attn", testcase_name, metadata_input
+    )
 
 
 def generate_qfa_mxfp8_inputs(
@@ -361,6 +394,28 @@ def generate_qfa_mxfp8_inputs(
         enable_pa,
     )
 
+    _save_qfa_metadata_inputs(
+        kwargs.get("testcase_name"),
+        quant_mode=quant_mode,
+        num_heads_q=N_q,
+        num_heads_kv=N_kv,
+        head_dim=D,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
+        mask_mode=mask_mode,
+        win_left=kwargs.get("win_left", -1),
+        win_right=kwargs.get("win_right", -1),
+        layout_q=layout_q,
+        layout_q_descale=layout_q_descale,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
+    )
+
 
 # ==============================================================================
 # GQA FP8 全量化输入生成 (quant_mode=6)
@@ -635,4 +690,26 @@ def generate_qfa_gqa_fp8_inputs(
         tuple(dequant_scale_q.shape),
         tuple(dequant_scale_k.shape),
         tuple(dequant_scale_v.shape),
+    )
+
+    _save_qfa_metadata_inputs(
+        kwargs.get("testcase_name"),
+        quant_mode=quant_mode,
+        num_heads_q=N_q,
+        num_heads_kv=N_kv,
+        head_dim=D,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
+        mask_mode=mask_mode,
+        win_left=kwargs.get("win_left", -1),
+        win_right=kwargs.get("win_right", -1),
+        layout_q=kwargs.get("layout_q", "NTD"),
+        layout_q_descale=kwargs.get("layout_q_descale", "NT"),
+        layout_kv=kwargs.get("layout_kv", kv_cache_layout),
+        layout_out=kwargs.get("layout_out", "TND"),
     )

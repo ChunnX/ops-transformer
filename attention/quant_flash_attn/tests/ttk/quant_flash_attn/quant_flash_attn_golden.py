@@ -115,7 +115,7 @@ INPUT_LAYOUT = None
 Q_SCALE_LAYOUT = None
 P_SCALE = None
 
-# 算子 layout 透传 (由 qfa_wrapper / inputs.py 从 CSV 注入)
+# 算子 layout 透传 (由 assets/impl/inputs.py 从 CSV 注入)
 # layout_q/layout_q_descale/layout_kv/layout_out 直接透传给 aclnn 算子,
 # 与数据生成使用的 INPUT_LAYOUT/Q_SCALE_LAYOUT/KV_CACHE_LAYOUT 相互独立。
 LAYOUT_Q = "TND"

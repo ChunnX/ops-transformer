@@ -16,9 +16,9 @@
 
 输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
 输出：3 个 csv 到同目录
-  - qfa_mxfp8_excel.csv            api_name=qfa_wrapper.npu_qfa
-  - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
-  - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
+  - qfa_mxfp8_excel.csv            api_name=torch.ops.cann_ops_transformer.quant_flash_attn (metadata_only 未设置)
+  - qfa_mxfp8_excel_metadata.csv   api_name=torch.ops.cann_ops_transformer.quant_flash_attn_metadata (metadata_only=true)
+  - qfa_mxfp8_excel_main.csv       api_name=torch.ops.cann_ops_transformer.quant_flash_attn (metadata_only=false)
 
 空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 """
@@ -56,24 +56,45 @@ HEADER = [
     "absolute_precision",
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
+# 3 个 csv 的 api_name / testcase_name 后缀 / metadata_only 三态控制 (MXFP8, quant_mode=1)
+# 去掉自注册 api_name (commit 60976ec + 0f99e349 模式):
+#   - 主算子入口用 torch.ops.cann_ops_transformer.quant_flash_attn
+#   - metadata 算子入口用 torch.ops.cann_ops_transformer.quant_flash_attn_metadata
+#   - metadata_only 三态: None=不设置(正常跑) / True=只跑 metadata 阶段 / False=刷新 metadata 后跑主算子
+# 第 4 元素为 metadata_only 值, 写入 CSV attributes, npu_preprocess.run() 据此 stop 控制。
 CSV_PROFILES_MXFP8 = [
-    ("qfa_mxfp8_excel.csv", "qfa_wrapper.npu_qfa", ""),
-    ("qfa_mxfp8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_metadata"),
-    ("qfa_mxfp8_excel_main.csv", "qfa_main_wrapper.run_main", "_main"),
+    ("qfa_mxfp8_excel.csv", "torch.ops.cann_ops_transformer.quant_flash_attn", "", None),
+    (
+        "qfa_mxfp8_excel_metadata.csv",
+        "torch.ops.cann_ops_transformer.quant_flash_attn_metadata",
+        "_metadata",
+        True,
+    ),
+    (
+        "qfa_mxfp8_excel_main.csv",
+        "torch.ops.cann_ops_transformer.quant_flash_attn",
+        "_main",
+        False,
+    ),
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
-# api_name 与 MXFP8 相同 (wrapper 复用, 内部按 quant_mode 分支),
+# 3 个 csv 的 api_name / testcase_name 后缀 / metadata_only (GQA FP8 全量化, quant_mode=6)
+# api_name 与 MXFP8 相同 (按 quant_mode 分支),
 # 仅 CSV 文件名和 testcase 后缀区分, 避免与 mxfp8 testcase 重名。
 CSV_PROFILES_GQA_FP8 = [
-    ("qfa_gqa_fp8_excel.csv", "qfa_wrapper.npu_qfa", "_gqa_fp8"),
+    ("qfa_gqa_fp8_excel.csv", "torch.ops.cann_ops_transformer.quant_flash_attn", "_gqa_fp8", None),
     (
         "qfa_gqa_fp8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
+        "torch.ops.cann_ops_transformer.quant_flash_attn_metadata",
         "_gqa_fp8_metadata",
+        True,
     ),
-    ("qfa_gqa_fp8_excel_main.csv", "qfa_main_wrapper.run_main", "_gqa_fp8_main"),
+    (
+        "qfa_gqa_fp8_excel_main.csv",
+        "torch.ops.cann_ops_transformer.quant_flash_attn",
+        "_gqa_fp8_main",
+        False,
+    ),
 ]
 
 # 向后兼容别名 (现有脚本若 import CSV_PROFILES)
@@ -345,9 +366,9 @@ def _strip_or_none(s):
 
 
 # --- 每行映射：excel row → csv record ---
-# Tensor 顺序（索引），与 wrapper 签名一致：
-#   npu_qfa(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
-#                 p_scale, block_table, *, B, N_q, ...)
+# Tensor 顺序（索引），与 inputs.py / torch.ops.cann_ops_transformer.quant_flash_attn 签名一致：
+#   generate_qfa_mxfp8_inputs(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
+#                 p_scale, block_table, *, batch_size, N_q, ...)
 #   0 q              (Q-S)
 #   1 k              (T-V)
 #   2 v              (W-Y)
@@ -545,8 +566,12 @@ def _precision_tolerances(row, col_by_name):
     return ((0.005, 0.000025, 0.005, 0.005, 10),)
 
 
-def _row_to_csv(excel_row, api_name, testcase_suffix, col_by_name):
-    """把一行 excel 数据转成一条 csv 行（list of 11 fields）。"""
+def _row_to_csv(excel_row, api_name, testcase_suffix, col_by_name, metadata_only=None):
+    """把一行 excel 数据转成一条 csv 行（list of 11 fields）。
+
+    metadata_only: 三态控制 (None=不写入 attributes / True=只跑 metadata / False=刷新 metadata 后跑主算子)。
+                   npu_preprocess.run() 据此决定是否 stop。
+    """
     raw_name = _strip_or_none(excel_row.get(col_by_name["A_testcase_name"]))
     if not raw_name:
         raise ValueError("testcase_name (A) is empty")
@@ -554,6 +579,8 @@ def _row_to_csv(excel_row, api_name, testcase_suffix, col_by_name):
 
     shapes, dtypes, data_ranges = _build_tensor_lists(excel_row, col_by_name)
     attrs = _build_attributes(excel_row, col_by_name)
+    if metadata_only is not None:
+        attrs["metadata_only"] = bool(metadata_only)
 
     # 嵌套字段：双引号包裹的 Python tuple 字面量，csv.writer 自动加引号。
     # attributes 用 repr() 生成单引号 Python dict 字面量（HANDOFF.md 坑2：json.dumps 双引号会失败）。
@@ -644,13 +671,15 @@ def main():
 
     print(f"[excel_to_csv] detected mode: {mode_label}, {len(data_rows)} data rows")
 
-    for fname, api_name, suffix in profiles:
+    for fname, api_name, suffix, metadata_only in profiles:
         out_path = os.path.join(_HERE, fname)
         with open(out_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(HEADER)
             for row in data_rows:
-                writer.writerow(_row_to_csv(row, api_name, suffix, col_by_name))
+                writer.writerow(
+                    _row_to_csv(row, api_name, suffix, col_by_name, metadata_only)
+                )
         print(f"wrote {out_path}")
 
     print(
