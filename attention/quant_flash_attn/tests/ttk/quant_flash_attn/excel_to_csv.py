@@ -313,6 +313,7 @@ def _str_to_int_list(s):
     parts = [p.strip() for p in s.split(",") if p.strip() != ""]
     return [int(float(p)) for p in parts]
 
+
 def _str_to_uncontiguous_dim(s):
     """'-1,-1,0,-1,-1,-1,-1,-1' → [-1,-1,0,-1,-1,-1,-1,-1]。
     必须 8 维，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask。
@@ -324,8 +325,11 @@ def _str_to_uncontiguous_dim(s):
         return [-1] * 8
     parts = [p.strip() for p in s.split(",") if p.strip() != ""]
     if len(parts) != 8:
-        raise ValueError(f"uncontiguous_dim must have 8 values, got {len(parts)}: {s!r}")
+        raise ValueError(
+            f"uncontiguous_dim must have 8 values, got {len(parts)}: {s!r}"
+        )
     return [int(float(p)) for p in parts]
+
 
 def _map_dtype(s):
     if s is None:
@@ -503,7 +507,10 @@ def _build_attributes(row, col_by_name):
     # uncontiguous_dim: Excel CE 列，8 维列表，空值默认全 -1 (全连续)
     # 顺序: [q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask]
     # -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推
-    _set_force("uncontiguous_dim", _str_to_uncontiguous_dim(row.get(COL["CE_uncontiguous_dim"])))
+    _set_force(
+        "uncontiguous_dim",
+        _str_to_uncontiguous_dim(row.get(COL["CE_uncontiguous_dim"])),
+    )
 
     # --- wrapper 接口适配参数（不是 op 参数推导，是 wrapper 签名必选参数） ---
     layout_kv = _strip_or_none(row.get(col_by_name["BX_layout_kv"]))

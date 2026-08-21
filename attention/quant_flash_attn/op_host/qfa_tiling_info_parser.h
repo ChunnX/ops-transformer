@@ -24,8 +24,7 @@ class QfaInfoParser {
 public:
     explicit QfaInfoParser(const gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~QfaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;

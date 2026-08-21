@@ -406,7 +406,9 @@ def cpu_qfa_mxfp8(
             "q_scale_layout": q_scale_layout,
             "enable_lse": enable_lse,
             "input_layout": input_layout,
-            "uncontiguous_dim": uncontiguous_dim if uncontiguous_dim is not None else [-1] * 8,
+            "uncontiguous_dim": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "device_id": device_id,
             "graph_path": graph_path,
             "softmax_scale": softmax_scale,
@@ -751,7 +753,9 @@ def cpu_qfa_gqa_fp8(
             "q_scale_layout": q_scale_layout,
             "enable_lse": enable_lse,
             "input_layout": input_layout,
-            "uncontiguous_dim": uncontiguous_dim if uncontiguous_dim is not None else [-1] * 8,
+            "uncontiguous_dim": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "device_id": device_id,
             "graph_path": graph_path,
             "softmax_scale": softmax_scale,
