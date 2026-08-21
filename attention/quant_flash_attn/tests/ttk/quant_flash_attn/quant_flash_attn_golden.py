@@ -1694,7 +1694,11 @@ def prepare_npu_inputs(
         k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
         v_npu = v_fp8.contiguous().view(V_DTYPE).npu() if v_fp8 is not None else None
         deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
-        deq_v_npu = dequant_scale_v.view(DV_DTYPE).npu() if dequant_scale_v is not None else None
+        deq_v_npu = (
+            dequant_scale_v.view(DV_DTYPE).npu()
+            if dequant_scale_v is not None
+            else None
+        )
 
         if not IS_CONTIGUOUS:
             if v_fp8 is not None:
@@ -1721,7 +1725,11 @@ def prepare_npu_inputs(
             )
 
         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
-        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None)
+        logger.info(
+            "[NPU PA] k=%s, v=%s",
+            k_npu.shape,
+            v_npu.shape if v_npu is not None else None,
+        )
         logger.info(
             "[NPU PA] deq_k=%s, deq_v=%s",
             deq_k_npu.shape,
@@ -1780,7 +1788,9 @@ def prepare_npu_inputs(
     deq_v_npu = (
         dequant_scale_v.view(DV_DTYPE).npu() if dequant_scale_v is not None else None
     )
-    logger.info("[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None)
+    logger.info(
+        "[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None
+    )
     logger.info(
         "[NPU TND] deq_k=%s, deq_v=%s",
         deq_k_npu.shape,

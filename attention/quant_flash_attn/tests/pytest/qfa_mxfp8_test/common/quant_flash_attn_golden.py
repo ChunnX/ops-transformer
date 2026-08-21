@@ -1574,7 +1574,11 @@ def prepare_npu_inputs(
         )
 
         k_scale_e8m0_pa = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA scale")
-        v_scale_e8m0_pa = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA scale") if v_scale_pa is not None else None
+        v_scale_e8m0_pa = (
+            fp32_to_e8m0fnu_safe(v_scale_pa, "V PA scale")
+            if v_scale_pa is not None
+            else None
+        )
 
         deq_k_npu = k_scale_e8m0_pa.npu()
         deq_v_npu = v_scale_e8m0_pa.npu() if v_scale_e8m0_pa is not None else None
@@ -1586,7 +1590,9 @@ def prepare_npu_inputs(
             deq_k_npu = double_kscale[:, :, 0]  # 覆写为非连续
             if v_scale_e8m0_pa is not None:
                 fake_vscale_tensor = torch.ones_like(v_scale_e8m0_pa)
-                double_vscale = torch.stack([v_scale_e8m0_pa, fake_vscale_tensor], dim=2)
+                double_vscale = torch.stack(
+                    [v_scale_e8m0_pa, fake_vscale_tensor], dim=2
+                )
                 double_vscale = double_vscale.npu()
                 deq_v_npu = double_vscale[:, :, 0]
             logger.info(
@@ -1594,8 +1600,16 @@ def prepare_npu_inputs(
             )
 
         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
-        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None)
-        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape if deq_v_npu is not None else None)
+        logger.info(
+            "[NPU PA] k=%s, v=%s",
+            k_npu.shape,
+            v_npu.shape if v_npu is not None else None,
+        )
+        logger.info(
+            "[NPU PA] deq_k=%s, deq_v=%s",
+            deq_k_npu.shape,
+            deq_v_npu.shape if deq_v_npu is not None else None,
+        )
 
         block_table_npu = (
             block_table_torch.npu()
@@ -1656,7 +1670,12 @@ def prepare_npu_inputs(
         if v_fp8 is not None
         else None
     )
-    logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape if v_npu is not None else None)
+    logger.info(
+        "[NPU %s] k=%s, v=%s",
+        npu_input_layout,
+        k_npu.shape,
+        v_npu.shape if v_npu is not None else None,
+    )
 
     k_scale_e8m0 = fp32_to_e8m0fnu_safe(
         convert_k_scale_bnsd_to_layout(
