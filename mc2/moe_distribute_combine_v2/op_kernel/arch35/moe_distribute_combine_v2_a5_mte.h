@@ -542,6 +542,11 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
     if (tilingData->moeDistributeCombineV2Info.isMc2Context) {
         isMc2Context_ = true;
         mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
+        if (coreIdx_ == 0U) {
+            AscendC::PRINTF("[lijd-dbg] combine ctxPtr=%llx epRankId=%u epWinBuf=%llx\n",
+                            (unsigned long long)(uintptr_t)mc2Context, mc2Context_->epRankId,
+                            (unsigned long long)mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
+        }
     } else {
         auto realWinSize = Mc2Kernel::GetWinSize(epWinContext_);
         CheckWindowSize(totalWinSizeEp_, realWinSize, tpipe_, XOut);
