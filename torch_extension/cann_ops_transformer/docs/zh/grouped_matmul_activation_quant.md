@@ -97,7 +97,7 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 - 调用方式：该接口支持单算子模式调用。
 - `N`必须为64的整数倍，`E`取值范围为`[1, 1024]`。
 - MXFP4场景下`x`与`weight`必须同时为FLOAT4，二者可分别选择E2M1或E1M2；`K`必须为偶数且不能为2。
-- MXFP4 Torch输入必须使用`torch.uint8`打包载体，并显式传入`x_dtype`和`weight_dtype`；当前CANN不支持原生`float4_e2m1fn_x2` Tensor执行ND到FRACTAL_NZ转换。
+- MXFP4 Torch输入必须使用`torch.uint8`打包载体，并显式传入`x_dtype`和`weight_dtype`。
 - WeightNZ转置场景必须先对源Weight执行`torch_npu.npu_format_cast(weight_source, 29)`，再执行`transpose(-1, -2)`；`weight_scale`必须对源shape的中间两维同步执行transpose。
 - 支持M为0或N为0的空Tensor场景；该场景下允许K为0。
 
