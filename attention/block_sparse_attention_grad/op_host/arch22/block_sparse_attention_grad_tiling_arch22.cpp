@@ -588,9 +588,9 @@ ge::graphStatus BSAGradTiling::SetTilingData(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-class BlockSparseAttentionGradArch32Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class BlockSparseAttentionGradArch22Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockSparseAttentionGradArch32Tiling(gert::TilingContext *context) : TilingBaseClass(context) {}
+    explicit BlockSparseAttentionGradArch22Tiling(gert::TilingContext *context) : TilingBaseClass(context) {}
 
 protected:
     bool IsCapable() override
@@ -648,7 +648,7 @@ private:
 
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad,
-    BlockSparseAttentionGradArch32Tiling,
+    BlockSparseAttentionGradArch22Tiling,
     std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
     1);
 
