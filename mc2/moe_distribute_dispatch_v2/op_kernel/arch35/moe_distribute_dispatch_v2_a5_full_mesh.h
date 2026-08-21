@@ -2217,6 +2217,13 @@ template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if ((aivId_ == 0U) || (aivId_ == (aivNum_ - 1U)) ||
+            ((aivUsedAllToAll_ < aivNum_) && (aivId_ == aivUsedAllToAll_))) {
+            AscendC::PRINTF(
+                "[A5FullMesh] rank=%u aiv=%u axisBS=%u globalBS=%u epWorld=%u serial=%u aivNum=%u allToAll=%u cumSum=%u\n",
+                epRankIdOriginal_, aivId_, axisBS_, globalBS_, epWorldSize_, static_cast<uint32_t>(useSerialMode_),
+                aivNum_, aivUsedAllToAll_, aivUsedCumSum_);
+        }
         if (useSerialMode_) {
             AllToAllDispatch();
             WaitDispatch();
