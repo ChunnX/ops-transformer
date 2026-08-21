@@ -842,6 +842,54 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
 }
 
 /**
+ * @brief 构建MX量化专属的workspace布局，与kernel侧实际存放顺序保持一致
+ * 顺序: commX1Scale → commOut → transX1Scale → transOut → LIB_API → RUNTIME_INFO
+ */
+void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
+{
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    // [0] x1Scale 通信接收区 (commX1Scale), 对应 kernel 中 commX1ScaleGM1_ = workspaceGM
+    if (inferredInfo_.commScaleLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commScaleLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.commScaleLen;
+    }
+    // [1] x1 数据通信接收区 (commOut), 对应 kernel 中 commOutGM_ = workspaceGM + x1ScaleLen
+    if (inferredInfo_.commLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
+        offset += inferredInfo_.commLen;
+    }
+    // [2] 转置后的 x1Scale (transX1Scale), 对应 kernel 中 transX1ScaleGM1_ = commOutGM_ + commLen
+    if (inferredInfo_.permuteScaleLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteScaleLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.permuteScaleLen;
+    }
+    // [3] 转置后的数据 (transOut), 仅当 all2all_out 为空时才在 workspace 中分配
+    if (inferredInfo_.permuteLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_PERMUTE_OUT), {}};
+        offset += inferredInfo_.permuteLen;
+    }
+    // [4] 系统库预留空间
+    if (libApiWorkSpaceSize_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        offset += libApiWorkSpaceSize_;
+    }
+    // [5] 运行时信息段 (64KB)
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+}
+
+/**
  * @brief 计算总共需要的workspace大小
  *
  */
@@ -851,24 +899,10 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
     BuildWorkspaceLayout();
-    // 追加 MX 量化专属段: commScaleLen + permuteScaleLen
-    uint64_t offset = workspaceLayout_.totalSize;
-    uint32_t idx = workspaceLayout_.segCount;
-    if (inferredInfo_.commScaleLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commScaleLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
-        offset += inferredInfo_.commScaleLen;
-    }
-    if (inferredInfo_.permuteScaleLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteScaleLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
-        offset += inferredInfo_.permuteScaleLen;
-    }
-    workspaceLayout_.totalSize = offset;
-    workspaceLayout_.segCount = idx;
     workspaces[0] = workspaceLayout_.totalSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
-            inferredInfo_.permuteLen);
+    OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, commScaleLen=%zu, permuteScaleLen=%zu",
+            workspaces[0], inferredInfo_.commLen, inferredInfo_.permuteLen, inferredInfo_.commScaleLen,
+            inferredInfo_.permuteScaleLen);
     return ge::GRAPH_SUCCESS;
 }
 
