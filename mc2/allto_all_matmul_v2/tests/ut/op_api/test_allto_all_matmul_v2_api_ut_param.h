@@ -46,6 +46,16 @@ struct AlltoAllMatmulV2ApiUtParam {
         this->context = GetTensorACL(csvMap, "context_shape", "context_dtype", "context_format");
         this->x1 = GetTensorACL(csvMap, "x1_shape", "x1_dtype", "x1_format");
         this->x2 = GetTensorACL(csvMap, "x2_shape", "x2_dtype", "x2_format");
+        {
+            // 非连续转置 x2：view 为 [N, K]，storage 为 [K, N]，用于覆盖 aclnn 层 TransX2Tensor
+            std::string x2StrideStr = ReadMap(csvMap, "x2_stride");
+            if (!x2StrideStr.empty()) {
+                aclDataType dtype = ReadMap(ACL_DTYPE, ReadMap(csvMap, "x2_dtype"), ACL_DT_UNDEFINED);
+                aclFormat format = ReadMap(ACL_FORMAT, ReadMap(csvMap, "x2_format"), ACL_FORMAT_UNDEFINED);
+                this->x2 = TensorDesc(GetShapeArr(ReadMap(csvMap, "x2_shape")), dtype, format,
+                                      GetShapeArr(x2StrideStr), 0, GetShapeArr(ReadMap(csvMap, "x2_storage_shape")));
+            }
+        }
         this->bias = GetTensorACL(csvMap, "bias_shape", "bias_dtype", "bias_format");
         this->x1Scale = GetTensorACL(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format");
         this->x2Scale = GetTensorACL(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format");
