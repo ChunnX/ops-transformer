@@ -277,6 +277,8 @@ public:
         if (unlikely(runInfo.isLastS2Loop && isLastSubLoop)) {
             // 最后一个 S2/subLoop 后写 LSE。
             if constexpr (HAS_LSE) {
+                // LSE 立即读取当前 V1 写入的 sum/max，显式闭合 PIPE_V RAW 依赖。
+                PipeBarrier<PIPE_V>();
                 SoftmaxLseCopyOut(runInfo, constInfo, sumUb, maxUb);
             }
         }
