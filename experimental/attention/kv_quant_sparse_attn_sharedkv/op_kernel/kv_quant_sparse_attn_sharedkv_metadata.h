@@ -28,6 +28,10 @@ using SAS_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
+constexpr uint32_t GLOBAL_METADATA_SIZE = 1;
+constexpr uint32_t GLOBAL_NEED_INIT_INDEX = 0;
+constexpr uint32_t GLOBAL_METADATA_BASE =
+    FA_METADATA_SIZE * AIC_CORE_NUM + FD_METADATA_SIZE * AIV_CORE_NUM;
 
 // FA Metadata Index Definitions
 constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
@@ -65,16 +69,23 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
         return FA_METADATA_SIZE * coreIdx + metaIdx;
     }
 }
+
+__aicore__ inline uint32_t GetGlobalAttrAbsIndex(uint32_t metaIdx)
+{
+    return GLOBAL_METADATA_BASE + metaIdx;
+}
 #endif
 
 namespace detail {
     struct SasMetadata {
         uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
         uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
+        uint32_t globalMetadata[GLOBAL_METADATA_SIZE];
     };
 };
 
 static_assert(SAS_META_SIZE * sizeof(SAS_METADATA_T) >= sizeof(detail::SasMetadata));
+static_assert(GLOBAL_METADATA_BASE + GLOBAL_METADATA_SIZE <= SAS_META_SIZE);
 };
 
 #endif // KV_QUANT_SPARSE_ATTN_SHAREDKV_METADATA_H
