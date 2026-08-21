@@ -901,7 +901,7 @@ def prepare_npu_inputs_gqa_fp8(
 
     q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, LAYOUT_Q)
     deq_q_npu = convert_scale_to_layout(dequant_scale_q, actual_seq_q, "deq_q")
-    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v") if dequant_scale_v is not None else None
+    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v")
     mask_arg = _build_mask()
 
     if block_table_torch is not None:
@@ -921,20 +921,15 @@ def prepare_npu_inputs_gqa_fp8(
         block_table,
         num_blocks=NUM_BLOCKS,
     )
-    v_pa = (
-        bnsd_to_v_cache(
-            v_fp8, actual_seq_kv, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS
-        )
-        if v_fp8 is not None
-        else None
+    v_pa = bnsd_to_v_cache(
+        v_fp8, actual_seq_kv, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS
     )
 
     if not IS_CONTIGUOUS:
-        if v_pa is not None:
-            kv_cache = torch.stack([k_pa, v_pa], dim=2)
-            kv_cache = kv_cache.npu()
-            k_pa = kv_cache[:, :, 0]
-            v_pa = kv_cache[:, :, 1]
+        kv_cache = torch.stack([k_pa, v_pa], dim=2)
+        kv_cache = kv_cache.npu()
+        k_pa = kv_cache[:, :, 0]
+        v_pa = kv_cache[:, :, 1]
 
     return dict(
         q=q_npu,
