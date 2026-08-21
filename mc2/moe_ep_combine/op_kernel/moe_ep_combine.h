@@ -533,8 +533,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
         }
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        SyncAll<true>();
+    }
+    SyncAll<true>();
 
+    if (buildsSendMap) {
         uint64_t rowsPerCore = actualA_ / aivNum_;
         uint64_t rowRemainder = actualA_ % aivNum_;
         uint64_t rowStart = aivId_ * rowsPerCore + (aivId_ < rowRemainder ? aivId_ : rowRemainder);
@@ -588,8 +590,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
-        SyncAll<true>();
     }
+    SyncAll<true>();
 
     // Phase 2: only real communication workers consume the map and own a rank/channel pair.
     bool sendsTokens = buildsSendMap && aivId_ < communicationAivNum;
