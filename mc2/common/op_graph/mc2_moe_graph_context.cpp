@@ -391,44 +391,6 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
 // 模板函数显式实例化
 template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
-ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, const std::string &groupEp,
-                                                           const std::vector<int32_t> &contextData,
-                                                           ge::GNode &constNode)
-{
-    const std::string constName = kContextConstNamePrefix + groupEp;
-    const size_t dataLen = contextData.size() * sizeof(int32_t);
-    ge::Shape shape({static_cast<int64_t>(contextData.size())});
-    ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
-    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t *>(contextData.data()), dataLen);
-
-    auto constOp = ge::OperatorFactory::CreateOperator(constName, "Const");
-    if (constOp.IsEmpty()) {
-        OPS_LOG_E(CONTEXT_NAME, "Const op not found in factory.");
-        return ge::GRAPH_FAILED;
-    }
-    constOp.UpdateOutputDesc(0U, tensorDesc);
-    constOp.SetAttr("value", tensorValue);
-
-    constNode = graph.AddNodeByOp(constOp);
-    OPS_LOG_I(CONTEXT_NAME, "Context Const node %s added, data len %zu.", constName.c_str(), dataLen);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp)
-{
-    const std::string constName = kContextConstNamePrefix + groupEp;
-    for (auto &gNode : graph.GetDirectNode()) {
-        ge::AscendString name;
-        ge::AscendString type;
-        if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr && constName == name.GetString() &&
-            gNode.GetType(type) == ge::GRAPH_SUCCESS && type.GetString() != nullptr &&
-            std::string(type.GetString()) == "Const") {
-            return gNode;
-        }
-    }
-    return ge::GNode();
-}
-
 bool Mc2MoeGraphContext::GetContextDeviceAddr(const std::string &groupEp, const std::string &opName, void *&ctx,
                                               uint64_t &ctxSize)
 {

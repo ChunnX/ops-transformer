@@ -38,13 +38,6 @@ public:
     // 按 groupEp 获取 Mc2MoeContext 序列化数据与 HCCL buffer 大小
     static bool GetContextData(const std::string &groupEp, std::vector<int32_t> &contextData, int64_t &hcclBuffSize);
 
-    // 创建承载 context 数据的 Const 节点（旧路径，保留用于回退）
-    static ge::graphStatus CreateContextConstNode(ge::Graph &graph, const std::string &groupEp,
-                                                  const std::vector<int32_t> &contextData, ge::GNode &constNode);
-
-    // 按 groupEp 查找已存在的 context Const 节点
-    static ge::GNode FindContextConstNode(ge::Graph &graph, const std::string &groupEp);
-
     // 与单算子路径一致（tag = groupEp + opName）：获取或创建 HCCL 持有的 ctx 地址
     static bool GetContextDeviceAddr(const std::string &groupEp, const std::string &opName, void *&ctx,
                                      uint64_t &ctxSize);
