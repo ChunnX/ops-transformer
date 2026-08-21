@@ -1082,8 +1082,10 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::PrepareNormalizedKv(
         tailIterator.SetNeedDealTcSize(needDealTcSize);
         while (!tailIterator.IsEnd()) {
             Vec1SliceInfo tailSlice = tailIterator.GetSlice();
-            if (tailSlice.tailHolderSeqCnt > 0 && tailSlice.isLast) {
-                uint32_t tailRows = tailSlice.tailHolderSeqCnt;
+            uint32_t tailRows =
+                (tailSlice.bStartPos + tailSlice.bSeqUsed) % cmpRatio_;
+            tailRows = min(tailRows, tailSlice.validSeqCnt);
+            if (tailRows > 0 && tailSlice.isLast) {
                 uint64_t tailOffset =
                     static_cast<uint64_t>(originSliceInfo.dealedSeqCnt +
                                           tailSlice.dealedSeqCnt +
