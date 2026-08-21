@@ -534,8 +534,8 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>必选参数或者输出是空指针。</td>
             </tr>
             <tr>
-                <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
-                <td rowspan="5">161002</td>
+                <td rowspan="6">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="6">161002</td>
                 <td>输入或输出tensor的维度个数(dim)与参数说明不符。</td>
             </tr>
             <tr>
@@ -551,12 +551,12 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
             </tr>
             <tr>
-                <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
-                <td rowspan="2">561002</td>
-                <td>sk_iter_count不等于20。</td>
+                <td>3D（TND）输入格式在非<term>Ascend 950PR/Ascend 950DT</term>场景下不支持。</td>
             </tr>
             <tr>
-                <td>3D（TND）输入格式在非<term>Ascend 950PR/Ascend 950DT</term>场景下不支持。</td>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>sk_iter_count不等于20。</td>
             </tr>
         </tbody>
     </table>
