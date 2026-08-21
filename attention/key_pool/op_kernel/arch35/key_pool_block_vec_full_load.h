@@ -1079,8 +1079,12 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1SplitInfo &splitInfo)
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
-    splitInfo.dBaseSize =
-        constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, constInfo_.batchSize)));
+    if (hasLayerNorm_) {
+        splitInfo.dBaseSize = constInfo_.headDim;
+    } else {
+        splitInfo.dBaseSize =
+            constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, constInfo_.batchSize)));
+    }
     if (constInfo_.kBaseNum > 1) {
         splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
