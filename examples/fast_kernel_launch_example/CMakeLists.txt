@@ -8,7 +8,35 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.18.4)
+cmake_minimum_required(VERSION 3.16)
+
+# 设置 ASC 和 AICPU 的 CMake 查找路径（兼容不同 CANN 版本布局）
+if(DEFINED ENV{ASCEND_HOME_PATH})
+    set(_ASCEND_ROOT "$ENV{ASCEND_HOME_PATH}")
+else()
+    set(_ASCEND_ROOT "/usr/local/Ascend/latest")
+endif()
+set(_ASC_CMAKE_PATHS
+    "${_ASCEND_ROOT}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64/cmake"
+    "${_ASCEND_ROOT}/${CMAKE_SYSTEM_PROCESSOR}-linux/tikcpp/ascendc_kernel_cmake"
+    "${_ASCEND_ROOT}/lib64/cmake"
+    "${_ASCEND_ROOT}/tikcpp/ascendc_kernel_cmake"
+)
+foreach(_p ${_ASC_CMAKE_PATHS})
+    if(EXISTS "${_p}/asc-config.cmake" OR EXISTS "${_p}/asc_modules/FindASC.cmake")
+        list(APPEND CMAKE_PREFIX_PATH "${_p}")
+        set(ASC_DIR "${_p}" CACHE PATH "ASC cmake path" FORCE)
+        break()
+    endif()
+endforeach()
+foreach(_p ${_ASC_CMAKE_PATHS})
+    if(EXISTS "${_p}/aicpu-config.cmake" OR EXISTS "${_p}/aicpu_modules/FindAICPU.cmake")
+        list(APPEND CMAKE_PREFIX_PATH "${_p}")
+        set(AICPU_DIR "${_p}" CACHE PATH "AICPU cmake path" FORCE)
+        break()
+    endif()
+endforeach()
+
 find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
 set(PKG_NAME AscendOps)
