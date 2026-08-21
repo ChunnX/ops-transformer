@@ -111,10 +111,9 @@ public:
         IterateBmm1Impl<0U, true, true>(outputBuf, runInfo, constInfo);
     }
 
-    __aicore__ inline void IterateBmm1ReuseQ(
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf0,
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1, MxRunInfo &runInfo,
-        const MxConstInfo &constInfo)
+    __aicore__ inline void IterateBmm1ReuseQ(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf0,
+                                             Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1,
+                                             MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
         IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
@@ -177,9 +176,9 @@ private:
         if constexpr (LOAD_Q_TO_L0B && RELEASE_Q_L0B) {
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
-                kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
+                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+                                                       mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
+                                                       qBuf.GetTensor<SCALE_T>(qScaleOffset));
         } else {
             MxMatmulFullReuseB<LOAD_Q_TO_L0B, RELEASE_Q_L0B, INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE,
                                ABLayout::MK, ABLayout::KN, BuffersPolicyDB<BufferType::L0A>,

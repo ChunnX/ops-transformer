@@ -113,10 +113,7 @@ struct MxScaleConstInfo {
     uint32_t valueScaleDSize = 0U;
 };
 
-struct MxConstInfo : MxBaseConstInfo,
-                     MxPageAttentionConstInfo,
-                     MxSparseConstInfo,
-                     MxScaleConstInfo {};
+struct MxConstInfo : MxBaseConstInfo, MxPageAttentionConstInfo, MxSparseConstInfo, MxScaleConstInfo {};
 } // namespace regbasemx
 
 #endif // QUANT_BLOCK_SPARSE_ATTN_COMMON_UTIL_REGBASE_MX_H_

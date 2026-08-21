@@ -339,8 +339,7 @@ private:
                 }
             }
             if (likely(loop >= C2_DELAY)) {
-                MxRunInfo &runInfoC2 =
-                    taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                MxRunInfo &runInfoC2 = taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
                 if (likely(runInfoC2.isValid)) {
                     cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoC2, constInfo);
                     runInfoC2.isValid = false;
@@ -349,8 +348,7 @@ private:
         } else {
             // AIV 先消费上一轮已经就绪的 C2，以有效 V2 工作覆盖当前 C1 的生产时间。
             if (likely(loop >= V2_DELAY)) {
-                MxRunInfo &runInfoV2 =
-                    taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                MxRunInfo &runInfoV2 = taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
                 if (likely(runInfoV2.isValid)) {
                     vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoV2, constInfo);
                     runInfoV2.isValid = false;
@@ -405,8 +403,7 @@ private:
                 // 同一 batch 的所有 N1 head 复用序列长度，避免每个 head 重复访问 GM。
                 if (unlikely(bIdx != cachedBIdx)) {
                     queryTokenBase = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
-                    actualS1Size =
-                        static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
+                    actualS1Size = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
                     actualS2Size = static_cast<uint32_t>(seqUsedKvGm.GetValue(bIdx));
                     cachedBIdx = bIdx;
                 }
@@ -414,17 +411,15 @@ private:
                 const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
                 for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
                     // 当前 query block 的有效 sparse block 数。
-                    const int32_t sparseLen = sparseSeqLenGm.GetValue(
-                        static_cast<uint64_t>(bn1Idx) * constInfo.maxQb + s1OuterIdx);
+                    const int32_t sparseLen =
+                        sparseSeqLenGm.GetValue(static_cast<uint64_t>(bn1Idx) * constInfo.maxQb + s1OuterIdx);
                     bool hasValidS2Task = false;
                     if (likely(sparseLen > 0)) {
                         // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
-                        const uint64_t sparseBase = static_cast<uint64_t>(bn1Idx) * constInfo.maxQb *
-                                                        constInfo.maxKb +
+                        const uint64_t sparseBase = static_cast<uint64_t>(bn1Idx) * constInfo.maxQb * constInfo.maxKb +
                                                     static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                         const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
-                        for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd;
-                             s2LoopIdx += sparseBlocksPerTask) {
+                        for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                             MxRunInfo &runInfo = taskRunInfo[loop % PIPELINE_TASK_CACHE_SIZE];
                             const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                             const uint32_t sparseBlockCount = remainSparseBlockCount > sparseBlocksPerTask ?
