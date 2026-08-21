@@ -21,6 +21,7 @@
 #include "apace/tiling/comm_tiling_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_v2_tiling_key.h"
 
@@ -282,8 +283,8 @@ protected:
             return false;
         }
         auto *yDtypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_Y_DTYPE);
-        if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED) &&
-            *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) && *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
+        if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) &&
+            *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "y_dtype", std::to_string(*yDtypePtr).c_str(), "BF16/FP16");
             return false;
         }
@@ -301,15 +302,6 @@ protected:
         if (!tx2 || !(*tx2)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2",
                                       tx2 ? std::to_string(static_cast<int>(*tx2)).c_str() : "nil", "true");
-            return false;
-        }
-        auto *commModePtr = context_->GetAttrs()->GetAttrPointer<char>(IDX_ATTR_COMM_MODE);
-        if (!commModePtr) {
-            OP_LOGE_WITH_INVALID_INPUT(opName, "comm_mode");
-            return false;
-        }
-        if (std::strcmp(commModePtr, "urma") != 0) {
-            OP_LOGE_WITH_INVALID_ATTR(opName, "comm_mode", commModePtr, "urma");
             return false;
         }
         auto *x1QdPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_X1_QUANT_DTYPE);
@@ -336,6 +328,21 @@ protected:
         uint64_t gsK = gs & GROUP_MNK_BIT_SIZE;
         uint64_t gsN = (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
         uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+
+        // 自动推导：groupSize 中为 0 的维度根据 x1/x2/x1Scale/x2Scale 的 shape 推断。
+        // MX 场景 groupSize=[1,1,32]，推断公式 groupSizeM=m/scaleM、groupSizeN=n/scaleN、groupSizeK=k/scaleK。
+        mc2tiling::Mc2MatmulShapeInfo shapeInfo = {
+            context_->GetInputShape(IDX_INPUT_X1),
+            context_->GetInputShape(IDX_INPUT_X2),
+            context_->GetOptionalInputShape(IDX_INPUT_X1_SCALE),
+            context_->GetOptionalInputShape(IDX_INPUT_X2_SCALE),
+            true, // isMxfp：本算子为 MX 量化
+            true, // isBTrans：transposeX2 恒为 true
+            opName};
+        if (!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, gsM, gsN, gsK)) {
+            return false;
+        }
+
         if (gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K) {
             OP_LOGE_WITH_INVALID_ATTR(
                 opName, "group_size",

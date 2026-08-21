@@ -15,6 +15,8 @@
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
+#include <cstring>
+#include <string>
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/op_executor.h"
@@ -123,14 +125,25 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
         }
     }
 
-    constexpr int64_t kDefaultYdtype = 28;       // ge::DT_UNDEFINED
+    const char *effectiveCommMode = commMode != nullptr ? commMode : "urma";
+    if (strcmp(effectiveCommMode, "urma") != 0) {
+        OP_LOGE_WITH_INVALID_ATTR("AlltoAllMatmulV2", "commMode", effectiveCommMode, "'urma'");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    // y_dtype 从 output 的 tensor dtype 推导（acl 枚举与 ge 枚举一致），
+    // 未显式指定 BF16/FP16（默认 fp32）时由 tiling 侧校验拒绝。
+    aclDataType outputAclDtype = ACL_DT_UNDEFINED;
+    (void)aclGetDataType(output, &outputAclDtype);
+    int64_t yDtype = static_cast<int64_t>(outputAclDtype);
+
     constexpr int64_t kDefaultX1QuantDtype = 28; // ge::DT_UNDEFINED
     constexpr bool kDefaultTransposeX1 = false;
     aclnnStatus ret = aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional,
-        const_cast<char *>(group), worldSize, hcclBufferSize, kDefaultYdtype,
+        const_cast<char *>(group), worldSize, hcclBufferSize, yDtype,
         x1QuantMode, x2QuantMode, kDefaultX1QuantDtype, kDefaultTransposeX1, transposeX2,
-        groupSize, const_cast<char *>(commMode ? commMode : "urma"), precisionMode, output,
+        groupSize, const_cast<char *>(effectiveCommMode), precisionMode, output,
         alltoAllOutOptional, workspaceSize, executor);
 
     if (ret != ACLNN_SUCCESS) {

@@ -168,7 +168,7 @@ def all_to_all_quant_matmul(
     x2_dtype: int = -1,
     x1_scale_dtype: int = -1,
     x2_scale_dtype: int = -1,
-    y_dtype: int = -1,
+    y_dtype: int = 6,  # fp32，未显式指定 BF16(15)/FP16(5) 时算子侧会校验失败
     comm_mode: Optional[str] = None,
     precision_mode: int = 0,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -196,7 +196,8 @@ def all_to_all_quant_matmul(
         x2_dtype (int): x2 dtype enum for bitcast, -1 means use tensor dtype.
         x1_scale_dtype (int): x1_scale dtype enum, -1 means use tensor dtype.
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
-        y_dtype (int): Output dtype enum, -1 means default float32.
+        y_dtype (int): Output dtype enum, must be 5 (FP16) or 15 (BF16); the default
+            fp32 is rejected by the operator.
         comm_mode (str): Communication engine, e.g. ``"ai_cpu"`` or ``"ccu"``.
         precision_mode (int): Precision mode, 0 means default.
 
@@ -225,7 +226,7 @@ def all_to_all_quant_matmul(
         x2_dtype=None if x2_dtype == -1 else x2_dtype,
         x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
         x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
-        y_dtype=None if y_dtype == -1 else y_dtype,
+        y_dtype=None if y_dtype == 6 else y_dtype,
         comm_mode=comm_mode,
         precision_mode=precision_mode,
     )
