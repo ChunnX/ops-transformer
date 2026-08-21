@@ -70,7 +70,7 @@ int8_t CheckOptionalParamsExisting(const gert::StorageShape *checkShape)
     return 1;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
+ge::graphStatus MhcPreTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -91,7 +91,7 @@ ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetAttr()
+ge::graphStatus MhcPreTiling::GetAttr()
 {
     auto *attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -107,7 +107,7 @@ ge::graphStatus MhcPreMembaseTiling::GetAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
+ge::graphStatus MhcPreTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
 {
     auto xShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
@@ -152,7 +152,6 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
         } else {
             isFac = false;
         }
-
     } else {
         OP_CHECK_IF(
             hcMix_ != 2 * hcMult_,
@@ -186,7 +185,7 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
+ge::graphStatus MhcPreTiling::CalcMKSplitCoreMembasePart2Tiling()
 {
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(aivCoreNum_));
     usedAivCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
@@ -281,7 +280,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
 }
 
 // 预留功能，切K情况尾核单独计算
-ge::graphStatus MhcPreMembaseTiling::CalcBsSplit()
+ge::graphStatus MhcPreTiling::CalcBsSplit()
 {
     tailBs_ = bs_;
     if (bs_ > BS_SPLIT_THRESHOLD) {
@@ -294,7 +293,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcBsSplit()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
+ge::graphStatus MhcPreTiling::CalcTailBsTiling()
 {
     if (tailBs_ == BS_SPLIT_THRESHOLD || tailBs_ == bs_) {
         tilingData_.set_tailBsRowOfFormerBlock(tilingData_.get_rowOfFormerBlock());
@@ -339,7 +338,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::CalcOpTiling()
+ge::graphStatus MhcPreTiling::CalcOpTiling()
 {
     if (CalcBsSplit() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
@@ -361,7 +360,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcOpTiling()
     return CalcMKSplitCoreMembasePart2Tiling();
 }
 
-ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
+ge::graphStatus MhcPreTiling::DoOpTiling()
 {
     if (GetPlatformInfo() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
@@ -441,7 +440,7 @@ static void PrintTilingData(const gert::TilingContext *context, MhcPreMembaseTil
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1XCastWsSize is %ld.", tiling.get_stage1XCastWsSize());
 }
 
-ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
+ge::graphStatus MhcPreTiling::CalcStage1Tiling()
 {
     // 1. 计算核心数量
     int64_t vecCoreNum = static_cast<int64_t>(aivCoreNum_);
@@ -520,13 +519,13 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetWorkspaceSize()
+ge::graphStatus MhcPreTiling::GetWorkspaceSize()
 {
     workspaceSize_ += 16 * 1024 * 1024 + 128 * 1024 * 1024;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::PostTiling()
+ge::graphStatus MhcPreTiling::PostTiling()
 {
     int64_t tilingKey = 0;
     if (!isFac && hasResi) {
@@ -563,7 +562,7 @@ ge::graphStatus TilingForMhcPre(gert::TilingContext *context)
         return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
     }
 
-    MhcPreMembaseTiling membaseTiling(context);
+    MhcPreTiling membaseTiling(context);
     return membaseTiling.DoOpTiling();
 }
 

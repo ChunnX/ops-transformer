@@ -100,12 +100,12 @@ struct MhcPreMembaseCompileInfo {
     uint64_t ubSize = 0;
 };
 
-class MhcPreMembaseTiling {
+class MhcPreTiling {
 public:
-    explicit MhcPreMembaseTiling(gert::TilingContext *tilingContext)
+    explicit MhcPreTiling(gert::TilingContext *tilingContext)
         : context_(tilingContext)
     {}
-    ~MhcPreMembaseTiling() = default;
+    ~MhcPreTiling() = default;
 
     ge::graphStatus GetPlatformInfo();
     ge::graphStatus DoOpTiling();

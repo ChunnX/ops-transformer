@@ -30,13 +30,13 @@ namespace MhcPre {
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
 
 #define MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM template <typename T, bool isFac, bool hasResi>
-#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T, isFac, hasResi>
+#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS MhcPreCubeCompute<T, isFac, hasResi>
 
 // 不切K使用的矩阵乘实现
 MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM
-class HcCubeCompute {
+class MhcPreCubeCompute {
 public:
-    __aicore__ inline HcCubeCompute(){};
+    __aicore__ inline MhcPreCubeCompute(){};
     __aicore__ inline void Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm,
                                 const GlobalTensor<float> &workspaceGlobalAB, int64_t bs, int64_t n, int64_t c,
                                 int64_t vecCoreNum);

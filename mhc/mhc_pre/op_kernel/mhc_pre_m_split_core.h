@@ -260,7 +260,7 @@ public:
     TQue<QuePosition::VECIN, 1> gammaQue;         // gamma UB buffer (per nc segment)
 
     // Cube Compute
-    HcCubeCompute<float, isFac, hasResi> cubeCompute_;
+    MhcPreCubeCompute<float, isFac, hasResi> cubeCompute_;
 
     // 标志
     bool needGrad_ = true;
