@@ -2029,7 +2029,71 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
             Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
         } else {
+            if constexpr (IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<OUTPUT_T, int8_t>::value) {
+                const bool isPostQuantDiagCase =
+                    constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
+                    constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
+                    constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
+                int64_t targetGs1 = -1;
+                int64_t diagDStart = 0;
+                int64_t diagDEnd = 0;
+                if (isPostQuantDiagCase && runInfo.boIdx == 8 && runInfo.n2oIdx == 2) {
+                    targetGs1 = 1 * constInfo.s1Size + 300;
+                    diagDStart = 8;
+                    diagDEnd = 40;
+                } else if (isPostQuantDiagCase && runInfo.boIdx == 25 && runInfo.n2oIdx == 5) {
+                    targetGs1 = 4 * constInfo.s1Size + 446;
+                    diagDStart = 49;
+                    diagDEnd = 71;
+                }
+                const int64_t blockGs1Start =
+                    runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
+                if (targetGs1 >= blockGs1Start && targetGs1 < blockGs1Start + runInfo.vec2S1RealSize) {
+                    const int64_t diagRow = targetGs1 - blockGs1Start;
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=before core=%d sub=%u b=%ld n2=%ld gs1=%ld row=%ld scale=%f offset=%f\n",
+                                    constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx, runInfo.n2oIdx,
+                                    targetGs1, diagRow, constInfo.postQuantScaleValue,
+                                    constInfo.postQuantOffsetValue);
+                    for (int64_t dIndex = diagDStart; dIndex < diagDEnd; ++dIndex) {
+                        const int64_t ubOffset = diagRow * dSizeAligned64 + dIndex;
+                        const float beforeValue = static_cast<float>(vec2ResUb.GetValue(ubOffset));
+                        AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=before b=%ld n2=%ld gs1=%ld d=%ld value=%f\n",
+                                        runInfo.boIdx, runInfo.n2oIdx, targetGs1, dIndex, beforeValue);
+                    }
+                }
+            }
             GetDerived()->PostQuant(constInfo, runInfo, attenOut, vec2ResUb, vec2S1Idx, dSizeAligned64);
+            if constexpr (IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<OUTPUT_T, int8_t>::value) {
+                const bool isPostQuantDiagCase =
+                    constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
+                    constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
+                    constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
+                int64_t targetGs1 = -1;
+                int64_t diagDStart = 0;
+                int64_t diagDEnd = 0;
+                if (isPostQuantDiagCase && runInfo.boIdx == 8 && runInfo.n2oIdx == 2) {
+                    targetGs1 = 1 * constInfo.s1Size + 300;
+                    diagDStart = 8;
+                    diagDEnd = 40;
+                } else if (isPostQuantDiagCase && runInfo.boIdx == 25 && runInfo.n2oIdx == 5) {
+                    targetGs1 = 4 * constInfo.s1Size + 446;
+                    diagDStart = 49;
+                    diagDEnd = 71;
+                }
+                const int64_t blockGs1Start =
+                    runInfo.sOuterOffset + vec2S1Idx * runInfo.vec2S1BaseSize;
+                if (targetGs1 >= blockGs1Start && targetGs1 < blockGs1Start + runInfo.vec2S1RealSize) {
+                    const int64_t diagRow = targetGs1 - blockGs1Start;
+                    AscendC::PipeBarrier<PIPE_V>();
+                    for (int64_t dIndex = diagDStart; dIndex < diagDEnd; ++dIndex) {
+                        const int64_t ubOffset = diagRow * dSizeAligned64 + dIndex;
+                        const int32_t afterValue = static_cast<int32_t>(attenOut.GetValue(ubOffset));
+                        AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=after b=%ld n2=%ld gs1=%ld d=%ld value=%d\n",
+                                        runInfo.boIdx, runInfo.n2oIdx, targetGs1, dIndex, afterValue);
+                    }
+                }
+            }
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
         }
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);

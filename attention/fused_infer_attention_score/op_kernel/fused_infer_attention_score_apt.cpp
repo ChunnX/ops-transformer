@@ -43,6 +43,14 @@ __global__ __aicore__ void fused_infer_attention_score(
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(FlashAttentionScoreSimplifiedTilingData);
+    if ASCEND_IS_AIC {
+        if (GetBlockIdx() == 0) {
+            AscendC::PRINTF("[FIA_DIAG][KERNEL][APT] layout=%u config=%u pse=%u quant=%u mask=%u rope=%u\n",
+                            inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope);
+            AscendC::PRINTF("[FIA_DIAG][KERNEL][APT] kvLayout=%u fd=%u empty=%u prefix=%u s1Split=%u reconstruct=%u\n",
+                            KvLayoutType, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp);
+        }
+    }
     if constexpr (emptyTensor) {
         // empty 模板 (kv为空,直接输出零,优先于量化模式)
         fia_empty_regbase(attentionOut, softmaxLse, workspace, tiling);

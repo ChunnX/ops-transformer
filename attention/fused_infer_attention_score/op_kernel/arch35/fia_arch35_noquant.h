@@ -28,6 +28,85 @@ using namespace regbaseutil;
     GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling); \
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn
 
+template <uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope,
+          uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableKVPrefix, bool enableS1OutSplit,
+          bool isReconstructTemp>
+inline __aicore__ void FiaDiagPrintNoQuantEntry(
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *blockTable,
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData)
+{
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() != 0 || GetSubBlockIdx() != 0) {
+            return;
+        }
+        const auto &input = tilingData->inputParamsRegbase;
+        const auto &multiCore = tilingData->multiCoreParamsRegbase;
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] stage=entry layout=%u config=%u quant=%u mask=%u rope=%u pa=%u\n",
+                        inOutLayoutType, config, quantMode, hasAttenMask, hasRope, KvLayoutType);
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] b=%ld n2=%ld g=%ld s1=%ld s2=%ld d=%ld dv=%ld ropeD=%ld\n",
+                        input.bSize, input.n2Size, input.gSize, input.s1Size, input.s2Size, input.dSize, input.dSizeV,
+                        input.dSizeRope);
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] coreNum=%d qDims=%u kvDims=%u transpose=%u sparse=%u maskMode=%u\n",
+                        multiCore.coreNum, input.actualSeqLengthsSize, input.actualSeqLengthsKVSize,
+                        input.transposeLayout, input.sparseType, input.attenMaskCompressMode);
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] total=%ld s1Outer=%ld split=%ld tail=%ld splitMode=%u firstFull=%ld\n",
+                        multiCore.totalSize, multiCore.s1OuterSize, multiCore.splitFactorSize,
+                        multiCore.splitFactorTailSize, multiCore.splitCoreMode, multiCore.firstFullLoadS1OuterIdx);
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] blockSize=%d tableDim2=%d totalBlocks=%d qPad=%u kvPad=%u postCh=%u postBf16=%u\n",
+                        input.blockSize, input.blockTableDim2, input.paBlockNumSum, input.isQHasLeftPadding,
+                        input.isKVHasLeftPadding, input.isPostQuantPerChnl, input.isPostQuantBF16);
+
+        const bool isPaDiagCase = KvLayoutType != 0 && input.bSize == 36 && input.s1Size == 6998 &&
+                                  input.s2Size == 7920 && input.dSize == 64 && input.dSizeV == 64 &&
+                                  input.blockSize == 128 && input.blockTableDim2 == 62;
+        if (isPaDiagCase && actualSeqLengths != nullptr && actualSeqLengthsKV != nullptr && blockTable != nullptr) {
+            __gm__ int64_t *actualQ = (__gm__ int64_t *)actualSeqLengths;
+            __gm__ int64_t *actualKv = (__gm__ int64_t *)actualSeqLengthsKV;
+            __gm__ int32_t *table = (__gm__ int32_t *)blockTable;
+            for (int32_t batch = 0; batch < input.bSize; ++batch) {
+                const int64_t usedBlocks = (actualKv[batch] + input.blockSize - 1) / input.blockSize;
+                const int64_t scanBlocks = usedBlocks < input.blockTableDim2 ? usedBlocks : input.blockTableDim2;
+                const int64_t rowOffset = static_cast<int64_t>(batch) * input.blockTableDim2;
+                int64_t invalidCount = 0;
+                int64_t firstBadSlot = -1;
+                int32_t firstBadValue = -1;
+                for (int64_t slot = 0; slot < scanBlocks; ++slot) {
+                    const int32_t blockId = table[rowOffset + slot];
+                    if (blockId < 0 || blockId >= input.paBlockNumSum) {
+                        ++invalidCount;
+                        if (firstBadSlot < 0) {
+                            firstBadSlot = slot;
+                            firstBadValue = blockId;
+                        }
+                    }
+                }
+                const int32_t firstBlock = usedBlocks > 0 ? table[rowOffset] : -1;
+                const int32_t lastBlock = usedBlocks > 0 && usedBlocks <= input.blockTableDim2 ?
+                                              table[rowOffset + usedBlocks - 1] :
+                                              -1;
+                AscendC::PRINTF("[FIA_DIAG][KERNEL][PA] b=%d q=%ld kv=%ld used=%ld first=%d last=%d invalid=%ld\n",
+                                batch, actualQ[batch], actualKv[batch], usedBlocks, firstBlock, lastBlock,
+                                invalidCount);
+                if (firstBadSlot >= 0) {
+                    AscendC::PRINTF("[FIA_DIAG][KERNEL][PA] b=%d firstBadSlot=%ld firstBadValue=%d totalBlocks=%d\n",
+                                    batch, firstBadSlot, firstBadValue, input.paBlockNumSum);
+                }
+            }
+        }
+    }
+}
+
+inline __aicore__ void FiaDiagPrintNoQuantStage(
+    uint32_t stage, const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData)
+{
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && GetSubBlockIdx() == 0) {
+            AscendC::PRINTF("[FIA_DIAG][KERNEL][NOQUANT] stage=%u coreNum=%d needInit=%u\n", stage,
+                            tilingData->multiCoreParamsRegbase.coreNum, tilingData->initOutputParams.needInit);
+        }
+    }
+}
+
 #define INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(templateClass, ...) \
     do { \
         TPipe tPipe; \
@@ -56,12 +135,18 @@ using namespace regbaseutil;
             typename std::conditional<g_coreType == AscendC::AIC, BaseApi::FANoQuantBlockVecDummy<__VA_ARGS__>, \
                                       BaseApi::FANoQuantBlockVecInfer<__VA_ARGS__>>::type; \
         templateClass<CubeBlockType, VecBlockType> op; \
+        FiaDiagPrintNoQuantEntry<inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, \
+                                 isFd, emptyTensor, enableKVPrefix, enableS1OutSplit, isReconstructTemp>( \
+            actualSeqLengths, actualSeqLengthsKV, blocktable, tilingData); \
+        FiaDiagPrintNoQuantStage(0, tilingData); \
         op.InitBaseAPI(query, key, value, pseShift, nullptr, nullptr, attenMask, nullptr, actualSeqLengths, \
                        actualSeqLengthsKV, blocktable, queryPaddingSize, kvPaddingSize, dequantScaleQuery, \
                        key_antiquant_scale, value_antiquant_scale, nullptr, postQuantScale, postQuantOffset, \
                        keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, learnableSink, \
                        nullptr, nullptr, nullptr, softmaxLse, attentionOut, user, tilingData, &tPipe); \
+        FiaDiagPrintNoQuantStage(1, tilingData); \
         op.Process(); \
+        FiaDiagPrintNoQuantStage(2, tilingData); \
     } while (0)
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope,

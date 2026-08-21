@@ -2427,15 +2427,22 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    const auto npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_3510) {
+        OP_LOGI(context->GetNodeName(), "[FIA_DIAG][HOST][ROUTE] npuArch=%d route=arch35_v4",
+                static_cast<int32_t>(npuArch));
         return TilingFusedInferAttentionScoreV4(context);
-    } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
+    } else if (npuArch == NpuArch::DAV_5102) {
+        OP_LOGI(context->GetNodeName(), "[FIA_DIAG][HOST][ROUTE] npuArch=%d route=arch38",
+                static_cast<int32_t>(npuArch));
         OP_CHECK_IF(HasNonContiguousCacheInput(context),
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                                                 "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
                     return ge::GRAPH_FAILED);
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
+        OP_LOGI(context->GetNodeName(), "[FIA_DIAG][HOST][ROUTE] npuArch=%d route=legacy",
+                static_cast<int32_t>(npuArch));
         return TilingFusedInferAttentionScore(context);
     }
     return ge::GRAPH_SUCCESS;

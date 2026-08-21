@@ -1472,6 +1472,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GenTilingKey(gert::TilingCon
     context->SetTilingKey(genTilingkey);
     OP_LOGI(fiaInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(fiaInfo.opName,
+            "[FIA_DIAG][HOST][KEY] template=general priority=999 value=%llu layout=%llu config=%llu pse=%llu "
+            "quant=%llu mask=%u rope=%u kvLayout=%llu fd=%u empty=%u prefix=%u s1Split=%u reconstruct=%u",
+            genTilingkey, tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
+            tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
+            tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
+            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+    OP_LOGI(fiaInfo.opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
             "hasAttenMask: %u, hasRope: %u, KvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
             "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u",
