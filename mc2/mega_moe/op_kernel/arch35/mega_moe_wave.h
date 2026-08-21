@@ -604,10 +604,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
         UpdateSharedExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType, QuantScaleOutType, false>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
             gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
-                                           GMM1_TILE_M, GMM1_INTERLEAVED, true>(
-            commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
-            sharedExpertIdx, nullptr, true);
+        RunGmm1ActivationByMode<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
+                                GMM1_TILE_M, L1_TILE_M_256, false, true, GMM1_INTERLEAVED, true>(
+            gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
+            sharedExpertIdx * commonConfig_.tokenNum, runtimeState, sharedExpertIdx, nullptr, true);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     vecSetSyncCom = 0;
