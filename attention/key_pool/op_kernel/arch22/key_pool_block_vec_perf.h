@@ -64,8 +64,6 @@ public:
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
-    __aicore__ inline bool HasKeyTransform() const;
-    __aicore__ inline void TransformKeysBeforePool();
     __aicore__ inline void ComputeIncrementalPool();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
@@ -249,27 +247,6 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::Init(
     if (isExistStartPos) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
-}
-
-template <typename COMP>
-__aicore__ inline bool KeyPoolBlockVectorPerf<COMP>::HasKeyTransform() const
-{
-    return hasLayerNorm_;
-}
-
-template <typename COMP>
-__aicore__ inline void KeyPoolBlockVectorPerf<COMP>::TransformKeysBeforePool()
-{
-    if (!hasLayerNorm_) {
-        return;
-    }
-    LocalTensor<T> output = tmpBuff2.Get<T>();
-    LocalTensor<T> mean = output[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    LocalTensor<T> gamma = mean[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    LocalTensor<T> beta = gamma[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    TransformKeyCacheBeforePool<COMP, decltype(inputQue1), HIDDEN_STATES_T>(
-        stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
-        static_cast<uint32_t>(COMP::coff), inputQue1, output, mean, gamma, beta);
 }
 
 template <typename COMP>
@@ -717,10 +694,8 @@ KeyPoolBlockVectorPerf<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Gl
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
 
-    if (!HasKeyTransform()) {
-        // Persist only the uncompressed tail in the no-transform path. The
-        // current LayerNorm path still needs the full current projection in
-        // state cache until its source is moved to workspace.
+    {
+        // Keep the cache raw and persist only the uncompressed tail.
         uint64_t totalEndSeqIdx = sliceInfo.bStartPos + sliceInfo.bSeqUsed;
         uint32_t tailLen = totalEndSeqIdx % cmpRatio_;
         if (tailLen == 0) {
@@ -973,6 +948,14 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::DealVec1BaseBlock(
     OverLapScoreKv(scoreLocal, kvLocal, info, loopInfo, statisticInfo, originSliceInfo, dStartIdx,
                    dDealSize, dBaseSize, needDealTcSize);
 
+    if (hasLayerNorm_ && coff_ == 1 && dDealSize == constInfo_.headDim &&
+        statisticInfo.key_poolScCnt > 0) {
+        LocalTensor<T> normScratch = inputQue1.AllocTensor<T>();
+        KeyPoolLayerNormRowsInplace(kvLocal, normScratch, normWeightGm_, normBiasGm_, constInfo_.normEps,
+                                    statisticInfo.key_poolScCnt * cmpRatio_, dDealSize, constInfo_.headDim);
+        inputQue1.FreeTensor(normScratch);
+    }
+
     if (statisticInfo.key_poolScCnt > 0) {
         LocalTensor<T> tmpUb = kvLocal[BUFFER_SIZE_BYTE_32K / sizeof(T)];
         AddApeToPooledScore(scoreLocal, apeUb, statisticInfo.key_poolScCnt, dDealSize);
@@ -1174,7 +1157,7 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::ComputeIncrementalPool()
         uint32_t startPool = GetStartPos(bIdx) / cmpRatio_;
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
         uint32_t newPoolCount = validPoolCount > startPool ? validPoolCount - startPool : 0;
-        if (HasKeyTransform()) {
+        if (false) {
             for (uint32_t poolStart = startPool; poolStart < validPoolCount; poolStart += maxPoolCount) {
                 uint32_t poolCount = min(maxPoolCount, validPoolCount - poolStart);
                 uint32_t tokenStart = poolStart * cmpRatio_;

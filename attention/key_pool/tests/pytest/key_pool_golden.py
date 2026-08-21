@@ -161,13 +161,22 @@ def _project(
     hidden_fp32 = hidden.float()
     k = torch.matmul(hidden_fp32, wk.float().transpose(-1, -2)).to(hidden.dtype)
     gate = torch.matmul(hidden_fp32, gate_weight.float().transpose(-1, -2)).to(hidden.dtype)
-    if norm_weight is not None:
-        k_fp32 = k.float()
-        mean = k_fp32.mean(dim=-1, keepdim=True)
-        variance = (k_fp32 - mean).square().mean(dim=-1, keepdim=True)
-        k = (((k_fp32 - mean) / torch.sqrt(variance + norm_eps)) *
-             norm_weight + norm_bias).to(hidden.dtype)
     return k, gate
+
+
+def _normalize_key(
+    key: torch.Tensor,
+    norm_weight: Optional[torch.Tensor],
+    norm_bias: Optional[torch.Tensor],
+    norm_eps: float,
+) -> torch.Tensor:
+    if norm_weight is None:
+        return key
+    key_fp32 = key.float()
+    mean = key_fp32.mean(dim=-1, keepdim=True)
+    variance = (key_fp32 - mean).square().mean(dim=-1, keepdim=True)
+    return (((key_fp32 - mean) / torch.sqrt(variance + norm_eps)) *
+            norm_weight + norm_bias).to(key.dtype)
 
 
 def _write_cache(
@@ -222,6 +231,9 @@ def _pool_one_batch_loop(
     current_gate: torch.Tensor,
     cmp_ratio: int,
     ape: torch.Tensor,
+    norm_weight: Optional[torch.Tensor],
+    norm_bias: Optional[torch.Tensor],
+    norm_eps: float,
     output: torch.Tensor,
 ) -> None:
     width = state_cache.size(-1) // 2
@@ -240,7 +252,7 @@ def _pool_one_batch_loop(
                 key, gate = _read_cache(state_cache, cache_block_table, batch, logical_pos)
             keys.append(key)
             gates.append(gate + ape[relative])
-        key_tensor = torch.stack(keys, dim=0)
+        key_tensor = _normalize_key(torch.stack(keys, dim=0), norm_weight, norm_bias, norm_eps)
         logits = torch.stack(gates, dim=0)
         probabilities = torch.softmax(logits, dim=0)
         probabilities = probabilities.to(torch.bfloat16).float()
@@ -302,6 +314,9 @@ def run_key_pool_golden(
             gate_parts[batch],
             cmp_ratio,
             ape,
+            norm_weight,
+            norm_bias,
+            norm_eps,
             output,
         )
     intermediates = {
@@ -390,6 +405,7 @@ def run_key_pool_oracle(
             current_index[current_mask]
         ].float()
     keys = gathered[..., : wk.size(0)]
+    keys = _normalize_key(keys, norm_weight, norm_bias, norm_eps)
     gates = gathered[..., wk.size(0) :]
     valid = logical_positions.view(batch_size, pcap, cmp_ratio) < updated_lens[:, None, None]
     logits = gates + ape.view(1, 1, cmp_ratio, -1)

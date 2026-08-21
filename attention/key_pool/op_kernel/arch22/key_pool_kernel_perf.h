@@ -537,10 +537,6 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::Process()
     if ASCEND_IS_AIV {
         PipeBarrier<PIPE_ALL>();
         SyncAll();
-        if (blockVec_.HasKeyTransform()) {
-            blockVec_.TransformKeysBeforePool();
-            SyncAll();
-        }
         blockVec_.ComputeIncrementalPool();
     }
     FreeEventID();

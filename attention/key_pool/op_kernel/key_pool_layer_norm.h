@@ -56,6 +56,34 @@ __aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &out, const Loc
     PipeBarrier<PIPE_V>();
 }
 
+// Normalize complete current K rows before they enter the pooling path. The
+// caller provides a scratch tensor with room for input/output and three
+// vectors: mean, gamma, and beta.
+__aicore__ inline void KeyPoolLayerNormRowsInplace(
+    const LocalTensor<float> &data, const LocalTensor<float> &scratch,
+    const GlobalTensor<float> &normWeight, const GlobalTensor<float> &normBias,
+    float eps, uint32_t rowCount, uint32_t rowStride, uint32_t headDim)
+{
+    if (rowCount == 0 || rowStride < headDim) {
+        return;
+    }
+    LocalTensor<float> input = scratch;
+    LocalTensor<float> output = input[headDim];
+    LocalTensor<float> mean = output[headDim];
+    LocalTensor<float> gamma = mean[headDim];
+    LocalTensor<float> beta = gamma[headDim];
+    DataCopy(gamma, normWeight, headDim);
+    DataCopy(beta, normBias, headDim);
+    PipeBarrier<PIPE_ALL>();
+    for (uint32_t row = 0; row < rowCount; ++row) {
+        DataCopy(input, data[static_cast<uint64_t>(row) * rowStride], headDim);
+        PipeBarrier<PIPE_MTE2>();
+        KeyPoolLayerNorm(output, input, mean, gamma, beta, eps, headDim);
+        DataCopy(data[static_cast<uint64_t>(row) * rowStride], output, headDim);
+        PipeBarrier<PIPE_MTE3>();
+    }
+}
+
 __aicore__ inline void ApplyKeyPoolRotaryPlaceholder(const LocalTensor<float> &, uint32_t)
 {
     // RoPE inputs are rejected by the Host in this version. Keep the transform
