@@ -51,6 +51,8 @@ __aicore__ inline Blaze::Transformer::BlockAttnResPrepareParams MakeBlockAttnRes
     params.tilingParams.sAlign = tiling.sAlign;
     params.tilingParams.nAlign = tiling.nAlign;
     params.tilingParams.mm1NAlign = tiling.mm1NAlign;
+    params.tilingParams.mm1L1Stages =
+        tiling.qL1BufferNum < tiling.vL1BufferNum ? tiling.qL1BufferNum : tiling.vL1BufferNum;
     params.tilingParams.vUbBufferNum = tiling.vUbBufferNum;
     params.tilingParams.eWorkspaceElems = tiling.eL1Elems;
     params.tilingParams.vUbElems = tiling.vUbElems;
