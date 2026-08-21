@@ -620,6 +620,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildTaskList
     localCntGm.SetGlobalBuffer(
         (__gm__ int32_t *)(countsBase_ + 2 * rankCntBytes + static_cast<uint64_t>(aivId_) * UB_ALIGN));
     DataCopy(localCntGm, stage, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::MTE3_S>(); // 计数写完成后再 clean，避免失效未落地的缓存行
 
     GlobalTensor<int32_t> countsGm;
     countsGm.SetGlobalBuffer((__gm__ int32_t *)countsBase_);
@@ -673,6 +674,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GroupRemoteTa
         displsGm.SetGlobalBuffer((__gm__ uint32_t *)(countsBase_ + 2 * rankCntBytes + localCntBytes));
         DataCopyParams displsWriteParams{1U, static_cast<uint16_t>((epWorldSize_ + 1U) * sizeof(uint32_t)), 0U, 0U};
         DataCopyPad(displsGm, displsUb, displsWriteParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>(); // displs 写完成后再 clean，避免失效未落地的缓存行
         DataCacheCleanAndInvalid<uint32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(countsGm);
     }
     SyncAll<true>();
@@ -842,6 +844,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RunLocalTasks
     LocalTensor<int32_t> taskUb = metadataBuf_.Get<int32_t>();
     uint64_t logical = start;
     while (logical < end && coreIdx < aivNum_) {
+        // 跳过空分段，避免 batch=0 导致死循环
+        while (coreIdx < aivNum_ && localCntUb.GetValue(coreIdx) == 0) {
+            coreIdx++;
+        }
+        if (coreIdx >= aivNum_) {
+            break;
+        }
         uint32_t segLeft = localCntUb.GetValue(coreIdx) - offInSeg;
         uint64_t left = end - logical;
         uint32_t batch = (left < segLeft) ? static_cast<uint32_t>(left) : segLeft;
