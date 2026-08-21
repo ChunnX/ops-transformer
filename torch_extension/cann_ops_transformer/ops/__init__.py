@@ -69,4 +69,5 @@ from .dense_lightning_indexer_softmax_lse import (
 )
 from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
+from .mla_prolog import mla_prolog
 from . import graph_convert as _graph_convert
