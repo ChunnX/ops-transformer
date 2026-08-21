@@ -30,6 +30,23 @@ _NORMALIZATION_EPSILON = 1e-10
 _NORMALIZATION_FLOOR = (1.0 / (1 << 14)) / _FP32_RTOL
 _MXFP8_CV_STATE = threading.local()
 _MXFP8_CV_COMPARE_MODULE = None
+_MXFP8_CV_SMALL_ERROR_RATIO_LIMIT = 2.0
+_MXFP8_CV_BM_CMP_STD = {
+    "bf16": {
+        "max_re_rtol": 10.0,
+        "avg_re_rtol": 2.0,
+        "rmse_rtol": 2.0,
+        "small_value": 2.0**-8,
+        "small_value_atol": 2.0**-16,
+    },
+    "fp32": {
+        "max_re_rtol": 10.0,
+        "avg_re_rtol": 2.0,
+        "rmse_rtol": 2.0,
+        "small_value": 2.0**-14,
+        "small_value_atol": 2.0**-30,
+    },
+}
 
 
 def set_mxfp8_cv_benchmark(outputs):
@@ -96,6 +113,14 @@ def _load_mxfp8_cv_compare_module():
     return module
 
 
+def _mxfp8_cv_safe_ratio(numerator, denominator):
+    numerator = float(numerator)
+    denominator = float(denominator)
+    if denominator != 0.0:
+        return numerator / denominator
+    return 0.0 if numerator == 0.0 else float("inf")
+
+
 def _mxfp8_cv_report_metrics(report):
     return {
         "status": report.status,
@@ -108,6 +133,26 @@ def _mxfp8_cv_report_metrics(report):
         "benchmark_diff_big_ratio_rmse": report.bench_diff_big_ratio_rmse,
         "npu_err_h1_ratio": report.npu_err_h1_ratio,
         "benchmark_err_h1_ratio": report.bench_err_h1_ratio,
+        "npu_total_small_num": report.npu_total_small_num,
+        "benchmark_total_small_num": report.bench_total_small_num,
+        "npu_err_small_num": report.npu_err_small_num,
+        "benchmark_err_small_num": report.bench_err_small_num,
+        "max_relative_error_ratio": _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_max, report.bench_diff_big_ratio_max
+        ),
+        "avg_relative_error_ratio": _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_avg, report.bench_diff_big_ratio_avg
+        ),
+        "relative_error_rmse_ratio": _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_rmse,
+            report.bench_diff_big_ratio_rmse,
+        ),
+        "small_error_ratio": (
+            report.npu_err_small_num / max(1, report.bench_err_small_num)
+        ),
+        "small_error_ratio_limit": _MXFP8_CV_SMALL_ERROR_RATIO_LIMIT,
+        "small_value": report.bm_cmp_std["small_value"],
+        "small_value_atol": report.bm_cmp_std["small_value_atol"],
     }
 
 
@@ -278,8 +323,52 @@ def _mxfp8_cv_compare(
             actual=npu,
             test_name=f"qbsa_mxfp8_{output_name}",
             output_dtype=output_dtype,
+            bm_cmp_std=dict(_MXFP8_CV_BM_CMP_STD[output_dtype]),
+            small_error_ratio_limit=_MXFP8_CV_SMALL_ERROR_RATIO_LIMIT,
         )
         cv_module.display_cv_report(report)
+        logging.info(
+            "[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
+            "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
+            "small_count=%d, ErrorCount=%d",
+            output_name,
+            report.npu_diff_big_ratio_max,
+            report.npu_diff_big_ratio_avg,
+            report.npu_diff_big_ratio_rmse,
+            report.npu_total_small_num,
+            report.npu_err_small_num,
+        )
+        logging.info(
+            "[QBSA three-way][%s][LowCPU] max_relative_error=%.8g, "
+            "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
+            "small_count=%d, ErrorCount=%d",
+            output_name,
+            report.bench_diff_big_ratio_max,
+            report.bench_diff_big_ratio_avg,
+            report.bench_diff_big_ratio_rmse,
+            report.bench_total_small_num,
+            report.bench_err_small_num,
+        )
+        logging.info(
+            "[QBSA three-way][%s][NPU/LowCPU] max_relative_error_ratio=%.8g, "
+            "avg_relative_error_ratio=%.8g, relative_error_rmse_ratio=%.8g, "
+            "small_ErrorCount_ratio=%.8g, small_ErrorCount_limit=%.8g",
+            output_name,
+            _mxfp8_cv_safe_ratio(
+                report.npu_diff_big_ratio_max,
+                report.bench_diff_big_ratio_max,
+            ),
+            _mxfp8_cv_safe_ratio(
+                report.npu_diff_big_ratio_avg,
+                report.bench_diff_big_ratio_avg,
+            ),
+            _mxfp8_cv_safe_ratio(
+                report.npu_diff_big_ratio_rmse,
+                report.bench_diff_big_ratio_rmse,
+            ),
+            report.npu_err_small_num / max(1, report.bench_err_small_num),
+            _MXFP8_CV_SMALL_ERROR_RATIO_LIMIT,
+        )
     except Exception as error:  # pylint: disable=broad-except
         return {
             "pass": False,

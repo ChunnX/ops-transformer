@@ -54,6 +54,23 @@ _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
 _MXFP8_CV_COMPARE_MODULE = None
+_MXFP8_CV_SMALL_ERROR_RATIO_LIMIT = 2.0
+_MXFP8_CV_BM_CMP_STD = {
+    "bf16": {
+        "max_re_rtol": 10.0,
+        "avg_re_rtol": 2.0,
+        "rmse_rtol": 2.0,
+        "small_value": 2.0**-8,
+        "small_value_atol": 2.0**-16,
+    },
+    "fp32": {
+        "max_re_rtol": 10.0,
+        "avg_re_rtol": 2.0,
+        "rmse_rtol": 2.0,
+        "small_value": 2.0**-14,
+        "small_value_atol": 2.0**-30,
+    },
+}
 
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
@@ -2906,16 +2923,69 @@ def _load_mxfp8_cv_compare_module():
     return module
 
 
+def _mxfp8_cv_safe_ratio(numerator, denominator):
+    numerator = float(numerator)
+    denominator = float(denominator)
+    if denominator != 0.0:
+        return numerator / denominator
+    return 0.0 if numerator == 0.0 else float("inf")
+
+
 def _mxfp8_cv_compare(golden, benchmark, actual, output_name, output_dtype):
     module = _load_mxfp8_cv_compare_module()
+    bm_cmp_std = dict(_MXFP8_CV_BM_CMP_STD[output_dtype])
     report = module.compute_cv_report(
         golden=golden,
         benchmark=benchmark,
         actual=actual,
         test_name=output_name,
         output_dtype=output_dtype,
+        bm_cmp_std=bm_cmp_std,
+        small_error_ratio_limit=_MXFP8_CV_SMALL_ERROR_RATIO_LIMIT,
     )
     module.display_cv_report(report)
+    logger.info(
+        "[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
+        "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
+        "small_count=%d, ErrorCount=%d",
+        output_name,
+        report.npu_diff_big_ratio_max,
+        report.npu_diff_big_ratio_avg,
+        report.npu_diff_big_ratio_rmse,
+        report.npu_total_small_num,
+        report.npu_err_small_num,
+    )
+    logger.info(
+        "[QBSA three-way][%s][LowCPU] max_relative_error=%.8g, "
+        "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
+        "small_count=%d, ErrorCount=%d",
+        output_name,
+        report.bench_diff_big_ratio_max,
+        report.bench_diff_big_ratio_avg,
+        report.bench_diff_big_ratio_rmse,
+        report.bench_total_small_num,
+        report.bench_err_small_num,
+    )
+    logger.info(
+        "[QBSA three-way][%s][NPU/LowCPU] max_relative_error_ratio=%.8g, "
+        "avg_relative_error_ratio=%.8g, relative_error_rmse_ratio=%.8g, "
+        "small_ErrorCount_ratio=%.8g, small_ErrorCount_limit=%.8g",
+        output_name,
+        _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_max,
+            report.bench_diff_big_ratio_max,
+        ),
+        _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_avg,
+            report.bench_diff_big_ratio_avg,
+        ),
+        _mxfp8_cv_safe_ratio(
+            report.npu_diff_big_ratio_rmse,
+            report.bench_diff_big_ratio_rmse,
+        ),
+        report.npu_err_small_num / max(1, report.bench_err_small_num),
+        _MXFP8_CV_SMALL_ERROR_RATIO_LIMIT,
+    )
     return report
 
 
