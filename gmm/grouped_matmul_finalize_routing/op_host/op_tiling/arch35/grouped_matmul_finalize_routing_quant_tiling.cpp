@@ -120,10 +120,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     OP_CHECK_IF(!LoadInputDescsForRouting(), OP_LOGE(inputParams_.opName, "LoadInputDescsForRouting failed."),
                 return false);
     auto outDesc = context_->GetOutputDesc(Y_INDEX);
-    OP_CHECK_IF(
-        outDesc == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr", "input outDesc cannot be nullptr"),
-        return false);
+    OP_CHECK_IF(outDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "y", "does not support nullptr"),
+                return false);
     inputParams_.cDtype = outDesc->GetDataType();
     OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
@@ -134,8 +133,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "nullptr",
-                                                      "bias from tensor is nonnull, but bias from desc is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "bias", "does not support nullptr"),
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
 
@@ -146,22 +144,19 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
 bool GroupedMatmulFinalizeRoutingQuantTiling::LoadInputDescsForRouting()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
-    OP_CHECK_IF(
-        xDesc == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "nullptr", "input xDesc cannot be nullptr"),
-        return false);
+    OP_CHECK_IF(xDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "x", "does not support nullptr"),
+                return false);
     inputParams_.aDtype = xDesc->GetDataType();
     auto wDesc = context_->GetInputDesc(W_INDEX);
     OP_CHECK_IF(wDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
-                                                      "input wDesc cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "weight", "does not support nullptr"),
                 return false);
     inputParams_.bDtype = wDesc->GetDataType();
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
     OP_CHECK_IF(scaleDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
-                                                      "input scaleDesc cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "scale", "does not support nullptr"),
                 return false);
     inputParams_.scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : inputParams_.scaleDtype;
     if (inputParams_.scaleDtype == ge::DT_FLOAT) {
@@ -208,11 +203,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, cons
         return true;
     }
     auto realDtype = optionalDesc->GetDataType();
-    OP_CHECK_IF(realDtype != targetDtype,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, paramName,
-                                          ge::TypeUtils::DataTypeToSerialString(realDtype),
-                                          ge::TypeUtils::DataTypeToSerialString(targetDtype)),
-                return false);
+    OP_CHECK_IF(
+        realDtype != targetDtype,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, paramName, ge::TypeUtils::DataTypeToSerialString(realDtype),
+                                  ge::TypeUtils::DataTypeToSerialString(targetDtype)),
+        return false);
     return true;
 }
 
@@ -225,7 +220,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp8Dtype(ge::DataType dtype) con
 {
     return (dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2);
 }
-
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
 {
@@ -315,11 +309,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
                     return false);
         const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
         auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
-        OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale",
-                                                 std::to_string(pertokenScaleDimNum),
-                                                 std::to_string(DIM_NUM_MX_PERTOKENSCALE)),
-                    return false);
+        OP_CHECK_IF(
+            pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale", std::to_string(pertokenScaleDimNum),
+                                         std::to_string(DIM_NUM_MX_PERTOKENSCALE)),
+            return false);
     } else {
         OP_CHECK_IF(scaleDimNum != DIM_NUM_SCALE,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale", std::to_string(scaleDimNum),
@@ -328,11 +322,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
         if (pertokenScaleStorageShape != nullptr) {
             const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
             auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
-            OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_PERTOKENSCALE,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale",
-                                                     std::to_string(pertokenScaleDimNum),
-                                                     std::to_string(DIM_NUM_PERTOKENSCALE)),
-                        return false);
+            OP_CHECK_IF(
+                pertokenScaleDimNum != DIM_NUM_PERTOKENSCALE,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale", std::to_string(pertokenScaleDimNum),
+                                             std::to_string(DIM_NUM_PERTOKENSCALE)),
+                return false);
         }
     }
     return true;
@@ -484,17 +478,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr,
-                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."),
-                return false);
+                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."), return false);
     auto aicNum = compileInfo->aicNum;
     auto aivNum = compileInfo->aivNum;
-    OP_CHECK_IF(aicNum == 0,
-               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
-               return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
+    OP_CHECK_IF(
+        aivNum != GmmConstant::CORE_RATIO * aicNum,
+        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        return false);
     return true;
 }
 

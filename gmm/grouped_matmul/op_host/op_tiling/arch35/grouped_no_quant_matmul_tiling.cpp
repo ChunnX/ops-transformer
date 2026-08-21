@@ -192,12 +192,16 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
     OP_CHECK_IF(!GetAttrs(context), OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
 
     auto xTensor = context->GetDynamicInputTensor(INDEX_X, 0);
-    OP_CHECK_IF(xTensor == nullptr, OP_LOGE(context->GetNodeName(), "xTensor is nullptr."), return false);
+    OP_CHECK_IF(xTensor == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x", "does not support nullptr"),
+                return false);
     gert::Shape xShape = xTensor->GetStorageShape();
     xDimNum_ = static_cast<uint32_t>(xShape.GetDimNum());
 
     auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
+    OP_CHECK_IF(wTensor == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight", "does not support nullptr"),
+                return false);
     gert::Shape wShape = wTensor->GetOriginShape();
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
 
@@ -294,11 +298,15 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x", "does not support nullptr"),
+                return false);
     xDType_ = xDesc->GetDataType();
 
     auto w0Desc = context->GetDynamicInputDesc(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(w0Desc == nullptr, OP_LOGE(context->GetNodeName(), "w0Desc is nullptr."), return false);
+    OP_CHECK_IF(w0Desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight", "does not support nullptr"),
+                return false);
     weightDtype_ = w0Desc->GetDataType();
     auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
     weightNzFlag_ = wFormat0 == ge::FORMAT_FRACTAL_NZ;
@@ -313,14 +321,14 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // Keep the sparse grouplist restriction in the no-quant 950 tiling path so the
     // common API check does not need extra quant-state parameters just to distinguish
     // no-quant from weight-quant cases.
-    OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupListType",
-                    Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
-                                                        "groupListType", "{0, 1}")
-                        .c_str()),
-                return false);
+    OP_CHECK_IF(
+        groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupListType", Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
+            Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
+                                                "groupListType", "{0, 1}")
+                .c_str()),
+        return false);
     return true;
 }
 

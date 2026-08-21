@@ -238,30 +238,35 @@ bool GMMFRWeightQuantTiling::InferScenario()
 static bool CheckMxA8W4NzInputPtr(gert::TilingContext *context)
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "x", "does not support nullptr"),
+                return false);
     auto xStorageShape = context->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input xStorageShape is nullptr."),
                 return false);
 
     auto wDesc = context->GetInputDesc(W_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input wDesc is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "weight", "does not support nullptr"), return false);
     auto wStorageShape = context->GetInputShape(W_INDEX);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input wStorageShape is nullptr."),
                 return false);
 
     auto scaleDesc = context->GetOptionalInputDesc(SCALE_INDEX);
-    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input scaleDesc is nullptr."), return false);
+    OP_CHECK_IF(scaleDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "scale", "does not support nullptr"), return false);
     auto scaleStorageShape = context->GetOptionalInputShape(SCALE_INDEX);
-    OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input scaleStorageShape is nullptr."),
-                return false);
+    OP_CHECK_IF(scaleStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "scale", "does not support nullptr"), return false);
 
     // pertoken_scale is optional - use GetOptionalInputDesc
     auto pertokenScaleDesc = context->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
-    OP_CHECK_IF(pertokenScaleDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input pertokenScaleDesc is nullptr."),
+    OP_CHECK_IF(pertokenScaleDesc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "perTokenScale", "does not support nullptr"),
                 return false);
     auto pertokenScaleStorageShape = context->GetOptionalInputShape(PERTOKEN_SCALE_INDEX);
     OP_CHECK_IF(pertokenScaleStorageShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "Input pertokenScaleStorageShape is nullptr."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(OP_NAME, "perTokenScale", "does not support nullptr"),
+                return false);
 
     // Add: group_list must not be nullptr (optional input - use GetOptional API)
     auto groupListDesc = context->GetOptionalInputDesc(GROUPLIST_INDEX);
@@ -397,9 +402,9 @@ static bool ValidateRowIndexShape(gert::TilingContext *context, int64_t mSize)
     auto rowIndexStorageShape = context->GetOptionalInputShape(ROW_INDEX_INDEX);
     const gert::Shape &rowIndexShape = rowIndexStorageShape->GetOriginShape();
     if (unlikely(rowIndexShape.GetDimNum() != DIM_NUM_ROW_INDEX)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "rowIndex", std::to_string(rowIndexShape.GetDimNum()),
-                                                 "The shape dim of rowIndex must be " +
-                                                     std::to_string(DIM_NUM_ROW_INDEX));
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            OP_NAME, "rowIndex", std::to_string(rowIndexShape.GetDimNum()),
+            "The shape dim of rowIndex must be " + std::to_string(DIM_NUM_ROW_INDEX));
         return false;
     }
     if (unlikely(rowIndexShape.GetDim(0) != mSize)) {
@@ -498,9 +503,9 @@ static bool ValidateScaleShape(gert::TilingContext *context, int64_t eFromW, int
         return false;
     }
     if (unlikely(scaleShape.GetDim(SCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale", Ops::Base::ToString(scaleShape),
-                                              "The axis 2 of scale must be equal to CeilDiv(K, 64)=" +
-                                                  std::to_string(kCeilDiv64));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            OP_NAME, "scale", Ops::Base::ToString(scaleShape),
+            "The axis 2 of scale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
     if (unlikely(scaleShape.GetDim(SCALE_AXIS_INNER) != MX_INNER_DIM)) {
@@ -518,27 +523,27 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *context, int64_t mSi
     const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
     auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
     if (unlikely(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "pertokenScale", std::to_string(pertokenScaleDimNum),
-                                                 "The shape dim of pertokenScale must be " +
-                                                     std::to_string(DIM_NUM_MX_PERTOKENSCALE));
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            OP_NAME, "pertokenScale", std::to_string(pertokenScaleDimNum),
+            "The shape dim of pertokenScale must be " + std::to_string(DIM_NUM_MX_PERTOKENSCALE));
         return false;
     }
     if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_M) != mSize)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
-                                              "The axis 0 of pertokenScale must be equal to M=" +
-                                                  std::to_string(mSize));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
+            "The axis 0 of pertokenScale must be equal to M=" + std::to_string(mSize));
         return false;
     }
     if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
-                                              "The axis 1 of pertokenScale must be equal to CeilDiv(K, 64)=" +
-                                                  std::to_string(kCeilDiv64));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
+            "The axis 1 of pertokenScale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
     if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_INNER) != MX_INNER_DIM)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
-                                              "The axis 2 of pertokenScale must be equal to " +
-                                                  std::to_string(MX_INNER_DIM));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            OP_NAME, "pertokenScale", Ops::Base::ToString(pertokenScaleShape),
+            "The axis 2 of pertokenScale must be equal to " + std::to_string(MX_INNER_DIM));
         return false;
     }
     return true;
