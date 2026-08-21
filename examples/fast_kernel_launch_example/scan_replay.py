@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 # capture 版: NPUGraph capture N 次 add/grouped_matmul
-# 算子来源: overhead/ops-transformer/examples/fast_kernel_launch_example
 #
 # 环境变量控制:
 #   OP_TYPE=add|gemm   选择算子（默认 add）
 #   OP_ITERS=101       capture 迭代次数（默认 101）
 #
 # 核数说明: 核数由安装的 wheel 决定（run_head_overhead.sh 通过 sed 改源码 + rebuild）
-#   - 1核 wheel:  bash run_head_overhead.sh 时 sed numBlocks=1/blockDim=1
-#   - 满核 wheel:  bash run_head_overhead.sh 时 sed numBlocks=48/blockDim=24
 #   本脚本不控制核数，只负责 capture
-#
-# 注意: gemm (Cube 核) 在 A3 上 sync 会 segfault, 用 time.sleep + os._exit(0) 绕过
 import os
 import sys
-import time
 import torch
 import torch_npu
 import ascend_ops

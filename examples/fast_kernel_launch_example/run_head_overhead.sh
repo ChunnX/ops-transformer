@@ -7,11 +7,11 @@
 #   bash run_head_overhead.sh
 #
 # 原理:
-#   通过 sed 修改源码中的核数参数，分别构建 1核 和 满核 两个 wheel，
-#   各自安装后用 msprof 采集 101 次循环的头开销数据，最后汇总输出。
+#   通过 sed 修改源码中的核数参数，构建满核 wheel，
+#   用 msprof capture 模式采集 101 次循环的头开销数据，最后汇总输出。
 #
 # 可选环境变量:
-#   NPU_SOC_VERSION  编译目标 SoC (默认: ascend910_93)
+#   NPU_SOC_VERSION  编译目标 SoC (默认: npu-smi 自动检测)
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
