@@ -393,7 +393,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     expertPerSizeOnWin_ = axisMaxBS_ * hCommuSize_;
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
-    useAllCoreCount_ = axisBS_ < ALL_CORE_COUNT_BS_THRESHOLD;
+    useAllCoreCount_ = axisMaxBS_ < ALL_CORE_COUNT_BS_THRESHOLD;
     if (useAllCoreCount_) {
         // 小BS时全部核分摊专家计数，CumSum核只按接收状态数分配
         aivUsedCumSum_ = Ceil(rscvStatusNum_, CUMSUM_STATUS_PER_CORE);
