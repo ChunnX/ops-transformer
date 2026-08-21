@@ -46,12 +46,11 @@ void PrintFiaDiagPadding(const FiaTilingInfo &fiaInfo)
 {
     const gert::Tensor *qPaddingTensor = fiaInfo.opParamInfo.queryPaddingSize.tensor;
     const gert::Tensor *kvPaddingTensor = fiaInfo.opParamInfo.kvPaddingSize.tensor;
-    const int64_t *qPadding = qPaddingTensor == nullptr ? nullptr : qPaddingTensor->GetData<int64_t>();
-    const int64_t *kvPadding = kvPaddingTensor == nullptr ? nullptr : kvPaddingTensor->GetData<int64_t>();
     OP_LOGI(fiaInfo.opName,
-            "[FIA_DIAG][HOST][PADDING] qFlag=%u qValue=%lld kvFlag=%u kvValue=%lld",
-            fiaInfo.qPaddingSizeFlag, qPadding == nullptr ? -1 : qPadding[0], fiaInfo.kvPaddingSizeFlag,
-            kvPadding == nullptr ? -1 : kvPadding[0]);
+            "[FIA_DIAG][HOST][PADDING] qFlag=%u qTensor=%u qElements=%lld kvFlag=%u kvTensor=%u kvElements=%lld",
+            fiaInfo.qPaddingSizeFlag, qPaddingTensor != nullptr,
+            qPaddingTensor == nullptr ? 0 : qPaddingTensor->GetShapeSize(), fiaInfo.kvPaddingSizeFlag,
+            kvPaddingTensor != nullptr, kvPaddingTensor == nullptr ? 0 : kvPaddingTensor->GetShapeSize());
 }
 
 void PrintFiaDiagBlockTable(const FiaTilingInfo &fiaInfo)
@@ -60,45 +59,24 @@ void PrintFiaDiagBlockTable(const FiaTilingInfo &fiaInfo)
         return;
     }
     const gert::Tensor *blockTableTensor = fiaInfo.opParamInfo.blockTable.tensor;
-    const int32_t *blockTable = blockTableTensor->GetData<int32_t>();
     const int64_t blockTableSize = blockTableTensor->GetShapeSize();
     const gert::Tensor *actualKvTensor = fiaInfo.opParamInfo.actualSeqLengths.tensor;
     const int64_t *actualKv = actualKvTensor == nullptr ? nullptr : actualKvTensor->GetData<int64_t>();
     const int64_t actualKvDims = actualKvTensor == nullptr ? 0 : actualKvTensor->GetShapeSize();
     OP_LOGI(fiaInfo.opName,
-            "[FIA_DIAG][HOST][PA_META] data=%u elements=%lld dim2=%u blockSize=%d totalBlocks=%u",
-            blockTable != nullptr, blockTableSize, fiaInfo.maxBlockNumPerBatch, fiaInfo.blockSize,
+            "[FIA_DIAG][HOST][PA_META] tensor=%u elements=%lld dim2=%u blockSize=%d totalBlocks=%u",
+            blockTableTensor != nullptr, blockTableSize, fiaInfo.maxBlockNumPerBatch, fiaInfo.blockSize,
             fiaInfo.totalBlockNum);
-    if (blockTable == nullptr || actualKv == nullptr || fiaInfo.blockSize <= 0 ||
-        fiaInfo.maxBlockNumPerBatch == 0) {
+    if (actualKv == nullptr || fiaInfo.blockSize <= 0 || fiaInfo.maxBlockNumPerBatch == 0) {
         return;
     }
 
     for (uint32_t batch = 0; batch < fiaInfo.bSize && batch < static_cast<uint32_t>(actualKvDims); ++batch) {
         const int64_t usedBlocks = (actualKv[batch] + fiaInfo.blockSize - 1) / fiaInfo.blockSize;
-        const int64_t rowOffset = static_cast<int64_t>(batch) * fiaInfo.maxBlockNumPerBatch;
-        int64_t invalidCount = 0;
-        int64_t firstInvalidSlot = -1;
-        int32_t firstInvalidValue = -1;
-        const int64_t scanBlocks = usedBlocks < fiaInfo.maxBlockNumPerBatch ? usedBlocks : fiaInfo.maxBlockNumPerBatch;
-        for (int64_t slot = 0; slot < scanBlocks && rowOffset + slot < blockTableSize; ++slot) {
-            const int32_t blockId = blockTable[rowOffset + slot];
-            if (blockId < 0 || static_cast<uint32_t>(blockId) >= fiaInfo.totalBlockNum) {
-                ++invalidCount;
-                if (firstInvalidSlot < 0) {
-                    firstInvalidSlot = slot;
-                    firstInvalidValue = blockId;
-                }
-            }
-        }
-        const int32_t firstBlock = usedBlocks > 0 && rowOffset < blockTableSize ? blockTable[rowOffset] : -1;
-        const int64_t lastOffset = rowOffset + usedBlocks - 1;
-        const int32_t lastBlock = usedBlocks > 0 && lastOffset < blockTableSize ? blockTable[lastOffset] : -1;
         OP_LOGI(fiaInfo.opName,
-                "[FIA_DIAG][HOST][PA] batch=%u actualKV=%lld used=%lld first=%d last=%d invalid=%lld "
-                "firstBadSlot=%lld firstBadValue=%d",
-                batch, actualKv[batch], usedBlocks, firstBlock, lastBlock, invalidCount, firstInvalidSlot,
-                firstInvalidValue);
+                "[FIA_DIAG][HOST][PA] batch=%u actualKV=%lld used=%lld capacity=%u overflow=%u",
+                batch, actualKv[batch], usedBlocks, fiaInfo.maxBlockNumPerBatch,
+                usedBlocks > fiaInfo.maxBlockNumPerBatch);
     }
 }
 
