@@ -43,9 +43,11 @@
 
   - qInputLayout: "TND" "BNSD" "BSND"
   - kvInputLayout: "TND" "BNSD" "BSND"
-- **MXFP4特性说明(仅Ascend 950PR/Ascend 950DT支持)**
+<!-- npu="950" id10 -->
+- **MXFP4特性说明(仅<term>Ascend 950PR/Ascend 950DT</term>支持)**
 
   本接口新增支持MXFP4数据类型(FLOAT4_E2M1)的输入，以提供计算效率并降低显存占用。当使用MXFP4输入时，需要提供相应的量化缩放因子用于反量化计算。
+<!-- end id10 -->
 - <summary><a id="MXFP4量化模式的量化缩放因子"></a><strong>MXFP4量化模式的量化缩放因子</strong></summary>
 
   - qDequantScaleOptional：
@@ -82,7 +84,7 @@
 
 每个算子分为[两段式接口](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionV3GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionV3"接口执行计算。
 
-```
+```cpp
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -115,7 +117,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     aclOpExecutor **executor);
 ```
 
-```
+```cpp
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
     void *workspace,
     uint64_t workspaceSize,
@@ -575,10 +577,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
   返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed;width: 900px"><colgroup>
+  <col style="width: 300px">
+  <col style="width: 120px">
+  <col style="width: 480px">
   </colgroup>
   <thead>
     <tr>
@@ -614,10 +616,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
+  <table style="undefined;table-layout: fixed; width: 750px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 100px">
+  <col style="width: 480px">
   </colgroup>
   <thead>
     <tr>
