@@ -75,6 +75,16 @@ TTK 同样默认两方对比。只对需要三方对比的 MXFP8 用例，在 CS
 TTK 中的 `quant_matmul` 属性也只选择低精度 CPU 路径的 matmul 后端，不会自动开启三方对比。
 `quant_mode=1` 的 QBSA-FP8 用例始终保持原有两方比较逻辑。
 
+QBSA-MXFP8 三方比较的小值域标准为：
+
+| 输出 | `small_value` | `small_value_atol` | 小值错误通过标准 |
+|------|---------------|--------------------|------------------|
+| BF16 `attention_out` | `2^-8` | `2^-16` | `ErrorCountNPU / max(1, ErrorCount低精度CPU) <= 2` |
+| FP32 `softmax_lse` | `2^-14` | `2^-30` | `ErrorCountNPU / max(1, ErrorCount低精度CPU) <= 2` |
+
+小值元素由 `abs(FP64 golden) < small_value` 确定；其中
+`abs(result - FP64 golden) > small_value_atol` 的元素计入 `ErrorCount`。
+
 每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出
 `QBSA MXFP8 CASE SUMMARY` 汇总表。汇总表各列含义：
 

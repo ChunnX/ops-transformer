@@ -179,7 +179,13 @@ class Result:
         logger.info(f" golden inf 总数: {self.num_total_inf}, inf 误差数: {self.err_total_inf}")
         logger.info(f" golden -inf 总数: {self.num_total_ninf}, -inf 误差数: {self.err_total_ninf}")
 
-    def check_result_debug(self, benchmark, new=False, output_dtype='fp16'):
+    def check_result_debug(
+        self,
+        benchmark,
+        new=False,
+        output_dtype='fp16',
+        small_error_ratio_limit=None,
+    ):
         """method=12 判等:
            X > bench * X_rtol → error
            X > bench         → warning
@@ -218,8 +224,13 @@ class Result:
                 reason_str += ' diff_big_ratio_rmse error/'
             elif self.diff_big_ratio_rmse > benchmark.diff_big_ratio_rmse:
                 reason_str += ' diff_big_ratio_rmse warning/'
-        # err_small_num
-        if self.err_small_num > benchmark.err_small_num * self.bm_cmp_std['avg_re_rtol']:
+        # err_small_num. The optional ratio form is used by QBSA MXFP8 only;
+        # keeping None preserves the original FIA method-12 behavior.
+        if small_error_ratio_limit is not None:
+            small_error_ratio = self.err_small_num / max(1, benchmark.err_small_num)
+            if small_error_ratio > small_error_ratio_limit:
+                reason_str += ' err_small_num error/'
+        elif self.err_small_num > benchmark.err_small_num * self.bm_cmp_std['avg_re_rtol']:
             reason_str += ' err_small_num error/'
         elif self.err_small_num > benchmark.err_small_num:
             reason_str += ' err_small_num warning/'
@@ -239,12 +250,23 @@ class Result:
             reason_str += ' err_total_inf warning'
         return reason_str
 
-    def check_result(self, benchmark, new=False, output_dtype='fp16'):
+    def check_result(
+        self,
+        benchmark,
+        new=False,
+        output_dtype='fp16',
+        small_error_ratio_limit=None,
+    ):
         """与竞品对比精度结果, 返回 (status, reason)
            status: 'Pass' / 'warning' / 'Failed'
         """
         logger.info(f"comparing result: {self.result_name} VS {benchmark.result_name}")
-        reason_str = self.check_result_debug(benchmark, new, output_dtype)
+        reason_str = self.check_result_debug(
+            benchmark,
+            new,
+            output_dtype,
+            small_error_ratio_limit=small_error_ratio_limit,
+        )
         if 'error' in reason_str:
             logger.info(f"{self.result_name} compare result: error")
             return 'Failed', reason_str
@@ -631,6 +653,7 @@ def compute_cv_report(
     input_dtype_hint: Optional[torch.dtype] = None,
     bm_cmp_std: Optional[Dict[str, float]] = None,
     red_list: Optional[List[float]] = None,
+    small_error_ratio_limit: Optional[float] = None,
 ) -> CVPrecisionReport:
     """CV 双标杆比对 (method=12 风格)
        返回 CVPrecisionReport, 内含 rst_npu / rst_bench / status / reason
@@ -695,7 +718,12 @@ def compute_cv_report(
         _fill_report_from_result(report, rst_bench, is_npu=False)
         report.rst_bench = rst_bench
         # new=True: 下界抬高 + 去掉 diff_big_sum / diff_big_ratio_rmse 判等
-        status, reason = rst_npu.check_result(rst_bench, new=True, output_dtype=output_dtype)
+        status, reason = rst_npu.check_result(
+            rst_bench,
+            new=True,
+            output_dtype=output_dtype,
+            small_error_ratio_limit=small_error_ratio_limit,
+        )
     else:
         # 单标杆: 无法 Ratio 判等, 直接判 Pass
         report.rst_bench = rst_npu
