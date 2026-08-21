@@ -85,8 +85,9 @@ constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
 constexpr uint32_t GSA_MAX_SPARSE_BLOCK_CAPACITY = 256U;
 constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;
-constexpr uint32_t GSA_FD_MAX_PARTIAL_PER_BASE_TASK = 32U;
 constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_NUMERATOR = 3U;
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_DENOMINATOR = 10U;
 constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;
 
 namespace {
@@ -576,11 +577,17 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
 
     uint64_t userWorkspaceSize = pipelineWorkspaceSize;
     if (fdStaticEnabled_) {
-        const uint32_t maxSparseBaseTasks = aicNum_ == 0U ? 0U :
-            std::min(GSA_FD_MAX_COMBINE_TASK_NUM, (aicNum_ * 3U - 1U) / 10U);
-        const uint32_t maxPartialPerBaseTask =
-            std::min(std::min(aicNum_, GSA_FD_MAX_ACTIVE_CORE_NUM), GSA_FD_MAX_PARTIAL_PER_BASE_TASK);
-        fdPartialCapacity_ = maxSparseBaseTasks * maxPartialPerBaseTask;
+        // Keep this Bmax formula in sync with the Metadata FD gate:
+        // saTotalTaskNum * 10 < physicalAicNum * 3.
+        const uint32_t maxNonEmptyBaseTaskNum = aicNum_ == 0U ? 0U :
+            std::min(GSA_FD_MAX_COMBINE_TASK_NUM,
+                (aicNum_ * GSA_FD_BASE_TASK_GATE_NUMERATOR - 1U) / GSA_FD_BASE_TASK_GATE_DENOMINATOR);
+        const uint32_t maxActiveCoreNum = std::min(aicNum_, GSA_FD_MAX_ACTIVE_CORE_NUM);
+        // The base-task intervals and active-core intervals are two continuous
+        // partitions of the same flat task range, so their non-empty intersection
+        // count is bounded by Bmax + Cmax - 1 instead of Bmax * Cmax.
+        fdPartialCapacity_ = maxNonEmptyBaseTaskNum == 0U || maxActiveCoreNum == 0U ?
+            0U : maxNonEmptyBaseTaskNum + maxActiveCoreNum - 1U;
         fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
         fdPartialLseOffset_ = AlignUp(pipelineWorkspaceSize, GSA_FD_WORKSPACE_ALIGNMENT);
         const uint64_t partialLseSize = static_cast<uint64_t>(fdPartialCapacity_) * 2U *

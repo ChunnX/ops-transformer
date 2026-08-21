@@ -81,6 +81,7 @@ __aicore__ inline bool ValidateMetadata(
             return false;
         }
     }
+    uint32_t scheduledPartialTaskNum = 0U;
     for (int32_t combineIdx = 0; combineIdx < meta->combineTaskNum; ++combineIdx) {
         const __gm__ GsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
         if (combine.baseTask < 0 || combine.baseTask >= meta->saTotalTaskNum || combine.firstCore < 0 ||
@@ -88,11 +89,14 @@ __aicore__ inline bool ValidateMetadata(
             combine.partialCount > static_cast<int32_t>(GsaMetadata::MAX_FD_PARTIAL_PER_BASE_TASK) ||
             combine.partialCount > meta->fdActiveCoreNum ||
             combine.firstCore + combine.partialCount > meta->fdActiveCoreNum || combine.partialStart < 0 ||
-            combine.partialStart + combine.partialCount > meta->fdPartialTaskNum) {
+            combine.partialCount > meta->fdPartialTaskNum ||
+            combine.partialStart > meta->fdPartialTaskNum - combine.partialCount ||
+            combine.partialStart != static_cast<int32_t>(scheduledPartialTaskNum)) {
             return false;
         }
+        scheduledPartialTaskNum += static_cast<uint32_t>(combine.partialCount);
     }
-    return true;
+    return scheduledPartialTaskNum == static_cast<uint32_t>(meta->fdPartialTaskNum);
 }
 
 __aicore__ inline bool FindPartialTask(
