@@ -46,13 +46,12 @@ class ConsistencyCase:
 class RunResult:
     """Unified result returned by the consistency runner.
 
-    When ``metadata`` is ``None`` the result is compatible with the legacy
-    ``(output, softmax_lse)`` tuple contract.
+    The two operators use different legacy tuple contracts, so the thin
+    operator adapters normalize only the tensors needed by the shared runner.
     """
 
     output: torch.Tensor
     softmax_lse: Optional[torch.Tensor] = None
-    metadata: Optional[torch.Tensor] = None
 
     def as_legacy_tuple(self) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Return ``(output, softmax_lse)`` matching the old ``call_npu`` contract."""

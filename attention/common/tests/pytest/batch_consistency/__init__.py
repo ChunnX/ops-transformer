@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -9,7 +10,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# 性能数据分析脚本
-rm result.xlsx
-msprof python3 -m pytest -rA -s test_mixed_quant_sparse_flash_mla_batch.py -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning 2>&1 | tee res.log
-python process_perf_data.py --test_result_path="result.xlsx" --is_compare True --delete_perf_file True
+"""Shared black-box batch-consistency support for SMLA and MQSMLA pytest."""

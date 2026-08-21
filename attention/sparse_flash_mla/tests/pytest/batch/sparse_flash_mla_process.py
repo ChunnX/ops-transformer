@@ -96,7 +96,8 @@ class Network(torch.nn.Module):
         )
         return npu_result, softmax_lse
 
-def call_npu(input_data, metadata_sink=None):
+
+def call_npu(input_data):
     params = input_data["params"]
     metadata_input = input_data["metadata_input"]
     tensor_input = input_data["input"]
@@ -264,8 +265,6 @@ def call_npu(input_data, metadata_sink=None):
     print("sparse_flash_mla end")
 
     torch.npu.synchronize()
-    if metadata_sink is not None:
-        metadata_sink(metadata.detach().cpu())
     return npu_result, softmax_lse
 
 
