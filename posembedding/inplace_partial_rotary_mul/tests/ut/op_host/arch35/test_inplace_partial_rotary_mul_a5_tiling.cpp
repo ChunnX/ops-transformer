@@ -25,7 +25,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/inplace_partial_rotary_mul_tiling.h"
+#include "../../../../op_host/inplace_partial_rotary_mul_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 

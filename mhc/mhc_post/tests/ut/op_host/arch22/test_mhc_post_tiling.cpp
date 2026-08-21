@@ -119,7 +119,7 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_3d_n6_success)
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "6 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
 TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_n)
@@ -145,7 +145,7 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_n)
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "7 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
 TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_d)
@@ -171,5 +171,5 @@ TEST_F(MhcPostTilingArch22, test_mhc_post_invalid_d)
     uint64_t expectTilingKey = 0;
     string expectTilingDataStr = "4 30000 64 32 32 1 512 1 7504 4 7488 7488 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }

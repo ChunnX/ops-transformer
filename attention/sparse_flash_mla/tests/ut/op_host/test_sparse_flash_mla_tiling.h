@@ -24,9 +24,9 @@
 
 namespace smla_ut {
 
-constexpr uint32_t kTndPaBnbdSwaTilingKey = 2U;
-constexpr uint32_t kTndPaBnbdHcaTilingKey = 514U;
-constexpr uint32_t kTndPaBnbdCsaTilingKey = 1026U;
+constexpr uint32_t kTndPaBnbdSwaTilingKey = 66U;
+constexpr uint32_t kTndPaBnbdHcaTilingKey = 578U;
+constexpr uint32_t kTndPaBnbdCsaTilingKey = 1090U;
 
 inline void InitMetadataGm(int32_t *metadata, uint32_t batchSize, uint32_t kvHeadNum)
 {

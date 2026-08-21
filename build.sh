@@ -145,6 +145,10 @@ function help_info() {
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
+                echo "                          SOC→arch filter: ascend310p→arch20, ascend910b/910_93→arch22,"
+                echo "                          ascend950→arch35. Only tests under tests/ut/**/archXX/ are"
+                echo "                          filtered by --soc; tests directly under op_host/ always build."
+                echo "                          Put SoC-specific tiling UTs under archXX/ (e.g. arch35 for A5)."
                 echo "    --incremental          Reuse existing build/output directories without default clean"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo "    --ophost_test          Build and run ophost unit tests"
@@ -156,6 +160,8 @@ function help_info() {
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh -u --noexec --cov"
+                echo "    bash build.sh -u --soc=ascend910_93"
+                echo "    bash build.sh -u --soc=ascend950   # includes arch35 UTs"
                 echo "    bash build.sh --ophost_test --opapi_test --noexec"
                 echo "    bash build.sh --ophost --opapi --opgraph -u --cov"
                 return
@@ -360,6 +366,8 @@ function help_info() {
     echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
     echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93)"
+    echo "    --soc for UT also selects arch directory (910b/910_93→arch22, 950→arch35); place SoC-specific"
+    echo "         host UTs under tests/ut/op_host/archXX/ so they are skipped on unrelated --soc builds"
     echo "    --list_soc List all supported Ascend SoC"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"

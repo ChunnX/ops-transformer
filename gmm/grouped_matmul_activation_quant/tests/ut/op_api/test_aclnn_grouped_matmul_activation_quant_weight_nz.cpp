@@ -211,9 +211,12 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
         const char *activationTypePtr = activationTypeNull ? nullptr : activationType.c_str();
         const char *roundModePtr = roundModeNull ? nullptr : roundMode.c_str();
 
+        // Do not pair aclCreateIntArray with aclDestroyIntArray here: under ASAN, nnopbase BlockCache
+        // can double-free / poison the heap and crash subsequent cases (e.g. after
+        // valid_tuning_config_reserved). Leak is acceptable for this UT process lifetime.
         vector<int64_t> tuningValues = ops::ut::ParseI64List(tuningConfig);
-        aclIntArray *tuningConfigArr = tuningValues.empty() ? nullptr :
-            aclCreateIntArray(tuningValues.data(), tuningValues.size());
+        aclIntArray *tuningConfigArr =
+            tuningValues.empty() ? nullptr : aclCreateIntArray(tuningValues.data(), tuningValues.size());
 
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor = nullptr;
@@ -239,17 +242,13 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             ret = RunGetWorkspaceWithNullY(xDesc, groupListDesc, weightDesc, weightScaleDesc, xScaleDesc,
                                            yScaleDesc, &workspaceSize, &executor);
         } else if (runMode != kRunModeGetWorkspace) {
-            if (tuningConfigArr != nullptr) {
-                aclDestroyIntArray(tuningConfigArr);
-            }
             ADD_FAILURE() << "Unsupported runMode: " << runMode << ", case=" << caseName;
             return;
         } else if (biasNull && xScaleNull) {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, nullptr, nullptr,
                                       activationTypePtr, groupListType, tuningConfigArr, GetQuantModePtr(),
-                                      roundModePtr, scaleAlg,
-                                      dstTypeMax),
+                                      roundModePtr, scaleAlg, dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (biasNull) {
@@ -257,8 +256,7 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, nullptr, xScaleDesc,
                                       activationTypePtr, groupListType, tuningConfigArr, GetQuantModePtr(),
-                                      roundModePtr, scaleAlg,
-                                      dstTypeMax),
+                                      roundModePtr, scaleAlg, dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (xScaleNull) {
@@ -266,8 +264,7 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, biasDesc, nullptr,
                                       activationTypePtr, groupListType, tuningConfigArr, GetQuantModePtr(),
-                                      roundModePtr, scaleAlg,
-                                      dstTypeMax),
+                                      roundModePtr, scaleAlg, dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else {
@@ -276,14 +273,9 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, biasDesc, xScaleDesc,
                                       activationTypePtr, groupListType, tuningConfigArr, GetQuantModePtr(),
-                                      roundModePtr, scaleAlg,
-                                      dstTypeMax),
+                                      roundModePtr, scaleAlg, dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        }
-
-        if (tuningConfigArr != nullptr) {
-            aclDestroyIntArray(tuningConfigArr);
         }
         if (checkRet) {
             EXPECT_EQ(ret, ops::ut::ParseAclnnStatus(expectRet)) << "case=" << caseName;

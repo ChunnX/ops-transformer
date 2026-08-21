@@ -195,7 +195,8 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_null_hRes)
     );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    // hRes==nullptr (nohres) is only supported on Ascend950; otherwise RUNTIME_ERROR.
+    EXPECT_EQ(aclRet, ACLNN_ERR_RUNTIME_ERROR);
 }
 
 TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_null_out)
