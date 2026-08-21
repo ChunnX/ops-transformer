@@ -39,6 +39,8 @@ def golden_flash_attention_grad(q, k, v, dy, scale):
     N2 —— 这正对应 kernel 侧 G 个 Q head 对同一 KV head 做 atomicAdd。
     返回的 dq/lse 是 N1 个 head，dk/dv 是 N2 个。
     """
+    # v/dy 的最后一维是 Dv，可以短于 q/k 的 D —— 下面的矩阵乘天然分离这两个
+    # 宽度(P@V 与 dO@V^T 只涉及 Dv，dS@K 与 dS^T@Q 只涉及 D)，故无需特殊处理。
     B, S1, N1, D = q.shape
     S2, N2 = k.shape[1], k.shape[2]
     G = N1 // N2
@@ -113,12 +115,21 @@ def run_kernel_with_timeout(launch, timeout_s=KERNEL_TIMEOUT_S):
           flush=True)
 
 
-def run_case(B, N, S1, S2, D, num_cores, G=1):
-    """N 是 KV 的 head 数(N2)；Q 侧为 N1 = N*G。G=1 即普通 MHA。"""
+def run_case(B, N, S1, S2, D, num_cores, G=1, Dv=None):
+    """N 是 KV 的 head 数(N2)；Q 侧为 N1 = N*G。G=1 即普通 MHA。
+
+    Dv 是 V/dO/attn_out/dv 的 head dim，缺省等于 D。Dv < D 即不等长 headdim
+    (如 D=192/Dv=128)：Q/K/dq/dk 用 D，V/dO/y/dv 用 Dv。
+    """
     device_id = int(os.environ.get("TILE_FWK_DEVICE_ID", 0))
     device = f"npu:{device_id}"
     torch.npu.set_device(device)
 
+    if Dv is None:
+        Dv = D
+    if Dv > D:
+        raise SystemExit(f"Dv({Dv}) 不能大于 D({D})")
+    # scale 按 Q/K 的 D 算(与 host 的缺省一致)
     scale = 1.0 / math.sqrt(D)
     N2 = N
     N1 = N2 * G
@@ -126,8 +137,8 @@ def run_case(B, N, S1, S2, D, num_cores, G=1):
     torch.manual_seed(42)
     q = torch.randn(B, S1, N1, D, device=device, dtype=torch.float16)
     k = torch.randn(B, S2, N2, D, device=device, dtype=torch.float16)
-    v = torch.randn(B, S2, N2, D, device=device, dtype=torch.float16)
-    dy = torch.randn(B, S1, N1, D, device=device, dtype=torch.float16)
+    v = torch.randn(B, S2, N2, Dv, device=device, dtype=torch.float16)
+    dy = torch.randn(B, S1, N1, Dv, device=device, dtype=torch.float16)
 
     # Compute golden reference
     (dq_gold, dk_gold, dv_gold, y_gold, lse_gold,
@@ -163,19 +174,22 @@ def run_case(B, N, S1, S2, D, num_cores, G=1):
     # 单块 workspace，kernel 内切成 dq/dk/dv 三段 fp32（见 make_ptr 处）。
     # 由 kernel 的 pre 阶段清零(对齐 ASC 口径)，host 不再清。
     # 故意填 NaN：若 pre 未生效，结果必为 NaN，不会被误判为通过。
-    ws_elems = (B * S1 * N1 * D) + 2 * (B * S2 * N2 * D)
+    # dq/dk 段是 D 宽，dv 段是 Dv 宽 —— 与 host 的 dqElems/dkElems/dvElems 一致
+    ws_elems = (B * S1 * N1 * D) + (B * S2 * N2 * D) + (B * S2 * N2 * Dv)
     workspace = torch.full((ws_elems,), float("nan"), device=device,
                            dtype=torch.float32)
     # fp16 最终输出：由 kernel 的 post 阶段写(scale + cast)
     # 输出张量按目标布局分配（dq/dk/dv 的布局跟随 q/k/v）
+    # dq/dk 的 head dim 是 D，dv 的是 Dv
     _oq = (B, N1, S1, D) if is_bnsd else (B, S1, N1, D)
     _okv = (B, N2, S2, D) if is_bnsd else (B, S2, N2, D)
+    _okvv = (B, N2, S2, Dv) if is_bnsd else (B, S2, N2, Dv)
     dq_out_t = torch.zeros(*_oq, device=device, dtype=torch.float16)
     dk_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
-    dv_out_t = torch.zeros(*_okv, device=device, dtype=torch.float16)
+    dv_out_t = torch.zeros(*_okvv, device=device, dtype=torch.float16)
     # 视图参数与 host 的 TilingFunc 一致：两种布局统一成 [viewD0,S,viewD2,D]
     tiling = FlashAttnGradTilingData(
-        b=B, s1=S1, s2=S2, n1=N1, n2=N2, d=D, dv=D, scaleValue=scale,
+        b=B, s1=S1, s2=S2, n1=N1, n2=N2, d=D, dv=Dv, scaleValue=scale,
         gSize=G,
         viewD0Q=(B * N1) if is_bnsd else B,
         viewD2Q=1 if is_bnsd else N1,
@@ -195,9 +209,15 @@ def run_case(B, N, S1, S2, D, num_cores, G=1):
     if _force is not None:
         swizzle = int(_force)
 
+    # D/Dv 的分配宽度分档，与 host 的 dAlign/dvAlign 判定一致
+    d_align = 128 if D <= 128 else 192
+    dv_align = 128 if Dv <= 128 else 192
+
     # Launch kernel
     print(f"Launching kernel: B={B}, N1={N1}, N2={N2}, G={G}, S1={S1}, "
-          f"S2={S2}, D={D}, scale={scale:.6f}, cores={num_cores}, "
+          f"S2={S2}, D={D}, Dv={Dv}, d_align={d_align}, "
+          f"dv_align={dv_align}, "
+          f"scale={scale:.6f}, cores={num_cores}, "
           f"layout={layout}, swizzle={swizzle}")
 
     # 先触发编译（不计入执行看护窗口）：编译发生在首次调用内部，
@@ -205,9 +225,11 @@ def run_case(B, N, S1, S2, D, num_cores, G=1):
     run_kernel_with_timeout(
         lambda: flash_attn_grad[
             None, num_cores,
-            # tilingkey：swizzle 走这里(每种分核各编一份二进制)
+            # tilingkey：swizzle 与 d_align 走这里(各编一份二进制)。
+            # d_align 是 D 的分配宽度分档，取值即实际列数。
             {"template": 0, "layout": 0,
-             "has_atten_mask": 0, "swizzle": swizzle},
+             "has_atten_mask": 0, "swizzle": swizzle,
+             "d_align": d_align, "dv_align": dv_align},
             # datatype：对应 @pl.jit 的 datatype={"q": "input_dtype"}
             {"q": pl.DT_FP16},
         ](
@@ -241,6 +263,17 @@ def run_case(B, N, S1, S2, D, num_cores, G=1):
             print(f"  {name}: FAIL  (max_diff={max_diff:.6e}, mean_diff={mean_diff:.6e})")
             print(f"    {e}")
             return False
+        finally:
+            # FAG_DIFF_COLS=1 打印按 headdim 列聚合的误差分布。D 分块的
+            # bug 会在块边界(96/128)上留下明显台阶，比单个 max_diff 好定位。
+            if os.environ.get("FAG_DIFF_COLS"):
+                d = (out_cpu.float() - gold_cpu.float()).abs()
+                per_col = d.reshape(-1, d.shape[-1]).max(dim=0).values
+                print(f"    [{name}] per-column max_diff:")
+                for c0 in range(0, per_col.numel(), 32):
+                    seg = per_col[c0:c0 + 32]
+                    print(f"      col {c0:3d}-{c0 + seg.numel() - 1:3d}: "
+                          f"max={seg.max().item():.4e} mean={seg.mean().item():.4e}")
 
 
     print("\nResults:")
@@ -290,6 +323,30 @@ GQA_CASES = [
     (2, 2, 384, 256, 128, 4),       # 8: 多核(G 默认 1，作对照)
     (1, 2, 1024, 1024, 128, 8, 4),  # 9: 多核 + G=4
     (1, 1, 8192, 8192, 128, 36, 4), # 10: 大 shape 36 核 + G=4
+]
+
+
+# 不等长 headdim 用例：末两列是 (G, Dv)。Q/K/dq/dk 用 D，V/dO/y/dv 用 Dv。
+# 覆盖 D=Dv=192(等长长 D)、D=192/Dv=128(需求场景)、尾块、GQA 与多核组合。
+# (B, N2, S1, S2, D, cores, G, Dv)
+DV_CASES = [
+    # 单块(S1=S2=128)且 D=Dv=192：最少变量的 192 档基线，用于把
+    # 「分块算错」与「跨 task 状态错」两类问题分开定位。
+    (1, 1, 128, 128, 192, 1, 1, 192),   # 0: 单块 + 等长 192
+    (1, 1, 128, 128, 192, 1, 1, 96),    # 1: Dv=96，dV 只剩第 0 块
+    (1, 1, 128, 128, 192, 1, 1, 160),   # 2: dv_align=192 档但 Dv<D
+    (1, 1, 256, 256, 192, 1, 1, 192),   # 1: 多块 + 等长 192
+    (1, 1, 256, 256, 192, 1, 1, 128),   # 1: D=192/Dv=128 主场景
+    (1, 1, 128, 128, 192, 1, 1, 128),   # 2: 单块最小 shape
+    (1, 1, 200, 256, 192, 1, 1, 128),   # 3: S1 尾块
+    (1, 1, 256, 200, 192, 1, 1, 128),   # 4: S2 尾块
+    (1, 1, 200, 168, 192, 1, 1, 128),   # 5: 双尾块
+    (2, 2, 256, 256, 192, 1, 1, 128),   # 6: 多 batch / 多 head
+    (1, 1, 256, 256, 192, 1, 4, 128),   # 7: GQA G=4
+    (1, 2, 200, 168, 192, 1, 3, 128),   # 8: 双尾块 + G 奇数
+    (1, 1, 256, 256, 192, 1, 1, 64),    # 9: Dv 更短(64)
+    (1, 2, 1024, 1024, 192, 8, 1, 128), # 10: 多核
+    (1, 1, 4096, 4096, 192, 36, 1, 128),# 11: 大 shape 满核
 ]
 
 
@@ -343,23 +400,30 @@ def run_test():
     failed = []
     # CASE_FILTER=i[,j...] 只跑指定下标的用例（设备级错误会终止进程，
     # 逐个跑才能定位是哪个形状出问题）；CASE_FILTER=G 跑 100 个泛化用例。
+    # 也支持 "NAME:i,j" 只跑某个命名用例集里的指定下标，
+    # 例如 CASE_FILTER=DV:0,3（设备级错误会终止进程，逐个跑才能定位形状）。
     flt = os.environ.get("CASE_FILTER", "")
-    if flt == "G":
-        cases = GENERALIZED_CASES
-    elif flt == "GQA":
-        cases = GQA_CASES
+    _named = {"G": GENERALIZED_CASES, "GQA": GQA_CASES, "DV": DV_CASES}
+    if ":" in flt:
+        name, _, idxs = flt.partition(":")
+        pool = _named.get(name, CASES)
+        cases = [pool[int(i)] for i in idxs.split(",")]
+    elif flt in _named:
+        cases = _named[flt]
     elif flt:
         cases = [CASES[int(i)] for i in flt.split(",")]
     else:
         cases = CASES
     for case in cases:
-        # 用例元组可带可选的第 7 项 G(缺省 1)
+        # 用例元组可带可选的第 7 项 G(缺省 1) 与第 8 项 Dv(缺省 = D)
         B, N, S1, S2, D, cores = case[:6]
         G = case[6] if len(case) > 6 else 1
-        tag = (f"B{B} N2={N} G={G} N1={N * G} S1={S1} S2={S2} D{D} "
-               f"cores={cores}")
+        Dv = case[7] if len(case) > 7 else D
+        tag = (f"B{B} N2={N} G={G} N1={N * G} S1={S1} S2={S2} D{D}"
+               + (f" Dv{Dv}" if Dv != D else "")
+               + f" cores={cores}")
         print(f"\n{'='*62}\n[case] {tag}\n{'='*62}")
-        if not run_case(B, N, S1, S2, D, cores, G):
+        if not run_case(B, N, S1, S2, D, cores, G, Dv):
             failed.append(tag)
 
     print(f"\n{'='*62}")

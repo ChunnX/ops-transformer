@@ -240,13 +240,33 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     }
 
     bool hasAttenMask = HasAttenMask(context, maskMode);
+    // D bucket. Unlike layout and GQA -- which only change index arithmetic and
+    // so are handled with runtime numbers -- D sets the *width of every on-chip
+    // tile*, and tile shapes are trace-time constants in pypto. It therefore has
+    // to be a compile-time bucket, exactly as the AscendC reference makes it a
+    // template parameter (DTemplateType::Aligned128 / Aligned192).
+    //
+    // Allocating everything at the maximum unconditionally is not merely slower,
+    // it does not fit: L0C would need 288KB against a 256KB budget even with the
+    // acc buffer reduced to single. Measured (us per D traversal, 96+96 split vs
+    // 192 in one shot): MM2 0.466 vs 0.781, dQ/dK 0.738 vs 1.123.
+    //
+    // Dv stays a runtime value (tilingData->dv): it only narrows how many columns
+    // of an already-allocated tile get filled, which needs no specialization.
+    int64_t dAlign = (dSize <= 128) ? 128 : 192;
+    OP_CHECK_IF(dSize > 192,
+                OP_LOGE(context->GetNodeName(),
+                        "head dim of q (%ld) is not supported; only D <= 192 is implemented.", dSize),
+                return ge::GRAPH_PARAM_INVALID);
     // TilingKey: bit[1:0]=template(0=bn2gs1s2,1=bn2,2=bn2s2,3=bn2multiblk),
     //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask,
-    //            bit4=swizzle(0=linear split, 1=s2-column strided)
+    //            bit4=swizzle(0=linear split, 1=s2-column strided),
+    //            bit5=d_align(0=128, 1=192)
     uint64_t tilingKey = static_cast<uint64_t>(0) |
                          (static_cast<uint64_t>(layout) << 2) |
                          (static_cast<uint64_t>(hasAttenMask) << 3) |
-                         (static_cast<uint64_t>(swizzle) << 4);
+                         (static_cast<uint64_t>(swizzle) << 4) |
+                         (static_cast<uint64_t>(dAlign == 192 ? 1 : 0) << 5);
     context->SetTilingKey(tilingKey);
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
@@ -259,11 +279,13 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // The kernel accumulates dq/dk/dv in fp32 via atomicAdd, then its post
     // stage applies scale and casts down to the fp16/bf16 outputs. dv gets no
     // scale (matches qkvIdx < 2 in the AscendC reference).
+    // dq/dk are D wide, dv is Dv wide (D and Dv may differ, e.g. 192 vs 128).
     constexpr size_t FP32_SIZE = 4;
     size_t libapiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t dqElems = static_cast<size_t>(bSize) * s1Size * n1Size * dSize;
-    size_t dkvElems = static_cast<size_t>(bSize) * s2Size * n2Size * dSize;
-    size_t workspaceSize = libapiSize + (dqElems + dkvElems * 2) * FP32_SIZE;
+    size_t dkElems = static_cast<size_t>(bSize) * s2Size * n2Size * dSize;
+    size_t dvElems = static_cast<size_t>(bSize) * s2Size * n2Size * dvSize;
+    size_t workspaceSize = libapiSize + (dqElems + dkElems + dvElems) * FP32_SIZE;
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

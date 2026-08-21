@@ -285,6 +285,16 @@ ge::graphStatus FlashAttnGradCheck::CheckShape(gert::TilingContext *context, con
     OP_CHECK_IF(attnOutSS.GetDim(dIdx) != vD,
                 OP_LOGE(opName, "D dim of attn_out must equal v D(%ld), but got %ld.", vD, attnOutSS.GetDim(dIdx)),
                 return ge::GRAPH_PARAM_INVALID);
+    // Dv <= D is required, not merely conventional: the kernel allocates every
+    // on-chip tile at the D-derived width and fills only Dv columns on the V/dO
+    // side (see the d_align tilingkey field). A Dv > D would overrun those tiles.
+    // The AscendC reference does not check this; we do rather than inherit it.
+    OP_CHECK_IF(vD > qD,
+                OP_LOGE(opName, "D dim of v (%ld) must not exceed D dim of q (%ld).", vD, qD),
+                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(vD <= 0 || qD <= 0,
+                OP_LOGE(opName, "D dims must be positive, but got q D=%ld, v D=%ld.", qD, vD),
+                return ge::GRAPH_PARAM_INVALID);
 
     // N: q.N==dout.N==dq.N==attn_out.N; k.N==v.N==dk.N==dv.N; N1%N2==0
     size_t nIdx = isTnd ? 1 : (isBnsd ? 1 : 2);
