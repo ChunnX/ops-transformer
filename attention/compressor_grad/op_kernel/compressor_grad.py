@@ -135,16 +135,15 @@ def _trunc(num, rnd):
 @pl.vector_function
 def _vf_scatter_backward(
     d_cmp_kv_tile,       # dC: (n_blocks, D) FP32 (pre-cast outside VF)
-    kv_tile,           # kv_2d: (n_blocks*N, D) fp32 — kv → dsw
-    softmax_score_tile,      # softmax: (n_blocks*N, D) fp32 — sm → dsb
+    kv_tile,           # kv_2d: (n_blocks*N, D) fp32 — kv（保持不动，供 (kv-w)）
+    softmax_score_tile,      # softmax: (n_blocks*N, D) fp32 — sm → dsb 输出
     temp_tile,         # temp: (n_blocks*N, D) fp32 — dkv output
     sc_num: pl.DT_INT64,
     cmp_row_cnt: pl.DT_INT64, # cmpRatio * coff
     d_deal_size: pl.DT_INT64,
 ):
-    d_softmax_score_tile = kv_tile
-    d_score_tile = softmax_score_tile
     d_kv_tile = temp_tile
+    d_score_tile = softmax_score_tile
 
     mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
 
@@ -160,25 +159,61 @@ def _vf_scatter_backward(
 
             vreg_d_cmp_kv = vf.load_align(d_cmp_kv_tile, d_cmp_kv_offset)
 
-            vreg_sum = vf.full(0.0, dtype=pl.DT_FP32)
+            # ── 第一轮：d_kv = dC*sm；w = Kahan(Σ sm*kv) ──
+            # 相消重构：d_score = sm*dC*(kv - w)（col = dC*w 代数恒等），把
+            # (dC*kv − col) 的大幅相消拆成 O(1)×O(1) 的 (kv − w)。
+            vreg_w = vf.full(0.0, dtype=pl.DT_FP32)
+            vreg_wcomp = vf.full(0.0, dtype=pl.DT_FP32)
             for t_idx in pl.range(0, cmp_row_cnt):
                 offset = sc_offset + t_idx * d_deal_size + d_offset
                 vreg_softmax_score = vf.load_align(softmax_score_tile, offset)
                 vreg_kv = vf.load_align(kv_tile, offset)
                 vreg_d_kv = vf.mul(vreg_d_cmp_kv, vreg_softmax_score, mask)
                 vf.store_align(d_kv_tile + offset, vreg_d_kv, mask)
-                vreg_d_softmax_score = vf.mul(vreg_d_cmp_kv, vreg_kv, mask)
-                vf.store_align(d_softmax_score_tile + offset, vreg_d_softmax_score, mask)
-                vreg_d_softmax_score = vf.mul(vreg_softmax_score, vreg_d_softmax_score, mask)
-                vreg_sum = vf.add(vreg_sum, vreg_d_softmax_score, mask)
+                # Dekker 双乘积 (sm, kv) → (p_hi, p_lo)（12bit split，纯 fp32）
+                vreg_t = vf.muls(vreg_softmax_score, 4097.0, mask)
+                vreg_u = vf.sub(vreg_t, vreg_softmax_score, mask)
+                vreg_sm_hi = vf.sub(vreg_t, vreg_u, mask)
+                vreg_sm_lo = vf.sub(vreg_softmax_score, vreg_sm_hi, mask)
+                vreg_t = vf.muls(vreg_kv, 4097.0, mask)
+                vreg_u = vf.sub(vreg_t, vreg_kv, mask)
+                vreg_kv_hi = vf.sub(vreg_t, vreg_u, mask)
+                vreg_kv_lo = vf.sub(vreg_kv, vreg_kv_hi, mask)
+                vreg_p_hi = vf.mul(vreg_softmax_score, vreg_kv, mask)
+                vreg_p1 = vf.mul(vreg_sm_hi, vreg_kv_hi, mask)
+                vreg_p2 = vf.mul(vreg_sm_lo, vreg_kv_hi, mask)
+                vreg_p3 = vf.mul(vreg_sm_hi, vreg_kv_lo, mask)
+                vreg_p4 = vf.mul(vreg_sm_lo, vreg_kv_lo, mask)
+                vreg_tmp = vf.sub(vreg_p_hi, vreg_p1, mask)
+                vreg_tmp = vf.sub(vreg_tmp, vreg_p2, mask)
+                vreg_tmp = vf.sub(vreg_tmp, vreg_p3, mask)
+                vreg_p_lo = vf.sub(vreg_p4, vreg_tmp, mask)
+                # 单链 Kahan：w = Σ(sm*kv)，乘积残差 p_lo 注入补偿项
+                vreg_y = vf.sub(vreg_p_hi, vreg_wcomp, mask)
+                vreg_t = vf.add(vreg_w, vreg_y, mask)
+                vreg_c = vf.sub(vreg_t, vreg_w, mask)
+                vreg_c = vf.sub(vreg_c, vreg_y, mask)
+                vreg_w = vreg_t
+                vreg_wcomp = vf.add(vreg_c, vreg_p_lo, mask)
 
             vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+            # ── 第二轮：d_score = sm * (dC*s + dC*e)，(kv-w) → Knuth TwoSum 精确对 (s,e) ──
             for t_idx in pl.range(0, cmp_row_cnt):
                 offset = sc_offset + t_idx * d_deal_size + d_offset
                 vreg_softmax_score = vf.load_align(softmax_score_tile, offset)
-                vreg_d_softmax_score = vf.load_align(d_softmax_score_tile, offset)
-                vreg_d_softmax_score = vf.sub(vreg_d_softmax_score, vreg_sum, mask)
-                vreg_d_score = vf.mul(vreg_softmax_score, vreg_d_softmax_score, mask)
+                vreg_kv = vf.load_align(kv_tile, offset)
+                # TwoSum(kv, -w): s=fl(kv-w); z=fl(s-kv); e=(kv-(s-z)) - (w+z)
+                vreg_s = vf.sub(vreg_kv, vreg_w, mask)
+                vreg_z = vf.sub(vreg_s, vreg_kv, mask)
+                vreg_a = vf.sub(vreg_s, vreg_z, mask)
+                vreg_b = vf.sub(vreg_kv, vreg_a, mask)
+                vreg_c = vf.add(vreg_w, vreg_z, mask)
+                vreg_e = vf.sub(vreg_b, vreg_c, mask)
+                # d_score = sm * (dC*s + dC*e)（两项乘积分别舍入，保留低半）
+                vreg_p1 = vf.mul(vreg_d_cmp_kv, vreg_s, mask)
+                vreg_p2 = vf.mul(vreg_d_cmp_kv, vreg_e, mask)
+                vreg_ds = vf.add(vreg_p1, vreg_p2, mask)
+                vreg_d_score = vf.mul(vreg_softmax_score, vreg_ds, mask)
                 vf.store_align(d_score_tile + offset, vreg_d_score, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
@@ -289,12 +324,50 @@ def _vf_reduce_dscore_to_ape(
             ape_off = m * ape_row_stride + half_off
             # 累加起点 = ape_tile 当前值（round0 已清零 / round>0 已 load ws 旧值）
             ape_reg = vf.load_align(ape_tile + ape_off, 0)
+            # Kahan 补偿累加：跨 block 的 d_score → ape 顺序累加在长序列/相消场景下
+            # 舍入噪声被放大（d_ape 是纯 vec 求和，无 matmul 洗噪），需带补偿项
+            ape_comp = vf.full(0.0, dtype=pl.DT_FP32)
             for k in pl.range(0, n_blocks):
                 block_off = k * block_stride
                 row_off = block_off + m * row_stride + half_off
                 vreg_d_score = vf.load_align(d_score_tile + row_off, 0)
-                ape_reg = vf.add(ape_reg, vreg_d_score, mask)
+                # Kahan: y = x - c; t = s + y; c = (t - s) - y; s = t
+                vreg_y = vf.sub(vreg_d_score, ape_comp, mask)
+                vreg_t = vf.add(ape_reg, vreg_y, mask)
+                vreg_c = vf.sub(vreg_t, ape_reg, mask)
+                vreg_c = vf.sub(vreg_c, vreg_y, mask)
+                ape_reg = vreg_t
+                ape_comp = vreg_c
             vf.store_align(ape_tile + ape_off, ape_reg, mask)
+    vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+
+
+# ================================================================
+#  VF: Kahan 补偿累加 — acc_tile += ld_tile（comp_tile 跨行保持补偿项）
+# ================================================================
+@pl.vector_function
+def _vf_kahan_accumulate(
+    acc_tile,
+    ld_tile,
+    comp_tile,
+    n: pl.DT_INT64,
+):
+    """逐元素 Kahan：y = x - c; t = s + y; c = (t - s) - y; s = t。
+    用于 Phase 3 跨核/跨轮 partial 的 fp32 顺序累加——长序列、多项相消场景下
+    消除累加舍入（误差从 O(N·eps·相消倍数) 降至仅剩每项 fp32 存储舍入）。"""
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    halves = n // FLOAT_REG_ELEMENTS
+    for half in pl.range(0, halves):
+        off = half * FLOAT_REG_ELEMENTS
+        vreg_ld = vf.load_align(ld_tile, off)
+        vreg_acc = vf.load_align(acc_tile, off)
+        vreg_comp = vf.load_align(comp_tile, off)
+        vreg_y = vf.sub(vreg_ld, vreg_comp, mask)
+        vreg_t = vf.add(vreg_acc, vreg_y, mask)
+        vreg_c = vf.sub(vreg_t, vreg_acc, mask)
+        vreg_c = vf.sub(vreg_c, vreg_y, mask)
+        vf.store_align(acc_tile + off, vreg_t, mask)
+        vf.store_align(comp_tile + off, vreg_c, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -596,7 +669,7 @@ def _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l
 #  Phase 3 reduce sub-functions（从 kernel 提取）
 # ================================================================
 def _reduce_ape(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
-                reduce_acc, reduce_ld_group, tensor_d_ape_flat, tensor_d_ape_ws_flat):
+                reduce_acc, reduce_comp, reduce_ld_group, tensor_d_ape_flat, tensor_d_ape_ws_flat):
     """Phase 3: dApe 跨核归约（每核处理 rgStart..rgEnd 的 chunk，累加器从零开始）"""
     core_num = vec_ctx.core_num
     group_num = vec_ctx.group_num
@@ -621,13 +694,17 @@ def _reduce_ape(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
     else:
         valid_rows = (round_blocks + vec_ctx.group_deal_sc_num - 1) // vec_ctx.group_deal_sc_num
     pl.set_validshape(reduce_acc, [1, rg_end - rg_start])
+    pl.set_validshape(reduce_comp, [1, rg_end - rg_start])
     # 末轮一次性归约：累加器从零开始（输出 tensor 不保证清零，不能读入做 RMW）
+    # 跨核/跨轮 partial 的顺序累加在长序列（多项相消 ~1e4）下会放大累加舍入，
+    # 超过两方 golden 的块化归约精度 → 用 Kahan 补偿累加消除累加舍入
     _vf_tile_zero(reduce_acc, 1, (rg_end - rg_start))
+    _vf_tile_zero(reduce_comp, 1, (rg_end - rg_start))
     for r in pl.range(0, valid_rows):
         reduce_ld = reduce_ld_group.next()
         pl.set_validshape(reduce_ld, [1, rg_end - rg_start])
         pl.load(reduce_ld, tensor_d_ape_ws_flat, [flat_row_base + r, rg_start])
-        pl.add(reduce_acc, reduce_acc, reduce_ld)
+        _vf_kahan_accumulate(reduce_acc, reduce_ld, reduce_comp, rg_end - rg_start)
     pl.store(tensor_d_ape_flat, reduce_acc, [0, rg_start])
 
 
@@ -928,13 +1005,17 @@ def _reduce_dx_advance_batch(vec_ctx, b, local_s, p3l_sc_idx, cmp_limit, b_start
     b_seq_length = 0
     cmp_limit = 0
     batch_end_sc_idx = 0
-    if b < batch_size:
+    while b < batch_size:
         b_start_pos = _get_start_pos(b, start_pos, seq_ctx)
         b_seq_used = _get_seq_used(b, seq_used, cu_seqlens, seq_ctx)
         b_seq_length = _get_seq_length(b, cu_seqlens, seq_ctx)
         cmp_limit = (b_start_pos + b_seq_used) // cmp_ratio * cmp_ratio - b_start_pos
         batch_end_sc_idx = _get_cmp_block_count(b, b_seq_used, start_pos, seq_used, cu_seqlens, seq_ctx) - \
                      _get_cmp_block_count(b_start, s_start, start_pos, seq_used, cu_seqlens, seq_ctx) - 1
+        if b_seq_length != 0:
+            break
+        # 空 batch（seq_len==0）不占行、无压缩块：块索引不推进，直接跳到下一批
+        b += 1
     return (b, local_s, p3l_sc_idx, b_start_pos, b_seq_used, b_seq_length, cmp_limit, batch_end_sc_idx)
 
 
@@ -1339,7 +1420,7 @@ def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
 def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
                    prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
                    prev_b_idx_end, prev_sc_idx_end,
-                   reduce_acc, reduce_load_tile_group, p3_cast,
+                   reduce_acc, reduce_comp, reduce_load_tile_group, p3_cast,
                    d_x_cache_gm, d_x_result_gm,
                    d_x, d_wkv, d_wgate, d_ape, io_d_type,
                    x_rows, total_head_dim, hidden_size, cmp_size,
@@ -1378,7 +1459,7 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
     #  Phase 1/2 写入，其 ws 区域是初始值，不能参与归约）
     if round_idx == round_cnt:
         _reduce_ape(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
-                    reduce_acc, reduce_load_tile_group, tensor_d_ape_flat, tensor_d_ape_ws_flat)
+                    reduce_acc, reduce_comp, reduce_load_tile_group, tensor_d_ape_flat, tensor_d_ape_ws_flat)
         _reduce_d_weight(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
                          reduce_acc, reduce_load_tile_group, p3_cast,
                          tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
@@ -1565,6 +1646,8 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
 
     # Phase 3 reduce: 复用 0x0C000/0x1C000/0x2C000 三个 64KB 区域
     reduce_acc_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
+    # reduce Kahan 补偿项（Phase 3 归约累加器；复用 Phase 1 后已释放的 DC_F16 区域）
+    reduce_comp_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_DC_F16_ADDR], mutex_ids=[0])
     reduce_load_tile_group = pl.make_tile_group(type=flat_tile_type,
                                                  addrs=[UB_SM_DSB_ADDR, UB_DKV_ADDR], mutex_ids=[3, 4])
 
@@ -1590,6 +1673,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
     tile_dsb_nz_md_cur = d_score_nz_md_cur_tile_group.next()
 
     reduce_acc = reduce_acc_tile_group.next()
+    reduce_comp = reduce_comp_tile_group.next()
 
     p3_cast = reduce_result_tile_group.next()
 
@@ -1604,8 +1688,8 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
             tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax, tile_dsb_cast, tile_dsb_cast_md,
             tile_temp, tile_dkv_cast, tile_dkv_cast_md, tile_ape_local, tile_dkv_nz, tile_dsb_nz,
             tile_dkv_nz_md_prev, tile_dsb_nz_md_prev, tile_dkv_nz_md_cur, tile_dsb_nz_md_cur,
-            reduce_acc, p3_cast, move_x_tile_group, reduce_load_tile_group,
-            reduce_acc_tile_group, reduce_result_tile_group, temp_tile_group)
+            reduce_acc, reduce_comp, p3_cast, move_x_tile_group, reduce_load_tile_group,
+            reduce_acc_tile_group, reduce_comp_tile_group, reduce_result_tile_group, temp_tile_group)
 
 
 def _init_cube_tile_groups(io_d_type, group_size):
@@ -1751,8 +1835,8 @@ def compressor_grad(
          tile_dsb_cast, tile_dsb_cast_md, tile_temp, tile_dkv_cast,
          tile_dkv_cast_md, tile_ape_local, tile_dkv_nz, tile_dsb_nz,
          tile_dkv_nz_md_prev, tile_dsb_nz_md_prev, tile_dkv_nz_md_cur,
-         tile_dsb_nz_md_cur, reduce_acc, p3_cast, move_x_tile_group,
-         reduce_load_tile_group, reduce_acc_tile_group,
+         tile_dsb_nz_md_cur, reduce_acc, reduce_comp, p3_cast, move_x_tile_group,
+         reduce_load_tile_group, reduce_acc_tile_group, reduce_comp_tile_group,
          reduce_result_tile_group, temp_tile_group) = _init_vec_tile_groups(
             io_d_type, tiling.group_size, tiling.d_deal_size)
 
@@ -1853,7 +1937,7 @@ def compressor_grad(
                 _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
                                prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
                                prev_b_idx_end, prev_sc_idx_end,
-                               reduce_acc, reduce_load_tile_group, p3_cast,
+                               reduce_acc, reduce_comp, reduce_load_tile_group, p3_cast,
                                d_x_cache_gm, d_x_result_gm,
                                d_x, d_wkv, d_wgate, d_ape, io_d_type,
                                tiling.x_rows, tiling.total_head_dim, tiling.hidden_size, tiling.cmp_size,
