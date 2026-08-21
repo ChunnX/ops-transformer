@@ -598,10 +598,6 @@ cann_ops_transformer.quant_flash_attn(
         </tbody>
     </table>
 
-> [!NOTE]
->
-> v_descale shape 不做校验，仅校验 q_descale 和 k_descale 的 shape。
-
 - q/k/v/attn_out shape匹配关系表： <a id="qkv_attn_out_shape匹配关系表"></a>
 
     <table style="undefined;table-layout: fixed; width:1625px">
