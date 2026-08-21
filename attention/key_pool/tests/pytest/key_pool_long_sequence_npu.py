@@ -39,12 +39,19 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
     gate = torch.matmul(
         hidden_fp32, gate_weight.float().transpose(0, 1)
     ).to(torch.bfloat16)
-    raw_k = k
-
     norm_weight = norm_bias = None
     if norm_on:
         norm_weight = torch.randn((head_dim,), dtype=torch.float32)
         norm_bias = torch.randn((head_dim,), dtype=torch.float32)
+        k_fp32 = k.float()
+        mean = k_fp32.mean(dim=-1, keepdim=True)
+        variance = (k_fp32 - mean).square().mean(dim=-1, keepdim=True)
+        k = (
+            (k_fp32 - mean)
+            / torch.sqrt(variance + norm_eps)
+            * norm_weight
+            + norm_bias
+        ).to(torch.bfloat16)
 
     pool_cache = state_cache.clone()
     golden_cache = state_cache.clone()
@@ -54,7 +61,7 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
         batch_ids, logical_write // block_size
     ]
     block_offsets = logical_write % block_size
-    pool_cache[physical_write, block_offsets, :head_dim] = raw_k.float()
+    pool_cache[physical_write, block_offsets, :head_dim] = k.float()
     pool_cache[physical_write, block_offsets, head_dim:] = gate.float()
     tail_mask = torch.zeros_like(logical_write, dtype=torch.bool)
     token_base = 0
@@ -68,7 +75,7 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
         token_base += length
     golden_cache[
         physical_write[tail_mask], block_offsets[tail_mask], :head_dim
-    ] = raw_k[tail_mask].float()
+    ] = k[tail_mask].float()
     golden_cache[
         physical_write[tail_mask], block_offsets[tail_mask], head_dim:
     ] = gate[tail_mask].float()
@@ -94,16 +101,6 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
         physical = block_table.long()[batch, logical // block_size]
         gathered = pool_cache[physical, logical % block_size]
         keys = gathered[..., :head_dim]
-        if norm_on:
-            keys_fp32 = keys.float()
-            mean = keys_fp32.mean(dim=-1, keepdim=True)
-            variance = (keys_fp32 - mean).square().mean(dim=-1, keepdim=True)
-            keys = (
-                (keys_fp32 - mean)
-                / torch.sqrt(variance + norm_eps)
-                * norm_weight
-                + norm_bias
-            )
         gates = gathered[..., head_dim:]
         probabilities = torch.softmax(
             gates + ape.view(1, case.cmp_ratio, head_dim), dim=1
