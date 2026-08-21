@@ -1,0 +1,5 @@
+case_name,expectResult,q_dtype,k_cache_dtype,head_dim_v,softmax_scale,mask_mode,max_seqlen_q,max_seqlen_kv,layout_q,layout_kv,layout_out,return_softmax_lse,expect_attn_out_dtype,expect_softmax_lse_dtype
+inferdtype_FP16,SUCCESS,FLOAT16,FLOAT16,512,0.125,0,-1,-1,TND,NZ,NTD,0,FLOAT16,
+inferdtype_FP16_LSE,SUCCESS,FLOAT16,FLOAT16,512,0.125,0,-1,-1,TND,NZ,NTD,1,FLOAT16,FLOAT
+inferdtype_BF16,SUCCESS,BFLOAT16,BFLOAT16,512,0.125,0,-1,-1,TND,NZ,NTD,0,BFLOAT16,
+inferdtype_BF16_LSE,SUCCESS,BFLOAT16,BFLOAT16,512,0.125,0,-1,-1,TND,NZ,NTD,1,BFLOAT16,FLOAT
