@@ -51,7 +51,7 @@ def _cpu_golden(inputs, case, norm_on: bool, norm_eps: float):
             / torch.sqrt(variance + norm_eps)
             * norm_weight
             + norm_bias
-        ).to(torch.bfloat16)
+        )
 
     pool_cache = state_cache.clone()
     golden_cache = state_cache.clone()

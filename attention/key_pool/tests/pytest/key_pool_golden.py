@@ -290,7 +290,7 @@ def run_key_pool_golden(
     gate_parts = []
     for hidden in batch_hidden:
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
-        k = _normalize_key(k, norm_weight, norm_bias, norm_eps)
+        k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
     for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
@@ -354,7 +354,7 @@ def run_key_pool_oracle(
     gate_parts = []
     for batch, hidden in enumerate(batch_hidden):
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
-        k = _normalize_key(k, norm_weight, norm_bias, norm_eps)
+        k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
         _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
