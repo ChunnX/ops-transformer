@@ -39,31 +39,31 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 }
 
 #define GMMFR_CHECK_REPORT(cond, retExpr, reportExpr) \
-    do {                                              \
-        if (!(cond)) {                                \
-            reportExpr;                               \
-            retExpr;                                  \
-        }                                             \
+    do { \
+        if (!(cond)) { \
+            reportExpr; \
+            retExpr; \
+        } \
     } while (0)
 
-#define GMMFR_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr)                                    \
-    do {                                                                                                \
-        if ((tensor)->GetViewShape() != (expectedShape)) {                                              \
-            OP_LOGE_FOR_INVALID_SHAPE(GMMFR_ACLNN_OP_NAME, paramName,                                  \
-                                      op::ToString((tensor)->GetViewShape()).GetString(),               \
-                                      op::ToString(expectedShape).GetString());                         \
-            retExpr;                                                                                   \
-        }                                                                                               \
+#define GMMFR_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr) \
+    do { \
+        if ((tensor)->GetViewShape() != (expectedShape)) { \
+            OP_LOGE_FOR_INVALID_SHAPE(GMMFR_ACLNN_OP_NAME, paramName, \
+                                      op::ToString((tensor)->GetViewShape()).GetString(), \
+                                      op::ToString(expectedShape).GetString()); \
+            retExpr; \
+        } \
     } while (0)
 
-#define GMMFR_CHECK_DTYPE(tensor, paramName, supportList, retExpr)                                      \
-    do {                                                                                                \
-        if (!CheckType((tensor)->GetDataType(), supportList)) {                                         \
-            OP_LOGE_FOR_INVALID_DTYPE(GMMFR_ACLNN_OP_NAME, paramName,                                  \
-                                      op::ToString((tensor)->GetDataType()).GetString(),                \
-                                      op::ToString(supportList).GetString());                           \
-            retExpr;                                                                                   \
-        }                                                                                               \
+#define GMMFR_CHECK_DTYPE(tensor, paramName, supportList, retExpr) \
+    do { \
+        if (!CheckType((tensor)->GetDataType(), supportList)) { \
+            OP_LOGE_FOR_INVALID_DTYPE(GMMFR_ACLNN_OP_NAME, paramName, \
+                                      op::ToString((tensor)->GetDataType()).GetString(), \
+                                      op::ToString(supportList).GetString()); \
+            retExpr; \
+        } \
     } while (0)
 
 constexpr size_t ZERO_DIM = 0UL;
@@ -80,6 +80,8 @@ constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRoutingGe
 const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8 = {op::DataType::DT_FLOAT8_E4M3FN,
+                                                                           op::DataType::DT_FLOAT8_E5M2};
 const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
 static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
@@ -88,14 +90,23 @@ static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIS
 static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST_BF16 = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT,
+                                                                             op::DataType::DT_BF16};
+constexpr int64_t OUT_DTYPE_FLOAT32 = 0;
+constexpr int64_t OUT_DTYPE_BF16 = 2;
 
-const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {
+    DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
 static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT,
+                                                                                     op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64,
+                                                                                              op::DataType::DT_INT32};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {
+    op::DataType::DT_INT64};
 enum class QuantMode {
     PERTOKEN = 0, // pertoken 量化
     MX = 2        // MX量化
@@ -115,10 +126,9 @@ public:
         DataType scaleDtype = gmmParams_.scale->GetDataType();
         if (CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_MX)) {
             quantMode_ = QuantMode::MX;
-        } 
-        else if(CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)){
+        } else if (CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)) {
             quantMode_ = QuantMode::PERTOKEN;
-        }else {
+        } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "scale", op::ToString(scaleDtype).GetString(),
                 "the dtype of scale must be within the range {FLOAT8_E8M0, FLOAT32, BFLOAT16}");
@@ -156,11 +166,10 @@ public:
         int64_t batch = gmmParams_.out->GetViewShape().GetDim(ZERO_DIM);
         const std::string offsetUpperReason =
             "sharedInputOffset must be less than or equal to batch(" + std::to_string(batch) + ")";
-        GMMFR_CHECK_REPORT(gmmParams_.shareInputOffset <= batch, return ACLNN_ERR_PARAM_INVALID,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                               GMMFR_ACLNN_OP_NAME, "sharedInputOffset",
-                               std::to_string(gmmParams_.shareInputOffset),
-                               offsetUpperReason));
+        GMMFR_CHECK_REPORT(
+            gmmParams_.shareInputOffset <= batch, return ACLNN_ERR_PARAM_INVALID,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "sharedInputOffset",
+                                                  std::to_string(gmmParams_.shareInputOffset), offsetUpperReason));
         GMMFR_CHECK_REPORT(!gmmParams_.transposeX1, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "transposeX1", "true",
                                                                  "x cannot be transposed on Ascend 950"));
@@ -193,10 +202,10 @@ public:
         GMMFR_CHECK_REPORT(gmmParams_.offset == nullptr, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "offset", "nonnull", "nullptr"));
         if (quantMode_ == QuantMode::MX) {
-            GMMFR_CHECK_REPORT(gmmParams_.pertokenScaleOptional != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                                   GMMFR_ACLNN_OP_NAME, "perTokenScale", "nullptr",
-                                   "in MX quant, the value of perTokenScale cannot be nullptr"));
+            GMMFR_CHECK_REPORT(
+                gmmParams_.pertokenScaleOptional != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "perTokenScale", "nullptr",
+                                                      "in MX quant, the value of perTokenScale cannot be nullptr"));
         }
         return ACLNN_SUCCESS;
     }
@@ -210,52 +219,48 @@ public:
         auto logitDimNumber = gmmParams_.logit->GetViewShape().GetDimNum();
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
-        size_t xscaleExpectDim = quantMode_ == QuantMode::MX ?  THREE_DIM:ONE_DIM;
-        size_t weightscaleExpectDim = quantMode_ == QuantMode::MX ?  FOUR_DIM:THREE_DIM;
+        size_t xscaleExpectDim = quantMode_ == QuantMode::MX ? THREE_DIM : ONE_DIM;
+        size_t weightscaleExpectDim = quantMode_ == QuantMode::MX ? FOUR_DIM : THREE_DIM;
         GMMFR_CHECK_REPORT(xDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "x", std::to_string(xDimNumber),
                                                         std::to_string(TWO_DIM)));
         GMMFR_CHECK_REPORT(wDimNumber == THREE_DIM, return ACLNN_ERR_PARAM_INVALID,
-                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "weight",
-                                                        std::to_string(wDimNumber), std::to_string(THREE_DIM)));
+                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "weight", std::to_string(wDimNumber),
+                                                        std::to_string(THREE_DIM)));
         GMMFR_CHECK_REPORT(wScaleDimNumber == weightscaleExpectDim, return ACLNN_ERR_PARAM_INVALID,
-                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "scale",
-                                                        std::to_string(wScaleDimNumber),
+                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "scale", std::to_string(wScaleDimNumber),
                                                         std::to_string(weightscaleExpectDim)));
         GMMFR_CHECK_REPORT(grouplistDimNumber == ONE_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "groupList",
-                                                        std::to_string(grouplistDimNumber),
-                                                        std::to_string(ONE_DIM)));
+                                                        std::to_string(grouplistDimNumber), std::to_string(ONE_DIM)));
         GMMFR_CHECK_REPORT(logitDimNumber == ONE_DIM, return ACLNN_ERR_PARAM_INVALID,
-                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "logit",
-                                                        std::to_string(logitDimNumber), std::to_string(ONE_DIM)));
+                           OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "logit", std::to_string(logitDimNumber),
+                                                        std::to_string(ONE_DIM)));
         GMMFR_CHECK_REPORT(rowindexDimNumber == ONE_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "rowIndex",
-                                                        std::to_string(rowindexDimNumber),
-                                                        std::to_string(ONE_DIM)));
+                                                        std::to_string(rowindexDimNumber), std::to_string(ONE_DIM)));
         GMMFR_CHECK_REPORT(outDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "y", std::to_string(outDimNumber),
                                                         std::to_string(TWO_DIM)));
         if (gmmParams_.pertokenScaleOptional != nullptr) {
             auto xScaleDimNumber = gmmParams_.pertokenScaleOptional->GetViewShape().GetDimNum();
-            GMMFR_CHECK_REPORT(xScaleDimNumber == xscaleExpectDim, return ACLNN_ERR_PARAM_INVALID,
-                               OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "perTokenScale",
-                                                            std::to_string(xScaleDimNumber),
-                                                            std::to_string(xscaleExpectDim)));
+            GMMFR_CHECK_REPORT(
+                xScaleDimNumber == xscaleExpectDim, return ACLNN_ERR_PARAM_INVALID,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "perTokenScale", std::to_string(xScaleDimNumber),
+                                             std::to_string(xscaleExpectDim)));
         }
         if (gmmParams_.bias != nullptr) {
             auto baisDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
             GMMFR_CHECK_REPORT(baisDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
-                               OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "bias",
-                                                            std::to_string(baisDimNumber),
+                               OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "bias", std::to_string(baisDimNumber),
                                                             std::to_string(TWO_DIM)));
         }
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
-            GMMFR_CHECK_REPORT(shareInputDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
-                               OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "shareInput",
-                                                            std::to_string(shareInputDimNumber),
-                                                            std::to_string(TWO_DIM)));
+            GMMFR_CHECK_REPORT(
+                shareInputDimNumber == TWO_DIM, return ACLNN_ERR_PARAM_INVALID,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(GMMFR_ACLNN_OP_NAME, "shareInput", std::to_string(shareInputDimNumber),
+                                             std::to_string(TWO_DIM)));
         }
         return ACLNN_SUCCESS;
     }
@@ -270,13 +275,12 @@ public:
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
         int64_t n = gmmParams_.transposeX2 ? (gmmParams_.x2)->GetViewShape().GetDim(ONE_DIM) :
                                              (gmmParams_.x2)->GetViewShape().GetDim(TWO_DIM);
-        int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);          // 从weight的第0维获取e
+        int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0); // 从weight的第0维获取e
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         if (k <= 0) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                GMMFR_ACLNN_OP_NAME, "x", ViewShapeToString(gmmParams_.x1),
-                "when the M or N value is not 0 [M=" + std::to_string(m) + ", N=" + std::to_string(n) +
-                    "], axis K of x must be a positive number");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", ViewShapeToString(gmmParams_.x1),
+                                                  "when the M or N value is not 0 [M=" + std::to_string(m) + ", N=" +
+                                                      std::to_string(n) + "], axis K of x must be a positive number");
             return false;
         }
         if (!CheckRequiredShapes(m, k, n, e, outputBS)) {
@@ -322,7 +326,9 @@ public:
     {
         if (gmmParams_.pertokenScaleOptional != nullptr) {
             op::Shape xScaleExpectShape =
-                quantMode_ == QuantMode::MX ? op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} : op::Shape{m};
+                quantMode_ == QuantMode::MX ?
+                    op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} :
+                    op::Shape{m};
             GMMFR_CHECK_SHAPE(gmmParams_.pertokenScaleOptional, "perTokenScale", xScaleExpectShape, return false);
         }
         if (gmmParams_.bias != nullptr) {
@@ -332,17 +338,17 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             int64_t bsdp = gmmParams_.shareInput->GetViewShape().GetDim(0);
             int64_t batch = gmmParams_.out->GetViewShape().GetDim(0);
-            GMMFR_CHECK_REPORT(bsdp <= batch, return false,
-                               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                   GMMFR_ACLNN_OP_NAME, "shareInput", std::to_string(bsdp),
-                                   "shared_input_len must be less than or equal to batch(" +
-                                       std::to_string(batch) + ")"));
-            GMMFR_CHECK_REPORT(gmmParams_.shareInputOffset <= batch - bsdp, return false,
-                               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                                   GMMFR_ACLNN_OP_NAME, "sharedInputOffset",
-                                   std::to_string(gmmParams_.shareInputOffset),
-                                   "sharedInputOffset plus sharedInputLen must be less than or equal to batch(" +
-                                       std::to_string(batch) + ")"));
+            GMMFR_CHECK_REPORT(
+                bsdp <= batch, return false,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    GMMFR_ACLNN_OP_NAME, "shareInput", std::to_string(bsdp),
+                    "shared_input_len must be less than or equal to batch(" + std::to_string(batch) + ")"));
+            GMMFR_CHECK_REPORT(
+                gmmParams_.shareInputOffset <= batch - bsdp, return false,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    GMMFR_ACLNN_OP_NAME, "sharedInputOffset", std::to_string(gmmParams_.shareInputOffset),
+                    "sharedInputOffset plus sharedInputLen must be less than or equal to batch(" +
+                        std::to_string(batch) + ")"));
             op::Shape shareInputExpectShape = {bsdp, n};
             GMMFR_CHECK_SHAPE(gmmParams_.shareInput, "shareInput", shareInputExpectShape, return false);
         }
@@ -372,7 +378,7 @@ public:
             return false;
         }
         if (e > MAX_NUM_EXPERTS) {
-            const char* quantModeStr = (quantMode_ == QuantMode::MX) ? "MX quant" : "pertoken quant";
+            const char *quantModeStr = (quantMode_ == QuantMode::MX) ? "MX quant" : "pertoken quant";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "weight", ViewShapeToString(gmmParams_.x2),
                 "in " + std::string(quantModeStr) + ", e must be less than or equal to 1024");
@@ -383,7 +389,7 @@ public:
 
     bool CheckInputOutShapeForMXFP4()
     {
-        int64_t k = gmmParams_.x1->GetViewShape().GetDim(ONE_DIM);  // 从x的第1维获取k
+        int64_t k = gmmParams_.x1->GetViewShape().GetDim(ONE_DIM); // 从x的第1维获取k
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
         int64_t n = gmmParams_.transposeX2 ? (gmmParams_.x2)->GetViewShape().GetDim(ONE_DIM) :
                                              (gmmParams_.x2)->GetViewShape().GetDim(TWO_DIM);
@@ -429,7 +435,7 @@ public:
         }
         return true;
     }
-    
+
     bool CheckDtypeValidForMX()
     {
         GMMFR_CHECK_DTYPE(gmmParams_.x1, "x", X_WEIGHT_TYPE_SUPPORT_LIST_MX, return false);
@@ -445,12 +451,31 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             GMMFR_CHECK_DTYPE(gmmParams_.shareInput, "shareInput", SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
         }
-        GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
-        GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST, return false);
+        GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
+        bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
+        if (isBf16Output) {
+            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16, return false);
+            GMMFR_CHECK_REPORT(
+                gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16, return false,
+                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+            GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_BF16, return false,
+                               OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                   GMMFR_ACLNN_OP_NAME, "y", op::ToString(gmmParams_.out->GetDataType()).GetString(),
+                                   "when dtype is 2 or y is BF16, y must be DT_BF16"));
+        } else {
+            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
+            GMMFR_CHECK_REPORT(
+                gmmParams_.dtype == OUT_DTYPE_FLOAT32, return false,
+                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+            GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_FLOAT, return false,
+                               OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                   GMMFR_ACLNN_OP_NAME, "y", op::ToString(gmmParams_.out->GetDataType()).GetString(),
+                                   "when dtype is 0, y must be DT_FLOAT"));
+        }
         if ((CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4) !=
              CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4)) ||
-            (CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8) !=
-             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8))) {
+            (CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8) !=
+             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8))) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "x and weight",
                 "x=" + std::string(op::ToString(gmmParams_.x1->GetDataType()).GetString()) +
@@ -467,8 +492,7 @@ public:
         GMMFR_CHECK_DTYPE(gmmParams_.x2, "weight", X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN, return false);
         GMMFR_CHECK_DTYPE(gmmParams_.scale, "scale", SCALE_TYPE_SUPPORT_LIST_PERTOKEN, return false);
         if (gmmParams_.x1->GetDataType() == DataType::DT_INT8) {
-            GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8,
-                              return false);
+            GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8, return false);
         } else {
             GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8,
                               return false);
@@ -517,8 +541,10 @@ public:
         if (op::IsPrivateFormat(gmmParams_.x1->GetStorageFormat()) ||
             (gmmParams_.pertokenScaleOptional != nullptr &&
              op::IsPrivateFormat(gmmParams_.pertokenScaleOptional->GetStorageFormat()))) {
-            std::string perTokenScaleFormat = gmmParams_.pertokenScaleOptional == nullptr ?
-                "nullptr" : op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString();
+            std::string perTokenScaleFormat =
+                gmmParams_.pertokenScaleOptional == nullptr ?
+                    "nullptr" :
+                    op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString();
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "x and perTokenScale",
                 "x=" + std::string(op::ToString(gmmParams_.x1->GetStorageFormat()).GetString()) +
@@ -535,8 +561,7 @@ public:
         } else {
             if (gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ) {
                 OP_LOGE_FOR_INVALID_FORMAT(GMMFR_ACLNN_OP_NAME, "weight",
-                                           op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(),
-                                           "FRACTAL_NZ");
+                                           op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(), "FRACTAL_NZ");
                 return false;
             }
         }
