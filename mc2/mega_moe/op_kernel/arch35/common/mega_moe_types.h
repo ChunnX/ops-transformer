@@ -16,6 +16,7 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
+#include "mega_moe_wave_trace.h"
 #include "adv_api/hcomm/hcomm.h"
 
 namespace MegaMoeImpl {
@@ -52,6 +53,9 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    MegaMoeWaveTraceDetail::WaitContext *traceWaitContext = nullptr;
+#endif
 };
 
 struct CombineCommParams {

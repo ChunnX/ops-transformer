@@ -111,7 +111,8 @@ private:
     __aicore__ inline uint32_t GetExpertDispatchRowCount(uint32_t expertIdx);
     __aicore__ inline uint32_t AdvanceWaveCursor(
         ExpertRowCursor &cursor, uint32_t expertRowCount, uint32_t remainingMGroupCount) const;
-    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(ExpertRowCursor &dispatchCursor);
+    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(
+        ExpertRowCursor &dispatchCursor, uint32_t waveIndex);
     __aicore__ inline void SetGmm1ProblemState(
         Gmm1ExpertLoopState &problemState, const Gmm1ExpertLoopState &expertState,
         uint32_t problemStartRowOffset, uint32_t problemEndRowOffset);
@@ -122,18 +123,18 @@ private:
         const ExpertRowCursor &currentWaveCursor, const ExpertRowCursor &targetWaveCursor) const;
     __aicore__ inline ExpertRowCursor ProcessGmm1Wave(
         ExpertRowCursor &gmm1WaveCursor, Gmm1ExpertLoopState &gmm1ExpertState,
-        GMMAddrInfo &gmm1AddrInfo, Gmm1ActivationState &runtimeState);
+        GMMAddrInfo &gmm1AddrInfo, Gmm1ActivationState &runtimeState, uint32_t waveIndex);
     __aicore__ inline void ProcessGmm2Wave(
         ExpertRowCursor &gmm2WaveCursor, const ExpertRowCursor &waveEndCursor,
         Gmm2ExpertLoopState &gmm2ExpertState, GMMAddrInfo &gmm2AddrInfo,
-        Gmm2RuntimeState &runtimeState);
+        Gmm2RuntimeState &runtimeState, uint32_t waveIndex);
     __aicore__ inline void ProcessCombineExperts(
         uint32_t expertBegin, uint32_t expertEnd, Gmm2ExpertLoopState &combineState,
         GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig);
     __aicore__ inline void ProcessCombineWave(
         ExpertRowCursor &combineCursor, const ExpertRowCursor &waveEndCursor,
         Gmm2ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-        const CombineBufferConfig &bufferConfig);
+        const CombineBufferConfig &bufferConfig, uint32_t waveIndex);
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void CrossRankSyncInWorldSize();
 
@@ -192,6 +193,9 @@ private:
     ExpertTokenCountExportScratch expertTokenCountExportScratch_;
     WaveCombineScratch waveCombineScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    MegaMoeWaveTrace waveTrace_{};
+#endif
 
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M =
@@ -416,6 +420,18 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     InitGmm1Config(commonConfig, dispatchFlagSlotsPerExpert);
     InitGmm2CombineConfigs(commonConfig, dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig(commonConfig);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    MegaMoeWaveTraceRole traceRole = MegaMoeWaveTraceRole::AIC;
+    if constexpr (g_coreType == AIV) {
+        traceRole = GetSubBlockIdx() == 0U ? MegaMoeWaveTraceRole::AIV0 : MegaMoeWaveTraceRole::AIV1;
+    }
+    uint64_t outputBytes = static_cast<uint64_t>(tilingData->bs) * tilingData->h * sizeof(OutputType);
+    waveTrace_.Init(workspaceGM, params_.workspaceInfo.workspaceSize, yOut, outputBytes,
+                    blockNum_, traceRole, blockIdx_, tilingData->bs, tilingData->h,
+                    tilingData->hiddenDim, tilingData->topK, tilingData->moeExpertPerRank,
+                    tilingData->epWorldSize);
+    waveTrace_.SetWaveMGroupTarget(mGroupsPerWave_);
+#endif
 }
 
 // =================================================================================================
@@ -853,7 +869,7 @@ __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceWave
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
-    ExpertRowCursor &dispatchCursor)
+    ExpertRowCursor &dispatchCursor, uint32_t waveIndex)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
@@ -863,6 +879,10 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         ExpertRowCursor waveBegin = dispatchCursor;
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
+        uint32_t waveLogicalRowCount = 0U;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t traceBegin = MegaMoeWaveTraceDetail::Now();
+#endif
         while (waveEnd.expertIdx < moeExpertPerRank_ && waveMGroupCount < mGroupsPerWave_) {
             uint32_t expertRowCount = GetExpertDispatchRowCount(waveEnd.expertIdx);
             if (expertRowCount == 0U || waveEnd.rowOffsetInExpert >= expertRowCount) {
@@ -873,6 +893,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             uint32_t segmentRows = AdvanceWaveCursor(
                 waveEnd, expertRowCount, mGroupsPerWave_ - waveMGroupCount);
             waveMGroupCount += GetMGroupCountForRows(segmentRows, GMM1_TILE_M);
+            waveLogicalRowCount += segmentRows;
         }
 
         for (uint32_t expertIdx = waveBegin.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
@@ -898,6 +919,13 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                 segmentEnd - segmentBegin, segmentBegin);
         }
         dispatchCursor = waveEnd;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        MegaMoeWaveTraceDetail::EventScope traceScope{
+            waveIndex, waveBegin.expertIdx, waveBegin.rowOffsetInExpert,
+            waveLogicalRowCount, waveMGroupCount};
+        waveTrace_.Record(MegaMoeWaveTraceEvent::DISPATCH, traceScope,
+                          traceBegin, MegaMoeWaveTraceDetail::Now());
+#endif
     }
     return dispatchCursor;
 }
@@ -960,7 +988,7 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
     ExpertRowCursor &gmm1WaveCursor, Gmm1ExpertLoopState &gmm1ExpertState,
-    GMMAddrInfo &gmm1AddrInfo, Gmm1ActivationState &runtimeState)
+    GMMAddrInfo &gmm1AddrInfo, Gmm1ActivationState &runtimeState, uint32_t waveIndex)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -971,6 +999,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
     uint32_t processedMGroupCount = 0U;
     while (gmm1WaveCursor.expertIdx < moeExpertPerRank_ &&
            processedMGroupCount < mGroupsPerWave_) {
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t traceBegin = MegaMoeWaveTraceDetail::Now();
+#endif
         if (gmm1WaveCursor.rowOffsetInExpert == 0U) {
             PrepareMoeExpertGmm1State<false>(
                 gmm1Config_, params_.workspaceInfo, gmm1Scratch_, gmm1ExpertState,
@@ -989,6 +1020,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
             expertRowCount, gmm1WaveCursor.rowOffsetInExpert,
             remainingMGroupCount, GMM1_TILE_M);
         uint32_t waveRowCount = waveEndRowOffsetInExpert - gmm1WaveCursor.rowOffsetInExpert;
+        uint32_t segmentMGroupCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
         Gmm1ExpertLoopState gmm1ProblemState;
         SetGmm1ProblemState(gmm1ProblemState, gmm1ExpertState,
                             gmm1WaveCursor.rowOffsetInExpert, waveEndRowOffsetInExpert);
@@ -1007,13 +1039,29 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
         bool isWholeExpert =
             gmm1WaveCursor.rowOffsetInExpert == 0U &&
             static_cast<uint64_t>(waveEndRowOffsetInExpert) == expertRowCount;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        MegaMoeWaveTraceDetail::EventScope traceScope{
+            waveIndex, gmm1WaveCursor.expertIdx, gmm1WaveCursor.rowOffsetInExpert,
+            waveRowCount, segmentMGroupCount};
+        MegaMoeWaveTraceEvent parentEvent = g_coreType == AIC ?
+            MegaMoeWaveTraceEvent::GMM1 : MegaMoeWaveTraceEvent::ACTIVATION;
+        MegaMoeWaveTraceEvent waitEvent = g_coreType == AIC ?
+            MegaMoeWaveTraceEvent::WAIT_FOR_DISPATCH : MegaMoeWaveTraceEvent::WAIT_FOR_GMM1;
+        MegaMoeWaveTraceDetail::WaitContext waitContext =
+            waveTrace_.CreateWaitContext(waitEvent, parentEvent, traceScope);
+        gmm1AddrInfo.traceWaitContext = &waitContext;
+#endif
         RunGmm1ActivationByMode<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType,
                                 false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                                 GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, epilogueOp_, gmm1AddrInfo, gmm1ProblemState,
             runtimeState, gmm1WaveCursor.expertIdx, persistentBlockMmadContext_, isWholeExpert);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        gmm1AddrInfo.traceWaitContext = nullptr;
+        waveTrace_.Record(parentEvent, traceScope, traceBegin, MegaMoeWaveTraceDetail::Now());
+#endif
 
-        processedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
+        processedMGroupCount += segmentMGroupCount;
         gmm1WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
         if (gmm1WaveCursor.rowOffsetInExpert >= expertRowCount) {
             ++gmm1WaveCursor.expertIdx;
@@ -1027,7 +1075,7 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave(
     ExpertRowCursor &gmm2WaveCursor, const ExpertRowCursor &waveEndCursor,
     Gmm2ExpertLoopState &gmm2ExpertState, GMMAddrInfo &gmm2AddrInfo,
-    Gmm2RuntimeState &runtimeState)
+    Gmm2RuntimeState &runtimeState, uint32_t waveIndex)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -1037,6 +1085,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 
     while (!IsSameExpertRowCursor(gmm2WaveCursor, waveEndCursor) &&
            gmm2WaveCursor.expertIdx < moeExpertPerRank_) {
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t traceBegin = 0U;
+        if constexpr (g_coreType == AIC) {
+            traceBegin = MegaMoeWaveTraceDetail::Now();
+        }
+#endif
         if (gmm2WaveCursor.rowOffsetInExpert == 0U) {
             PrepareMoeExpertGmm2State<1U, 1U, 1U>(
                 gmm2Config_, gmm2Scratch_, gmm2ExpertState, gmm2WaveCursor.expertIdx);
@@ -1065,12 +1119,28 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
         bool isWholeExpert =
             gmm2WaveCursor.rowOffsetInExpert == 0U &&
             static_cast<uint64_t>(waveEndRowOffsetInExpert) == expertRowCount;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t waveRowCount = waveEndRowOffsetInExpert - gmm2WaveCursor.rowOffsetInExpert;
+        MegaMoeWaveTraceDetail::EventScope traceScope{
+            waveIndex, gmm2WaveCursor.expertIdx, gmm2WaveCursor.rowOffsetInExpert,
+            waveRowCount, GetMGroupCountForRows(waveRowCount, GMM1_TILE_M)};
+        MegaMoeWaveTraceDetail::WaitContext waitContext = waveTrace_.CreateWaitContext(
+            MegaMoeWaveTraceEvent::WAIT_FOR_ACTIVATION, MegaMoeWaveTraceEvent::GMM2, traceScope);
+        gmm2AddrInfo.traceWaitContext = &waitContext;
+#endif
         RunMoeExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationType,
                               Weight1Type, QuantScaleOutType, false, false,
                               GMM1_TILE_M, TopkWeightsPrefetch,
                               GMM1_INTERLEAVED, true, true>(
             gmm2Config_, params_, gmm2AddrInfo, gmm2ProblemState, runtimeState,
             persistentBlockMmadContext_, isWholeExpert);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        gmm2AddrInfo.traceWaitContext = nullptr;
+        if constexpr (g_coreType == AIC) {
+            waveTrace_.Record(MegaMoeWaveTraceEvent::GMM2, traceScope,
+                              traceBegin, MegaMoeWaveTraceDetail::Now());
+        }
+#endif
 
         gmm2WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
         if (gmm2WaveCursor.rowOffsetInExpert >= expertRowCount) {
@@ -1084,7 +1154,7 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineWave(
     ExpertRowCursor &combineCursor, const ExpertRowCursor &waveEndCursor,
     Gmm2ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
-    const CombineBufferConfig &bufferConfig)
+    const CombineBufferConfig &bufferConfig, uint32_t waveIndex)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -1093,7 +1163,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
         return;
     }
 
+    ExpertRowCursor waveBeginCursor = combineCursor;
     uint32_t waveLogicalRowCount = 0U;
+    uint32_t waveMGroupCount = 0U;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t traceBegin = MegaMoeWaveTraceDetail::Now();
+#endif
     for (uint32_t expertIdx = combineCursor.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
         if (expertIdx > waveEndCursor.expertIdx ||
             (expertIdx == waveEndCursor.expertIdx && waveEndCursor.rowOffsetInExpert == 0U)) {
@@ -1106,8 +1181,18 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
             waveEndCursor.rowOffsetInExpert : expertRowCount;
         if (rowEnd > rowBegin) {
             waveLogicalRowCount += rowEnd - rowBegin;
+            waveMGroupCount += GetMGroupCountForRows(rowEnd - rowBegin, GMM1_TILE_M);
         }
     }
+
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    MegaMoeWaveTraceDetail::EventScope traceScope{
+        waveIndex, waveBeginCursor.expertIdx, waveBeginCursor.rowOffsetInExpert,
+        waveLogicalRowCount, waveMGroupCount};
+    MegaMoeWaveTraceDetail::WaitContext waitContext = waveTrace_.CreateWaitContext(
+        MegaMoeWaveTraceEvent::WAIT_FOR_GMM2, MegaMoeWaveTraceEvent::COMBINE, traceScope);
+    combineAddrInfo.traceWaitContext = &waitContext;
+#endif
 
     WorkRange ownedWaveRows = GetWaveCombineOwnedRange(
         waveCombineConfig_, waveLogicalRowCount);
@@ -1185,6 +1270,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
         expertWaveRowBegin = expertWaveRowEnd;
     }
     DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    combineAddrInfo.traceWaitContext = nullptr;
+    waveTrace_.Record(MegaMoeWaveTraceEvent::COMBINE, traceScope,
+                      traceBegin, MegaMoeWaveTraceDetail::Now());
+#endif
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -1245,6 +1335,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertRowCursor combineCursor{};
     ExpertRowCursor preparedWaveEndCursor{};
     bool hasPreparedWave = false;
+    uint32_t waveIndex = 0U;
+    uint32_t dispatchWaveIndex = 0U;
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -1261,11 +1353,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                 if (hasPreparedWave) {
                     waveEndCursor = preparedWaveEndCursor;
                 } else {
-                    waveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
+                    waveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor, dispatchWaveIndex++);
                 }
                 // AIV1 先预取下一 wave，再等待并消费当前 wave 的 GMM2 输出。
                 if (waveEndCursor.expertIdx < moeExpertPerRank_) {
-                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor);
+                    preparedWaveEndCursor = DispatchWaveAndGetEndCursor(dispatchCursor, dispatchWaveIndex++);
                     hasPreparedWave = true;
                 } else {
                     preparedWaveEndCursor = waveEndCursor;
@@ -1273,11 +1365,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                 }
             } else {
                 waveEndCursor = ProcessGmm1Wave(
-                    gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+                    gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState, waveIndex);
             }
         } else {
             waveEndCursor = ProcessGmm1Wave(
-                gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+                gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState, waveIndex);
         }
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
@@ -1286,7 +1378,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
             startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
         ProcessGmm2Wave(
             gmm2WaveCursor, waveEndCursor, gmm2ExpertState, gmm2AddrInfo,
-            gmm2RuntimeState);
+            gmm2RuntimeState, waveIndex);
 
         const bool hasNextWave = waveEndCursor.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =
@@ -1298,8 +1390,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
         ProcessCombineWave(
             combineCursor, waveEndCursor, combineExpertState,
-            combineAddrInfo, combineBufferConfig);
+            combineAddrInfo, combineBufferConfig, waveIndex);
         waveBeginCursor = waveEndCursor;
+        ++waveIndex;
     }
 
     if constexpr (!TopkWeightsPrefetch) {
@@ -1385,6 +1478,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    waveTrace_.Finish();
+#endif
 }
 
 #undef TemplateMegaMoeWaveTypeClass

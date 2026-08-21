@@ -493,22 +493,50 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
                                Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        int32_t currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
+        if (targetLoops != static_cast<uint32_t>(currentValue)) {
+            uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
+            do {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+                currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
+            } while (targetLoops != static_cast<uint32_t>(currentValue));
+            MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
+        }
+#else
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
+#endif
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             GmmKernel::BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.activationTileM),
                                                             static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        int32_t currentValue = AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag);
+        if (targetLoops != static_cast<uint32_t>(currentValue)) {
+            uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
+            do {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+                currentValue = AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag);
+            } while (targetLoops != static_cast<uint32_t>(currentValue));
+            MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
+        }
+#else
         while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
+#endif
     }
 }
 
@@ -1316,11 +1344,25 @@ __aicore__ inline void WaitWaveGmm2GroupReady(
 {
     __gm__ int32_t *counterAddr =
         GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, groupIndex);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    int32_t currentValue = AscendC::ReadGmByPassDCache(counterAddr);
+    if (currentValue < static_cast<int32_t>(expectedTiles)) {
+        uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
+        do {
+            int64_t waitStart = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - waitStart < 100) {
+            }
+            currentValue = AscendC::ReadGmByPassDCache(counterAddr);
+        } while (currentValue < static_cast<int32_t>(expectedTiles));
+        MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
+    }
+#else
     while (AscendC::ReadGmByPassDCache(counterAddr) < static_cast<int32_t>(expectedTiles)) {
         int64_t waitStart = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - waitStart < 100) {
         }
     }
+#endif
 }
 
 template <uint8_t CombineMode>
