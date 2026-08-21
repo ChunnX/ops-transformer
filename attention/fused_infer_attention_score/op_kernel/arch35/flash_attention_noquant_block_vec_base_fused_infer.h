@@ -2013,6 +2013,22 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (splitD) {
         dSizeAligned64 = constInfo.dBasicBlock;
     }
+    if constexpr (IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<OUTPUT_T, int8_t>::value) {
+        const bool isPostQuantRouteDiagCase =
+            constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
+            constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
+            constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
+        if (isPostQuantRouteDiagCase && (runInfo.boIdx == 8 || runInfo.boIdx == 25)) {
+            AscendC::PRINTF("[FIA_DIAG][KERNEL][COPYOUT_ROUTE] core=%d sub=%u b=%ld n2=%ld g=%ld "
+                            "s1o=%ld sOuter=%ld actualS1=%ld vec2Idx=%ld vec2Base=%ld vec2Real=%ld "
+                            "vec2Calc=%ld postQuant=%d sameType=%d\n",
+                            constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx, runInfo.n2oIdx,
+                            runInfo.goIdx, runInfo.s1oIdx, runInfo.sOuterOffset, runInfo.actualS1Size,
+                            vec2S1Idx, runInfo.vec2S1BaseSize, runInfo.vec2S1RealSize, vec2CalcSize,
+                            static_cast<int32_t>(POST_QUANT),
+                            static_cast<int32_t>(IsSameType<INPUT_T, VEC2_RES_T>::value));
+        }
+    }
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
         if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
@@ -2034,14 +2050,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                     constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
                     constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
                     constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
-                if (isPostQuantDiagCase && (runInfo.boIdx == 8 || runInfo.boIdx == 25) &&
-                    runInfo.s1oIdx == 0 && vec2S1Idx == 0) {
-                    AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT_ROUTE] core=%d sub=%u b=%ld n2=%ld g=%ld "
-                                    "s1o=%ld sOuter=%ld actualS1=%ld vec2Base=%ld vec2Real=%ld\n",
-                                    constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx, runInfo.n2oIdx,
-                                    runInfo.goIdx, runInfo.s1oIdx, runInfo.sOuterOffset, runInfo.actualS1Size,
-                                    runInfo.vec2S1BaseSize, runInfo.vec2S1RealSize);
-                }
                 int64_t targetGs1 = -1;
                 int64_t diagDStart = 0;
                 int64_t diagDEnd = 0;
