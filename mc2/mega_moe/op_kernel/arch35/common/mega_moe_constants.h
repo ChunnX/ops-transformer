@@ -13,19 +13,12 @@
 
 #include <cstdint>
 
+#include "apace/utils/gmm_constants.h"
+
 namespace MegaMoeImpl {
 
-enum class MegaMoeActMode : uint8_t {
-    SWIGLU = 0U,
-    SITU = 1U,
-    SWIGLU_STEP = 2U,
-    SWIGLU_OAI = 3U,
-};
-
-enum class MegaMoeActSubMode : uint8_t {
-    DEFAULT = 0U,
-    LINEAR = 1U,
-};
+using MegaMoeActMode = Apace::Gemm::ActMode;
+using MegaMoeActSubMode = Apace::Gemm::ActSubMode;
 
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;

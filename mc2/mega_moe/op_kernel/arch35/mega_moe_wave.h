@@ -27,7 +27,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
-#include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "apace/block/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
@@ -45,6 +45,7 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+using Apace::Gemm::Block::BlockEpilogueActivationMxQuant;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeWaveTypeClass \
@@ -603,10 +604,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
         UpdateSharedExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType, QuantScaleOutType, false>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
             gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
-                                           GMM1_TILE_M, GMM1_INTERLEAVED, true>(
-            commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
-            sharedExpertIdx, nullptr, true);
+        RunGmm1ActivationByMode<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
+                                GMM1_TILE_M, L1_TILE_M_256, false, true, GMM1_INTERLEAVED, true>(
+            gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
+            sharedExpertIdx * commonConfig_.tokenNum, runtimeState, sharedExpertIdx, nullptr, true);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     vecSetSyncCom = 0;
