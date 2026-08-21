@@ -634,7 +634,8 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                         qfaInfo.opName, paraName.c_str(), DataTypeToSerialString(desc->GetDataType()).c_str(),
                         ("The dtype of " + paraName + " must be " + expectedDtypeStr + " when quant_mode is " +
-                         QfaQuantModeToSerialString(qfaInfo.quantMode))
+                         std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
+                         QfaQuantModeToSerialString(qfaInfo.quantMode) + ")")
                             .c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
@@ -785,7 +786,8 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
 
     const auto &config = it->second;
     const std::string qLayoutStr = QfaLayoutToSerialString(qfaInfo.qLayout);
-    const std::string quantModeStr = QfaQuantModeToSerialString(qfaInfo.quantMode);
+    const std::string quantModeStr = std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
+                                     QfaQuantModeToSerialString(qfaInfo.quantMode) + ")";
 
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), qfaInfo.kvLayout) ==
                     config.supportedKvLayouts.end(),
