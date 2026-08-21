@@ -30,11 +30,11 @@
 - **计算公式**：
 
   具体计算流程如下：
-  1. 各卡持有左矩阵本地分片`A_local[M_total, Ka]`，通过URMA all-to-all通信重分布得到`A_permuted[M_per_rank, K_total]`。
+  1. 各卡持有左矩阵本地分片`A_local[BS, H]`，通过URMA all-to-all通信重分布得到`A_permuted[BS/rankSize, H*rankSize]`。
   2. `A_permuted`结合`x1_scale`、`x2_scale`完成MX反量化，与右矩阵`X2`做矩阵乘法。
   3. 对矩阵乘法结果累加`bias`（可选），得到输出`Y`。
 
-  其中 M_per_rank = M_total / world_size，K_total = Ka × world_size。
+  其中 rankSize 为 NPU 卡数，即 world_size。
 
 ## 函数原型
 
@@ -54,7 +54,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
     x2_dtype=-1,
     x1_scale_dtype=-1,
     x2_scale_dtype=-1,
-    y_dtype=-1,
+    y_dtype=6,
     comm_mode=None,
     precision_mode=0,
 ) -> (Tensor, Tensor)
@@ -64,12 +64,12 @@ cann_ops_transformer.all_to_all_quant_matmul(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x1` | Tensor | 必选 | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`Ka/2`，需配合`x1_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(M_total, Ka)` |
-| `x2` | Tensor | 必选 | 右矩阵，对应公式中X2。MXFP4场景以uint8打包存储，实际传入的K轴大小为`K_total/2`，需配合`x2_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(K_total, N)` |
+| `x1` | Tensor | 必选 | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`H/2`，需配合`x1_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(BS, H)` |
+| `x2` | Tensor | 必选 | 右矩阵，对应公式中X2。MXFP4场景以uint8打包存储，实际传入的K轴大小为`H*rankSize/2`，需配合`x2_dtype=296`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(H*rankSize, N)` |
 | `group` | ProcessGroup | 必选 | torch.distributed通信域，用于All-to-All通信。 | - | - |
 | `bias` | Tensor | 可选 | 偏置项，矩阵乘后累加，默认值为`None`。 | `torch.float32` | `(N,)` |
-| `x1_scale` | Tensor | 可选 | `x1`的MX量化scale，默认值为`None`。 | `torch.float8_e8m0fnu` | `(M_total, ceil(Ka / 64), 2)` |
-| `x2_scale` | Tensor | 可选 | `x2`的MX量化scale，默认值为`None`。 | `torch.float8_e8m0fnu` | `(N, ceil(K_total / 64), 2)` |
+| `x1_scale` | Tensor | 可选 | `x1`的MX量化scale，默认值为`None`。 | `torch.float8_e8m0fnu` | `(BS, ceil(H / 64), 2)` |
+| `x2_scale` | Tensor | 可选 | `x2`的MX量化scale，默认值为`None`。 | `torch.float8_e8m0fnu` | `(N, ceil(H*rankSize / 64), 2)` |
 | `x1_quant_mode` | int | 可选 | `x1`量化模式，默认值为0；MX量化传6。 | int | - |
 | `x2_quant_mode` | int | 可选 | `x2`量化模式，默认值为0；MX量化传6。 | int | - |
 | `group_sizes` | List[int] | 可选 | MX量化group大小，默认值为`None`；MX场景传`[1, 1, 32]`。 | int | - |
@@ -77,7 +77,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | `x2_dtype` | int | 可选 | `x2`的dtype wrapper覆盖值，默认值为-1（使用tensor的dtype）；MXFP4场景传296。 | int | - |
 | `x1_scale_dtype` | int | 可选 | `x1_scale`的dtype wrapper覆盖值，默认值为-1；MX场景传293（e8m0）。 | int | - |
 | `x2_scale_dtype` | int | 可选 | `x2_scale`的dtype wrapper覆盖值，默认值为-1；MX场景传293（e8m0）。 | int | - |
-| `y_dtype` | int | 可选 | 输出`y`的数据类型，默认值为-1；15表示BF16，5表示FP16。 | int | - |
+| `y_dtype` | int | 可选 | 输出`y`的数据类型，默认值为fp32；未显式传15（BF16）或5（FP16）时会被算子校验拒绝。 | int | - |
 | `comm_mode` | str | 可选 | 通信模式，默认值为`None`；当前仅支持`"urma"`。 | string | - |
 | `precision_mode` | int | 可选 | 精度模式，默认值为0。0/1/2性能由低到高，精度由高到低。 | int | - |
 
@@ -85,8 +85,8 @@ cann_ops_transformer.all_to_all_quant_matmul(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `y` | Tensor | 必选 | 矩阵乘输出。 | 由`y_dtype`指定（BF16或FP16） | `(M_per_rank, N)` |
-| `all2all_out` | Tensor | 必选 | all-to-all通信中间输出，预留参数，暂不支持（返回空Tensor）。MXFP4场景与`x1`一致为uint8打包存储。 | 与`x1`相同 | `(M_per_rank, K_total)` |
+| `y` | Tensor | 必选 | 矩阵乘输出。 | 由`y_dtype`指定（BF16或FP16） | `(BS/rankSize, N)` |
+| `all2all_out` | Tensor | 可选 | all-to-all通信中间输出，预留参数，暂不支持（返回`None`）。 | - | `None` |
 
 ## 约束说明
 
@@ -94,8 +94,8 @@ cann_ops_transformer.all_to_all_quant_matmul(
 - 调用方式：该接口支持单算子模式调用，需要在多卡通信域下使用。
 - 仅支持Ascend 950系列产品。
 - `world_size`需为2、4、8、16之一。
-- `M_total`需能被`world_size`整除。
-- `Ka`需能被64整除，且`K_total = Ka × world_size`。
+- `BS`需能被`world_size`整除。
+- `H`需能被64整除。
 - `x1`、`x2`需为2D Tensor。
 - `x1`与`x2`需同为FP8或同为FP4。
 
@@ -119,15 +119,14 @@ cann_ops_transformer.all_to_all_quant_matmul(
   group = dist.new_group()
   world_size = dist.get_world_size()
 
-  M_total = 128
-  Ka = 128
+  BS = 128
+  H = 128
   N = 64
-  K_total = Ka * world_size
 
-  x1 = torch.randn(M_total, Ka).to(torch.float8_e4m3fn).npu()
-  x2 = torch.randn(K_total, N).to(torch.float8_e4m3fn).npu()
-  x1_scale = torch.randint(0, 256, (M_total, math.ceil(Ka / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
-  x2_scale = torch.randint(0, 256, (N, math.ceil(K_total / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
+  x1 = torch.randn(BS, H).to(torch.float8_e4m3fn).npu()
+  x2 = torch.randn(H * world_size, N).to(torch.float8_e4m3fn).npu()
+  x1_scale = torch.randint(0, 256, (BS, math.ceil(H / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
+  x2_scale = torch.randint(0, 256, (N, math.ceil(H * world_size / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
 
   y, all2all_out = cann_ops_transformer.all_to_all_quant_matmul(
       x1,
