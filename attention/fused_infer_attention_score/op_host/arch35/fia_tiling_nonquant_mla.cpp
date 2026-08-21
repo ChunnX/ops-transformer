@@ -365,6 +365,11 @@ void FiaTilingNonQuantMlaArch35::SplitPolicy()
 
     fiaInfo_->isExistRowInvalid =
         (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) || IsActualSeqLengthsKVHasZero(baseInfo));
+    // 行无效自动开启(对齐兜底模板FusedInferAttentionScoreTilingImpl): 存在mask行无效,
+    // 或 sparse=0+带mask+padding 时自动开, 与innerPrecise无关
+    isRowInvalidOpenAuto_ =
+        IsExistRowInvalid(baseInfo) || (baseInfo.sparseMode == SPARSE_MODE_NO_MASK && baseInfo.attenMaskFlag &&
+                                        (fiaInfo_->qPaddingSizeFlag || fiaInfo_->kvPaddingSizeFlag));
 }
 
 bool FiaTilingNonQuantMlaArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
@@ -623,7 +628,8 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = 1;
+    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen =
+        ((fiaInfo_->innerPrecise >> 1) & 1) || isRowInvalidOpenAuto_;
     tilingData_.baseTiling.fiaAttenMaskParams.isExistRowInvalid = fiaInfo_->isExistRowInvalid;
 
     tilingData_.baseTiling.fiaPseParams.pseS1Size = fiaInfo_->pseShiftS1;
