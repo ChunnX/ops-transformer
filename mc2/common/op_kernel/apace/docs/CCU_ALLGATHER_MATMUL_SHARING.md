@@ -32,12 +32,12 @@ all_gather_matmul_kernel<<<usedCoreNum, 0, streamAivAic>>>(
 
 ### 1.3 本算子做什么
 
-基于 `<<<>>>` 直调 CCU kernel 的能力，实现 **AllGather + Matmul 通算融合**：
+基于 `<<<>>>` 直调 CCU kernel 的能力，实现 **AllGather + MXFP8 Matmul 通算融合**：
 
-- 将 AllGather 拆成 `commTurn` 轮，每轮通信一个 tile
-- CCU kernel 内部循环 `commTurn` 次，每次完成一轮 AllGather
-- AIC 轮询通信完成信号，每轮通信完成后立即启动对应 tile 的 Matmul
-- **round d 的 Matmul 与 round d+1 的 AllGather 并行执行**（通算重叠）
+- scale 一次性全量 AllGather（所有 M 行 scale），data 按 `tileM` 分 `commTurn` 轮 AllGather
+- CCU kernel 内部循环 `commTurn+1` 次（1 次 scale + commTurn 次 data），每次完成一轮 AllGather
+- AIC 先轮询 scale done，再循环 `commTurn` 次：每轮 data 通信完成后立即启动对应 tile 的 MXFP8 Matmul
+- **round d 的 Matmul 与 round d+1 的 data AllGather 并行执行**（通算重叠）
 
 ---
 
@@ -52,13 +52,13 @@ all_gather_matmul_kernel<<<usedCoreNum, 0, streamAivAic>>>(
 ### 双流架构
 
 ```
-streamCcu      ──→  1 次 CCU kernel launch（kernel 内循环 commTurn 次 AllGather）
-streamAivAic   ──→  1 次 AIC kernel launch（轮询 CKE Event + commTurn 次 Matmul）
+streamCcu      ──→  1 次 CCU kernel launch（kernel 内循环 commTurn+1 次：1 次 scale AG + commTurn 次 data AG）
+streamAivAic   ──→  1 次 AIC kernel launch（轮询 CKE Event：scale done + commTurn 次 data done + MXFP8 Matmul）
 ```
 
 两条 stream 并行执行，通过 CKE Event 的 GM 后背地址实现跨流同步。
 
-> **MIX_AIC_1_1 配对**：AIC kernel 类型为 `KERNEL_TYPE_MIX_AIC_1_1`，需要 AIV+AIC 配对启动，但本算子中 AIV 分支空跑（`if ASCEND_IS_AIV { return; }`），实际工作全部在 AIC 侧完成。
+> **纯 AIC**：GemmUniversal（`kernel_qbmm_mx.h`）的 `Run` 内置 `if ASCEND_IS_AIV { return; }`，天然纯 AIC，无需声明 `KERNEL_TYPE_MIX_AIC_1_1`，不再浪费 AIV 核资源。
 
 ---
 
@@ -304,11 +304,14 @@ block 0 预写参数桥
 CCU kernel 每轮需要读取 10 个参数（sendBuf 地址、recvBuf 地址、token、inputOffset、outputOffset、sliceSize、goSize×4）。这些参数由 AIC block 0 通过 `WriteGmByPassDCache` 写入 Variable 的 GM 后背地址，CCU 通过 `vars[base + i]` 读取。
 
 ```
-Variable 布局（commTurn × 10 个，1 个 varHandle 管理）：
-  round 0: vars[0..9]    → startVa[0][0..9]
-  round 1: vars[10..19]  → startVa[1][0..9]
+Variable 布局（(commTurn+1) × 10 个，1 个 varHandle 管理）：
+  组 0 (scale round): vars[0..9]      → startVa[0][0..9]    // 全量 scale 通信参数
+  组 1 (data round 0): vars[10..19]   → startVa[1][0..9]    // tile0 data 通信参数
+  组 2 (data round 1): vars[20..29]   → startVa[2][0..9]    // tile1 data 通信参数
   ...
 ```
+
+> **两阶段通信**：组 0 是 scale AllGather（一次性全量 M 行 scale），组 1..commTurn 是 data AllGather（每轮 tileM 行 FP8 data）。scale 和 data 分别获取 token 和 goSize。
 
 AIC block 0 **一次性预写所有 round 的参数**（在 CCU 启动前全部写好），循环中不再写 Variable——这样所有 AIC 核（含 block 0）预写完成后立即进入轮询 + matmul 循环，全力参与 Blaze 多核切分计算，不会因为每轮写参数而打断计算流水。
 
@@ -316,38 +319,46 @@ AIC block 0 **一次性预写所有 round 的参数**（在 CCU 启动前全部�
 
 ## 5. 流水编排
 
-### 时序伪代码（commTurn=2 为例）
+### 时序伪代码（commTurn=2 为例，MXFP8 两阶段通信）
 
 ```
 streamAivAic (AIC)                        streamCcu (CCU)
 ─────────────────                       ─────────────────
 
 // block 0: 一次性预写 + 唤醒
+write startVa[0][0..9]                   // 预写 scale round 参数桥（组0）
 for d in [0, 1]:
-    write startVa[d][0..9]               // 预写每 round 参数桥
+    write startVa[d+1][0..9]             // 预写 data round 参数桥（组1..commTurn）
 write eventVa[0] = 1   ──────────────→   // wake 信号
 
-                                        EventWait(events[0])          // round 0: 等 wake
-                                        AllGather round 0
-                                        EventRecord(events[1]) ──→   
+                                        EventWait(events[0])          // scale round: 等 wake
+                                        AllGather scale（全量）
+                                        EventRecord(events[1]) ──→   // scale done
+
+poll eventVa[1] == 1  ←─────────────────   // 等 scale done（所有 scale 数据就绪）
+
+                                        // data round 0: 自动进入（无需再唤醒）
+                                        AllGather data round 0
+                                        EventRecord(events[2]) ──→
 
 // 所有核循环 commTurn 次
 // round 0:
-poll eventVa[1] == 1  ←─────────────────                          
-Matmul tile 0                          // round 1: 自动进入（无需再唤醒）
-                                       AllGather round 1
-                                       EventRecord(events[2]) ──→   // ← tile0 计算与 round1 通信并行 overlap
+poll eventVa[2] == 1  ←─────────────────
+MXFP8 Matmul tile 0                     // data round 1: 自动进入
+                                        AllGather data round 1
+                                        EventRecord(events[3]) ──→   // ← tile0 计算与 round1 通信并行 overlap
 
 // round 1:
-poll eventVa[2] == 1  ←─────────────────
-Matmul tile 1
+poll eventVa[3] == 1  ←─────────────────
+MXFP8 Matmul tile 1
 ```
 
 **关键时序约束**：
-1. AIC block 0 先预写所有 round 参数桥 + 写 wake，CCU 才能启动
-2. CCU 仅 round 0 `EventWait(events[0])` 等 wake，之后串行自动进入下一 round
-3. CCU 每轮 `EventRecord(events[d+1])` 通知 AIC，AIC 轮询到 done 后立即 matmul
-4. round d 的 matmul 与 round d+1 的通信并行 overlap（最后一轮 matmul 无通信可 overlap）
+1. AIC block 0 先预写所有 round 参数桥（scale 组 + data 组）+ 写 wake，CCU 才能启动
+2. CCU 仅 scale round 前 `EventWait(events[0])` 等 wake，之后串行自动进入下一 round
+3. CCU 先完成 scale AllGather（全量），再串行执行 commTurn 轮 data AllGather
+4. AIC 先轮询 scale done（eventVa[1]），再循环 commTurn 轮：轮询 data done（eventVa[d+2]）→ matmul
+5. round d 的 matmul 与 round d+1 的 data 通信并行 overlap（最后一轮 matmul 无通信可 overlap）
 
 ---
 
@@ -367,19 +378,20 @@ HcclResult PrepareAllGatherMatmul(...)
     CreateCcuInsWithEnabledDies(insHandle);                         // 创建 CCU 实例
     HcclCommAssignCcuIns(comm, insHandle);                          // 绑定到通信域
 
-    // 3. Variable：commTurn × 10 个（AIC 预写参数，CCU 每轮读取）
-    HcommCcuVariableAlloc(insHandle, DIE_ID, commTurn * 10, &varHandle);
-    for (d = 0; d < commTurn; d++)
+    // 3. Variable：(commTurn+1) × 10 个（组0=scale, 组1..commTurn=data）
+    HcommCcuVariableAlloc(insHandle, DIE_ID, (commTurn + 1) * 10, &varHandle);
+    for (d = 0; d < commTurn + 1; d++)
         for (i = 0; i < 10; i++)
             HcommCcuVariableGetAddr(varHandle, d * 10 + i, &mappedAddrs.startVa[d][i]);
 
-    // 4. Event：commTurn + 1 个（1 wake + commTurn done）
-    HcommCcuEventAlloc(insHandle, DIE_ID, commTurn + 1, &eventHandle);
-    for (i = 0; i < commTurn + 1; i++)
+    // 4. Event：commTurn + 2 个（1 wake + 1 scale done + commTurn data done）
+    HcommCcuEventAlloc(insHandle, DIE_ID, commTurn + 2, &eventHandle);
+    for (i = 0; i < commTurn + 2; i++)
         HcommCcuEventGetAddr(eventHandle, i, &mappedAddrs.eventVa[i]);
 
-    // 5. 内存 token + goSize + inputOffsets/outputOffsets → device GM
+    // 5. token + goSize + offsets → device GM（scale 和 data 分别获取）
     HcommCcuGetMemToken(sendBuf, inputSize, &token);
+    HcommCcuGetMemToken(sendScaleBuf, scaleInputSize, &scaleToken);
     // ...
 }
 ```
@@ -413,15 +425,17 @@ __ccu_host__ void CcuAllGatherMesh1DMem2MemKernel(CcuKernelArg arg)
     ccu::Array<ccu::Event> events(kernelArg->eventHandle, kernelArg->eventNum);
     ccu::Array<ccu::Variable> vars(kernelArg->varHandle, kernelArg->varNum);
 
-    for (uint32_t d = 0; d < kernelArg->commTurn; d++) {
+    // 两阶段循环：d=0 是 scale round，d=1..commTurn 是 data round
+    uint32_t totalRounds = kernelArg->commTurn + 1;
+    for (uint32_t d = 0; d < totalRounds; d++) {
         if (d == 0) {
-            ccu::EventWait(events[0]);  // 仅 round 0 等 AIC 唤醒
+            ccu::EventWait(events[0]);  // 仅 scale round 前 等 AIC 唤醒
         }
 
-        // 读 round d 的 10 个 Variable（AIC 预写的参数桥）
+        // 读 round d 的 10 个 Variable（组0=scale参数, 组1..commTurn=data参数）
         uint32_t base = d * HCOMM_HOST_TASK_ARG_NUM;
-        ctx.input                       = vars[base + 0];  // sendBuf 地址
-        ctx.output[rankId]              = vars[base + 1];  // recvBuf 地址
+        ctx.input                       = vars[base + 0];  // sendBuf/sendScaleBuf 地址
+        ctx.output[rankId]              = vars[base + 1];  // recvBuf/recvScaleBuf 地址
         ctx.token[rankId]               = vars[base + 2];  // token
         ctx.currentRankSliceInputOffset = vars[base + 3];  // inputOffset
         ctx.currentRankSliceOutputOffset= vars[base + 4];  // outputOffset
@@ -449,7 +463,7 @@ __ccu_host__ void CcuAllGatherMesh1DMem2MemKernel(CcuKernelArg arg)
             ccu::NotifyWait(channels[i], POST_SYNC_ID);
         }
 
-        // 通知 AIC：round d done
+        // 通知 AIC：round d done（d=0→events[1]=scale done, d=1→events[2]=data round0 done, ...）
         ccu::EventRecord(events[d + 1]);
     }
 }
@@ -483,20 +497,30 @@ static CcuResult ExecuteAllGatherTransfer(ctx)
 ```cpp
 __aicore__ inline void AicDirectPollProcess(...)
 {
-    // block 0 一次性预写所有 round 参数桥 + 写 wake
+    // block 0 一次性预写 (commTurn+1) 组参数桥 + 写 wake
     if (GetBlockIdx() == 0) {
+        // 组0: scale round 参数桥（sendScaleBuf, recvScaleBuf, scaleToken, ...）
+        WriteGmByPassDCache(startVa[0][0..9], scaleArgs);
+        // 组1..commTurn: data round 参数桥（sendBuf, recvBuf, token, ...）
         for (d = 0; d < commTurn; d++) {
-            WriteGmByPassDCache(startVa[d][0..9], taskArgs);  // 写参数桥
+            WriteGmByPassDCache(startVa[d+1][0..9], dataArgs);
         }
         WriteGmByPassDCache(eventVa[0], 1);                   // 写 wake，唤醒 CCU
     }
 
-    // 所有核（含 block 0）循环：轮询 done → matmul
+    // step 1: 所有核轮询 scale done（eventVa[1]）
+    while (ReadGmByPassDCache(eventVa[1]) != 1) {
+        Nop<800>();
+    }
+
+    // step 2: 所有核循环 commTurn 次：轮询 data done → MXFP8 matmul
     for (d = 0; d < commTurn; d++) {
-        while (ReadGmByPassDCache(eventVa[d+1]) != 1) {
+        while (ReadGmByPassDCache(eventVa[d+2]) != 1) {       // data round d done
             Nop<800>();  // 降频轮询
         }
-        MatmulProcess(recvBuf + d*tileABytes, weightBuf,
+        // MXFP8 matmul：A=recvBuf+偏移, scaleA=recvScaleBuf+偏移, B=weightBuf, scaleB=weightScaleBuf
+        MatmulProcess(recvBuf + d*tileABytes, recvScaleBuf + d*tileScaleABytes,
+                      weightBuf, weightScaleBuf,
                       outputBuf + d*tileCBytes, tilingData);
     }
 }
@@ -511,14 +535,14 @@ __aicore__ inline void AicDirectPollProcess(...)
 | 阶段一 | CCU AllGather 通信验证 | ✅ PASS |
 | 阶段二 | AllGather + Matmul 串联 | ✅ PASS |
 | 阶段三 | 通算并行流水（commTurn round overlap） | ✅ PASS |
+| 阶段四 | MXFP8 matmul + 纯 AIC + scale/data 两阶段通信 | ✅ PASS |
 
-**精度**：tile0 全 256.0，tile1 全 512.0（2 卡，M=512, tileM=256, commTurn=2, K=N=256, FP16→BF16）
+**精度**：tile0 全 256.0，tile1 全 512.0（2 卡，M=512, tileM=256, commTurn=2, K=N=256, FP8 E4M3FN + E8M0 scale → BF16）
 
-> **推导**：输入 A 前 256 行全 1.0、后 256 行全 2.0，B 全 1.0，K=256。C = A×B = 256×1.0=256.0（tile0）、256×2.0=512.0（tile1）。两 rank 数据相同，AllGather 后结果一致。
+> **推导**：输入 A 前 256 行 FP8=1.0(0x38)、后 256 行 FP8=2.0(0x40)，B 全 1.0，scaleA/scaleB 全 E8M0=127(2^0=1.0)，K=256。C = dequant(A)×dequant(B) = 256×1.0=256.0（tile0）、256×2.0=512.0（tile1）。两 rank 数据相同，AllGather 后结果一致。
 
 ---
 
 ## 8. 后续展望
 
-- **阶段四**：适配 MX FP8，完成 scale 和 x1 分别通信
 - **阶段五**：验证是否可测试性能？和性能测试及优化
