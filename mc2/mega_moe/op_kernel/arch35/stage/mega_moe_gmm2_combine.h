@@ -339,20 +339,11 @@ __aicore__ inline bool IsWaveCombineWorker()
     return UseAllAivCores || GetSubBlockIdx() == 1U;
 }
 
-// 常规 Wave 只使用每个 AIC 配对的 AIV1；最后一轮把同组 AIV0/AIV1 展开成两个独立任务。
-template <bool UseAllAivCores>
-__aicore__ inline AivJobContext GetWaveCombineJob(const WaveCombineConfig &context)
-{
-    if constexpr (UseAllAivCores) {
-        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
-        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
-        return {context.job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx,
-                context.job.totalJobs * AIV_CORE_COUNT_PER_AIC};
-    }
-    return context.job;
-}
-
-// 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
+/*
+ * 先按已验证的 AIC/AIV pair 粒度滚动分配专家行，最终 Combine 再将每个 pair 的连续区间
+ * 二分给 AIV1/AIV0。AIV1 先取行，因此 pair 只有一行时完全保持原路径；只有第二行起才启用 AIV0。
+ * 这样全核执行是 36-pair ownership 的精化，不会因重新构造 72-core 全局编号改变行所属的 pair。
+ */
 template <bool UseAllAivCores = false>
 __aicore__ inline WorkRange GetWaveCombineOwnedRange(const WaveCombineConfig &context, uint32_t tokenCount,
                                                      uint64_t expertRowPrefix)
@@ -363,15 +354,27 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const WaveCombineConfig &co
     if (!IsWaveCombineWorker<UseAllAivCores>()) {
         return {};
     }
-    AivJobContext combineJob = GetWaveCombineJob<UseAllAivCores>(context);
-    if (combineJob.totalJobs == 0U || combineJob.jobIndex >= combineJob.totalJobs) {
+    if (context.job.totalJobs == 0U || context.job.jobIndex >= context.job.totalJobs) {
         return {};
     }
-    uint32_t firstOwnerJob = expertRowPrefix % combineJob.totalJobs;
-    uint32_t logicalJobIndex = combineJob.jobIndex >= firstOwnerJob ?
-                                   combineJob.jobIndex - firstOwnerJob :
-                                   combineJob.jobIndex + combineJob.totalJobs - firstOwnerJob;
-    return GetBalancedTokenRange(tokenCount, logicalJobIndex, combineJob.totalJobs);
+    uint32_t firstOwnerPair = expertRowPrefix % context.job.totalJobs;
+    uint32_t logicalPairIndex = context.job.jobIndex >= firstOwnerPair ?
+                                    context.job.jobIndex - firstOwnerPair :
+                                    context.job.jobIndex + context.job.totalJobs - firstOwnerPair;
+    WorkRange pairRange = GetBalancedTokenRange(tokenCount, logicalPairIndex, context.job.totalJobs);
+    if constexpr (!UseAllAivCores) {
+        return pairRange;
+    }
+
+    constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
+    uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+    if (subBlockIdx >= AIV_CORE_COUNT_PER_AIC) {
+        return {};
+    }
+    // AIV1 保留原 pair 区间的第一半；AIV0 从第二半开始分担。
+    uint32_t logicalSubBlockIdx = AIV_CORE_COUNT_PER_AIC - 1U - subBlockIdx;
+    WorkRange subBlockRange = GetBalancedTokenRange(pairRange.count, logicalSubBlockIdx, AIV_CORE_COUNT_PER_AIC);
+    return {pairRange.start + subBlockRange.start, subBlockRange.count};
 }
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
