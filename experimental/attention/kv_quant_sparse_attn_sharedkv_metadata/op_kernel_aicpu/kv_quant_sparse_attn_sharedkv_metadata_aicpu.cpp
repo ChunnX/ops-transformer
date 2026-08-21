@@ -201,13 +201,34 @@ uint32_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
     return static_cast<uint32_t>(kvSeqSize_);
 }
 
+int64_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetNeedInitS1Size(uint32_t bIdx)
+{
+    if (layoutQuery_ == "TND") {
+        const int32_t *s1Ptr = static_cast<const int32_t*>(actSeqLenQ_->GetData());
+        return static_cast<int64_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
+    }
+    return static_cast<int64_t>(querySeqSize_);
+}
+
+int64_t KvQuantSparseAttnSharedkvMetadataCpuKernel::GetNeedInitS2Size(uint32_t bIdx)
+{
+    const int32_t *s2Ptr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+    return static_cast<int64_t>(s2Ptr[bIdx]);
+}
+
 void KvQuantSparseAttnSharedkvMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
+    needInit_ = 0U;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
+        int64_t needInitS1Size = GetNeedInitS1Size(bIdx);
+        int64_t needInitS2Size = GetNeedInitS2Size(bIdx);
+        if (needInitS1Size > needInitS2Size) {
+            needInit_ = 1U;
+        }
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -890,6 +911,7 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::BalanceSchedule(SplitResult &sp
 bool KvQuantSparseAttnSharedkvMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
     optiling::detail::SasMetadata* metadataPtr = (optiling::detail::SasMetadata*)metadata_->GetData();
+    metadataPtr->globalMetadata[GLOBAL_NEED_INIT_INDEX] = needInit_;
 
     // FA Metadata Generate
     if (isN128) {

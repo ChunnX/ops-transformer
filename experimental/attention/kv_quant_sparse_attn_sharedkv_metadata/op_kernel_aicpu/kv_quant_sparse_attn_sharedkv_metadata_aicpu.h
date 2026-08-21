@@ -299,6 +299,8 @@ private:
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
+    int64_t GetNeedInitS1Size(uint32_t bIdx);
+    int64_t GetNeedInitS2Size(uint32_t bIdx);
     int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
@@ -381,6 +383,7 @@ private:
     bool isCFA = false;
     bool isSCFA = false;
     bool supportFd = false;
+    uint32_t needInit_ {0U};
     uint32_t sparseMode_ = 0;
     uint32_t attentionMode_ = 1;
     BlockCost<int64_t> typeCost_;
