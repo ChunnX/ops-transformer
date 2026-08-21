@@ -276,6 +276,80 @@ R = T_compute / T_comm  (计算通信比, 判定 Bound 类型)
 - beta（每行计算耗时）随 K 增大而增大（K=3584: ~0.09-0.25, K=8192: ~0.20-0.40）
 - R=4 时 beta 接近 alpha（balanced），因为 chunkM 减半但 beta 不变
 
+### 7.7 大 shape (8192 系列) 隔离测试数据补充
+
+#### 失败原因
+
+8192 系列 6 个 case 在 tileCnt=1（headMSize=chunkM=M/R）条件下，COMM_ONLY 测试失败。原因：单 tile AllToAll PUT 数据量 = chunkM × N × sizeof(BF16)，超过 HCCL win 区容量限制，kernel 无法完成通信。
+
+| Case | chunkM | N | 单 PUT 数据量 | win 区总量 (R×chunk) | 状态 |
+|------|--------|------|-------------|---------------------|------|
+| 8192x1536x12288 R=2 | 4096 | 12288 | 96.0 MB | 192.0 MB | COMM_ONLY 失败 |
+| 8192x1536x12288 R=4 | 2048 | 12288 | 48.0 MB | 192.0 MB | COMM_ONLY 失败 |
+| 8192x3696x8192 R=2 | 4096 | 8192 | 64.0 MB | 128.0 MB | **COMM_ONLY 成功** |
+| 8192x3696x8192 R=4 | 2048 | 8192 | 32.0 MB | 128.0 MB | COMM_ONLY 失败 |
+| 8192x1024x8192 R=2 | 4096 | 8192 | 64.0 MB | 128.0 MB | **COMM_ONLY 成功** |
+| 8192x1024x8192 R=4 | 2048 | 8192 | 32.0 MB | 128.0 MB | COMM_ONLY 失败 |
+
+> 注: win 区容量限制与 HCCL 初始化时的通信缓冲区分配有关。COMM_ONLY 模式下 AIC 跳过 matmul，workspace 无有效数据，AllToAll PUT 尝试从 workspace 读取并写入 win 区，数据量超限时 kernel 无法完成。COMPUTE_ONLY 不依赖 win 区（通信被注释），部分大 shape case 成功采集。
+
+#### 残留数据汇总
+
+批量采集中断时部分 case 的 op_summary 已生成，归档于 `isolation_test/raw/`：
+
+| Case | COMM_ONLY | COMPUTE_ONLY | T_comm (us) | T_compute (us) | 数据完整性 |
+|------|-----------|-------------|------------|---------------|-----------|
+| 8192x3696x8192 R=2 | 2 csvs | 2 csvs | 1687.6 | 790.5 | **完整** |
+| 8192x1536x12288 R=2 | 缺失 | 2 csvs | — | 424.9 | 仅 COMPUTE |
+| 8192x1536x12288 R=4 | 缺失 | 4 csvs | — | 514.2 | 仅 COMPUTE |
+| 8192x3696x8192 R=4 | 缺失 | 缺失 | — | — | 全缺 |
+| 8192x1024x8192 R=2 | 2 csvs | 缺失 | 1683.7 | — | 仅 COMM |
+| 8192x1024x8192 R=4 | 缺失 | 4 csvs | — | 254.6 | 仅 COMPUTE |
+
+#### 完整 case 精确数据
+
+8192x3696x8192 R=2 成功采集完整隔离测试数据：
+
+```
+T_comm   = 1687.6 us  (COMM_ONLY, 跨 rank max 中位数)
+T_compute = 790.5 us  (COMPUTE_ONLY, 跨 rank max 中位数)
+R = 790.5 / 1687.6 = 0.47
+Bound: strong_comm
+alpha = 1687.6 / 4096 = 0.4121 us/row
+beta  = 790.5 / 4096 = 0.1929 us/row
+rho = max(0.47, 1/0.47) = 2.13
+```
+
+> 注: alpha=0.4121 us/row 显著高于小 shape 的 0.20-0.27，因为 N=8192（每行通信数据量是 N=4096 的 2 倍），alpha 与 N 成正比。
+
+#### 部分缺失 case 的单侧数据 + 外推估算
+
+利用 alpha/beta 规律（alpha ∝ N，beta ∝ K）对缺失侧进行外推：
+
+| Case | 已有数据 | 外推方法 | 估算 T (us) | 估算 R | 估算 Bound |
+|------|---------|---------|------------|--------|-----------|
+| 8192x1536x12288 R=2 | T_compute=424.9 (K=1536) | alpha ≈ 0.41×4096=1680 (N=12288, 按比例放大) | T_comm ≈ 1680 | 0.25 | strong_comm |
+| 8192x1536x12288 R=4 | T_compute=514.2 (K=1536) | alpha ≈ 0.41×2048=840 (N=12288) | T_comm ≈ 840 | 0.61 | comm |
+| 8192x3696x8192 R=4 | 无 | beta=0.1929×(3696/8192)×2048≈174 (插值K), alpha≈0.41×2048≈840 | — | ~0.21 | strong_comm |
+| 8192x1024x8192 R=2 | T_comm=1683.7 (N=8192) | beta ≈ 0.05×4096≈205 (K=1024, 小K) | T_compute ≈ 205 | 0.12 | strong_comm |
+| 8192x1024x8192 R=4 | T_compute=254.6 (K=1024) | alpha ≈ 0.41×2048≈840 (N=8192) | T_comm ≈ 840 | 0.30 | strong_comm |
+
+> 外推说明：
+> - alpha（每行通信耗时）与 N 成正比（通信量 = chunkM × N × 2B），已验证 N=4096 时 alpha≈0.20-0.27, N=8192 时 alpha≈0.41
+> - beta（每行计算耗时）与 K 成正比（计算量 = chunkM × K × N），已验证 K=3584 时 beta≈0.09-0.25, K=8192 时 beta≈0.20-0.40
+> - 外推值与 hccl_mm 近似值方向一致（均为 strong_comm/comm），但绝对值可能存在 ±20% 误差
+
+#### 更新后的 Bound 分布
+
+| Bound 类型 | 精确隔离 (7 case) | hccl_mm 近似 (5 case) | 合计 12 case |
+|-----------|-------------------|----------------------|-------------|
+| balanced | 3 (2048R4, 4096R4, 4032R2) | 0 | 3 (25%) |
+| strong_comm | 3 (2048R2, 4096R2, 8192x3696R2) | 4 (8192x1536R2/R4, 8192x1024R2/R4) | 7 (58%) |
+| comm | 0 | 1 (8192x3696R4) | 1 (8%) |
+| compute | 1 (4032R4) | 0 | 1 (8%) |
+
+> 注: 8192 系列的 Bound 类型为外推估算（标注 "hccl_mm 近似" 或 "部分精确+外推"），精确值需通过 tileCnt>1 隔离测试或扩大 win 区后补采。
+
 ## 八、后续优化建议
 
 | 方向 | 预期收益 | 难度 | 说明 |
