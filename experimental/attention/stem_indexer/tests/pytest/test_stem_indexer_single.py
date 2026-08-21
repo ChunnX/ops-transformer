@@ -28,8 +28,7 @@ from test_stem_indexer_paramset import ENABLED_PARAMS  # noqa: E402
 EXEC_MODE = os.environ.get("STEM_INDEXER_MODE", "eager").strip().lower()
 if EXEC_MODE not in ("eager", "graph"):
     raise ValueError(
-        f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. "
-        "Expected 'eager' or 'graph'."
+        f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. Expected 'eager' or 'graph'."
     )
 _IS_GRAPH_MODE = EXEC_MODE == "graph"
 

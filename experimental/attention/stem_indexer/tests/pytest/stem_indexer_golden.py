@@ -45,9 +45,12 @@ def ceil_div(value, factor):
 
 def get_metadata_size(batch_size, kv_heads):
     max_section_num = int(batch_size) * int(kv_heads)
-    metadata_size = METADATA_HEADER_SIZE + max_section_num * (
-        METADATA_AIC_CORE_NUM + METADATA_AIV_CORE_NUM
-    ) * METADATA_CORE_STRIDE
+    metadata_size = (
+        METADATA_HEADER_SIZE
+        + max_section_num
+        * (METADATA_AIC_CORE_NUM + METADATA_AIV_CORE_NUM)
+        * METADATA_CORE_STRIDE
+    )
     return ceil_div(metadata_size, METADATA_ALIGN_SIZE) * METADATA_ALIGN_SIZE
 
 
