@@ -48,12 +48,11 @@ protected:
     {
         // BAB 模板适用条件:
         // 1. Regbase soc (ascend950)
-        // 2. BSND layout 且 cosb == 1 (1S1D广播模式), 或 TND layout (退化为 B=1 的 BSND)
-        if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
-            ((layout_ == ApplyRopeGradLayout::BSND && cosb_ == 1) || isTndLayout_)) {
-            return true;
-        }
-        return false;
+        // 2. BSND layout 且 cosb == 1 (1S1D广播模式)
+        //    TND 已退化为 B=1 的 BSND: N 轴>1 时 layout=BSND 进入本模板;
+        //    shape 完全一致 (B=1, N=1) 时 layout=NO_BROADCAST 走 A 模板, 不在此列
+        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
+               layout_ == ApplyRopeGradLayout::BSND && cosb_ == 1;
     }
 
 private:

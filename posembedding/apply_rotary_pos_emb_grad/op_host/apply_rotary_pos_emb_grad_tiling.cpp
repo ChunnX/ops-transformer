@@ -84,25 +84,20 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::GetPlatformInfo()
 
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::CheckNullptr()
 {
-    // grad_cos/grad_sin may be nullptr when query/key are absent
-    int64_t checkInputIndexRange = KEY_INDEX;
-    int64_t checkOutputIndexRange = GRAD_SIN_INDEX;
-    if (context_->GetInputShape(QUERY_INDEX) == nullptr) {
-        checkInputIndexRange = SIN_INDEX;
-        checkOutputIndexRange = GRAD_K_INDEX;
+    // optional inputs: query and key must both be present or both absent
+    bool hasQuery = context_->GetInputShape(QUERY_INDEX) != nullptr;
+    bool hasKey = context_->GetInputShape(KEY_INDEX) != nullptr;
+    if (hasQuery != hasKey) {
+        OP_LOGE(context_, "query and key must both be present or both absent.");
+        return ge::GRAPH_FAILED;
     }
+    // grad_cos/grad_sin may be nullptr when query/key are absent
+    int64_t checkInputIndexRange = hasQuery ? KEY_INDEX : SIN_INDEX;
+    int64_t checkOutputIndexRange = hasQuery ? GRAD_SIN_INDEX : GRAD_K_INDEX;
 
     for (int64_t i = 0; i <= checkInputIndexRange; i++) {
-        if (i == QUERY_INDEX || i == KEY_INDEX) {
-            // optional inputs: both must be present or both absent
-            if (context_->GetInputShape(QUERY_INDEX) != nullptr &&
-                context_->GetInputShape(KEY_INDEX) == nullptr) {
-                OP_LOGE(context_, "query and key must both be present or both absent.");
-                return ge::GRAPH_FAILED;
-            }
-            if (context_->GetInputShape(i) == nullptr) {
-                continue;
-            }
+        if ((i == QUERY_INDEX || i == KEY_INDEX) && context_->GetInputShape(i) == nullptr) {
+            continue;
         }
         auto desc = context_->GetInputDesc(i);
         OP_CHECK_IF(
@@ -228,7 +223,12 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::ValidateBroadcastByLayo
         nQ_ = gqShape.GetDim(DIM_1);
         nK_ = gkShape.GetDim(DIM_1);
         d_  = gqShape.GetDim(DIM_2);
-        layout_ = ApplyRopeGradLayout::BSND; // TND → BAB template
+        // TND 退化为 BSND, 若 shape 完全一致 (B=1, N=1) → NO_BROADCAST (A 模板)
+        if (nQ_ == 1 && nK_ == 1) {
+            layout_ = ApplyRopeGradLayout::NO_BROADCAST;
+        } else {
+            layout_ = ApplyRopeGradLayout::BSND; // TND → BAB template
+        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -284,6 +284,15 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::ValidateBroadcastByLayo
         int64_t cosS = cosShape.GetDim(DIM_0);
         int64_t cosB = cosShape.GetDim(DIM_1);
         int64_t cosN = cosShape.GetDim(DIM_2);
+        nQ_ = gqShape.GetDim(DIM_2);
+        nK_ = gkShape.GetDim(DIM_2);
+        d_  = gqShape.GetDim(DIM_3);
+        // cos 与 gq 所有轴完全一致 (含 gk 的 N 轴) → 无广播, 回落 NO_BROADCAST (A 模板)
+        if (gqS == cosS && gqB == cosB && cosN == nQ_ && nK_ == nQ_) {
+            b_ = gqB; s_ = gqS; cosb_ = cosB;
+            layout_ = ApplyRopeGradLayout::NO_BROADCAST;
+            return ge::GRAPH_SUCCESS;
+        }
         if (cosN != 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
                 ToString(cosShape).c_str(), "For SBND layout, cos N axis must be 1");
@@ -300,9 +309,6 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::ValidateBroadcastByLayo
             return ge::GRAPH_FAILED;
         }
         b_ = gqB; s_ = gqS; cosb_ = cosB;
-        nQ_ = gqShape.GetDim(DIM_2);
-        nK_ = gkShape.GetDim(DIM_2);
-        d_  = gqShape.GetDim(DIM_3);
         // SBND → AB template
         layout_ = ApplyRopeGradLayout::SBND;
         return ge::GRAPH_SUCCESS;
@@ -767,14 +773,15 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
         opInput.inputDtype = ge::DT_FLOAT;
         opInput.shape[opInput.shape.size() - 2] = std::max(nQ_, nK_);
     }
-    if (reduceInputFloat_ && dtype_ == ge::DT_FLOAT) {
+    // InT=workspace 部分积 dtype, OutT=op dtype (grad_cos/grad_sin), PromoteT 恒为 fp32。
+    // 原 4 路分支中 <float,float,float> 出现两次 (reduceInputFloat_ 且 op=fp32 / 非reduceInputFloat_ 且 op=fp32),
+    // 因 reduceInputFloat_ 时 inputDtype 被强制为 FLOAT、非 reduceInputFloat_ 时 inputDtype==dtype_,
+    // 两类可等价合并为 `dtype_ == FLOAT` 单分支。
+    if (dtype_ == ge::DT_FLOAT) {
         status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float, float>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     } else if (reduceInputFloat_) {
         status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, Ops::Base::half, float>::OpDag>(
-            context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
-    } else if (ge::GetSizeByDataType(opInput.inputDtype) == sizeof(float)) {
-        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float, float>::OpDag>(
             context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
     } else {
         status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<Ops::Base::half, Ops::Base::half, float>::OpDag>(
