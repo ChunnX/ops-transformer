@@ -55,6 +55,7 @@ __aicore__ inline void EngramFetchGradSyncFunc()
 
 constexpr uint32_t ENGRAM_GRAD_TIMEOUT_US = 5U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
+constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 
 class EngramFetchGradArch35 {
 public:
@@ -530,9 +531,18 @@ __aicore__ inline uint32_t EngramFetchGradArch35::LoadGradChunk(int64_t pos, int
 
         uint64_t srcOff = static_cast<uint64_t>(runStartIdx) * static_cast<uint64_t>(hiddenBytes_);
         uint64_t dstOff = static_cast<uint64_t>(j) * static_cast<uint64_t>(hiddenBytes_);
-        uint32_t runBytes = runLen * static_cast<uint32_t>(hiddenBytes_);
-        DataCopyExtParams gParams{1U, runBytes, 0U, 0U, 0U};
-        DataCopyPad(buf[dstOff], srcGm[srcOff], gParams, gPad);
+        uint64_t runBytesLeft = static_cast<uint64_t>(runLen) * static_cast<uint64_t>(hiddenBytes_);
+        uint64_t curSrcOff = srcOff;
+        uint64_t curDstOff = dstOff;
+        while (runBytesLeft > 0) {
+            uint32_t chunkBytes =
+                (runBytesLeft > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(runBytesLeft);
+            DataCopyExtParams gParams{1U, chunkBytes, 0U, 0U, 0U};
+            DataCopyPad(buf[curDstOff], srcGm[curSrcOff], gParams, gPad);
+            curSrcOff += chunkBytes;
+            curDstOff += chunkBytes;
+            runBytesLeft -= chunkBytes;
+        }
 
         j += runLen;
     }
@@ -548,9 +558,16 @@ __aicore__ inline void EngramFetchGradArch35::StoreGradChunk(int64_t base, uint3
     GlobalTensor<uint8_t> dstGm;
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)gradSortedGM_);
     uint64_t dstOff = static_cast<uint64_t>(base) * static_cast<uint64_t>(hiddenBytes_);
-    uint32_t bytes = static_cast<uint32_t>(count) * static_cast<uint32_t>(hiddenBytes_);
-    DataCopyExtParams sParams{1U, bytes, 0U, 0U, 0U};
-    DataCopyPad(dstGm[dstOff], buf, sParams);
+    uint64_t totalBytes = static_cast<uint64_t>(count) * static_cast<uint64_t>(hiddenBytes_);
+    uint64_t srcOff = 0;
+    constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
+    while (totalBytes > 0) {
+        uint32_t chunkBytes = (totalBytes > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(totalBytes);
+        DataCopyExtParams sParams{1U, chunkBytes, 0U, 0U, 0U};
+        DataCopyPad(dstGm[dstOff + srcOff], buf[srcOff], sParams);
+        srcOff += chunkBytes;
+        totalBytes -= chunkBytes;
+    }
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
 }
 
@@ -972,23 +989,15 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     DataCopyPad(recvCountsUb, recvCountsOutGM, rcParams, pad);
     EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
 
-    uint32_t countsBytesAligned = Ceil((sendCountsInts + numRanks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    LocalTensor<int64_t> displsUb = tempUb[countsBytesAligned / sizeof(int32_t)].ReinterpretCast<int64_t>();
-    LocalTensor<int64_t> sdisplsUb = displsUb;
-    LocalTensor<int64_t> rdisplsUb = displsUb[numRanks_];
-
     int64_t sAccum = 0;
     int64_t rAccum = 0;
+    LocalTensor<int64_t> stridedUb = tempBuf_.Get<int64_t>();
+    constexpr uint32_t strideInt64 = UB_ALIGN / sizeof(int64_t);
     for (uint32_t r = 0; r < numRanks_; r++) {
-        sdisplsUb.SetValue(r, sAccum);
-        rdisplsUb.SetValue(r, rAccum);
+        stridedUb.SetValue(r * strideInt64, sAccum);
+        stridedUb.SetValue(numRanks_ * strideInt64 + r * strideInt64, rAccum);
         sAccum += static_cast<int64_t>(tempUb.GetValue(r * SENDCOUNT_STRIDE_RATIO));
         rAccum += static_cast<int64_t>(recvCountsUb.GetValue(r));
-    }
-
-    LocalTensor<int64_t> stridedUb = tempBuf_.Get<int64_t>();
-    for (uint32_t r = 0; r < numRanks_; r++) {
-        stridedUb.SetValue(r * (UB_ALIGN / sizeof(int64_t)), sdisplsUb.GetValue(r));
     }
     EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
 
@@ -996,17 +1005,11 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     sdisplsGM.SetGlobalBuffer((__gm__ int64_t *)sdisplsGM_);
     DataCopyParams sdParams = {static_cast<uint16_t>(numRanks_), static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
     DataCopyPad(sdisplsGM, stridedUb, sdParams);
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-
-    for (uint32_t r = 0; r < numRanks_; r++) {
-        stridedUb.SetValue(r * (UB_ALIGN / sizeof(int64_t)), rdisplsUb.GetValue(r));
-    }
-    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
 
     GlobalTensor<int64_t> rdisplsGM;
     rdisplsGM.SetGlobalBuffer((__gm__ int64_t *)rdisplsGM_);
     DataCopyParams rdParams = {static_cast<uint16_t>(numRanks_), static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
-    DataCopyPad(rdisplsGM, stridedUb, rdParams);
+    DataCopyPad(rdisplsGM, stridedUb[numRanks_ * strideInt64], rdParams);
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
@@ -1066,8 +1069,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
         InitFlagsAndDispls();
-        SyncAll<true>();
-
         ClearWinCounters();
         SyncAll<true>();
 
