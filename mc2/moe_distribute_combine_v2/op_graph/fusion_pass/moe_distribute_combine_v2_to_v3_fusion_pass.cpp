@@ -40,17 +40,17 @@ constexpr size_t kV2RequiredInputs = 5;
 
 // V2 原型输入名（def 顺序），用于 compact 构图（老 torchair 可选输入为 None 时不占位）下按名解析本地索引
 const std::vector<std::string> V2_IR_INPUT_NAMES = {
-    "expand_x", "expert_ids", "assist_info_for_combine", "ep_send_counts",
-    "expert_scales", "tp_send_counts", "x_active_mask", "activation_scale",
-    "weight_scale", "group_list", "expand_scales", "shared_expert_x",
-    "elastic_info", "ori_x", "const_expert_alpha_1", "const_expert_alpha_2",
+    "expand_x",       "expert_ids",      "assist_info_for_combine", "ep_send_counts",
+    "expert_scales",  "tp_send_counts",  "x_active_mask",           "activation_scale",
+    "weight_scale",   "group_list",      "expand_scales",           "shared_expert_x",
+    "elastic_info",   "ori_x",           "const_expert_alpha_1",    "const_expert_alpha_2",
     "const_expert_v", "performance_info"};
 
 const std::vector<std::string> REQUIRED_INT_ATTRS = {"ep_world_size", "ep_rank_id", "moe_expert_num"};
 const std::vector<std::string> OPTIONAL_INT_ATTRS = {
-    "tp_world_size", "tp_rank_id", "expert_shard_type", "shared_expert_num",
-    "shared_expert_rank_num", "global_bs", "out_dtype", "comm_quant_mode",
-    "group_list_type", "zero_expert_num", "copy_expert_num", "const_expert_num"};
+    "tp_world_size",          "tp_rank_id",      "expert_shard_type", "shared_expert_num",
+    "shared_expert_rank_num", "global_bs",       "out_dtype",         "comm_quant_mode",
+    "group_list_type",        "zero_expert_num", "copy_expert_num",   "const_expert_num"};
 const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
 
 // 运行时按 ge_compiler 版本决定注册 stage：9.0.0 之前的老 toolkit 没有 kCompatibleInherited 枚举，
@@ -273,6 +273,10 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    ge::AscendString graphName;
+    (void)graph->GetName(graphName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter fusion pass %s, graph %s", FUSION_PASS_NAME.c_str(),
+              graphName.GetString());
     // 9.0.0 版本前运行降级空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);

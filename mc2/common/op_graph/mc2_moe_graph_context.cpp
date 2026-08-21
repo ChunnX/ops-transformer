@@ -350,10 +350,6 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
         }
         context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
     }
-    // [lijd-dbg] 定位整网 epWinBuf=80100000801：对比 host 填充值 vs device kernel 读到的 epWinBuf
-    OPS_LOG_I(CONTEXT_NAME, "[lijd-dbg] BuildCtx rank=%u rsps=%u buf0=%llx bufSelf=%llx", context.epRankId,
-              context.rankSizePerServer, (unsigned long long)context.epHcclBuffer_[0],
-              (unsigned long long)context.epHcclBuffer_[context.epRankId]);
 
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));
     memcpy(contextData.data(), &context, sizeof(Mc2Aclnn::Mc2MoeContext));
