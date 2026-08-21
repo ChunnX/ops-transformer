@@ -81,6 +81,8 @@ constexpr uint32_t PATTERN_EVERY_FOURTH = 0x11111111u; // bitmask: bit 0,4,8,...
 constexpr uint32_t TASK_STAGE_CAP = 2048U;             // 任务暂存上限（条）
 constexpr uint32_t TASK_ENTRY_FIELDS = 4U;             // 任务条目 int32 字段数
 constexpr uint32_t TASK_ENTRY_BYTES = 16U;             // 任务条目字节数: [row, srcTokenIdx, srcTopKIdx, weight]
+constexpr uint32_t FLAG_TIMEOUT_US = 5U * 1000U * 1000U; // 标志轮询超时（engram 同款 5s）
+constexpr uint32_t CYCLES_PER_US = 1000U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
@@ -114,6 +116,9 @@ private:
                                            uint32_t channelIndex);
     __aicore__ inline void FlushTaskStage(LocalTensor<int32_t> stage, uint32_t &stageCnt, GM_ADDR dstBase,
                                           uint32_t &dstOff);
+    __aicore__ inline void SetFlag32(GM_ADDR flagAddr);
+    __aicore__ inline void WaitAllFlags(GM_ADDR flagBase, uint32_t flagCount);
+    __aicore__ inline void ResetSyncFlags();
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
                                              uint32_t &groupSize);
     __aicore__ inline void BuffInit();
@@ -235,6 +240,9 @@ private:
     GM_ADDR remoteListBase_{nullptr}; // 远程任务列表（按 rank 分组）
     GM_ADDR localListBase_{nullptr};  // 本地任务列表（每核固定分段）
     GM_ADDR countsBase_{nullptr};     // 计数区（rankCnt/rankBase/localCnt/displs）
+    GM_ADDR flag1ABase_{nullptr};     // 同步标志：1A 计数完成（每核 32B 槽）
+    GM_ADDR flagRemoteBase_{nullptr}; // 同步标志：1B 远程任务写完（每核 32B 槽）
+    GM_ADDR flagDisplsBase_{nullptr}; // 同步标志：displs/rankBase 就绪（0 核写）
     uint32_t aivId_{0};
 };
 
@@ -425,6 +433,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     remoteListBase_ = workspaceBase_ + taskListOffset_;
     localListBase_ = remoteListBase_ + static_cast<uint64_t>(taskCapacity_) * TASK_ENTRY_BYTES;
     countsBase_ = localListBase_ + (static_cast<uint64_t>(taskCapacity_) + aivNum_) * TASK_ENTRY_BYTES;
+    // 同步标志区: flag1A[aivNum_]/flagRemote[aivNum_]/flagDispls[1]，各 32B 槽（替代 SyncAll 硬同步）
+    uint64_t rankCntBytes = Ceil(static_cast<uint64_t>(aivNum_) * epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    uint64_t displsBytes = Ceil(static_cast<uint64_t>(epWorldSize_ + 1U) * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    flag1ABase_ = countsBase_ + 2 * rankCntBytes + static_cast<uint64_t>(aivNum_) * UB_ALIGN + displsBytes;
+    flagRemoteBase_ = flag1ABase_ + static_cast<uint64_t>(aivNum_) * UB_ALIGN;
+    flagDisplsBase_ = flagRemoteBase_ + static_cast<uint64_t>(aivNum_) * UB_ALIGN;
     localSegSize_ = static_cast<uint32_t>(actualA_ / aivNum_) + 1; // 每核本地分段容量（条）
 
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
@@ -518,6 +532,68 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushTaskStag
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(dstGm);
     dstOff += stageCnt;
     stageCnt = 0;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetFlag32(GM_ADDR flagAddr)
+{
+    // 写 32B 标志槽（元素 0 置 1），写完成后 clean 使其他核可见
+    LocalTensor<int32_t> valUb = taskStageBuf_.Get<int32_t>();
+    valUb.SetValue(0, 1);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    GlobalTensor<int32_t> flagGm;
+    flagGm.SetGlobalBuffer((__gm__ int32_t *)flagAddr);
+    DataCopy(flagGm, valUb, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGm);
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitAllFlags(GM_ADDR flagBase, uint32_t flagCount)
+{
+    // GM 标志轮询同步（engram WaitAllStatusFlags 同款，有界超时），替代 SyncAll 硬件同步
+    uint64_t startUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
+    while (true) {
+        bool allReady = true;
+        for (uint32_t c = 0; c < flagCount; ++c) {
+            GlobalTensor<int32_t> flagGm;
+            flagGm.SetGlobalBuffer((__gm__ int32_t *)(flagBase + static_cast<uint64_t>(c) * UB_ALIGN));
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGm);
+            if (flagGm.GetValue(0) != 1) {
+                allReady = false;
+                break;
+            }
+        }
+        if (allReady) {
+            return;
+        }
+        uint64_t nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
+        ascendc_assert(nowUs - startUs < FLAG_TIMEOUT_US, "WaitAllFlags timeout, aivId=%u, flagCount=%u", aivId_,
+                       flagCount);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ResetSyncFlags()
+{
+    // 复位本核的 flag1A/flagRemote（0 核另复位 flagDispls），供下次 launch 复用。
+    // 调用时机在 recv 阶段完成之后：recv 完成 ⇒ 所有发送（含全部标志轮询）已结束，不存在复位与轮询的竞争
+    LocalTensor<int32_t> zeroUb = taskStageBuf_.Get<int32_t>();
+    Duplicate<int32_t>(zeroUb, 0, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    GlobalTensor<int32_t> flagGm;
+    flagGm.SetGlobalBuffer((__gm__ int32_t *)(flag1ABase_ + static_cast<uint64_t>(aivId_) * UB_ALIGN));
+    DataCopy(flagGm, zeroUb, FLOAT_PER_UB_ALIGN);
+    flagGm.SetGlobalBuffer((__gm__ int32_t *)(flagRemoteBase_ + static_cast<uint64_t>(aivId_) * UB_ALIGN));
+    DataCopy(flagGm, zeroUb, FLOAT_PER_UB_ALIGN);
+    if (aivId_ == 0) {
+        flagGm.SetGlobalBuffer((__gm__ int32_t *)flagDisplsBase_);
+        DataCopy(flagGm, zeroUb, FLOAT_PER_UB_ALIGN);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    GlobalTensor<int32_t> flagBaseGm;
+    flagBaseGm.SetGlobalBuffer((__gm__ int32_t *)flag1ABase_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(flagBaseGm);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -620,6 +696,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildTaskList
     localCntGm.SetGlobalBuffer(
         (__gm__ int32_t *)(countsBase_ + 2 * rankCntBytes + static_cast<uint64_t>(aivId_) * UB_ALIGN));
     DataCopy(localCntGm, stage, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::MTE3_S>(); // 计数写完成后再 clean，避免失效未落地的缓存行
 
     GlobalTensor<int32_t> countsGm;
     countsGm.SetGlobalBuffer((__gm__ int32_t *)countsBase_);
@@ -627,7 +704,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildTaskList
     GlobalTensor<int32_t> localSegGm;
     localSegGm.SetGlobalBuffer((__gm__ int32_t *)localSegBase);
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(localSegGm);
-    SyncAll<true>();
+    SetFlag32(flag1ABase_ + static_cast<uint64_t>(aivId_) * UB_ALIGN); // 本核 1A 计数完成
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -638,6 +715,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GroupRemoteTa
 
     // 0 核: 读 rankCnt 矩阵 → 每核每 rank 前缀偏移 rankBase + 全局 displs（共 epWorldSize_+1 项，末项=远程总数）
     if (aivId_ == 0) {
+        WaitAllFlags(flag1ABase_, aivNum_); // 等待所有核 1A 计数写完成
         GlobalTensor<uint32_t> countsGm;
         countsGm.SetGlobalBuffer((__gm__ uint32_t *)countsBase_);
         DataCacheCleanAndInvalid<uint32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(countsGm);
@@ -673,9 +751,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GroupRemoteTa
         displsGm.SetGlobalBuffer((__gm__ uint32_t *)(countsBase_ + 2 * rankCntBytes + localCntBytes));
         DataCopyParams displsWriteParams{1U, static_cast<uint16_t>((epWorldSize_ + 1U) * sizeof(uint32_t)), 0U, 0U};
         DataCopyPad(displsGm, displsUb, displsWriteParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>(); // displs 写完成后再 clean，避免失效未落地的缓存行
         DataCacheCleanAndInvalid<uint32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(countsGm);
+        SetFlag32(flagDisplsBase_); // displs/rankBase 就绪
     }
-    SyncAll<true>();
+    WaitAllFlags(flagDisplsBase_, 1U); // 所有核等待 displs/rankBase 就绪（0 核立即通过）
 
     // 每核: 读 displs 与本核 rankBase 行，合成每 rank 的写入基址 base[r]
     GlobalTensor<uint32_t> countsGmRead;
@@ -780,7 +860,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GroupRemoteTa
     GlobalTensor<int32_t> remoteGm;
     remoteGm.SetGlobalBuffer((__gm__ int32_t *)remoteListBase_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(remoteGm);
-    SyncAll<true>();
+    SetFlag32(flagRemoteBase_ + static_cast<uint64_t>(aivId_) * UB_ALIGN); // 本核远程任务写完成
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -789,6 +869,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RunLocalTasks
     uint64_t rankCntBytes = Ceil(static_cast<uint64_t>(aivNum_) * epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     uint64_t localCntBytes = static_cast<uint64_t>(aivNum_) * UB_ALIGN; // localCnt 32B 槽
 
+    WaitAllFlags(flag1ABase_, aivNum_); // 等待所有核 1A 完成（本地任务与计数已落盘）
     // 读每核本地任务数（32B 槽，取每槽第 0 元素）并压缩到 localCntUb[0..aivNum_)
     GlobalTensor<int32_t> localListGm;
     localListGm.SetGlobalBuffer((__gm__ int32_t *)localListBase_);
@@ -842,6 +923,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RunLocalTasks
     LocalTensor<int32_t> taskUb = metadataBuf_.Get<int32_t>();
     uint64_t logical = start;
     while (logical < end && coreIdx < aivNum_) {
+        // 跳过空分段，避免 batch=0 导致死循环
+        while (coreIdx < aivNum_ && localCntUb.GetValue(coreIdx) == 0) {
+            coreIdx++;
+        }
+        if (coreIdx >= aivNum_) {
+            break;
+        }
         uint32_t segLeft = localCntUb.GetValue(coreIdx) - offInSeg;
         uint64_t left = end - logical;
         uint32_t batch = (left < segLeft) ? static_cast<uint32_t>(left) : segLeft;
@@ -933,6 +1021,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RunRemoteTask
     uint64_t rankCntBytes = Ceil(static_cast<uint64_t>(aivNum_) * epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     uint64_t localCntBytes = static_cast<uint64_t>(aivNum_) * UB_ALIGN; // localCnt 32B 槽
 
+    WaitAllFlags(flagRemoteBase_, aivNum_); // 等待所有核远程任务写完成
     // 读全局 displs（末项为远程任务总数），并 invalidate 远程列表与计数区
     GlobalTensor<int32_t> remoteListGm;
     remoteListGm.SetGlobalBuffer((__gm__ int32_t *)remoteListBase_);
@@ -1126,6 +1215,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    // recv 阶段完成 ⇒ 所有发送（含全部标志轮询）已结束，此时复位同步标志供下次 launch 复用
+    ResetSyncFlags();
 }
 
 #endif

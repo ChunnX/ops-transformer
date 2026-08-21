@@ -415,13 +415,15 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
     // 任务列表区: 远程列表 + 本地列表(每核固定分段) + 计数区(rankCnt/rankBase/localCnt(32B 槽)/displs)
+    // + 同步标志区(flag1A[aivNum]/flagRemote[aivNum]/flagDispls，各 32B 槽，替代 SyncAll 硬同步)
     uint64_t taskBytes = static_cast<uint64_t>(info.taskCapacity) * TASK_ENTRY_BYTES;
     uint64_t localListBytes = (static_cast<uint64_t>(info.taskCapacity) + aivNum) * TASK_ENTRY_BYTES;
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t countsBytes =
         (2UL * static_cast<uint64_t>(aivNum) * epWorldSize + (epWorldSize + 1UL)) * sizeof(int32_t) +
         static_cast<uint64_t>(aivNum) * UB_ALIGN;
-    workSpaces[0] = AlignUpWin(SYSTEM_NEED_WORKSPACE + taskBytes + localListBytes + countsBytes);
+    uint64_t flagBytes = (2UL * static_cast<uint64_t>(aivNum) + 1UL) * UB_ALIGN;
+    workSpaces[0] = AlignUpWin(SYSTEM_NEED_WORKSPACE + taskBytes + localListBytes + countsBytes + flagBytes);
     info.taskListOffset = SYSTEM_NEED_WORKSPACE;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
