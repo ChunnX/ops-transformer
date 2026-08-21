@@ -119,7 +119,7 @@ struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE * 2] = {};
     uint32_t channelsPerRank = 1;
 };
 
@@ -392,12 +392,22 @@ private:
     static void QueryHcclBufferResource(const HcclComm &commHandle, EngramContextResources &resources)
     {
         uint32_t rankId = resources.context.rankId;
-        constexpr uint32_t channelsPerPeer = 2U;
+        uint32_t rankSize = resources.context.rankSize;
+        constexpr uint32_t aivNum = 72U;
+        uint32_t numSendCores = aivNum / 2U;
+        if (numSendCores == 0U) {
+            numSendCores = 1U;
+        }
+        uint32_t groupSize = numSendCores / rankSize;
+        if (groupSize == 0U) {
+            groupSize = 1U;
+        }
+        uint32_t channelsPerPeer = groupSize * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
-        ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE * 2] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerPeer, resources.memHandle,
-                           handlesByRank);
-        for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
+
+        std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
+        GetHcclCommChannel(commHandle, rankSize, rankId, channelsPerPeer, resources.memHandle, handlesByRank.data());
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == rankId)
                 continue;
             for (uint32_t ch = 0; ch < channelsPerPeer; ++ch) {
