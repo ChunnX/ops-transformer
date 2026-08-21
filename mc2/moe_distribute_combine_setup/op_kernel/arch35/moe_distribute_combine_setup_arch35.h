@@ -53,8 +53,7 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    // 每 aiv 控制块大小（win 上的 D_S/C_S），同时用作 workspace 上 flag 源的每核步长，
-    // 须与 tiling 侧 STATUS_FLAG_SIZE_PER_CORE 保持一致
+    // 每 aiv 控制块大小（win [950KB,1MB) 区内的 D_S/C_S/C flag 步长）
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
     constexpr static uint64_t COMM_CMD_INFO_BYTES = 64U;    // commCmdInfoOut 每个 (a+rank) 条目 16 * int32
@@ -264,13 +263,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     ascendc_assert(dataState_ <= 1U, "combine_setup C_S corrupted, rank=%u aiv=%u C_S=%u", epRankId_, aivId_,
                    dataState_);
 
-    // 本卡准备状态 flag 源，供远端 WriteNbi。源只被本卡读、不被对端访问，无需占用注册窗口，
-    // 放在 workspace 上；每 aiv 独占 STATE_SIZE_PER_CORE 字节，避免与相邻核共享 cacheline。
-    // workspace 只按 tiling 的 aivNum 分块，越界就写到本算子 workspace 之外，必须先拦下。
     ascendc_assert(aivId_ < moeDistributeCombineSetupInfo_->aivNum,
                    "combine_setup aivId out of range, aivId=%u aivNum=%u", aivId_,
                    moeDistributeCombineSetupInfo_->aivNum);
-    // 本卡准备状态 flag 源（控制块 +64），供远端 WriteNbi；与 C_S(+32)/D_S(+0) 错开
+    // 本卡 status flag 源（控制块 +64），供远端 WriteNbi；须在 epHcclBuffer_ 注册窗内
     statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
         STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_FLAG_OFFSET;
 

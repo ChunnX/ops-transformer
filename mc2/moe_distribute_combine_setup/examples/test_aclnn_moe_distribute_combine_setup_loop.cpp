@@ -38,7 +38,9 @@ constexpr uint64_t COMBINE_STATE_BANK_STRIDE = 128ULL * 1024ULL;
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
 constexpr uint64_t CTRL_DISPATCH_STATE_OFFSET = 0ULL;
-constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 256ULL;
+constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 32ULL;
+constexpr uint64_t CTRL_COMBINE_FLAG_OFFSET = 64ULL;
+constexpr uint32_t STATUS_FLAG_VALUE = 0x3f800000U; // float 1.0，与 kernel 一致
 // kernel 侧 epHcclBuffer_[rank] = HcclGetHcclBuffer() + rank * 1024，dump 必须用同一基址
 constexpr uint64_t EP_RANK_OFFSET_STEP = 1024ULL;
 constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 D_S/C_S
@@ -134,11 +136,11 @@ void FreeDeviceAddr(void *deviceAddr)
 }
 
 // host 超时后 dump 本卡 EP window 状态区
-// layout（与 kernel 一致，基址含 rank*1024）:
-//   kernBase     = HcclGetHcclBuffer() + epRankId*1024
-//   D_S/C_S[aiv] = *(int32*)(kernBase + 950KB + aiv*512 + 0/256)
-//   D bank[S]    = kernBase + S*256KB
-//   C bank[S]    = kernBase + 512KB + S*128KB
+// layout（与 kernel moe_distribute_base.h 一致，基址含 rank*1024）:
+//   kernBase       = HcclGetHcclBuffer() + epRankId*1024
+//   D_S/C_S/flag   = kernBase + 950KB + aiv*512 + 0/32/64
+//   D bank[S]      = kernBase + S*256KB
+//   C bank[S]      = kernBase + 512KB + S*128KB
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -167,19 +169,24 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
     for (uint32_t aiv = 0; aiv < DUMP_AIV_NUM; ++aiv) {
         int32_t dState = 0;
         int32_t cState = 0;
+        int32_t cFlag = 0;
         void *dSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET + CTRL_DISPATCH_STATE_OFFSET;
         void *cSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET + CTRL_COMBINE_STATE_OFFSET;
+        void *flagSrc =
+            winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET + CTRL_COMBINE_FLAG_OFFSET;
         aclError retD = aclrtMemcpy(&dState, sizeof(dState), dSrc, sizeof(dState), ACL_MEMCPY_DEVICE_TO_HOST);
         aclError retC = aclrtMemcpy(&cState, sizeof(cState), cSrc, sizeof(cState), ACL_MEMCPY_DEVICE_TO_HOST);
-        if (retD != ACL_SUCCESS || retC != ACL_SUCCESS) {
-            LOG_PRINT("[DUMP] read sigma aiv=%u failed. retD=%d retC=%d\n", aiv, retD, retC);
+        aclError retFlag = aclrtMemcpy(&cFlag, sizeof(cFlag), flagSrc, sizeof(cFlag), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (retD != ACL_SUCCESS || retC != ACL_SUCCESS || retFlag != ACL_SUCCESS) {
+            LOG_PRINT("[DUMP] read sigma aiv=%u failed. retD=%d retC=%d retFlag=%d\n", aiv, retD, retC, retFlag);
             continue;
         }
         if (aiv == 0U) {
             dState0 = dState;
             cState0 = cState;
         }
-        LOG_PRINT("[DUMP] aiv=%u D_S=%d C_S=%d\n", aiv, dState, cState);
+        LOG_PRINT("[DUMP] aiv=%u D_S=%d C_S=%d C_flag=0x%x (expect 0x%x)\n", aiv, dState, cState,
+                  static_cast<uint32_t>(cFlag), STATUS_FLAG_VALUE);
     }
     LOG_PRINT("[SIGMA] stage=%s iter=%d rank=%u D_S=%d C_S=%d\n", stage, iter, epRankId, dState0, cState0);
 
