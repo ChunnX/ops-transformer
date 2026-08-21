@@ -31,6 +31,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 
 logger = logging.getLogger(__name__)
@@ -40,9 +41,15 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
+    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    if quant_mode == 6:
+        target = fp8_golden_mod
+    elif quant_mode == 7:
+        target = hif8_golden_mod
+    else:
+        target = mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -76,6 +83,10 @@ def npu_qfa(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = None,
+    layout_q_descale: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
@@ -84,12 +95,9 @@ def npu_qfa(
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
-    layout_q: str = "TND",
-    layout_q_descale: str = "TND",
-    layout_kv: str = "TND",
-    layout_out: str = "TND",
     **kwargs,
 ):
+    input_layout = layout_q or input_layout
     torch_npu.npu.set_device(int(device_id))
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None:
@@ -103,9 +111,10 @@ def npu_qfa(
 
     # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
     # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
-    B = (
+    B = batch_size if batch_size is not None and batch_size > 0 else (
         max(1, len(cu_seqlens_q_list) - 1)
         if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else len(list(seqused_q)) if seqused_q is not None and len(list(seqused_q)) > 0
         else 1
     )
 
@@ -178,6 +187,25 @@ def npu_qfa(
                 if isinstance(block_table, torch.Tensor) and enable_pa
                 else None,
             )
+        elif quant_mode == 7:
+            atten_out, lse_out = hif8_golden_mod.npu_hif8_fa(
+                q,
+                k,
+                v,
+                dequant_scale_q,
+                dequant_scale_k,
+                dequant_scale_v,
+                p_scale,
+                cu_seqlens_q_list,
+                cu_seqlens_kv_list,
+                list(seqused_q) if seqused_q is not None else None,
+                list(seqused_kv) if seqused_kv is not None else None,
+                max_seqlen_q,
+                max_seqlen_kv,
+                block_table
+                if isinstance(block_table, torch.Tensor) and enable_pa
+                else None,
+            )
         else:
             atten_out, lse_out = mxfp8_golden_mod.npu_mxfp8_fa(
                 q,
@@ -203,6 +231,6 @@ def npu_qfa(
 
     if not enable_lse:
         lse_out = None
-    else:
+    elif isinstance(lse_out, torch.Tensor) and lse_out.ndim == 2:
         lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
     return atten_out, lse_out
