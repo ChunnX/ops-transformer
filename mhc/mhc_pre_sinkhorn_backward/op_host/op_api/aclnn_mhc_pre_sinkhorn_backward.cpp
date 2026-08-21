@@ -142,6 +142,38 @@ static bool CheckInputNotNullImpl(const aclTensor *tensor, const char *name)
     return true;
 }
 
+// format校验：仅支持ND格式，不支持私有格式（FRACTAL_NZ等）
+static bool IsPrivateFormat(ge::Format format)
+{
+    if (format == ge::FORMAT_NC1HWC0 || format == ge::FORMAT_FRACTAL_Z || format == ge::FORMAT_NDC1HWC0 ||
+        format == ge::FORMAT_FRACTAL_Z_3D || format == ge::FORMAT_FRACTAL_NZ || format == ge::FORMAT_NC1HWC0_C04) {
+        return true;
+    }
+    return false;
+}
+
+static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
+{
+    if (IsPrivateFormat(tensor->GetViewFormat())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND, but got %s", name,
+                op::ToString(tensor->GetViewFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
+static bool CheckFormat(const AclnnMhcPreSinkhornBackwardParams &params)
+{
+    return CheckTensorFormat(params.gradHin, "gradHin") && CheckTensorFormat(params.gradHPost, "gradHPost") &&
+           CheckTensorFormat(params.gradHRes, "gradHRes") && CheckTensorFormat(params.x, "x") &&
+           CheckTensorFormat(params.phi, "phi") && CheckTensorFormat(params.alpha, "alpha") &&
+           CheckTensorFormat(params.bias, "bias") && CheckTensorFormat(params.hPre, "hPre") &&
+           CheckTensorFormat(params.hcBeforeNorm, "hcBeforeNorm") && CheckTensorFormat(params.invRms, "invRms") &&
+           CheckTensorFormat(params.sumOut, "sumOut") && CheckTensorFormat(params.normOut, "normOut") &&
+           CheckTensorFormat(params.gradX, "gradX") && CheckTensorFormat(params.gradPhi, "gradPhi") &&
+           CheckTensorFormat(params.gradAlpha, "gradAlpha") && CheckTensorFormat(params.gradBias, "gradBias");
+}
+
 static bool CheckNotNull(const AclnnMhcPreSinkhornBackwardParams &params)
 {
     return CheckInputNotNullImpl(params.gradHin, "gradHin") && CheckInputNotNullImpl(params.gradHPost, "gradHPost") &&
@@ -521,7 +553,10 @@ static aclnnStatus CheckParams(const AclnnMhcPreSinkhornBackwardParams &params)
     // 4. 检查输入的数据类型是否在支持的数据类型范围之内
     CHECK_RET(CheckDtypeValid(params), ACLNN_ERR_PARAM_INVALID);
 
-    // 5. 校验N、C取值范围
+    // 5. 校验format：仅支持ND格式，不支持私有格式
+    CHECK_RET(CheckFormat(params), ACLNN_ERR_PARAM_INVALID);
+
+    // 6. 校验N、C取值范围
     auto &xShape = params.x->GetViewShape();
     bool is3D = xShape.GetDimNum() == 3;
     int64_t nVal = is3D ? xShape.GetDim(1) : xShape.GetDim(2);
