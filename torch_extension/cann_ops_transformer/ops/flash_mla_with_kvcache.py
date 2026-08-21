@@ -1,0 +1,336 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+from typing import Optional
+import torch
+from torch.library import impl
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+MLA_METADATA_OP_NAME = "flash_mla_metadata"
+
+
+def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
+    if seqused_q is not None:
+        return seqused_q.size(0)
+    elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
+        return cu_seqlens_q.size(0) - 1
+
+    if batch_size is None:
+        raise ValueError(
+            "When seqused_q and cu_seqlens_q are not provided, batch_size must be provided"
+        )
+    elif batch_size < 0:
+        raise ValueError(
+            f"When seqused_q and cu_seqlens_q are not provided, "
+            f"batch_size must be greater than 0, but got {batch_size}"
+        )
+    return batch_size
+
+
+def _calculate_metadata_size(batch_size):
+    """计算 metadata tensor 的对齐后大小。
+
+    MLA 硬约束 kv head num == 1（B2/D16 上界公式，禁止按 num_heads_kv>1 放大）：
+    最坏容量 = ((36 + 72) * batch_size * 1 + 1) * 16 个 int32（AIC 36 + AIV 72 核，每核 16 word，
+    外加 1 个 header），对齐 4096（照 flash_attn.py 同款对齐，Oracle caveat 8）。
+    """
+    metadata_size = ((36 + 72) * batch_size * 1 + 1) * 16
+    return ((metadata_size + 4095) // 4096) * 4096
+
+
+def _check_metadata_capacity(metadata, batch_size):
+    """显式容量校验（B2/D16）：metadata 张量必须不小于 kv==1 上界容量。"""
+    required = _calculate_metadata_size(batch_size)
+    torch._check(
+        metadata.numel() >= required,
+        lambda: f"The metadata tensor is too small: {metadata.numel()} elements, required at least "
+                f"{required} elements for batch_size={batch_size} (capacity = ((36 + 72) * batch_size * 1 + 1) "
+                f"* 16, aligned to 4096; kv head num is 1 for MLA).",
+    )
+
+
+class FlashMlaWithKvcacheOpBuilder(OpBuilder):
+    def __init__(self):
+        # Builder name == torch 公开接口名（照 flash_attn.py 惯例）；仅用作 JIT 缓存键与
+        # @impl 注册名，sources() 指向同名 cpp（ops/csrc/flash_mla_with_kvcache.cpp）。
+        super(FlashMlaWithKvcacheOpBuilder, self).__init__("flash_mla_with_kvcache")
+
+    def sources(self):
+        """Path to C++ source code."""
+        return ["ops/csrc/flash_mla_with_kvcache.cpp"]
+
+    def schema(self) -> str:
+        """PyTorch operator signature (m0070 interface: no v, no q_rope/k_rope)."""
+        return [
+            "flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
+            "Tensor? cu_seqlens_q=None, Tensor? cache_seqlens=None, Tensor? seqused_q=None, "
+            "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
+            "int? mask_mode=None, str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "flash_mla_with_kvcache(Tensor q, Tensor k_cache, "
+            "Tensor? block_table=None, Tensor? cache_seqlens=None, "
+            "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
+            "Tensor? attn_mask=None, Tensor? metadata=None, "
+            "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
+            "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
+            'str layout_q="TND", str layout_kv="NZ", str layout_out="NTD", '
+            "bool return_softmax_lse=False) -> (Tensor, Tensor)",
+        ]
+
+    def register_meta(self):
+        """
+        Registers the Meta implementation (Shape/Dtype inference).
+        Essential for Autograd and FakeTensor support.
+        """
+
+        @torch.library.register_fake("cann_ops_transformer::" + MLA_METADATA_OP_NAME)
+        def flash_mla_metadata_meta(
+            num_heads_q: int,
+            num_heads_kv: int,
+            head_dim: int,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cache_seqlens: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            batch_size: Optional[int] = None,
+            max_seqlen_q: Optional[int] = None,
+            max_seqlen_kv: Optional[int] = None,
+            mask_mode: Optional[int] = None,
+            layout_q: Optional[str] = None,
+            layout_kv: Optional[str] = None,
+            layout_out: Optional[str] = None,
+        ):
+            b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+            metadata_size = _calculate_metadata_size(b_size)
+            return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
+
+        @torch.library.register_fake("cann_ops_transformer::flash_mla_with_kvcache")
+        def flash_mla_meta(
+            q: torch.Tensor,
+            k_cache: torch.Tensor,
+            block_table: Optional[torch.Tensor] = None,
+            cache_seqlens: Optional[torch.Tensor] = None,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            attn_mask: Optional[torch.Tensor] = None,
+            metadata: Optional[torch.Tensor] = None,
+            head_dim_v: Optional[int] = 512,
+            softmax_scale: Optional[float] = 1.0,
+            mask_mode: Optional[int] = 0,
+            max_seqlen_q: Optional[int] = -1,
+            max_seqlen_kv: Optional[int] = -1,
+            layout_q: Optional[str] = "TND",
+            layout_kv: Optional[str] = "NZ",
+            layout_out: Optional[str] = "NTD",
+            return_softmax_lse: Optional[bool] = False,
+        ):
+            # MLA: attn_out 最后一维 = head_dim_v（nope/value 宽度 512）；q/k_cache 最后维为
+            # 576（nope 512 + rope 64），rope 已合并进输入，故输出 D 不能取 q 最后维（对照 flash_attn.py
+            # 由 v 推导 D 的逻辑，MLA 无独立 v 输入，改用 head_dim_v）。
+            if layout_q == "TND":
+                t_size = q.size(0)
+                n_size = q.size(1)
+                d_size = head_dim_v
+                softmax_out_size = (n_size, t_size)
+            elif layout_q == "BSND":
+                b_size = q.size(0)
+                s_size = q.size(1)
+                n_size = q.size(2)
+                d_size = head_dim_v
+                softmax_out_size = (b_size, n_size, s_size)
+            else:
+                b_size = q.size(0)
+                n_size = q.size(1)
+                s_size = q.size(2)
+                d_size = head_dim_v
+                softmax_out_size = (b_size, n_size, s_size)
+
+            if layout_out == "TND" or layout_out == "NTD":
+                # MLA 默认 layout_out="NTD"：输出为 (N, T, D)（FIA 约定，fused_infer_attention_score
+                # infershape 的 attentionOutLayout=="NTD" -> {n1, t, outD}）；layout_out="TND" 时输出 (T, N, D)。
+                torch._check(
+                    layout_q == "TND",
+                    lambda: f"When the layout of output is {layout_out}, the layout of query must be "
+                            f"TND, but got {layout_q}",
+                )
+                if layout_out == "NTD":
+                    attention_out_size = (n_size, t_size, d_size)
+                else:
+                    attention_out_size = (t_size, n_size, d_size)
+            elif layout_out == "BNSD":
+                torch._check(
+                    layout_q == "BNSD",
+                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
+                )
+                attention_out_size = (b_size, n_size, s_size, d_size)
+            else:
+                torch._check(
+                    layout_q != "TND",
+                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
+                )
+                attention_out_size = (b_size, s_size, n_size, d_size)
+
+            return (
+                torch.empty(attention_out_size, dtype=q.dtype, device="meta"),
+                torch.empty(softmax_out_size, dtype=torch.float, device="meta"),
+            )
+
+
+# Instantiate the builder
+flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
+
+
+@impl(AS_LIBRARY, MLA_METADATA_OP_NAME, "PrivateUse1")
+def flash_mla_metadata(
+    num_heads_q: int,
+    num_heads_kv: int,
+    head_dim: int,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cache_seqlens: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    batch_size: Optional[int] = -1,
+    max_seqlen_q: Optional[int] = -1,
+    max_seqlen_kv: Optional[int] = -1,
+    mask_mode: Optional[int] = 0,
+    layout_q: Optional[str] = "TND",
+    layout_kv: Optional[str] = "NZ",
+    layout_out: Optional[str] = "NTD",
+):
+    """
+    Dispatcher implementation: NPU.
+    'PrivateUse1' is dispatch key for custom NPU backends.
+    """
+    b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+
+    # 向 C++ wrapper 传解析后的 batch（未显式传 batch_size 时），使 C++ 侧容量校验（B2/D16）有意义；
+    # 显式传了 batch_size 时保持原值（与 flash_attn.py 行为一致，正确性由用户保证）。
+    effective_batch_size = batch_size if batch_size is not None and batch_size > 0 else b_size
+    max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
+    max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
+    mask_mode = 1 if mask_mode is None else mask_mode
+    layout_q = "TND" if layout_q is None else layout_q
+    layout_kv = "NZ" if layout_kv is None else layout_kv
+    layout_out = "NTD" if layout_out is None else layout_out
+
+    op_module = flash_mla_with_kvcache_op_builder.load()
+    metadata_size = _calculate_metadata_size(b_size)
+    output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+
+    return op_module.flash_mla_metadata(
+        cu_seqlens_q,
+        cache_seqlens,
+        seqused_q,
+        num_heads_q,
+        num_heads_kv,
+        head_dim,
+        effective_batch_size,
+        max_seqlen_q,
+        max_seqlen_kv,
+        mask_mode,
+        layout_q,
+        layout_kv,
+        layout_out,
+        output,
+    )
+
+
+_flash_mla_metadata = flash_mla_metadata
+
+
+@torch.library.register_kernel("cann_ops_transformer::" + MLA_METADATA_OP_NAME, None)
+def flash_mla_metadata_fallback(
+    num_heads_q: int,
+    num_heads_kv: int,
+    head_dim: int,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cache_seqlens: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    batch_size: Optional[int] = None,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_kv: Optional[int] = None,
+    mask_mode: Optional[int] = None,
+    layout_q: Optional[str] = None,
+    layout_kv: Optional[str] = None,
+    layout_out: Optional[str] = None,
+):
+    # 处理所有 tensor 都为 None 的情况（CPU 兜底路径）
+    return _flash_mla_metadata(
+        num_heads_q=num_heads_q,
+        num_heads_kv=num_heads_kv,
+        head_dim=head_dim,
+        cu_seqlens_q=cu_seqlens_q,
+        cache_seqlens=cache_seqlens,
+        seqused_q=seqused_q,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
+        mask_mode=mask_mode,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
+    )
+
+
+@impl(AS_LIBRARY, flash_mla_with_kvcache_op_builder.name, "PrivateUse1")
+def flash_mla_with_kvcache(
+    q: torch.Tensor,
+    k_cache: torch.Tensor,
+    block_table: Optional[torch.Tensor] = None,
+    cache_seqlens: Optional[torch.Tensor] = None,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
+    metadata: Optional[torch.Tensor] = None,
+    head_dim_v: Optional[int] = 512,
+    softmax_scale: Optional[float] = 1.0,
+    mask_mode: Optional[int] = 0,
+    max_seqlen_q: Optional[int] = -1,
+    max_seqlen_kv: Optional[int] = -1,
+    layout_q: Optional[str] = "TND",
+    layout_kv: Optional[str] = "NZ",
+    layout_out: Optional[str] = "NTD",
+    return_softmax_lse: Optional[bool] = False,
+):
+    """
+    Dispatcher implementation for NPU (DeepSeek MLA flash attention).
+    'PrivateUse1' is the combine key for custom NPU backends.
+    """
+    if metadata is not None:
+        # 显式容量校验（B2/D16）：主算子侧对用户传入的 metadata 做防呆
+        batch_size = None
+        if seqused_q is not None:
+            batch_size = seqused_q.size(0)
+        elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
+            batch_size = cu_seqlens_q.size(0) - 1
+        if batch_size is not None:
+            _check_metadata_capacity(metadata, batch_size)
+
+    op_module = flash_mla_with_kvcache_op_builder.load()
+    return op_module.flash_mla_with_kvcache(
+        q,
+        k_cache,
+        block_table,
+        cache_seqlens,
+        cu_seqlens_q,
+        seqused_q,
+        attn_mask,
+        metadata,
+        head_dim_v,
+        softmax_scale,
+        mask_mode,
+        max_seqlen_q,
+        max_seqlen_kv,
+        layout_q,
+        layout_kv,
+        layout_out,
+        return_softmax_lse,
+    )
+
+
+flash_mla_with_kvcache = torch.ops.cann_ops_transformer.flash_mla_with_kvcache
+flash_mla_metadata = torch.ops.cann_ops_transformer.flash_mla_metadata
