@@ -407,6 +407,104 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp32_bsnd_dcos0)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
+TEST_F(ApplyRotaryPosEmbGradBabTiling, invalid_layout)
+{
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    gert::TilingContextPara para("ApplyRotaryPosEmbGrad",
+        {
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 2, 128}, {2, 64, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 128}, {1, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 128}, {1, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 2, 128}, {2, 64, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+        },
+        &compileInfo, "Ascend950", 48, 253952);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(ApplyRotaryPosEmbGradBabTiling, invalid_half_mode_odd_d)
+{
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    gert::TilingContextPara para("ApplyRotaryPosEmbGrad",
+        {
+            {{{2, 64, 4, 127}, {2, 64, 4, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 2, 127}, {2, 64, 2, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 127}, {1, 64, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 64, 1, 127}, {1, 64, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 64, 4, 127}, {2, 64, 4, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 2, 127}, {2, 64, 2, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        },
+        &compileInfo, "Ascend950", 48, 253952);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp16_bsnd_d48_unaligned)
+{
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    gert::TilingContextPara para("ApplyRotaryPosEmbGrad",
+        {
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 1, 48}, {2, 64, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 1, 48}, {2, 64, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 4, 48}, {2, 64, 4, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 1, 48}, {2, 64, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 64, 1, 48}, {2, 64, 1, 48}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        },
+        &compileInfo, "Ascend950", 48, 253952);
+    uint64_t expectTilingKey = 17246988369;
+    string expectTilingData = 
+        "2 64 2 1 1 1 1 6144 52736 13056 137438953520 4503599627370496000 128 4 48 0 0 0 0 0 0 192 48 1 0 0 0 0 0 0 48 48 1 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 128 4 48 0 0 0 0 0 0 192 48 1 0 0 0 0 0 0 2 64 48 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 64 2 43 3 2 1 4 4 3 4 43 0 4294967297 ";
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
+}
+
+TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp32_bsnd_dcos0)
+{
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    gert::TilingContextPara para("ApplyRotaryPosEmbGrad",
+        {
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 64, 4, 128}, {2, 64, 4, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        },
+        &compileInfo, "Ascend950", 48, 253952);
+    uint64_t expectTilingKey = 67108865;  // dcos0: TilingReduce 跳过 → EMPTY pattern
+    string expectTilingData = 
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 128 2 43 3 2 1 4 4 3 4 43 0 4294967296 ";
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
+}
+
 TEST_F(ApplyRotaryPosEmbGradBabTiling, a_fp32_bsnd_dcos0)
 {
     optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
@@ -428,8 +526,6 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, a_fp32_bsnd_dcos0)
         &compileInfo, "Ascend950", 48, 253952);
     uint64_t expectTilingKey = 134217729;  // dcos0: TilingReduce 跳过 → EMPTY pattern
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 128 1 128 1 1 43 3 1 1 3 1 1 1 43 0 3 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 12884901888 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 128 1 128 1 1 43 3 1 1 3 1 1 1 43 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12884901888 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
