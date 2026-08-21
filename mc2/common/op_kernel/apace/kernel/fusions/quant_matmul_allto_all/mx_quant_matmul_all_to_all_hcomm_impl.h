@@ -53,28 +53,21 @@ struct PostComputeCommPolicy {
     uint64_t rankDim_{0};
     uint64_t nonSplitAxisSize_{0};
     uint64_t yHcclDataType_{0};
-    // pipeline深度2: 当前handle和前一个handle
+    uint32_t baseM_{0};  // Blaze scheduler的M block步进,用于计算tile偏移
     AscendC::HcclHandle curHandle_{0};
     uint32_t lastCommTileIdx_{0xFFFFFFFF}; // 去重: 已处理的最大tileIdx
     uint32_t lastIssuedTileIdx_{0xFFFFFFFF}; // 已下发AllToAll的最大tileIdx
 
     __aicore__ inline uint64_t CalcTileOffset(uint32_t tileIdx)
     {
-        // 累计偏移: 头块部分 + 尾块部分
-        auto &&ct = tilingData_->commTilingData;
-        uint32_t headCnt = ct.splitAxisTileCnt;
-        if (tileIdx < headCnt) {
-            return static_cast<uint64_t>(tileIdx) * ct.splitAxisTileSize;
-        } else {
-            return static_cast<uint64_t>(headCnt) * ct.splitAxisTileSize +
-                   static_cast<uint64_t>(tileIdx - headCnt) * ct.splitAxisTailSize;
-        }
+        // 用baseM计算偏移,确保与Blaze kernel内部mPos一致
+        return static_cast<uint64_t>(tileIdx) * baseM_;
     }
 
     __aicore__ inline uint32_t CalcTileM(uint32_t tileIdx)
     {
-        auto &&ct = tilingData_->commTilingData;
-        return (tileIdx < ct.splitAxisTileCnt) ? ct.splitAxisTileSize : ct.splitAxisTailSize;
+        // 所有tile的M大小都是baseM（Blaze scheduler统一步进）
+        return baseM_;
     }
 
     __aicore__ inline void IssueAllToAll(uint32_t tileIdx)
@@ -244,6 +237,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     commPolicy_.rankDim_ = rankDim_;
     commPolicy_.nonSplitAxisSize_ = tilingData_->commTilingData.nonSplitAxisSize;
     commPolicy_.yHcclDataType_ = yHcclDataType_;
+    commPolicy_.baseM_ = tilingData_->tileQbmmTilingData.baseM;
     quantMatmulKernelImpl_.GetCommPolicy() = commPolicy_;
 }
 
@@ -298,13 +292,13 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     LocalParams localParams{0,                     // rankId=0
                             1,                     // rankSize=1
-                            static_cast<uint64_t>(curTileM), // originalM = 当前 tile M
+                            static_cast<uint64_t>(curTileM), // originalM = 完整M
                             x1_,                   // localAGmAddr
                             x1Scale_,              // localScaleAGmAddr
                             0,                     // localMatmul=0
                             1,                     // splitKNum=1
                             MatmulMode::REMOTE,    // REMOTE
-                            static_cast<uint32_t>(commTiling.splitAxisTileSize)};
+                            mmTile.baseM};         // headTileSize=baseM,确保tileIdx=mPos/baseM与mmResult写入位置一致
 
     L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1,
                       mmTile.nBufferNum};
