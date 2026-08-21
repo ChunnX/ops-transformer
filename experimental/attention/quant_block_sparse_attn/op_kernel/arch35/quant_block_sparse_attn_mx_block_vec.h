@@ -195,7 +195,9 @@ public:
                 const uint64_t lseOffset =
                     (queryTokenBase + s1Idx + vecMbaseIdx) * constInfo.realN2Size + n1Idx;
                 LocalTensor<float> emptyLse = softmaxLseQueue_.template AllocTensor<float>();
-                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, actVecMSize);
+                // UB->GM 以 4B block 搬运时，每行源数据占一个 32B data block。
+                // 与 ComputeLseOutputVF 的 E2B 布局保持一致，避免第 2 行起读取未初始化的 32B 槽位。
+                Duplicate<float>(emptyLse, QBSA_EMPTY_LSE_VALUE, actVecMSize * 8U);
                 softmaxLseQueue_.template EnQue(emptyLse);
                 emptyLse = softmaxLseQueue_.template DeQue<float>();
                 DataCopyPad(softmaxLseGm_[lseOffset], emptyLse, lseCopyParams);
@@ -277,8 +279,6 @@ public:
         if (unlikely(runInfo.isLastS2Loop && isLastSubLoop)) {
             // 最后一个 S2/subLoop 后写 LSE。
             if constexpr (HAS_LSE) {
-                // LSE 立即读取当前 V1 写入的 sum/max，显式闭合 PIPE_V RAW 依赖。
-                PipeBarrier<PIPE_V>();
                 SoftmaxLseCopyOut(runInfo, constInfo, sumUb, maxUb);
             }
         }
