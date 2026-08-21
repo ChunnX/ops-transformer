@@ -46,7 +46,12 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetShapeAttrsInfo()
 
 bool GroupedMatmulAllToAllvTiling::IsCapable()
 {
-    return true;
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    if (attrs == nullptr) {
+        return false;
+    }
+    const char *commMode = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
+    return commMode != nullptr && strncmp(commMode, "aiv", 7UL) != 0;
 }
 
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotSupport()
