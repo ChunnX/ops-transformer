@@ -136,7 +136,7 @@ def run_case(case, device: int, norm_on: bool, norm_eps: float):
     actual_cache = npu_cache.cpu()
 
     mask = _updated_mask(
-        state_cache, block_table, start_pos, case.lengths
+        state_cache, block_table, start_pos, case.lengths, case.cmp_ratio
     )
     checks = [
         _precision(

@@ -834,6 +834,25 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::SaveState(const LocalTensor<T> 
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
     uint64_t srcBaseOffset = sliceInfo.dealedSeqCnt * coff_ * dDealSize;
 
+    if (!HasKeyTransform()) {
+        // Persist only the uncompressed tail in the no-transform path. The
+        // current LayerNorm path still needs the full current projection in
+        // state cache until its source is moved to workspace.
+        uint64_t totalEndSeqIdx = sliceInfo.bStartPos + sliceInfo.bSeqUsed;
+        uint32_t tailLen = totalEndSeqIdx % cmpRatio_;
+        if (tailLen == 0) {
+            return;
+        }
+        uint64_t tailStartSeqIdx = totalEndSeqIdx - tailLen;
+        if (endSeqIdx <= tailStartSeqIdx) {
+            return;
+        }
+        if (startSeqIdx < tailStartSeqIdx) {
+            srcBaseOffset += (tailStartSeqIdx - startSeqIdx) * coff_ * dDealSize;
+            startSeqIdx = tailStartSeqIdx;
+        }
+    }
+
     if constexpr (COMP::cacheMode == CACHE_MODE::RING_BUFFER) {
         uint64_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, (uint64_t)cmpRatio_);
         uint32_t writeSeqStartIdx =
@@ -1266,7 +1285,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeIncrementalPool()
         uint32_t startPool = GetStartPos(bIdx) / cmpRatio_;
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
         uint32_t newPoolCount = validPoolCount > startPool ? validPoolCount - startPool : 0;
-        if (!(GetStartPos(bIdx) == 0 && !HasKeyTransform())) {
+        if (HasKeyTransform()) {
             for (uint32_t poolStart = startPool; poolStart < validPoolCount; poolStart += maxPoolCount) {
             uint32_t poolCount = min(maxPoolCount, validPoolCount - poolStart);
             uint32_t tokenStart = poolStart * cmpRatio_;

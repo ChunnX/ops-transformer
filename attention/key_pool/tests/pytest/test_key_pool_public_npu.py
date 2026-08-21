@@ -196,12 +196,18 @@ def _make_case_inputs(case: Case):
     )
 
 
-def _updated_mask(state_cache, cache_block_table, start_pos, lengths):
+def _updated_mask(state_cache, cache_block_table, start_pos, lengths, cmp_ratio):
+    """Mask only the persistent uncompressed tail written by this call."""
     mask = torch.zeros(state_cache.shape[:2], dtype=torch.bool)
     block_size = state_cache.size(1)
     for batch, length in enumerate(lengths):
+        end_pos = int(start_pos[batch]) + length
+        tail_len = end_pos % cmp_ratio
+        tail_start = max(int(start_pos[batch]), end_pos - tail_len)
         for token in range(length):
             logical_pos = int(start_pos[batch]) + token
+            if logical_pos < tail_start:
+                continue
             logical_block, block_offset = divmod(logical_pos, block_size)
             physical_block = int(cache_block_table[batch, logical_block])
             mask[physical_block, block_offset] = True
@@ -294,7 +300,7 @@ def run_case(
     actual_cache = npu_cache.cpu()
 
     mask = _updated_mask(
-        state_cache, cache_block_table, start_pos, case.lengths
+        state_cache, cache_block_table, start_pos, case.lengths, case.cmp_ratio
     )
     head_dim = wk.size(0)
     checks = [

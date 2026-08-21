@@ -177,10 +177,18 @@ def _write_cache(
     batch: int,
     k: torch.Tensor,
     gate: torch.Tensor,
+    cmp_ratio: int,
 ) -> None:
     block_size = state_cache.size(1)
+    end_pos = int(start_pos[batch]) + k.size(0)
+    tail_len = end_pos % cmp_ratio
+    if tail_len == 0:
+        return
+    tail_start = max(int(start_pos[batch]), end_pos - tail_len)
     for token in range(k.size(0)):
         logical_pos = int(start_pos[batch]) + token
+        if logical_pos < tail_start:
+            continue
         logical_block, offset = divmod(logical_pos, block_size)
         physical_block = int(cache_block_table[batch, logical_block])
         if physical_block == 0:
@@ -209,21 +217,27 @@ def _pool_one_batch_loop(
     cache_block_table: torch.Tensor,
     batch: int,
     start_pos: int,
-    updated_len: int,
+    updated_end: int,
+    current_k: torch.Tensor,
+    current_gate: torch.Tensor,
     cmp_ratio: int,
     ape: torch.Tensor,
     output: torch.Tensor,
 ) -> None:
     width = state_cache.size(-1) // 2
     first_pool = start_pos // cmp_ratio
-    valid_pool_count = updated_len // cmp_ratio
+    valid_pool_count = updated_end // cmp_ratio
     for pool in range(first_pool, valid_pool_count):
         keys = []
         gates = []
         for relative in range(cmp_ratio):
-            key, gate = _read_cache(
-                state_cache, cache_block_table, batch, pool * cmp_ratio + relative
-            )
+            logical_pos = pool * cmp_ratio + relative
+            if start_pos <= logical_pos < updated_end:
+                current_index = logical_pos - start_pos
+                key = current_k[current_index].float()
+                gate = current_gate[current_index].float()
+            else:
+                key, gate = _read_cache(state_cache, cache_block_table, batch, logical_pos)
             keys.append(key)
             gates.append(gate + ape[relative])
         key_tensor = torch.stack(keys, dim=0)
@@ -270,7 +284,7 @@ def run_key_pool_golden(
         k_parts.append(k)
         gate_parts.append(gate)
     for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
-        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate)
+        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
 
     pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
     output = torch.zeros(
@@ -284,6 +298,8 @@ def run_key_pool_golden(
             batch,
             int(start_pos[batch]),
             updated_len,
+            k_parts[batch],
+            gate_parts[batch],
             cmp_ratio,
             ape,
             output,
@@ -324,9 +340,13 @@ def run_key_pool_oracle(
     batch_hidden, lengths = _split_hidden(
         hidden_states, cu_seqlens, cache_block_table.size(0)
     )
+    k_parts = []
+    gate_parts = []
     for batch, hidden in enumerate(batch_hidden):
         k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
-        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate)
+        k_parts.append(k)
+        gate_parts.append(gate)
+        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
 
     batch_size = len(batch_hidden)
     block_size = state_cache.size(1)
@@ -348,9 +368,29 @@ def run_key_pool_oracle(
     offsets = offsets.to(torch.long)
     gathered = state_cache[physical, offsets]
     gathered = gathered.view(batch_size, pcap, cmp_ratio, -1)
+    updated_lens = start_pos.to(torch.long) + torch.tensor(lengths, device=start_pos.device)
+    # Completed pools may contain current-call tokens that are intentionally
+    # absent from the final tail-only state_cache. Overlay those tokens from
+    # the current projection before pooling.
+    logical_positions = logical_positions.view(batch_size, pcap, cmp_ratio)
+    for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
+        current_start = int(start_pos[batch])
+        current_end = int(updated_lens[batch])
+        current_mask = (
+            (logical_positions[batch] >= current_start)
+            & (logical_positions[batch] < current_end)
+        )
+        current_index = (logical_positions[batch] - current_start).clamp(
+            min=0, max=max(k.size(0) - 1, 0)
+        )
+        gathered[batch, ..., : wk.size(0)][current_mask] = k[
+            current_index[current_mask]
+        ].float()
+        gathered[batch, ..., wk.size(0) :][current_mask] = gate[
+            current_index[current_mask]
+        ].float()
     keys = gathered[..., : wk.size(0)]
     gates = gathered[..., wk.size(0) :]
-    updated_lens = start_pos.to(torch.long) + torch.tensor(lengths, device=start_pos.device)
     valid = logical_positions.view(batch_size, pcap, cmp_ratio) < updated_lens[:, None, None]
     logits = gates + ape.view(1, 1, cmp_ratio, -1)
     logits = logits.masked_fill(~valid[..., None], float("-inf"))

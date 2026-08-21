@@ -29,7 +29,8 @@ def test_cache_update_region_and_untouched_region():
     after = intermediates["state_cache"]
     table = inputs[5]
     touched = torch.zeros_like(before, dtype=torch.bool)
-    for logical_pos in range(2, 5):
+    # end_pos=5 and R=4 leave only logical position 4 as the persistent tail.
+    for logical_pos in range(4, 5):
         logical_block, offset = divmod(logical_pos, before.size(1))
         physical_block = int(table[0, logical_block])
         touched[physical_block, offset] = True
