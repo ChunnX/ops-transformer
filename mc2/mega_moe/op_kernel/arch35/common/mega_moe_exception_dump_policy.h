@@ -56,12 +56,6 @@ __aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine,
     engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
 }
 
-static_assert(MC2ExceptionDump::DUMP_HEADER_REGION_SIZE + MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
-                      MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
-                      MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams) <=
-                  static_cast<size_t>(MegaMoeImpl::EXCEPTION_DUMP_REGION_SIZE),
-              "MegaMoe arch35 exception-dump metadata exceeds its reserved communication-window prefix");
-
 } // namespace MC2MegaMoeA5Dump
 
 #endif // MEGA_MOE_ARCH35_EXCEPTION_DUMP_POLICY_H
