@@ -51,7 +51,6 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...)                         \
     do {                                                                                                               \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                              \
         auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;                                      \
         __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
         __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
@@ -64,7 +63,6 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...)                      \
     do {                                                                                                               \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                              \
         auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;                                      \
         __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
         __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
@@ -77,7 +75,6 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(ImplClass, isMxFp4, hcclServerType)    \
     do {                                                                                        \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                      \
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllGatherMatmulTilingData, tilingData, tilingGM);     \
         ImplClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcclServerType, isMxFp4> impl(&tilingData);      \
         impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, workspaceGM);                            \
@@ -99,6 +96,7 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
      ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+    REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8); // 按当前最大的结构体申请内存
 // MX
 #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
     if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
