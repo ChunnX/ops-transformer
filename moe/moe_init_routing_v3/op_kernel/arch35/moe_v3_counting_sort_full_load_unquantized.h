@@ -131,6 +131,17 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherOneRow(int
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWrite()
 {
+    if (this->csAggrEnable_) {
+        // 聚合搬出路径：按专家外循环 + k 行切批
+        LocalTensor<T> xLocal = this->buf_.template Get<T>()[this->xLocalOffset_ / sizeof(T)];
+        LocalTensor<float> scaleLocal = this->isInputScale_ ?
+                                           this->buf_.template Get<float>()[this->scaleLocalOffset_ / sizeof(float)] :
+                                           LocalTensor<float>();
+        this->BucketByExpert();
+        this->GatherAndWriteByExpert(xLocal, scaleLocal, expandedXGm_, expandedScaleGm_);
+        return;
+    }
+
     LocalTensor<int32_t> expertCountLocal =
         this->buf_.template Get<int32_t>()[this->expertCountLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> filteredPairsLocal =

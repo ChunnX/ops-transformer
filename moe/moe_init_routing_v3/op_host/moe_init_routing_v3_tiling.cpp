@@ -258,6 +258,9 @@ private:
     int64_t smoothType_ = 0;
     int64_t countingSortFullLoad_ = -1;
     size_t countingSortWorkspaceSize_ = 0;
+    int64_t countingSortAggrEnable_ = 0;
+    int64_t countingSortAggrOutRows_ = 0;
+    int64_t countingSortAggrOutBufBytes_ = 0;
 
     const gert::StorageShape *xShapePtr_ = nullptr;
     const gert::StorageShape *expertIdxShapePtr_ = nullptr;
@@ -857,6 +860,24 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
             static_cast<size_t>(filterNeedCoreNum) * static_cast<size_t>(expertCountStride) * sizeof(int32_t);
         moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_needCoreNum(filterNeedCoreNum);
         moeInitRoutingV3TilingData.gatherOutComputeParamsOp.set_perCoreIndicesElements(filterPerCoreTokens);
+
+        // 聚合搬出参数计算（按专家外循环 + k 行切批）
+        // 聚合区从 xLocal 区末尾切分，不增加总 UB 占用；分桶区已计入 EstimateCountingSortFullLoadUB。
+        int64_t colsAligned = Ops::Base::CeilDiv(cols_ * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE /
+                              inuptXDtypeSize_;
+        int64_t xLocalCap = Ops::Base::CeilAlign(filterPerCoreTokens * colsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE);
+        int64_t aggrBufBytes = std::min(static_cast<int64_t>(10 * 1024), xLocalCap / NUM_TWO);
+        if (aggrBufBytes < ONE_BLOCK_BYTE) {
+            aggrBufBytes = 0;
+        }
+        int64_t aggrOutRows = (aggrBufBytes > 0) ? aggrBufBytes / (colsAligned * inuptXDtypeSize_) : 0;
+        // 启用判定：k>=2、xLocal 减少后仍够装搬入、桶数受限
+        bool aggrEnable = (aggrOutRows >= NUM_TWO) &&
+                          (xLocalCap - aggrBufBytes >= filterPerCoreTokens * cols_ * inuptXDtypeSize_) &&
+                          (actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM);
+        countingSortAggrEnable_ = aggrEnable ? 1 : 0;
+        countingSortAggrOutRows_ = aggrEnable ? aggrOutRows : 0;
+        countingSortAggrOutBufBytes_ = aggrEnable ? aggrBufBytes : 0;
     } else {
         ComputeCountingSortCutOriginTiling(filterNeedCoreNum, filterPerCoreTokens, expertCountStride, actualExpertNum);
     }
@@ -864,9 +885,10 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
     OP_LOGI(context_,
             "CountingSort tiling: countingSortFullLoad=%ld, filterNeedCoreNum=%ld, "
             "filterPerCoreTokens=%ld, filterChunkSize=%ld, fullLoadUB=%ld, ubSize=%ld, "
-            "countingSortWorkspaceSize=%zu",
+            "countingSortWorkspaceSize=%zu, csAggrEnable=%ld, csAggrOutRows=%ld, csAggrOutBufBytes=%ld",
             countingSortFullLoad_, filterNeedCoreNum, filterPerCoreTokens, filterChunkSize, fullLoadUB, ubSize,
-            countingSortWorkspaceSize_);
+            countingSortWorkspaceSize_, countingSortAggrEnable_, countingSortAggrOutRows_,
+            countingSortAggrOutBufBytes_);
 }
 
 int64_t MoeInitRountingV3TilingBase::EstimateCountingSortFullLoadUB(int64_t coreTokenNum, int64_t coreEntries,
@@ -895,6 +917,11 @@ int64_t MoeInitRountingV3TilingBase::EstimateCountingSortFullLoadUB(int64_t core
     ub += Ops::Base::CeilAlign(entriesAligned * SIZE_FP32, ONE_BLOCK_BYTE);
     ub += maskBytes * NUM_THREE;
     ub += Ops::Base::CeilAlign(entriesAligned * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_THREE;
+
+    // 聚合搬出分桶区（csAggrEnable=1 时）：bucketBase(filteredCount 个 int32) + 偏移表 + 计数表
+    // 容量上限按 coreEntries 估算（filteredCount_ <= coreEntries）
+    ub += Ops::Base::CeilAlign(coreEntries * SIZE_INT32, ONE_BLOCK_BYTE); // bucketBase
+    ub += Ops::Base::CeilAlign(actualExpertNum * SIZE_INT32, ONE_BLOCK_BYTE) * NUM_TWO; // offsetTbl + countTbl
 
     return ub;
 }
