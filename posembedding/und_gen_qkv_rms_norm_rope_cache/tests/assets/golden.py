@@ -9,14 +9,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-"""UndGenQkvRmsNormRopeCache 的 golden 参考实现，同时是 TTK 的输入/golden 插件。
+"""UndGenQkvRmsNormRopeCache 的 golden 参考实现，同时是本算子的 TTK TestSpec。
 
 本文件是本算子**唯一的 golden 实现**，自包含、不依赖同目录以外的任何文件，
 供下列使用方共用：
 
   - ``examples/test_torch_und_gen_qkv_rms_norm_rope_cache.py``：torch 接口上板精度比对
-  - ``tests/st/arch35/ttk_kernel_*.csv``：TTK kernel 用例，经文末的
-    ``__input__`` / ``__golden__`` 注册表的 ``kernel`` 层接入
+  - ``tests/st/arch35/ttk_kernel_*.csv``：TTK kernel 用例，经 ``__spec__`` 注册的
+    ``UndGenQkvRmsNormRopeCacheTestSpec`` 接入
 
     python3 -m ttk kernel -i <csv> --plugin <此文件> --compare close
 
@@ -28,8 +28,8 @@
     量级的元素（RoPE 低半与高半两项相消），相对误差会被算成接近 1，而张量本身的
     典型量级是 0.4，这点绝对偏差没有意义。
 
-  - ``tests/st/arch35/ttk_aclnn_*.csv``：TTK aclnn 用例，经同一注册表的 ``aclnn`` 层接入
-    （适配函数见文末 ``aclnn_input`` / ``aclnn_golden``，与 kernel 层的契约差异见那里的注释）
+  - ``tests/st/arch35/ttk_aclnn_*.csv``：TTK aclnn 用例，经 ``AclnnUndGenQkvRmsNormRopeCacheTestSpec``
+    接入（与 kernel 侧的契约差异见该类上方的注释）
 
     export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
     python3 -m ttk aclnn -i <csv> --plugin <此文件> --compare close
@@ -49,10 +49,20 @@
   v_cache       bf16 [num_blocks, block_size, Hv, D]（逻辑 shape）
   q             bf16 [total, Hq, D]
 
+两个 spec 类都不声明 ``tolerance``：本算子要的 ``isclose`` 是 TTK 的框架增强判据，
+只能经 CLI 的 ``--compare close`` 指定，写进 ``Spec.tolerance`` 会被 validator 拒绝
+（它只收 2.1 官方的 stat_rel_err / binary_equal / cross_check / quant 四个）。
+
 纯 CPU torch 实现，不依赖 NPU。
 """
 
 import torch
+
+# TestSpec 注册：kernel 用 CSV 的 op_name，aclnn 用 CSV 的 api_name
+__spec__ = {
+    "und_gen_qkv_rms_norm_rope_cache": "UndGenQkvRmsNormRopeCacheTestSpec",
+    "aclnnUndGenQkvRmsNormRopeCache": "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
+}
 
 __all__ = [
     "HEAD_DIM",
@@ -66,8 +76,8 @@ __all__ = [
     "TYPICAL_CASES",
     "GENERALIZED_CASES",
     "build_case",
-    "ttk_input",
-    "ttk_golden",
+    "UndGenQkvRmsNormRopeCacheTestSpec",
+    "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
 ]
 
 # 本期支持范围
@@ -604,7 +614,10 @@ if __name__ == "__main__":
     _self_check(include_big="--full" in sys.argv)
 
 
-# TTK 插件：输入构造与 golden 注册
+# --------------------------------------------------------------------------- #
+# TTK TestSpec：输入构造与 golden
+# --------------------------------------------------------------------------- #
+# 注册见文件顶部的 __spec__；kernel / aclnn 各一个 spec 类，共用下面的私有 helper。
 # k_cache / v_cache 是原地更新：IR 里输出名与输入名相同，TTK 会据此自动填
 # output_inplace_indexes，kernel CSV 不必显式给出。
 
@@ -623,6 +636,9 @@ IDX_GEN_WEIGHTS_K = 10
 IDX_CAT_INDICES = 11
 
 TTK_INPUT_NUM = 12
+
+# aclnn 形参里张量之后跟的属性个数：num_heads_q/k/v、norm_eps、mrope_section
+ACLNN_ATTR_NUM = 5
 
 
 def _np_to_torch(array):
@@ -700,34 +716,54 @@ def _gen_index_values(arrays, kwargs):
     return slots, cat, positions
 
 
-def ttk_input(*inputs, **kwargs):
-    """把三个索引类输入改写成合法取值，随机 range 做不到。
+class UndGenQkvRmsNormRopeCacheTestSpec:
+    """UndGenQkvRmsNormRopeCache 的 kernel / GEIR 通路测试规范。
 
-    其中 slot_mapping 必须**互不重复**：重复槽位会让多个核写同一 cache 行，写入顺序
-    与结果都不确定，随机整数几乎必然撞号，不改写就会得到一个每次跑都不一样的比对。
+    参数序与 op_host/und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
+    张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，属性走 kwargs。
 
-    形态由用例名后缀决定，与 CSV 的 slot_form / cat_form 列一一对应：
-      _slotseq                              -> slot_mapping 连续
-      _catid / _catrev / _catund / _catgen  -> cat_indices 形态
+    未声明 tolerance：本算子要的 `isclose` 是框架增强判据，只能经 CLI 的
+    `--compare close` 指定（Spec.tolerance 仅收 2.1 官方四标准，见 TTK
+    ttk/test_spec/validator.py 的 _SPEC_TOLERANCE_STANDARDS）。为什么不能换成
+    stat_rel_err 这类相对误差判据，见本文件头部的说明。
     """
-    arrays = list(inputs)
-    if len(arrays) != TTK_INPUT_NUM:
-        raise RuntimeError(
-            "und_gen_qkv_rms_norm_rope_cache 期望 %d 个输入，实际收到 %d 个"
-            % (TTK_INPUT_NUM, len(arrays))
-        )
 
-    slots, cat, positions = _gen_index_values(arrays, kwargs)
-    arrays[IDX_SLOT_MAPPING] = slots.astype(arrays[IDX_SLOT_MAPPING].dtype)
-    if cat is not None:
-        arrays[IDX_CAT_INDICES] = cat.astype(arrays[IDX_CAT_INDICES].dtype)
-    if positions is not None:
-        arrays[IDX_POSITIONS] = positions.astype(arrays[IDX_POSITIONS].dtype)
+    def customize_inputs(und_qkv,
+                         und_weights_q,
+                         und_weights_k,
+                         cos_sin_cache,
+                         k_cache,
+                         v_cache,
+                         slot_mapping,
+                         positions,
+                         gen_qkv=None,
+                         gen_weights_q=None,
+                         gen_weights_k=None,
+                         cat_indices=None,
+                         **kwargs):
+        """把三个索引类输入改写成合法取值，随机 range 做不到。
 
-    return arrays
+        其中 slot_mapping 必须**互不重复**：重复槽位会让多个核写同一 cache 行，写入顺序
+        与结果都不确定，随机整数几乎必然撞号，不改写就会得到一个每次跑都不一样的比对。
 
+        形态由用例名后缀决定，与 CSV 的 slot_form / cat_form 列一一对应：
+          _slotseq                              -> slot_mapping 连续
+          _catid / _catrev / _catund / _catgen  -> cat_indices 形态
+        """
+        arrays = [und_qkv, und_weights_q, und_weights_k, cos_sin_cache,
+                  k_cache, v_cache, slot_mapping, positions,
+                  gen_qkv, gen_weights_q, gen_weights_k, cat_indices]
 
-def ttk_golden(und_qkv,
+        slots, cat, new_positions = _gen_index_values(arrays, kwargs)
+        arrays[IDX_SLOT_MAPPING] = slots.astype(slot_mapping.dtype)
+        if cat is not None:
+            arrays[IDX_CAT_INDICES] = cat.astype(cat_indices.dtype)
+        if new_positions is not None:
+            arrays[IDX_POSITIONS] = new_positions.astype(positions.dtype)
+
+        return arrays
+
+    def golden(und_qkv,
                und_weights_q,
                und_weights_k,
                cos_sin_cache,
@@ -740,56 +776,50 @@ def ttk_golden(und_qkv,
                gen_weights_k=None,
                cat_indices=None,
                **kwargs):
-    '''Kernel golden for und_gen_qkv_rms_norm_rope_cache.
+        """返回写入 slot 后的整块 (q, k_cache, v_cache)。"""
+        mrope_section = kwargs.get("mrope_section", None)
+        if mrope_section is not None:
+            mrope_section = list(mrope_section)
 
-    参数序与 @und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
-    张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，kwargs 带算子属性。
-    返回写入 slot 后的整块 (q, k_cache, v_cache)。
-    '''
-    mrope_section = kwargs.get("mrope_section", None)
-    if mrope_section is not None:
-        mrope_section = list(mrope_section)
+        q_t, k_t, v_t = golden_und_gen_qkv_rms_norm_rope_cache(
+            _np_to_torch(und_qkv),
+            _np_to_torch(und_weights_q),
+            _np_to_torch(und_weights_k),
+            _np_to_torch(cos_sin_cache),
+            _np_to_torch(k_cache),
+            _np_to_torch(v_cache),
+            _np_to_torch(slot_mapping),
+            _np_to_torch(positions),
+            gen_qkv=_np_to_torch(gen_qkv),
+            gen_weights_q=_np_to_torch(gen_weights_q),
+            gen_weights_k=_np_to_torch(gen_weights_k),
+            cat_indices=_np_to_torch(cat_indices),
+            num_heads_q=int(kwargs.get("num_heads_q", 8)),
+            num_heads_k=int(kwargs.get("num_heads_k", 1)),
+            num_heads_v=int(kwargs.get("num_heads_v", 1)),
+            norm_eps=float(kwargs.get("norm_eps", 1e-6)),
+            mrope_section=mrope_section,
+            inplace=False,
+        )
 
-    q_t, k_t, v_t = golden_und_gen_qkv_rms_norm_rope_cache(
-        _np_to_torch(und_qkv),
-        _np_to_torch(und_weights_q),
-        _np_to_torch(und_weights_k),
-        _np_to_torch(cos_sin_cache),
-        _np_to_torch(k_cache),
-        _np_to_torch(v_cache),
-        _np_to_torch(slot_mapping),
-        _np_to_torch(positions),
-        gen_qkv=_np_to_torch(gen_qkv),
-        gen_weights_q=_np_to_torch(gen_weights_q),
-        gen_weights_k=_np_to_torch(gen_weights_k),
-        cat_indices=_np_to_torch(cat_indices),
-        num_heads_q=int(kwargs.get("num_heads_q", 8)),
-        num_heads_k=int(kwargs.get("num_heads_k", 1)),
-        num_heads_v=int(kwargs.get("num_heads_v", 1)),
-        norm_eps=float(kwargs.get("norm_eps", 1e-6)),
-        mrope_section=mrope_section,
-        inplace=False,
-    )
-
-    kv_dtype = k_cache.dtype
-    return (
-        _torch_to_np(q_t, kv_dtype),
-        _torch_to_np(k_t, kv_dtype),
-        _torch_to_np(v_t, kv_dtype),
-    )
+        kv_dtype = k_cache.dtype
+        return (
+            _torch_to_np(q_t, kv_dtype),
+            _torch_to_np(k_t, kv_dtype),
+            _torch_to_np(v_t, kv_dtype),
+        )
 
 
 # --------------------------------------------------------------------------- #
-# aclnn 层插件
+# aclnn 通路
 # --------------------------------------------------------------------------- #
-# 与 kernel 层的三处差异，改动前先看清楚：
+# 与 kernel 通路的三处差异，改动前先看清楚：
 #   1. 入参序是 aclnn 头文件的形参序（12 个张量 + 5 个属性 + qOut），
 #      不是 _def.cpp 的输入序，属性走位置参数而不是 kwargs；
-#   2. input 插件的返回值被 TTK 丢弃（op_api/input_generation.py 只调不收），
+#   2. customize_inputs 的返回值被 TTK 丢弃（op_api/input_generation.py 只调不收），
 #      必须原地改写张量；
 #   3. golden 的返回序要与 CSV 的 output_tensor_indexes 声明序一致，
 #      本算子声明为 (12, 4, 5) 即 (q, k_cache, v_cache)。
-ACLNN_ATTR_NUM = 5
 
 
 def _aclnn_split_args(args):
@@ -824,51 +854,43 @@ def _write_back(dst, values):
         dst[...] = values.astype(dst.dtype)
 
 
-def aclnn_input(*args, **kwargs):
-    """aclnn 层的索引改写，取值规则与 ttk_input 完全一致（共用 _gen_index_values）。"""
-    tensors, _ = _aclnn_split_args(args)
-    slots, cat, positions = _gen_index_values(tensors, kwargs)
-    _write_back(tensors[IDX_SLOT_MAPPING], slots)
-    if cat is not None:
-        _write_back(tensors[IDX_CAT_INDICES], cat)
-    if positions is not None:
-        _write_back(tensors[IDX_POSITIONS], positions)
+class AclnnUndGenQkvRmsNormRopeCacheTestSpec:
+    """aclnnUndGenQkvRmsNormRopeCache 的 aclnn 通路测试规范。
 
+    形参名与 aclnn 头文件一一对应共 18 个，逐个声明只会让签名比正文还长，
+    故按 README「`*args` 收集未消费条目」的写法按位置接收，拆分见 _aclnn_split_args。
+    未声明 tolerance 的原因同 kernel 侧。
+    """
 
-def aclnn_golden(*args, **kwargs):
-    """aclnn 层 golden，返回 (q, k_cache, v_cache)，与 output_tensor_indexes=(12,4,5) 对齐。"""
-    tensors, attrs = _aclnn_split_args(args)
-    q_t, k_t, v_t = golden_und_gen_qkv_rms_norm_rope_cache(
-        *[_as_torch(t) for t in tensors[:8]],
-        gen_qkv=_as_torch(tensors[IDX_GEN_QKV]),
-        gen_weights_q=_as_torch(tensors[IDX_GEN_WEIGHTS_Q]),
-        gen_weights_k=_as_torch(tensors[IDX_GEN_WEIGHTS_K]),
-        cat_indices=_as_torch(tensors[IDX_CAT_INDICES]),
-        inplace=False,
-        **attrs,
-    )
-    ref = tensors[IDX_K_CACHE]
-    if isinstance(ref, torch.Tensor):
-        return q_t.to(ref.dtype), k_t.to(ref.dtype), v_t.to(ref.dtype)
-    return (_torch_to_np(q_t, ref.dtype),
-            _torch_to_np(k_t, ref.dtype),
-            _torch_to_np(v_t, ref.dtype))
+    def customize_inputs(*args, **kwargs):
+        """索引改写，取值规则与 kernel 侧完全一致（共用 _gen_index_values）。
 
+        返回值仅为符合 customize_inputs 契约，aclnn 通路实际取的是原地改写的结果。
+        """
+        tensors, _ = _aclnn_split_args(args)
+        slots, cat, positions = _gen_index_values(tensors, kwargs)
+        _write_back(tensors[IDX_SLOT_MAPPING], slots)
+        if cat is not None:
+            _write_back(tensors[IDX_CAT_INDICES], cat)
+        if positions is not None:
+            _write_back(tensors[IDX_POSITIONS], positions)
+        return tensors
 
-__input__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_input"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"
-    }
-}
-
-__golden__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_golden"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"
-    }
-}
+    def golden(*args, **kwargs):
+        """返回 (q, k_cache, v_cache)，与 output_tensor_indexes=(12, 4, 5) 对齐。"""
+        tensors, attrs = _aclnn_split_args(args)
+        q_t, k_t, v_t = golden_und_gen_qkv_rms_norm_rope_cache(
+            *[_as_torch(t) for t in tensors[:8]],
+            gen_qkv=_as_torch(tensors[IDX_GEN_QKV]),
+            gen_weights_q=_as_torch(tensors[IDX_GEN_WEIGHTS_Q]),
+            gen_weights_k=_as_torch(tensors[IDX_GEN_WEIGHTS_K]),
+            cat_indices=_as_torch(tensors[IDX_CAT_INDICES]),
+            inplace=False,
+            **attrs,
+        )
+        ref = tensors[IDX_K_CACHE]
+        if isinstance(ref, torch.Tensor):
+            return q_t.to(ref.dtype), k_t.to(ref.dtype), v_t.to(ref.dtype)
+        return (_torch_to_np(q_t, ref.dtype),
+                _torch_to_np(k_t, ref.dtype),
+                _torch_to_np(v_t, ref.dtype))
