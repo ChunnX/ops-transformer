@@ -122,6 +122,8 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(INPUT_BUFFER_FLAG_0);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(INPUT_BUFFER_FLAG_1);
             AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
         }
     }
@@ -135,6 +137,8 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(INPUT_BUFFER_FLAG_0);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(INPUT_BUFFER_FLAG_1);
             AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
         }
     }
@@ -742,7 +746,6 @@ public:
         }
     }
 
-
     __aicore__ inline void IterAL1BL1(TileL1L0Param &tileL1L0Param, AscendC::MmadParams &mmadParams, uint64_t l0cOffset,
                                       const AscendC::GlobalTensor<AType> &aGlobal,
                                       const AscendC::GlobalTensor<BType> &bGlobal,
@@ -852,10 +855,7 @@ public:
     }
 
 private:
-    __aicore__ inline bool NeedBias(uint64_t kL0Offset)
-    {
-        return isBias_ && kL0Offset == 0;
-    }
+    __aicore__ inline bool NeedBias(uint64_t kL0Offset) { return isBias_ && kL0Offset == 0; }
 
     __aicore__ inline void RunMmadLoop(const AscendC::GlobalTensor<AType> &aGlobal,
                                        const AscendC::GlobalTensor<BType> &bGlobal,

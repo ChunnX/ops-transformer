@@ -28,33 +28,34 @@ using namespace matmul;
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #endif
-__global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2,
-                                                                       GM_ADDR groupList, GM_ADDR yIn, GM_ADDR scale1,
-                                                                       GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+__global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
+                                                            GM_ADDR yIn, GM_ADDR scale1, GM_ADDR y, GM_ADDR workspace,
+                                                            GM_ADDR tiling)
 {
     REGISTER_NONE_TILING;
-    TPipe tPipe;
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     GM_ADDR user1 = GetUserWorkspace(workspace);
 
 #ifndef __CCE_KT_TEST__
-#if defined(V310_QGMM_QUANT_MX)       // mxfpx
-    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
-        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_FIXP) { // transX = true, transW = false
+#if defined(V310_QGMM_QUANT_MX) // mxfpx
+    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS &&
+                  KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_FIXP) { // transX = true, transW = false
+        TPipe tPipe;
         GET_TILING_DATA_WITH_STRUCT(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams, tilingData, tiling);
         QGmmInplaceAddAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(x1, x2, scale2, groupList,
-                                                                                        scale1, y, tiling);
+                                                                                            scale1, y, tiling);
     }
 #else
-    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
-        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_VECTOR) { // transX = true, transW = false, T-C
+    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS &&
+                  KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_VECTOR) { // transX = true, transW = false, T-C
+        TPipe tPipe;
         GET_TILING_DATA_WITH_STRUCT(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams, tilingData, tiling);
-        QGmmInplaceAddMixAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(x1, x2, scale2, groupList,
-                                                                                           scale1, y, tiling);
+        QGmmInplaceAddMixAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(
+            x1, x2, scale2, groupList, scale1, y, tiling);
     }
-    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
-        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_FIXP) { // transX = true, transW = false, T-T
+    if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS &&
+                  KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_FIXP) { // transX = true, transW = false, T-T
         GET_TILING_DATA_WITH_STRUCT(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData, tilingData, tiling);
         QGmmInplaceAddCubeBasicAPI<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(
             x1, x2, scale2, groupList, scale1, y, tiling);

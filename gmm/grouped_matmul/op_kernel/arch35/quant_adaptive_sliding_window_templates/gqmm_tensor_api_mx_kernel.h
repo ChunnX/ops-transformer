@@ -16,7 +16,6 @@
 #ifndef GQMM_TENSOR_API_MX_KERNEL_H
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
-
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
@@ -30,10 +29,9 @@ template <class xType, class wType, class biasType, class scaleType, class ptSca
 __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                             GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
                                             const GMMQuantParams *gmmBaseParamsIn,
-                                            const QuantBasicApiMMTiling *mmTilingDataIn, AscendC::TPipe *que)
+                                            const QuantBasicApiMMTiling *mmTilingDataIn)
 {
     (void)workspace;
-    (void)que;
     if ASCEND_IS_AIV {
         return;
     }
@@ -54,23 +52,16 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using Params = typename QgmmKernel::Params;
     using GMMTiling = typename QgmmKernel::GMMTiling;
 
-    GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParamsIn->groupNum),
-                        static_cast<int64_t>(mmTilingDataIn->m),
-                        static_cast<int64_t>(mmTilingDataIn->n),
-                        static_cast<int64_t>(mmTilingDataIn->k),
-                        static_cast<uint32_t>(mmTilingDataIn->baseM),
-                        static_cast<uint32_t>(mmTilingDataIn->baseN),
-                        static_cast<uint32_t>(mmTilingDataIn->baseK),
-                        static_cast<uint32_t>(mmTilingDataIn->kAL1),
-                        static_cast<uint32_t>(mmTilingDataIn->kBL1),
-                        static_cast<uint32_t>(mmTilingDataIn->scaleKAL1),
-                        static_cast<uint32_t>(mmTilingDataIn->scaleKBL1),
-                        static_cast<uint8_t>(mmTilingDataIn->isBias),
-                        static_cast<uint8_t>(mmTilingDataIn->dbL0C),
-                        static_cast<uint8_t>(mmTilingDataIn->l1BufferStage),
-                        static_cast<int8_t>(gmmBaseParamsIn->groupType),
-                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType),
-                        static_cast<uint8_t>(gmmBaseParamsIn->singleW)};
+    GMMTiling gmmParams{
+        static_cast<uint32_t>(gmmBaseParamsIn->groupNum), static_cast<int64_t>(mmTilingDataIn->m),
+        static_cast<int64_t>(mmTilingDataIn->n),          static_cast<int64_t>(mmTilingDataIn->k),
+        static_cast<uint32_t>(mmTilingDataIn->baseM),     static_cast<uint32_t>(mmTilingDataIn->baseN),
+        static_cast<uint32_t>(mmTilingDataIn->baseK),     static_cast<uint32_t>(mmTilingDataIn->kAL1),
+        static_cast<uint32_t>(mmTilingDataIn->kBL1),      static_cast<uint32_t>(mmTilingDataIn->scaleKAL1),
+        static_cast<uint32_t>(mmTilingDataIn->scaleKBL1), static_cast<uint8_t>(mmTilingDataIn->isBias),
+        static_cast<uint8_t>(mmTilingDataIn->dbL0C),      static_cast<uint8_t>(mmTilingDataIn->l1BufferStage),
+        static_cast<int8_t>(gmmBaseParamsIn->groupType),  static_cast<uint8_t>(gmmBaseParamsIn->groupListType),
+        static_cast<uint8_t>(gmmBaseParamsIn->singleW)};
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
     GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
