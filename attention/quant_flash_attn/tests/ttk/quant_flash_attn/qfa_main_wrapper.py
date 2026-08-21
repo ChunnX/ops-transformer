@@ -150,7 +150,9 @@ def run_main(
             "FP8_DTYPE": torch.float8_e4m3fn,
             "QUANT_GROUP_SIZE": 32,
             "INPUT_LAYOUT": input_layout,
-            "UNCONTIGUOUS_DIMS": uncontiguous_dim if uncontiguous_dim is not None else [-1] * 8,
+            "UNCONTIGUOUS_DIMS": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "DEVICE_ID": device_id,
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,

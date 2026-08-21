@@ -270,10 +270,18 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
             **kwargs,
         )
     # _cached_mxfp8_inputs 可能由 inputs.py 注入到 mxfp8 或 fp8 golden 模块 (按 quant_mode)
-    cached = getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None) if qm == 6 else getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None)
+    cached = (
+        getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None)
+        if qm == 6
+        else getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None)
+    )
     if cached is None:
         # 兜底: 检查另一个模块 (兼容旧 inputs.py 行为)
-        cached = getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None) if qm == 6 else getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None)
+        cached = (
+            getattr(mxfp8_golden_mod, "_cached_mxfp8_inputs", None)
+            if qm == 6
+            else getattr(fp8_golden_mod, "_cached_mxfp8_inputs", None)
+        )
     if cached is None:
         raise RuntimeError(
             f"case {case_name}: inputs 生成后 _cached_mxfp8_inputs 仍为空"

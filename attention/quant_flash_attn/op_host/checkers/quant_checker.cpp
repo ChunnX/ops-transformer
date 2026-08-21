@@ -38,8 +38,7 @@ namespace {
 // descale dtype 期望值表: 各量化场景下 q/k/v descale 的 tensor_type 要求
 //   MxFP8: FLOAT8_E8M0; GQA_FP8_FULLQUANT: FLOAT32
 const std::map<QfaQuantMode, std::pair<ge::DataType, std::string>> DESCALE_DTYPE_TABLE = {
-    {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
+    {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32, {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {ge::DT_FLOAT, "FLOAT32"}},
 };
@@ -57,8 +56,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaI
     uint32_t quantModeVal = static_cast<uint32_t>(qfaInfo.quantMode);
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode",
-                                              std::to_string(quantModeVal).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode", std::to_string(quantModeVal).c_str(),
                                               "The value of quant_mode must be 1 or 6"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -115,8 +113,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckQDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckQDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckQDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckQDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -173,8 +170,7 @@ ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckKDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckKDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckKDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckKDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -231,8 +227,7 @@ ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckVDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckVDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckVDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckVDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -291,16 +286,15 @@ ge::graphStatus QuantChecker::CheckParaExistenceGqaFp8(const QfaTilingInfo &qfaI
     }
     // GQA_FP8_FULLQUANT: block_table 必选（GQA 强制 PA 场景）
     OP_CHECK_IF(qfaInfo.opParamInfo.blockTable.tensor == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, BLOCK_TABLE_NAME.c_str()),
-                return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, BLOCK_TABLE_NAME.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantChecker::CheckParaExistence(const QfaTilingInfo &qfaInfo)
 {
     // 公共: quant_mode 必选属性
-    OP_CHECK_IF(qfaInfo.opParamInfo.quantMode == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, "quant_mode"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qfaInfo.opParamInfo.quantMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, "quant_mode"),
+                return ge::GRAPH_FAILED);
 
     // 公共: q_descale / k_descale / v_descale 必须存在
     OP_CHECK_IF(qfaInfo.opParamInfo.qDescale.desc == nullptr || qfaInfo.opParamInfo.qDescale.shape == nullptr,
@@ -606,17 +600,18 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
     const ge::DataType expectedDtype = it->second.first;
     const std::string expectedDtypeStr = it->second.second;
 
-    const auto CheckDescaleDtype = [&qfaInfo, this, expectedDtype, &expectedDtypeStr](const QfaRequiredParaInfo &slot,
-                                                                                      const std::string &paraName) -> ge::graphStatus {
+    const auto CheckDescaleDtype = [&qfaInfo, this, expectedDtype, &expectedDtypeStr](
+                                       const QfaRequiredParaInfo &slot,
+                                       const std::string &paraName) -> ge::graphStatus {
         const gert::CompileTimeTensorDesc *desc = slot.desc;
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS; // 存在性校验负责
         }
-        OP_CHECK_IF(desc->GetDataType() != expectedDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, paraName.c_str(),
-                                              DataTypeToSerialString(desc->GetDataType()).c_str(),
-                                              expectedDtypeStr.c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            desc->GetDataType() != expectedDtype,
+            OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, paraName.c_str(),
+                                      DataTypeToSerialString(desc->GetDataType()).c_str(), expectedDtypeStr.c_str()),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
 
@@ -790,20 +785,20 @@ ge::graphStatus QuantChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
 
 ge::graphStatus QuantChecker::CheckN1SizeFullquant(const QfaTilingInfo &qfaInfo) const
 {
-    OP_CHECK_IF((qfaInfo.n1Size > N1_LIMIT || qfaInfo.n1Size < 1),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    qfaInfo.opName, "num_heads", std::to_string(qfaInfo.n1Size).c_str(),
-                    "num_heads must be within the range [1, 256]"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (qfaInfo.n1Size > N1_LIMIT || qfaInfo.n1Size < 1),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "num_heads", std::to_string(qfaInfo.n1Size).c_str(),
+                                              "num_heads must be within the range [1, 256]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantChecker::CheckN2SizeFullquant(const QfaTilingInfo &qfaInfo) const
 {
     OP_CHECK_IF((qfaInfo.n2Size > N2_LIMIT || qfaInfo.n2Size < 1),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    qfaInfo.opName, "num_key_value_heads", std::to_string(qfaInfo.n2Size).c_str(),
-                    "num_key_value_heads must be within the range [1, 256]"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "num_key_value_heads",
+                                                      std::to_string(qfaInfo.n2Size).c_str(),
+                                                      "num_key_value_heads must be within the range [1, 256]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -814,9 +809,8 @@ ge::graphStatus QuantChecker::CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) 
         std::string qShape = ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape());
         std::string kShape = ToString(qfaInfo.opParamInfo.key.shape->GetStorageShape());
         std::string shapesStr = qShape + " and " + kShape;
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            qfaInfo.opName, "query and key", shapesStr.c_str(),
-            "the axis G must be within the range [1, 64]");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(qfaInfo.opName, "query and key", shapesStr.c_str(),
+                                               "the axis G must be within the range [1, 64]");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -824,8 +818,7 @@ ge::graphStatus QuantChecker::CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) 
 
 ge::graphStatus QuantChecker::CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const
 {
-    if (CheckN1SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckN2SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS ||
+    if (CheckN1SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS || CheckN2SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS ||
         CheckGSizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
