@@ -497,7 +497,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     bool sendsLocalTokens = sendsTokens &&
                             (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    constexpr uint32_t metaChunkTokenMax = 4096U;
+    constexpr uint32_t metaChunkTokenMax = 2048U;
     uint32_t metaChunkTokens = 0;
     uint32_t metaChunkBytes = 0;
     uint32_t sendIndexBytes = 0;
@@ -509,7 +509,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (sendsTokens) {
         metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
         metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
-        sendIndexBytes = Ceil(metaChunkTokens * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN;
+        sendIndexBytes = metaChunkTokens * UB_ALIGN;
         tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
         tpipe_->InitBuffer(sendIndexBuf_, sendIndexBytes);
         if constexpr (HasTopkWeight == 1) {
@@ -520,7 +520,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         sendIndexLocal = sendIndexBuf_.Get<uint64_t>();
         sendIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(combineSendDataWorkspaceAddr_));
 
+        constexpr uint32_t indexStride = UB_ALIGN / sizeof(uint64_t);
         uint32_t zeroIndexCount = metaChunkBytes / sizeof(uint64_t);
+        uint32_t zeroSlotCount = zeroIndexCount / indexStride;
         LocalTensor<uint64_t> zeroIndexLocal = metadataLocal.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(zeroIndexLocal, 0U, zeroIndexCount);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -529,12 +531,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         uint64_t clearStart = aivId_ * clearCount + (aivId_ < clearRemainder ? aivId_ : clearRemainder);
         clearCount += aivId_ < clearRemainder ? 1U : 0U;
         for (uint32_t dstRank = 0; dstRank < epWorldSize_; ++dstRank) {
-            for (uint64_t offset = 0; offset < clearCount; offset += zeroIndexCount) {
+            for (uint64_t offset = 0; offset < clearCount; offset += zeroSlotCount) {
                 uint32_t curClearCount = static_cast<uint32_t>(
-                    clearCount - offset > zeroIndexCount ? zeroIndexCount : clearCount - offset);
+                    clearCount - offset > zeroSlotCount ? zeroSlotCount : clearCount - offset);
                 DataCopyExtParams clearParams{
-                    1U, static_cast<uint32_t>(curClearCount * sizeof(uint64_t)), 0U, 0U, 0U};
-                DataCopyPad(sendIndexGm[static_cast<uint64_t>(dstRank) * workspaceStride + clearStart + offset],
+                    1U, static_cast<uint32_t>(curClearCount * UB_ALIGN), 0U, 0U, 0U};
+                uint64_t clearOffset = (clearStart + offset) * indexStride;
+                DataCopyPad(sendIndexGm[static_cast<uint64_t>(dstRank) * workspaceStride + clearOffset],
                             zeroIndexLocal, clearParams);
             }
         }
@@ -578,19 +581,20 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                         sendIndex |= static_cast<uint64_t>(weightsForNotify.GetValue(i)) << 32U;
                     }
                 }
-                sendIndexLocal.SetValue(i, sendIndex);
+                sendIndexLocal.SetValue(i * indexStride, sendIndex);
             }
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             for (uint32_t i = 0; i < curChunkTokens; ++i) {
-                uint64_t sendIndex = sendIndexLocal.GetValue(i);
+                uint64_t sendIndex = sendIndexLocal.GetValue(i * indexStride);
                 if (sendIndex == 0) {
                     continue;
                 }
                 int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
                 uint64_t dstSlot = static_cast<uint64_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 1)) * topK_ +
                                    metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-                DataCopyPad(sendIndexGm[static_cast<uint64_t>(srcRank) * workspaceStride + dstSlot],
-                            sendIndexLocal[i], indexCopyParams);
+                uint64_t indexOffset = dstSlot * indexStride;
+                DataCopyPad(sendIndexGm[static_cast<uint64_t>(srcRank) * workspaceStride + indexOffset],
+                            sendIndexLocal[i * indexStride], indexCopyParams);
             }
             SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
@@ -600,7 +604,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         const DataCopyPadExtParams<uint64_t> indexPadParams{false, 0U, 0U, 0U};
         uint32_t firstRank = splitRankTokens ? targetRank : aivId_;
         uint32_t rankStep = splitRankTokens ? epWorldSize_ : activeAivNum;
-        uint32_t indexChunkMax = sendIndexBytes / sizeof(uint64_t);
+        uint32_t indexChunkMax = sendIndexBytes / UB_ALIGN;
         for (uint32_t dstRank = firstRank; dstRank < epWorldSize_; dstRank += rankStep) {
             uint64_t slotStart = 0;
             uint64_t slotEnd = slotsPerRank;
@@ -615,13 +619,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 uint64_t chunkEnd = (chunkStart + indexChunkMax > slotEnd) ? slotEnd : chunkStart + indexChunkMax;
                 uint32_t curIndexCount = static_cast<uint32_t>(chunkEnd - chunkStart);
                 DataCopyExtParams mapCopyParams{
-                    1U, static_cast<uint32_t>(curIndexCount * sizeof(uint64_t)), 0U, 0U, 0U};
+                    1U, static_cast<uint32_t>(curIndexCount * UB_ALIGN), 0U, 0U, 0U};
                 DataCopyPad(sendIndexLocal,
-                            sendIndexGm[static_cast<uint64_t>(dstRank) * workspaceStride + chunkStart],
+                            sendIndexGm[static_cast<uint64_t>(dstRank) * workspaceStride + chunkStart * indexStride],
                             mapCopyParams, indexPadParams);
                 SyncFunc<AscendC::HardEvent::MTE2_S>();
                 for (uint32_t i = 0; i < curIndexCount; ++i) {
-                    uint64_t sendIndex = sendIndexLocal.GetValue(i);
+                    uint64_t sendIndex = sendIndexLocal.GetValue(i * indexStride);
                     uint32_t tokenIndexPlusOne = static_cast<uint32_t>(sendIndex);
                     if (tokenIndexPlusOne == 0U) {
                         continue;
