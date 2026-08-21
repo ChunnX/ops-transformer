@@ -267,11 +267,11 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, barrier node kept as-is.");
                 continue;
             }
-            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "distribute_barrier_extend"）：
+            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "distribute_barrier_extend_dc_test"）：
             // 复用 HCCL 持有的固定 device buffer，避免每图拷贝一份 context 进 weight 池
             void *ctxAddr = nullptr;
             uint64_t ctxSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupStr, "distribute_barrier_extend", ctxAddr,
+            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupStr, "distribute_barrier_extend_dc_test", ctxAddr,
                                                                ctxSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context device addr failed, barrier node kept as-is.");
                 continue;

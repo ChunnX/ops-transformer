@@ -323,11 +323,11 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
-            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "moe_distribute_v2"）：
+            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "moe_distribute_v2_dc_test"）：
             // 复用 HCCL 持有的固定 device buffer，避免每图拷贝一份 context 进 weight 池
             void *ctxAddr = nullptr;
             uint64_t ctxSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupEpStr, "moe_distribute_v2", ctxAddr, ctxSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupEpStr, "moe_distribute_v2_dc_test", ctxAddr, ctxSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context device addr failed, V2 node kept as-is.");
                 continue;
             }
