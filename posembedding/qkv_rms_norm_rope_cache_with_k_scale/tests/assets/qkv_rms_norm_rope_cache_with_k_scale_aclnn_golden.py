@@ -53,7 +53,11 @@ class AclnnQkvRmsNormRopeCacheWithKScaleTestSpec:
     ):
         """ACLNN golden; output order follows the public ACLNN contract."""
 
-        q_out_dtype = 27 if str(qQuantMode) == "NoQuant" else 36
+        q_out_dtype = (
+            _kernel.GE_DT_BF16
+            if str(qQuantMode) == "NoQuant"
+            else _kernel.GE_DT_FLOAT8_E4M3FN
+        )
         result = _kernel.numpy_result(
             qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef,
             kScaleCacheRef, queryStartLocOptional, seqLensOptional,

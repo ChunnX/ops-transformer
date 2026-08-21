@@ -33,6 +33,11 @@ INT8_MAX = np.float32(127.0)
 BF16_DTYPE = np.dtype(ml_dtypes.bfloat16)
 FP8_DTYPE = np.dtype(ml_dtypes.float8_e4m3fn)
 
+# CANN/GE DataType enum values from graph/c_types.h.  q_out_dtype uses these
+# integer attributes: 27 = ge::DT_BF16; 36 = ge::DT_FLOAT8_E4M3FN.
+GE_DT_BF16 = 27
+GE_DT_FLOAT8_E4M3FN = 36
+
 
 def to_numpy(value):
     """Convert a CPU torch tensor to NumPy without losing BF16/FP8 storage."""
@@ -196,7 +201,10 @@ def _normalize_dtype_name(value) -> str:
     if value is None:
         return "float8_e4m3fn"
     if isinstance(value, (int, np.integer)):
-        return {27: "bfloat16", 36: "float8_e4m3fn"}.get(int(value), str(value))
+        return {
+            GE_DT_BF16: "bfloat16",
+            GE_DT_FLOAT8_E4M3FN: "float8_e4m3fn",
+        }.get(int(value), str(value))
     return str(value).lower().replace("torch.", "").replace("dt_", "")
 
 
@@ -279,8 +287,11 @@ def qkv_rms_norm_rope_cache_with_k_scale_numpy(
     dtype_name = _normalize_dtype_name(q_out_dtype)
     if is_mrope:
         _require(str(q_quant_mode) == "NoQuant", "M-RoPE requires q_quant_mode=NoQuant")
-        _require("bfloat16" in dtype_name or dtype_name in ("bf16", "27"),
-                 "M-RoPE requires BF16 q_out")
+        _require(
+            "bfloat16" in dtype_name
+            or dtype_name in ("bf16", str(GE_DT_BF16)),
+            "M-RoPE requires BF16 q_out",
+        )
         expected_v_scale = (v_heads, head_dim)
         _require(np.asarray(v_scale).shape == expected_v_scale,
                  "M-RoPE v_scale must have shape [Nv,D]")
@@ -289,8 +300,11 @@ def qkv_rms_norm_rope_cache_with_k_scale_numpy(
     else:
         _require(str(q_quant_mode) == "PerTokenPerHead",
                  "RoPE requires q_quant_mode=PerTokenPerHead")
-        _require("float8_e4m3fn" in dtype_name or dtype_name == "36",
-                 "RoPE requires FP8 E4M3FN q_out")
+        _require(
+            "float8_e4m3fn" in dtype_name
+            or dtype_name == str(GE_DT_FLOAT8_E4M3FN),
+            "RoPE requires FP8 E4M3FN q_out",
+        )
         _require(np.asarray(v_scale).shape == (v_heads,),
                  "RoPE v_scale must have shape [Nv]")
         v_multiplier = np.asarray(v_scale, dtype=np.float32)[None, :, None]
@@ -812,7 +826,8 @@ class QkvRmsNormRopeCacheWithKScaleTestSpec:
         k_scale_cache, query_start_loc=None, seq_lens=None, rotation=None,
         v_scale=None, mrope_position=None, *, head_nums, layout_qkv="TND",
         layout_q_out="NTD", epsilon=1e-6, mrope_section=None,
-        q_quant_mode="PerTokenPerHead", q_out_dtype=36, **kwargs,
+        q_quant_mode="PerTokenPerHead",
+        q_out_dtype=GE_DT_FLOAT8_E4M3FN, **kwargs,
     ):
         result = numpy_result(
             qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,

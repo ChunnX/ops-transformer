@@ -62,8 +62,9 @@ class PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec:
     ):
         """Functional PTA golden, including no-mutation cache checks."""
 
-        dtype = 27 if str(q_quant_mode) == "NoQuant" else (
-            36 if q_out_dtype is None else q_out_dtype
+        dtype = _kernel.GE_DT_BF16 if str(q_quant_mode) == "NoQuant" else (
+            _kernel.GE_DT_FLOAT8_E4M3FN
+            if q_out_dtype is None else q_out_dtype
         )
         result = _kernel.numpy_result(
             qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
@@ -95,8 +96,9 @@ class PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec:
     ):
         """In-place PTA golden; TTK appends cache inputs to actual outputs."""
 
-        dtype = 27 if str(q_quant_mode) == "NoQuant" else (
-            36 if q_out_dtype is None else q_out_dtype
+        dtype = _kernel.GE_DT_BF16 if str(q_quant_mode) == "NoQuant" else (
+            _kernel.GE_DT_FLOAT8_E4M3FN
+            if q_out_dtype is None else q_out_dtype
         )
         result = _kernel.numpy_result(
             qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
