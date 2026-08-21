@@ -20,23 +20,31 @@ set -e
 
 cd "$(dirname "$0")"
 
-SOC_VERSION="${NPU_SOC_VERSION:-ascend910_93}"
+SOC_VERSION="${NPU_SOC_VERSION:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/head_overhead_results}"
 LAUNCH_COUNT=101
 RUN_ADD="${RUN_ADD:-1}"
 RUN_GMM="${RUN_GMM:-1}"
 
-# 根据 SOC_VERSION 选择源码目录后缀
-if [ "$SOC_VERSION" = "ascend950" ]; then
-    SRC_SUFFIX="ascend950"
-elif [ "$SOC_VERSION" = "ascend910_93" ]; then
-    SRC_SUFFIX="ascend910_93"
-elif [ "$SOC_VERSION" = "ascend910b" ]; then
-    SRC_SUFFIX="ascend910b"
-else
-    echo "[ERROR] 不支持的 NPU_SOC_VERSION: $SOC_VERSION"
-    exit 1
+# 自动检测平台: npu-smi info 输出的芯片名映射到 SOC_VERSION
+if [ -z "$SOC_VERSION" ]; then
+    CHIP_NAME=$(npu-smi info 2>/dev/null | grep -o 'Ascend[0-9A-Za-z_]*' | head -1)
+    case "$CHIP_NAME" in
+        Ascend950*)    SOC_VERSION="ascend950" ;;
+        Ascend910)     SOC_VERSION="ascend910_93" ;;
+        Ascend910_93*) SOC_VERSION="ascend910_93" ;;
+        Ascend910B1)   SOC_VERSION="ascend910b" ;;
+        *) echo "[ERROR] 无法识别芯片: $CHIP_NAME，请手动设置 NPU_SOC_VERSION"; exit 1 ;;
+    esac
 fi
+
+# 根据 SOC_VERSION 选择源码目录后缀
+case "$SOC_VERSION" in
+    ascend950)    SRC_SUFFIX="ascend950" ;;
+    ascend910_93) SRC_SUFFIX="ascend910_93" ;;
+    ascend910b)   SRC_SUFFIX="ascend910b" ;;
+    *) echo "[ERROR] 不支持的 NPU_SOC_VERSION: $SOC_VERSION"; exit 1 ;;
+esac
 
 echo "============================================"
 echo "  Kernel Launch 头开销测试"
