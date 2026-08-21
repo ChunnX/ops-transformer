@@ -48,7 +48,9 @@ std::string QfaQuantModeToSerialString(QfaQuantMode qfaQuantMode)
         {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
          "A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"},
         {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-         "A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"}};
+         "A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"},
+        {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32,
+         "A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32"}};
 
     if (quantMode2Str.find(qfaQuantMode) != quantMode2Str.end()) {
         return quantMode2Str.at(qfaQuantMode);

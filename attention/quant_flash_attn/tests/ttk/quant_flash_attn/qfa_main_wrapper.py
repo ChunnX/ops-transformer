@@ -47,6 +47,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +56,15 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
+    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    if quant_mode == 6:
+        target = fp8_golden_mod
+    elif quant_mode == 7:
+        target = hif8_golden_mod
+    else:
+        target = mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -92,6 +99,10 @@ def run_main(
     graph_path: int = 0,
     input_layout: str = "TND",
     uncontiguous_dim: List[int] = None,
+    layout_q: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
+    is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
     win_left: int = -1,
@@ -101,6 +112,7 @@ def run_main(
     data_range_v: float = 1.0,
     **kwargs,
 ):
+    input_layout = layout_q or input_layout
     """重建 metadata 后调 quant_flash_attn 主算子, 返回 [atten_out, lse_out]。
 
     分离测试入口: 验证主算子 + metadata 完整链路。
@@ -197,6 +209,17 @@ def run_main(
         q_fp8 = fp8_golden_mod.quant_fp16_to_fp8(q_cpu, quant_scale_q)
         k_fp8 = fp8_golden_mod.quant_fp16_to_fp8(k_cpu, quant_scale_k)
         v_fp8 = fp8_golden_mod.quant_fp16_to_fp8(v_cpu, quant_scale_v)
+    elif quant_mode == 7:
+        # HIF8 per-tensor (descale=FP32 标量)
+        quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(q_cpu)
+        quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(k_cpu)
+        quant_scale_v = hif8_golden_mod.get_hif8_per_tensor_quant_scale(v_cpu)
+        deq_q = quant_scale_q
+        deq_k = quant_scale_k
+        deq_v = quant_scale_v
+        q_fp8 = hif8_golden_mod.hif8_per_tensor_quant(q_cpu, quant_scale_q)
+        k_fp8 = hif8_golden_mod.hif8_per_tensor_quant(k_cpu, quant_scale_k)
+        v_fp8 = hif8_golden_mod.hif8_per_tensor_quant(v_cpu, quant_scale_v)
     else:
         # MXFP8 (per-token-group Q/K, per-channel-group V, descale=e8m0)
         quant_scale_q = mxfp8_golden_mod.get_mxfp8_per_token_group_quant_scale(
@@ -250,6 +273,25 @@ def run_main(
             max_seqlen_q,
             max_seqlen_kv,
             block_table_cpu
+            if isinstance(block_table_cpu, torch.Tensor) and enable_pa
+            else None,
+        )
+    elif quant_mode == 7:
+        inputs = hif8_golden_mod.prepare_npu_inputs(
+            q_fp8,
+            k_fp8,
+            v_fp8,
+            deq_q,
+            deq_k,
+            deq_v,
+            p_scale_cpu,
+            cu_seqlens_q_list,
+            cu_seqlens_kv_list,
+            list(seqused_q) if seqused_q is not None else None,
+            list(seqused_kv) if seqused_kv is not None else None,
+            max_seqlen_q,
+            max_seqlen_kv,
+            block_table_torch=block_table_cpu
             if isinstance(block_table_cpu, torch.Tensor) and enable_pa
             else None,
         )
@@ -313,7 +355,7 @@ def run_main(
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
             v_descale=inputs["dequant_scale_v"],
-            batch_size=batch_size,
+            batch_size=batch_size if not is_tnd_q else None,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
@@ -365,6 +407,8 @@ def run_main(
     act_seqused_q = (
         fp8_golden_mod._actual_seq_q()
         if quant_mode == 6
+        else hif8_golden_mod._actual_seq_q()
+        if quant_mode == 7
         else mxfp8_golden_mod._actual_seq_q()
     )
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,
