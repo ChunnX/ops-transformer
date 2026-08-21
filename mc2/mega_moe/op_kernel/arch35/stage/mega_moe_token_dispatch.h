@@ -512,8 +512,10 @@ static __aicore__ inline void ComputeCompactExpertCountTablesVF(__local_mem__ in
         }
     }
 
+    // 前半段把 prefix 写回 UB；后半段将重新从同一区域 Gather，显式建立 VEC_STORE -> VEC_LOAD 可见性。
     MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
 
+    // 在同一次 VF 中提取各专家尾值，避免第二次 VF 启动与外部 PIPE_V。
     {
         MicroAPI::RegTensor<int32_t> expertEndPrefixReg;
         MicroAPI::RegTensor<int32_t> previousEndPrefixReg;
