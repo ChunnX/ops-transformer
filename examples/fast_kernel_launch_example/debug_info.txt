@@ -1,9 +1,0 @@
-2026-08-13 21:56:35 (299998) - [INFO] Total device count: 16
-2026-08-13 21:56:35 (299998) - [INFO] Valid device_id 0
-2026-08-13 21:56:35 (299998) - [INFO] Get soc_version: Ascend910_9382
-2026-08-13 21:56:35 (299998) - [INFO] Start to test env with golden op.
-2026-08-13 21:56:36 (300062) - [DEBUG] Start to run golden op. Please wait...
-2026-08-13 21:56:36 (300062) - [DEBUG] Block dim: 48
-2026-08-13 21:56:36 (300062) - [DEBUG] rtRegKernelLaunchFillFunc register succeeded
-2026-08-13 21:56:37 (300062) - [DEBUG] Start exec_single_case with tail...
-2026-08-13 21:56:37 (300062) - [DEBUG] Start run exec_single_case tail...
