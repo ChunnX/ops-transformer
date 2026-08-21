@@ -17,9 +17,13 @@ profiling/
 │       └── ... (12 个目录, 共 36 个 CSV)
 ├── mc2_test/                              # 融合算子路径 (aclnnMatmulReduceScatterV2)
 │   ├── aclnnMatmulReduceScatterV2_performance_result.csv  # 完整结果 (mc2_prof + golden_prof 列)
-│   └── mc2_aclnnMatmulReduceScatterV2_pro_result.csv      # mc2 专用结果
+│   ├── mc2_aclnnMatmulReduceScatterV2_pro_result.csv      # mc2 专用结果
+│   └── raw/                               # 原始 op_summary CSV (torch profiler + msprof 采集)
+│       └── m{M}k{K}n{N}r{R}/              # 同 st_direct/raw 结构, 与 ST直调同口径 pipe 级对比
 ├── hccl_mm/                               # 分步路径 (aclnnQuantMatmulV5 + HcclReduceScatter)
-│   └── hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv  # hccl_mm 专用结果 (含时间分解)
+│   ├── hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv  # hccl_mm 专用结果 (含时间分解)
+│   └── raw/                               # 原始 op_summary CSV (含 matmul + HcclReduceScatter 两个 op)
+│       └── m{M}k{K}n{N}r{R}/              # hccl_mm 的 op_summary 含两个 op, 可分析 matmul 与通信时间分布
 └── comparison/
     └── mc2_test_vs_st_comparison.log      # 三路径性能对比报告
 ```
@@ -76,8 +80,12 @@ msprof --output={prof_dir} \
 python3 mc2_test.py --xlsx {excel} --scene one_hccl_mm --world_size {R}
 ```
 
-- 数据来源: `aclnnMatmulReduceScatterV2_performance_result.csv` 的 `mc2_prof` 列
-- 12 个对比用例的 case_name 后缀为 `rs_st`
+- 汇总数据: `aclnnMatmulReduceScatterV2_performance_result.csv` 的 `mc2_prof` 列
+- 原始 op_summary: `raw/m{M}k{K}n{N}r{R}/op_summary_dev{0..R-1}.csv`
+  - 来源: torch profiler 采集的 PROF 层 `mindstudio_profiler_output/op_summary_*.csv`
+  - 与 ST直调同结构, 支持三路径 pipe 级对比
+  - 12 个对比用例的 case_name 后缀为 `rs_st`
+  - 注: `m8192k3696n8192r4` 的 dev3 原始采集缺失 op_summary (仅 3 个 device)
 
 ### hccl_mm (hccl_mm/)
 
@@ -86,8 +94,9 @@ python3 mc2_test.py --xlsx {excel} --scene one_hccl_mm --world_size {R}
 python3 mc2_test.py --xlsx {excel} --scene one_hccl_mm --world_size {R}
 ```
 
-- 数据来源: 同 CSV 的 `golden_prof` 列
-- `hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv` 含时间分解 (avg_hccl + avg_matmul + avg_aicpu)
+- 汇总数据: 同 CSV 的 `golden_prof` 列, `hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv` 含时间分解 (avg_hccl + avg_matmul + avg_aicpu)
+- 原始 op_summary: `raw/m{M}k{K}n{N}r{R}/op_summary_dev{0..R-1}.csv`
+  - hccl_mm 的 op_summary 含**两个 op** (aclnnQuantMatmulV5 matmul + HcclReduceScatter), 可分析 matmul 与通信的时间分布
 
 ## op_summary CSV 字段说明
 
