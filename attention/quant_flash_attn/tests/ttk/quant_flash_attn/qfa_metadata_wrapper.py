@@ -44,6 +44,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,15 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
+    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    if quant_mode == 6:
+        target = fp8_golden_mod
+    elif quant_mode == 7:
+        target = hif8_golden_mod
+    else:
+        target = mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -308,7 +315,7 @@ def run_metadata(
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
             v_descale=inputs["dequant_scale_v"],
-            batch_size=batch_size,
+            batch_size=batch_size if not is_tnd_q else None,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
