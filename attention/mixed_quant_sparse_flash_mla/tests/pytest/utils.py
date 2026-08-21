@@ -13,10 +13,16 @@
 import pytest
 import random
 import pandas as pd
-from pathlib import Path
 import numpy as np
 import os
 import math
+
+
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
 
 
 def infer_template_run_mode(
@@ -414,10 +420,10 @@ def fill_none_params(params_dict):
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
     ori_mask_mode = params_dict.get("ori_mask_mode")
-    ori_kv_topk_mode = params_dict.get("ori_kv_topk_mode")
+    ori_kv_topk_mode = normalize_topk_mode(params_dict.get("ori_kv_topk_mode"))
     if ori_kv_topk_mode is None:
         ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
-    cmp_kv_topk_mode = params_dict.get("cmp_kv_topk_mode")
+    cmp_kv_topk_mode = normalize_topk_mode(params_dict.get("cmp_kv_topk_mode"))
     if cmp_kv_topk_mode is None:
         cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
 

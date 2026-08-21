@@ -19,6 +19,13 @@ import math
 import logging
 
 
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
+
+
 def infer_template_run_mode(
     K,
     cmp_ratio,
@@ -412,10 +419,10 @@ def fill_none_params(params_dict):
         cmp_kv_datarange = [-5, 5]
 
     ori_mask_mode = params_dict.get("ori_mask_mode")
-    ori_kv_topk_mode = params_dict.get("ori_kv_topk_mode")
+    ori_kv_topk_mode = normalize_topk_mode(params_dict.get("ori_kv_topk_mode"))
     if ori_kv_topk_mode is None:
         ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
-    cmp_kv_topk_mode = params_dict.get("cmp_kv_topk_mode")
+    cmp_kv_topk_mode = normalize_topk_mode(params_dict.get("cmp_kv_topk_mode"))
     if cmp_kv_topk_mode is None:
         cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
 

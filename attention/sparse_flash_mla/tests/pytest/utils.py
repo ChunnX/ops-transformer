@@ -34,6 +34,15 @@ str_map_dict = {
 }
 
 
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, list):
+        return [normalize_topk_mode(item) for item in value]
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
+
+
 def to_int_or_na(x):
     if pd.isna(x) or x == "":
         return pd.NA
@@ -297,8 +306,12 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
             "ori_win_left": params.get("ori_win_left", [None]),
             "ori_win_right": params.get("ori_win_right", [None]),
-            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ori_topk_default),
-            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", cmp_topk_default),
+            "ori_kv_topk_mode": normalize_topk_mode(
+                params.get("ori_kv_topk_mode", ori_topk_default)
+            ),
+            "cmp_kv_topk_mode": normalize_topk_mode(
+                params.get("cmp_kv_topk_mode", cmp_topk_default)
+            ),
             "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),
