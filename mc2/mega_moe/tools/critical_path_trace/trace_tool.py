@@ -28,6 +28,10 @@ EVENT_NAMES = {
     9: "Wait GMM1",
     10: "Wait Activation",
     11: "Wait GMM2",
+    12: "Dispatch transfer pipeline (aggregate)",
+    13: "Wait Dispatch MTE3 reuse (aggregate)",
+    14: "Wait Dispatch MTE3 drain (aggregate)",
+    15: "Wait Dispatch ready sync (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -41,9 +45,14 @@ EVENT_COLORS = {
     9: "#cbd5e1",
     10: "#cbd5e1",
     11: "#cbd5e1",
+    12: "#0891b2",
+    13: "#f59e0b",
+    14: "#f97316",
+    15: "#ef4444",
 }
-WAIT_EVENT_IDS = frozenset((8, 9, 10, 11))
-WAIT_INSTRUMENTED_PARENT_IDS = frozenset((2, 4, 5, 7))
+WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15))
+AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15))
+WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
         "DispatchWaveAndGetEndCursor：开始规划并处理当前 wave",
@@ -88,6 +97,22 @@ EVENT_TRACE_POINTS = {
     11: (
         "Combine AIV1：进入 WaitWaveGmm2GroupReady",
         "GMM2 输出 ready 后",
+    ),
+    12: (
+        "当前 wave 内进入 token/scale/meta 搬运 pipeline（多段累计）",
+        "当前 wave 内对应搬运 pipeline 返回（多段累计）",
+    ),
+    13: (
+        "Dispatch ring slot 复用前等待上一轮 MTE3 完成（累计值）",
+        "对应 slot 可安全复用（累计值）",
+    ),
+    14: (
+        "Dispatch 小批结束后开始 drain 已使用 ring slot（累计值）",
+        "当前小批全部 MTE3 搬运完成（累计值）",
+    ),
+    15: (
+        "发布 GMM1 ready 前执行 MTE3_S 同步（累计值）",
+        "MTE3 数据可见，可发布 ready（累计值）",
     ),
 }
 
@@ -191,6 +216,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
             if header["version"] == 3:
                 parent_event_id, begin, end = event_words[6:9]
                 is_wait_event = event_type in WAIT_EVENT_IDS
+                is_aggregate_event = event_type in AGGREGATE_EVENT_IDS
                 wait_cycles = None
             elif header["version"] == 2:
                 wait_cycles, begin, end = event_words[6:9]
@@ -205,6 +231,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "event": EVENT_NAMES.get(event_type, f"unknown({event_type})"),
                     "event_id": event_type,
                     "is_wait_event": is_wait_event,
+                    "is_aggregate_event": is_aggregate_event if header["version"] == 3 else False,
                     "parent_event": EVENT_NAMES.get(parent_event_id) if parent_event_id else None,
                     "parent_event_id": parent_event_id,
                     "wave": wave_index,
@@ -245,6 +272,7 @@ def write_csv(trace: dict, path: Path) -> None:
         "event",
         "event_id",
         "is_wait_event",
+        "is_aggregate_event",
         "parent_event",
         "parent_event_id",
         "wave",
@@ -333,6 +361,8 @@ def write_svg(trace: dict, path: Path) -> None:
         lines.append(f'<text class="label" x="10" y="{y + 14}">{lane_name}<title>{lane_tip}</title></text>')
         lines.append(f'<line x1="{left}" y1="{y + 18}" x2="{width - right}" y2="{y + 18}" stroke="#e5e7eb"/>')
         for event in lane_events:
+            if event.get("is_aggregate_event"):
+                continue
             x = left + (((event["begin_cycle"] - origin) & 0xFFFFFFFF) * scale)
             event_width = max(1.0, event["duration_cycles"] * scale)
             color = EVENT_COLORS.get(event["event_id"], "#64748b")
@@ -649,7 +679,8 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       +`<span class="lane-name-text">${{record.role}}`
       +`<small>P/W ${{(record.process_duration_cycles/1000).toFixed(3)}}/${{(metrics.waitCycles/1000).toFixed(3)}} us</small>`
       +`</span></div><div class="lane">`;
-    const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
+    const laneEvents=record.events.filter(e=>!e.is_aggregate_event)
+      .sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
     for(const e of laneEvents) {{
         const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
         const waitKnown=e.wait_cycles!==null;
@@ -700,8 +731,9 @@ function showEventDetail(item) {{
   const waitText=waitKnown?`${{e.wait_cycles}} cycles (${{(e.wait_cycles/1000).toFixed(3)}} μs)`:'未拆分';
   const waitPercent=waitKnown&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
   const parentText=e.parent_event?`　父阶段：<b>${{esc(e.parent_event)}}</b>`:'';
-  const intervalText=e.is_wait_event?'这是由 kernel 直接记录的真实轮询等待区间。':
-    `包含 <b>${{e.wait_event_count===null?'—':e.wait_event_count}}</b> 个独立等待区间。`;
+  const intervalText=e.is_aggregate_event?'这是当前 wave 内多个短区间的累计值；为避免事件溢出，不表示一段连续时间轴位置。':
+    (e.is_wait_event?'这是由 kernel 直接记录的真实轮询等待区间。':
+    `包含 <b>${{e.wait_event_count===null?'—':e.wait_event_count}}</b> 个独立等待区间。`);
   document.getElementById('eventDetail').innerHTML=`<b>Block ${{r.core}} · ${{r.role}} · ${{esc(e.event)}}</b>　`
     +`Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})${{parentText}}<br>`
     +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Total: <b>${{e.duration_cycles}} cycles</b><br>`

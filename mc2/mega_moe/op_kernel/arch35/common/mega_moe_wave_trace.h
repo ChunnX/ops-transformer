@@ -51,6 +51,13 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     WAIT_FOR_GMM1 = 9U,
     WAIT_FOR_ACTIVATION = 10U,
     WAIT_FOR_GMM2 = 11U,
+    // Aggregated per-wave Dispatch transfer metrics. These are emitted as
+    // synthetic child intervals so one event captures many short waits without
+    // overflowing the trace record.
+    DISPATCH_TRANSFER_PIPELINE = 12U,
+    WAIT_DISPATCH_MTE3_REUSE = 13U,
+    WAIT_DISPATCH_MTE3_DRAIN = 14U,
+    WAIT_DISPATCH_READY_SYNC = 15U,
 };
 
 namespace MegaMoeWaveTraceDetail {
@@ -222,6 +229,24 @@ struct MegaMoeWaveTrace {
     {
         writer.Record(static_cast<uint32_t>(event), scope,
                       static_cast<uint32_t>(MegaMoeWaveTraceEvent::INVALID), beginCycle, endCycle);
+    }
+
+    __aicore__ inline uint32_t RecordAggregatedChild(
+        MegaMoeWaveTraceEvent event, MegaMoeWaveTraceEvent parentEvent,
+        const MegaMoeWaveTraceDetail::EventScope &scope,
+        uint32_t parentBeginCycle, uint32_t parentEndCycle,
+        uint32_t accumulatedCycles, uint32_t beginOffset = 0U)
+    {
+        uint32_t parentDuration = parentEndCycle - parentBeginCycle;
+        if (accumulatedCycles == 0U || beginOffset >= parentDuration) {
+            return beginOffset;
+        }
+        uint32_t remaining = parentDuration - beginOffset;
+        uint32_t recordedCycles = accumulatedCycles < remaining ? accumulatedCycles : remaining;
+        uint32_t beginCycle = parentBeginCycle + beginOffset;
+        writer.Record(static_cast<uint32_t>(event), scope, static_cast<uint32_t>(parentEvent),
+                      beginCycle, beginCycle + recordedCycles);
+        return beginOffset + recordedCycles;
     }
 
     __aicore__ inline MegaMoeWaveTraceDetail::WaitContext CreateWaitContext(

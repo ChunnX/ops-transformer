@@ -45,6 +45,19 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py <raw-directory>
 
 当前报告按已验证环境的 `1000 cycles = 1 us` 展示。不同平台需先确认 SYS_CNT 频率。
 
+## Dispatch 搬运细分
+
+rank-interleave trace 额外按 wave 累计以下指标：
+
+- `Dispatch transfer pipeline (aggregate)`：进入 token/scale/meta 搬运函数到返回的总周期；
+- `Wait Dispatch MTE3 reuse (aggregate)`：ring slot 复用前等待上一轮 MTE3 完成的总周期；
+- `Wait Dispatch MTE3 drain (aggregate)`：每个小批末尾 drain 已使用 slot 的总周期；
+- `Wait Dispatch ready sync (aggregate)`：发布 GMM1 ready 前 `MTE3_S` 同步的总周期。
+
+这些事件是一个 wave 内多个短区间的累计值，不对应一段连续时间轴位置，因此不会绘制为时间线色块；
+它们会出现在 HTML 的 wave/event 表格、CSV 和 JSON 中。Dispatch 父事件的 `wait_cycles` 会扣除后三项，
+从而可以直接比较搬运等待与其余路由/控制开销。
+
 ## 当前等待覆盖
 
 - AIC GMM1 等 Dispatch：`WaitForGmm1InputReady`；

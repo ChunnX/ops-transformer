@@ -83,6 +83,40 @@ struct DispatchRankInterleaveLayer {
     int32_t activeRankPosition;
 };
 
+// Trace-only accounting is passed explicitly through the Dispatch helpers so
+// the production path remains unchanged when MEGA_MOE_ENABLE_WAVE_TRACE=0.
+// All counters are accumulated within one Dispatch wave on one AIV1 core.
+struct DispatchMte3TraceStats {
+    uint32_t transferPipelineCycles = 0U;
+    uint32_t reuseWaitCycles = 0U;
+    uint32_t drainWaitCycles = 0U;
+    uint32_t readySyncWaitCycles = 0U;
+};
+
+__aicore__ inline uint32_t BeginDispatchTransferTrace(DispatchMte3TraceStats *stats)
+{
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    return stats == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#else
+    (void)stats;
+    return 0U;
+#endif
+}
+
+__aicore__ inline void EndDispatchTransferTrace(
+    DispatchMte3TraceStats *stats, uint32_t beginCycle, uint32_t &accumulator)
+{
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (stats != nullptr && beginCycle != 0U) {
+        accumulator += MegaMoeWaveTraceDetail::Now() - beginCycle;
+    }
+#else
+    (void)stats;
+    (void)beginCycle;
+    (void)accumulator;
+#endif
+}
+
 struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> stridedTensor;
     LocalTensor<int32_t> compactTensor;
@@ -102,7 +136,8 @@ template <bool IsBufferReuse, bool TopkWeightsPrefetch, typename ActivationType>
 __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &context,
                                                      TokenDispatchScratch<ActivationType> &scratch,
                                                      int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
-                                                     GlobalTensor<ActivationType> &remoteRankGlobalTensor)
+                                                     GlobalTensor<ActivationType> &remoteRankGlobalTensor,
+                                                     DispatchMte3TraceStats *traceStats = nullptr)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     LocalTensor<ActivationType> copyTmpTensor = GetDispatchCopyBuffer(context, scratch, bufferIdx);
@@ -110,13 +145,21 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     uint64_t remoteCopyOffset =
         static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(context.quantTokenScaleAlignBytes);
     if constexpr (IsBufferReuse) {
+        uint32_t waitBegin = BeginDispatchTransferTrace(traceStats);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        if (traceStats != nullptr) {
+            EndDispatchTransferTrace(traceStats, waitBegin, traceStats->reuseWaitCycles);
+        }
     }
     DataCopy(copyTmpTensor, remoteRankGlobalTensor[remoteCopyOffset], context.quantTokenScaleAlignBytes);
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
 
     if constexpr (IsBufferReuse) {
+        uint32_t waitBegin = BeginDispatchTransferTrace(traceStats);
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+        if (traceStats != nullptr) {
+            EndDispatchTransferTrace(traceStats, waitBegin, traceStats->reuseWaitCycles);
+        }
     }
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
@@ -236,7 +279,8 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch, int32_t remoteRankIdx, int32_t copyNum)
+    TokenDispatchScratch<ActivationType> &scratch, int32_t remoteRankIdx, int32_t copyNum,
+    DispatchMte3TraceStats *traceStats = nullptr)
 {
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t bufferCount = bufferConfig.bufferCount;
@@ -256,14 +300,14 @@ __aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
 
     int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(0);
     FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
-        context, scratch, 0, firstTopkIndex, remoteRankIdx, remoteRankGlobalTensor);
+        context, scratch, 0, firstTopkIndex, remoteRankIdx, remoteRankGlobalTensor, traceStats);
 
     int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
         int32_t copyIdx = issueIdx - 1;
         int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
         FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
-            context, scratch, issueIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+            context, scratch, issueIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor, traceStats);
         int32_t dstRow = scratch.topkIndexTensor.GetValue(copyIdx);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
@@ -276,7 +320,7 @@ __aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
         int32_t copyBufferIdx = copyIdx % bufferCount;
         int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
         FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
-            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor);
+            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor, traceStats);
         int32_t dstRow = scratch.topkIndexTensor.GetValue(copyIdx);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyBufferIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
@@ -289,10 +333,14 @@ __aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
         context, scratch, lastCopyIdx % bufferCount, lastDstRow, tokenRevGlobalTensor,
         scaleRevGlobalTensor, metaInfoGlobalTensor, 0, lastCopyIdx);
 
+    uint32_t drainBegin = BeginDispatchTransferTrace(traceStats);
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
+    if (traceStats != nullptr) {
+        EndDispatchTransferTrace(traceStats, drainBegin, traceStats->drainWaitCycles);
     }
 }
 
@@ -404,12 +452,17 @@ template <typename ActivationType>
 __aicore__ inline void PublishInterleavedDispatchBatchReady(
     const TokenDispatchConfig &context, const Params &params,
     const TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, int32_t gmm1TileRowCount, int32_t selectedCount)
+    int32_t expertGlobalRowBegin, int32_t gmm1TileRowCount, int32_t selectedCount,
+    DispatchMte3TraceStats *traceStats = nullptr)
 {
     if (selectedCount <= 0) {
         return;
     }
+    uint32_t waitBegin = BeginDispatchTransferTrace(traceStats);
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+    if (traceStats != nullptr) {
+        EndDispatchTransferTrace(traceStats, waitBegin, traceStats->readySyncWaitCycles);
+    }
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
@@ -538,7 +591,7 @@ __aicore__ inline void DispatchRankTokensInterleaved(
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
     int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd,
-    int32_t gmm1TileRowCount)
+    int32_t gmm1TileRowCount, DispatchMte3TraceStats *traceStats = nullptr)
 {
     int32_t rankTokenCount = GetDispatchExpertRankTokenCount(
         context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx);
@@ -623,11 +676,16 @@ __aicore__ inline void DispatchRankTokensInterleaved(
         }
 
         if (selectedCount > 0) {
+            uint32_t transferBegin = BeginDispatchTransferTrace(traceStats);
             CopyInterleavedTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, static_cast<int32_t>(remoteRankIdx), selectedCount);
+                context, params, winRankAddr, scratch, static_cast<int32_t>(remoteRankIdx), selectedCount,
+                traceStats);
+            if (traceStats != nullptr) {
+                EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
+            }
             PublishInterleavedDispatchBatchReady(
                 context, params, scratch, localExpertId, expertGlobalRowBegin,
-                gmm1TileRowCount, selectedCount);
+                gmm1TileRowCount, selectedCount, traceStats);
         }
         matchedRouteCount += batchMatchCount;
     }
@@ -640,7 +698,8 @@ template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTil
 __aicore__ inline void DispatchExpertTokensRankInterleaved(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount, uint32_t expertRowOffset)
+    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount, uint32_t expertRowOffset,
+    DispatchMte3TraceStats *traceStats = nullptr)
 {
     if (dispatchRowCount == 0U) {
         return;
@@ -651,7 +710,7 @@ __aicore__ inline void DispatchExpertTokensRankInterleaved(
     for (uint32_t remoteRankIdx = 0U; remoteRankIdx < context.common.worldSize; ++remoteRankIdx) {
         DispatchRankTokensInterleaved<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
-            remoteRankIdx, segmentExpertRowBegin, segmentExpertRowEnd, gmm1TileRowCount);
+            remoteRankIdx, segmentExpertRowBegin, segmentExpertRowEnd, gmm1TileRowCount, traceStats);
     }
 }
 
