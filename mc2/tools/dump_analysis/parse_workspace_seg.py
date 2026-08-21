@@ -224,19 +224,19 @@ def main():
     parser = argparse.ArgumentParser(
         description="Workspace 段数据解析脚本（支持 fp16/bf16/fp8/fp4/e8m0）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""\
+                epilog="""\
 示例:
   # 解析 COMM_OUT 段 (fp8_e4m3, shape 57086x1536, 只看前 8 行)
   python parse_workspace_seg.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --head 8
 
+  # 看行 5:10 列 5:10 的数据（空格分隔）
+  python parse_workspace_seg.py seg.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 5 10 --col-range 5 10
+
+  # 看指定行和列
+  python parse_workspace_seg.py seg.bin --dtype fp16 --rows 4096 --cols 1024 --row 0 100 200 --col 0 63 1023
+
   # 解析 scale 通信段 (e8m0, shape 57086x48, 48=24*2)
   python parse_workspace_seg.py workspace_seg4_type11_*.bin --dtype e8m0 --rows 57086 --cols 48 --head 8
-
-  # 解析 fp16 通信结果
-  python parse_workspace_seg.py workspace_seg1_type5_*.bin --dtype fp16 --rows 4096 --cols 1024 --head 16
-
-  # 解析 fp4 数据
-  python parse_workspace_seg.py workspace_seg1_type5_*.bin --dtype fp4_e2m1 --rows 8192 --cols 2048 --head 8
 
   # JSON 输出
   python parse_workspace_seg.py seg.bin --dtype fp8_e4m3 --rows 100 --cols 50 --json
@@ -249,8 +249,14 @@ def main():
     parser.add_argument("--cols", type=int, required=True, help="矩阵列数 K")
     parser.add_argument("--head", type=int, default=16, help="只显示前 N 行（默认 16）")
     parser.add_argument("--tail", type=int, default=0, help="同时显示后 N 行（默认不显示）")
+    parser.add_argument("--row-range", metavar="START END", type=int, nargs=2, default=None,
+                        help="显示指定行范围 [start, end)，如 --row-range 5 10")
     parser.add_argument("--col-range", metavar="START END", type=int, nargs=2, default=None,
-                        help="只显示指定列范围 [start, end)")
+                        help="显示指定列范围 [start, end)，如 --col-range 5 10")
+    parser.add_argument("--row", type=int, nargs="+", default=None,
+                        help="只显示指定行号（可指定多个，如 --row 0 100 57085）")
+    parser.add_argument("--col", type=int, nargs="+", default=None,
+                        help="只显示指定列号（可指定多个，如 --col 0 63 1535）")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--transpose", action="store_true", help="按列优先顺序解析（AlltoAll 通信结果布局）")
     args = parser.parse_args()
@@ -278,7 +284,7 @@ def main():
     parse_func = PARSE_FUNCS[dtype]
     all_vals = parse_func(data, 0, total_elems)
 
-    # 重塑为矩阵
+            # 重塑为矩阵
     col_start = 0
     col_end = args.cols
     if args.col_range:
@@ -291,18 +297,40 @@ def main():
         row = all_vals[row_start:row_start + args.cols]
         matrix.append(row)
 
+    # 确定要显示的行
+    if args.row:
+        display_rows = sorted(set(r for r in args.row if 0 <= r < min(args.rows, total_elems // args.cols)))
+    elif args.row_range:
+        display_rows = list(range(args.row_range[0], min(args.row_range[1], min(args.rows, total_elems // args.cols))))
+    else:
+        display_rows = list(range(min(args.head, len(matrix))))
+        if args.tail > 0 and len(matrix) > args.head:
+            display_rows += list(range(max(args.head, len(matrix) - args.tail), len(matrix)))
+
+    # 确定要显示的列
+    if args.col:
+        display_cols = sorted(set(c for c in args.col if 0 <= c < args.cols))
+    elif args.col_range:
+        display_cols = list(range(args.col_range[0], min(args.col_range[1], args.cols)))
+    elif args.row or args.row_range:
+        # 指定了行但没指定列时，显示全部列
+        display_cols = list(range(args.cols))
+    else:
+        display_cols = list(range(col_start, col_end))
+
     if args.json:
         import json
-        head_rows = matrix[:args.head]
+        selected = {str(r): {str(c): matrix[r][c] for c in display_cols if c < len(matrix[r])}
+                    for r in display_rows if r < len(matrix)}
         output = {
             "dtype": dtype,
             "rows": args.rows,
             "cols": args.cols,
             "fileSize": len(data),
-            "headRows": head_rows,
+            "displayRows": display_rows,
+            "displayCols": display_cols,
+            "data": selected,
         }
-        if args.tail > 0 and len(matrix) > args.head:
-            output["tailRows"] = matrix[-args.tail:]
         print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
         return
 
@@ -311,36 +339,62 @@ def main():
     print("=" * 80)
     print(f"  Workspace Segment: {os.path.basename(args.bin_file)}")
     print(f"  Dtype: {DTYPE_INFO[dtype]['name']}, Shape: [{args.rows}, {args.cols}]")
-    print(f"  Displaying columns [{col_start}, {col_end}), head {args.head} rows")
+    if args.row:
+        print(f"  Rows: {display_rows}")
+    elif args.row_range:
+        print(f"  Rows: [{args.row_range[0]}, {args.row_range[1]})")
+    else:
+        print(f"  Rows: head {args.head}" + (f" + tail {args.tail}" if args.tail > 0 else ""))
+    if args.col:
+        print(f"  Cols: {display_cols}")
+    elif args.col_range:
+        print(f"  Cols: [{args.col_range[0]}, {args.col_range[1]})")
+    else:
+        print(f"  Cols: [{col_start}, {col_end})")
     print("=" * 80)
     print()
 
-    # 打印前 head 行
-    header = f"{'row':>6} |"
-    for c in range(col_start, col_end):
-        header += f"{'c'+str(c):>8}"
-    print(header)
-    print("-" * len(header))
+    # 判断是否使用紧凑模式（指定了行范围且列数较少时，用空格分隔）
+    compact = (args.row_range is not None or args.row is not None) and len(display_cols) <= 64
 
-    for r in range(min(args.head, len(matrix))):
-        row = matrix[r]
-        line = f"{r:>6} |"
-        for c in range(col_start, col_end):
-            if c < len(row):
-                line += format_value(row[c])
-            else:
-                line += "      N/A"
-        print(line)
-
-    # 打印 tail 行
-    if args.tail > 0 and len(matrix) > args.head:
-        print("  ...")
+    if compact:
+        # 紧凑模式：每个数据用空格分隔
+        for r in display_rows:
+            if r >= len(matrix):
+                continue
+            row = matrix[r]
+            parts = []
+            for c in display_cols:
+                if c < len(row):
+                    v = row[c]
+                    if isinstance(v, float):
+                        if math.isnan(v):
+                            parts.append("NaN")
+                        elif math.isinf(v):
+                            parts.append("Inf")
+                        elif v == 0.0:
+                            parts.append("0")
+                        else:
+                            parts.append(f"{v:g}")
+                    else:
+                        parts.append(str(v))
+                else:
+                    parts.append("N/A")
+            print(f"row {r}: " + " ".join(parts))
+    else:
+        # 表格模式
+        header = f"{'row':>6} |"
+        for c in display_cols:
+            header += f"{'c'+str(c):>8}"
         print(header)
         print("-" * len(header))
-        for r in range(max(args.head, len(matrix) - args.tail), len(matrix)):
+
+        for r in display_rows:
+            if r >= len(matrix):
+                continue
             row = matrix[r]
             line = f"{r:>6} |"
-            for c in range(col_start, col_end):
+            for c in display_cols:
                 if c < len(row):
                     line += format_value(row[c])
                 else:
