@@ -140,7 +140,6 @@ public:
         dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
         dq_sel_workspace_offset_ = tilingData->dqSelWorkspaceOffset;
         dq_sel_core_elems_ = static_cast<int64_t>(base_m) * head_dim_align_;
-        // AIV GetBlockIdx is 2*cubeIdx(+1); map to Cube scratch base (see AddrCompute).
         const int64_t cubeBlk = static_cast<int64_t>(GetBlockIdx() / 2);
         dq_sel_workspace_.SetGlobalBuffer(
             (__gm__ float *)(workspace + dq_sel_workspace_offset_) + cubeBlk * 2 * dq_sel_core_elems_,
@@ -444,8 +443,9 @@ public:
     }
 
     /**
-     * After Cube Fixpipes dQ_sel [mAlign,D] to per-core scratch, AIV0 scatters
-     * real rows into dq workspace via UB AtomicAdd (design §2.5).
+     * SFAG-style ScatterAdd for dQ_sel: Cube Fixpiped [mAlign,D] to GM scratch;
+     * AIV0/AIV1 each take half of real rows, batch 8 rows GM->UB, then AtomicAdd to dq.
+     * Event chain: MTE3<->MTE2 (UB reuse) + MTE2<->MTE3 (load->atomic).
      */
     __aicore__ inline void ScatterDqSel(const RunTimeInfo &runTimeInfo, TBuf<TPosition::VECCALC> &ub_buffer,
                                         const uint32_t ping_pong_idx)
@@ -453,40 +453,68 @@ public:
         if (!runTimeInfo.use_sparse_gather || !runTimeInfo.need_compute) {
             return;
         }
-        // One Cube : two AIV — only sub0 scatters to avoid double AtomicAdd.
-        if (GetSubBlockIdx() != 0) {
-            return;
-        }
         const int32_t m = runTimeInfo.s1Len;
         if (m <= 0) {
             return;
         }
-        LocalTensor<float> rowUb = ub_buffer.GetWithOffset<float>(head_dim_align_, 0);
+
+        constexpr int32_t UB_ROW_SIZE = 8;
+        // Same half split as Softmax dualDst / Gather (mAlign/2), not m/2.
+        const int32_t mAlign = runTimeInfo.s1LenAlign;
+        const int32_t halfAlign = mAlign / 2;
+        const int32_t aivHalf = static_cast<int32_t>(GetSubBlockIdx());
+        const int32_t rowBegin = aivHalf * halfAlign;
+        int32_t currentRows = m - rowBegin;
+        if (currentRows < 0) {
+            currentRows = 0;
+        }
+        if (currentRows > halfAlign) {
+            currentRows = halfAlign;
+        }
+        if (currentRows <= 0) {
+            return;
+        }
+
+        // 8 * D_align fp32 ~4KB; overlays mm region which is dead until Gather after scatter.
+        LocalTensor<float> batchUb = ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, 0);
         const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_core_elems_;
-        for (int32_t r = 0; r < m; ++r) {
-            const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
-            int64_t gmOff = 0;
-            if constexpr (INPUT_LAYOUT == TND) {
-                gmOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ * head_dim_ +
-                        static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
-            } else if constexpr (INPUT_LAYOUT == BSND) {
-                gmOff = static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
+        const int32_t maxLoops = CeilDiv(currentRows, UB_ROW_SIZE);
+        const int32_t tailRows = currentRows - (maxLoops - 1) * UB_ROW_SIZE;
+
+        AscendC::SetAtomicAdd<float>();
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        for (int32_t loop = 0; loop < maxLoops; ++loop) {
+            const int32_t nRows = (loop == maxLoops - 1) ? tailRows : UB_ROW_SIZE;
+            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+            const int32_t globalRow0 = rowBegin + loop * UB_ROW_SIZE;
+            DataCopy(batchUb, dq_sel_workspace_[slotOff + static_cast<int64_t>(globalRow0) * head_dim_],
+                     nRows * head_dim_);
+            SET_FLAG(MTE2, MTE3, EVENT_ID1);
+            WAIT_FLAG(MTE2, MTE3, EVENT_ID1);
+            for (int32_t row = 0; row < nRows; ++row) {
+                const int32_t r = globalRow0 + row;
+                const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
+                int64_t gmOff = 0;
+                if constexpr (INPUT_LAYOUT == TND) {
+                    gmOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ * head_dim_ +
+                            static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
+                } else if constexpr (INPUT_LAYOUT == BSND) {
+                    gmOff =
+                        static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
                         static_cast<int64_t>(qTok) * q_head_num_ * head_dim_ +
                         static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
-            } else {
-                gmOff = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +
+                } else {
+                    gmOff =
+                        static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +
                         static_cast<int64_t>(runTimeInfo.n1Idx) * runTimeInfo.cur_q_seq_len * head_dim_ +
                         static_cast<int64_t>(qTok) * head_dim_;
+                }
+                DataCopy(dq_workspace_[gmOff], batchUb[row * head_dim_], head_dim_);
             }
-            DataCopy(rowUb, dq_sel_workspace_[slotOff + r * head_dim_], head_dim_);
-            SET_FLAG(MTE2, MTE3, EVENT_ID0);
-            WAIT_FLAG(MTE2, MTE3, EVENT_ID0);
-            AscendC::SetAtomicAdd<float>();
-            DataCopy(dq_workspace_[gmOff], rowUb, head_dim_);
-            AscendC::SetAtomicNone();
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
-            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         }
+        AscendC::SetAtomicNone();
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
     }
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,

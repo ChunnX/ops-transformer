@@ -58,7 +58,6 @@ private:
     TEventID event_pong_ = EVENT_ID4;
     GlobalTensor<int32_t> sparse_idx_gm_;
     GlobalTensor<float> dq_sel_workspace_;
-    LocalTensor<float> dq_sel_row_l1_;
     int32_t q_token_stride_ { 0 };
     int32_t base_m_ { 128 };
     int64_t dq_sel_slot_elems_ { 0 };
@@ -100,26 +99,18 @@ public:
         tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_c_buffer_, L0_C_SIZE);
-        // Q/dO L1 is allocated by the parent kernel because AIV0/AIV1 fill
-        // it through UB before AIC starts MM12.
         query_l1_tensor_ping_ = query_l1_tensor_ping;
         query_l1_tensor_pong_ = query_l1_tensor_pong;
-        // key_l1
         key_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         key_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
-        // value_l1
         value_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         dy_l1_tensor_ping_ = dy_l1_tensor_ping;
         dy_l1_tensor_pong_ = dy_l1_tensor_pong;
-        // One-row bounce buffer for dQ_sel GM → L1 → AtomicAdd GM scatter.
-        dq_sel_row_l1_ = l1_buffer.GetWithOffset<float>(head_dim_align_, l1_offset);
-        l1_offset += head_dim_align_ * sizeof(float);
-        // l0
         l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_a_tensor_pong_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_b_tensor_ping_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
@@ -137,7 +128,6 @@ public:
             sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
         }
         if (workspace != nullptr) {
-            // Two ping-pong slots so Vec can scatter last tile while Cube Fixpipes current.
             const int64_t selElems = static_cast<int64_t>(base_m_) * head_dim_align_;
             dq_sel_workspace_.SetGlobalBuffer(
                 (__gm__ float *)(workspace + tilingData->dqSelWorkspaceOffset) + GetBlockIdx() * 2 * selElems,
@@ -517,7 +507,7 @@ private:
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        // Fixpipe full dQ_sel [mAlign, D] into ping-pong scratch slot for Vector scatter.
+        // Fixpipe full dQ_sel [mAlign, D] into GM ping-pong scratch for Vector scatter.
         AscendC::FixpipeParamsV220 fixToSel;
         fixToSel.mSize = static_cast<uint16_t>(mProcessAlign);
         fixToSel.nSize = static_cast<uint16_t>(head_dim_);

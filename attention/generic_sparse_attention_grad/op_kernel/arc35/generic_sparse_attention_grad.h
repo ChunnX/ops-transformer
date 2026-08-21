@@ -91,20 +91,20 @@ private:
                         static_cast<int32_t>(taskId));
     }
 
-    // AIV0/AIV1 row partition for sparse Q gather (must match CopyQAndDoutToL1).
+    // AIV0/AIV1 row partition: must match Softmax dualDst (mAlign/2) and CopyQAndDoutToL1.
     __aicore__ inline int32_t GatherAivRowCount(int32_t m, int32_t mAlign, int32_t aivHalfIdx) const
     {
-        const int32_t m0Base = m / 2;
-        const int32_t m0Align = m < static_cast<int32_t>(C0_SIZE)
-                                    ? mAlign
-                                    : RoundUp(m0Base, static_cast<int32_t>(C0_SIZE));
-        int32_t m1Real = m - m0Align;
-        if (m1Real < 0) {
-            m1Real = 0;
+        if (m < static_cast<int32_t>(C0_SIZE)) {
+            return aivHalfIdx == 0 ? m : 0;
         }
-        int32_t rowCount = aivHalfIdx == 0 ? m : m1Real;
-        if (aivHalfIdx == 0 && rowCount > m0Align) {
-            rowCount = m0Align;
+        const int32_t halfAlign = mAlign / 2;
+        const int32_t rowBegin = aivHalfIdx * halfAlign;
+        int32_t rowCount = m - rowBegin;
+        if (rowCount < 0) {
+            rowCount = 0;
+        }
+        if (rowCount > halfAlign) {
+            rowCount = halfAlign;
         }
         return rowCount;
     }
@@ -163,24 +163,33 @@ public:
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
 
         //todo: 检查这里的UB分配是否超过247KB
-        mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
-        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
+        // mm1/mm2 ping-pong: Cube Fixpipe S/dP here; Vec Softmax/Grad reads here.
+        // Gather ND/NZ always overlays the same physical region (bf16/fp16 only):
+        //   gatherBytes=(8M+4)N*2 <= mmBytes=16MN; float input would not fit.
+        // Timeline: Gather → Set gather flag → Cube Fixpipe mm[ping] → Softmax.
+        // During Gather both mm slots are dead for Vec; ND↔NZ stay distinct views.
+        static_assert(sizeof(INPUT_TYPE) == 2, "Gather/mm UB overlay requires bf16/fp16");
+        const uint32_t mmSlotElems = vec_base_m * vec_base_n;
+        const uint32_t mmUbBase = ub_offset_;
+        mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
+        ub_offset_ += mmSlotElems * sizeof(float);
+        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
+        ub_offset_ += mmSlotElems * sizeof(float);
+        mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
+        ub_offset_ += mmSlotElems * sizeof(float);
+        mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
+        ub_offset_ += mmSlotElems * sizeof(float);
         // +1 row per C0 column for TransdataND2NZ deconflict pad.
         const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
-        query_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, ub_offset_);
-        ub_offset_ += nz_ub_elements * sizeof(INPUT_TYPE);
-        dout_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, ub_offset_);
-        ub_offset_ += nz_ub_elements * sizeof(INPUT_TYPE);
-        gather_q_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, ub_offset_);
-        ub_offset_ += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-        gather_dout_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, ub_offset_);
-        ub_offset_ += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+        uint32_t gOff = mmUbBase;
+        gather_q_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+        gather_dout_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+        query_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        gOff += nz_ub_elements * sizeof(INPUT_TYPE);
+        dout_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        (void)gOff;
 
         p_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
@@ -244,29 +253,33 @@ public:
             return;
         }
 
-        // const int32_t halfAlign = mAlign / 2;
-        // MIX_AIC_1_2: AIV subblock 0/1 within each cube pair.
+        // MIX_AIC_1_2: AIV subblock 0/1. Partition MUST match Cube Fixpipe dualDstCtl=1
+        // and Vec Softmax (half = mAlign/2). Align16(m/2) diverges when m%32!=0 (e.g. m=68).
         const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
-        // Debug partition policy:
-        //   m0 = Align16(floor(m / 2))
-        //   m1 = Align16(max(0, m - m0))
-        // If m < 16, only AIV0 handles the tile and writes full mAlign rows (zero-padded).
-        const int32_t m0Base = m / 2;
-        const int32_t m0Align = m < static_cast<int32_t>(C0_SIZE)
-                                    ? mAlign
-                                    : RoundUp(m0Base, static_cast<int32_t>(C0_SIZE));
-        int32_t m1Real = m - m0Align;
-        if (m1Real < 0) {
-            m1Real = 0;
-        }
-        const int32_t m1Align =
-            m1Real > 0 ? RoundUp(m1Real, static_cast<int32_t>(C0_SIZE)) : 0;
-        const int32_t totalAlign = m0Align + m1Align;
-        const int32_t rowBegin = aivHalfIdx == 0 ? 0 : m0Align;
-        const int32_t shardAlign = aivHalfIdx == 0 ? m0Align : m1Align;
-        int32_t rowCount = aivHalfIdx == 0 ? m : m1Real;
-        if (aivHalfIdx == 0 && rowCount > m0Align) {
-            rowCount = m0Align;
+        const int32_t halfAlign = mAlign / 2;
+        const int32_t totalAlign = mAlign;
+        int32_t rowBegin = 0;
+        int32_t shardAlign = halfAlign;
+        int32_t rowCount = 0;
+        if (m < static_cast<int32_t>(C0_SIZE)) {
+            // Only AIV0 writes the full mAlign tile (zero-padded) for Cube LoadData.
+            if (aivHalfIdx != 0) {
+                GsagLog(21);
+                return;
+            }
+            rowBegin = 0;
+            shardAlign = mAlign;
+            rowCount = m;
+        } else {
+            rowBegin = aivHalfIdx * halfAlign;
+            rowCount = m - rowBegin;
+            if (rowCount < 0) {
+                rowCount = 0;
+            }
+            if (rowCount > halfAlign) {
+                rowCount = halfAlign;
+            }
+            shardAlign = halfAlign;
         }
 
         if (rowCount <= 0) {
@@ -281,7 +294,8 @@ public:
         constexpr event_t evtGatherVmte3 = EVENT_ID6;
         constexpr event_t evtGatherMte3mte2 = EVENT_ID7;
 
-        // Dedicated ND staging — do not alias mm1/mm2 (softmax path reuses those).
+        // Gather ND staging aliases mm1/mm2 physical UB (see Process alloc). Softmax does not
+        // touch these views until after gather Set; Cube Fixpipe mm[ping] starts only after Wait gather.
         LocalTensor<INPUT_TYPE> qUb = gather_q_nd_ub_;
         LocalTensor<INPUT_TYPE> doutUb = gather_dout_nd_ub_;
 
@@ -332,9 +346,9 @@ public:
             pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
         const int32_t l1RowOffset = rowBegin * static_cast<int32_t>(C0_SIZE);
         AscendC::printf(
-            "[GSAG-G] blk=%d sub=%d task=%d ping=%d m=%d ma=%d m0=%d m1=%d ta=%d rb=%d rc=%d cr=%d hd=%d vfM=%d bc=%u bl=%u ss=%u ds=%u l1off=%d\n",
+            "[GSAG-G] blk=%d sub=%d task=%d ping=%d m=%d ma=%d ha=%d ta=%d rb=%d rc=%d cr=%d hd=%d vfM=%d bc=%u bl=%u ss=%u ds=%u l1off=%d\n",
             static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()),
-            static_cast<int32_t>(taskId), static_cast<int32_t>(pingPongIdx), m, mAlign, m0Align, m1Align,
+            static_cast<int32_t>(taskId), static_cast<int32_t>(pingPongIdx), m, mAlign, halfAlign,
             totalAlign, rowBegin, rowCount, copyRows, head_dim_, static_cast<int32_t>(vfM),
             static_cast<uint32_t>(copyParams.blockCount),
             static_cast<uint32_t>(copyParams.blockLen), static_cast<uint32_t>(copyParams.srcStride),
