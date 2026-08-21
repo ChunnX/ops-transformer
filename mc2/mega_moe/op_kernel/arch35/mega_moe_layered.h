@@ -384,7 +384,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     rankPerServer_ = mc2Context_->rankSizePerServer;
-    rankPerServer_ = 1;
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
     }
