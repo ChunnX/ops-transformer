@@ -137,6 +137,7 @@ private:
     __aicore__ inline void CopyInAndOut(LocalTensor<XOutType> xTmpTensor, GM_ADDR wAddr, uint32_t index,
                                         uint32_t dstPosition, uint32_t arriveCount, uint32_t dataBufferId,
                                         bool isDataBufferReused);
+    template <bool CheckDataFlag>
     __aicore__ inline void WaitAndFormatOutput(TBuf<> tBuf, uint32_t validNum);
     __aicore__ inline uint32_t GetLocalWindowSrcDataBlockIdx(uint32_t srcExpertId, uint32_t localExpertNum);
     __aicore__ inline void ClearLocalWindowDataFlags(TBuf<> tBuf, uint32_t validNum, uint32_t localExpertNum);
@@ -1623,6 +1624,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
+template <bool CheckDataFlag>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::WaitAndFormatOutput(
     TBuf<> tBuf, uint32_t validNum)
 {
@@ -1667,8 +1669,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
                       maxCopyTokenCnt :
                       expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = GetLocalWindowSrcDataBlockIdx(srcExpertId, localExpertNum);
-        arriveCount =
-            useSerialMode_ ? copyCnt : CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        if constexpr (CheckDataFlag) {
+            arriveCount = CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        } else {
+            arriveCount = copyCnt;
+        }
         if (arriveCount == copyCnt) {
             dstPosition = srcExpertId != 0 ? GetRecvCntPrefix(srcExpertId - 1U) : 0;
             dstPosition += expertFinishNumTensor_(index);
@@ -1756,7 +1761,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         return;
     }
     SyncFunc<AscendC::HardEvent::V_S>();
-    WaitAndFormatOutput(tBuf, validNum);
+    WaitAndFormatOutput<true>(tBuf, validNum);
     RunPosRecord(RUNPOS_ARRIVECNT); // 维测打点
 }
 
@@ -1922,7 +1927,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         return;
     }
-    WaitAndFormatOutput(serialTBuf_, validNum);
+    WaitAndFormatOutput<false>(serialTBuf_, validNum);
     RunPosRecord(RUNPOS_ARRIVECNT);
 }
 
