@@ -151,7 +151,7 @@
 ## 约束说明
 
 - 通信引擎约束：
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：V2接口支持AI_CPU通信和AIV内存语义通信（`commMode="aiv"`）。AIV初版支持2、4、8、16、32、64、128卡。AIV模式占用CCL window尾部的固定控制区，同一通信域内不支持并发调用。
   - Ascend 950DT：支持CCU通信和AI_CPU通信，CCCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 参数说明里shape使用的变量：
@@ -167,6 +167,18 @@
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
+
+## CATLASS 依赖
+
+`commMode="aiv"`复用现有`GroupedMatMulAlltoAllv`算子原型和inner接口，并在A3内核中选择AIV实现；
+未新增V2算子原型。其GMM路径复用CATLASS `GroupedMatmulSliceM`，通过仓库的
+`3rdparty/catlass`子模块引用。首次编译前请初始化子模块：
+
+```bash
+git submodule update --init --recursive 3rdparty/catlass
+```
+
+当前初版固定CATLASS tile，且沿用公共tiling中的256个`sendCnt/recvCnt`槽位，因此还要求`epWorldSize * 每卡专家数 <= 256`。
 
 ## 调用说明
 
