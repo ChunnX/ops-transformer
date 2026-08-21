@@ -61,7 +61,7 @@
 
     - **输出组合梯度计算**：
 
-        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（支持大于0且不超过8）。
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小。
 
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
@@ -602,14 +602,21 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **维度格式约束**
 
-  输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
+  <!-- npu="950" id9 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
+  <!-- end id9 -->
+
+  <!-- npu="A3,910b" id10 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入仅支持BSND（4维）格式。
+  <!-- end id10 -->
 
 - **规格约束**
 
   | 规格项 | 规格 | 规格说明 |
   | :--- | :--- | :--- |
   | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | >0且≤8 | N维度支持大于0且不超过8。 |
+  | N（<term>Ascend 950PR/Ascend 950DT</term>） | >0且≤8 | N维度支持大于0且不超过8。 |
+  | N（<term>Atlas A2/A3</term>） | 4 | N维度仅支持4。 |
   | C | - | 大于0、小于100000且可以被128整除。 |
 
 - 确定性计算
