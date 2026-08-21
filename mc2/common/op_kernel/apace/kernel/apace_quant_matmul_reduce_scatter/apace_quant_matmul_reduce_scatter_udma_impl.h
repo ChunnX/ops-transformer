@@ -191,22 +191,31 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
     InitBaseParams(tilingData);
 
-    // selfWinAddr: 本 rank 的 win 区基址, AIC 将 C_i 写入此处
-    baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]);
+    // selfWinAddr: 本 rank 的 win 区数据起始地址 (跳过 barrier counter 区域)
+    // Barrier 布局 (totalJobs=1): localFlag(32) + teamSyncCounter(32) + crossCoreFlag(32) = 96B
+    // 对齐到 128B, PUT 数据从 offset 128 开始写入, 不覆盖 counter
+    constexpr uint64_t WIN_DATA_OFFSET = 128;
+    baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId])
+                              + WIN_DATA_OFFSET;
+
+    // 多核并行通信: 后 rankSize 个核做 AllToAll PUT
+    // teamBarrier: totalJobs=1 → block 0 (jobIndex=0) 的 CrossDevice step=1, 正确轮询所有 remote
+    // AllToAll: totalJobs=rankSize → 后 R 个核各负责 1 个 target, 并行 PUT
+    // jobIndex = BlockNum - 1 - blockIdx → block 27:jobIndex=0, block 26:jobIndex=1 (R=2)
+    uint32_t rankSize = baseParams_.rankSize;
+    uint32_t jobIndex = static_cast<uint32_t>(GetBlockNum() - 1 - GetBlockIdx());
+    bool isCommBlock = (jobIndex < rankSize);
 
     // UB 分配: commBuf + barrierBuf
     uint32_t ubOffset = 0;
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    // AllToAll: totalJobs=1, block 0 处理所有 target ranks (多核 PUT 有跨设备可见性问题)
-    // reduceSum: 多核并行 (所有 block 参与)
-    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1,
-                      static_cast<uint32_t>(GetBlockIdx()));
+    // teamBarrier totalJobs=1: 仅 jobIndex=0 的核执行 CrossDevice (step=1, 轮询所有 remote)
+    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, 1, jobIndex);
 
     allToAllC_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData,
-        baseParams_.workspaceGm, commBuf.Get(), 1,
-        static_cast<uint32_t>(GetBlockIdx()));
+        baseParams_.workspaceGm, commBuf.Get(), rankSize, jobIndex, WIN_DATA_OFFSET);
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -325,9 +334,10 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA, TransB>::RunAllToAllAndReduceSum()
 {
-    // 点4: V 核流水优化 — AllToAll(t) 与 ReduceSum(t-1) 掩盖执行
-    //   block 0: AllToAll(t) 期间, block 1-27 执行 ReduceSum(t-1)
-    //   SyncAll 后 block 0 补做 ReduceSum(t-1)
+    // 方案B: 严格分离 — 后 R 核仅通信, 前 (BlockNum-R) 核仅计算
+    //   通信核: AllToAll(t)
+    //   计算核: ReduceSum(t-1) ‖ 通信核 AllToAll(t)
+    //   无 Phase 2 (通信核不补做 reduceSum)
 
     uint32_t commTurn = static_cast<uint32_t>(baseParams_.commTurn);
     uint32_t nSize = static_cast<uint32_t>(baseParams_.axisN);
@@ -335,76 +345,76 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     uint32_t usedCoreNum = tilingData_->mmTilingData.usedCoreNum;
     uint32_t blockIdx = static_cast<uint32_t>(GetBlockIdx());
     uint64_t stride = static_cast<uint64_t>(baseParams_.chunkM) * nSize;
-    bool isCommBlock = (blockIdx == 0);
+    uint32_t rankSize = baseParams_.rankSize;
+    uint32_t jobIndex = static_cast<uint32_t>(GetBlockNum() - 1 - blockIdx);
+    bool isCommBlock = (jobIndex < rankSize);
+    uint32_t rsCoreNum = usedCoreNum - rankSize;  // 计算核数 (前 28-R 个)
+    bool isComputeBlock = (blockIdx < rsCoreNum);
 
     if (commTurn <= 1) {
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();  // #1: 确保所有 AIC matmul 完成 (workspace 数据完整)
         if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
-            allToAllC_.template Wait<BARRIER_DEVICE>();
+            allToAllC_.template Wait<BARRIER_NONE>();  // Drain only, 不做 CrossDevice
         }
-        SyncAll<true>();  // #2: 确保所有核知道 AllToAll 完成 (win 区数据完整)
-        // ReduceSum tile 0 — 所有 block 参与
-        {
+        SyncAll<true>();  // #2: 本地所有核同步 (通信核 Drain 完成)
+        teamBarrier_.CrossDevice();  // #3: block 0 (jobIndex=0) 做跨设备 fence (step=1, 轮询所有 remote)
+        SyncAll<true>();  // #4: 所有核确认跨设备数据可见后开始 reduceSum
+        // ReduceSum tile 0 — 仅计算核参与
+        if (isComputeBlock) {
             uint32_t tileM = GetTileM(0);
             uint64_t tileMOffset = GetTileMOffset(0);
             if (tileM > 0) {
-                DoReduceSumBatch(0, tileM, tileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
+                DoReduceSumBatch(0, tileM, tileMOffset, nSize, rowBytes, stride, rsCoreNum, blockIdx);
             }
         }
         if (isCommBlock) { allToAllC_.template Finalize<BARRIER_NONE>(); }
         return;
     }
 
-    // 多 tile: 流水掩盖
+    // 多 tile: 通信核 AllToAll(t) ‖ 计算核 ReduceSum(t-1)
     // Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
     SyncAll<true>();
     if (isCommBlock) {
         allToAllC_.template Commit<BARRIER_NONE>();
-        allToAllC_.template Wait<BARRIER_DEVICE>();
+        allToAllC_.template Wait<BARRIER_NONE>();
     }
     SyncAll<true>();
+    teamBarrier_.CrossDevice();
+    SyncAll<true>();
 
-    // Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 掩盖
+    // Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 并行
     for (uint32_t t = 1; t < commTurn; ++t) {
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         SyncAll<true>();
 
-        // Phase 1: 通信核做 AllToAll(t), 非通信核做 ReduceSum(t-1)
+        // 通信核做 AllToAll(t), 计算核做 ReduceSum(t-1)
         if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
-            allToAllC_.template Wait<BARRIER_DEVICE>();
-        } else {
+            allToAllC_.template Wait<BARRIER_NONE>();
+        } else if (isComputeBlock) {
             uint32_t rsT = t - 1;
             uint32_t rsTileM = GetTileM(rsT);
             uint64_t rsTileMOffset = GetTileMOffset(rsT);
             if (rsTileM > 0) {
-                DoReduceSum(rsT, rsTileM, rsTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
+                DoReduceSum(rsT, rsTileM, rsTileMOffset, nSize, rowBytes, stride, rsCoreNum, blockIdx);
             }
         }
         SyncAll<true>();
-
-        // Phase 2: 通信核补做 ReduceSum(t-1)
-        if (isCommBlock) {
-            uint32_t rsT = t - 1;
-            uint32_t rsTileM = GetTileM(rsT);
-            uint64_t rsTileMOffset = GetTileMOffset(rsT);
-            if (rsTileM > 0) {
-                DoReduceSum(rsT, rsTileM, rsTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
-            }
-        }
+        teamBarrier_.CrossDevice();
+        SyncAll<true>();
     }
 
-    // Final: 所有 block 做 ReduceSum(last tile)
+    // Final: 仅计算核做 ReduceSum(last tile)
     SyncAll<true>();
-    {
+    if (isComputeBlock) {
         uint32_t lastT = commTurn - 1;
         uint32_t lastTileM = GetTileM(lastT);
         uint64_t lastTileMOffset = GetTileMOffset(lastT);
         if (lastTileM > 0) {
-            DoReduceSum(lastT, lastTileM, lastTileMOffset, nSize, rowBytes, stride, usedCoreNum, blockIdx);
+            DoReduceSum(lastT, lastTileM, lastTileMOffset, nSize, rowBytes, stride, rsCoreNum, blockIdx);
         }
     }
 

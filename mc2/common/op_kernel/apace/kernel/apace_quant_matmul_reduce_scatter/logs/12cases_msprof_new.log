@@ -1,0 +1,87 @@
+=== 12 Case msprof 采集 (多核通信版本, task-based) ===
+
+########## M=8192 K=1536 N=12288 R=2 headM=512 ##########
+  device 0 avg(后5次) = 2527.0us
+  device 1 avg(后5次) = 2522.8us
+  >>> MAX across ranks = 2527.0us
+  M=8192 K=1536 N=12288 R=2 MAX=2527.0us
+
+########## M=8192 K=1536 N=12288 R=4 headM=128 ##########
+  device 1 avg(后5次) = 1383.7us
+  device 0 avg(后5次) = 1388.8us
+  device 2 avg(后5次) = 1388.6us
+  device 3 avg(后5次) = 1391.6us
+  >>> MAX across ranks = 1391.6us
+  M=8192 K=1536 N=12288 R=4 MAX=1391.6us
+
+########## M=8192 K=3696 N=8192 R=2 headM=512 ##########
+  device 0 avg(后5次) = 1755.7us
+  device 1 avg(后5次) = 1752.8us
+  >>> MAX across ranks = 1755.7us
+  M=8192 K=3696 N=8192 R=2 MAX=1755.7us
+
+########## M=8192 K=3696 N=8192 R=4 headM=128 ##########
+  device 0 avg(后5次) = 1318.1us
+  device 3 avg(后5次) = 1317.1us
+  device 1 avg(后5次) = 1315.1us
+  device 2 avg(后5次) = 1317.4us
+  >>> MAX across ranks = 1318.1us
+  M=8192 K=3696 N=8192 R=4 MAX=1318.1us
+
+########## M=8192 K=1024 N=8192 R=2 headM=512 ##########
+  device 1 avg(后5次) = 1625.0us
+  device 0 avg(后5次) = 1625.4us
+  >>> MAX across ranks = 1625.4us
+  M=8192 K=1024 N=8192 R=2 MAX=1625.4us
+
+########## M=8192 K=1024 N=8192 R=4 headM=128 ##########
+  device 3 avg(后5次) = 929.4us
+  device 0 avg(后5次) = 921.5us
+  device 1 avg(后5次) = 926.0us
+  device 2 avg(后5次) = 924.7us
+  >>> MAX across ranks = 929.4us
+  M=8192 K=1024 N=8192 R=4 MAX=929.4us
+
+########## M=4096 K=3584 N=4096 R=2 headM=512 ##########
+  device 0 avg(后5次) = 466.9us
+  device 1 avg(后5次) = 467.9us
+  >>> MAX across ranks = 467.9us
+  M=4096 K=3584 N=4096 R=2 MAX=467.9us
+
+########## M=4096 K=3584 N=4096 R=4 headM=128 ##########
+  device 0 avg(后5次) = 303.0us
+  device 2 avg(后5次) = 310.2us
+  device 1 avg(后5次) = 307.2us
+  device 3 avg(后5次) = 307.4us
+  >>> MAX across ranks = 310.2us
+  M=4096 K=3584 N=4096 R=4 MAX=310.2us
+
+########## M=2048 K=3584 N=4096 R=2 headM=512 ##########
+  device 1 avg(后5次) = 267.6us
+  device 0 avg(后5次) = 268.7us
+  >>> MAX across ranks = 268.7us
+  M=2048 K=3584 N=4096 R=2 MAX=268.7us
+
+########## M=2048 K=3584 N=4096 R=4 headM=128 ##########
+  device 2 avg(后5次) = 438.2us
+  device 0 avg(后5次) = 178.0us
+  device 1 avg(后5次) = 448.0us
+  device 3 avg(后5次) = 432.0us
+  >>> MAX across ranks = 448.0us
+  M=2048 K=3584 N=4096 R=4 MAX=448.0us
+
+########## M=4032 K=8192 N=4096 R=2 headM=512 ##########
+  device 0 avg(后5次) = 571.8us
+  device 1 avg(后5次) = 572.6us
+  >>> MAX across ranks = 572.6us
+  M=4032 K=8192 N=4096 R=2 MAX=572.6us
+
+########## M=4032 K=8192 N=4096 R=4 headM=128 ##########
+  device 1 avg(后5次) = 612.6us
+  device 0 avg(后5次) = 611.3us
+  device 2 avg(后5次) = 609.1us
+  device 3 avg(后5次) = 609.0us
+  >>> MAX across ranks = 612.6us
+  M=4032 K=8192 N=4096 R=4 MAX=612.6us
+
+==================== 12 Case msprof 汇总 ====================
