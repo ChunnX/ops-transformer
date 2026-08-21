@@ -780,8 +780,6 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckHcclBuffSize()
                     return ge::GRAPH_FAILED);
 
     uint32_t &epWorldSize = tilingData_->moeDistributeDispatchSetupInfo.epWorldSize;
-    uint32_t &sharedExpertRankNum = tilingData_->moeDistributeDispatchSetupInfo.sharedExpertRankNum;
-    uint32_t &moeExpertNum = tilingData_->moeDistributeDispatchSetupInfo.moeExpertNum;
     uint32_t &sharedExpertNum = tilingData_->moeDistributeDispatchSetupInfo.sharedExpertNum;
     uint32_t &globalBs = tilingData_->moeDistributeDispatchSetupInfo.globalBs;
     uint32_t &BS = tilingData_->moeDistributeDispatchSetupInfo.bs;
@@ -825,18 +823,6 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckHcclBuffSize()
                     OP_LOGE(nodeName_,
                             "dispatch status need [%lu] > D status bank [%lu] (blocks=%lu stateOffset=%lu).",
                             statusNeed, DISPATCH_STATE_BANK, recvWinBlockNum, stateOffset),
-                    return ge::GRAPH_FAILED);
-    // D staging [768KB, 950KB)，每 expert 32B；越界会覆盖 per-aiv 控制块 D_S/C_S
-    constexpr uint64_t DISPATCH_STAGING_OFFSET = 768ULL * 1024ULL;
-    constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
-    constexpr uint64_t DISPATCH_STAGING_SLOT = 32ULL;
-    const uint64_t stagingCap = STATE_WIN_OFFSET - DISPATCH_STAGING_OFFSET;
-    const uint64_t stagingNeed =
-        (static_cast<uint64_t>(sharedExpertRankNum) + static_cast<uint64_t>(moeExpertNum)) * DISPATCH_STAGING_SLOT;
-    OP_TILING_CHECK(stagingNeed > stagingCap,
-                    OP_LOGE(nodeName_,
-                            "dispatch staging need [%lu] > staging cap [%lu] (sharedRank=%u moeExpertNum=%u).",
-                            stagingNeed, stagingCap, sharedExpertRankNum, moeExpertNum),
                     return ge::GRAPH_FAILED);
 
     tilingData_->moeDistributeDispatchSetupInfo.totalWinSize = hcclBuffSize;

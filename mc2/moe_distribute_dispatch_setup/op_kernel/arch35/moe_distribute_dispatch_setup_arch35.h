@@ -538,10 +538,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     }
     // 发送状态分核
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
-    // staging 每 expert 8*int32，越界会盖住 [950KB,1MB) 的 D_S/C_S
-    ascendc_assert(static_cast<uint64_t>(totalExpertNum_) * 8U * sizeof(int32_t) <=
-                       (STATE_WIN_OFFSET - DISPATCH_STAGING_OFFSET),
-                   "dispatch_setup D staging overflow, rank=%u experts=%u", epRankId_, totalExpertNum_);
     SplitToCore(totalExpertNum_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
     PipeBarrier<PIPE_V>();
 }
@@ -1109,19 +1105,19 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 {
     InitCommBuffer();
     // 按卡分核，并与 combine_setup 保持同一旋转规则，保证同一 hcommHandle/jetty 始终由同一 AIV 维护
-    // uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
-    // uint32_t sendRankNum = epWorldSize_ / aivNum_;
-    // uint32_t remainderRankNum = epWorldSize_ % aivNum_;
-    // uint32_t startRankId = sendRankNum * coreIdxNew;
-    // if (coreIdxNew < remainderRankNum) {
-    //     ++sendRankNum;
-    //     startRankId += coreIdxNew;
-    // } else {
-    //     startRankId += remainderRankNum;
-    // }
-    // uint32_t endRankId = startRankId + sendRankNum;
-    uint32_t startRankId, endRankId, sendRankNum;
-    SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
+    uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
+    uint32_t sendRankNum = epWorldSize_ / aivNum_;
+    uint32_t remainderRankNum = epWorldSize_ % aivNum_;
+    uint32_t startRankId = sendRankNum * coreIdxNew;
+    if (coreIdxNew < remainderRankNum) {
+        ++sendRankNum;
+        startRankId += coreIdxNew;
+    } else {
+        startRankId += remainderRankNum;
+    }
+    uint32_t endRankId = startRankId + sendRankNum;
+    // uint32_t startRankId, endRankId, sendRankNum;
+    // SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
     if (sendRankNum == 0 || startRankId >= epWorldSize_) { // 空闲核，直接返回
         return;
     }

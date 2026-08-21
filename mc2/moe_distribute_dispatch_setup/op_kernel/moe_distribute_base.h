@@ -39,8 +39,7 @@ constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
 //   [512KB, 640KB)  C status bank0 (C_S=0)
 //   [640KB, 768KB)  C status bank1 (C_S=1)
 //   [768KB, 950KB)  D staging（本卡打包 status，再 WriteNbi）
-//   [950KB, 1MB)    per-aiv 512B 控制：D_S@0, C_S@256（分属不同 cacheline，避免联跑 DCCI 丢乒乓）
-// C 的状态 flag 源只被本卡读，已迁到 combine_setup 的 workspace，窗口不再为它留位置。
+//   [950KB, 1MB)    per-aiv 512B 控制：D_S@0, C_S@32, C flag@64
 // token 数据在 1MB 之后（totalWinSize），D/C 固定半区 + 区内 totalWin/4 乒乓:
 //   D: [0, totalWin/2)           offset = D_S * (totalWin/4)
 //   C: [totalWin/2, totalWin)    offset = totalWin/2 + C_S * (totalWin/4)
@@ -51,7 +50,8 @@ constexpr uint64_t COMBINE_STATE_BANK_STRIDE = 128U * 1024U;
 constexpr uint64_t DISPATCH_STAGING_OFFSET = 768U * 1024U;
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
 constexpr uint64_t CTRL_DISPATCH_STATE_OFFSET = 0U;
-constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 256U; // 与 D_S 错开，避免同一 cacheline
+constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 32U;
+constexpr uint64_t CTRL_COMBINE_FLAG_OFFSET = 64U;
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;
