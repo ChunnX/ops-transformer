@@ -45,7 +45,7 @@
 namespace Mc2Api {
 
 // Constants
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t HCCL_MAX_RANK_SIZE = 2048;
 constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
