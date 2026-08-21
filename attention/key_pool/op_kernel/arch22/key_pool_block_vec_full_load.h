@@ -925,12 +925,16 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::RoundToHiddenDtype(
     const LocalTensor<T> &srcLocal, uint32_t elementCount)
 {
-    LocalTensor<HIDDEN_STATES_T> roundLocal = outputQue1.AllocTensor<HIDDEN_STATES_T>();
-    Cast(roundLocal, srcLocal, RoundMode::CAST_ROUND, elementCount);
-    PipeBarrier<PIPE_V>();
-    Cast(srcLocal, roundLocal, RoundMode::CAST_NONE, elementCount);
-    PipeBarrier<PIPE_V>();
-    outputQue1.FreeTensor(roundLocal);
+    constexpr uint32_t maxRoundCount = BUFFER_SIZE_BYTE_16K / sizeof(HIDDEN_STATES_T);
+    for (uint32_t offset = 0; offset < elementCount; offset += maxRoundCount) {
+        uint32_t curCount = min(maxRoundCount, elementCount - offset);
+        LocalTensor<HIDDEN_STATES_T> roundLocal = outputQue1.AllocTensor<HIDDEN_STATES_T>();
+        Cast(roundLocal, srcLocal[offset], RoundMode::CAST_ROUND, curCount);
+        PipeBarrier<PIPE_V>();
+        Cast(srcLocal[offset], roundLocal, RoundMode::CAST_NONE, curCount);
+        PipeBarrier<PIPE_V>();
+        outputQue1.FreeTensor(roundLocal);
+    }
 }
 
 template <typename COMP>
