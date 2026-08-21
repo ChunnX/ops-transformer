@@ -46,6 +46,7 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
                 kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
+        return;                                                                                                        \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -68,6 +69,7 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
                 kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
+        return;                                                                                                        \
         op.Process();                                                                                                  \
     } while (0)
 

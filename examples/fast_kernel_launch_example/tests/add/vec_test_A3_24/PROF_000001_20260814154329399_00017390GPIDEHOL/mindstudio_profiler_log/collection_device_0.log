@@ -1,0 +1,143 @@
+2026-08-14 15:43:33 [INFO] [collection_engine.py:99] - Database process finished.
+2026-08-14 15:43:33 [INFO] [collection_engine.py:100] - Analysis finished.
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - L2CacheParser process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingRuntimeData process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingPeripheralData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingNicData process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingRoceData process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingAICPUData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingCtrlCPUData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingTSData process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingCpuUsageData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingMemoryData process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingQosData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingHBMData process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - NonMiniLLCParser process data finished, execute time is 0.003 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingPcieData process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingFftsAICoreSampleData process data finished, execute time is 0.003 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParsingHCCSData process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - SocProfilerParser process data finished, execute time is 0.003 s
+2026-08-14 15:43:33 [INFO] [ms_time_parser.py:116] - Start parsing sync data ...
+2026-08-14 15:43:33 [INFO] [ms_time_parser.py:119] - Parsing sync data finished...
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - BiuPerfParser process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [WARNING] [data_preparation_parser.py:104] - No data preparation data, data list is empty!
+2026-08-14 15:43:33 [INFO] [data_preparation_parser.py:117] - Parsing data preparation has finished.
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - DataPreparationParser process data finished, execute time is 0.003 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - MsTimeParser process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - NpuMemParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - NpuModuleMemParser process data finished, execute time is 0.003 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParallelStrategyParser process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - FreqParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - AicpuAddInfoParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - NetDevStatsParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - SocPmuParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [lpm_info_parser.py:128] - start parsing lpm data, files: ['lpmInfoConv.data.0.slice_0']
+2026-08-14 15:43:33 [INFO] [lpm_info_parser.py:105] - Start parsing Lpm info data file.
+2026-08-14 15:43:33 [INFO] [lpm_info_parser.py:109] - Parsing Lpm info data finished!
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - LpmInfoConvParser process data finished, execute time is 0.009 s
+2026-08-14 15:43:33 [INFO] [ts_track_parser.py:100] - start parsing rts data file: ts_track.data.0.slice_0
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - TstrackParser process data finished, execute time is 0.009 s
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - AicpuBinDataParser process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - HCCLOperatorParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParallelParser process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [WARNING] [msprof_c_interface.py:112] - Device Data will not be parsed by msprof_analysis.so!
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:33 [INFO] [profiling_scene.py:69] - Current scene of data is based on single_op
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - L2CacheCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [WARNING] [biu_monitor_calculator.py:110] - Biu flow data or biu cycles data list is empty!
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table TsBlockNum not found.
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - BlockNumCalculator process data finished, execute time is 0.007 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - MemcpyCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [WARNING] [biu_monitor_calculator.py:110] - Biu flow data or biu cycles data list is empty!
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - BiuPerfCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - StarsIterRecCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - SocPmuCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - StarsLogCalCulator process data finished, execute time is 0.008 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - FftsPmuCalculator process data finished, execute time is 0.017 s
+2026-08-14 15:43:33 [WARNING] [sub_task_calculator.py:142] - calculate subtask failed, maybe the data is not in fftsplus mode
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - SubTaskCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ascend_task_calculator.py:88] - No table AscendTask found, to generate it
+2026-08-14 15:43:33 [WARNING] [device_task_collector.py:149] - no soc_log.db.SubtaskTime found
+2026-08-14 15:43:33 [WARNING] [device_task_collector.py:159] - no soc_log.db.V5Task found
+2026-08-14 15:43:33 [INFO] [ascend_task_generator.py:325] - Found 104 host device matched task, 104 top down task
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - AscendTaskCalculator process data finished, execute time is 0.012 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - HcclCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - KfcCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - ParseAiCoreOpSummaryCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - MergeOpCounterCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - OpCounterOpSceneCalculator process data finished, execute time is 0.010 s
+2026-08-14 15:43:33 [INFO] [ms_multi_process.py:77] - OpSummaryOpSceneCalculator process data finished, execute time is 0.013 s
+2026-08-14 15:43:33 [WARNING] [msprof_export.py:572] - Unable to get freq data. Maybe the data is not collected, or the data may fail to be analyzed.
+2026-08-14 15:43:33 [WARNING] [pipeline_overlap_viewer.py:85] - Both task data and hccl data are missing, no need to calculate the overlap.
+2026-08-14 15:43:33 [WARNING] [msprof_export.py:572] - Unable to get msprof data. Maybe the data is not collected, or the data may fail to be analyzed.
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:33 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:33 [INFO] [profiling_scene.py:69] - Current scene of data is based on single_op
+2026-08-14 15:43:34 [WARNING] [file_manager.py:99] - Data has been analyzed, path is /home/g00964607/ops-transformer-master/examples/fast_kernel_launch_example/tests/add/vec_test_A3_24/PROF_000001_20260814154329399_00017390GPIDEHOL/device_0, there are ['voltage.db', 'biu_perf.db', 'metric_summary.db', 'freq.db', 'time.db', 'op_counter.db', 'ascend_task.db', 'soc_log.db', 'step_trace.db', 'ai_core_op_summary.db'] in sqlite.
+2026-08-14 15:43:34 [WARNING] [msprof_export.py:476] - File all_file.complete already exists. All data will be exported from db in sqlite. Path is /home/g00964607/ops-transformer-master/examples/fast_kernel_launch_example/tests/add/vec_test_A3_24/PROF_000001_20260814154329399_00017390GPIDEHOL/device_0 
+2026-08-14 15:43:34 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:34 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:34 [INFO] [profiling_scene.py:69] - Current scene of data is based on single_op
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - L2CacheCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:34 [WARNING] [base_model.py:75] - Table TsBlockNum not found.
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - BlockNumCalculator process data finished, execute time is 0.007 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - MemcpyCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [WARNING] [biu_monitor_calculator.py:110] - Biu flow data or biu cycles data list is empty!
+2026-08-14 15:43:34 [WARNING] [biu_monitor_calculator.py:110] - Biu flow data or biu cycles data list is empty!
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - BiuPerfCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - StarsIterRecCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - SocPmuCalculator process data finished, execute time is 0.007 s
+2026-08-14 15:43:34 [INFO] [stars_log_parser.py:85] - The Table AcsqTask already exists in the soc_log.db, and won't be calculate again.
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - StarsLogCalCulator process data finished, execute time is 0.006 s
+2026-08-14 15:43:34 [INFO] [ffts_pmu_calculator.py:182] - The Table MetricSummary already exists in the metric_summary.db, and won't be calculate again.
+2026-08-14 15:43:34 [WARNING] [ffts_pmu_calculator.py:195] - No ai core pmu data found, data list is empty!
+2026-08-14 15:43:34 [WARNING] [ffts_pmu_model.py:68] - ffts pmu data is empty, no data found.
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - FftsPmuCalculator process data finished, execute time is 0.007 s
+2026-08-14 15:43:34 [WARNING] [sub_task_calculator.py:142] - calculate subtask failed, maybe the data is not in fftsplus mode
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - SubTaskCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [INFO] [ascend_task_calculator.py:85] - Found table AscendTask in operator scene, no need to generate again
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - AscendTaskCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - HcclCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - KfcCalculator process data finished, execute time is 0.006 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - ParseAiCoreOpSummaryCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [INFO] [op_summary_op_scene_calculator.py:79] - The db ai_core_op_summary.db already exists, and won't create again.
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - OpSummaryOpSceneCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - MergeOpCounterCalculator process data finished, execute time is 0.005 s
+2026-08-14 15:43:34 [INFO] [ms_multi_process.py:77] - OpCounterOpSceneCalculator process data finished, execute time is 0.004 s
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:34 [WARNING] [base_model.py:75] - Table step_trace_data not found.
+2026-08-14 15:43:34 [INFO] [profiling_scene.py:69] - Current scene of data is based on single_op
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [WARNING] [file_manager.py:353] - The path /home/g00964607/version/cann-9.2.0/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so is not a file. Please check the path.
+2026-08-14 15:43:34 [INFO] [ai_core_op_report.py:217] - There are 101 records before op_summary data filtering, timestamp is 1786693410116657.
+2026-08-14 15:43:34 [INFO] [ai_core_op_report.py:223] - There are 101 records after op_summary data filtering.
+2026-08-14 15:43:34 [INFO] [task_op_viewer.py:59] - There are 104 records before task_time data filtering, timestamp is 1786693410116657
+2026-08-14 15:43:34 [INFO] [task_op_viewer.py:62] - There are 104 records after task_time data filtering.

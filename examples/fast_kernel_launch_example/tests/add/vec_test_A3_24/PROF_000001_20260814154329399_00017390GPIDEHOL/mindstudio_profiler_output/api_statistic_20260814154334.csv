@@ -1,0 +1,15 @@
+Device_id,Level,API Name,Time(us),Count,Avg(us),Min(us),Max(us),Variance
+0,acl,aclrtCreateStreamWithConfig,4352.882,2,2176.441,2087.873,2265.009,7844.364
+0,acl,aclrtCtxSetSysParamOpt,1.75,2,0.875,0.33,1.42,0.297
+0,acl,aclrtDestroyStreamForce,816.015,1,816.015,816.015,816.015,0.0
+0,acl,aclrtFree,8.31,1,8.31,8.31,8.31,0.0
+0,acl,aclrtGetCurrentContext,1.35,1,1.35,1.35,1.35,0.0
+0,acl,aclrtGetDeviceCount,6.71,2,3.355,1.86,4.85,2.235
+0,acl,aclrtLaunchKernelWithHostArgs,457.272,101,4.527,1.33,189.477,343.921
+0,acl,aclrtMemcpy,519.641,2,259.82,222.566,297.075,1387.885
+0,acl,aclrtResetDevice,2.48,1,2.48,2.48,2.48,0.0
+0,acl,aclrtSetDevice,73.249,1,73.249,73.249,73.249,0.0
+0,acl,aclrtSetOpExecuteTimeOutV2,1194.659,1,1194.659,1194.659,1194.659,0.0
+0,acl,aclrtSetStreamFailureMode,5.49,2,2.745,2.29,3.2,0.207
+0,acl,aclrtSynchronizeDeviceWithTimeout,22.43,2,11.215,2.9,19.53,69.136
+0,acl,aclrtSynchronizeStream,12.57,2,6.285,1.25,11.32,25.35
