@@ -1,0 +1,151 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file flash_mla_with_kvcache.cpp
+ * \brief flash_mla_with_kvcache Kernel 唯一入口；按 tiling key 编译期推导模板参数，
+ *        分发 FlashAttentionNoQuantMlaKernel（fia_kernel_noquant_mla.h 改名，D20/D6）。
+ *        模板实例化集合 = fia MLA 分发宏（fia_arch35_noquant.h Aligned576 路径）限定到
+ *        TND/PA_NZ/NTD（R1）；rope 已并入 q/k_cache 576 宽单张量（m0070），无独立 rope 输入。
+ */
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+#include "kernel_operator_list_tensor_intf.h"
+
+
+#include "arch35/flash_mla_with_kvcache_template_tiling_key.h"
+// 四件套依赖的公共符号提供者（镜像 FIA 的 flash_attention_noquant_block_vec_base.h 23-28 行，
+// Todo 14 实测：缺这些头会导致 kernel 编译报 unknown type 'S1TemplateType'/'MaskFormat'/SoftMaxShapeInfo 等）
+#include "../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "adv_api/activation/softmax.h"
+#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
+#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/attenmask_gs1.h"
+#include "arch35/memory_copy_arch35.h"
+#include "arch35/flash_mla_with_kvcache_gm_format.h"
+using namespace FaVectorApi;
+using namespace optiling;
+#include "arch35/flash_mla_with_kvcache_kernel_noquant_mla.h"
+
+using namespace AscendC;
+using namespace AttentionCommon; // flash_mla_with_kvcache_kernel_noquant_mla.h 内 FLASH_MLA_WITH_KVCACHE_LAYOUT 等符号（继承自 fia 结构）
+
+// 解析 tiling key，选择 MLA 四件套（镜像 fused_infer_attention_score/op_kernel/arch35/
+// fia_template_dispatcher.h run_fia_noquant_mla_kernel 的实例化逻辑，删减到 R1 限定组合）
+template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
+          uint8_t KvLayoutType, bool isFd>
+inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                                    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqlensQ,
+                                                    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cacheSeqlens,
+                                                    __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
+                                                    __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                                    __gm__ uint8_t *metadata, __gm__ uint8_t *tiling)
+{
+    PARSE_PARAMS_NoQuant(inOutLayoutType, config, PSE_MODE_PSE_NONE_TYPE, ...); // 9: None
+
+    fa_base_matmul::idCounterNum = 0;
+    // CubBlockType
+    using CubBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType,
+                                                                s2TemplateType, dTemplateType, dVTemplateType,
+                                                                KvLayoutType>;
+    using CubBlockDummy =
+        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                                  dTemplateType, dVTemplateType, KvLayoutType>;
+    using CubBlock = typename std::conditional<g_coreType == AscendC::AIC, CubBlockNormal, CubBlockDummy>::type;
+
+    // VecFaBlockType
+    using VecFaBlockNormal =
+        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType,
+                                            isFd>;
+    using VecFaBlockDummy =
+        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                 hasAttenMask, KvLayoutType, isFd>;
+    using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
+
+    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0）
+    using VecFdBlockNormal =
+        BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                hasAttenMask, KvLayoutType>;
+    using VecFdBlockDummy =
+        BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                     s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                     hasAttenMask, KvLayoutType>;
+    using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
+
+    // KernelType
+    using Kernel = BaseApi::FlashAttentionNoQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
+
+    // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
+    // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
+    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
+    //   动态图 → (__gm__ FlashMlaWithKvcacheTilingData*)tiling 直接强转，零拷贝；
+    //   静态图 → convert_from_bytes 把常量数组拷成栈局部对象，dst_ptr 取其地址。
+    GET_TILING_DATA_MEMBER(optiling::FlashMlaWithKvcacheTilingData, baseTiling, baseTilingIn, tiling);
+    const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+
+    TPipe tPipe;
+    Kernel op;
+    // m0070：无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
+    // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义，R9）。
+    // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
+    op.Init(query, key, value, attenMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attentionOut,
+            workspace, metadata, tilingData, &tPipe);
+    op.Process();
+}
+
+template <uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask, uint8_t KvLayoutType, bool isFd>
+// 形参序必须吃齐 def 输入序 cache_seqlens(3)/cu_seqlens_q(4)/seqused_q(5)（运行时按 def 序绑槽位；
+// 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 → AIC 263）。
+__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockTable,
+                                     __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                     __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
+                                     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+{
+    REGISTER_TILING_DEFAULT(optiling::FlashMlaWithKvcacheTilingData);
+    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+
+    // 编译宏名须对齐 asc_opc 按输入名派生的 ORIG_DTYPE_{Q,K_CACHE,ATTN_OUT}
+    // （fia 内部名 ORIG_DTYPE_QUERY/KEY/ATTENTION_OUT 未被定义 → 恒走 bf16 分支，fp16 .o 实为 bf16）。
+    // DT_* 在 device TU 为枚举非宏，故比数值（FP16==1/BF16==27，实测确认）。
+#define MLA_DT_FLOAT16 1
+#define MLA_DT_BF16 27
+#if (defined(ORIG_DTYPE_Q) && ORIG_DTYPE_Q == MLA_DT_FLOAT16 && defined(ORIG_DTYPE_K_CACHE) && \
+     ORIG_DTYPE_K_CACHE == MLA_DT_FLOAT16 && defined(ORIG_DTYPE_ATTN_OUT) && ORIG_DTYPE_ATTN_OUT == MLA_DT_FLOAT16)
+    using INPUT_T = half;
+    using OUT_T = half;
+#elif (defined(ORIG_DTYPE_Q) && ORIG_DTYPE_Q == MLA_DT_BF16 && defined(ORIG_DTYPE_K_CACHE) && \
+       ORIG_DTYPE_K_CACHE == MLA_DT_BF16 && defined(ORIG_DTYPE_ATTN_OUT) && ORIG_DTYPE_ATTN_OUT == MLA_DT_BF16)
+    using INPUT_T = bfloat16_t;
+    using OUT_T = bfloat16_t;
+#else
+#error "flash_mla_with_kvcache: ORIG_DTYPE_* macros must be all fp16 or all bf16"
+#endif
+
+    run_flash_mla_with_kvcache_noquant_kernel<INPUT_T, OUT_T, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd>(
+        query, key, key, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user, metadata,
+        tiling);
+
+    AscendC::PipeBarrier<PIPE_ALL>();
+}
