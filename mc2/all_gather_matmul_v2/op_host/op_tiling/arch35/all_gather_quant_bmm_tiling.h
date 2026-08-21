@@ -85,6 +85,7 @@ private:
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};
     bool isFp4_ = false;
+    bool isMxScene_ = false;
     Apace::hcommAllGatherMatmulTilingData hcommTilingData_{};
 };
 
