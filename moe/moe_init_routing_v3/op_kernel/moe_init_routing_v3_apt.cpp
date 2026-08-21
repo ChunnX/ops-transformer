@@ -30,7 +30,6 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
-#include "arch35/moe_v3_full_load_unquantized.h"
 #include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
 #include "arch35/moe_v3_cut_origin_arch35_t.h"
 #include "arch35/moe_v3_row_idx_gather_droppad.h"
