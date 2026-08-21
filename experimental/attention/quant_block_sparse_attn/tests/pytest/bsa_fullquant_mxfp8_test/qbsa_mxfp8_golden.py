@@ -529,6 +529,7 @@ set_active_case(CASE)
 # e8m0fnu 最小正数: 2^(-127)，用于替换 descale 中的数值 0 和非有限值。
 # e8m0fnu 没有数值 0；字节 0x00 表示 2^(-127)，0xFF 才表示 NaN。
 E8M0_MIN_POSITIVE = 2 ** (-127)
+E8M0_MAX_FINITE = float(2**127)
 _EMAX_MAP = {
     torch.float8_e4m3fn: 8,
 }
@@ -560,15 +561,26 @@ def _normalize_data_range(data_range):
             )
         low, high = float(data_range[0]), float(data_range[1])
         explicit_bounds = True
+        if not math.isfinite(low) or not math.isfinite(high):
+            same_nan = math.isnan(low) and math.isnan(high)
+            if not same_nan and low != high:
+                raise ValueError(
+                    "non-finite data_range bounds must describe one constant "
+                    f"value, got: [{low}, {high}]"
+                )
+            return low, high, explicit_bounds
     else:
         radius = float(data_range)
+        if not math.isfinite(radius):
+            # A non-finite scalar is a requested constant payload, not a
+            # symmetric random radius.  This keeps CSV forms such as ``inf``,
+            # ``-inf`` and ``nan`` unambiguous.
+            return radius, radius, True
         if radius < 0:
             raise ValueError(f"scalar data_range must be non-negative, got: {radius}")
         low, high = -radius, radius
         explicit_bounds = False
 
-    if not math.isfinite(low) or not math.isfinite(high):
-        raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
     if low > high:
         raise ValueError(f"data_range min must not exceed max, got: [{low}, {high}]")
     return low, high, explicit_bounds
@@ -576,7 +588,7 @@ def _normalize_data_range(data_range):
 
 def _rand_float(shape, generator, data_range=1.0):
     low, high, explicit_bounds = _normalize_data_range(data_range)
-    if low == high:
+    if low == high or (math.isnan(low) and math.isnan(high)):
         return torch.full(shape, low, dtype=torch.float32)
 
     result = (
@@ -638,14 +650,28 @@ def quantize_mxfp8_qk(tensor_fp32, fp8_dtype, group_size=32):
         tensor_fp32 = torch.nn.functional.pad(tensor_fp32, (0, pad_size))
 
     grouped = tensor_fp32.reshape(*tensor_fp32.shape[:-1], num_groups, group_size)
-    all_zero_mask = torch.all(grouped == 0, dim=-1)
-    max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
+    finite_values = torch.where(
+        torch.isfinite(grouped), torch.abs(grouped), torch.zeros_like(grouped)
+    )
+    max_vals = torch.max(finite_values, dim=-1)[0]
     # Choose the smallest power-of-two descale that keeps the whole group in
     # the finite E4M3 range.  floor(log2(max)) - emax only accounts for the
     # exponent bits and can still overflow values between 256 and 448.
     fp8_max = torch.finfo(fp8_dtype).max
-    shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
-    descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
+    shared_exp = torch.ceil(torch.log2(max_vals.clamp(min=1e-12) / fp8_max))
+    finite_descale = torch.where(
+        max_vals == 0, torch.ones_like(shared_exp), 2**shared_exp
+    )
+    # E4M3FN has signed finite extrema but no infinity encoding.  Pair an
+    # infinite source value with +/-448 and the largest finite E8M0 scale so
+    # FP32 dequantization overflows to the requested signed infinity.  NaNs
+    # remain in the FP8 payload and are deliberately ignored for group scale.
+    has_inf = torch.any(torch.isinf(grouped), dim=-1)
+    descale = torch.where(
+        has_inf,
+        torch.full_like(finite_descale, E8M0_MAX_FINITE),
+        finite_descale,
+    ).to(
         torch.float32
     )
 
@@ -674,11 +700,21 @@ def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
         tensor_fp32 = torch.nn.functional.pad(tensor_fp32, (0, 0, 0, 0, 0, pad_size))
 
     grouped = tensor_fp32.reshape(batch, num_groups, group_size, num_heads, head_dim)
-    all_zero_mask = torch.all(grouped == 0, dim=2)
-    max_vals = torch.max(torch.abs(grouped), dim=2)[0].clamp(min=1e-12)
+    finite_values = torch.where(
+        torch.isfinite(grouped), torch.abs(grouped), torch.zeros_like(grouped)
+    )
+    max_vals = torch.max(finite_values, dim=2)[0]
     fp8_max = torch.finfo(fp8_dtype).max
-    shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
-    descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
+    shared_exp = torch.ceil(torch.log2(max_vals.clamp(min=1e-12) / fp8_max))
+    finite_descale = torch.where(
+        max_vals == 0, torch.ones_like(shared_exp), 2**shared_exp
+    )
+    has_inf = torch.any(torch.isinf(grouped), dim=2)
+    descale = torch.where(
+        has_inf,
+        torch.full_like(finite_descale, E8M0_MAX_FINITE),
+        finite_descale,
+    ).to(
         torch.float32
     )
 

@@ -213,7 +213,13 @@ def _mxfp8_normalize_data_range(data_range):
             )
         low, high = float(data_range[0]), float(data_range[1])
         if not math.isfinite(low) or not math.isfinite(high):
-            raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
+            same_nan = math.isnan(low) and math.isnan(high)
+            if not same_nan and low != high:
+                raise ValueError(
+                    "non-finite data_range bounds must describe one constant "
+                    f"value, got: [{low}, {high}]"
+                )
+            return [low, high]
         if low > high:
             raise ValueError(
                 f"data_range min must not exceed max, got: [{low}, {high}]"
@@ -221,7 +227,9 @@ def _mxfp8_normalize_data_range(data_range):
         return [low, high]
 
     radius = float(data_range)
-    if not math.isfinite(radius) or radius < 0:
+    if not math.isfinite(radius):
+        return radius
+    if radius < 0:
         raise ValueError(
             f"scalar data_range must be finite and non-negative, got: {radius}"
         )
@@ -301,13 +309,13 @@ def _mxfp8_cpu_golden(
             "return_softmax_lse": bool(return_softmax_lse),
             "seed": int(seed),
             "data_range_q": _mxfp8_normalize_data_range(
-                kwargs.get("data_range_q", 1.0)
+                kwargs.get("data_range_q_value", kwargs.get("data_range_q", 1.0))
             ),
             "data_range_k": _mxfp8_normalize_data_range(
-                kwargs.get("data_range_k", 1.0)
+                kwargs.get("data_range_k_value", kwargs.get("data_range_k", 1.0))
             ),
             "data_range_v": _mxfp8_normalize_data_range(
-                kwargs.get("data_range_v", 1.0)
+                kwargs.get("data_range_v_value", kwargs.get("data_range_v", 1.0))
             ),
             "device_id": 0,
             "sparse_q_block_size": int(sparse_q_block_size),
