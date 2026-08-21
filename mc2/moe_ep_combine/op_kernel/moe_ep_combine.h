@@ -476,29 +476,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (epWorldSize_ == 0 || aivNum_ == 0) {
         return;
     }
-    uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    bool useRemainingAivForLocal = activeAivNum > maxChannelAivNum;
-
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
 
-    bool splitRankTokens = activeAivNum >= epWorldSize_;
-    uint32_t targetRank = epWorldSize_;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (splitRankTokens && aivId_ < activeAivNum) {
-        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
-    }
-    uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
-
-    bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
-    bool sendsLocalTokens = sendsTokens &&
-                            (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
-    constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    constexpr uint32_t metaChunkTokenMax = 2048U;
+    bool splitRankTokens = aivNum_ >= epWorldSize_;
+    uint32_t completionChannelCount = splitRankTokens ? aivNum_ / epWorldSize_ : 1U;
+    completionChannelCount = completionChannelCount > channelsPerRank_ ? channelsPerRank_ : completionChannelCount;
+    uint32_t communicationAivNum = splitRankTokens ? epWorldSize_ * completionChannelCount : aivNum_;
+    bool buildsSendMap = actualA_ != 0;
     constexpr uint32_t indexStride = UB_ALIGN / sizeof(uint64_t);
+    constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    constexpr uint32_t metaChunkTokenMax = 1024U;
     uint32_t metaChunkTokens = 0;
     uint32_t metaChunkBytes = 0;
     uint32_t sendIndexBytes = 0;
@@ -507,7 +496,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     GlobalTensor<uint64_t> sendIndexGm;
     uint64_t slotsPerRank = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_;
     uint64_t workspaceStride = sendDataWorkspaceSizePerRank_ / sizeof(uint64_t);
-    if (sendsTokens) {
+
+    // Phase 1: all AIVs parse recvSrcMetadata once and build a destination-slot-to-source-row map.
+    if (buildsSendMap) {
         metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
         metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
         sendIndexBytes = metaChunkTokens * UB_ALIGN;
@@ -526,8 +517,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         LocalTensor<uint64_t> zeroIndexLocal = metadataLocal.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(zeroIndexLocal, 0U, zeroIndexCount);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        uint64_t clearCount = slotsPerRank / activeAivNum;
-        uint64_t clearRemainder = slotsPerRank % activeAivNum;
+        uint64_t clearCount = slotsPerRank / aivNum_;
+        uint64_t clearRemainder = slotsPerRank % aivNum_;
         uint64_t clearStart = aivId_ * clearCount + (aivId_ < clearRemainder ? aivId_ : clearRemainder);
         clearCount += aivId_ < clearRemainder ? 1U : 0U;
         for (uint32_t dstRank = 0; dstRank < epWorldSize_; ++dstRank) {
@@ -544,8 +535,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncAll<true>();
 
-        uint64_t rowsPerCore = actualA_ / activeAivNum;
-        uint64_t rowRemainder = actualA_ % activeAivNum;
+        uint64_t rowsPerCore = actualA_ / aivNum_;
+        uint64_t rowRemainder = actualA_ % aivNum_;
         uint64_t rowStart = aivId_ * rowsPerCore + (aivId_ < rowRemainder ? aivId_ : rowRemainder);
         uint64_t rowCount = rowsPerCore + (aivId_ < rowRemainder ? 1U : 0U);
         uint64_t rowEnd = rowStart + rowCount;
@@ -586,34 +577,38 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             for (uint32_t i = 0; i < curChunkTokens; ++i) {
                 uint64_t sendIndex = sendIndexLocal.GetValue(i * indexStride);
-                if (sendIndex == 0) {
+                if (sendIndex == 0U) {
                     continue;
                 }
                 int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
                 uint64_t dstSlot = static_cast<uint64_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 1)) * topK_ +
                                    metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-                uint64_t indexOffset = dstSlot * indexStride;
-                DataCopyPad(sendIndexGm[static_cast<uint64_t>(srcRank) * workspaceStride + indexOffset],
+                DataCopyPad(sendIndexGm[static_cast<uint64_t>(srcRank) * workspaceStride + dstSlot * indexStride],
                             sendIndexLocal[i * indexStride], indexCopyParams);
             }
             SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
         SyncAll<true>();
     }
+
+    // Phase 2: only real communication workers consume the map and own a rank/channel pair.
+    bool sendsTokens = buildsSendMap && aivId_ < communicationAivNum;
+    uint32_t targetRank = splitRankTokens ? aivId_ / completionChannelCount : epWorldSize_;
+    uint32_t channelIndex = splitRankTokens ? aivId_ % completionChannelCount : 0U;
     if (sendsTokens) {
         const DataCopyPadExtParams<uint64_t> indexPadParams{false, 0U, 0U, 0U};
         uint32_t firstRank = splitRankTokens ? targetRank : aivId_;
-        uint32_t rankStep = splitRankTokens ? epWorldSize_ : activeAivNum;
+        uint32_t rankStep = splitRankTokens ? epWorldSize_ : aivNum_;
         uint32_t indexChunkMax = sendIndexBytes / UB_ALIGN;
         for (uint32_t dstRank = firstRank; dstRank < epWorldSize_; dstRank += rankStep) {
             uint64_t slotStart = 0;
             uint64_t slotEnd = slotsPerRank;
-            if (splitRankTokens && groupSize > 1U) {
-                uint64_t slotsPerCore = slotsPerRank / groupSize;
-                uint64_t slotRemainder = slotsPerRank % groupSize;
-                slotStart = coreIndexInGroup * slotsPerCore +
-                            (coreIndexInGroup < slotRemainder ? coreIndexInGroup : slotRemainder);
-                slotEnd = slotStart + slotsPerCore + (coreIndexInGroup < slotRemainder ? 1U : 0U);
+            if (splitRankTokens && completionChannelCount > 1U) {
+                uint64_t slotsPerChannel = slotsPerRank / completionChannelCount;
+                uint64_t slotRemainder = slotsPerRank % completionChannelCount;
+                slotStart = channelIndex * slotsPerChannel +
+                            (channelIndex < slotRemainder ? channelIndex : slotRemainder);
+                slotEnd = slotStart + slotsPerChannel + (channelIndex < slotRemainder ? 1U : 0U);
             }
             for (uint64_t chunkStart = slotStart; chunkStart < slotEnd; chunkStart += indexChunkMax) {
                 uint64_t chunkEnd = (chunkStart + indexChunkMax > slotEnd) ? slotEnd : chunkStart + indexChunkMax;
@@ -631,30 +626,21 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                         continue;
                     }
                     uint64_t dstSlot = chunkStart + i;
-                    uint32_t srcTokenIdx = static_cast<uint32_t>(dstSlot / topK_);
-                    uint32_t srcTopKIdx = static_cast<uint32_t>(dstSlot % topK_);
-                    uint32_t weight = static_cast<uint32_t>(sendIndex >> 32U);
-                    SendSlot(tokenIndexPlusOne - 1U, dstRank, srcTokenIdx, srcTopKIdx, channelIndex, weight);
+                    SendSlot(tokenIndexPlusOne - 1U, dstRank, static_cast<int32_t>(dstSlot / topK_),
+                             static_cast<int32_t>(dstSlot % topK_), channelIndex,
+                             static_cast<uint32_t>(sendIndex >> 32U));
                 }
                 SyncFunc<AscendC::HardEvent::S_MTE2>();
             }
         }
     }
 
-    // Append one ODR 6 completion write after all payload writes on this channel.
-    // Channels without payload also publish completion so the receiver cannot wait forever.
-    if (sendsLocalTokens) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
-    if (useRemainingAivForLocal) {
-        // Extra local AIVs do not publish additional flags. Wait for their local MTE3 writes before
-        // the configured channel AIVs publish the original number of completion flags.
-        SyncAll<true>();
-    }
-    uint32_t completionChannelCount = useRemainingAivForLocal ? channelsPerRank_ : groupSize;
-    bool publishesChannelFlag = aivId_ < activeAivNum &&
-                                (!splitRankTokens || coreIndexInGroup < completionChannelCount);
+    bool publishesChannelFlag = aivId_ < communicationAivNum;
     if (publishesChannelFlag) {
+        bool sendsLocalTokens = splitRankTokens ? targetRank == rankId_ : rankId_ % aivNum_ == aivId_;
+        if (sendsLocalTokens) {
+            SyncFunc<AscendC::HardEvent::MTE3_S>();
+        }
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -665,7 +651,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         if (splitRankTokens) {
             SendChannelFlag(targetRank, channelIndex, completionChannelCount);
         } else {
-            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += aivNum_) {
                 SendChannelFlag(dstRank, 0U, 1U);
             }
         }
@@ -777,15 +763,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
 {
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    uint32_t completionChannelCount = 1U;
-    if (activeAivNum > maxChannelAivNum) {
-        completionChannelCount = channelsPerRank_;
-    } else if (activeAivNum >= epWorldSize_) {
-        completionChannelCount =
-            activeAivNum / epWorldSize_ + (rankId_ < activeAivNum % epWorldSize_ ? 1U : 0U);
-    }
+    uint32_t completionChannelCount = aivNum_ >= epWorldSize_ ? aivNum_ / epWorldSize_ : 1U;
+    completionChannelCount = completionChannelCount > channelsPerRank_ ? channelsPerRank_ : completionChannelCount;
     uint32_t completionFlagCount = epWorldSize_ * completionChannelCount;
     uint32_t flagBufferBytes = completionFlagCount * STATE_OFFSET;
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
