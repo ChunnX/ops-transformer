@@ -1,4 +1,6 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
+import copy
+import types
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -15,6 +17,7 @@ from atk.tasks.dataset.base_dataset import OpsDataset
 import ctypes
 from atk.tasks.backends.lib_interface.acl_wrapper import AclTensor
 from atk.tasks.backends.lib_interface.acl_wrapper import AclFormat, AclTensorStruct
+from atk.tasks.backends.lib_interface.acl_wrapper import nnopbase, TORCH_TO_ACLTYPE
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 import random
 from atk.common.log import Logger
@@ -145,8 +148,9 @@ def rms_norm_quant_cpu(
     else:
         quant_scale = 1.0 / quant_scale.float().item()
         quant_offset = quant_offset.float().item()
-        ret = x_norm * quant_scale + quant_offset
-        ret = torch.clamp(torch.round(ret).half(), min=-128, max=127).to(torch.int8)
+        x_quant = x_norm * quant_scale + quant_offset
+        x_quant_fp16 = x_quant.to(torch.float16)
+        ret = torch.clamp(torch.round(x_quant_fp16.float()).half(), min=-128, max=127).to(torch.int8)
     return ret
 
 def mm_w8a8_cpu(
@@ -217,6 +221,98 @@ def rope_cpu(
     cos = cos.view(batch, 1, head_size).unsqueeze(2)
     sin = sin.view(batch, 1, head_size).unsqueeze(2)
     return ((x * cos) + (rotate_half(x) * sin)).view(ntoken, head_num, head_size)
+
+# ==================== 低精度 CPU 路径 ====================
+# 匹配 NPU kernel 的中间计算类型：data_type MMAD + fp32 累加 + Fixpipe fp32→data_type 截断
+# data_type 由调用方传入：fp16 用例传 torch.float16，bf16 用例传 torch.bfloat16
+
+def rms_norm_quant_cpu_lowprec(
+    x, gamma, beta, quant_scale=None, quant_offset=None, data_type=torch.float16,
+):
+    x_norm = rms_norm_cpu(x, gamma, beta)
+
+    dynamic_quant = quant_scale == None and quant_offset == None
+    if dynamic_quant:
+        max_abs_val, _ = torch.max(torch.abs(x_norm), dim=-1, keepdim=True)
+        scale = 127.0 / max_abs_val
+        ret = torch.clamp(torch.round(x_norm * scale).half(), min=-128, max=127)
+        return ret, 1 / scale
+    else:
+        # 匹配 kernel: 1.0f / (float)(data_type值)
+        quant_scale_dt = quant_scale.to(data_type)
+        input_scale = (torch.tensor(1.0, dtype=torch.float32) / quant_scale_dt.float()).item()
+        input_offset = quant_offset.float().item()
+
+        x_quant = x_norm * input_scale + input_offset
+        # CastFrom32To16: kernel 始终用 fp16 中转 int8 量化，与输入 dtype 无关
+        x_quant_fp16 = x_quant.to(torch.float16)
+        ret = torch.clamp(torch.round(x_quant_fp16.float()).half(), min=-128, max=127).to(torch.int8)
+        return ret
+
+def mm_w8a8_cpu_lowprec(
+    x, weight, deq_scale, per_token_scale=None, deq_offset=None, data_type=torch.float16,
+):
+    ret = torch.matmul(x.to(torch.int32), weight.transpose(0, 1).to(torch.int32))
+
+    deq_scale = deq_scale.reshape((1, -1))
+    deq_offset = deq_offset.reshape((1, -1))
+    if per_token_scale != None:
+        ret = ret.to(torch.float32) * deq_scale * per_token_scale
+    else:
+        ret += deq_offset
+        ret = ret.to(torch.float32) * deq_scale
+
+    # 匹配 kernel Fixpipe/dequant: fp32→data_type 截断后再回 fp32
+    ret = ret.to(data_type).float()
+    return ret
+
+def mm_cpu_lowprec(x, weight, data_type=torch.float16):
+    # 匹配 kernel: data_type MMAD + fp32 累加 + Fixpipe
+    x_dt = x.to(data_type)
+    weight_dt = weight.transpose(1, 0).to(data_type)
+    ret = torch.matmul(x_dt, weight_dt).float()
+    ret = ret.to(data_type).float()
+    return ret
+
+def mm_einsum_cpu_lowprec(x, weight, data_type=torch.float16):
+    # 匹配 kernel: data_type MMAD + fp32 累加 + Fixpipe
+    x_dt = torch.permute(x, (1, 0, 2)).to(data_type)
+    weight_dt = weight.to(data_type)
+    ret = torch.permute(torch.matmul(x_dt, weight_dt), (1, 0, 2)).float()
+    ret = ret.to(data_type).float()
+    return ret
+
+def rope_cpu_lowprec(x, cos, sin, data_type=torch.float16):
+    def rotate_half(x):
+        x0, x1 = x.chunk(2, -1)
+        return torch.cat((-x1, x0), dim=x0.ndim - 1)
+
+    x = x.to(torch.float32)
+    sin = sin.to(torch.float32)
+    cos = cos.to(torch.float32)
+
+    ntoken, head_num, head_size = x.shape
+    batch = ntoken
+    x = x.view(batch, 1, head_num, head_size)
+    cos = cos.view(batch, 1, head_size).unsqueeze(2)
+    sin = sin.view(batch, 1, head_size).unsqueeze(2)
+    result = ((x * cos) + (rotate_half(x) * sin)).view(ntoken, head_num, head_size)
+
+    # 匹配 kernel Cast(fp32→data_type, CAST_RINT) 后再回 fp32
+    result = result.to(data_type).float()
+    return result
+
+def quant_cpu_lowprec(x, scale, offset=None, data_type=torch.float16):
+    x = x.to(torch.float32)
+    # 匹配 kernel: scale 用 fp32 除法
+    scale_dt = scale.to(data_type)
+    inv_scale = 1.0 / scale_dt.float()
+
+    ret = torch.round(x * inv_scale)
+    if offset != None:
+        ret += offset.float()
+    ret = torch.clamp(torch.round(ret).to(torch.int32), min=-128, max=127)
+    return ret.to(torch.int8)
 
 @register("function_aclnn_mla_preprocess")
 class FunctionMlaPreprocessApi(BaseApi):
@@ -494,7 +590,7 @@ class FunctionMlaPreprocessApi(BaseApi):
             # wuq = input_data.kwargs["wuq"].cpu().clone()
             # wuq = self.transdata(wuq, (16, 32)).contiguous()
             # wdqkv = input_data.kwargs["wdqkv"].cpu().clone()
-            npu_cast_to_nz = lambda tensor: torch_npu.npu_format_cast(transdata_nd2nz(tensor).contiguous().npu(), 29)
+            npu_cast_to_nz = lambda tensor: transdata_nd2nz(tensor).contiguous().npu()
             if input_data.kwargs["input"].dtype == torch.float16 :
                 deScale0 = self.process_deq_scale(input_data.kwargs["deScale0"].cpu()).npu()
                 deScale1 = self.process_deq_scale(input_data.kwargs["deScale1"].cpu()).npu()
@@ -681,6 +777,67 @@ class FunctionMlaPreprocessApi(BaseApi):
             # torch.save(result, f"{common_file_save_path}/result_cpu.bin")
             
             # print("-----------------cpu end---------------")
+            # ========== 低精度 CPU 路径 ==========
+            _lp_dtype = self.data_type
+            if en_w8a8:
+                if do_rms_norm:
+                    mm1_in_lp = rms_norm_quant_cpu_lowprec(self.input1, self.gamma0, self.beta0, self.quantScale0, self.quantOffset0, data_type=_lp_dtype)
+                else:
+                    mm1_in_lp = quant_cpu_lowprec(self.input1, self.quantScale0, self.quantOffset0, data_type=_lp_dtype)
+                mm1_out_lp = mm_w8a8_cpu_lowprec(mm1_in_lp, self.wdqkv, self.deScale0, None, self.bias0, data_type=_lp_dtype).to(self.data_type)
+            else:
+                mm1_out_lp = mm_cpu_lowprec(self.input1, self.wdqkv, data_type=_lp_dtype).to(self.data_type)
+
+            split1_out_lp = [mm1_out_lp[...,:512], mm1_out_lp[..., 512:576], mm1_out_lp[...,576:]]
+
+            if en_w8a8:
+                mm2_in_lp = rms_norm_quant_cpu_lowprec(split1_out_lp[2], self.gamma1, self.beta1, self.quantScale1, self.quantOffset1, data_type=_lp_dtype)
+                mm2_out_lp = mm_w8a8_cpu_lowprec(mm2_in_lp, self.wuq, self.deScale1, None, self.bias1, data_type=_lp_dtype).to(self.data_type)
+            else:
+                mm2_in_lp = rms_norm_cpu(split1_out_lp[2], self.gamma1)
+                mm2_out_lp = mm_cpu_lowprec(mm2_in_lp, self.wuq, data_type=_lp_dtype).to(self.data_type)
+
+            mm2_out_lp = mm2_out_lp.reshape(self.input_token_num, self.headNum, nope_dim + rope_dim)
+            split2_out_lp = [mm2_out_lp[..., :nope_dim], mm2_out_lp[..., nope_dim:]]
+
+            einsum_out_lp = mm_einsum_cpu_lowprec(split2_out_lp[0], self.wuk, data_type=_lp_dtype).to(self.data_type)
+
+            q_out_lp = quant_cpu_lowprec(einsum_out_lp, self.qNopeScale[None, : ,None].cpu(), data_type=_lp_dtype) if self.cacheMode == 2 else einsum_out_lp
+
+            q_rope_out_lp = rope_cpu_lowprec(split2_out_lp[1], self.cos, self.sin, data_type=_lp_dtype).to(self.data_type)
+
+            rms3_out_lp = rms_norm_cpu(split1_out_lp[0], self.gamma2).to(self.data_type)
+
+            if self.cacheMode == 2:
+                key_out_lp = quant_cpu_lowprec(rms3_out_lp, self.ctkvScale, data_type=_lp_dtype)
+            else:
+                key_out_lp = rms3_out_lp
+
+            key_rope_out_lp = rope_cpu_lowprec(split1_out_lp[1].unsqueeze(dim=1), self.cos, self.sin, data_type=_lp_dtype).to(self.data_type).squeeze(dim=1)
+
+            kv_cache_out_lp, kv_cache_rope_out_lp = reshape_and_cache_cpu(
+                key_out_lp, key_rope_out_lp, self.kvCache, self.kvCacheRope, self.slotMapping, self.cacheMode
+            )
+
+            if self.cacheMode > 1:
+                kv_cache_out_lp = transdata_nd2nz(kv_cache_out_lp.reshape((BLOCK_NUM, BLOCK_SIZE, -1)))
+                kv_cache_rope_out_lp = transdata_nd2nz(kv_cache_rope_out_lp.reshape((BLOCK_NUM, BLOCK_SIZE, -1)))
+
+            if self.cacheMode == 0:
+                q_out_lp_final = torch.cat((q_out_lp, q_rope_out_lp), dim=-1)
+                q_rope_out_lp_final = torch.zeros_like(q_out_lp_final)
+            elif self.cacheMode == 2:
+                q_out_lp_final = self.ein_sum_out_quant_golden(q_out_lp, self.qNopeScale)
+                q_rope_out_lp_final = q_rope_out_lp
+            else:
+                q_out_lp_final = q_out_lp
+                q_rope_out_lp_final = q_rope_out_lp
+
+            result_lp = [q_out_lp_final, kv_cache_out_lp, q_rope_out_lp_final, kv_cache_rope_out_lp]
+            _lp_dtype_suffix = str(_lp_dtype).split('.')[-1]
+            torch.save(result_lp, f"{remote_dir}/result_cpu_lowprec_{_lp_dtype_suffix}.bin")
+            # ========== 低精度 CPU 路径 end ==========
+
             return res0, res1, res2, res3
 
         # 小算子拼接标杆
@@ -782,14 +939,42 @@ class aclnnMlaPreprocessApi(AclnnBaseApi):
         return AclFormat.ACL_FORMAT_ND
 
     def init_by_input_data(self, input_data: InputDataset):
-        input_args, output_packages = super().init_by_input_data(input_data)
-        #获取第一个tensor的size
-        self.input_args,tmp= super().init_by_input_data(input_data)
+        def my_convert_output_data(backend_instance, output_data, index):
+            if isinstance(output_data, (list, tuple)):
+                data_list = []
+                for tmp in output_data:
+                    data_list.extend(my_convert_output_data(backend_instance, tmp, index))
+                return [nnopbase.create_x_list(data_list)]
+            else:
+                dtype = output_data.dtype
+                if dtype not in TORCH_TO_ACLTYPE:
+                    raise ValueError(f"TORCH_TO_ACLTYPE不支持的dtype：{dtype}")
+                torch_dtype = getattr(torch, dtype.replace("torch.", ""))
+                empty_tensor = torch.zeros(tuple(output_data.shape), dtype=torch_dtype, device='npu')
+                
+                backend_instance.output_cache.append(empty_tensor)
+                cur_index = index + len(backend_instance.input_args)
+                fmt = backend_instance.get_format(index=cur_index)
+                storage_shape = backend_instance.get_storage_shape(index=cur_index)
+                out_tensor = nnopbase.create_acl_tensor(empty_tensor, fmt, storage_shape)
+                return [out_tensor]
+        orig_convert_output_data = self.backend.convert_output_data
+        try:
+            self.backend.convert_output_data = types.MethodType(
+                my_convert_output_data, self.backend
+            )
+            input_args, output_packages = super().init_by_input_data(input_data)
+        finally:
+            self.backend.convert_output_data = orig_convert_output_data
+
+        self.input_args = input_args
+        self_tensor = self.acl_tensor_to_torch(self.input_args[0])
+        self.self_shape = self_tensor.size()
         self_tensor = self.acl_tensor_to_torch(self.input_args[0])
         self.self_shape = self_tensor.size()
         cacheMode = input_data.kwargs["cacheMode"]
 
-        npu_cast_to_nz = lambda tensor: torch_npu.npu_format_cast(transdata_nd2nz(tensor).contiguous().npu(), 29)
+        npu_cast_to_nz = lambda tensor: transdata_nd2nz(tensor).contiguous().npu()
         # print("-------------------enter aclnn---------------")
         # print("-------------------------aclnn slotmapping-----------------------")
 

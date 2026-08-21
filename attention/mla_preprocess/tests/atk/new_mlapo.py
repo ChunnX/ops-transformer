@@ -285,7 +285,8 @@ def quant_cpu(
     ret = torch.round(x * scale)
     if offset != None:
         ret += offset
-    ret = torch.clamp(torch.round(ret).to(torch.int32), min=-128, max=127)
+    ret = ret.to(torch.float16)
+    ret = torch.clamp(torch.round(ret.float()).to(torch.int32), min=-128, max=127)
     return ret.to(torch.int8)
 
 def quant_kernel_style_cpu(

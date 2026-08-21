@@ -203,12 +203,14 @@ struct l1_to_l0_a<ArchTag, DataType, false, DataFormat::ZN, DataFormat::NZ> {
     };
 };
 
-// Transpose: L1(NZ) -> L0A(NZ) with fractal-internal transpose
+// Transpose: L1(ZN) -> L0A(NZ) with fractal-internal transpose
 // ifTranspose=true transposes each fractal internally (16x16 -> 16x16 transposed)
-// Source L1 NZ: [m1, k1] at k1*M1 + m1 (M-direction contiguous, srcStride=1 for K-direction jumps)
+// Source L1 ZN: [m1, k1] at m1*K1 + k1 (M-direction adjacent fractals separated by K1)
 // After transpose, dest fractal represents transposed matrix element
-// Dest L0A NZ: K-direction adjacent fractals separated by M1 => dstGap = M1 - 1
-// Outer loop over M1, repeat=K1 along K-direction, srcStride=kSrcStride, dstGap=M1-1
+// Dest L0A NZ: K-direction adjacent fractals separated by M1 => dstFracGap = M1 - 1
+// Outer loop over M1, repeat=K1 along K-direction, srcStride=kSrcStride, dstGap=1, dstFracGap=M1-1
+// Note: Use LoadDataWithTranspose instead of LoadData+ifTranspose, because LoadData2DParams.dstGap
+//       is ignored on Ascend 950 (A5). LoadData2dTransposeParams provides dstGap/dstFracGap separately.
 template <ArchType ArchTag, typename DataType>
 struct l1_to_l0_a<ArchTag, DataType, true, DataFormat::ZN, DataFormat::NZ> {
     using HardwareParams = HardwareInfo<ArchTag>;

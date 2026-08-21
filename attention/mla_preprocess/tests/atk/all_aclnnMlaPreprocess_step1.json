@@ -15,7 +15,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -602,7 +602,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -1189,7 +1189,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -1776,7 +1776,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -2363,7 +2363,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -2950,7 +2950,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -3537,7 +3537,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -4124,7 +4124,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -4711,7 +4711,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -5298,7 +5298,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -5885,7 +5885,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -6472,7 +6472,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -7059,7 +7059,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -7646,7 +7646,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -8233,7 +8233,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -8820,7 +8820,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -9407,7 +9407,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -9994,7 +9994,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -10581,7 +10581,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -11168,7 +11168,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -11755,7 +11755,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -12342,7 +12342,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -12929,7 +12929,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -13516,7 +13516,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -14103,7 +14103,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -14690,7 +14690,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -15277,7 +15277,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -15864,7 +15864,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -16451,7 +16451,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -17038,7 +17038,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -17625,7 +17625,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -18212,7 +18212,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -18799,7 +18799,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -19386,7 +19386,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -19973,7 +19973,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -20560,7 +20560,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -21147,7 +21147,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -21734,7 +21734,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -22321,7 +22321,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -22908,7 +22908,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -23495,7 +23495,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -24082,7 +24082,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -24669,7 +24669,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -25256,7 +25256,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -25843,7 +25843,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -26430,7 +26430,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -27017,7 +27017,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -27604,7 +27604,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -28191,7 +28191,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -28778,7 +28778,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -29365,7 +29365,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -29952,7 +29952,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -30539,7 +30539,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -31126,7 +31126,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -31713,7 +31713,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -32300,7 +32300,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -32887,7 +32887,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -33474,7 +33474,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -34061,7 +34061,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -34648,7 +34648,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -35235,7 +35235,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -35822,7 +35822,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -36409,7 +36409,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -36996,7 +36996,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -37583,7 +37583,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -38170,7 +38170,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -38757,7 +38757,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -39344,7 +39344,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -39931,7 +39931,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -40518,7 +40518,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -41105,7 +41105,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -41692,7 +41692,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -42279,7 +42279,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -42866,7 +42866,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -43453,7 +43453,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -44040,7 +44040,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -44627,7 +44627,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -45214,7 +45214,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -45801,7 +45801,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -46388,7 +46388,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -46975,7 +46975,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -47562,7 +47562,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -48149,7 +48149,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -48736,7 +48736,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -49323,7 +49323,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -49910,7 +49910,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -50497,7 +50497,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -51084,7 +51084,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -51671,7 +51671,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -52258,7 +52258,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -52845,7 +52845,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -53432,7 +53432,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -54019,7 +54019,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -54606,7 +54606,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -55193,7 +55193,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -55780,7 +55780,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -56367,7 +56367,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -56954,7 +56954,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -57541,7 +57541,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -58128,7 +58128,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -58715,7 +58715,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -59302,7 +59302,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -59889,7 +59889,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -60476,7 +60476,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -61063,7 +61063,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -61650,7 +61650,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -62237,7 +62237,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -62824,7 +62824,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -63411,7 +63411,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -63998,7 +63998,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -64585,7 +64585,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -65172,7 +65172,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -65759,7 +65759,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -66346,7 +66346,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -66933,7 +66933,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -67520,7 +67520,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -68107,7 +68107,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -68694,7 +68694,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -69281,7 +69281,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -69868,7 +69868,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -70455,7 +70455,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -71042,7 +71042,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -71629,7 +71629,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -72216,7 +72216,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -72803,7 +72803,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -73390,7 +73390,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -73977,7 +73977,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -74564,7 +74564,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -75151,7 +75151,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -75738,7 +75738,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -76325,7 +76325,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -76912,7 +76912,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -77499,7 +77499,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -78086,7 +78086,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -78673,7 +78673,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -79260,7 +79260,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -79847,7 +79847,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -80434,7 +80434,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -81021,7 +81021,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -81608,7 +81608,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -82195,7 +82195,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -82782,7 +82782,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -83369,7 +83369,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -83956,7 +83956,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -84543,7 +84543,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -85130,7 +85130,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -85717,7 +85717,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -86304,7 +86304,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -86891,7 +86891,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -87478,7 +87478,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -88065,7 +88065,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -88652,7 +88652,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -89239,7 +89239,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -89826,7 +89826,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -90413,7 +90413,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -91000,7 +91000,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -91587,7 +91587,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -92174,7 +92174,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -92761,7 +92761,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -93348,7 +93348,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -93935,7 +93935,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -94522,7 +94522,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -95109,7 +95109,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -95696,7 +95696,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -96283,7 +96283,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -96870,7 +96870,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -97457,7 +97457,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -98044,7 +98044,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -98631,7 +98631,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -99218,7 +99218,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -99805,7 +99805,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -100392,7 +100392,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -100979,7 +100979,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -101566,7 +101566,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -102153,7 +102153,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -102740,7 +102740,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -103327,7 +103327,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -103914,7 +103914,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -104501,7 +104501,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -105088,7 +105088,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -105675,7 +105675,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -106262,7 +106262,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -106849,7 +106849,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -107436,7 +107436,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -108023,7 +108023,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -108610,7 +108610,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -109197,7 +109197,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -109784,7 +109784,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -110371,7 +110371,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -110958,7 +110958,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -111545,7 +111545,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -112132,7 +112132,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -112719,7 +112719,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -113306,7 +113306,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -113893,7 +113893,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -114480,7 +114480,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -115067,7 +115067,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -115654,7 +115654,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -116241,7 +116241,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
@@ -116828,7 +116828,7 @@
         "dist_api_type": "dist_function",
         "backward": false,
         "standard": {
-            "acc": "default",
+            "acc": "cv_fused_double_benchmark_aclnn_mla_preprocess",
             "perf": "not_key"
         },
         "outputs": null,
