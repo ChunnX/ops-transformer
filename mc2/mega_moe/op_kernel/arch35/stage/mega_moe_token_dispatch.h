@@ -93,6 +93,15 @@ struct DispatchMte3TraceStats {
     uint32_t readySyncWaitCycles = 0U;
 };
 
+// Minimal state required to keep the existing Dispatch MTE ring alive across
+// route batches and source ranks. Only the last fetched token is pending;
+// there is no materialized descriptor queue.
+struct DispatchTransferStreamState {
+    int32_t issuedTokenCount = 0;
+    int32_t pendingDestinationRow = 0;
+    int32_t pendingTopkIndex = 0;
+};
+
 __aicore__ inline uint32_t BeginDispatchTransferTrace(DispatchMte3TraceStats *stats)
 {
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
@@ -177,7 +186,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
     int32_t dstIdx, GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor, GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t copyStartIdx, int32_t copyIdx)
+    int32_t topkIndex)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -188,7 +197,6 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx);
         int32_t weightBits =
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(context.common.topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
@@ -246,7 +254,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
                                                                   remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx));
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
@@ -258,12 +266,12 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyBufferIdx, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx));
     }
 
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, scratch, (copyNum - 1) % bufferCount, copyNum - 1, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
+        metaInfoGlobalTensor, scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyNum - 1));
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
@@ -272,19 +280,20 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     }
 }
 
-// Copy one core's complete, globally ordered expert-token sequence. The scan
-// stage stores topk indices in validTopkIndexTensor and source ranks in
-// topkIndexTensor. Destination rows are implicit and remain strided by the
-// Dispatch core count, so rank changes no longer split the MTE pipeline.
+// Append the current rank/batch selection directly to the existing MTE ring.
+// The last fetched token stays pending so the next batch or rank can continue
+// the same fetch/store pipeline without an intermediate drain.
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
+__aicore__ inline void AppendInterleavedTokensToDispatchStream(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch, int32_t firstDestinationRow,
-    int32_t destinationRowStride, int32_t copyNum,
+    TokenDispatchScratch<ActivationType> &scratch, int32_t remoteRankIdx, int32_t selectedCount,
+    DispatchTransferStreamState &stream,
     DispatchMte3TraceStats *traceStats = nullptr)
 {
-    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
-    int32_t bufferCount = bufferConfig.bufferCount;
+    if (selectedCount <= 0) {
+        return;
+    }
+    int32_t bufferCount = context.bufferConfig.bufferCount;
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
@@ -296,52 +305,64 @@ __aicore__ inline void CopyInterleavedTokensAndMetaForDispatch(
         reinterpret_cast<__gm__ QuantScaleType *>(params.workspaceInfo.dispatchRevScalePtr));
     metaInfoGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
-
-    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(0);
-    int32_t firstRemoteRankIdx = scratch.topkIndexTensor.GetValue(0);
     remoteRankGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ ActivationType *>(winRankAddr[firstRemoteRankIdx] + context.quantWinOffset));
-    FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
-        context, scratch, 0, firstTopkIndex, firstRemoteRankIdx, remoteRankGlobalTensor, traceStats);
+        reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
 
-    int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
-    for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
-        int32_t copyIdx = issueIdx - 1;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
-        int32_t remoteRankIdx = scratch.topkIndexTensor.GetValue(issueIdx);
-        remoteRankGlobalTensor.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
-        FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
-            context, scratch, issueIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor, traceStats);
-        int32_t dstRow = firstDestinationRow + copyIdx * destinationRowStride;
-        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, copyIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
-            metaInfoGlobalTensor, 0, copyIdx);
+    for (int32_t selectedIdx = 0; selectedIdx < selectedCount; ++selectedIdx) {
+        int32_t issueBufferIdx = stream.issuedTokenCount % bufferCount;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(selectedIdx);
+        if (stream.issuedTokenCount >= bufferCount) {
+            FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
+                context, scratch, issueBufferIdx, topkIndex, remoteRankIdx,
+                remoteRankGlobalTensor, traceStats);
+        } else {
+            FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
+                context, scratch, issueBufferIdx, topkIndex, remoteRankIdx,
+                remoteRankGlobalTensor, traceStats);
+        }
+        if (stream.issuedTokenCount > 0) {
+            int32_t pendingBufferIdx = (stream.issuedTokenCount - 1) % bufferCount;
+            StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, scratch, pendingBufferIdx, stream.pendingDestinationRow,
+                tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+                stream.pendingTopkIndex);
+        }
+        stream.pendingDestinationRow = scratch.topkIndexTensor.GetValue(selectedIdx);
+        stream.pendingTopkIndex = topkIndex;
+        ++stream.issuedTokenCount;
     }
+}
 
-    for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
-        int32_t copyIdx = issueIdx - 1;
-        int32_t issueBufferIdx = issueIdx % bufferCount;
-        int32_t copyBufferIdx = copyIdx % bufferCount;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(issueIdx);
-        int32_t remoteRankIdx = scratch.topkIndexTensor.GetValue(issueIdx);
-        remoteRankGlobalTensor.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
-        FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
-            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx, remoteRankGlobalTensor, traceStats);
-        int32_t dstRow = firstDestinationRow + copyIdx * destinationRowStride;
-        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, copyBufferIdx, dstRow, tokenRevGlobalTensor, scaleRevGlobalTensor,
-            metaInfoGlobalTensor, 0, copyIdx);
+// Store the final pending token and wait only for the slots used by the whole
+// expert stream. This is the sole Dispatch-ring drain for the expert segment.
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void FinishInterleavedDispatchStream(
+    const TokenDispatchConfig &context, const Params &params,
+    TokenDispatchScratch<ActivationType> &scratch, DispatchTransferStreamState &stream,
+    DispatchMte3TraceStats *traceStats = nullptr)
+{
+    if (stream.issuedTokenCount <= 0) {
+        return;
     }
+    int32_t bufferCount = context.bufferConfig.bufferCount;
+    GlobalTensor<ActivationType> tokenRevGlobalTensor;
+    GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
+    GlobalTensor<int32_t> metaInfoGlobalTensor;
+    tokenRevGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ ActivationType *>(params.workspaceInfo.dispatchRevDataPtr));
+    scaleRevGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ QuantScaleType *>(params.workspaceInfo.dispatchRevScalePtr));
+    metaInfoGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
 
-    int32_t lastCopyIdx = copyNum - 1;
-    int32_t lastDstRow = firstDestinationRow + lastCopyIdx * destinationRowStride;
+    int32_t lastBufferIdx = (stream.issuedTokenCount - 1) % bufferCount;
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, scratch, lastCopyIdx % bufferCount, lastDstRow, tokenRevGlobalTensor,
-        scaleRevGlobalTensor, metaInfoGlobalTensor, 0, lastCopyIdx);
+        context, scratch, lastBufferIdx, stream.pendingDestinationRow,
+        tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+        stream.pendingTopkIndex);
 
     uint32_t drainBegin = BeginDispatchTransferTrace(traceStats);
+    int32_t firstUseEnd = stream.issuedTokenCount < bufferCount ? stream.issuedTokenCount : bufferCount;
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
@@ -456,15 +477,14 @@ __aicore__ inline bool DispatchRankHasCoreOwnedRows(
     return false;
 }
 
-template <typename ActivationType>
-__aicore__ inline void PublishInterleavedDispatchBatchReady(
+__aicore__ inline void PublishInterleavedDispatchSegmentReady(
     const TokenDispatchConfig &context, const Params &params,
-    const TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, int32_t gmm1TileRowCount,
-    int32_t firstDestinationRow, int32_t destinationRowStride, int32_t selectedCount,
+    uint32_t localExpertId, int32_t expertGlobalRowBegin,
+    int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd,
+    int32_t gmm1TileRowCount, int32_t coreIdx, int32_t coreCount,
     DispatchMte3TraceStats *traceStats = nullptr)
 {
-    if (selectedCount <= 0) {
+    if (segmentExpertRowBegin >= segmentExpertRowEnd) {
         return;
     }
     uint32_t waitBegin = BeginDispatchTransferTrace(traceStats);
@@ -475,22 +495,29 @@ __aicore__ inline void PublishInterleavedDispatchBatchReady(
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    int32_t currentTileIdx = -1;
-    int32_t currentTileRows = 0;
-    for (int32_t selectedIdx = 0; selectedIdx < selectedCount; ++selectedIdx) {
-        int32_t destinationRow = firstDestinationRow + selectedIdx * destinationRowStride;
-        int32_t tileIdx = (destinationRow - expertGlobalRowBegin) / gmm1TileRowCount;
-        if (tileIdx != currentTileIdx && currentTileRows > 0) {
-            AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(currentTileIdx) * INT_CACHELINE,
-                      currentTileRows);
-            currentTileRows = 0;
+    int32_t firstTileIdx = segmentExpertRowBegin / gmm1TileRowCount;
+    int32_t lastTileIdx = (segmentExpertRowEnd - 1) / gmm1TileRowCount;
+    for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
+        int32_t tileRowBegin = tileIdx * gmm1TileRowCount;
+        int32_t tileRowEnd = tileRowBegin + gmm1TileRowCount;
+        int32_t overlapRowBegin = segmentExpertRowBegin > tileRowBegin ?
+            segmentExpertRowBegin : tileRowBegin;
+        int32_t overlapRowEnd = segmentExpertRowEnd < tileRowEnd ?
+            segmentExpertRowEnd : tileRowEnd;
+        int32_t firstDestinationRow = expertGlobalRowBegin + overlapRowBegin;
+        int32_t rowRemainder = firstDestinationRow % coreCount;
+        int32_t firstRowDelta = coreIdx - rowRemainder;
+        if (firstRowDelta < 0) {
+            firstRowDelta += coreCount;
         }
-        currentTileIdx = tileIdx;
-        ++currentTileRows;
-    }
-    if (currentTileRows > 0) {
-        AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(currentTileIdx) * INT_CACHELINE,
-                  currentTileRows);
+        firstDestinationRow += firstRowDelta;
+        int32_t overlapGlobalRowEnd = expertGlobalRowBegin + overlapRowEnd;
+        if (firstDestinationRow < overlapGlobalRowEnd) {
+            int32_t ownedTileRows = Ops::Base::CeilDiv(
+                overlapGlobalRowEnd - firstDestinationRow, coreCount);
+            AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
+                      ownedTileRows);
+        }
     }
 }
 
@@ -591,21 +618,22 @@ __aicore__ inline void DispatchRankTokens(
     }
 }
 
-// Scan one source rank and place this core's descriptors into their final
-// expert-sequence ordinals. No data transfer is issued here: all ranks are
-// collected first, then one uninterrupted MTE pipeline consumes the sequence.
-template <typename ActivationType>
-__aicore__ inline void CollectDispatchRankDescriptors(
-    const TokenDispatchConfig &context, const Params &params,
+// Compact one source-rank mask, scatter its matched tokens to Dispatch cores,
+// and append this core's rows directly to the shared expert MTE stream.
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchRankTokensInterleaved(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
     int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd,
-    int32_t firstDestinationRow, int32_t coreCount,
-    LocalTensor<int32_t> &packedDescriptorTensor, int32_t routeCount)
+    int32_t coreCount, DispatchTransferStreamState &stream,
+    DispatchMte3TraceStats *traceStats = nullptr)
 {
     int32_t rankTokenCount = GetDispatchExpertRankTokenCount(
         context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx);
-    if (rankTokenCount <= 0) {
+    if (rankTokenCount <= 0 || !DispatchRankHasCoreOwnedRows(
+            context, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx,
+            segmentExpertRowBegin, segmentExpertRowEnd)) {
         return;
     }
 
@@ -646,6 +674,7 @@ __aicore__ inline void CollectDispatchRankDescriptors(
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
         int32_t batchMatchCount = static_cast<int32_t>(batchMatchedRouteCount);
+        int32_t selectedCount = 0;
         for (int32_t batchMatchIdx = 0; batchMatchIdx < batchMatchCount; ++batchMatchIdx) {
             int32_t rankTokenOrdinal = matchedRouteCount + batchMatchIdx;
             if (rankTokenOrdinal >= rankTokenCount) {
@@ -675,9 +704,18 @@ __aicore__ inline void CollectDispatchRankDescriptors(
                 continue;
             }
             int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(batchMatchIdx);
-            int32_t ownedOrdinal = (destinationRow - firstDestinationRow) / coreCount;
-            int32_t packedDescriptor = static_cast<int32_t>(remoteRankIdx) * routeCount + topkIndex;
-            packedDescriptorTensor.SetValue(ownedOrdinal, packedDescriptor);
+            scratch.validTopkIndexTensor.SetValue(selectedCount, topkIndex);
+            scratch.topkIndexTensor.SetValue(selectedCount, destinationRow);
+            ++selectedCount;
+        }
+        if (selectedCount > 0) {
+            uint32_t transferBegin = BeginDispatchTransferTrace(traceStats);
+            AppendInterleavedTokensToDispatchStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, winRankAddr, scratch, static_cast<int32_t>(remoteRankIdx),
+                selectedCount, stream, traceStats);
+            if (traceStats != nullptr) {
+                EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
+            }
         }
         matchedRouteCount += batchMatchCount;
     }
@@ -702,51 +740,25 @@ __aicore__ inline void DispatchExpertTokensRankInterleaved(
     int32_t coreCount = static_cast<int32_t>(context.blockJob.totalJobs == 0U ?
         1U : context.blockJob.totalJobs);
     int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
-    int32_t segmentGlobalRowBegin = expertGlobalRowBegin + segmentExpertRowBegin;
-    int32_t segmentGlobalRowEnd = expertGlobalRowBegin + segmentExpertRowEnd;
-    int32_t firstDestinationRow = segmentGlobalRowBegin;
-    int32_t rowRemainder = firstDestinationRow % coreCount;
-    int32_t firstRowDelta = coreIdx - rowRemainder;
-    if (firstRowDelta < 0) {
-        firstRowDelta += coreCount;
-    }
-    firstDestinationRow += firstRowDelta;
-    if (firstDestinationRow >= segmentGlobalRowEnd) {
-        return;
-    }
-    int32_t ownedTokenCount =
-        Ops::Base::CeilDiv(segmentGlobalRowEnd - firstDestinationRow, coreCount);
-    int32_t routeCount = static_cast<int32_t>(context.common.tokenNum * context.common.topK);
-
-    // Descriptor construction runs before the copy ring is used. Reuse that
-    // storage temporarily, then move the compact sequence to the two route
-    // tensors so Fetch can safely overwrite the ring.
-    LocalTensor<int32_t> packedDescriptorTensor(
-        TPosition::VECCALC, scratch.copyTmpBaseAddr,
-        static_cast<uint32_t>(context.bufferConfig.bufferCount) *
-            context.quantTokenScaleAlignBytes / sizeof(int32_t));
+    DispatchTransferStreamState stream{};
     for (uint32_t remoteRankIdx = 0U; remoteRankIdx < context.common.worldSize; ++remoteRankIdx) {
-        CollectDispatchRankDescriptors(
-            context, params, scratch, localExpertId, expertGlobalRowBegin, remoteRankIdx,
-            segmentExpertRowBegin, segmentExpertRowEnd, firstDestinationRow,
-            coreCount, packedDescriptorTensor, routeCount);
+        DispatchRankTokensInterleaved<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
+            remoteRankIdx, segmentExpertRowBegin, segmentExpertRowEnd,
+            coreCount, stream, traceStats);
     }
-    for (int32_t descriptorIdx = 0; descriptorIdx < ownedTokenCount; ++descriptorIdx) {
-        int32_t packedDescriptor = packedDescriptorTensor.GetValue(descriptorIdx);
-        scratch.topkIndexTensor.SetValue(descriptorIdx, packedDescriptor / routeCount);
-        scratch.validTopkIndexTensor.SetValue(descriptorIdx, packedDescriptor % routeCount);
+    if (stream.issuedTokenCount > 0) {
+        uint32_t transferBegin = BeginDispatchTransferTrace(traceStats);
+        FinishInterleavedDispatchStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, params, scratch, stream, traceStats);
+        if (traceStats != nullptr) {
+            EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
+        }
+        PublishInterleavedDispatchSegmentReady(
+            context, params, localExpertId, expertGlobalRowBegin,
+            segmentExpertRowBegin, segmentExpertRowEnd, gmm1TileRowCount,
+            coreIdx, coreCount, traceStats);
     }
-
-    uint32_t transferBegin = BeginDispatchTransferTrace(traceStats);
-    CopyInterleavedTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, params, winRankAddr, scratch, firstDestinationRow,
-        coreCount, ownedTokenCount, traceStats);
-    if (traceStats != nullptr) {
-        EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
-    }
-    PublishInterleavedDispatchBatchReady(
-        context, params, scratch, localExpertId, expertGlobalRowBegin,
-        gmm1TileRowCount, firstDestinationRow, coreCount, ownedTokenCount, traceStats);
 }
 
 /**
