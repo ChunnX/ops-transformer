@@ -1645,6 +1645,7 @@ def _build_causal_mask():
         return None
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
+
 def _make_uncontiguous(tensor, dim):
     """沿指定 dim 用 stack([real, fake], dim) + 切片构造非连续 view。
     dim=-1 表示保持连续（直接返回原 tensor，已 .npu()）。
@@ -1662,6 +1663,7 @@ def _make_uncontiguous(tensor, dim):
     idx = [slice(None)] * stacked.dim()
     idx[stack_dim] = 0
     return stacked[tuple(idx)].npu()
+
 
 def prepare_npu_inputs(
     q_fp8,
@@ -2027,7 +2029,11 @@ def mxfp8_fa_torch_npu(
         npu_backend = "npugraph_ex"
         options = {"clone_input": False}
         npu_mode = torch.compile(
-            npu_mode, fullgraph=False, options=options, backend=npu_backend, dynamic=False
+            npu_mode,
+            fullgraph=False,
+            options=options,
+            backend=npu_backend,
+            dynamic=False,
         )
         # mark_static 标记所有 tensor 输入
         for t in (

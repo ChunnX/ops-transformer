@@ -86,7 +86,7 @@ P_SCALE = None
 
 SOFTMAX_SCALE = None
 IS_CONTIGUOUS = None
- # 8 维列表，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask
+# 8 维列表，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask
 # -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推（仅在 PA 场景生效）
 UNCONTIGUOUS_DIMS = [-1, -1, -1, -1, -1, -1, -1, -1]
 
@@ -701,6 +701,7 @@ def _build_mask():
         return None
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
+
 def _make_uncontiguous(tensor, dim):
     """沿指定 dim 用 stack([real, fake], dim) + 切片构造非连续 view。
     dim=-1 表示保持连续（直接返回原 tensor，已 .npu()）。
@@ -718,6 +719,7 @@ def _make_uncontiguous(tensor, dim):
     idx = [slice(None)] * stacked.dim()
     idx[stack_dim] = 0
     return stacked[tuple(idx)].npu()
+
 
 class Network(nn.Module):
     """aclgraph 编译目标: forward 只包含两个 torch.library op 调用."""
@@ -1169,7 +1171,6 @@ def prepare_npu_inputs_gqa_fp8(
     # 1: k, 2: v —— 按 UNCONTIGUOUS_DIMS 指定 dim 构造非连续
     k_npu = _make_uncontiguous(k_npu, ud[1])
     v_npu = _make_uncontiguous(v_npu, ud[2])
-
 
     block_table_npu = (
         block_table_torch.npu()
