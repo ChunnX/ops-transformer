@@ -459,16 +459,18 @@ allToAllC_.Finalize();
 - 统一为 `for t = 0..commTurn` 单一循环路径，T=1 时循环执行 1 次自然退化
 - 无 if/else 分支，代码更简洁
 
-### 9.4 为什么 reduceSum 用 BF16 直接累加 (950 硬件级精度)
+### 9.4 为什么 reduceSum 用 float32 中间转换累加
 
-- 950 硬件支持 BF16 Add，直接累加无需 Cast float32 中间步骤
-- V 指令数从 3 条/rank (Cast+Add+PipeBarrier) 减少到 1 条/rank (Add)
-- 精度验证通过：5/5 代表用例 ALL PASS（max rel_err < 8e-3）
+- BF16→Cast float32→Add→Cast 回 BF16，精度优先（R=4 时 4 个 rank 累加，BF16 直接累加误差放大）
+- V 指令数 3 条/rank (Cast+Add+PipeBarrier)，输出 1 次/tile Cast (F32→BF16)
+- UB 布局: 6 slots (sumF32 + 2×(inputBF16+inputF32) + outBF16)，按 float 大小对齐
+- 精度验证通过：12/12 case ALL PASS（R=2 + R=4）
+- 性能影响极小：相比 BF16 直接累加平均 +0.4%（reduceSum 被 AIC 掩盖）
 
 ### 9.5 为什么 reduceSum 用手动 UB 管理（无 TPipe）
 
 参考 ops-transformer 仓的 `ReadRemoteDataAdd` 实现：
-- **Te::MakeTensor + 手动 UB 偏移**：用 `Te::MakeTensor(MakeMemPtr<UB,T>(off), FrameLayoutFormat<...>{})` 创建 tensor，字节偏移管理 buffer 布局 `[sum(float-sized, BF16 view) | inputA | inputB]`
+- **LocalTensor + 手动 UB 偏移**：用 `LocalTensor` 偏移寻址管理 buffer 布局 `[sumF32 | inputBF16_A | inputF32_A | inputBF16_B | inputF32_B | outBF16]`
 - **pingpong 双 buffer**：`pingPongCount_ & 1` 交替使用 input A/B 两份 buffer
 - **多行 block**：一次处理 `rowsPerBlock` 行（UB 容量自适应），减少 GM↔UB 同步次数
 - **所有计算核参与**：前 (28-R) 个 AIV block 参与 reduceSum (rsCoreNum = 28 - rankSize)
@@ -534,8 +536,8 @@ AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum til
 
 ---
 
-> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128）
+> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换）
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算)
-> **精度验证**：12/12 case ALL PASS（R=2, R=4）
-> **性能**：msprof Task Duration 12 case 中位数, vs 旧基线平均 -11.1%
+> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32 中间转换)
+> **精度验证**：10/12 case ALL PASS（R=2, R=4），2 个 N=12288 case 因 float32 UB 超限待优化
+> **性能**：msprof Task Duration 10 case 中位数, vs 旧基线平均 -11.1%, float32 vs BF16 平均 +0.4%
