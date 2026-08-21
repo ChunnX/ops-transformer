@@ -77,16 +77,24 @@ struct HcommCommWaitPolicy {
         if (tileIdx == 0) {
             return;
         }
+        AscendC::PRINTF("[WaitTile] rank=%u, block=%u, tileIdx=%u, tileCnt=%u\n",
+                        state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx, state_->tileCnt_);
         // dependTileIdx=1 (MAIN r0): 首次远端等待，额外等 scale（全量）
         if (tileIdx == 1) {
             state_->hccl_.Wait(state_->scaleHandle_);
+            AscendC::PRINTF("[WaitScale] rank=%u, block=%u, tileIdx=%u, done\n",
+                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         }
         // dependTileIdx=1..tileCnt (MAIN): 等 data head（repeat=tileCnt，每次 Wait 消费一轮）
         if (tileIdx <= state_->tileCnt_) {
             state_->hccl_.Wait(state_->dataHeadHandle_);
+            AscendC::PRINTF("[WaitDataHead] rank=%u, block=%u, tileIdx=%u, done\n",
+                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         } else {
             // dependTileIdx>tileCnt (TAIL): 等 data tail
             state_->hccl_.Wait(state_->dataTailHandle_);
+            AscendC::PRINTF("[WaitDataTail] rank=%u, block=%u, tileIdx=%u, done\n",
+                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         }
     }
 };
@@ -216,6 +224,10 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::CommitAllGather()
 {
+    AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, m=%u, k=%u, n=%u, tileM=%u, tileCnt=%u, tailM=%u, tailCnt=%u, "
+                    "kForComm=%llu, scaleKLen=%llu, headRows=%llu\n",
+                    rankId_, AscendC::GetBlockIdx(), m_, k_, n_, tileM_, tileCnt_, tailM_, tailCnt_,
+                    kForComm_, scaleKLen_, headRows_);
     // Scale: 全量一次性提交（repeat=1）
     commState_.scaleHandle_ = commState_.hccl_.template AllGather<true>(
         aScaleGM_, gatherScaleAddr_,
@@ -233,6 +245,13 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
         static_cast<uint64_t>(m_) * kForComm_,
         static_cast<uint8_t>(tileCnt_));
 
+    AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, dataHeadHandle=%llu, scaleHandle=%llu, "
+                    "gatherDataAddr=0x%llx, gatherScaleAddr=0x%llx, scaleRegionBytes=%llu, dataRegionBytes=%llu\n",
+                    rankId_, AscendC::GetBlockIdx(),
+                    static_cast<uint64_t>(commState_.dataHeadHandle_),
+                    static_cast<uint64_t>(commState_.scaleHandle_),
+                    gatherDataAddr_, gatherScaleAddr_, scaleRegionBytes_, dataRegionBytes_);
+
     // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
         commState_.dataTailHandle_ = commState_.hccl_.template AllGather<true>(
@@ -242,6 +261,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
             static_cast<AscendC::HcclDataType>(dataDataType_),
             static_cast<uint64_t>(m_) * kForComm_,
             static_cast<uint8_t>(tailCnt_));
+        AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, dataTailHandle=%llu\n",
+                        rankId_, AscendC::GetBlockIdx(),
+                        static_cast<uint64_t>(commState_.dataTailHandle_));
     }
 }
 

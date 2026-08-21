@@ -369,6 +369,11 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows,
                                   fp.rankSize, fp.commTurn);
 
+        AscendC::PRINTF("[Tile] rank=%u, block=%u, mPos=%lld, nPos=%lld, dependTileIdx=%u, region=%d, roundIdx=%u\n",
+                        fp.rankId, AscendC::GetBlockIdx(),
+                        static_cast<long long>(mPos), static_cast<long long>(nPos),
+                        ctx.dependTileIdx, static_cast<int>(ctx.region), ctx.roundIdx);
+
         // 按位记录已等待过的 dependTileIdx，避免重复 wait。
         if ((waitedMask & (1U << ctx.dependTileIdx)) == 0U) {
             commPolicy_.WaitTile(ctx.dependTileIdx);
