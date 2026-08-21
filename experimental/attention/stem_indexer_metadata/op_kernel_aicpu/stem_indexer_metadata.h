@@ -33,9 +33,8 @@ constexpr uint32_t AIV_RESERVED_METADATA_STRIDE = 16U;
 constexpr uint64_t GetMetadataRequiredElems(uint32_t sectionNum)
 {
     return static_cast<uint64_t>(HEAD_METADATA_STRIDE) +
-           static_cast<uint64_t>(sectionNum) *
-               (static_cast<uint64_t>(AIC_CORE_NUM) * FA_METADATA_STRIDE +
-                static_cast<uint64_t>(AIV_CORE_NUM) * AIV_RESERVED_METADATA_STRIDE);
+           static_cast<uint64_t>(sectionNum) * (static_cast<uint64_t>(AIC_CORE_NUM) * FA_METADATA_STRIDE +
+                                                static_cast<uint64_t>(AIV_CORE_NUM) * AIV_RESERVED_METADATA_STRIDE);
 }
 
 // Head Metadata Index Definitions
@@ -54,7 +53,7 @@ struct SliMetadata {
     uint32_t sectionNum;
     SLI_METADATA_T *metadata;
     SLI_METADATA_T *headMetadata; // [HEAD_METADATA_STRIDE];
-    SLI_METADATA_T *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
+    SLI_METADATA_T *faMetadata;   // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
     SliMetadata(void *metadataPtr, uint32_t sectionNum)
         : sectionNum(sectionNum),
           metadata(static_cast<SLI_METADATA_T *>(metadataPtr)),

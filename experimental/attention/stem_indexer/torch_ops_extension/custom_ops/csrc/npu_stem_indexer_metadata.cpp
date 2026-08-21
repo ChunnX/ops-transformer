@@ -25,10 +25,10 @@ static int64_t CalcStemIndexerMetadataOutputSize(int64_t batchSize, int64_t kvHe
     TORCH_CHECK(batchSize > 0, "q_seq_lens must contain at least one element.");
     TORCH_CHECK(kvHeads > 0, "kv_heads must be greater than 0, but got ", kvHeads, ".");
     const int64_t maxSectionNum = batchSize * kvHeads;
-    const int64_t metadataSize =
-        STEM_INDEXER_METADATA_HEADER_SIZE +
-        maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
-            STEM_INDEXER_METADATA_CORE_STRIDE;
+    const int64_t metadataSize = STEM_INDEXER_METADATA_HEADER_SIZE +
+                                 maxSectionNum *
+                                     (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
+                                     STEM_INDEXER_METADATA_CORE_STRIDE;
     return (metadataSize + STEM_INDEXER_METADATA_ALIGN_SIZE - 1) / STEM_INDEXER_METADATA_ALIGN_SIZE *
            STEM_INDEXER_METADATA_ALIGN_SIZE;
 }
@@ -61,7 +61,4 @@ TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
     m.impl("npu_stem_indexer_metadata", &custom::npu_stem_indexer_metadata_npu);
 }
 
-TORCH_LIBRARY_IMPL(custom, Meta, m)
-{
-    m.impl("npu_stem_indexer_metadata", &custom::npu_stem_indexer_metadata_meta);
-}
+TORCH_LIBRARY_IMPL(custom, Meta, m) { m.impl("npu_stem_indexer_metadata", &custom::npu_stem_indexer_metadata_meta); }

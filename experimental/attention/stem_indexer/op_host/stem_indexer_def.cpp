@@ -18,7 +18,8 @@
 namespace ops {
 class StemIndexer : public OpDef {
 public:
-    explicit StemIndexer(const char *name) : OpDef(name)
+    explicit StemIndexer(const char *name)
+        : OpDef(name)
     {
         this->Input("qflat").ParamType(REQUIRED).DataType({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();
         this->Input("kflat").ParamType(REQUIRED).DataType({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();

@@ -24,14 +24,14 @@
 #include "stem_indexer_template_tiling_key.h"
 
 #if SI_ENABLE_ARCH35
-#define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                                   \
-    do {                                                                                                               \
-        templateClass<SICommon::SIType<__VA_ARGS__>> op;                                                               \
-        GET_TILING_DATA_WITH_STRUCT(StemIndexerTilingData, tiling_data_in, tiling);                                    \
-        const StemIndexerTilingData *__restrict tiling_data = &tiling_data_in;                                         \
-        op.Init(qflat, kflat, vbias, qSeqLens, kvSeqLens, numPromptTokens, metadata, sparseIndices, sparseSeqLen,      \
-                user, tiling_data, &tPipe);                                                                            \
-        op.Process();                                                                                                  \
+#define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...) \
+    do { \
+        templateClass<SICommon::SIType<__VA_ARGS__>> op; \
+        GET_TILING_DATA_WITH_STRUCT(StemIndexerTilingData, tiling_data_in, tiling); \
+        const StemIndexerTilingData *__restrict tiling_data = &tiling_data_in; \
+        op.Init(qflat, kflat, vbias, qSeqLens, kvSeqLens, numPromptTokens, metadata, sparseIndices, sparseSeqLen, \
+                user, tiling_data, &tPipe); \
+        op.Process(); \
     } while (0)
 #endif
 

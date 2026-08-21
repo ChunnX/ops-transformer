@@ -17,27 +17,26 @@ namespace StemIndexerUT {
 
 struct StemIndexerCompileInfo {};
 
-static const std::string STEM_INDEXER_SOC_INFO =
-    "{\n"
-    "  \"hardware_info\": {\n"
-    "    \"BT_SIZE\": 0,\n"
-    "    \"load3d_constraints\": \"1\",\n"
-    "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
-    "    \"Intrinsic_data_move_l12ub\": true,\n"
-    "    \"Intrinsic_data_move_l0c2ub\": true,\n"
-    "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
-    "    \"UB_SIZE\": 262144,\n"
-    "    \"L2_SIZE\": 33554432,\n"
-    "    \"L1_SIZE\": 524288,\n"
-    "    \"L0A_SIZE\": 65536,\n"
-    "    \"L0B_SIZE\": 65536,\n"
-    "    \"L0C_SIZE\": 131072,\n"
-    "    \"CORE_NUM\": 64,\n"
-    "    \"cube_core_cnt\": 32,\n"
-    "    \"vector_core_cnt\": 64,\n"
-    "    \"socVersion\": \"Ascend950\"\n"
-    "  }\n"
-    "}";
+static const std::string STEM_INDEXER_SOC_INFO = "{\n"
+                                                 "  \"hardware_info\": {\n"
+                                                 "    \"BT_SIZE\": 0,\n"
+                                                 "    \"load3d_constraints\": \"1\",\n"
+                                                 "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
+                                                 "    \"Intrinsic_data_move_l12ub\": true,\n"
+                                                 "    \"Intrinsic_data_move_l0c2ub\": true,\n"
+                                                 "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
+                                                 "    \"UB_SIZE\": 262144,\n"
+                                                 "    \"L2_SIZE\": 33554432,\n"
+                                                 "    \"L1_SIZE\": 524288,\n"
+                                                 "    \"L0A_SIZE\": 65536,\n"
+                                                 "    \"L0B_SIZE\": 65536,\n"
+                                                 "    \"L0C_SIZE\": 131072,\n"
+                                                 "    \"CORE_NUM\": 64,\n"
+                                                 "    \"cube_core_cnt\": 32,\n"
+                                                 "    \"vector_core_cnt\": 64,\n"
+                                                 "    \"socVersion\": \"Ascend950\"\n"
+                                                 "  }\n"
+                                                 "}";
 
 class StemIndexerArch35TilingTest : public testing::TestWithParam<StemIndexerTilingUtParam> {
 protected:

@@ -28,25 +28,21 @@ static constexpr int64_t STEM_INDEXER_METADATA_ALIGN_SIZE = 4096;
 static int64_t CalcMetadataCapacity(int64_t batchSize, int64_t kvHeads)
 {
     int64_t maxSectionNum = batchSize * kvHeads;
-    int64_t requiredSize =
-        STEM_INDEXER_METADATA_HEADER_SIZE +
-        maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
-            STEM_INDEXER_METADATA_CORE_STRIDE;
+    int64_t requiredSize = STEM_INDEXER_METADATA_HEADER_SIZE +
+                           maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
+                               STEM_INDEXER_METADATA_CORE_STRIDE;
     return (requiredSize + STEM_INDEXER_METADATA_ALIGN_SIZE - 1) / STEM_INDEXER_METADATA_ALIGN_SIZE *
            STEM_INDEXER_METADATA_ALIGN_SIZE;
 }
 
 static bool IsTensorExist(const aclTensor *tensor)
 {
-    return (tensor != nullptr) &&
-            (tensor->GetViewShape().GetDimNum() > 0) &&
-            (tensor->GetViewShape().GetDim(0) > 0) &&
-            (tensor->GetData() != nullptr);
+    return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
+           (tensor->GetData() != nullptr);
 }
 
-static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeqLens,
-                               int64_t qHeads, int64_t kvHeads, int64_t stemBlockSize, int64_t dimQkflat,
-                               int64_t windowSize, const aclTensor *metadata)
+static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeqLens, int64_t qHeads, int64_t kvHeads,
+                               int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize, const aclTensor *metadata)
 {
     if (!IsTensorExist(qSeqLens)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "qSeqLens does not exists");
@@ -60,7 +56,7 @@ static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeq
 
     if (qSeqLens->GetViewShape().GetDim(0) != kvSeqLens->GetViewShape().GetDim(0)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "qSeqLens must have the same length as kvSeqLens, but got %ld and %ld",
-            qSeqLens->GetViewShape().GetDim(0), kvSeqLens->GetViewShape().GetDim(0));
+                qSeqLens->GetViewShape().GetDim(0), kvSeqLens->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -101,8 +97,8 @@ static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeq
     int64_t metadataCapacity = CalcMetadataCapacity(qSeqLens->GetViewShape().GetDim(0), kvHeads);
     if (metadata->GetViewShape().GetDim(0) < metadataCapacity) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                "metadata dim0 must be at least %ld for batch %ld and kvHeads %ld, but got %ld",
-                metadataCapacity, qSeqLens->GetViewShape().GetDim(0), kvHeads, metadata->GetViewShape().GetDim(0));
+                "metadata dim0 must be at least %ld for batch %ld and kvHeads %ld, but got %ld", metadataCapacity,
+                qSeqLens->GetViewShape().GetDim(0), kvHeads, metadata->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
 
