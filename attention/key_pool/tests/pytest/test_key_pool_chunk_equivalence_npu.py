@@ -31,6 +31,36 @@ def _new_pool_count(start_pos: int, length: int, cmp_ratio: int) -> int:
     return (start_pos + length) // cmp_ratio - start_pos // cmp_ratio
 
 
+def _active_tail_mask(
+    state_cache,
+    cache_block_table,
+    start_pos,
+    lengths,
+    cmp_ratio,
+):
+    """Select only the cache rows that remain valid after the final call.
+
+    KeyPool persists the final incomplete group only. A chunked call can leave
+    stale bytes from an intermediate tail after that group is later pooled;
+    those bytes are intentionally outside the semantic cache state.
+    """
+    mask = torch.zeros(
+        state_cache.shape[:2],
+        dtype=torch.bool,
+    )
+    block_size = state_cache.size(1)
+    for batch, (start, length) in enumerate(zip(start_pos.tolist(), lengths)):
+        end_pos = start + length
+        tail_len = end_pos % cmp_ratio
+        tail_start = max(start, end_pos - tail_len)
+        if tail_start == end_pos:
+            continue
+        logical = torch.arange(tail_start, end_pos, dtype=torch.long)
+        physical = cache_block_table[batch, logical // block_size].long()
+        mask[physical, logical % block_size] = True
+    return mask
+
+
 def _assemble_chunk_output(
     first_output,
     second_output,
@@ -145,11 +175,21 @@ def _run_case(case_name, first_lengths, norm_on):
         case.cmp_ratio,
     )
     output_equal = torch.equal(full_output, assembled_chunk_output)
-    cache_bitwise = torch.equal(full_cache, chunk_cache)
+    active_tail_mask = _active_tail_mask(
+        state_cache,
+        cache_block_table,
+        start_pos,
+        case.lengths,
+        case.cmp_ratio,
+    )
+    cache_bitwise = torch.equal(
+        full_cache[active_tail_mask],
+        chunk_cache[active_tail_mask],
+    )
     cache_close = bool(
         torch.isclose(
-            full_cache,
-            chunk_cache,
+            full_cache[active_tail_mask],
+            chunk_cache[active_tail_mask],
             rtol=0.0078125,
             atol=0.001,
             equal_nan=True,
@@ -161,15 +201,18 @@ def _run_case(case_name, first_lengths, norm_on):
         "first_lengths": first_lengths,
         "second_lengths": second_lengths,
         "output_bitwise": output_equal,
-        "cache_bitwise": cache_bitwise,
-        "cache_precision": cache_close,
+        "active_tail_cache_bitwise": cache_bitwise,
+        "active_tail_cache_precision": cache_close,
+        "active_tail_rows": int(active_tail_mask.sum().item()),
         "pass": output_equal and cache_close,
     }
     if not cache_bitwise:
-        diff = (full_cache - chunk_cache).abs()
+        diff = (full_cache[active_tail_mask] - chunk_cache[active_tail_mask]).abs()
         result["cache_max_abs"] = float(diff.max().item())
-        result["cache_bitwise_mismatch_count"] = int(
-            torch.count_nonzero(full_cache != chunk_cache)
+        result["active_tail_cache_bitwise_mismatch_count"] = int(
+            torch.count_nonzero(
+                full_cache[active_tail_mask] != chunk_cache[active_tail_mask]
+            )
         )
     return result
 
@@ -180,6 +223,7 @@ def main():
     cases = (
         ("bsh_history_r4", (2,)),
         ("th_full_history_r4", (1, 1)),
+        ("th_unequal_r4", (1, 2)),
     )
     results = [
         _run_case(case_name, first_lengths, norm_on)
