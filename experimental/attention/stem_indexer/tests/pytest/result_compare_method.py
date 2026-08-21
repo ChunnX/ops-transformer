@@ -47,8 +47,7 @@ def cal_relative_diff_np_isclose(real_data, expect_data):
 
 COMPARE_SEPARATOR = "-" * 78
 COMPARE_HEADER = (
-    f"{'Loop':>10} {'ExpectOut':>16} {'RealOut':>16} "
-    f"{'FpDiff':>16} {'RateDiff':>16}"
+    f"{'Loop':>10} {'ExpectOut':>16} {'RealOut':>16} {'FpDiff':>16} {'RateDiff':>16}"
 )
 
 
@@ -85,9 +84,7 @@ def display_output_np_isclose(real_data, expect_data, start, end):
     else:
         for index in range(10):
             display_inner(index)
-        print_log(
-            f"{'...':>10} {'...':>16} {'...':>16} {'...':>16} {'...':>16}"
-        )
+        print_log(f"{'...':>10} {'...':>16} {'...':>16} {'...':>16} {'...':>16}")
         for index in range(split_count - 10 + 1, split_count + 1):
             display_inner(index)
 
@@ -96,7 +93,7 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     def print_error_row(index, rate_diff):
         print_compare_row(index, real_data[index], expect_data[index], rate_diff)
 
-    print_log(f"Error Line{COMPARE_SEPARATOR[len('Error Line'):]}")
+    print_log(f"Error Line{COMPARE_SEPARATOR[len('Error Line') :]}")
     print_log(COMPARE_HEADER)
     print_log(COMPARE_SEPARATOR)
     count = 0
@@ -106,13 +103,11 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         if count < 10 or 90 < count < 100:
             print_error_row(index, relative_diff[count - 1])
         elif count == 10 or (count == 100 and len_err > 100):
-            print_log(
-                f"{'...':>10} {'...':>16} {'...':>16} {'...':>16} {'...':>16}"
-            )
+            print_log(f"{'...':>10} {'...':>16} {'...':>16} {'...':>16} {'...':>16}")
         elif count > 100:
             break
 
-    print_log(f"Max-RE line:{COMPARE_SEPARATOR[len('Max-RE line:'):]}")
+    print_log(f"Max-RE line:{COMPARE_SEPARATOR[len('Max-RE line:') :]}")
     max_error = max(relative_diff)
     max_count = 0
     for position, rate_diff in enumerate(relative_diff):
@@ -139,9 +134,7 @@ def display_index_errors(actual_indices, expected_indices):
     real_data, expect_data = get_flattened_indices(actual_indices, expected_indices)
     err_idx = [
         index
-        for index, (real_value, expect_value) in enumerate(
-            zip(real_data, expect_data)
-        )
+        for index, (real_value, expect_value) in enumerate(zip(real_data, expect_data))
         if real_value != expect_value
     ]
     if not err_idx:
@@ -365,9 +358,7 @@ def assert_stem_indexer_result(
         f"actual={tuple(actual_indices.shape)}, expected={tuple(expected_indices.shape)}"
     )
     if not torch.equal(actual_seq_len, expected_seq_len):
-        seq_len_diff = torch.nonzero(
-            actual_seq_len != expected_seq_len, as_tuple=False
-        )
+        seq_len_diff = torch.nonzero(actual_seq_len != expected_seq_len, as_tuple=False)
         print_log(
             f"{case['case_id']} sparse_seq_len mismatch: "
             f"diff_count={seq_len_diff.shape[0]}, "
