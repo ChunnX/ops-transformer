@@ -45,9 +45,9 @@ const std::vector<std::string> V2_IR_INPUT_NAMES = {
 
 const std::vector<std::string> REQUIRED_INT_ATTRS = {"ep_world_size", "ep_rank_id", "moe_expert_num"};
 const std::vector<std::string> OPTIONAL_INT_ATTRS = {
-    "tp_world_size", "tp_rank_id", "expert_shard_type", "shared_expert_num",
-    "shared_expert_rank_num", "quant_mode", "global_bs", "expert_token_nums_type",
-    "zero_expert_num", "copy_expert_num", "const_expert_num", "y_dtype"};
+    "tp_world_size",          "tp_rank_id",      "expert_shard_type", "shared_expert_num",
+    "shared_expert_rank_num", "quant_mode",      "global_bs",         "expert_token_nums_type",
+    "zero_expert_num",        "copy_expert_num", "const_expert_num",  "y_dtype"};
 const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
 
 // 运行时按 ge_compiler 版本决定注册 stage：9.0.0 之前的老 toolkit 没有 kCompatibleInherited 枚举，
@@ -270,6 +270,10 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    ge::AscendString graphName;
+    (void)graph->GetName(graphName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter fusion pass %s, graph %s", FUSION_PASS_NAME.c_str(),
+              graphName.GetString());
     // 9.0.0 版本前运行降级空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
@@ -316,12 +320,20 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
-            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
+            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "moe_distribute_v2"）：
+            // 复用 HCCL 持有的固定 device buffer，避免每图拷贝一份 context 进 weight 池
+            void *ctxAddr = nullptr;
+            uint64_t ctxSize = 0;
+            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupEpStr, "moe_distribute_v2", ctxAddr, ctxSize)) {
+                OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context device addr failed, V2 node kept as-is.");
+                continue;
+            }
+            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context 节点
+            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextPlaceHolderNode(*graph, groupEpStr);
             ge::AscendString tmpType;
             if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+                if (ops::Mc2MoeGraphContext::CreateContextPlaceHolderNode(*graph, groupEpStr, ctxAddr, ctxSize,
+                                                                          contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }

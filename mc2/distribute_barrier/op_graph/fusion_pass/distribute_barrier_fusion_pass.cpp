@@ -97,13 +97,12 @@ ge::graphStatus DistributeBarrierFusionPass::AddAttr(ge::GNode &barrierNode, ge:
 }
 
 ge::graphStatus DistributeBarrierFusionPass::CreateFusionNode(ge::Graph &graph, ge::GNode &barrierNode,
-                                                              const ge::TensorDesc &contextDesc,
-                                                              ge::GNode &fusionNode)
+                                                              const ge::TensorDesc &contextDesc, ge::GNode &fusionNode)
 {
     ge::AscendString nameStr;
     barrierNode.GetName(nameStr);
-    auto fusionOp = ge::OperatorFactory::CreateOperator(std::string(nameStr.GetString()) + "_Extend",
-                                                        FUSED_OP_TYPE_EXTEND);
+    auto fusionOp =
+        ge::OperatorFactory::CreateOperator(std::string(nameStr.GetString()) + "_Extend", FUSED_OP_TYPE_EXTEND);
     if (fusionOp.IsEmpty()) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: %s op not found in factory.", nameStr.GetString(),
                   FUSED_OP_TYPE_EXTEND.c_str());
@@ -232,6 +231,10 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    ge::AscendString graphName;
+    (void)graph->GetName(graphName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter fusion pass %s, graph %s", FUSION_PASS_NAME.c_str(),
+              graphName.GetString());
     // 9.0.0 版本前运行降级空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
@@ -264,12 +267,21 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, barrier node kept as-is.");
                 continue;
             }
-            // 先按名查重：D&C 的 pass 可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr);
+            // 与单算子路径共用 HCCL engine-ctx 注册表（tag = groupEp + "distribute_barrier_extend"）：
+            // 复用 HCCL 持有的固定 device buffer，避免每图拷贝一份 context 进 weight 池
+            void *ctxAddr = nullptr;
+            uint64_t ctxSize = 0;
+            if (!ops::Mc2MoeGraphContext::GetContextDeviceAddr(groupStr, "distribute_barrier_extend", ctxAddr,
+                                                               ctxSize)) {
+                OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context device addr failed, barrier node kept as-is.");
+                continue;
+            }
+            // 先按名查重：D&C 的 pass 可能已为本通信域创建过 context 节点
+            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextPlaceHolderNode(*graph, groupStr);
             ge::AscendString tmpType;
             if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+                if (ops::Mc2MoeGraphContext::CreateContextPlaceHolderNode(*graph, groupStr, ctxAddr, ctxSize,
+                                                                          contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }
