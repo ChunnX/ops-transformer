@@ -387,8 +387,8 @@ public:
             }
         }
 
-        AscendC::printf("tkd tileMmad pv\n");
-        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
+        // AscendC::printf("tkd tileMmad pv\n");
+        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
 
         // rescale：GO^T 每批搬 [D 块, qHalf] 到 L0A；diag 从双子核 L1 槽位中抽取 16×16
         // 对角块，紧凑打包到 L0B，避免 qS>8 时把 64×64 父布局 stride 当成紧凑子矩阵 stride。
@@ -518,8 +518,8 @@ public:
             }
         }
 
-        AscendC::printf("tkd rescale\n");
-        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
+        // AscendC::printf("tkd rescale\n");
+        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 128);
 
         // fixpipe
         // 注：FIX_M 的 L0C 释放等待已在 mmad 循环（首个 chunk (mL0Itr==0 && nL0Itr==0 && kL0Itr==0)）执行，

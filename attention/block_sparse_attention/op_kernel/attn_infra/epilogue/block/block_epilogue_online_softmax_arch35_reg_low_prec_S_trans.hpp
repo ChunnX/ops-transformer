@@ -138,11 +138,11 @@ public:
             mFirstTile = mAlignedTile;
         }
 
-        AscendC::printf("tkd m: %u\n", m);
-        AscendC::printf("tkd mRound: %u\n", mRound);
-        AscendC::printf("tkd mAlignedTile: %u\n", mAlignedTile);
-        AscendC::printf("tkd mFirstTile: %u\n", mFirstTile);
-        AscendC::printf("tkd mAligned16TileNum: %u\n", mAligned16TileNum);
+        // AscendC::printf("tkd m: %u\n", m);
+        // AscendC::printf("tkd mRound: %u\n", mRound);
+        // AscendC::printf("tkd mAlignedTile: %u\n", mAlignedTile);
+        // AscendC::printf("tkd mFirstTile: %u\n", mFirstTile);
+        // AscendC::printf("tkd mAligned16TileNum: %u\n", mAligned16TileNum);
 
         __ubuf__ ElementInput *sUbAddr = (__ubuf__ ElementInput *)lsUbTensor[ubSBufId].GetPhyAddr();
         __ubuf__ ElementOutput *pUbAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
@@ -196,8 +196,8 @@ public:
             }
         }
 
-        AscendC::printf("tkd p\n");
-        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 320);
+        // AscendC::printf("tkd p\n");
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 320);
         // AscendC::printf("tkd l\n");
         // AscendC::DumpTensor(llUbTensor, 1, 32);
 
@@ -219,14 +219,14 @@ public:
         dataCopyParams.dstStride = 0;
         DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset], lpUbTensor[ubSBufId], dataCopyParams);
 
-        // // AscendC::printf("tkd blockCount: %u\n", dataCopyParams.blockCount);
-        // // AscendC::printf("tkd blockLen: %u\n", dataCopyParams.blockLen);
-        // // AscendC::printf("tkd srcStride: %u\n", dataCopyParams.srcStride);
-        // // AscendC::printf("tkd dstStride: %u\n", dataCopyParams.dstStride);
-        // // AscendC::printf("tkd mRound: %u\n", mRound);
-        // // AscendC::printf("tkd nCopyOffset: %u\n", nCopyOffset);
-        // // AscendC::printf("tkd blockStride: %u\n", blockStride);
-        // // AscendC::printf("tkd DataCopy1 dst offset: %u\n", subBlockIdx_ * mRound * nCopyOffset);
+        // AscendC::printf("tkd blockCount: %u\n", dataCopyParams.blockCount);
+        // AscendC::printf("tkd blockLen: %u\n", dataCopyParams.blockLen);
+        // AscendC::printf("tkd srcStride: %u\n", dataCopyParams.srcStride);
+        // AscendC::printf("tkd dstStride: %u\n", dataCopyParams.dstStride);
+        // AscendC::printf("tkd mRound: %u\n", mRound);
+        // AscendC::printf("tkd nCopyOffset: %u\n", nCopyOffset);
+        // AscendC::printf("tkd blockStride: %u\n", blockStride);
+        // AscendC::printf("tkd DataCopy1 dst offset: %u\n", subBlockIdx_ * mRound * nCopyOffset);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
@@ -241,10 +241,10 @@ public:
             // AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
             // 先算 dm 存 dmUb（3 份轮转），再据此生成 diag 块
-            AscendC::printf("tkd not firstKvsTile\n");
+            // AscendC::printf("tkd not firstKvsTile\n");
             UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
-            AscendC::printf("tkd dm\n");
-            AscendC::DumpTensor(dmUbTensor[l1PBufId], 0, 32);
+            // AscendC::printf("tkd dm\n");
+            // AscendC::DumpTensor(dmUbTensor[l1PBufId], 0, 32);
             if constexpr (rescaleOnCube_) {
                 Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
                 // 等上一轮 MTE3 读完唯一的 diag UB 后再覆写；kernel InitSyncFlags 已预置初始 token
@@ -259,11 +259,11 @@ public:
                     diagDmFirstTile = diagDmAlignedTile;
                 }
 
-                AscendC::printf("tkd n: %u\n", n);
-                AscendC::printf("tkd diagDmRound: %u\n", diagDmRound);
-                AscendC::printf("tkd diagDmAlignedTile: %u\n", diagDmAlignedTile);
-                AscendC::printf("tkd diagDmFirstTile: %u\n", diagDmFirstTile);
-                AscendC::printf("tkd diagDmTileNum: %u\n", diagDmTileNum);
+                // AscendC::printf("tkd n: %u\n", n);
+                // AscendC::printf("tkd diagDmRound: %u\n", diagDmRound);
+                // AscendC::printf("tkd diagDmAlignedTile: %u\n", diagDmAlignedTile);
+                // AscendC::printf("tkd diagDmFirstTile: %u\n", diagDmFirstTile);
+                // AscendC::printf("tkd diagDmTileNum: %u\n", diagDmTileNum);
 
                 __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
                 if (diagDmTileNum == 0) {
@@ -280,8 +280,8 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
 
-                AscendC::printf("tkd diag dm\n");
-                AscendC::DumpTensor(diagUbTensor, 1, 256);
+                // AscendC::printf("tkd diag dm\n");
+                // AscendC::DumpTensor(diagUbTensor, 1, 256);
                 // TLA 封装（与 P 的 P→L1 搬移同风格：表达布局意图，DataCopy 用裸地址 + DataCopyParams）
                 auto ubDiagDmLayoutTla = tla::MakeLayout<float, LayoutOutput>(diagDmRound, diagDmRound);
                 auto ubDiagDmTensorTla = tla::MakeTensor(diagUbTensor, ubDiagDmLayoutTla, Arch::PositionUB{});
