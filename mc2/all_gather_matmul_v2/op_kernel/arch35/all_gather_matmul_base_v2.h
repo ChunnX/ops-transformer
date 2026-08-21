@@ -24,6 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "common.h"
 #include "lib/hccl/hccl.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 #include "../all_gather_matmul_tiling_data.h"
 
 namespace AllGatherMatmulImpl {
@@ -57,11 +58,13 @@ public:
         debugMode_ = tilingData->debugMode;
         context_ = contextGM;
     }
-    __aicore__ inline void Init(__gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
+        __aicore__ inline void Init(__gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
     {
         hccl_.InitV2(context_, &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
         rankId_ = hccl_.GetRankId();
+        // 初始化运行时信息 (在 workspace 地址被修改前保存原始基地址)
+        runtimeInfo_.Init(addrs_->workspaceGM, &tilingData_->workspaceLayout, paramInTiling_->aicCoreNum);
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
         oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) *
@@ -170,9 +173,10 @@ protected:
     GM_ADDR gatherX1Addr_;
     GM_ADDR gatherScale1Addr_;
     GM_ADDR gatherScaleAddr_;
-    AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
+        AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
     uint32_t batchWeight_[MAX_RANK_DIM] = {0};
     Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData_;
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 
 private:
     __aicore__ inline void UpdateNotifyFlag()

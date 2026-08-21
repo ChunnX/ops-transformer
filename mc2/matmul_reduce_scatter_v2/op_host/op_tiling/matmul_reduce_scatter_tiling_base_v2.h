@@ -92,12 +92,13 @@ protected:
     {
         return args_;
     };
-    void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
+        void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
                          uint32_t &debugMode, uint32_t &dataType);
     void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,
                         const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
     ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
+    void BuildWorkspaceLayout();
 
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
@@ -109,8 +110,9 @@ protected:
     uint64_t tileMValue_{0};  // mc2 切块后主块M的大小；
     uint64_t tailMValue_{0};  // mc2 切块后尾块M的大小；
     uint64_t longTileLen_{0}; // mc2 切块后长块的大小；
-    uint64_t mmResultLen_{0};
+        uint64_t mmResultLen_{0};
     uint32_t libApiWorkSpaceSize_{0};
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout_{};
 };
 } // namespace optiling
 

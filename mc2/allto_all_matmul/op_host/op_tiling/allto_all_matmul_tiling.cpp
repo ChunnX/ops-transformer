@@ -57,15 +57,13 @@ inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *u
         return;
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AlltoAllMatmul");
-    constexpr uint32_t TILING_GM_ARG_IDX = 12U;
-    constexpr uint32_t ARGS_OFFSET = 0U;
-    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmul", TILING_GM_ARG_IDX, ARGS_OFFSET);
-
-    constexpr uint32_t WORKSPACE_GM_ARG_IDX = 11U;
-    constexpr uint32_t WS_LAYOUT_OFFSET =
-        offsetof(AlltoAllMatmulTilingData, workspaceLayout);
-    Mc2Exception::Mc2DumpWorkspaceContent(args, "AlltoAllMatmul",
-                                          WORKSPACE_GM_ARG_IDX, WS_LAYOUT_OFFSET, ARGS_OFFSET);
+    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmul",
+        12U,   // tilingGmArgIdx
+        0U,    // argsOffset
+        11U,   // workspaceGmArgIdx
+        offsetof(AlltoAllMatmulTilingData, alltoAllMatmulTilingInfo.x1QuantMode),  // quantModeOffset
+        offsetof(AlltoAllMatmulTilingData, workspaceLayout),                       // wsLayoutOffsetNonQuant
+        offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout));                 // wsLayoutOffsetQuant
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()

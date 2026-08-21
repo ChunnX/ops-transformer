@@ -21,6 +21,7 @@
 #include "../../../common/op_kernel/mc2_mat_mul_asw_block.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 #include "../all_gather_matmul_tiling_data.h"
 #include "../common.h"
 
@@ -74,9 +75,10 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    bool notifyFlag_{false};
+        bool notifyFlag_{false};
     typename HcclTypeSelector<ServerMode>::type hccl_;
     AscendC::HcclHandle hHandles_[MAX_HANDLE]; // 最大支持63个handleID
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
@@ -112,12 +114,14 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
         workspaceGM_ += cfg.gatherLen;
     }
 
-    // 全核通信
+        // 全核通信
     if ASCEND_IS_AIC {
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
             notifyFlag_ = true;
         }
     }
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
@@ -183,12 +187,15 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
 {
     if ASCEND_IS_AIC {
         // 先发出通信
+        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         StartNotify();
 
         // 计算本卡、远端数据
+        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_LOCAL));
         InnerProcess();
 
         // 结束通信
+        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
         EndNotify();
     }
 }
@@ -272,12 +279,14 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
         return;
     }
 
-    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
+        MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     mmv3.Init(aGM, bGM_, cGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, true);
     for (uint32_t i = 0; i < count; i++) {
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
+            runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
             hccl_.Wait(hHandles_[i + shift]);
         }
+        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_GATHER));
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (count - 1)));
     }

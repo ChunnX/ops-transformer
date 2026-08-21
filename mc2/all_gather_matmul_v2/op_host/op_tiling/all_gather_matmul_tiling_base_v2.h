@@ -84,13 +84,14 @@ protected:
     void DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
                            uint32_t &debugMode, uint32_t &dataType);
     void SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg);
-    void DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg);
+        void DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg);
     void PostDoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
     virtual CutResult GetTilingResult();
     virtual ge::graphStatus CheckInput()
     {
         return ge::GRAPH_SUCCESS;
     }
+    void BuildWorkspaceLayout();
 
     void Reset();
 
@@ -132,6 +133,7 @@ protected:
     bool enableNd2Nz_{false};
     bool castBias_{false};
     uint32_t gatherIndex_{0};
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout_{};
 };
 } // namespace optiling
 
