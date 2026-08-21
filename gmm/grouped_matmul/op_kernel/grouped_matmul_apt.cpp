@@ -65,6 +65,7 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_4 = {3, 512};
 static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_5 = {3, 384};
 static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_6 = {2, 256}; // A16W4 ND PerGroup
 static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
+static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC_SCALEA_VECTOR = {4, 0, true};
 #if defined(DT_FLOAT) && defined(ORIG_DTYPE_WEIGHT) && ORIG_DTYPE_WEIGHT == DT_FLOAT
 #undef DTYPE_WEIGHT
 #define DTYPE_WEIGHT fp4x2_e2m1_t
@@ -374,6 +375,15 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                           VEC_ANTIQUANT_CONFIG_DYNAMIC);
+    } else if constexpr (
+        W_TYPE == WQGMM_FRACTAL_NZ &&
+        OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST && C_QUANT_TYPE == WQGMM_NONE &&
+        W_QUANT_TYPE == WQGMM_MX && WQ_B_TRANS == WQGMM_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+        TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4_SCALEA_VECTOR &&
+        ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
+        ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+        INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
+                                                          VEC_ANTIQUANT_CONFIG_DYNAMIC_SCALEA_VECTOR);
     }
 #elif ORIG_DTYPE_ANTIQUANT_SCALE == DT_FLOAT8_E8M0
     if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&

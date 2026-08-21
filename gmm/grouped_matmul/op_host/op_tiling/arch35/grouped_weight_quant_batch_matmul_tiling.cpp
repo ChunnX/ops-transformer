@@ -1077,6 +1077,11 @@ void GroupedWeightQuantBatchMatmulTiling::SetTilingKey(gert::TilingContext *cont
     } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4);
+        uint64_t expectedGroupM = groupNum_ > 0 ? GroupedMatmul::CeilDiv(mSize_, static_cast<uint64_t>(groupNum_)) : 0;
+        if (expectedGroupM >= 64 && expectedGroupM <= 128) {
+            tilingKeyConfig_.templateCustom =
+                static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4_SCALEA_VECTOR);
+        }
         tilingKeyConfig_.isSingleMultiSingle = isSingleMultiSingle_;
     }
     tilingKeyConfig_.apiConstexpr = 0U;
