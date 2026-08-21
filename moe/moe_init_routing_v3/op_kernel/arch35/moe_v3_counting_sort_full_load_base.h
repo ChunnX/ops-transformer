@@ -85,6 +85,15 @@ protected:
     __aicore__ inline void ComputeGlobalOffset();
     __aicore__ inline void WriteExpertTokens();
     __aicore__ inline void WaitXLoadCommon();
+    // 聚合搬出（csAggrEnable=1 时由子类调用）
+    __aicore__ inline void BucketByExpert();
+    __aicore__ inline int64_t ComputeBatchStartNewPos(int64_t expertOffset, int64_t slotStart);
+    __aicore__ inline void WriteBypassForRowIdxScale(int64_t eo, int64_t slotStart, int64_t batchRows,
+                                                      LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal,
+                                                      GlobalTensor<T> &expandedXGmRef);
+    __aicore__ inline void GatherAndWriteByExpert(LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal,
+                                                    GlobalTensor<T> &expandedXGmRef,
+                                                    GlobalTensor<float> &expandedScaleGmRef);
 
 protected:
     static constexpr int64_t DST_REP_STRIDE = 8;
@@ -157,6 +166,16 @@ protected:
     int64_t histBinOffset_;       // uint16 bins（256 个 = BIN0 128 + BIN1 128）
 #endif
     int64_t commonBufSize_; // 公共区结尾 offset；子类在其后追加量化区
+
+    // 聚合搬出参数（从 tiling 读取）
+    int64_t csAggrEnable_{0};
+    int64_t aggrOutRows_{0};          // k：搬出聚合 UB 容纳行数
+    int64_t aggrOutBufBytes_{0};     // 搬出聚合区字节数
+    int64_t gatherOutBufOffset_{0};  // 搬出聚合区在 buf_ 中的字节偏移
+    // 分桶区（按专家外循环聚合用）
+    int64_t bucketBaseOffset_{0};     // 桶数据基址（存 localFlatIdx，按 expert 分段）
+    int64_t bucketOffsetTblOffset_{0}; // 偏移表基址（actualExpertNum_ 个 int32，每桶起始偏移）
+    int64_t bucketCountTblOffset_{0}; // 每桶元素数（actualExpertNum_ 个 int32）
 };
 
 template <typename T>
@@ -188,6 +207,9 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::InitCommon(GM_ADDR expe
     expertCapacity_ = tiling->expertCapacity;
     quantMode_ = tiling->quantMode;
     outputRows_ = dropPadMode_ == DROP_PAD_MODE ? expertNum_ * expertCapacity_ : activeNum_;
+    csAggrEnable_ = tiling->countingSortParamsOp.csAggrEnable;
+    aggrOutRows_ = tiling->countingSortParamsOp.csAggrOutRows;
+    aggrOutBufBytes_ = tiling->countingSortParamsOp.csAggrOutBufBytes;
 
     filterPerCoreTokens_ = tiling->countingSortParamsOp.filterPerCoreTokens;
     coreTokenStart_ = blockIdx_ * filterPerCoreTokens_;
@@ -260,7 +282,13 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::ComputeCommonUbLayout()
 {
     int64_t offset = 0;
     xLocalOffset_ = offset;
-    offset += AlignBytes(coreTokenNum_ * colsAligned_, static_cast<int64_t>(sizeof(T)));
+    int64_t xLocalBytes = AlignBytes(coreTokenNum_ * colsAligned_, static_cast<int64_t>(sizeof(T)));
+    // 聚合搬出：从 xLocal 区末尾切 aggrOutBufBytes_ 作为 gatherOutBuf（不增加总 UB 占用）
+    if (csAggrEnable_ == 1 && aggrOutBufBytes_ > 0 && aggrOutBufBytes_ < xLocalBytes) {
+        xLocalBytes -= aggrOutBufBytes_;
+        gatherOutBufOffset_ = offset + xLocalBytes;
+    }
+    offset += xLocalBytes;
 
     expertIdxLocalOffset_ = offset;
     offset += AlignBytes(coreEntries_, static_cast<int64_t>(sizeof(int32_t)));
@@ -314,6 +342,15 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::ComputeCommonUbLayout()
 #endif
 
     // 公共区结尾；子类量化区在其后追加
+    // 聚合搬出分桶区（csAggrEnable=1 时）：bucketBase + offsetTbl + countTbl
+    if (csAggrEnable_ == 1) {
+        bucketBaseOffset_ = offset;
+        offset += AlignBytes(maxFilteredCount_, static_cast<int64_t>(sizeof(int32_t)));
+        bucketOffsetTblOffset_ = offset;
+        offset += AlignBytes(actualExpertNum_, static_cast<int64_t>(sizeof(int32_t)));
+        bucketCountTblOffset_ = offset;
+        offset += AlignBytes(actualExpertNum_, static_cast<int64_t>(sizeof(int32_t)));
+    }
     commonBufSize_ = offset;
 }
 
@@ -630,6 +667,184 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::WaitXLoadCommon()
 {
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+}
+
+// 分桶：扫描 filteredPairsLocal，按 expertOffset 分桶，每桶存 localFlatIdx，同时累计 slot。
+// 两遍扫描：第一遍统计每桶 count，第二遍按偏移填入 localFlatIdx。
+// dropPad 的 drop 行（slot>=expertCapacity_）不进桶，直接写 rowIdx=-1（GATHER 模式）。
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadBase<T>::BucketByExpert()
+{
+    LocalTensor<int32_t> filteredPairsLocal = buf_.Get<int32_t>()[filteredPairsLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketBase = buf_.Get<int32_t>()[bucketBaseOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketOffsetTbl = buf_.Get<int32_t>()[bucketOffsetTblOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketCountTbl = buf_.Get<int32_t>()[bucketCountTblOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> idxBuf = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
+
+    // 第一遍：统计每桶 count（dropPad 下仅计 slot<capacity 的有效行）
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        bucketCountTbl.SetValue(e, static_cast<int32_t>(0));
+    }
+
+    int64_t dropCnt = 0;
+    for (int64_t i = 0; i < filteredCount_; i++) {
+        int32_t localFlatIdx = filteredPairsLocal.GetValue(i * 2);
+        int32_t expertOffset = filteredPairsLocal.GetValue(i * 2 + 1);
+        int32_t curCnt = bucketCountTbl.GetValue(expertOffset);
+        // dropPad drop 行处理：slot>=capacity 不进桶，写 rowIdx=-1（GATHER 模式）
+        if (dropPadMode_ == DROP_PAD_MODE && static_cast<int64_t>(curCnt) >= expertCapacity_) {
+            if (rowIdxType_ == GATHER) {
+                int64_t origFlatIdx = coreFlatStart_ + static_cast<int64_t>(localFlatIdx);
+                idxBuf.SetValue(0, static_cast<int32_t>(-1));
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                DataCopyExtParams dropIdxCopyParams{static_cast<uint16_t>(1),
+                                                    static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+                DataCopyPad(expandedRowIdxGm_[origFlatIdx], idxBuf, dropIdxCopyParams);
+                SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            }
+            dropCnt++;
+            continue;
+        }
+        bucketCountTbl.SetValue(expertOffset, curCnt + 1);
+    }
+
+    // 第二遍：计算每桶起始偏移（前缀和），再按偏移填入 localFlatIdx
+    int32_t prefix = 0;
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        bucketOffsetTbl.SetValue(e, prefix);
+        prefix += bucketCountTbl.GetValue(e);
+    }
+
+    // 临时复用 bucketCountTbl 作为每桶当前写入游标（先清零）
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        bucketCountTbl.SetValue(e, static_cast<int32_t>(0));
+    }
+
+    for (int64_t i = 0; i < filteredCount_; i++) {
+        int32_t localFlatIdx = filteredPairsLocal.GetValue(i * 2);
+        int32_t expertOffset = filteredPairsLocal.GetValue(i * 2 + 1);
+        int32_t curCnt = bucketCountTbl.GetValue(expertOffset);
+        if (dropPadMode_ == DROP_PAD_MODE && static_cast<int64_t>(curCnt) >= expertCapacity_) {
+            continue; // drop 行已在第一遍处理
+        }
+        int32_t baseOff = bucketOffsetTbl.GetValue(expertOffset);
+        bucketBase.SetValue(baseOff + curCnt, localFlatIdx);
+        bucketCountTbl.SetValue(expertOffset, curCnt + 1);
+    }
+}
+
+// 计算批次起始 newPos：dropPad=(eo+es)*cap+slotStart；dropless=expertCountLocal[eo]+slotStart（seed 来自 ComputeGlobalOffset）
+template <typename T>
+__aicore__ inline int64_t MoeV3CountingSortFullLoadBase<T>::ComputeBatchStartNewPos(int64_t expertOffset,
+                                                                                      int64_t slotStart)
+{
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        return (expertOffset + expertStart_) * expertCapacity_ + slotStart;
+    }
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+    return static_cast<int64_t>(expertCountLocal.GetValue(expertOffset)) + slotStart;
+}
+
+// 旁路逐行写：rowIdx（GATHER/SCATTER）+ scale（isInputScale_）。无法与 expandedX 聚合复用。
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadBase<T>::WriteBypassForRowIdxScale(int64_t eo, int64_t slotStart,
+    int64_t batchRows, LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal,
+    GlobalTensor<T> &expandedXGmRef)
+{
+    LocalTensor<int32_t> bucketBase = buf_.Get<int32_t>()[bucketBaseOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketOffsetTbl = buf_.Get<int32_t>()[bucketOffsetTblOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> idxBuf = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
+
+    DataCopyExtParams idxCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+
+    for (int64_t r = 0; r < batchRows; r++) {
+        int32_t localFlatIdx = bucketBase.GetValue(bucketOffsetTbl.GetValue(eo) + slotStart + r);
+        int64_t tokenRow = static_cast<int64_t>(localFlatIdx) / k_;
+        int64_t origFlatIdx = coreFlatStart_ + static_cast<int64_t>(localFlatIdx);
+        int64_t newPos = ComputeBatchStartNewPos(eo, slotStart + r);
+        if (newPos >= outputRows_) {
+            continue;
+        }
+
+        // expandedRowIdx 写
+        if (rowIdxType_ == GATHER) {
+            idxBuf.SetValue(0, static_cast<int32_t>(newPos));
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyPad(expandedRowIdxGm_[origFlatIdx], idxBuf, idxCopyParams);
+        } else {
+            idxBuf.SetValue(0, static_cast<int32_t>(origFlatIdx));
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyPad(expandedRowIdxGm_[newPos], idxBuf, idxCopyParams);
+        }
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
+}
+
+// 聚合搬出主循环：外层 expertOffset，内层按 k 切批，每批一次 DataCopyPad 写连续 GM 段。
+// expandedX 行聚合；rowIdx/scale/drop 由 WriteBypassForRowIdxScale 逐行穿插。
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadBase<T>::GatherAndWriteByExpert(
+    LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal, GlobalTensor<T> &expandedXGmRef,
+    GlobalTensor<float> &expandedScaleGmRef)
+{
+    LocalTensor<int32_t> bucketBase = buf_.Get<int32_t>()[bucketBaseOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketOffsetTbl = buf_.Get<int32_t>()[bucketOffsetTblOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> bucketCountTbl = buf_.Get<int32_t>()[bucketCountTblOffset_ / sizeof(int32_t)];
+    LocalTensor<T> gatherOutBuf = buf_.Get<T>()[gatherOutBufOffset_ / sizeof(T)];
+
+    for (int64_t eo = 0; eo < actualExpertNum_; eo++) {
+        int64_t count_e = static_cast<int64_t>(bucketCountTbl.GetValue(eo));
+        if (count_e == 0) {
+            continue;
+        }
+
+        int64_t slotStart = 0;
+        int64_t remaining = count_e;
+        while (remaining > 0) {
+            int64_t batchRows = Min(aggrOutRows_, remaining);
+
+            // 1) UB→UB 拷贝 batchRows 行到 gatherOutBuf
+            for (int64_t r = 0; r < batchRows; r++) {
+                int32_t localFlatIdx = bucketBase.GetValue(bucketOffsetTbl.GetValue(eo) + slotStart + r);
+                int64_t tokenRow = static_cast<int64_t>(localFlatIdx) / k_;
+                DataCopy(gatherOutBuf[r * colsAligned_], xLocal[tokenRow * colsAligned_],
+                         static_cast<int32_t>(cols_));
+            }
+            PipeBarrier<PIPE_V>();
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+            // 2) 一次 DataCopyPad 写连续 GM 段（3 参版：GM, Local, extParams）
+            int64_t batchStartNewPos = ComputeBatchStartNewPos(eo, slotStart);
+            if (batchStartNewPos < outputRows_) {
+                DataCopyExtParams xCopyParams{static_cast<uint16_t>(batchRows),
+                                              static_cast<uint32_t>(cols_ * sizeof(T)), 0, 0, 0};
+                DataCopyPad(expandedXGmRef[batchStartNewPos * cols_], gatherOutBuf, xCopyParams);
+            }
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+
+            // 3) 旁路：rowIdx / scale 逐行写
+            WriteBypassForRowIdxScale(eo, slotStart, batchRows, xLocal, scaleLocal, expandedXGmRef);
+
+            // scale 逐行写（isInputScale_ 时）
+            if (isInputScale_) {
+                DataCopyExtParams scaleCopyParams{static_cast<uint16_t>(1),
+                                                    static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+                for (int64_t r = 0; r < batchRows; r++) {
+                    int32_t localFlatIdx = bucketBase.GetValue(bucketOffsetTbl.GetValue(eo) + slotStart + r);
+                    int64_t tokenRow = static_cast<int64_t>(localFlatIdx) / k_;
+                    int64_t newPos = ComputeBatchStartNewPos(eo, slotStart + r);
+                    if (newPos >= outputRows_) {
+                        continue;
+                    }
+                    DataCopyPad(expandedScaleGmRef[newPos], scaleLocal[tokenRow * scaleSlotSize_], scaleCopyParams);
+                }
+            }
+
+            slotStart += batchRows;
+            remaining -= batchRows;
+        }
+    }
 }
 
 } // namespace MoeInitRoutingV3
