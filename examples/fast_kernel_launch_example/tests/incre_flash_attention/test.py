@@ -56,10 +56,10 @@ class FusedAttentionNetwork(nn.Module):
 
     def forward(self, param: dict):
         # Step 1: Compute metadata
-        metadata = torch.ops.ascend_ops.npu_fused_infer_attention_score_metadata(
-            **param["metaParam"]
-        )
-        param["faParam"]["metadata"] = metadata
+        # metadata = torch.ops.ascend_ops.npu_fused_infer_attention_score_metadata(
+        #     **param["metaParam"]
+        # )
+        # param["faParam"]["metadata"] = metadata
 
         # Step 2: Call fused attention
         return torch.ops.ascend_ops.npu_fused_infer_attention_score(**param["faParam"])
@@ -197,16 +197,14 @@ def main():
     # 5. Run inference
     logger.info("🚀 Running inference...")
     try:
-        output, softmaxlse = model(param)
+        g = torch.npu.NPUGraph()
+        with torch.npu.graph(g):
+            for i in range(101):
+                logger.info(f">>>>>>执行第{i}次计算")        
+                output, softmaxlse = model(param)
         torch.npu.synchronize()
 
-        # 9. logger.info results
-        logger.info(f"📊 Output shape: {output.shape}")
-        logger.info(f"📉 Softmax output shape: {softmaxlse.shape}")
-
-        # 10. Pretty logger.info output (first few values)
-        logger.info("\n📌 First 5 values of output (BNSD):")
-        logger.info(output[:5, :5, :5, :5].cpu().float().numpy())
+        g.replay()
 
     except Exception as e:
         logger.info(f"❌ Inference failed: {e}")

@@ -219,7 +219,9 @@ def main():
     # 8. Run inference
     logger.info("🚀 Running inference...")
     try:
-        output, softmaxlse = compiled_model(param)
+        for i in range(101):
+            logger.info(f">>>>>>执行第{i}次计算")        
+            output, softmaxlse = compiled_model(param)
         torch.npu.synchronize()
 
         # 9. logger.info results
