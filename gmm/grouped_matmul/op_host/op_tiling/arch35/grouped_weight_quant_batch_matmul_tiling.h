@@ -54,6 +54,7 @@ constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
 constexpr uint32_t BASIC_BLOCK_BASE_N = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_K = 64;
 constexpr uint32_t BASIC_BLOCK_BASE_N_MIN = 128;
+constexpr uint32_t MX_A8W4_GROUP_DISTRIBUTED_N_MIN = 4096;
 constexpr uint32_t STEP_K_4 = 4;
 constexpr uint32_t STEP_K_3 = 3;
 constexpr uint32_t DEPTH_8 = 8;
@@ -174,6 +175,7 @@ enum class Mte2Configuration : uint8_t {
     MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT = 4, // w8 w4在非性能场景下复用一组设置
     MTE2_INNER_SIZE_384_BUF_NUM_3 = 5,
     MTE2_INNER_SIZE_256_BUF_NUM_2 = 6,
+    MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4_SCALEA_VECTOR = 7,
     MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 = 15, // MXA8W4 NZ场景，K轴长度动态调整
 };
 

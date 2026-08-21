@@ -63,6 +63,14 @@ public:
                                              const BasicBlockOffsetParam &lastOffsetParam);
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
     __aicore__ inline void End(const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline static bool UseVectorScaleA(uint64_t groupM)
+    {
+        // K4096 Vector conversion is profitable only when there are enough M rows
+        // to amortize setup, without making the conversion itself the critical path.
+        constexpr uint64_t SCALE_A_VECTOR_MIN_M = 64;
+        constexpr uint64_t SCALE_A_VECTOR_MAX_M = 128;
+        return groupM >= SCALE_A_VECTOR_MIN_M && groupM <= SCALE_A_VECTOR_MAX_M;
+    }
 
 protected:
     __aicore__ inline void SetAivToAic();
@@ -99,14 +107,15 @@ protected:
         cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
-    uint64_t mxScaleBufIdx_ = 0;
 
     LocalTensor<xType> weightL1_;
     LocalTensor<biasType> biasL1_;
+    LocalTensor<fp8_e8m0_t> mxScaleAL1_;
     LocalTensor<fp8_e8m0_t> mxScaleBL1_;
     uint64_t weightL1DbOffset_;
     uint64_t biasL1DbOffset_;
-    uint64_t mxScaleBL1DbOffset_;
+    uint64_t mxScaleAL1Offsets_[4];
+    uint64_t mxScaleBL1Offsets_[4];
     bool hasBias_;
 };
 
@@ -131,17 +140,34 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
             l1StartSize += MX_BIAS_L1_SIZE;
         }
 
-        static constexpr uint64_t MX_SCALE_L1_SIZE = MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType);
         uint64_t mxScaleAL1L1StartSize = l1StartSize;
         uint64_t mxScaleAL1L1RemainSize = l1RemainSize;
-        l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
-        l1StartSize += MX_SCALE_L1_SIZE;
-        mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
-        mxScaleBL1DbOffset_ = (l1RemainSize - MX_SCALE_L1_SIZE) / sizeof(fp8_e8m0_t);
+        uint64_t kbL1Size = matmulTiling->baseK * matmulTiling->stepKb;
+        uint64_t scaleAKL1Size = MX_SCALE_K_L1_SIZE;
+        uint64_t mL1Align = CeilAlign(static_cast<uint64_t>(matmulTiling->baseM),
+                                     static_cast<uint64_t>(BLOCK_CUBE));
+        uint64_t nL1Align = CeilAlign(static_cast<uint64_t>(matmulTiling->baseN),
+                                     static_cast<uint64_t>(BLOCK_CUBE));
+        uint64_t mxScaleAVectorL1Size = mL1Align * kbL1Size / MX_GROUPSIZE;
+        uint64_t mxScaleADirectL1Size = mL1Align * scaleAKL1Size / MX_GROUPSIZE;
+        uint64_t mxScaleARegionSize = max(mxScaleADirectL1Size, DOUBLE_BUFFER_NUM * mxScaleAVectorL1Size);
+        uint64_t mxScaleBL1Size = nL1Align * kbL1Size / MX_GROUPSIZE;
+        mxScaleAL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize,
+                                              l1RemainSize / sizeof(fp8_e8m0_t));
+        mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize,
+                                              l1RemainSize / sizeof(fp8_e8m0_t));
+        mxScaleAL1Offsets_[0] = 0;
+        mxScaleAL1Offsets_[1] = l1RemainSize - mxScaleAVectorL1Size;
+        mxScaleAL1Offsets_[2] = mxScaleAVectorL1Size;
+        mxScaleAL1Offsets_[3] = l1RemainSize - DOUBLE_BUFFER_NUM * mxScaleAVectorL1Size;
+        mxScaleBL1Offsets_[0] = mxScaleARegionSize;
+        mxScaleBL1Offsets_[1] = l1RemainSize - mxScaleARegionSize - mxScaleBL1Size;
+        mxScaleBL1Offsets_[2] = mxScaleARegionSize + mxScaleBL1Size;
+        mxScaleBL1Offsets_[3] = l1RemainSize - mxScaleARegionSize - DOUBLE_BUFFER_NUM * mxScaleBL1Size;
 
         if ASCEND_IS_AIC {
             cubeCompute_.MxA8W4Init(mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_, matmulTiling,
-                                    biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
+                                    biasL1_);
         } else {
             vectorCompute_.Init(tPipe, hasBias_);
         }
@@ -167,7 +193,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
         cubeCompute_.UpdateGlobalAddr(x, y, bias, antiquantScale, scale, perTokenScale, hasBias);
     } else {
         vectorCompute_.UpdateGlobalAddr(weight, antiquantScale, antiquantOffset, nullptr, nullptr, bias,
-                                        weightL2Cacheable);
+                                        weightL2Cacheable,
+                                        reinterpret_cast<__gm__ fp8_e8m0_t *>(perTokenScale));
     }
 }
 
@@ -293,8 +320,14 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
         if (cvLoopIdx_ > 1) {
             WaitAicToAiv();
         }
+        // ScaleA stays in its original GM layout. Stage K4096 in UB, transform it on Vector,
+        // then copy only the current kbL1 slice to the four-buffer L1 layout.
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-            HandleMxA8W4Scale(offsetParam, kMte2Offset);
+            if constexpr (vecConfig.useVectorScaleA) {
+                if (UseVectorScaleA(offsetParam.mSize)) {
+                    HandleMxA8W4Scale(offsetParam, kMte2Offset);
+                }
+            }
         }
         vectorCompute_.WaitVToMTE2();
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
@@ -324,18 +357,22 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAic(const Basi
         uint64_t kbL1RealSize = (kbGmOffset + offsetParam.kbL1Size) >= offsetParam.kSize ?
                                     offsetParam.kSize - kbGmOffset :
                                     offsetParam.kbL1Size;
+        bool useVectorScaleA = false;
+        if constexpr (vecConfig.useVectorScaleA) {
+            useVectorScaleA = UseVectorScaleA(offsetParam.mSize);
+        }
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-            cubeCompute_.WaitScaleMTE1ToMTE2(kbGmOffset);
-            cubeCompute_.CopyMxScaleGmToL1(offsetParam, kbGmOffset);
+            cubeCompute_.WaitScaleMTE1ToMTE2(kbGmOffset, !useVectorScaleA);
+            cubeCompute_.CopyMxScaleGmToL1(offsetParam, kbGmOffset, !useVectorScaleA);
         }
         cubeCompute_.WaitMTE1ToMTE2(kbGmOffset, offsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(offsetParam, kbGmOffset, cvLoopIdx_);
         WaitAivToAic();
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbGmOffset, kbL1RealSize, cvLoopIdx_,
-                                  offsetParam); // mte1 mmad fixp流水
+                                  offsetParam, useVectorScaleA); // mte1 mmad fixp流水
         cubeCompute_.SetMTE1ToMTE2(kbGmOffset, offsetParam);
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-            cubeCompute_.SetScaleMTE1ToMTE2(kbGmOffset, offsetParam);
+            cubeCompute_.SetScaleMTE1ToMTE2(kbGmOffset, offsetParam, !useVectorScaleA);
         }
         SetAicToAiv();
     }
@@ -363,33 +400,39 @@ GMM_WQ_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::HandleMxA8W4Scale(const BasicBlockOffsetParam &offsetParam,
                                                                    const uint64_t kMte2Offset)
 {
-    if (kMte2Offset % MX_SCALE_K_L1_SIZE != 0) {
-        return;
-    }
-    uint64_t mxScaleKSize =
-        (kMte2Offset + MX_SCALE_K_L1_SIZE) > offsetParam.kSize ? offsetParam.kSize - kMte2Offset : MX_SCALE_K_L1_SIZE;
-    uint64_t mxScaleNSize0 =
-        offsetParam.nL1Size > VEC_CORE_MIN_N_SPLIT ?
-            CeilAlign(offsetParam.nL1Size / VEC_CORE_NUM, static_cast<uint64_t>(VEC_CORE_MIN_N_SPLIT)) :
-            offsetParam.nL1Size;
-    uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
-    uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
-    if (mxScaleNSize == 0) {
+    constexpr uint64_t SCALE_A_TRANS_BUFFER_IDX = 0;
+    uint64_t scaleTileOffset = kMte2Offset / MX_SCALE_K_L1_SIZE * MX_SCALE_K_L1_SIZE;
+    uint64_t mxScaleKSize = min(MX_SCALE_K_L1_SIZE, offsetParam.kSize - scaleTileOffset);
+    uint64_t mxScaleMSize0 =
+        offsetParam.mL1Size > VEC_CORE_MIN_N_SPLIT ?
+            CeilAlign(offsetParam.mL1Size / VEC_CORE_NUM, static_cast<uint64_t>(VEC_CORE_MIN_N_SPLIT)) :
+            offsetParam.mL1Size;
+    uint64_t mxScaleMSize =
+        GetSubBlockIdx() == 0 ? mxScaleMSize0 : offsetParam.mL1Size - mxScaleMSize0;
+    uint64_t mxScaleMOffset = GetSubBlockIdx() * mxScaleMSize0;
+    if (mxScaleMSize == 0) {
         return;
     }
 
     uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
     uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
 
-    vectorCompute_.WaitVToMTE2();
-    vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam.nOffset + mxScaleNOffset, mxScaleNSize, kMte2Offset,
-                                           mxScaleMxGroupNum, mxScaleRealGroupNum);
-    vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
-    auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
-    auto mxScaleBL1CurrentU16 = mxScaleBL1Current.template ReinterpretCast<uint16_t>();
-    vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16, mxScaleNOffset, mxScaleNSize);
-    vectorCompute_.SetVToMTE2();
-    mxScaleBufIdx_++;
+    if (kMte2Offset % MX_SCALE_K_L1_SIZE == 0) {
+        vectorCompute_.WaitVToMTE2();
+        vectorCompute_.CopyActivationMxScaleGmToUb(offsetParam.mOffset + mxScaleMOffset, mxScaleMSize,
+                                                   scaleTileOffset, mxScaleMxGroupNum, mxScaleRealGroupNum);
+        vectorCompute_.TransMxScale(mxScaleMSize, mxScaleKSize, SCALE_A_TRANS_BUFFER_IDX);
+        vectorCompute_.SetVToMTE2();
+    }
+
+    uint64_t scaleSliceOffset = kMte2Offset - scaleTileOffset;
+    uint64_t scaleSliceKSize = min(offsetParam.kbL1Size, offsetParam.kSize - kMte2Offset);
+    bool releaseBuffer = kMte2Offset + scaleSliceKSize >= scaleTileOffset + mxScaleKSize;
+    auto mxScaleAL1Current =
+        mxScaleAL1_[mxScaleAL1Offsets_[cvLoopIdx_ & 3]].template ReinterpretCast<uint16_t>();
+    vectorCompute_.CopyMxScaleSliceUbToL1(mxScaleAL1Current, mxScaleMOffset, mxScaleMSize,
+                                          scaleSliceOffset, scaleSliceKSize, SCALE_A_TRANS_BUFFER_IDX,
+                                          releaseBuffer);
 }
 
 GMM_WQ_BASIC_BLOCK_TEMPLATE_PARAM
