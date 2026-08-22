@@ -148,9 +148,8 @@ public:
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(
                 l1BufAddrStart + l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        // diag 块 fp32：每 stage 双子核各一个固定 64×64 容量槽位，3 份轮转。
-        // S_trans 在每个槽位起点按 RoundUp(实际子核列数, 16) 的 zN stride 紧凑写入有效块；
-        // RE 读取时必须使用同样的运行期 stride，不能把槽位容量误当成实际 64×64 布局。
+        // Each stage keeps two fixed 64x64-float L1 slots. S_trans writes valid diagonal
+        // fractals at their original zN square-parent positions.
         for (uint32_t i = 0; i < DIAG_BUF_NUM; i++) {
             l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
                 l1DiagAddrStart +
@@ -161,8 +160,8 @@ public:
                 L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(
                 L0B_PINGPONG_BUF_SIZE * i);
-            // RE 段 float buffer：复用同一偏移。L0A 最大 [128,64]=32KB；L0B 将双子核 diag
-            // 打包成最多 8 个紧凑 16×16 块，仅占 8KB；与 PV^T 段 fp8 同 stage 不同时使用。
+            // Diagnostic correctness path: L0B holds at most eight standalone nZ [16,16]
+            // tiles (8KB total); RE and PV^T do not use the stage concurrently.
             l0ARescaleTensor[i] = resource.l0ABuf.template GetBufferByByte<float>(
                 L0A_PINGPONG_BUF_SIZE * i);
             l0BRescaleTensor[i] = resource.l0BBuf.template GetBufferByByte<float>(
@@ -411,7 +410,9 @@ public:
             uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum;
             uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
             uint32_t l0BEventId = l0BBufId + 2;
-            // 从每个 L1 子核槽位抽取对角 16×16 块，逐块执行 float zN→nZ，并在 L0B 紧凑存放。
+            // Keep the known-correct 2949 L1->L0B path while validating the sparse
+            // UB->L1 producer: take each diagonal tile from its square L1 parent and
+            // copy it to a standalone compact L0B tile.
             auto l0BDiagTileLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(
                 DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
@@ -420,8 +421,6 @@ public:
                 uint32_t grpColStart = frGrp * qHalf;
                 uint32_t grpColEnd = (frGrp == frGrpNum - 1) ? rowNum : (frGrp + 1) * qHalf;
                 uint32_t grpCols = grpColEnd - grpColStart;
-                uint32_t nGrpAct = CeilDiv(grpCols, DIAG_MMAD_TILE_SIZE);
-                // S_trans 按实际对齐宽度紧凑写在固定 64×64 容量槽位的起点。
                 uint32_t diagGrpRound = RoundUp(grpCols, DIAG_MMAD_TILE_SIZE);
                 auto l1DiagGrpLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
                     diagGrpRound, diagGrpRound);
@@ -429,14 +428,16 @@ public:
                     l1DiagTensor[l1DiagBufId][
                         frGrp * DIAG_SUB_BLOCK_SIZE * DIAG_SUB_BLOCK_SIZE],
                     l1DiagGrpLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL1{});
+                uint32_t nGrpAct = CeilDiv(grpCols, DIAG_MMAD_TILE_SIZE);
                 for (uint32_t j = 0; j < nGrpAct; j++) {
                     auto l1DiagTileTensorTla = GetTile(l1DiagGrpTensorTla,
                         tla::MakeCoord(j * DIAG_MMAD_TILE_SIZE, j * DIAG_MMAD_TILE_SIZE),
                         tla::MakeShape(DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE));
-                    uint32_t diagPackedTileIdx = frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
+                    uint32_t diagPackedTileIdx =
+                        frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
                     auto l0BDiagTileTensorTla = tla::MakeTensor(
                         l0BRescaleTensor[l0BBufId][diagPackedTileIdx * DIAG_MMAD_TILE_ELEMS],
-                        l0BDiagTileLayoutTla, Arch::PositionL0B{});
+                        l0BDiagTileLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
                     copyL1ToL0BRescale(l0BDiagTileTensorTla, l1DiagTileTensorTla);
                 }
             }
@@ -466,7 +467,7 @@ public:
                     copyL1ToL0ARescale(l0ATensorTla, l1GoTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                 }
-                // mmad：批内每个 16 列子块使用一个独立、紧凑的 L0B 对角块。
+                // MMAD still consumes one 16x16 diagonal tile at a time.
                 for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                     uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (embed - mL0Itr * L0_TILE_M) : L0_TILE_M;
                     uint32_t l0ALoopCounter = prefixSumL0AStages +
@@ -485,17 +486,18 @@ public:
                         // 批尾块实际列（批宽非 16 倍数时最后一列块 <16；mmad 的 k/n 用实际值，
                         // B 的 16 行中 k 方向只消费前 nAct 行——块宽 ≥ 批宽，不越界）
                         uint32_t nAct = (j == nGrpAct - 1) ? (grpColEnd - grpColStart - j * 16) : 16;
-                        // mmad 子块：C 列为全局位置，A 列为批内位置；B 已在搬运阶段抽取并紧凑打包，
-                        // 因此直接使用对应 16×16 块的起始地址，不再从 64×64 父矩阵 GetTile。
+                        // C columns are global and A columns are group-local. B is the
+                        // standalone compact L0B tile selected by (group, j).
                         auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
                             tla::MakeCoord(mL0Itr * L0_TILE_M, grpColStart + j * 16),
                             tla::MakeShape(l0TileMAct, nAct));
                         auto l0ATensorTlaTile = GetTile(l0ATensorTla,
                             tla::MakeCoord(mL0Itr * L0_TILE_M, j * 16), tla::MakeShape(l0TileMAct, nAct));
-                        uint32_t diagPackedTileIdx = frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
+                        uint32_t diagPackedTileIdx =
+                            frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
                         auto l0BTensorTlaTile = tla::MakeTensor(
                             l0BRescaleTensor[l0BBufId][diagPackedTileIdx * DIAG_MMAD_TILE_ELEMS],
-                            l0BDiagTileLayoutTla, Arch::PositionL0B{});
+                            l0BDiagTileLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
                         tileMmad(
                             l0CTensorTlaTileFr,
                             l0ATensorTlaTile,
@@ -571,7 +573,7 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];   // V 段（gather 写入，A=(V)^T 读）
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];   // P 段（softmax 写入，B=(P)^T 读）
-    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // diag 块 [qS/2, qS/2]
+    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // fixed slots; sparse zN square parents
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     // RE 段：GO^T/diag 为 fp32，需 float 的 L0 buffer（PV^T 的 fp8 buffer 元素类型不匹配 float 布局）；

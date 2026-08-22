@@ -743,7 +743,8 @@ public:
             // go 仅末块使用（NZ2DN 搬入），1 份
             ubGoTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 uBufTileHelper_.goStartOffset);
-            // diag 块 L1 缓冲（每 stage 双子核各一块 16KB，3 份轮转，VEC 写 / CUBE 读）
+            // Keep one 16KB slot per subblock and three stages; VEC writes valid diagonal
+            // fractals at their original zN square-parent positions.
             for (uint32_t i = 0; i < 3; i++) {
                 l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
                     l1DiagAddrStart_ + 2 * 64 * 64 * sizeof(float) * i);
