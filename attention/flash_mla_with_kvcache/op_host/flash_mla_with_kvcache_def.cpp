@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You can not use this file except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache_def.cpp
- * \brief FlashMlaWithKvcache算子定义（训练推理归一，仅非量化，接口基准 flash_mla_with_kvcache）
+ * \brief FlashMlaWithKvcache算子定义（训练推理归一，仅非量化）
  *        输入数据类型仅支持FLOAT16和BFLOAT16。
  *        无独立 v / q_rope / k_rope 输入：rope 已合并进 q 与 k_cache（最后维 576 = nope 512 + rope 64，
  *        head_dim_v 为 k_cache 内 nope（value）段宽度，head_dim_v + 64 == 576 由 checker/infershape 保证）。
