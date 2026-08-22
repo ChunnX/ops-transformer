@@ -162,7 +162,6 @@ private:
     GM_ADDR segCountGM_{0};
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
-    GM_ADDR gradUniqueFp32GM_{0};
 
     TBuf<> pingBuf_;
     TBuf<> pongBuf_;
@@ -421,9 +420,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
                  workspaceGM_ + wsOffset, *tpipe_);
     wsOffset += sortWorkspaceSize;
 
-    gradUniqueFp32GM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalRecv_) * static_cast<uint64_t>(hiddenDim_) * sizeof(float);
-
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     uint32_t tempBufSize = statusBufSize;
@@ -436,9 +432,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         tempBufSize = coreArrayBytes;
     }
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
-    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * GRAD_SUB_BATCH,
+    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * (GRAD_SUB_BATCH + 2U),
                                    UB_ALIGN) *
-                              UB_ALIGN;
+                               UB_ALIGN;
     tpipe_->InitBuffer(gradSumBuf_, gradSumBufSize);
     uint32_t indicesBufSize = 4U * 1024U;
     if (indicesBufSize < statusBufSize) {
@@ -720,19 +716,17 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     uniqueScatter_.RunCount(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
     uint64_t tc = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_, gradUniqueFp32GM_);
-
     FinishExchangeGrad();
     SyncAll<true>();
     uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                  gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
                                   sortCompanionGM_);
 
     usaInitAndOverlapSendCycle_ = t1 - t0;
     usaSortCycle_ = t2 - t1;
-    usaDrainRecvCycle_ = t3 - tc - uniqueScatter_.usaZeroCycle_;
+    usaDrainRecvCycle_ = t3 - tc;
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
