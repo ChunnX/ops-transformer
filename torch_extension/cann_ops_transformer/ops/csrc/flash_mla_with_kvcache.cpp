@@ -86,7 +86,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
 
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
     // then int attrs, then layouts, then the output buffer.
-    ACLNN_CMD(aclnnFlashMlaMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, batchSize, maxSeqlenQ, maxSeqlenKv,
+    ACLNN_CMD(aclnnFlashMlaWithKvcacheMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, batchSize, maxSeqlenQ, maxSeqlenKv,
               numHeadsQ, numHeadsKv, headDim, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
     return output;
 }
