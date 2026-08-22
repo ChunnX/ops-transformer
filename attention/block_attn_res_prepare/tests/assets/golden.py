@@ -23,7 +23,7 @@ def block_attn_res_prepare_golden(
     """FP32 Phase 1 reference for BlockAttnResPrepare."""
     inputs_are_numpy = not hasattr(block_res, "detach")
     residual = torch.as_tensor(block_res, dtype=torch.float32)
-    valid = int(torch.as_tensor(valid_blocks, dtype=torch.int32).reshape(-1)[0].item())
+    valid = int(torch.as_tensor(valid_blocks, dtype=torch.int64).reshape(-1)[0].item())
     query = torch.as_tensor(pseudo_query, dtype=torch.float32)
     valid = max(0, min(valid, residual.shape[1]))
     if valid == 0:

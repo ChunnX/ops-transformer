@@ -7,7 +7,7 @@
 Inputs:
 
 - `block_res`: FP32 ND tensor `[T, N, D]`.
-- `valid_blocks`: INT32 ND tensor `[1]`; values below zero are clipped to zero, zero produces the empty
+- `valid_blocks`: INT64 ND tensor `[1]`; values below zero are clipped to zero, zero produces the empty
   online-softmax state, and values above `N` are clipped to `N`.
 - `pseudo_query`: FP32 ND tensor `[S, D]`.
 

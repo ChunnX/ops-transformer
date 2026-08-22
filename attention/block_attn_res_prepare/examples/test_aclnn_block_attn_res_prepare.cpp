@@ -81,7 +81,7 @@ int main()
         1.0F, 2.0F, 3.0F, 4.0F,
         2.0F, 0.0F, -1.0F, 1.0F,
     };
-    const std::vector<int32_t> validBlocksData = {2};
+    const std::vector<int64_t> validBlocksData = {2};
     const std::vector<float> pseudoQueryData = {
         1.0F, 0.0F, 0.0F, 0.0F,
         0.0F, 1.0F, 0.0F, 0.0F,
@@ -105,7 +105,7 @@ int main()
 
     ret = CreateTensor(blockResData, blockResShape, ACL_FLOAT, &blockResAddress, &blockRes);
     CHECK_RET(ret == ACL_SUCCESS, "create blockRes failed");
-    ret = CreateTensor(validBlocksData, validBlocksShape, ACL_INT32, &validBlocksAddress, &validBlocks);
+    ret = CreateTensor(validBlocksData, validBlocksShape, ACL_INT64, &validBlocksAddress, &validBlocks);
     CHECK_RET(ret == ACL_SUCCESS, "create validBlocks failed");
     ret = CreateTensor(pseudoQueryData, pseudoQueryShape, ACL_FLOAT, &pseudoQueryAddress, &pseudoQuery);
     CHECK_RET(ret == ACL_SUCCESS, "create pseudoQuery failed");

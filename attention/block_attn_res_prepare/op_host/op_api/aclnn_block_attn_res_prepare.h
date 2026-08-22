@@ -19,18 +19,18 @@ extern "C" {
 #endif
 
 /**
- * @brief Calculates the workspace needed by BlockAttnResPrepare.
+ * @brief 计算BlockAttnResPrepare所需的工作空间大小。
  *
- * @param blockRes [IN] FP32 ND tensor with shape [T, N, D].
- * @param validBlocks [IN] INT32 ND tensor with shape [1].
- * @param pseudoQuery [IN] FP32 ND tensor with shape [S, D].
- * @param numerator [OUT] FP32 ND tensor with shape [S, T, D].
- * @param logitMax [OUT] FP32 ND tensor with shape [S, T].
- * @param expSum [OUT] FP32 ND tensor with shape [S, T].
- * @param eps [IN] Positive FP32 numerical-stability constant.
- * @param workspaceSize [OUT] Required device workspace size in bytes.
- * @param executor [OUT] Executor consumed by the second-stage API.
- * @return ACLNN_SUCCESS on success.
+ * @param blockRes [输入] 形状为[T, N, D]的FP32 ND张量。
+ * @param validBlocks [输入] 形状为[1]的INT64 ND张量。
+ * @param pseudoQuery [输入] 形状为[S, D]的FP32 ND张量。
+ * @param numerator [输出] 形状为[S, T, D]的FP32 ND张量。
+ * @param logitMax [输出] 形状为[S, T]的FP32 ND张量。
+ * @param expSum [输出] 形状为[S, T]的FP32 ND张量。
+ * @param eps [输入] 用于保证数值稳定性的FP32正数。
+ * @param workspaceSize [输出] 设备侧所需的工作空间大小，单位为字节。
+ * @param executor [输出] 第二段接口使用的执行器。
+ * @return 成功时返回ACLNN_SUCCESS。
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery, aclTensor *numerator,

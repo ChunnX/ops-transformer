@@ -92,7 +92,7 @@ static_assert(sizeof(CubeTilingDataView) == 176U);
 gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
                                   const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
                                   ge::DataType blockResType = ge::DT_FLOAT,
-                                  ge::DataType validBlocksType = ge::DT_INT32,
+                                  ge::DataType validBlocksType = ge::DT_INT64,
                                   ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = 1e-6F,
                                   uint64_t coreNum = ASCEND_950_AIV_CORE_NUM)
 {
@@ -217,7 +217,7 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnava
     auto compileInfo = Ascend950CompileInfo();
     compileInfo.aivCoreNum = 1U;
     auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}},
-                             ge::DT_FLOAT, ge::DT_INT32, ge::DT_FLOAT, 1e-6F, 1U);
+                             ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, 1e-6F, 1U);
     ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
 }
 
@@ -239,7 +239,7 @@ TEST_F(BlockAttnResPrepareTilingTest, NonPositiveEpsIsRejected)
 {
     auto compileInfo = Ascend950CompileInfo();
     auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}},
-                             ge::DT_FLOAT, ge::DT_INT32, ge::DT_FLOAT, 0.0F);
+                             ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, 0.0F);
     ExecuteTestCase(context, ge::GRAPH_FAILED);
 }
 

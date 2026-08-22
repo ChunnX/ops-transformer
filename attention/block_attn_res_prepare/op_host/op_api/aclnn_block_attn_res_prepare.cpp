@@ -60,7 +60,7 @@ aclnnStatus CheckDtype(const aclTensor *blockRes, const aclTensor *validBlocks, 
                        const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
     CHECK_RET(blockRes->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(validBlocks->GetDataType() == DataType::DT_INT32, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(validBlocks->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(pseudoQuery->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numerator->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(logitMax->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID);
