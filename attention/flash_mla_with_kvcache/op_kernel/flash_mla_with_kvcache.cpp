@@ -40,6 +40,7 @@
 #include "../../../common/op_kernel/arch35/attenmask_gs1.h"
 #include "arch35/memory_copy_arch35.h"
 #include "arch35/flash_mla_with_kvcache_gm_format.h"
+#include "arch35/flash_mla_with_kvcache_type.h"
 using namespace FaVectorApi;
 using namespace optiling;
 #include "arch35/flash_mla_with_kvcache_kernel_noquant_mla.h"
@@ -161,38 +162,31 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, PSE_MODE_PSE_NONE_TYPE, ...); // 9: None
 
     fa_base_matmul::idCounterNum = 0;
-    // CubBlockType（inputLayout/outputLayout 取值来源 = 入口推导函数，与改前 PARSE_PARAMS_NoQuant
-    // 宏展开的表查值等价，由上方/下方 static_assert 互锁；KvLayoutType 仍按模板参数透传）
-    using CubBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCube<INPUT_T, float, GetQueryLayoutMla<inOutLayoutType>(),
-                                                                           s1TemplateType, s2TemplateType, dTemplateType,
-                                                                           dVTemplateType, KvLayoutType>;
-    using CubBlockDummy =
-        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<INPUT_T, float, GetQueryLayoutMla<inOutLayoutType>(), s1TemplateType,
-                                                             s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType>;
+    // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h:113-132；
+    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）。
+    // inputLayout/outputLayout 取值来源 = 入口推导函数，与改前 PARSE_PARAMS_NoQuant 宏展开的
+    // 表查值等价（static_assert 互锁）；isFd 保持 kernel 级模板参数（tiling key 第 5 字段），
+    // 仅进入 vec 聚合（FD 运行时由 metadata mLen>0 决定，FATypeFd 不含 flashDecode）。 ——
+    using FA_T_Cube = BaseApi::FATypeCube<INPUT_T, float, GetQueryLayoutMla<inOutLayoutType>(), s1TemplateType,
+                                          s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType>;
+    using CubBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCube<FA_T_Cube>;
+    using CubBlockDummy = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<FA_T_Cube>;
     using CubBlock = typename std::conditional<g_coreType == AscendC::AIC, CubBlockNormal, CubBlockDummy>::type;
 
     // VecFaBlockType
-    using VecFaBlockNormal =
-        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
-                                                       GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
-                                                       dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFd>;
-    using VecFaBlockDummy =
-        BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
-                                                            GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
-                                                            dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFd>;
+    using FA_T_Vec = BaseApi::FATypeVec<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
+                                        GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
+                                        dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFd>;
+    using VecFaBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<FA_T_Vec>;
+    using VecFaBlockDummy = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
 
-    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0）
-    using VecFdBlockNormal =
-        BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
-                                                           GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
-                                                           dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
-    using VecFdBlockDummy =
-        BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy<INPUT_T, float, OUT_T,
-                                                                GetQueryLayoutMla<inOutLayoutType>(),
-                                                                GetOutLayoutMla<inOutLayoutType>(), s1TemplateType,
-                                                                s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask,
-                                                                KvLayoutType>;
+    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0；无 isFd 聚合成员）
+    using FA_T_Fd = BaseApi::FATypeFd<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
+                                      GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
+                                      dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
+    using VecFdBlockNormal = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<FA_T_Fd>;
+    using VecFdBlockDummy = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy<FA_T_Fd>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType

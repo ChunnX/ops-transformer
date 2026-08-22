@@ -30,6 +30,7 @@
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "memory_copy_arch35.h"
+#include "flash_mla_with_kvcache_type.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -38,26 +39,27 @@ using namespace regbaseutil;
 using namespace AttentionCommon;
 
 namespace BaseApi {
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
-          bool isFd = false>
+template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockVec {
 public:
+    using INPUT_T = typename FA_T::inputType;
+    using T = typename FA_T::mmType;
+    using OUTPUT_T = typename FA_T::outputType;
+    static constexpr LayOutTypeEnum layout = FA_T::qLayout;
+    static constexpr LayOutTypeEnum outLayout = FA_T::attnOutLayout;
+    static constexpr bool hasAtten = FA_T::hasMask;
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1; // 解bank冲突，需要加1行
-    static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+    static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
 
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
-    static constexpr bool FLASH_DECODE = isFd;
+    static constexpr bool FLASH_DECODE = FA_T::flashDecode;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
     static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
@@ -492,7 +494,7 @@ public:
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
 
-        int64_t dSizeAligned64 = static_cast<int64_t>(dVTemplateType);
+        int64_t dSizeAligned64 = static_cast<int64_t>(FA_T::dVBaseSize);
 
         RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
@@ -651,7 +653,7 @@ public:
     __aicore__ inline void Bmm2ResForFDCopyOut(const FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
-        int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+        int64_t dSizeAligned64 = (int64_t)FA_T::dVBaseSize;
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         uint64_t gmOffset =
@@ -805,16 +807,13 @@ public:
     }
 };
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
-          bool isFd = false>
+template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockVecDummy {
 public:
-    static constexpr bool HAS_MASK = hasAtten;
-    static constexpr bool FLASH_DECODE = isFd;
+    using INPUT_T = typename FA_T::inputType;
+    using OUTPUT_T = typename FA_T::outputType;
+    static constexpr bool HAS_MASK = FA_T::hasMask;
+    static constexpr bool FLASH_DECODE = FA_T::flashDecode;
     using OUT_T = OUTPUT_T;
     using ConstInfoNoQuant = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
     __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockVecDummy(ConstInfoNoQuant &constInfo){};
