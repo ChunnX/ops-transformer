@@ -445,15 +445,13 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
-    // own-redirect 与 skip-own 是同一决策的两个投影, 必须同时成立(条件与 bf16 版一致, 另加量化模式约束):
-    //   生产者 own-redirect: matmul 把本 rank 分片直写输出 cGM(quant_bmm_reduce_scatter_fp8_hif8.h)
-    //   消费者 skip-own:     RS 跳过本卡拷贝(hcomm CcuContextReduceScatterMeshMem2Mem1D::DoReduceScatter)
-    // perblock 未接 own-redirect, 必须保持 skip=0 走全量 reduce。改动此谓词时必须同步改 kernel 侧同名谓词。
-    const bool ownRedirect = (commMode_ == TPL_CCU_COMM_MODE) &&
-                             (args_.rankDim == OWN_REDIRECT_RANK_DIM) &&
-                             (quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE) &&
-                             (mc2tiling::Mc2TilingUtils::GetDebugMode() == 0);
-    mc2CcTilingConfig.SetSkipLocalRankCopy(ownRedirect ? 1 : 0);
+    isPeerOnly_ = !isA2APath_ && !isMxfp4_ && commMode_ == TPL_CCU_COMM_MODE &&
+                  args_.rankDim == PEER_ONLY_RANK_SIZE &&
+                  quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE &&
+                  mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    if (isPeerOnly_) {
+        mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
@@ -565,7 +563,8 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     }
 
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
-    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
+    uint8_t commAlg = isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY :
+        (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
                                             scaleType, commAlg, commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
