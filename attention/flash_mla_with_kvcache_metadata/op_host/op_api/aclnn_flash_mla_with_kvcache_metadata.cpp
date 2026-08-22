@@ -73,7 +73,7 @@ aclnnStatus aclnnFlashMlaMetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                   aclrtStream stream)
+                                  aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
