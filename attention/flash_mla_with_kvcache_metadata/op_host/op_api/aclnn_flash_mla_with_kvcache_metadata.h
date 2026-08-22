@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_FLASH_MLA_METADATA_H
-#define ACLNN_FLASH_MLA_METADATA_H
+#ifndef ACLNN_FLASH_MLA_WITH_KVCACHE_METADATA_H
+#define ACLNN_FLASH_MLA_WITH_KVCACHE_METADATA_H
 
 #include "aclnn/aclnn_base.h"
 
@@ -19,8 +19,8 @@ extern "C" {
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
-    int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ,
-    int64_t maxSeqlenKv, int64_t maskMode, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+    int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv, const char *layoutOut,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaMetadata(void *workspace, uint64_t workspaceSize,
@@ -30,4 +30,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaMetadata(void *w
 }
 #endif
 
-#endif // ACLNN_FLASH_MLA_METADATA_H
+#endif // ACLNN_FLASH_MLA_WITH_KVCACHE_METADATA_H

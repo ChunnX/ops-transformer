@@ -36,9 +36,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_flash_mla_metadata.h"
+#include "aclnnop/aclnn_flash_mla_with_kvcache_metadata.h"
 #include "../../flash_attn_metadata/op_host/op_api/aclnn_flash_attn_metadata.h"
-#include "../op_kernel_aicpu/flash_mla_metadata.h"
+#include "../op_kernel_aicpu/flash_mla_with_kvcache_metadata.h"
 #include "securec.h"
 
 using namespace std;
@@ -340,10 +340,10 @@ static int RunNegativeCapacity(aclrtStream stream)
 
     // Fresh-process child (exec-self): a fork() child cannot re-init the acl runtime
     // (aclrtSetDevice fails with 100002 after fork), so the undersized aclnn run happens
-    // in a re-exec'd copy of this binary (FLASH_MLA_METADATA_NEGATIVE_ONLY=1 path in main).
+    // in a re-exec'd copy of this binary (FLASH_MLA_WITH_KVCACHE_METADATA_NEGATIVE_ONLY=1 path in main).
     pid_t pid = fork();
     if (pid == 0) {
-        setenv("FLASH_MLA_METADATA_NEGATIVE_ONLY", "1", 1);
+        setenv("FLASH_MLA_WITH_KVCACHE_METADATA_NEGATIVE_ONLY", "1", 1);
         execl("/proc/self/exe", "test_aclnn_flash_mla_metadata", (char *)nullptr);
         _exit(127);
     }
@@ -373,7 +373,7 @@ static void DumpMetaCompact(void *data)
 
 static void DumpMeta(void *data)
 {
-    const char *fullDump = getenv("FLASH_MLA_METADATA_FULL_DUMP");
+    const char *fullDump = getenv("FLASH_MLA_WITH_KVCACHE_METADATA_FULL_DUMP");
     if (fullDump == nullptr) {
         DumpMetaCompact(data);
         return;
@@ -475,7 +475,7 @@ static int RunNegativeRuntimeOnly()
 
 int main()
 {
-    if (getenv("FLASH_MLA_METADATA_NEGATIVE_ONLY") != nullptr) {
+    if (getenv("FLASH_MLA_WITH_KVCACHE_METADATA_NEGATIVE_ONLY") != nullptr) {
         return RunNegativeRuntimeOnly();
     }
     int32_t deviceId = 0;
