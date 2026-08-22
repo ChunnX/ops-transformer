@@ -114,7 +114,8 @@ public:
 
 private:
     __aicore__ inline void RunMatmul(
-        const QuantMatmulTilingData *tiling, uint64_t sliceStart, uint64_t sliceM, uint64_t perRankM)
+        const QuantMatmulTilingData *tiling, uint64_t sliceStart, uint64_t sliceM,
+        uint64_t perRankM, bool initializeMmad)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
@@ -138,7 +139,10 @@ private:
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
         SliceParams sliceParams{rankDim_, perRankM, sliceStart, sliceM};
         Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
-        kernel_(params);
+        if (initializeMmad) {
+            kernel_.Init(params);
+        }
+        kernel_.RunInitialized(params);
     }
 
     __aicore__ inline void RunMatmulReduceScatterSlices(
@@ -161,7 +165,7 @@ private:
             // The kernel presents the same local-M interval from every rank as
             // one logical M and splits an MM block only when it crosses a rank
             // boundary. One scheduler can therefore cover all rank slices.
-            RunMatmul(tiling, sliceStart, sliceM, perRankM);
+            RunMatmul(tiling, sliceStart, sliceM, perRankM, sliceIdx == 0);
             AscendC::SyncAll();
             GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankDim_ * rankN * sizeof(CType);
             GM_ADDR recvBuffer = yGM_ +
@@ -182,7 +186,6 @@ private:
         const uint32_t slot = issuedHandleCount_ % HCOMM_PIPELINE_DEPTH;
         if (issuedHandleCount_ >= HCOMM_PIPELINE_DEPTH) {
             hccl_.Wait(pipelineHandles_[slot]);
-            AscendC::SyncAll();
         }
         pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
             sendBuffer, recvBuffer, recvCount,

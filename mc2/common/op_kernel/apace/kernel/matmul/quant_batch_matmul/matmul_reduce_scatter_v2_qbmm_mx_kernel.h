@@ -105,20 +105,40 @@ public:
             return;
         }
 
-        const auto &sp = params.sliceParams;
-        const uint64_t logicalM = sp.sliceM * sp.rankDim;
-        if (sp.rankDim == 0 || sp.sliceM == 0 || sp.perRankM == 0 ||
-            sp.sliceStart + sp.sliceM > sp.perRankM ||
-            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) != logicalM) {
+        if (!IsValid(params)) {
+            return;
+        }
+
+        Init(params);
+        RunInitialized(params);
+    }
+
+    // All head slices (and all tail slices) share the same problem shape and
+    // QBMM tiling. Hcomm initializes BlockMmad once per group, then only
+    // updates the GM slice addresses between calls.
+    __aicore__ inline void Init(const Params &params)
+    {
+        if ASCEND_IS_AIV {
             return;
         }
 
         const bool isBias = params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED;
-        BlockScheduler scheduler(params.problemShape, params.schedulerParams);
         BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN,
                                params.qbmmParams.baseK, 0};
         mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
                    params.qbmmParams.dbL0C > 1, 1);
+    }
+
+    __aicore__ inline void RunInitialized(const Params &params)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if (!IsValid(params)) {
+            return;
+        }
+
+        BlockScheduler scheduler(params.problemShape, params.schedulerParams);
         Process(params, scheduler);
     }
 
@@ -128,6 +148,15 @@ public:
     }
 
 private:
+    __aicore__ inline bool IsValid(const Params &params) const
+    {
+        const auto &sp = params.sliceParams;
+        const uint64_t logicalM = sp.sliceM * sp.rankDim;
+        return sp.rankDim != 0 && sp.sliceM != 0 && sp.perRankM != 0 &&
+               sp.sliceStart + sp.sliceM <= sp.perRankM &&
+               static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) == logicalM;
+    }
+
     template <typename TensorScaleB>
     __aicore__ inline void SetScaleL2Cache(
         const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)

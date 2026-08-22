@@ -48,6 +48,10 @@ constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
 constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
 constexpr uint64_t APACE_RS_LOGICAL_BASE_M = 256;
 constexpr uint64_t APACE_RS_CUBE_M_ALIGN = 16;
+// Four stages are sufficient to warm up, overlap and drain the depth-2
+// Matmul/ReduceScatter pipeline. More stages mostly add BlockScheduler,
+// SyncAll and HCCL task-launch overhead for this compute-first operator.
+constexpr uint64_t APACE_RS_MAX_PIPELINE_STAGE = 4;
 constexpr uint64_t PERTENSOR_SCALE_DIM = 1;
 constexpr uint64_t PERBLOCK_SCALE_DIM = 2;
 constexpr uint64_t MX_SCALE_DIM = 3;
@@ -1123,7 +1127,10 @@ void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_
     const uint64_t perRankAlign = mc2tiling::AlignUp(
         Ops::Base::CeilDiv(APACE_LOGICAL_M_ALIGN, rankDim), APACE_CUBE_M_ALIGN);
     const bool shortTileAtBack = cutRes.shortTileAtBack;
-    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
+    const uint64_t formulaLongTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
+    const uint64_t minTileForPipeline = mc2tiling::AlignUp(
+        Ops::Base::CeilDiv(mValue, APACE_RS_MAX_PIPELINE_STAGE), perRankAlign);
+    const uint64_t longTile = std::max(formulaLongTile, minTileForPipeline);
     if (longTile >= mValue) {
         cutRes.longTileLen = mValue;
         cutRes.numLongTile = 1;
@@ -1140,9 +1147,10 @@ void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_
     cutRes.shortTileAtBack = shortTileAtBack;
     cutRes.totalTileCnt = cutRes.numLongTile + cutRes.numShortTile;
     OP_LOGD(opName_,
-            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, "
+            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, maxStage=%lu, "
             "long=%lu x %lu, short=%lu x %lu, shortAtBack=%d",
-            mValue, rankDim, perRankAlign, cutRes.longTileLen, cutRes.numLongTile,
+            mValue, rankDim, perRankAlign, APACE_RS_MAX_PIPELINE_STAGE,
+            cutRes.longTileLen, cutRes.numLongTile,
             cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 // 注册Tiling类
