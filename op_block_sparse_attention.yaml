@@ -1,0 +1,252 @@
+api: pytorch
+api_type: aclnn_blocksparseattention
+aclnn_api_type: aclnn_blocksparseattentioninputprocess
+version: v2.1
+name: torch.block_sparse_attention
+aclnn_name: aclnnBlockSparseAttention
+expected_error_msg: null
+dtype_numbers: 50
+extra_numbers: 0
+generate: generate_block_sparse_attention
+standard:
+  acc:
+      cv_fused_double_benchmark:
+        max_re_ratio: 10
+        avg_re_ratio: 2
+        root_mean_squared_ratio: 2
+inputs:
+  - name: query
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, bf16 ]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      max_length: 1048576
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+  - name: key
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, bf16 ]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      max_length: 1048576
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+  - name: value
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, bf16 ]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      max_length: 1048576
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+  - name: blockSparseMask
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int8 ]
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values:
+        values: [ [1, 50] ]
+  - name: attenMask
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values:
+        values: [ [1, 50] ]
+  - name: blockShape
+    type: attr_tuple
+    required: true
+    dtypes:
+      values: [ int ]
+    tuple_numbers:
+      values: [ 2 ]
+    ranges:
+      valid:
+        values: [ [1, 1024] ]
+      invalid:
+        values: [ [1, 1024] ]
+  - name: actualSeqLengths
+    type: attr_tuple
+    required: true
+    dtypes:
+      values: [ int ]
+    tuple_numbers:
+      values: [ [ 1, 128 ] ]
+    ranges:
+      valid:
+        values: [ [ 1, 16384 ] ]
+      invalid:
+        values: [ [ 1, 16384 ] ]
+  - name: actualSeqLengthsKv
+    type: attr_tuple
+    required: true
+    dtypes:
+      values: [ int ]
+    tuple_numbers:
+      values: [ [ 1, 128 ] ]
+    ranges:
+      valid:
+        values: [ [ 1, 16384 ] ]
+      invalid:
+        values: [ [ 1, 16384 ] ]
+  - name: blockTable
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 2 ]
+      dim_values:
+        values: [ [1, 8] ]
+      max_length: 1024000
+  - name: qInputLayout
+    type: attr
+    required: true
+    dtypes:
+      values: [ string ]
+    ranges:
+      valid:
+        values: [ "TND", "BNSD" ]
+      invalid:
+        values: [ "TND", "BNSD" ]
+  - name: kvInputLayout
+    type: attr
+    required: true
+    dtypes:
+      values: [ string ]
+    ranges:
+      valid:
+        values: [ "TND", "BNSD" ]
+      invalid:
+        values: [ "TND", "BNSD" ]
+  - name: numKeyValueHeads
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ [1, 24] ]
+      invalid:
+        values: [ [1, 24] ]
+  - name: maskType
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 0 ]
+      invalid:
+        values: [ 0 ]
+  - name: scaleValue
+    type: attr
+    required: true
+    dtypes:
+      values: [ double ]
+    ranges:
+      valid:
+        values: [ [0.0, 1.0] ]
+      invalid:
+        values: [ [0.0, 1.0] ]
+  - name: innerPrecise
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 0, 1, 4 ]
+      invalid:
+        values: [ 0, 1, 4 ]
+  - name: blockSize
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 128 ]
+      invalid:
+        values: [ 128 ]
+  - name: preTokens
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 128 ]
+      invalid:
+        values: [ 128 ]
+  - name: nextTokens
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 128 ]
+      invalid:
+        values: [ 128 ]
+  - name: softmaxLseFlag
+    type: attr
+    required: true
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 0, 1 ]
+      invalid:
+        values: [ 0, 1 ]
+  - name: attentionOut
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16 ]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+    ranges:
+      valid:
+        values: [[0]]
+      invalid:
+        values: [[0]]
+  - name: softmaxLse
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp32 ]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+    ranges:
+      valid:
+        values: [[0]]
+      invalid:
+        values: [[0]]
