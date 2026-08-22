@@ -206,8 +206,8 @@ bool IsWeightQuant(const DataType &xDtype, const DataType &weightDtype)
 
 bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
 {
-    const bool supportedApi = gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
-                              gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz;
+    const bool supportedApi =
+        gmmParams.apiVersion == gmm::GMMApiVersion::V5 || gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz;
     if (!supportedApi || gmmParams.xDtype != DataType::DT_INT8 || gmmParams.weight == nullptr ||
         gmmParams.weight->Size() == 0 || (*gmmParams.weight)[0] == nullptr ||
         (*gmmParams.weight)[0]->GetDataType() != DataType::DT_INT4 || gmmParams.scaleOptional == nullptr ||
@@ -217,13 +217,12 @@ bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
     return (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
 }
 
-bool IsS8S4PseudoQuantWeightNz(const aclTensorList *x, const aclTensorList *weight,
-                               const aclTensorList *scaleOptional)
+bool IsS8S4PseudoQuantWeightNz(const aclTensorList *x, const aclTensorList *weight, const aclTensorList *scaleOptional)
 {
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-           x->Size() == 1 && (*x)[0] != nullptr && (*x)[0]->GetDataType() == DataType::DT_INT8 &&
-           weight->Size() == 1 && (*weight)[0] != nullptr && (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
-           scaleOptional != nullptr && scaleOptional->Size() == 1 && (*scaleOptional)[0] != nullptr &&
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && x->Size() == 1 && (*x)[0] != nullptr &&
+           (*x)[0]->GetDataType() == DataType::DT_INT8 && weight->Size() == 1 && (*weight)[0] != nullptr &&
+           (*weight)[0]->GetDataType() == DataType::DT_INT4 && scaleOptional != nullptr && scaleOptional->Size() == 1 &&
+           (*scaleOptional)[0] != nullptr &&
            ((*scaleOptional)[0]->GetDataType() == DataType::DT_UINT64 ||
             (*scaleOptional)[0]->GetDataType() == DataType::DT_INT64);
 }
@@ -507,22 +506,34 @@ static aclnnStatus CheckTensorListNotNull(const aclTensorList *tensorList, const
 {
     uint64_t tensorListLength = tensorList->Size();
     for (size_t i = 0; i < tensorListLength; ++i) {
-        CHECK_COND((*tensorList)[i] != nullptr, ACLNN_ERR_PARAM_NULLPTR, "%s[%lu] is null, which is not supported.",
-                   tensorType.c_str(), i);
+        if ((*tensorList)[i] == nullptr) {
+            const std::string tensorName = tensorType + "[" + std::to_string(i) + "]";
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", tensorName.c_str(), "does not support nullptr");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
     }
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus CheckNotNull(const aclTensorList *x, const aclTensorList *weight, const aclTensorList *y)
 {
-    CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "X must not be nullptr.");
+    if (x == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "x", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(x->Size() != 0, ACLNN_ERR_PARAM_INVALID, "X must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(x, "X") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "X must not be nullptr.");
-    CHECK_COND(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Weight must not be nullptr.");
+    if (weight == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "weight", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(weight->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Weight must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(weight, "Weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Weight must not be nullptr.");
-    CHECK_COND(y != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Y must not be nullptr.");
+    if (y == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "y", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(y->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Y must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(y, "Y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Y must not be nullptr.");
     return ACLNN_SUCCESS;
@@ -2737,10 +2748,9 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
             ((IsQuant(params.xDtype, weightDtype) &&
               (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-            (params.apiVersion == gmm::GMMApiVersion::WeightNz &&
-             IsWeightQuant(params.xDtype, weightDtype)) ||
-            (IsS8S4PseudoQuantDataFlow(params) &&
-             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
+             (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)) ||
+             (IsS8S4PseudoQuantDataFlow(params) &&
+              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
             for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
                 (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
             }
@@ -2758,10 +2768,9 @@ static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpE
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-          ((IsQuant(xDtype, weightDtype) &&
-            (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
-          (IsS8S4PseudoQuantDataFlow(params) &&
+          ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+           (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+           (IsS8S4PseudoQuantDataFlow(params) &&
             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)))) {
         CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "Contiguous weight failed."); // make w contiguous
@@ -2913,10 +2922,9 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        ((IsQuant(xDtype, weightDtype) &&
-          (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-        (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
-        (IsS8S4PseudoQuantDataFlow(params) &&
+        ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+         (IsS8S4PseudoQuantDataFlow(params) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
         CHECK_COND(wqbmmNzShapes.size() == (*params.weight).Size(), ACLNN_ERR_PARAM_INVALID,
                    "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),
@@ -2983,8 +2991,11 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
             uniqueExecutor->ConvertToTensor(params.groupListOptional, op::ToOpDataType(ACL_INT64));
         CHECK_RET(params.groupTensorOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    auto perTokenScaleOptional =
-        (*params.perTokenScaleOptional)[0]->IsEmpty() ? nullptr : (*params.perTokenScaleOptional)[0];
+    const aclTensor *perTokenScaleOptional = nullptr;
+    if (params.perTokenScaleOptional != nullptr && params.perTokenScaleOptional->Size() > 0 &&
+        (*params.perTokenScaleOptional)[0] != nullptr && !(*params.perTokenScaleOptional)[0]->IsEmpty()) {
+        perTokenScaleOptional = (*params.perTokenScaleOptional)[0];
+    }
     // Invoke l0 operator GroupedMatmul for calculation.
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,
@@ -3230,14 +3241,12 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
         }
     }
     if (IsS8S4PseudoQuantWeightNz(x, weight, scaleOptional)) {
-        bool hasOffset = offsetOptional != nullptr && offsetOptional->Size() == 1 &&
-                         (*offsetOptional)[0] != nullptr;
+        bool hasOffset = offsetOptional != nullptr && offsetOptional->Size() == 1 && (*offsetOptional)[0] != nullptr;
         if (hasOffset) {
             const op::Shape &offsetShape = (*offsetOptional)[0]->GetViewShape();
             hasOffset = !(offsetShape.GetDimNum() == 1 && offsetShape.GetDim(0) == 0);
         }
-        CHECK_COND((hasOffset && quantGroupSize == 0) ||
-                       (!hasOffset && quantGroupSize == QUANT_GROUP_SIZE_S8S4),
+        CHECK_COND((hasOffset && quantGroupSize == 0) || (!hasOffset && quantGroupSize == QUANT_GROUP_SIZE_S8S4),
                    ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when S8S4 quant through the WeightNz interface, quantGroupSize must be 0 for "
                    "per-channel offset mode or 256 for symmetric per-group mode.",

@@ -32,8 +32,7 @@ namespace optiling {
 
 QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmBasicApiTiling(context)
-{
-}
+{}
 
 bool QGMMInplaceAddBasicApiTiling::IsCapable()
 {
@@ -47,7 +46,7 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
            (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
-                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+                                 static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
@@ -61,35 +60,30 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x1", "nullptr",
-                                                      "xStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "x1", "does not support nullptr"),
                 return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
 
     auto wStorageShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_IF(wStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x2", "nullptr",
-                                                      "wStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "x2", "does not support nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
 
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale2", "nullptr",
-                                                      "scaleStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "scale2", "does not support nullptr"),
                 return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(
         scaleDimNum < 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum),
-                                     "positive integer"),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum), "positive integer"),
         return false);
 
     auto x1ScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale1", "nullptr",
-                                                      "x1ScaleStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "scale1", "does not support nullptr"),
                 return false);
     const gert::Shape &x1ScaleShape = x1ScaleStorageShape->GetOriginShape();
 
@@ -172,4 +166,4 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling
