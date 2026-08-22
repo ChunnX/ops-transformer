@@ -25,7 +25,6 @@ def gen_input_data(group_num, e, m, k, n):
     weight = np.random.uniform(-5, 5, [e, k, n]).astype(np.int8)
     xScale = np.random.uniform(-5, 5, [m,]).astype(np.float32)
     weightScale = np.random.uniform(-5, 5, [e, n]).astype(np.float32)
-    y = np.zeros([m, n // 2], dtype=np.int8)
     groupedList = np.linspace(1, m, group_num, dtype=np.int64)
     return x, weight, xScale, weightScale, y, groupedList
 
