@@ -2234,12 +2234,12 @@ ge::graphStatus DequantChecker::CheckStrideForAntiquant(const FiaTilingInfo &fia
             return ge::GRAPH_SUCCESS;
         }
         if (CheckTensorContiguous(dimNum, shape, strides, dimIndex) != ge::GRAPH_SUCCESS) {
-            if (isBbhLayout) {
+            if (isBbhLayout && dimIndex != 0) {
                 OP_LOGE(fiaInfo.opName,
                     "In PA BBH antiquant scenarios, %s only supports non-contiguous in dimension 0, but got dimension %d.",
                     tensorName, dimIndex);
                 return ge::GRAPH_FAILED;
-            } else if (dimIndex != 0 && dimIndex != 1) {
+            } else if (!isBbhLayout && dimIndex != 0 && dimIndex != 1) {
                 OP_LOGE(fiaInfo.opName,
                     "In PA BNBD/NZ antiquant scenarios, %s only supports non-contiguous in dimensions 0/1, but got dimension %d.",
                     tensorName, dimIndex);
