@@ -25,9 +25,6 @@ constexpr double scatterLargerNKCommGrowRatio1 = 1.5;
 constexpr double scatterLargerNKCommGrowRatio2 = 1.2;
 constexpr uint64_t ONE_KILO = 1024;
 constexpr double UNBALANCE_RATIO = 1.5;
-constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
-constexpr uint64_t APACE_RS_LOGICAL_BASE_M = 256;
-constexpr uint64_t APACE_RS_CUBE_M_ALIGN = 16;
 
 class MMPlusReduceScatter : public OneCalcOneCommBase {
 public:
@@ -35,38 +32,10 @@ public:
     // Constructor
     explicit MMPlusReduceScatter(
         const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-        SocVersion inputSocVersion = SocVersion::SOC910_B, bool deterministicFlag = false,
-        bool isApaceMxFp4 = false, bool usingApaceLogicalM = false)
+        SocVersion inputSocVersion = SocVersion::SOC910_B, bool deterministicFlag = false)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
           deterministicSoc910B_(deterministicFlag)
     {
-        // The generic formula model does not classify FLOAT4 as quant Matmul.
-        // Calibrate only the APACE MXFP4 route. The default false value keeps
-        // every legacy constructor call and its behavior unchanged.
-        if (isApaceMxFp4) {
-            matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
-            matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
-            matmulPerf_.calcType_ = MatmulCalcType::QUANT;
-            matmulPerf_.mmShapeInfo_.computesPerCycle =
-                APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
-            clusterInfo_.inMatrixADtypeSize = matmulPerf_.mmShapeInfo_.inMatrixADtypeSize;
-            clusterInfo_.inMatrixBDtypeSize = matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize;
-            clusterInfo_.computesPerCycle = matmulPerf_.mmShapeInfo_.computesPerCycle;
-        }
-        if (usingApaceLogicalM) {
-            // The APACE MMRS kernel assembles one local-M slice from every
-            // rank into a single scheduler problem. Convert the logical 256
-            // row QBMM base to a per-rank length for formula partitioning.
-            // Defaults keep every legacy caller on the original baseM=128.
-            const uint64_t safeRankDim = std::max(static_cast<uint64_t>(inputRankDim), uint64_t{1});
-            const uint64_t logicalBasePerRank =
-                (APACE_RS_LOGICAL_BASE_M + safeRankDim - uint64_t{1}) / safeRankDim;
-            const uint64_t perRankBaseM = mc2tiling::AlignUp(
-                logicalBasePerRank, APACE_RS_CUBE_M_ALIGN);
-            matmulPerf_.mmShapeInfo_.baseM = perRankBaseM;
-            clusterInfo_.baseM = perRankBaseM;
-            tilingM_.SetAlignLength(perRankBaseM);
-        }
         commPerf_.SetCommShapeLen(clusterInfo_.nValue);
         commPerf_.SetCommDTypeSize(clusterInfo_.outMatrixCDtypeSize);
         if (deterministicSoc910B_) { // 通信拟合适配确定性算法

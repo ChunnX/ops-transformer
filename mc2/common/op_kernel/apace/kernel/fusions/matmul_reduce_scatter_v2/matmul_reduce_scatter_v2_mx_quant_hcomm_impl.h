@@ -48,8 +48,9 @@ public:
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
         ProblemShape, 0, LayoutA, LayoutB, AType>;
-    using BlockMmad = Blaze::Gemm::Block::QmmMxBlockMmadFragment<
-        0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
     using Kernel = Blaze::Gemm::Kernel::MatmulReduceScatterV2QbmmMxKernel<
         ProblemShape, BlockMmad, BlockScheduler>;
     using Params = typename Kernel::Params;
@@ -57,7 +58,9 @@ public:
     using L1Params = typename Kernel::L1Params;
     using BlockSchedulerParams = typename Kernel::BlockSchedulerParams;
     using QBMMTiling = typename Kernel::QBMMTiling;
-    using FragmentParams = typename Kernel::FragmentParams;
+    using SliceParams = typename Kernel::SliceParams;
+
+    static constexpr uint32_t APACE_MAX_RANK_DIM = 8U;
 
     // Follow the proven AllToAll Hcomm pattern: keep the communication dtype
     // as an integral compile-time constant, then cast at the HCCL call site.
@@ -90,7 +93,7 @@ public:
         const auto &commTiling = tilingData_->commTilingData;
         const uint64_t tileCount = static_cast<uint64_t>(commTiling.splitAxisTileCnt);
         const uint64_t tailCount = static_cast<uint64_t>(commTiling.splitAxisTailCnt);
-        const bool invalidTiling = rankDim_ == 0 || rankDim_ > Apace::Basic::MAX_FRAGMENT_COUNT ||
+        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM ||
             (tileCount > 0 && tilingData_->tileQbmmTilingData.m !=
                 static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankDim_) ||
             (tailCount > 0 && tilingData_->tailQbmmTilingData.m !=
@@ -120,7 +123,10 @@ private:
         mmParams.scaleAGmAddr = x1ScaleGM_;
         mmParams.bGmAddr = bGM_;
         mmParams.scaleBGmAddr = x2ScaleGM_;
-        mmParams.cGmAddr = workspaceGM_;
+        // Each communication slice owns one contiguous logical-M workspace
+        // interval: [rank0 slice][rank1 slice]...[rankR-1 slice].
+        mmParams.cGmAddr = workspaceGM_ +
+            sliceStart * rankDim_ * static_cast<uint64_t>(tiling->n) * sizeof(CType);
         mmParams.biasGmAddr = biasGM_;
         L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
                           tiling->scaleKL1, tiling->nBufferNum};
@@ -130,8 +136,8 @@ private:
         QBMMTiling qbmmParams{
             tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
-        FragmentParams fragmentParams{rankDim_, perRankM, sliceStart, sliceM};
-        Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams, fragmentParams};
+        SliceParams sliceParams{rankDim_, perRankM, sliceStart, sliceM};
+        Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
         kernel_(params);
     }
 
@@ -152,9 +158,9 @@ private:
             const uint64_t sliceStart = isTail
                 ? tileCnt * tileM + static_cast<uint64_t>(sliceIdx) * tailM
                 : static_cast<uint64_t>(sliceIdx) * tileM;
-            // FragmentTensor presents the same local-M interval from every
-            // rank as one logical M. A single scheduler can therefore fill all
-            // AIC cores even when one rank's slice is small.
+            // The kernel presents the same local-M interval from every rank as
+            // one logical M and splits an MM block only when it crosses a rank
+            // boundary. One scheduler can therefore cover all rank slices.
             RunMatmul(tiling, sliceStart, sliceM, perRankM);
             AscendC::SyncAll();
             GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankDim_ * rankN * sizeof(CType);

@@ -45,6 +45,9 @@ constexpr uint64_t MXFP8_SIZE_N = 1;
 constexpr uint64_t MX_SCALE_OFFSET = 64;
 constexpr uint64_t EVEN_ALIGN = 2;
 constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
+constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
+constexpr uint64_t APACE_RS_LOGICAL_BASE_M = 256;
+constexpr uint64_t APACE_RS_CUBE_M_ALIGN = 16;
 constexpr uint64_t PERTENSOR_SCALE_DIM = 1;
 constexpr uint64_t PERBLOCK_SCALE_DIM = 2;
 constexpr uint64_t MX_SCALE_DIM = 3;
@@ -79,6 +82,42 @@ constexpr uint32_t COMMMODE_INDEX = 10;
 constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8,
     ge::DataType::DT_FLOAT4_E2M1};
+
+void ConfigureApaceFormulaModel(MMPlusReduceScatter &formulaTiling, uint32_t rankDim, bool isMxfp4)
+{
+    // Keep all APACE calibration in the APACE caller.  The shared
+    // MMPlusReduceScatter class and every legacy constructor remain unchanged.
+    if (isMxfp4) {
+        formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixADtypeSize = 1;
+        formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize = 1;
+        formulaTiling.matmulPerf_.calcType_ = MatmulCalcType::QUANT;
+        formulaTiling.matmulPerf_.mmShapeInfo_.computesPerCycle =
+            APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO * MatmulPerformance::COMPUTES_PER_CYCLE;
+        formulaTiling.clusterInfo_.inMatrixADtypeSize =
+            formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixADtypeSize;
+        formulaTiling.clusterInfo_.inMatrixBDtypeSize =
+            formulaTiling.matmulPerf_.mmShapeInfo_.inMatrixBDtypeSize;
+        formulaTiling.clusterInfo_.computesPerCycle =
+            formulaTiling.matmulPerf_.mmShapeInfo_.computesPerCycle;
+    }
+
+    const uint64_t safeRankDim = std::max(static_cast<uint64_t>(rankDim), uint64_t{1});
+    const uint64_t logicalBasePerRank =
+        Ops::Base::CeilDiv(APACE_RS_LOGICAL_BASE_M, safeRankDim);
+    const uint64_t perRankBaseM = mc2tiling::AlignUp(logicalBasePerRank, APACE_RS_CUBE_M_ALIGN);
+    formulaTiling.matmulPerf_.mmShapeInfo_.baseM = perRankBaseM;
+    formulaTiling.clusterInfo_.baseM = perRankBaseM;
+    formulaTiling.tilingM_.SetAlignLength(perRankBaseM);
+
+    // The base constructor calculated minTileLen for the legacy model. Reset
+    // that value to the APACE base and rebuild the two thresholds after the
+    // APACE-only model fields have been calibrated.
+    formulaTiling.rankTileNum_ = formulaTiling.commPerf_.GetRankTileNum();
+    formulaTiling.tilingM_.SetMinLenByMin(perRankBaseM);
+    formulaTiling.tilingM_.SetMinLenByMax(formulaTiling.commPerf_.GetLinearThresholdLen());
+    formulaTiling.tilingM_.SetMinLenByMax(
+        formulaTiling.matmulPerf_.GetLinearThresholdLen(formulaTiling.rankTileNum_));
+}
 } // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -1042,7 +1081,8 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 {
     if (usingApaceImpl_) {
         MMPlusReduceScatter reduceScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER,
-                                                 SocVersion::SOC950, false, isMxfp4_, true);
+                                                 SocVersion::SOC950, false);
+        ConfigureApaceFormulaModel(reduceScatterTiling, args_.rankDim, isMxfp4_);
         reduceScatterTiling.GetTiling();
         CutResult cutRes = reduceScatterTiling.tilingM_.cutRes;
         AlignCutResForApace(cutRes, args_.mValue);
