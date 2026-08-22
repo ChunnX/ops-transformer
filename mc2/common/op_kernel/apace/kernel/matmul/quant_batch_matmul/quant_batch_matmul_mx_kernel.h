@@ -67,6 +67,9 @@ public:
         Te::FrameLayoutFormat<LayoutScaleB, Std::Int<C0_SIZE>>>;
     using MakeLayoutBias = Te::FrameLayoutFormat<LayoutBias, Std::Int<C0_SIZE>>;
 
+    using BlockShape = Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = Te::Coord<int64_t, int64_t, int64_t, int64_t>;
+
     struct Params {
         ProblemShape problemShape;
         struct BlockMmadParams {
