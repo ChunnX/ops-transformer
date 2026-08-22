@@ -141,6 +141,7 @@ __aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig &workspac
         xLowHalfTensor2 = tempBuff.GetWithOffset<half>(xLowHalfOffset, xLowHalfOffset);
         xLowI16Tensor = vecOutQueue0F.AllocTensor<int16_t>();
 
+        PipeBarrier<PIPE_V>();
         Duplicate(xLowI16Tensor, static_cast<int16_t>(0x0F0F), MASK); // get rid of high 4 bits in every int8
         PipeBarrier<PIPE_V>();
         const size_t LEN_VK = (vK / 2) / 128;
@@ -166,11 +167,13 @@ __aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig &workspac
             DataCopy(xTensor, xGM[absStartAddr], vK);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);  // 3
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0); // 3
+            PipeBarrier<PIPE_V>();
             Cast(xHighHalfTensor, xTensor, AscendC::RoundMode::CAST_NONE, vK);
             PipeBarrier<PIPE_V>();
             Muls(xHighHalfTensor, xHighHalfTensor, ONE_SIXTEENTH, vK);
             PipeBarrier<PIPE_V>();
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID1); // 2
+            PipeBarrier<PIPE_V>();
             Cast(xHighI4Tensor, xHighHalfTensor, AscendC::RoundMode::CAST_FLOOR, vK);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);  // 4
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0); // 4
@@ -179,22 +182,27 @@ __aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig &workspac
 
             // 低四位处理开始
             SetFlag<HardEvent::MTE3_V>(EVENT_ID1); // 2
+            PipeBarrier<PIPE_V>();
             And(xLowHalfTensor.ReinterpretCast<int16_t>(), xTensor.ReinterpretCast<int16_t>(), xLowI16Tensor, LEN_128,
                 LEN_VK, {1, 1, 1, 8, 8, 0});
             if (LAST_LEN_VK > 0) {
+                PipeBarrier<PIPE_V>();
                 And(xLowHalfTensor[LEN_VK * LEN_128].ReinterpretCast<int16_t>(),
                     xTensor[LEN_VK * LEN_128 * TWO].ReinterpretCast<int16_t>(), xLowI16Tensor, LAST_LEN_VK, 1,
                     {1, 1, 1, 8, 8, 0});
             }
             PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE2>(EVENT_ID0); // 0
+            PipeBarrier<PIPE_V>();
             Cast(xLowHalfTensor2.ReinterpretCast<half>(), xLowHalfTensor.ReinterpretCast<int8_t>(),
                  AscendC::RoundMode::CAST_NONE, vK);
             PipeBarrier<PIPE_V>();
             const half MINUS_EIGHT = static_cast<half>(-8);
+            PipeBarrier<PIPE_V>();
             Adds(xHighHalfTensor, xLowHalfTensor2, MINUS_EIGHT, vK);
             PipeBarrier<PIPE_V>();
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID0); // 1
+            PipeBarrier<PIPE_V>();
             Cast(xLowI4Tensor, xHighHalfTensor.ReinterpretCast<half>(), AscendC::RoundMode::CAST_NONE, vK);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID1);  // 5
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID1); // 5
