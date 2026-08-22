@@ -114,7 +114,6 @@ public:
     static constexpr uint32_t DIAG_PACKED_COLS = 16;
     static constexpr uint32_t DIAG_SUB_BLOCK_ELEMS = DIAG_SUB_BLOCK_SIZE * DIAG_PACKED_COLS;
     static constexpr uint32_t DIAG_MMAD_TILE_SIZE = 16;
-    static constexpr uint32_t DIAG_MMAD_TILE_ELEMS = DIAG_MMAD_TILE_SIZE * DIAG_MMAD_TILE_SIZE;
     static constexpr uint32_t DIAG_MMAD_TILES_PER_SUB_BLOCK = DIAG_SUB_BLOCK_SIZE / DIAG_MMAD_TILE_SIZE;
     // 双子核块宽必须与 S_trans 一致：FP8 为 RoundUp(rowNum, 64) / 2，非 FP8 为 /32。
     static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;
@@ -412,36 +411,31 @@ public:
             uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum;
             uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
             uint32_t l0BEventId = l0BBufId + 2;
-            // Keep the known-correct per-16x16 L1->L0B path. The L1 parent is packed
-            // as zN [16, diagGrpRound], with one diagonal tile every 16 columns.
-            auto l0BDiagTileLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(
-                DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE);
+            // Copy the smallest contiguous prefix that contains the last valid packed
+            // tile. Fixed 4KB group slots can leave holes between the two groups; the
+            // holes are copied but are never selected by the MMAD loop below.
+            uint32_t lastGrpIdx = frGrpNum - 1;
+            uint32_t lastGrpColStart = lastGrpIdx * qHalf;
+            uint32_t lastGrpCols = rowNum - lastGrpColStart;
+            uint32_t lastGrpTileCount = CeilDiv(lastGrpCols, DIAG_MMAD_TILE_SIZE);
+            uint32_t diagPackedTileCount =
+                lastGrpIdx * DIAG_MMAD_TILES_PER_SUB_BLOCK + lastGrpTileCount;
+            uint32_t diagPackedRows = diagPackedTileCount * DIAG_MMAD_TILE_SIZE;
+
+            auto l1DiagStageLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
+                DIAG_PACKED_COLS, diagPackedRows);
+            auto l1DiagStageTensorTla = tla::MakeTensor(
+                l1DiagTensor[l1DiagBufId], l1DiagStageLayoutTla,
+                tla::MakeCoord(0U, 0U), Arch::PositionL1{});
+            auto l0BDiagStageLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(
+                diagPackedRows, DIAG_PACKED_COLS);
+            auto l0BDiagStageTensorTla = tla::MakeTensor(
+                l0BRescaleTensor[l0BBufId], l0BDiagStageLayoutTla,
+                tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
+
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
             CopyL1ToL0BRescale copyL1ToL0BRescale;
-            for (uint32_t frGrp = 0; frGrp < frGrpNum; frGrp++) {
-                uint32_t grpColStart = frGrp * qHalf;
-                uint32_t grpColEnd = (frGrp == frGrpNum - 1) ? rowNum : (frGrp + 1) * qHalf;
-                uint32_t grpCols = grpColEnd - grpColStart;
-                uint32_t diagGrpRound = RoundUp(grpCols, DIAG_MMAD_TILE_SIZE);
-                auto l1DiagGrpLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
-                    DIAG_PACKED_COLS, diagGrpRound);
-                auto l1DiagGrpTensorTla = tla::MakeTensor(
-                    l1DiagTensor[l1DiagBufId][
-                        frGrp * DIAG_SUB_BLOCK_ELEMS],
-                    l1DiagGrpLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL1{});
-                uint32_t nGrpAct = CeilDiv(grpCols, DIAG_MMAD_TILE_SIZE);
-                for (uint32_t j = 0; j < nGrpAct; j++) {
-                    auto l1DiagTileTensorTla = GetTile(l1DiagGrpTensorTla,
-                        tla::MakeCoord(0U, j * DIAG_MMAD_TILE_SIZE),
-                        tla::MakeShape(DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE));
-                    uint32_t diagPackedTileIdx =
-                        frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
-                    auto l0BDiagTileTensorTla = tla::MakeTensor(
-                        l0BRescaleTensor[l0BBufId][diagPackedTileIdx * DIAG_MMAD_TILE_ELEMS],
-                        l0BDiagTileLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
-                    copyL1ToL0BRescale(l0BDiagTileTensorTla, l1DiagTileTensorTla);
-                }
-            }
+            copyL1ToL0BRescale(l0BDiagStageTensorTla, l1DiagStageTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
 
             for (uint32_t frGrp = 0; frGrp < frGrpNum; frGrp++) {
@@ -487,8 +481,8 @@ public:
                         // 批尾块实际列（批宽非 16 倍数时最后一列块 <16；mmad 的 k/n 用实际值，
                         // B 的 16 行中 k 方向只消费前 nAct 行——块宽 ≥ 批宽，不越界）
                         uint32_t nAct = (j == nGrpAct - 1) ? (grpColEnd - grpColStart - j * 16) : 16;
-                        // C columns are global and A columns are group-local. B is the
-                        // standalone compact L0B tile selected by (group, j).
+                        // C columns are global and A columns are group-local. B is selected
+                        // from the packed L0B stage parent by its fixed group-slot index.
                         auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
                             tla::MakeCoord(mL0Itr * L0_TILE_M, grpColStart + j * 16),
                             tla::MakeShape(l0TileMAct, nAct));
@@ -496,9 +490,9 @@ public:
                             tla::MakeCoord(mL0Itr * L0_TILE_M, j * 16), tla::MakeShape(l0TileMAct, nAct));
                         uint32_t diagPackedTileIdx =
                             frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
-                        auto l0BTensorTlaTile = tla::MakeTensor(
-                            l0BRescaleTensor[l0BBufId][diagPackedTileIdx * DIAG_MMAD_TILE_ELEMS],
-                            l0BDiagTileLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
+                        auto l0BTensorTlaTile = GetTile(l0BDiagStageTensorTla,
+                            tla::MakeCoord(diagPackedTileIdx * DIAG_MMAD_TILE_SIZE, 0U),
+                            tla::MakeShape(DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE));
                         tileMmad(
                             l0CTensorTlaTileFr,
                             l0ATensorTlaTile,
