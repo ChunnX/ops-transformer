@@ -566,7 +566,7 @@ cann_ops_transformer.quant_flash_attn(
         </tbody>
     </table>
 
-- q_descale/k_descale shape匹配关系表：<a name="descale_shape匹配关系表"></a>
+- q_descale/k_descale/v_descale shape匹配关系表：<a name="descale_shape匹配关系表"></a>
 
     <table style="undefined;table-layout: fixed; width:1625px">
         <colgroup>
@@ -585,7 +585,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="2">5</td>
+                <td rowspan="3">5</td>
                 <td>q_descale</td>
                 <td>BNSD</td>
                 <td>(B, Q_N, Q_S, D/64, 2)</td>
@@ -595,8 +595,17 @@ cann_ops_transformer.quant_flash_attn(
                 <td>BNSD</td>
                 <td>(B, KV_N, KV_S, D/64, 2)</td>
             </tr>
+            <tr>
+                <td>v_descale</td>
+                <td>BNSD</td>
+                <td>(B, KV_N, ceil(KV_S/64), D, 2)</td>
+            </tr>
         </tbody>
     </table>
+
+    > [!NOTE]
+    >
+    > v_descale 的逐维 shape 校验由 `quant_flash_attn_metadata` 执行：BNSD 场景下校验 S 维 group 数须等于 ceil(max(seqused_kv)/64)，其中 KV_S 取 max(seqused_kv)（未传入 seqused_kv 时取 max_seqlen_kv）；主算子 `quant_flash_attn` 仅校验 v_descale 的 dtype 与维数（4D/5D/6D），不做逐维 shape 校验。
 
 - q/k/v/attn_out shape匹配关系表： <a id="qkv_attn_out_shape匹配关系表"></a>
 
