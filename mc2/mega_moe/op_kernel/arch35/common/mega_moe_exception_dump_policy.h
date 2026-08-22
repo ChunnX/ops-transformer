@@ -31,6 +31,23 @@ enum class Stage : uint32_t {
     END = 10 // 公共文件会用END判断，小于END的stage才会dump
 };
 
+enum class LoopCountIndex : uint32_t {
+    GMM1 = 0,
+    GMM2 = 1
+};
+
+struct alignas(64) GmmLoopCount {
+    uint64_t gmm1Count;
+    uint64_t gmm2Count;
+};
+
+constexpr size_t GMM_LOOP_COUNT_DATA_SIZE = 2U * sizeof(uint64_t);
+constexpr size_t GMM_LOOP_COUNT_REGION_OFFSET =
+    MC2ExceptionDump::DUMP_HEADER_REGION_SIZE + MC2ExceptionDump::DUMP_TILING_REGION_SIZE +
+    MC2ExceptionDump::DUMP_BLOCK_STAGE_REGION_SIZE +
+    MC2ExceptionDump::MAX_DUMP_ENTRIES * sizeof(MC2ExceptionDump::DumpParams);
+constexpr size_t MAX_AIV_CORE_NUM = 72U;
+
 struct MegaMoeExceptionDumpPolicy {
     using TilingDataT = MegaMoeTilingData;
     using StageEnumT = Stage;
@@ -39,10 +56,9 @@ struct MegaMoeExceptionDumpPolicy {
 
 using ExceptionDumpEngine = MC2ExceptionDump::ExceptionDump<MegaMoeExceptionDumpPolicy>;
 
-__aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine, GM_ADDR dumpBase, GM_ADDR tilingGM,
-                                                    const MegaMoeTilingData *tilingData,
-                                                    const MegaMoeImpl::PeermemInfo &peermemInfo, uint32_t maskAlignSize,
-                                                    GM_ADDR epRankIdAddr)
+__aicore__ inline __gm__ GmmLoopCount *RegisterMegaMoeExceptionDump(
+    ExceptionDumpEngine &engine, GM_ADDR dumpBase, GM_ADDR tilingGM, const MegaMoeTilingData *tilingData,
+    const MegaMoeImpl::PeermemInfo &peermemInfo, uint32_t maskAlignSize, GM_ADDR epRankIdAddr)
 {
     engine.Init(dumpBase, tilingGM);
     engine.UpdateStage(Stage::INIT);
@@ -52,6 +68,37 @@ __aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine,
                                                                      static_cast<int64_t>(tilingData->epWorldSize)));
     engine.Dump(peermemInfo.rankSyncInWorldPtr, static_cast<size_t>(MegaMoeImpl::PEERMEM_DATA_OFFSET));
     engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
+    GM_ADDR loopCountBase = dumpBase + GMM_LOOP_COUNT_REGION_OFFSET;
+    engine.Dump(loopCountBase, tilingData->blockAivNum, GMM_LOOP_COUNT_DATA_SIZE, sizeof(GmmLoopCount));
+
+    if ASCEND_IS_NOT_AIV {
+        return nullptr;
+    }
+    __gm__ GmmLoopCount *loopCount = reinterpret_cast<__gm__ GmmLoopCount *>(loopCountBase) + GetBlockIdx();
+    loopCount->gmm1Count = 0U;
+    loopCount->gmm2Count = 0U;
+    GlobalTensor<uint8_t> loopCountGlobal;
+    loopCountGlobal.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(loopCount));
+    DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(loopCountGlobal);
+    return loopCount;
+}
+
+__aicore__ inline void UpdateGmmLoopCount(__gm__ GmmLoopCount *loopCount, LoopCountIndex index, uint64_t count)
+{
+    if ASCEND_IS_NOT_AIV {
+        return;
+    }
+    if (unlikely(loopCount == nullptr)) {
+        return;
+    }
+    __gm__ uint64_t *countAddr = &loopCount->gmm2Count;
+    if (index == LoopCountIndex::GMM1) {
+        countAddr = &loopCount->gmm1Count;
+    }
+    *countAddr = count;
+    GlobalTensor<uint8_t> countGlobal;
+    countGlobal.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(countAddr));
+    DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(countGlobal);
 }
 
 } // namespace MegaMoeImpl

@@ -176,6 +176,7 @@ protected:
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
+    __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -289,9 +290,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     InitCombineBuffers();
     InitTokenUnpermuteConfig();
 
-    MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
-                                               sendMaskConfig_.maskAlignSize,
-                                               reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(
+        exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo, sendMaskConfig_.maskAlignSize,
+        reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
