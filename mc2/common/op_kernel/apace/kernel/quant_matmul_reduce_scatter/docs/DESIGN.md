@@ -77,7 +77,7 @@ quantMatmulReduceScatter 实现如下计算流程：
     │
     ▼
 ┌─────────────────────┐
-│  reduceSum          │  AIV: BF16 直接累加, self 从 workspace 读, received 从 win 读
+│  reduceSum          │  AIV: float32 中间转换累加, self 从 workspace 读, received 从 win 读
 └─────────────────────┘
     │
     ▼
@@ -138,7 +138,7 @@ quantMatmulReduceScatter 实现如下计算流程：
 | 核类型 | 职责 | 说明 |
 |-------|------|------|
 | AIC（Cube） | FragmentTensor 量化 MatMul | 每卡独立执行完整的 `A × B` 计算，通过 FragmentTensor 打包各 rank 段地址消除 R 循环，无 L0C 原子累加 |
-| AIV（Vector） | AlltoAll PUT 通信 + reduceSum 求和 | 通过 `CollectiveComm` 框架执行 AlltoAll PUT 分发，收齐后对多份结果执行逐元素 reduceSum 求和（BF16 直接累加） |
+| AIV（Vector） | AlltoAll PUT 通信 + reduceSum 求和 | 通过 `CollectiveComm` 框架执行 AlltoAll PUT 分发，收齐后对多份结果执行逐元素 reduceSum 求和（float32 中间转换累加） |
 
 ### 3.3 模块划分
 
@@ -215,7 +215,7 @@ win 区布局 (接收方):
     AIV: for t = 0..commTurn:
            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0)
            AlltoAll PUT: 推送 tile t 到其他 rank
-           reduceSum: BF16 直接累加 → output
+           reduceSum: float32 中间转换累加 → output
 
 阶段 3: 输出
     AIV: reduceSum 结果直接写入 output GM [m/rankSize, n]
@@ -228,7 +228,7 @@ win 区布局 (接收方):
 ### 5.1 Tiling 数据
 
 ```cpp
-struct ApaceQuantMatmulReduceScatterTilingData {
+struct QuantMatmulReduceScatterTilingData {
     CommTilingData commTilingData;          // C 矩阵 AlltoAll 通信切分（M 轴）
     QuantMatmulTilingData mmTilingData;     // 量化 MatMul tiling (全量, T=1 退化路径)
     QuantMatmulTilingData subMmTilingData;  // 子问题 tiling (m=headMSize, baseM=128, T>1 head tile)
@@ -264,7 +264,7 @@ AIV: AlltoAll → win 区 (各 rank 的 C 分片)
           │
           ▼
      reduceSum: self 从 workspace 读, received 从 win 读
-          │ BF16 直接累加
+          │ float32 中间转换累加
           ▼
      output [m/rankSize, n] (bfloat16)
 ```
@@ -293,7 +293,7 @@ AIV:                  WaitFlag [comm0+rs0]   WaitFlag [comm1+rs1]   WaitFlag [co
 ```
 
 - **per-tile WaitFlag**：CrossCore flag 是计数式，T 次 Set 对应 T 次 Wait
-- **reduceSum BF16 直接累加**：BF16 直接 Add (950 硬件级精度), 无 Cast, pingpong 双 buffer
+- **reduceSum float32 中间转换累加**：Cast(BF16→F32) + Add(F32) + Cast(F32→BF16)，精度优先（R=4 累加误差放大），pingpong 双 buffer
 - **严格分离流水**：后 R 核做 AllToAll(t), 前 (28-R) 核做 ReduceSum(t-1), 完全并行, 无 Phase 2
 - **自适应 headMSize**：R<=2 用 512 (少 SyncAll), R>=4 用 128 (流水掩盖效果好)
 - **多核并行通信**：后 rankSize 个核各负责 1 个 target rank 并行 PUT, 通信时间降为 1/R
@@ -337,7 +337,7 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 
 - **workspace**：`m × n × sizeof(CType)` 字节（Host 侧申请传入，存放 AIC 计算的 C_i）
 - **win 区**：`rankSize × chunkM × n × sizeof(CType)` 字节（AllToAll PUT 接收缓冲区）
-- **reduceSum UB 缓冲区**：手动 UB 偏移管理（无 TPipe），3 个区域：`[sum(float-sized, BF16 view) | inputA(BF16) | inputB(BF16)]`，pingpong 双 buffer 交替，多行 block 处理（UB 容量自适应）
+- **reduceSum UB 缓冲区**：`LocalTensor` 手动 UB 偏移管理（无 TPipe），6 slots 布局：`[sumF32 | inputBF16_A | inputF32_A | inputBF16_B | inputF32_B | outBF16]`，按 float 大小对齐，pingpong 双 buffer 交替（input A/B），N 分段自适应（maxNPerSeg = 180KB / (6 × sizeof(float))，N=12288 分 2 段），多行 batch 优化（DoReduceSumBatch，batchRows 自适应）
 
 ---
 
@@ -346,16 +346,16 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 ### 8.1 算子入口
 
 ```cpp
-__global__ __aicore__ void ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma(
+__global__ __aicore__ void QuantMatmulReduceScatterKernelE4M3E4M3(
     __gm__ CommContext *hcommCtx,
     GM_ADDR aGM, GM_ADDR scaleAGM,
     GM_ADDR bGM, GM_ADDR scaleBGM,
     GM_ADDR workspaceGM,
     GM_ADDR cGM,
-    ApaceQuantMatmulReduceScatterTilingData tilingData)
+    QuantMatmulReduceScatterTilingData tilingData)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    Apace::ApaceQuantMatmulReduceScatterUdmaImpl<
+    Apace::QuantMatmulReduceScatterImpl<
         fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
     impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, workspaceGM, cGM, &tilingData);
     impl.Run();
@@ -400,26 +400,51 @@ for (t = 0..commTurn) {
 
 **RunAllToAllAndReduceSum (AIV)**:
 ```cpp
-// 方案B: 严格分离 — 后 R 核通信, 前 (28-R) 核计算
+// 方案B: 严格分离 — 后 R 核仅通信, 前 (28-R) 核仅计算
 // isCommBlock = (jobIndex < rankSize)     — 后 R 个核
 // isComputeBlock = (blockIdx < 28-R)     — 前 (28-R) 个核
 // rsCoreNum = 28 - rankSize              — reduceSum 核数
 
-for (t = 0..commTurn) {
-    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);  // 等 AIC tile t
+if (commTurn <= 1) {
+    // 单 tile 路径: AllToAll + DoReduceSumBatch (批量优化)
+    WaitFlag<0x2, PIPE_MTE2>(0);
+    SyncAll<true>();
+    if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }
+    SyncAll<true>();
+    teamBarrier_.CrossDevice();   // block 0 跨设备 fence
+    SyncAll<true>();
+    if (isComputeBlock) { DoReduceSumBatch(tile0); }  // 批量 reduceSum
+    if (isCommBlock) { Finalize<BARRIER_NONE>(); }
+    return;
+}
+
+// 多 tile 路径: AllToAll(t) ‖ ReduceSum(t-1) 流水
+// Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
+WaitFlag<0x2, PIPE_MTE2>(0);
+SyncAll<true>();
+if (isCommBlock) { Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>(); }
+SyncAll<true>();
+teamBarrier_.CrossDevice();
+SyncAll<true>();
+
+// Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 并行
+for (t = 1..commTurn-1) {
+    WaitFlag<0x2, PIPE_MTE2>(0);
     SyncAll<true>();
     if (isCommBlock) {
-        allToAllC_.Commit<BARRIER_NONE>();   // PUT 推送 tile t
-        allToAllC_.Wait<BARRIER_NONE>();      // Drain only (不做 CrossDevice)
+        Commit<BARRIER_NONE>(); Wait<BARRIER_NONE>();   // AllToAll(t)
     } else if (isComputeBlock) {
-        reduceSum_.Init(..., rsCoreNum, ...); // 前 (28-R) 核做 ReduceSum(t-1)
-        reduceSum_.ExecuteReduceSum(tileM, nSize);
+        DoReduceSum(t-1);                                 // ReduceSum(t-1)
     }
     SyncAll<true>();
-    teamBarrier_.CrossDevice();  // block 0 (jobIndex=0) 做跨设备 fence (step=1)
+    teamBarrier_.CrossDevice();
     SyncAll<true>();
 }
-allToAllC_.Finalize();
+
+// Final: 仅计算核做 ReduceSum(last tile)
+SyncAll<true>();
+if (isComputeBlock) { DoReduceSum(commTurn-1); }
+if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 ```
 
 ### 8.4 关键同步机制
@@ -461,11 +486,11 @@ allToAllC_.Finalize();
 
 ### 9.4 为什么 reduceSum 用 float32 中间转换累加
 
-- BF16→Cast float32→Add→Cast 回 BF16，精度优先（R=4 时 4 个 rank 累加，BF16 直接累加误差放大）
+- BF16→Cast float32→Add→Cast 回 BF16，精度优先（R=4 时 4 个 rank 累加，float32 中间转换累加误差放大）
 - V 指令数 3 条/rank (Cast+Add+PipeBarrier)，输出 1 次/tile Cast (F32→BF16)
 - UB 布局: 6 slots (sumF32 + 2×(inputBF16+inputF32) + outBF16)，按 float 大小对齐
 - 精度验证通过：12/12 case ALL PASS（R=2 + R=4）
-- 性能影响极小：相比 BF16 直接累加平均 +0.4%（reduceSum 被 AIC 掩盖）
+- 性能影响极小：相比 float32 中间转换累加平均 +0.4%（reduceSum 被 AIC 掩盖）
 
 ### 9.5 为什么 reduceSum 用手动 UB 管理（无 TPipe）
 
@@ -536,8 +561,8 @@ AIC 计算 tile N 时，AIV 通信核在 PUT tile N，计算核在 ReduceSum til
 
 ---
 
-> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换 + N 分段）
+> **文档状态**：已更新至方案B（多核并行通信 + 严格分离 + winOffset=128 + float32 中间转换 + N 分段 + 批量 reduceSum）
 > **适用版本**：CANN 9.2.0（Apace 架构, dav-3510）
-> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32+N分段)
+> **代码版本**：quant_matmul_reduce_scatter_impl.h (方案B: 后R核通信+前28-R核计算, reduceSum float32+N分段+DoReduceSumBatch)
 > **精度验证**：12/12 case ALL PASS（R=2, R=4, 含 N=12288）
 > **性能**：msprof Task Duration 12 case 中位数, vs 旧基线平均 -11.1%, float32 vs BF16 平均 +0.6%
