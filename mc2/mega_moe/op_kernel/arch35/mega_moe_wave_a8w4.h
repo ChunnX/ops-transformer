@@ -58,6 +58,8 @@ private:
     using MegaMoeBase::syncWorkspaceLayout_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
+    using MegaMoeBase::tokenDispatchConfig_;
+    using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineJob_;
     using MegaMoeBase::waveCombineScratch_;
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
@@ -104,8 +106,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
-    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
-    WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence, bool useAllAivCores)
+    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig,
+    uint32_t &combineRowSequence, bool useAllAivCores)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
@@ -117,10 +119,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
             state, tokenStartIndexInExpert);
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    GMM1_TILE_M, TopkWeightsPrefetch, false, false, true>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert);
+        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
+                    TopkWeightsPrefetch, false, false, true>(sliceProblemShape, gmmAddrInfo, startBlockIdx,
+                                                             gmmExecutionConfig_.blockJob, expertTokenCount,
+                                                             tokenStartIndexInExpert);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
