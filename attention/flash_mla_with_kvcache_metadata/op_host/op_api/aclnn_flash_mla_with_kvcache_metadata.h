@@ -24,7 +24,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaMetadataGetWorks
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaMetadata(void *workspace, uint64_t workspaceSize,
-                                                                          aclOpExecutor *executor, aclrtStream stream);
+                                                                         aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

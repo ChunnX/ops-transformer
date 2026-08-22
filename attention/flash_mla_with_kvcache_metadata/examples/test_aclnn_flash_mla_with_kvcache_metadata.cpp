@@ -12,10 +12,10 @@
 
 /*!
  * \file test_aclnn_flash_mla_with_kvcache_metadata.cpp
- * \brief aclnn FlashMlaMetadata byte-golden vs FlashAttnMetadata.
+ * \brief aclnn FlashMlaWithKvcacheMetadata byte-golden vs FlashAttnMetadata.
  *
  * Checks (M8/B3/B2/D17):
- *  1. identical inputs through flash_attn_metadata and flash_mla_metadata produce
+ *  1. identical inputs through flash_attn_metadata and flash_mla_with_kvcache_metadata produce
  *     byte-identical buffers EXCEPT the two intentional head base-size words
  *     (HEAD_M_BASE_SIZE/HEAD_S2_BASE_SIZE): MLA forces 64/128 (D17, kernel template
  *     invariant), flash_attn writes derived values (AdjustSinnerAndSouter * aiv/aic).
@@ -46,9 +46,9 @@ using namespace optiling;
 
 #define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -209,7 +209,7 @@ static int RunByteGolden(aclrtStream stream)
 {
     // MLA-producer 结构校验（flash_attn_metadata 侧 checker 约束 headDim<=256/kvHeads!=1，
     // 与 MLA checker（kvHeads==1/headDim==512/TND-PA_NZ-NTD）不交，跨克隆字节 golden 结构上
-    // 不再可比，改为对 flash_mla_metadata 自身的调度完整性做断言：
+    // 不再可比，改为对 flash_mla_with_kvcache_metadata 自身的调度完整性做断言：
     //   1) sectionNum>=2（kvS=32768/headDim=512 按 L2 预算逐 batch 切分，实测 8）
     //   2) 头字段 M_BASE_SIZE==64 / S2_BASE_SIZE==128（D17 强制）
     //   3) 每 section 活跃 FA 核为前辍（不活跃核零后缀）+ 覆盖 bn2 区间连续
@@ -232,7 +232,7 @@ static int RunByteGolden(aclrtStream stream)
     int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDim, maskMode, layoutQ, layoutKv,
                                 layoutOut, words, &mlaOut, true, aclnnFlashMlaMetadata);
     if (r != 0) {
-        LOG_PRINT("[FAIL] flash_mla_metadata run failed\n");
+        LOG_PRINT("[FAIL] flash_mla_with_kvcache_metadata run failed\n");
         return -1;
     }
 
@@ -253,7 +253,7 @@ static int RunByteGolden(aclrtStream stream)
     int64_t headWords = HEAD_METADATA_STRIDE;
     int64_t faWords = static_cast<int64_t>(sectionNum) * AIC_CORE_NUM * FA_METADATA_STRIDE;
     int64_t fdWords = static_cast<int64_t>(sectionNum) * AIV_CORE_NUM * FD_METADATA_STRIDE;
-    int64_t firstSectionBatches = 0;  // bn2 span of section 0 (continuity vs prior/core0 start==0)
+    int64_t firstSectionBatches = 0; // bn2 span of section 0 (continuity vs prior/core0 start==0)
     for (int32_t sec = 0; sec < sectionNum; ++sec) {
         int64_t secBase = headWords + static_cast<int64_t>(sec) * AIC_CORE_NUM * FA_METADATA_STRIDE;
         int32_t lastActive = -1;
@@ -273,7 +273,9 @@ static int RunByteGolden(aclrtStream stream)
                     for (uint32_t rest = aicIdx; rest < AIC_CORE_NUM; ++rest) {
                         int32_t rb = static_cast<int32_t>(secBase + rest * FA_METADATA_STRIDE);
                         for (int m = 0; m < FA_METADATA_STRIDE; ++m) {
-                            if (mlaOut[rb + m] != 0) { restZero = false; }
+                            if (mlaOut[rb + m] != 0) {
+                                restZero = false;
+                            }
                         }
                     }
                     if (!restZero) {
@@ -332,8 +334,7 @@ static int RunNegativeCapacity(aclrtStream stream)
     int64_t tooSmallBytes = requiredBytes - 4096;
     bool rejected = tooSmallBytes < requiredBytes;
     LOG_PRINT("  host-side check: userBytes=%ld < required=%ld -> %s\n", (long)tooSmallBytes, (long)requiredBytes,
-              rejected ? "REJECTED (PASS, mirrors CalculateMlaMetadataSizeBytes TORCH_CHECK)"
-                       : "NOT REJECTED (FAIL)");
+              rejected ? "REJECTED (PASS, mirrors CalculateMlaMetadataSizeBytes TORCH_CHECK)" : "NOT REJECTED (FAIL)");
     if (!rejected) {
         return -1;
     }
@@ -351,7 +352,8 @@ static int RunNegativeCapacity(aclrtStream stream)
     waitpid(pid, &status, 0);
     if (WIFSIGNALED(status)) {
         LOG_PRINT("  [child] terminated by signal %d -> undersized metadata buffer caused kernel-side failure "
-                  "(capacity is enforced host-side only, mirroring flash_mla.cpp)\n", WTERMSIG(status));
+                  "(capacity is enforced host-side only, mirroring flash_mla.cpp)\n",
+                  WTERMSIG(status));
     } else if (WIFEXITED(status)) {
         LOG_PRINT("  [child] exited with code %d (see child logs above)\n", WEXITSTATUS(status));
     }
@@ -394,7 +396,7 @@ static void DumpMeta(void *data)
             printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
             printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
             printf("first fd data ws idx: %d\n", faMetadata.GetFaMetadata(sectionId, i,
-                optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+                                                                          optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
         for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
             printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
@@ -414,7 +416,7 @@ static int RunNegativeRuntimeOnly()
 {
     int64_t batch = 8;
     int64_t words = CapacityWords(batch);
-    std::vector<int32_t> tiny(words / 8, 0);  // far below capacity
+    std::vector<int32_t> tiny(words / 8, 0); // far below capacity
     int32_t deviceId = 0;
     aclrtStream stream;
     int64_t ret = Init(deviceId, &stream);
@@ -435,9 +437,7 @@ static int RunNegativeRuntimeOnly()
         std::vector<int64_t> cuShape = {batch + 1};
         std::vector<int64_t> seqKvShape = {batch};
         ret = CreateAclTensor(cuQ, cuShape, &cuDev, aclDataType::ACL_INT32, &cuT);
-        ret = ret == ACL_SUCCESS
-                  ? CreateAclTensor(seqKv, seqKvShape, &seqKvDev, aclDataType::ACL_INT32, &seqKvT)
-                  : ret;
+        ret = ret == ACL_SUCCESS ? CreateAclTensor(seqKv, seqKvShape, &seqKvDev, aclDataType::ACL_INT32, &seqKvT) : ret;
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
@@ -513,9 +513,7 @@ int main()
         std::vector<int64_t> cuShapeMk = {batchSize + 1};
         std::vector<int64_t> clShapeMk = {batchSize};
         ret = CreateAclTensor(cuQ, cuShapeMk, &cuDevSmk, aclDataType::ACL_INT32, &cuTmk);
-        ret = ret == ACL_SUCCESS
-                  ? CreateAclTensor(cacheSl, clShapeMk, &clDevSmk, aclDataType::ACL_INT32, &clTmk)
-                  : ret;
+        ret = ret == ACL_SUCCESS ? CreateAclTensor(cacheSl, clShapeMk, &clDevSmk, aclDataType::ACL_INT32, &clTmk) : ret;
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             return ret;
         }
@@ -559,7 +557,7 @@ int main()
         aclrtFree(cuDevSmk);
         aclDestroyTensor(clTmk);
         aclrtFree(clDevSmk);
-        LOG_PRINT("\n==== smoke: flash_mla_metadata (MLA geometry, TND/PA_NZ/NTD, kvHeads=1) ====\n");
+        LOG_PRINT("\n==== smoke: flash_mla_with_kvcache_metadata (MLA geometry, TND/PA_NZ/NTD, kvHeads=1) ====\n");
         int32_t sectionNum = metadataHostData[HEAD_SECTION_NUM_INDEX];
         int32_t mBase = metadataHostData[HEAD_M_BASE_SIZE_INDEX];
         int32_t s2Base = metadataHostData[HEAD_S2_BASE_SIZE_INDEX];
@@ -587,6 +585,6 @@ int main()
     aclrtResetDevice(deviceId);
     aclFinalize();
 
-    LOG_PRINT("\n==== flash_mla_metadata example: ALL CHECKS PASSED ====\n");
+    LOG_PRINT("\n==== flash_mla_with_kvcache_metadata example: ALL CHECKS PASSED ====\n");
     return 0;
 }

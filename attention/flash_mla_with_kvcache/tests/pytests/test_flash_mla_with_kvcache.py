@@ -28,33 +28,49 @@ from core.case_loader import load_case_modules, normalize_params, resolve_case_i
 from core.orchestrator import run_case
 from core.reporter import Reporter
 
-_DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
-    os.path.join(os.path.dirname(__file__), "test_cases"))
-    if f.endswith(".py") and not f.startswith("_")]
+_DEFAULT_CASE_FILES = [
+    os.path.splitext(f)[0]
+    for f in os.listdir(os.path.join(os.path.dirname(__file__), "test_cases"))
+    if f.endswith(".py") and not f.startswith("_")
+]
 
 
 def _build_primary(args):
     from core.backends.npu import NPUBackend
+
     primary = NPUBackend(args.device_id, meta_only=args.meta_only)
     if not primary.is_available():
-        return None, ("NPU 后端不可用：torch_npu/cann_ops_transformer 缺失或 "
-                      "torch.ops.cann_ops_transformer.flash_mla_with_kvcache 未注册"
-                      "（需先构建并安装 flash_mla_with_kvcache 算子包）")
+        return None, (
+            "NPU 后端不可用：torch_npu/cann_ops_transformer 缺失或 "
+            "torch.ops.cann_ops_transformer.flash_mla_with_kvcache 未注册"
+            "（需先构建并安装 flash_mla_with_kvcache 算子包）"
+        )
     return primary, None
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FlashMlaWithKvcache 功能矩阵精度测试（TND/NZ/NTD）")
+    parser = argparse.ArgumentParser(
+        description="FlashMlaWithKvcache 功能矩阵精度测试（TND/NZ/NTD）"
+    )
     parser.add_argument("--case_files", type=str, default=",".join(_DEFAULT_CASE_FILES))
     parser.add_argument("--case_id", type=str, default="all")
     parser.add_argument("--device_id", type=int, default=0)
     parser.add_argument("--verbose_diff", action="store_true")
-    parser.add_argument("--meta_only", action="store_true",
-                        help="只调用 flash_mla_with_kvcache_metadata 并打印分核结果，跳过 kernel")
-    parser.add_argument("--static_graph", action="store_true",
-                        help="对每个 case 追加：确定性（同输入两次）+ 静态图(torch.export) vs 动态图等价（M9）")
-    parser.add_argument("--result_csv", type=str,
-                        default="attention/flash_mla_with_kvcache/tests/pytests/result.csv")
+    parser.add_argument(
+        "--meta_only",
+        action="store_true",
+        help="只调用 flash_mla_with_kvcache_metadata 并打印分核结果，跳过 kernel",
+    )
+    parser.add_argument(
+        "--static_graph",
+        action="store_true",
+        help="对每个 case 追加：确定性（同输入两次）+ 静态图(torch.export) vs 动态图等价（M9）",
+    )
+    parser.add_argument(
+        "--result_csv",
+        type=str,
+        default="attention/flash_mla_with_kvcache/tests/pytests/result.csv",
+    )
     parser.add_argument("--report_interval", type=int, default=20)
     args = parser.parse_args()
 
@@ -67,6 +83,7 @@ if __name__ == "__main__":
 
     primary, err = _build_primary(args)
     from core.backends.cpu import CPUBackend
+
     golden = CPUBackend()
 
     reporter = Reporter()
@@ -77,7 +94,9 @@ if __name__ == "__main__":
 
     primary_unavailable = primary is None
     if primary_unavailable:
-        print(f"[WARN] {err}\n       矩阵行将在 CPU-golden 侧验证管道，NPU 行门控到 F6。")
+        print(
+            f"[WARN] {err}\n       矩阵行将在 CPU-golden 侧验证管道，NPU 行门控到 F6。"
+        )
 
     for i, name in enumerate(run_cases):
         params = normalize_params(all_cases[name])
@@ -86,60 +105,105 @@ if __name__ == "__main__":
         n1 = params["N1"]
         s1 = params.get("S1", 1)
         s2 = params.get("S2", 1)
-        print(f"\n{'='*80}")
-        print(f"  Case: {name}  B={b} N1={n1} S1={s1} S2={s2} "
-              f"dtype={dtype} mask={params.get('mask_mode', 0)} "
-              f"lse={params.get('return_softmax_lse', False)}")
-        print(f"{'='*80}")
+        print(f"\n{'=' * 80}")
+        print(
+            f"  Case: {name}  B={b} N1={n1} S1={s1} S2={s2} "
+            f"dtype={dtype} mask={params.get('mask_mode', 0)} "
+            f"lse={params.get('return_softmax_lse', False)}"
+        )
+        print(f"{'=' * 80}")
 
         if primary_unavailable:
             # 无 NPU：只做 pipeline 冒烟（数据生成 + golden 自身可跑通），
             # 设备侧结果标记 gated，不伪造通过。
             try:
-                cpu_inputs = flash_mla_with_kvcache_inputs.generate(params, device=torch.device("cpu"),
-                                                       layout=params.get("input_layout", "TND"))
+                cpu_inputs = flash_mla_with_kvcache_inputs.generate(
+                    params,
+                    device=torch.device("cpu"),
+                    layout=params.get("input_layout", "TND"),
+                )
                 cpu_inputs["block_table"] = params["block_table"]
                 golden_out = golden.compute(cpu_inputs, params)
-                print(f"  [golden] CPU 参考计算 OK  out={tuple(golden_out['out'].shape)} "
-                      f"lse={tuple(golden_out['lse'].shape)}")
+                print(
+                    f"  [golden] CPU 参考计算 OK  out={tuple(golden_out['out'].shape)} "
+                    f"lse={tuple(golden_out['lse'].shape)}"
+                )
                 del cpu_inputs, golden_out
                 gc.collect()
             except Exception as e:
                 import traceback
+
                 err_txt = f"{e}\n{traceback.format_exc()}"
                 print(f"[ERROR] {name} CPU-golden 冒烟异常: {e}")
-            result = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                               "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
-                      "lse": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                              "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
-            reporter.record(name, result,
-                            error="gated: NPU backend unavailable (F6)",
-                            dtype=dtype)
+            result = {
+                "attn": {
+                    "passed": False,
+                    "max_abs": float("nan"),
+                    "mean_abs": float("nan"),
+                    "fail_cnt": -1,
+                    "total": -1,
+                    "fail_ratio": float("nan"),
+                },
+                "lse": {
+                    "passed": False,
+                    "max_abs": float("nan"),
+                    "mean_abs": float("nan"),
+                    "fail_cnt": -1,
+                    "total": -1,
+                    "fail_ratio": float("nan"),
+                },
+            }
+            reporter.record(
+                name, result, error="gated: NPU backend unavailable (F6)", dtype=dtype
+            )
             continue
 
         try:
-            result = run_case(params=params, primary=primary, golden=golden,
-                              spec=flash_mla_with_kvcache_inputs, case_name=name,
-                              verbose_diff=args.verbose_diff,
-                              static_graph=args.static_graph)
+            result = run_case(
+                params=params,
+                primary=primary,
+                golden=golden,
+                spec=flash_mla_with_kvcache_inputs,
+                case_name=name,
+                verbose_diff=args.verbose_diff,
+                static_graph=args.static_graph,
+            )
             err = None
         except Exception as e:
             import traceback
+
             err = f"{e}\n{traceback.format_exc()}"
             print(f"[ERROR] {name} 运行异常: {e}")
             traceback.print_exc()
-            result = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                               "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
-                      "lse": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                              "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            result = {
+                "attn": {
+                    "passed": False,
+                    "max_abs": float("nan"),
+                    "mean_abs": float("nan"),
+                    "fail_cnt": -1,
+                    "total": -1,
+                    "fail_ratio": float("nan"),
+                },
+                "lse": {
+                    "passed": False,
+                    "max_abs": float("nan"),
+                    "mean_abs": float("nan"),
+                    "fail_cnt": -1,
+                    "total": -1,
+                    "fail_ratio": float("nan"),
+                },
+            }
 
         reporter.record(name, result, error=err, dtype=dtype)
         del result, params
         gc.collect()
         primary.clear_cache()
 
-        if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
-                and (i + 1) < len(run_cases):
+        if (
+            args.report_interval > 0
+            and (i + 1) % args.report_interval == 0
+            and (i + 1) < len(run_cases)
+        ):
             reporter.print_interim(len(run_cases))
 
     fail_cnt = reporter.print_final()

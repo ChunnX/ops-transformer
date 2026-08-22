@@ -51,8 +51,8 @@ def _check_metadata_capacity(metadata, batch_size):
     torch._check(
         metadata.numel() >= required,
         lambda: f"The metadata tensor is too small: {metadata.numel()} elements, required at least "
-                f"{required} elements for batch_size={batch_size} (capacity = ((36 + 72) * batch_size * 1 + 1) "
-                f"* 16, aligned to 4096; kv head num is 1 for MLA).",
+        f"{required} elements for batch_size={batch_size} (capacity = ((36 + 72) * batch_size * 1 + 1) "
+        f"* 16, aligned to 4096; kv head num is 1 for MLA).",
     )
 
 
@@ -156,7 +156,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
                 torch._check(
                     layout_q == "TND",
                     lambda: f"When the layout of output is {layout_out}, the layout of query must be "
-                            f"TND, but got {layout_q}",
+                    f"TND, but got {layout_q}",
                 )
                 if layout_out == "NTD":
                     attention_out_size = (n_size, t_size, d_size)
@@ -209,7 +209,9 @@ def flash_mla_with_kvcache_metadata(
 
     # 向 C++ wrapper 传解析后的 batch（未显式传 batch_size 时），使 C++ 侧容量校验（B2/D16）有意义；
     # 显式传了 batch_size 时保持原值（与 flash_attn.py 行为一致，正确性由用户保证）。
-    effective_batch_size = batch_size if batch_size is not None and batch_size > 0 else b_size
+    effective_batch_size = (
+        batch_size if batch_size is not None and batch_size > 0 else b_size
+    )
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     mask_mode = 0 if mask_mode is None else mask_mode
@@ -333,4 +335,6 @@ def flash_mla_with_kvcache(
 
 
 flash_mla_with_kvcache = torch.ops.cann_ops_transformer.flash_mla_with_kvcache
-flash_mla_with_kvcache_metadata = torch.ops.cann_ops_transformer.flash_mla_with_kvcache_metadata
+flash_mla_with_kvcache_metadata = (
+    torch.ops.cann_ops_transformer.flash_mla_with_kvcache_metadata
+)

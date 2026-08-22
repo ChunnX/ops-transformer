@@ -14,10 +14,10 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* FlashMlaWithKvcacheMetadata(
-    const aclTensor* cuSeqlensQOptional,
-    const aclTensor* cacheSeqlensOptional,
-    const aclTensor* sequsedQOptional,
+const aclTensor *FlashMlaWithKvcacheMetadata(
+    const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cacheSeqlensOptional,
+    const aclTensor *sequsedQOptional,
     int64_t batchSize,
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKv,
@@ -25,14 +25,14 @@ const aclTensor* FlashMlaWithKvcacheMetadata(
     int64_t numHeadsKv,
     int64_t headDim,
     int64_t maskMode,
-    const char* layoutQ,
-    const char* layoutKv,
-    const char* layoutOut,
-    const char* socVersion,
+    const char *layoutQ,
+    const char *layoutKv,
+    const char *layoutOut,
+    const char *socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
+    const aclTensor *metaData,
+    aclOpExecutor *executor);
 } // namespace l0op
 
 #endif

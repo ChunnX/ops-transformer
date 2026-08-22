@@ -76,9 +76,9 @@ public:
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
 
-    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：
+    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer 旧名：flash_mla_metadata，历史原因保留）
     // AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，
-    // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。
+    // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。（producer 旧名：flash_mla_metadata，历史原因保留）
     static_assert(FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
                   "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
 
