@@ -181,7 +181,7 @@ public:
 
             auto gmBlockC =
                 gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
-                          AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+                          AscendC::Te::MakeShape(Te::Get<MNK_M>(singleShape), Te::Get<MNK_N>(singleShape)));
             auto gmBlockBias =
                 gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, Te::Get<IDX_N_TILEIDX>(singleShape)));
 
@@ -189,7 +189,7 @@ public:
                 auto actualMPos = rank * oriM + mPos;
                 auto gmBlockA =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                              AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get::Get<MNK_K>(params.problemShape)));
+                              AscendC::Te::MakeShape(Te::Get<MNK_M>(singleShape), Te::Get<MNK_K>(params.problemShape)));
                 auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                                                      AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
                 auto gmBlockB = gmB.Slice(AscendC::Te::MakeCoord(rank * Te::Get<MNK_K>(params.problemShape), nPos),
@@ -209,7 +209,7 @@ public:
                     auto selfLayoutC = MakeLayoutC{}(Te::Get<MNK_M>(singleShape), Te::Get<MNK_N>(singleShape));
                     auto gmSelfC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(selfCAddr + mPos * Te::Get<MNK_N>(params.problemShape)), selfLayoutC);
                     auto gmBlockSelfC = gmSelfC.Slice(Te::MakeCoord(0L, nPos),
-                                                       Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+                                                       Te::MakeShape(Te::Get<MNK_M>(singleShape), Te::Get<MNK_N>(singleShape)));
                     mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias,
                             gmBlockSelfC, singleShape, static_cast<int32_t>(rank));
                 } else {
