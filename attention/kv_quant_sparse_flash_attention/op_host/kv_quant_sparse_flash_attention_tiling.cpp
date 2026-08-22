@@ -280,15 +280,20 @@ ge::graphStatus QSFAMlaTiling::GetPlatformInfo()
 
 void QSFAMlaTiling::CalcVectorizeFlag()
 {
-    // 稀疏kv物理地址向量化：仅PA场景、blockSize为2的幂次、UB足够时开启。
+    // 稀疏kv物理地址向量化：仅950（DAV_3510/arch35）平台kernel支持该模板参数，
+    // 910b（arch22）不支持，vectorizeFlag_保持为0。
     // UB 计算与 kernel 侧 GetKVPhyAddr 的 InitBuffer 保持一致：
     // blkTableBuf 对齐 512B，sparseIdxBuf / kvPhyAddrBuf 对齐 32B。
     vectorizeFlag_ = 0U;
+    if (!qsfaInfo_->isA5) {
+        return;
+    }
     if (qsfaInfo_->kvLayout == QSFALayout::PA_BSND) {
         int64_t blockSize = qsfaInfo_->blockSize;
         uint32_t blocksizeFlag = static_cast<uint32_t>((blockSize & (blockSize - 1)) == 0);
         constexpr uint32_t UB_SIZE = 248 * 1024; // UB共256KB，预留8KB
-        uint32_t vectorizeUbSize = Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
+        uint32_t vectorizeUbSize =
+            Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int32_t), BYTE_BLOCK) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int64_t), BYTE_BLOCK);
         vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag);
@@ -473,8 +478,8 @@ void QSFAMlaTiling::GetWorkspaceSize()
         }
         // 稀疏kv物理地址向量化：仅向量化开启时预计算物理地址表（挂在V0结果区之后）
         if (vectorizeFlag_) {
-            uint32_t totalBS1 = (qsfaInfo_->qLayout == QSFALayout::TND) ?
-                qsfaInfo_->s1Size : (qsfaInfo_->bSize * qsfaInfo_->s1Size);
+            uint32_t totalBS1 =
+                (qsfaInfo_->qLayout == QSFALayout::TND) ? qsfaInfo_->s1Size : (qsfaInfo_->bSize * qsfaInfo_->s1Size);
             workspaceSize_ += totalBS1 * static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int64_t);
         }
     } else {

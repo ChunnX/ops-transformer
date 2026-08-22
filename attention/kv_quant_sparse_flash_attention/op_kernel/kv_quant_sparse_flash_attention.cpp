@@ -135,9 +135,9 @@ __global__ __aicore__ void kv_quant_sparse_flash_attention(
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 #if (__CCE_AICORE__ == 310)
     DispatchKernelDtype310<FLASH_DECODE, PAGE_ATTENTION, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G,
-                          IS_VEC_S2PHYADDR>(query, key, value, sparseIndices, keyScale, valueScale, blocktable,
-                                            actualSeqLengthsQuery, actualSeqLengthsKV, sinks, attentionOut, user,
-                                            tiling, tPipe);
+                           IS_VEC_S2PHYADDR>(query, key, value, sparseIndices, keyScale, valueScale, blocktable,
+                                             actualSeqLengthsQuery, actualSeqLengthsKV, sinks, attentionOut, user,
+                                             tiling, tPipe);
 #else
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {

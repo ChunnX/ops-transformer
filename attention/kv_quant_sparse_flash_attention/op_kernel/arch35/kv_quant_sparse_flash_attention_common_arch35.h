@@ -60,7 +60,11 @@ enum class QSFA_LAYOUT {
     PA_BSND = 2,
 };
 
-enum class QSFATemplateMode { SWA_TEMPLATE_MODE = 0, CFA_TEMPLATE_MODE = 1, SCFA_TEMPLATE_MODE = 2 };
+enum class QSFATemplateMode {
+    SWA_TEMPLATE_MODE = 0,
+    CFA_TEMPLATE_MODE = 1,
+    SCFA_TEMPLATE_MODE = 2
+};
 
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)
@@ -88,7 +92,8 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSFA_LAYOUT LAYOUT_T, \
               QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_VEC_S2PHYADDR>
 
-#define TEMPLATE_INTF_ARGS Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_VEC_S2PHYADDR
+#define TEMPLATE_INTF_ARGS \
+    Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_VEC_S2PHYADDR
 
 #define QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
