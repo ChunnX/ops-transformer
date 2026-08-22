@@ -84,7 +84,7 @@ public:
         yGM_ = yGM;
         workspaceGM_ = workspaceGM;
         hccl_.InitV2(contextGM, &tilingData_->mc2InitTiling);
-        hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingDataType, mc2CcTiling)));
         rankDim_ = hccl_.GetRankDim();
     }
 
@@ -181,9 +181,7 @@ private:
         // compute/communication pipeline.
         const uint32_t slot = issuedHandleCount_ % HCOMM_PIPELINE_DEPTH;
         if (issuedHandleCount_ >= HCOMM_PIPELINE_DEPTH) {
-            if (AscendC::GetBlockIdx() == 0) {
-                hccl_.Wait(pipelineHandles_[slot]);
-            }
+            hccl_.Wait(pipelineHandles_[slot]);
             AscendC::SyncAll();
         }
         pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
@@ -195,14 +193,12 @@ private:
 
     __aicore__ inline void WaitPendingReduceScatter()
     {
-        if (AscendC::GetBlockIdx() == 0) {
-            const uint32_t pendingCount = issuedHandleCount_ < HCOMM_PIPELINE_DEPTH ?
-                issuedHandleCount_ : HCOMM_PIPELINE_DEPTH;
-            const uint32_t firstPending = issuedHandleCount_ - pendingCount;
-            for (uint32_t i = 0; i < pendingCount; ++i) {
-                const uint32_t slot = (firstPending + i) % HCOMM_PIPELINE_DEPTH;
-                hccl_.Wait(pipelineHandles_[slot]);
-            }
+        const uint32_t pendingCount = issuedHandleCount_ < HCOMM_PIPELINE_DEPTH ?
+            issuedHandleCount_ : HCOMM_PIPELINE_DEPTH;
+        const uint32_t firstPending = issuedHandleCount_ - pendingCount;
+        for (uint32_t i = 0; i < pendingCount; ++i) {
+            const uint32_t slot = (firstPending + i) % HCOMM_PIPELINE_DEPTH;
+            hccl_.Wait(pipelineHandles_[slot]);
         }
         AscendC::SyncAll();
     }

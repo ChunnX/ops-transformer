@@ -59,15 +59,17 @@ public:
     using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
     using BlockSchedulerParams = typename BlockScheduler::Params;
-    using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE>>;
-    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE>>;
-    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE>>;
-    using MakeLayoutScaleA = Std::conditional_t<
-        transA, AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleADNLayoutPtn, Std::Int<SCALE_C0>>,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, Std::Int<SCALE_C0>>>;
-    using MakeLayoutScaleB = Std::conditional_t<
-        transB, AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0>>,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0>>>;
+    using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutScaleA = AscendC::Std::conditional_t<
+        transA,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleADNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
+    using MakeLayoutScaleB = AscendC::Std::conditional_t<
+        transB,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
 
     struct QBMMTiling {
         enum BiasMode : uint32_t {
