@@ -16,6 +16,8 @@
 #ifndef MOE_EP_DISPATCH_H
 #define MOE_EP_DISPATCH_H
 
+#include <cstddef>
+
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
@@ -47,10 +49,12 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
+#include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 namespace MoeEpDispatchImpl {
@@ -90,7 +94,7 @@ public:
     __aicore__ inline MoeEpDispatch(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
                                 GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
-                                GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
+                                GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipe,
                                 const MoeEpDispatchTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -215,14 +219,17 @@ private:
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales, GM_ADDR cachedSlotIdx,
-    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeEpDispatchTilingData *tilingData)
+    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM,
+    GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchTilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
+    constexpr size_t metadataOffset = offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) +
+                                      offsetof(MoeEpDispatchInfo, dumpMetadata);
+    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
 
     const auto &info = tilingData->moeEpDispatchInfo;
     axisBS_ = info.cfg.numTokens;
