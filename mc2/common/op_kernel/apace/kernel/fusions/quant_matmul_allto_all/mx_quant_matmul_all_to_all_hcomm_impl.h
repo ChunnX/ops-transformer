@@ -279,12 +279,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     BlockMmadParams mmadParams;
     mmadParams.aGmAddr = aGMOffset;
     mmadParams.scaleAGmAddr = scaleAOffset;
-    // x2和x2_scale在GM中按rank切分存储,Blaze kernel内部用rankId*K偏移读取
-    // rankSize=1时rankId=0,所以需要提前在bGmAddr/scaleBGmAddr上偏移到本rank的位置
-    uint64_t x2ElemOffset = rankId_ * mmTile.k;
-    mmadParams.bGmAddr = x2_ + x2ElemOffset * sizeof(X2Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    mmadParams.scaleBGmAddr = x2Scale_ + rankId_ * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
+    mmadParams.bGmAddr = x2_;
+    mmadParams.scaleBGmAddr = x2Scale_;
     mmadParams.cGmAddr = cGMOffset;
     mmadParams.biasGmAddr = bias_;
 
