@@ -81,6 +81,18 @@ void NsaSelectedAttentionEmptyInputTiling::NsaSelectedAttentionSetEmptyInputTili
     context->GetRawTilingData()->SetDataSize(nsaTilingData.GetDataSize());
 }
 
+static ge::graphStatus CheckInputShapeDims(const gert::TilingContext *context, const gert::Shape &shape,
+                                           const char *inputName)
+{
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        // 校验输入shape，当输入的某一维度为0时进行拦截
+        OP_CHECK_IF((shape.GetDim(i) == 0),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "%s shape is invalid, dim %zu is 0.", inputName, i),
+                return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckParams(const gert::TilingContext *context)
 {
     if (context->GetInputShape(QUERY_INPUT_INDEX) != nullptr && context->GetInputShape(KEY_INPUT_INDEX) != nullptr &&
@@ -88,6 +100,11 @@ static ge::graphStatus CheckParams(const gert::TilingContext *context)
         auto &queryShape = context->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
         auto &keyShape = context->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
         auto &valueShape = context->GetInputShape(VALUE_INPUT_INDEX)->GetStorageShape();
+        if (CheckInputShapeDims(context, queryShape, "query") != ge::GRAPH_SUCCESS ||
+            CheckInputShapeDims(context, keyShape, "key") != ge::GRAPH_SUCCESS ||
+            CheckInputShapeDims(context, valueShape, "value") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(INPUTLAYOUT_ATTRS_INDEX);
         if (strlen(inputLayout) == 3) { // 3: BSH or SBH
             if (inputLayout[0] == 'B') {
