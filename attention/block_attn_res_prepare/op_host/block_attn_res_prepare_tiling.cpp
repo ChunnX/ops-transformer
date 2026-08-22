@@ -173,8 +173,8 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputDtypes() const
     OP_CHECK_IF(blockResDesc->GetDataType() != ge::DT_FLOAT || pseudoQueryDesc->GetDataType() != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "block_res and pseudo_query must be FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(validDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(context_->GetNodeName(), "valid_blocks must be INT32"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(validDesc->GetDataType() != ge::DT_INT64,
+                OP_LOGE(context_->GetNodeName(), "valid_blocks must be INT64"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
