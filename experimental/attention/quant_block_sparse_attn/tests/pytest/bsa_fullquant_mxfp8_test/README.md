@@ -4,12 +4,12 @@
 
 ## 文件结构
 
-- `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
+- `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用以及两方/三方精度对比。
 - `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，保留少量典型 case，便于日常快速回归。
 - `qbsa_mxfp8_test_cases.csv`：批量 testcase 文件，每行对应一个 case。
 - `qbsa_mxfp8_test_cases_full.csv`：单 batch 全量因子组合表。
 - `qbsa_mxfp8_test_cases_batch_large.csv`：多 batch、ragged 和规模压力典型组合表。
-- `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
+- `golden_cache.py`：输入、两种 CPU 参考结果和 NPU 输出缓存工具。
 - `result_compare_method.py`：精度比较工具。
 
 ## 前置条件
@@ -43,9 +43,56 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 默认 `--mode all`，等价于依次执行：
 
 - `gen`：生成输入并保存缓存
-- `cpu`：生成 CPU golden
+- `cpu`：生成低精度 CPU golden
 - `npu`：调用 NPU 算子
-- `compare`：比较 CPU/NPU 输出
+- `compare`：对 CPU golden 与 NPU 做原有两方比较
+
+低精度 CPU 路径默认使用 `torch.matmul`。需要使用
+`npu_quant_matmul` 时显式增加 `--quant_matmul`：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --quant_matmul
+```
+
+只有显式增加 `--three_way_compare`（也支持 `--three-way-compare`）时，才会生成 FP64 高精度
+golden，并以“FP64 高精度 CPU、低精度 CPU、NPU”执行 method-12 三方比较：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3 \
+  --three_way_compare
+```
+
+`--quant_matmul` 与是否开启三方对比相互独立；它只选择低精度 CPU 路径的 matmul 后端。
+
+TTK 同样默认两方对比。三方对比使用独立 TestSpec，并由 TTK 原生远端 Torch
+provider 生成低精度 CPU benchmark；不需要修改 TTK，也不需要在 CSV `attributes`
+中增加额外属性：
+
+```bash
+python3 -m ttk e2e \
+  -i /path/to/qbsa_mxfp8_cases.csv \
+  --plugin /path/to/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_cross_check_spec.py \
+  --compare cross_check \
+  --provider torch
+```
+
+执行前需要在 TTK 配置中提供可用的远端 Torch endpoint。该独立插件只接受
+`quant_mode=2`，且远端低精度路径固定使用 CPU `torch.matmul`，因此 cross-check
+CSV 中的 `quant_matmul` 必须省略或设为 `False`。默认两方测试继续使用
+`tests/assets/` 插件；`quant_mode=1` 的 QBSA-FP8 用例不使用此 cross-check 插件，
+其原有两方比较逻辑不变。
+
+QBSA-MXFP8 三方比较的小值域标准为：
+
+| 输出 | `small_value` | `small_value_atol` | 小值错误通过标准 |
+|------|---------------|--------------------|------------------|
+| BF16 `attention_out` | `2^-8` | `2^-16` | `ErrorCountNPU / max(1, ErrorCount低精度CPU) <= 2` |
+| FP32 `softmax_lse` | `2^-14` | `2^-30` | `ErrorCountNPU / max(1, ErrorCount低精度CPU) <= 2` |
+
+小值元素由 `abs(FP64 golden) < small_value` 确定；其中
+`abs(result - FP64 golden) > small_value_atol` 的元素计入 `ErrorCount`。
 
 每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出
 `QBSA MXFP8 CASE SUMMARY` 汇总表。汇总表各列含义：
@@ -115,9 +162,10 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ## 复用 CPU Golden
 
-增加 `--rdv` 后，如果缓存目录中已存在当前 case 对应的 `<case_name>_cpu_output.pt`，脚本会直接加载
-该 CPU golden，跳过耗时的 CPU 计算；缓存不存在时仍会按 `--mode` 正常生成并保存。输入生成、NPU
-调用和精度对比不受影响。
+增加 `--rdv` 后，两方模式只要求当前 case 的低精度 CPU golden 缓存存在；三方模式要求高精度
+CPU golden 和低精度 CPU benchmark 两份缓存均存在。条件满足时脚本会直接加载并跳过 CPU 计算，
+否则仍按 `--mode` 正常生成并保存。低精度缓存区分 `torch.matmul` 与
+`npu_quant_matmul` 后端，两方与三方缓存也彼此隔离。
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
@@ -217,13 +265,15 @@ debug/<case_name>/
 ├── pt/
 │   ├── <case_name>_input.pt
 │   ├── <case_name>_cpu_output.pt  # RDV 命中正式缓存时不重复写入
+│   ├── <case_name>_benchmark_output.pt
 │   └── <case_name>_npu_output.pt
 └── precision/
     ├── attention_out.png
     └── softmax_lse.png        # return_softmax_lse=true 时生成
 ```
 
-`cpu_output.pt` 保存 CPU golden，`npu_output.pt` 保存算子输出。精度图逐元素使用与
+`cpu_output.pt` 保存高精度 CPU golden，`benchmark_output.pt` 保存低精度 CPU benchmark，
+`npu_output.pt` 保存算子输出。精度图逐元素使用与
 `check_result` 相同的 `rtol/atol`：白色表示通过，蓝色表示失败。图片标题会标注 golden/算子 shape、
 逻辑矩阵大小、显示大小、元素数和失败数。超大 Tensor 会按区域聚合；某个显示像素对应的原始区域中
 只要存在一个失败元素，该像素就是蓝色。因此整体比较允许少量失败元素而最终为 Pass 时，图片中仍可能

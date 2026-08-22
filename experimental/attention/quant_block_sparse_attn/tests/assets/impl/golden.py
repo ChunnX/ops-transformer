@@ -100,6 +100,7 @@ def cpu_quant_block_sparse_attn(
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
     quant_matmul=False,
+    _mxfp8_high_precision=False,
     **kwargs,
 ):
     """Map the shared 16-input CSV signature to the existing pytest golden."""
@@ -143,6 +144,7 @@ def cpu_quant_block_sparse_attn(
             sparse_block_size_q,
             sparse_block_size_kv,
             quant_matmul=quant_matmul,
+            high_precision=_mxfp8_high_precision,
             **common_kwargs,
         )
 
@@ -257,9 +259,10 @@ def _mxfp8_cpu_golden(
     sparse_mode="dense",
     seed=0,
     quant_matmul=False,
+    high_precision=False,
     **kwargs,
 ):
-    """Run the original pytest CPU reference on the exact customized inputs."""
+    """Run the low-precision default or high-precision MXFP8 CPU golden."""
     module = _mxfp8_load_pytest_golden_module()
     testcase_name = kwargs.get("testcase_name") or "__default__"
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})
@@ -337,7 +340,15 @@ def _mxfp8_cpu_golden(
         data = cached["data"]
         module.set_active_case(case)
 
-    attention_out, softmax_lse = module.cpu_mxfp8_golden(
+    golden_func = (
+        module.cpu_mxfp8_golden_high_precision
+        if _as_bool(high_precision)
+        else module.cpu_mxfp8_golden
+    )
+    golden_kwargs = {}
+    if not _as_bool(high_precision):
+        golden_kwargs["use_quant_matmul"] = _as_bool(quant_matmul)
+    attention_out, softmax_lse = golden_func(
         data["query"],
         data["key"],
         data["value"],
@@ -351,10 +362,18 @@ def _mxfp8_cpu_golden(
         data["sparse_indices"],
         data["sparse_seq_len"],
         data["block_table"],
-        use_quant_matmul=_as_bool(quant_matmul),
+        **golden_kwargs,
     )
     attention_out = attention_out.to(torch.bfloat16)
     return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)
+
+
+def cpu_mxfp8_cross_check_golden(*args, **kwargs):
+    """Generate only the FP64 reference used by the dedicated cross-check spec."""
+    if int(kwargs.get("quant_mode", 1)) != 2:
+        raise ValueError("QBSA MXFP8 cross-check spec only supports quant_mode=2")
+    kwargs["_mxfp8_high_precision"] = True
+    return cpu_quant_block_sparse_attn(*args, **kwargs)
 
 
 # ==================================================================================================
