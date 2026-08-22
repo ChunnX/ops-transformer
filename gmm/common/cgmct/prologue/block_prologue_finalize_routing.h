@@ -166,9 +166,6 @@ __aicore__ inline void BlockPrologueFinalizeRouting<
     if (totalLen == 0) {
         return;
     }
-    if (GetSubBlockIdx() >= 1) {
-        return;
-    }
 
     uint64_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
     singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
@@ -305,8 +302,6 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     // sharedInput is None,only do InitOutputWithZeros, all shape(batch,n) ,then finish
     if (sharedInputLen == 0) {
         return;
-        // InitOutputWithZeros(0, params_->n * params_->batch);
-        // return;
     }
 
     InitOutputWithZeros(0, firstZeroSize);
