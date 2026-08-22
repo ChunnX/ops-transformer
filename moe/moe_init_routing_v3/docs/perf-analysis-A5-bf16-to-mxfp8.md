@@ -36,6 +36,22 @@
 
 **GatherCopy 是访存最优路径（不应切回 ScatterCopy）**：GatherCopy 读 84MB(顺序)+写 1.08GB(散射)=1.16GB；ScatterCopy 每输出行各读一次源 → 读约 2GB+写 1.08GB≈3GB（2.6× 流量），且 compute 从 1 万次涨到 25.6 万次。写 bound 下 GatherCopy 总流量最小，保持现路径。
 
+### 3.1 GatherCopy 搬运机理：读侧"两次索引一次搬运跳搬"已最优，写侧不可合并
+
+源码 `op_kernel/arch35/moe_v3_gather_mxfp8_quant.h::GatherCopyExpandedXandMXQuant` 按**源 token 行**（非输出行）组织搬运：
+
+- **一次搬运（读+算按源行摊销）**：每个源行只做一次 `CopyIn`(读 bf16 源行) + 一次 `Compute`(amax→scale→量化)。该源 token 被 K 个 expert 选中、落在本核范围内的多个副本，**共享同一次读入与同一次量化结果**，不重复读、不重复算。
+- **两次索引**：① 探测扫描 `indicesLocal.GetValue`——借 `globalSortIdx / k_ == row` 判源行边界并检测本核区间内是否有有效输出；② 写出扫描 `GetValue`——对每个有效 `outIndex` 取目标行号驱动散射写。
+- **跳搬**：探测/写出扫描遇 `outIndex < 0`(被 drop 的 token) 直接跳过，不触发读入与写出。
+
+| 侧 | 现状 | 能否再减 |
+|---|---|---|
+| 读(gather 源行) | 每源行**只读 1 次**（不管被几个 expert 选中）→ case1 仅读 84MB | 已最优；切 ScatterCopy 反而 K× 放大到 ~2GB |
+| 量化 compute | 每源行**只算 1 次** | 已最优 |
+| 写(scatter 输出) | 每有效输出行**仍 1 次 `DataCopyPad`**(data+scale 各一条) | **不能合并**：K 个目标地址 `outIndex*cols_` 由运行期排序散射决定、无固定 stride，无法用 `blockCount>1` 打包 |
+
+即：**读侧 gather 调用次数已被"两次索引一次搬运跳搬"压到最小；写侧次数/字节量由固定输出体量决定、逼近 HBM 写带宽物理墙**——这正是内核级改动测不出收益的根因。
+
 ## 4. 候选优化与真机实测（均无净收益）
 
 在直调复现工程上实施两种候选内核优化并逐 case 采集对比（基线/方案同卡串行、launch-count=20）：
