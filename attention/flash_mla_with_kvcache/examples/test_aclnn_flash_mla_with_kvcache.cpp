@@ -13,7 +13,7 @@
  * \brief aclnn FlashMlaWithKvcache end-to-end example with independent CPU golden verification.
  *
  * Pipeline per case:
- *   1. aclnnFlashMlaMetadataGetWorkspaceSize / aclnnFlashMlaMetadata  -> multi-section metadata (INT32)
+ *   1. aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize / aclnnFlashMlaWithKvcacheMetadata  -> multi-section metadata (INT32)
  *   2. aclnnFlashMlaWithKvcacheGetWorkspaceSize / aclnnFlashMlaWithKvcache                  -> attn_out (NTD) + softmax_lse
  *   3. independent naive-attention golden (fp64) compared with the
  *      flash_attn pytests thresholds (attention/flash_attn/tests/pytests/utils/compare.py,
@@ -496,11 +496,11 @@ int main()
         // 16 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, batchSize, maxSeqlenQ, maxSeqlenKv,
         // numHeadsQ, numHeadsKv, headDim, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
         // headDim=512: MLA checker 强制 head_dim==512（qk nope 宽）。
-        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.batch, cs.qLens[0], cs.kvLen,
+        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.batch, cs.qLens[0], cs.kvLen,
                                                     cs.numHeadsQ, 1, 512, 3, layoutQ, layoutKv, layoutOut, metaT,
                                                     &wsSize, &executor);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
-            LOG_PRINT("aclnnFlashMlaMetadataGetWorkspaceSize failed: %d\n", ret);
+            LOG_PRINT("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize failed: %d\n", ret);
             return ret;
         }
         void *wsAddr = nullptr;
@@ -511,9 +511,9 @@ int main()
                 return ret;
             }
         }
-        ret = aclnnFlashMlaMetadata(wsAddr, wsSize, executor, stream);
+        ret = aclnnFlashMlaWithKvcacheMetadata(wsAddr, wsSize, executor, stream);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
-            LOG_PRINT("aclnnFlashMlaMetadata failed: %d\n", ret);
+            LOG_PRINT("aclnnFlashMlaWithKvcacheMetadata failed: %d\n", ret);
             return ret;
         }
         ret = aclrtSynchronizeStream(stream);
