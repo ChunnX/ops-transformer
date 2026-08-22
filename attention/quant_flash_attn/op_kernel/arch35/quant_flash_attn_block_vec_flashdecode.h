@@ -549,36 +549,30 @@ public:
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
-                    uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
-                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.gSize = constInfo_.realGSize, .t1Size = constInfo_.t1Size});
-                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(taskInfo_.bIdx);
-                    uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    uint64_t bN2Offset =
-                        prefixBS1 * constInfo_.gSize * constInfo_.n2Size + taskInfo_.n2Idx * constInfo_.gSize;
-                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
-                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = s1Size, .gSize = constInfo_.gSize, .n2Size = constInfo_.n2Size});
-                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<layout>()>(
-                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
-                } else { // BNSD
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(taskInfo_.bIdx);
-                    uint64_t s1LeftPaddingSize = 0;
-                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
-                        softmaxLseGm_, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
+                
+                GmCoord lseGmCoord{.bIdx = taskInfo_.bIdx,
+                    .n2Idx = taskInfo_.n2Idx,
+                    .gS1Idx = mOffset,
+                    .dIdx = 0,
+                    .gS1DealSize = actualGSplitSize,
+                    .dDealSize = 0};
+
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+                        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_N2GT;
+                        FaGmTensor<T, LSE_FORMAT, int32_t, true> lseGmTensor_;
+                        lseGmTensor_.gmTensor = softmaxLseGm_;
+                        lseGmTensor_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.gSize,
+                                              *qActSeqLensParser_);
+                        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+                        copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
+                } else { // BSND BSH BNSD
+                    constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+                    FaGmTensor<T, LSE_FORMAT, int32_t> lseGmTensor_;
+                    lseGmTensor_.gmTensor = softmaxLseGm_;
+                    lseGmTensor_.offsetCalculator.Init(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize,
+                                              constInfo_.s1Size, *qActSeqLensParser_);
+                    CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+                    copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
                 }
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
