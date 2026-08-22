@@ -21,7 +21,7 @@
  *   - D/2 对齐 (dAlign==d): UB 行距与 GM 行距一致, cos/sin/grad/x/dx/部分积
  *     均走整行连续 2D DataCopy (blockLen=行*D), 不再逐半行循环;
  *   - D/2 非对齐: 按半行拆分 (blockLen=D/2), grad/dx 逐 bsIdx 搬运。
- * 计算风格与 A/单路 AB 一致: HalfGradAlignVF 使用半行对齐步长。
+ * 计算风格与 A/单路 AB 一致: HalfGradAlignFastVF 使用半行对齐步长 (cos/sin 寄存器复用 + 融合乘加)。
  * dCosFlag=1: 部分积 SET/ACCUMULATE 择路、UB 行距固定 ubFactorN_、写回走队列同步 (与 BAB 对齐)。
  */
 
@@ -434,9 +434,10 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ComputeOnePath(
     const LocalTensor<T>& inTensor, const LocalTensor<T>& outTensor,
     uint32_t currBS, uint32_t currDNum)
 {
-    // HalfGradAlignVF: currSNum=currBS(cos 行数), currDNum=currN(每 cos 行下的 n 行)
-    HalfGradAlignVF<T>(sinTensor, cosTensor, inTensor, outTensor,
-                       tilingData_->d, dAlign_, currBS, currDNum);
+    // HalfGradAlignFastVF: currSNum=currBS(cos 行数), currDNum=currN(每 cos 行下的 n 行)
+    // cos/sin 寄存器复用 + MulAddDst 融合乘加, 计算密集场景(float32 两输出)每块指令数 15 -> 8
+    HalfGradAlignFastVF<T>(sinTensor, cosTensor, inTensor, outTensor,
+                           tilingData_->d, dAlign_, currBS, currDNum);
 }
 
 // =================================================================

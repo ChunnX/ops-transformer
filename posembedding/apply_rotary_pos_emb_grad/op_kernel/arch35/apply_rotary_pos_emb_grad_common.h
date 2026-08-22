@@ -92,6 +92,73 @@ __aicore__ inline void HalfGradAlignVF(
     }
 }
 
+/*
+    FastVF 版本 (计算 bound 场景优化, 数学语义与 HalfGradAlignVF 完全一致):
+        grad_out_1 = cos_1 * grad_1 + sin_2 * grad_2
+        grad_out_2 = cos_2 * grad_2 - sin_1 * grad_1
+    优化点 (950DT VL=256B, float32 每 repeat 块 64 元素):
+    1. 循环交换 sIdx -> repeat(i) -> row: cos/sin 的第 i 块只 Load 一次进寄存器,
+       内层 currDNum 行复用 (原版每行重复 Load, 6 load/块 -> 2 load/块);
+    2. sin 前半块原地取负 (Muls -1, 每块一次), 两个输出统一为 Mul + MulAddDst
+       融合乘加, ALU 6 条/块 -> 4 条/块;
+    3. UpdateMask 只依赖 halfD (值恒定), 提到 (sIdx, i) 层, row 循环复用
+       (原版每行每块重算)。
+    合计每 repeat 块 8 条指令 (2 load + 4 ALU + 2 store), 原版 15 条
+    (6 load + 6 ALU + 2 store + 1 mask), LSU/VALU 压力同步下降。
+*/
+template <typename T>
+__aicore__ inline void HalfGradAlignFastVF(
+    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
+    const LocalTensor<T>& outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
+{
+    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
+    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
+    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
+    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    uint32_t halfD = dLen / HALF_COEF;
+    uint32_t halfDAlign = Ops::Base::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
+    uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
+    __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<float> vregIn1, vregIn2, vregSin1, vregSin2, vregCos1, vregCos2;
+        MicroAPI::RegTensor<float> vregOut1, vregOut2;
+        MicroAPI::MaskReg preg;
+        for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
+            currSinUb = sinUb + sIdx * dAlign;
+            currCosUb = cosUb + sIdx * dAlign;
+            for (uint16_t i = 0; i < repeatTimes; i++) {
+                uint32_t updateCnt = halfD;
+                preg = MicroAPI::UpdateMask<float>(updateCnt);
+                int32_t offset = i * VL_FLOAT32_SIZE;
+                int32_t halfOffset = offset + halfDAlign;
+                // cos/sin 第 i 块常驻寄存器, 内层 currDNum 行复用
+                ops::LoadTwoTensorForDtypeT<T>(
+                    currSinUb, currSinUb, vregSin1, vregSin2, preg, preg, offset, halfOffset);
+                ops::LoadTwoTensorForDtypeT<T>(
+                    currCosUb, currCosUb, vregCos1, vregCos2, preg, preg, offset, halfOffset);
+                // sin 前半块原地取负: grad_out_2 = cos_2*grad_2 + (-sin_1)*grad_1, 统一为纯乘加
+                Muls(vregSin1, vregSin1, -1.0f, preg);
+                for (uint16_t row = 0; row < currDNum; row++) {
+                    currInUb = inUb + (sIdx * currDNum + row) * dAlign;
+                    currOutUb = outUb + (sIdx * currDNum + row) * dAlign;
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currInUb, currInUb, vregIn1, vregIn2, preg, preg, offset, halfOffset);
+                    // grad_out_1 = cos_1*grad_1 + sin_2*grad_2
+                    Mul(vregOut1, vregSin2, vregIn2, preg);
+                    MicroAPI::MulAddDst(vregOut1, vregCos1, vregIn1, preg);
+                    // grad_out_2 = cos_2*grad_2 - sin_1*grad_1
+                    Mul(vregOut2, vregSin1, vregIn1, preg);
+                    MicroAPI::MulAddDst(vregOut2, vregCos2, vregIn2, preg);
+                    ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut1, preg, offset);
+                    ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut2, preg, halfOffset);
+                }
+            }
+        }
+    }
+}
+
 // ============================================================================
 // BatchHalfGradContiguousVF — A 模板 half gradient
 // UB 中每行按 dAlign = CeilAlign(D/2, BLOCK/sizeof(T)) * 2 存放（半行分别 32B 对齐落位），
