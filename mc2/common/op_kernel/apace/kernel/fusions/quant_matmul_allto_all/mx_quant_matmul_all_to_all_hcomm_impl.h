@@ -86,19 +86,13 @@ struct PostComputeCommPolicy {
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
-        // 去重: 同一tileIdx只处理一次
-        if (tileIdx <= lastCommTileIdx_) {
-            return;
+        // 只记录已完成的tileIdx，不在此处下发AllToAll
+        // AllToAll在PrepareLastTileAllToAll中SyncAll后统一下发,避免:
+        // 1. handle被覆盖导致前一个handle无法Wait
+        // 2. rank间不同步导致死锁
+        if (tileIdx > lastCommTileIdx_) {
+            lastCommTileIdx_ = tileIdx;
         }
-
-        // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
-        if (tileIdx > 0) {
-            uint32_t prevTileIdx = tileIdx - 1;
-            // 无论主循环还是末尾循环,都下发prevTileIdx的AllToAll
-            // 末尾循环时所有matmul已完成,数据有效
-            IssueAllToAll(prevTileIdx);
-        }
-        lastCommTileIdx_ = tileIdx;
     }
 };
 
@@ -247,16 +241,36 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareLastTileAllToAll()
 {
-    // Blaze kernel完成后，下发最后一个tile的AllToAll
-    // WaitTile(tileIdx)下发tileIdx-1，最后一个tile无后续WaitTile触发
-    uint32_t lastTileIdx = totalTileCnt_ - 1;
-    if (lastTileIdx != commPolicy_.lastIssuedTileIdx_) {
-        commPolicy_.IssueAllToAll(lastTileIdx);
+    // Blaze kernel完成后,统一下发AllToAll
+    // 不在WaitTile中逐tile下发,避免handle覆盖和rank间死锁
+    auto &&commTiling = tilingData_->commTilingData;
+    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;
+    uint64_t perRankN = nonSplitAxisSize / rankDim_;
+
+    // 分头块和尾块两次下发(batchCnt受uint8_t限制)
+    // 头块: sendCount=perRankN, strideCount=perRankN, batchCnt=tileM*headCnt(若>255需截断)
+    uint32_t headM = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt;
+    uint32_t tailM = commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
+
+    AscendC::HcclHandle h0{0}, h1{0};
+    if (headM > 0) {
+        h0 = hccl_.template AlltoAll<true>(
+            mmResultGM_, y_,
+            perRankN, static_cast<AscendC::HcclDataType>(commPolicy_.yHcclDataType_),
+            perRankN, static_cast<uint8_t>(headM > 255 ? 255 : headM));
+    }
+    if (tailM > 0) {
+        uint64_t headOffset = static_cast<uint64_t>(headM) * nonSplitAxisSize * sizeof(YType);
+        h1 = hccl_.template AlltoAll<true>(
+            mmResultGM_ + headOffset, y_ + headOffset,
+            perRankN, static_cast<AscendC::HcclDataType>(commPolicy_.yHcclDataType_),
+            perRankN, static_cast<uint8_t>(tailM > 255 ? 255 : tailM));
     }
 
-    // Wait所有已下发的AllToAll
+    // SyncAll后统一Wait
     AscendC::SyncAll();
-    hccl_.Wait(commPolicy_.curHandle_);
+    if (headM > 0) { hccl_.Wait(h0); }
+    if (tailM > 0) { hccl_.Wait(h1); }
 }
 
 template <typename X1Type, typename X2Type, typename YType,
