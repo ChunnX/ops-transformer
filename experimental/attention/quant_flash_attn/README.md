@@ -25,9 +25,9 @@
 
 - **接口功能**:
 
-  `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成 MXFP4 量化场景下的全量化注意力计算，训练推理归一化。当前支持 MXFP4 场景：
+  `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成 MxFP4 量化场景下的全量化注意力计算，训练推理归一化。当前支持 MxFP4 场景：
 
-  - **MxFP4场景**（`quant_mode=5`）：Q/K/V 均采用 MXFP4（per-block group 量化），P 采用 MXFP4，Softmax 在 FP16 下计算。
+  - **MxFP4场景**（`quant_mode=5`）：Q/K/V 均采用 MxFP4（per-block group 量化），P 采用 MxFP4，Softmax 在 FP16 下计算。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -145,11 +145,11 @@ cann_ops_transformer.quant_flash_attn(
 
 | 枚举名 | 值 | 含义 |
 | :--- | :---: | :--- |
-| `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 1 | A8C8 Q/KV MXFP8，P FP8_E4M3 per-tensor，Softmax FP32 |
-| `A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32` | 2 | A8C8 Q/KV MXFP8，P MXFP8，Softmax FP32 |
-| `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16` | 3 | A8C8 Q/KV MXFP8，P FP8_E4M3 per-tensor，Softmax FP16 |
-| `A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16` | 4 | A8C8 Q/KV MXFP8，P MXFP8，Softmax FP16 |
-| `A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16` | 5 | A4C4 Q/KV MXFP4，P MXFP4，Softmax FP16 |
+| `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 1 | A8C8 Q/KV MxFP8，P FP8_E4M3 per-tensor，Softmax FP32 |
+| `A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32` | 2 | A8C8 Q/KV MxFP8，P MxFP8，Softmax FP32 |
+| `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16` | 3 | A8C8 Q/KV MxFP8，P FP8_E4M3 per-tensor，Softmax FP16 |
+| `A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16` | 4 | A8C8 Q/KV MxFP8，P MxFP8，Softmax FP16 |
+| `A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16` | 5 | A4C4 Q/KV MxFP4，P MxFP4，Softmax FP16 |
 | `A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 6 | A8C8 Q/K FP8_E4M3 per-token-head、V FP8_E4M3 per-head、P FP8_E4M3 per-tensor，Softmax FP32 |
 | `A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 7 | A8C8 Q/KV HIF8 per-tensor，P FP8_E4M3 per-tensor，Softmax FP32 |
 | `A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16` | 8 | A4C4 Q/KV HIF4，P HIF4 Level1，Softmax FP16 |
