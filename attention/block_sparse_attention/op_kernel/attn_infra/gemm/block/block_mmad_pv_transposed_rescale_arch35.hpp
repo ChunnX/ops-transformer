@@ -111,6 +111,8 @@ public:
     static constexpr uint32_t DIAG_BUF_NUM = 3;  // aligned with PRE_LAUNCH pipeline
     static constexpr uint32_t SUB_BLOCK_NUM = 2;      // diag 每 stage 双子核各一块（L1 共享，需分块排布）
     static constexpr uint32_t DIAG_SUB_BLOCK_SIZE = 64;
+    static constexpr uint32_t DIAG_PACKED_COLS = 16;
+    static constexpr uint32_t DIAG_SUB_BLOCK_ELEMS = DIAG_SUB_BLOCK_SIZE * DIAG_PACKED_COLS;
     static constexpr uint32_t DIAG_MMAD_TILE_SIZE = 16;
     static constexpr uint32_t DIAG_MMAD_TILE_ELEMS = DIAG_MMAD_TILE_SIZE * DIAG_MMAD_TILE_SIZE;
     static constexpr uint32_t DIAG_MMAD_TILES_PER_SUB_BLOCK = DIAG_SUB_BLOCK_SIZE / DIAG_MMAD_TILE_SIZE;
@@ -148,12 +150,12 @@ public:
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(
                 l1BufAddrStart + l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        // Each stage keeps two fixed 64x64-float L1 slots. S_trans writes valid diagonal
-        // fractals at their original zN square-parent positions.
+        // Each stage keeps two packed 64x16-float L1 slots. Every slot stores at most
+        // four consecutive 16x16 diagonal tiles and occupies 4KB.
         for (uint32_t i = 0; i < DIAG_BUF_NUM; i++) {
             l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
                 l1DiagAddrStart +
-                SUB_BLOCK_NUM * DIAG_SUB_BLOCK_SIZE * DIAG_SUB_BLOCK_SIZE * sizeof(float) * i);
+                SUB_BLOCK_NUM * DIAG_SUB_BLOCK_ELEMS * sizeof(float) * i);
         }
         for (uint32_t i = 0; i < L0_STAGES; i++) {
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(
@@ -410,9 +412,8 @@ public:
             uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum;
             uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
             uint32_t l0BEventId = l0BBufId + 2;
-            // Keep the known-correct 2949 L1->L0B path while validating the sparse
-            // UB->L1 producer: take each diagonal tile from its square L1 parent and
-            // copy it to a standalone compact L0B tile.
+            // Keep the known-correct per-16x16 L1->L0B path. The L1 parent is packed
+            // as zN [16, diagGrpRound], with one diagonal tile every 16 columns.
             auto l0BDiagTileLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(
                 DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
@@ -423,15 +424,15 @@ public:
                 uint32_t grpCols = grpColEnd - grpColStart;
                 uint32_t diagGrpRound = RoundUp(grpCols, DIAG_MMAD_TILE_SIZE);
                 auto l1DiagGrpLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
-                    diagGrpRound, diagGrpRound);
+                    DIAG_PACKED_COLS, diagGrpRound);
                 auto l1DiagGrpTensorTla = tla::MakeTensor(
                     l1DiagTensor[l1DiagBufId][
-                        frGrp * DIAG_SUB_BLOCK_SIZE * DIAG_SUB_BLOCK_SIZE],
+                        frGrp * DIAG_SUB_BLOCK_ELEMS],
                     l1DiagGrpLayoutTla, tla::MakeCoord(0U, 0U), Arch::PositionL1{});
                 uint32_t nGrpAct = CeilDiv(grpCols, DIAG_MMAD_TILE_SIZE);
                 for (uint32_t j = 0; j < nGrpAct; j++) {
                     auto l1DiagTileTensorTla = GetTile(l1DiagGrpTensorTla,
-                        tla::MakeCoord(j * DIAG_MMAD_TILE_SIZE, j * DIAG_MMAD_TILE_SIZE),
+                        tla::MakeCoord(0U, j * DIAG_MMAD_TILE_SIZE),
                         tla::MakeShape(DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE));
                     uint32_t diagPackedTileIdx =
                         frGrp * DIAG_MMAD_TILES_PER_SUB_BLOCK + j;
@@ -573,7 +574,7 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];   // V 段（gather 写入，A=(V)^T 读）
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];   // P 段（softmax 写入，B=(P)^T 读）
-    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // fixed slots; sparse zN square parents
+    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // packed 64x16 slots, two groups per stage
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     // RE 段：GO^T/diag 为 fp32，需 float 的 L0 buffer（PV^T 的 fp8 buffer 元素类型不匹配 float 布局）；

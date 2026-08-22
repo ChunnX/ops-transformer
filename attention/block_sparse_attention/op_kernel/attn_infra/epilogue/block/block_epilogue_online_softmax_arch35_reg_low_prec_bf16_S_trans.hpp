@@ -253,26 +253,28 @@ public:
                 // VF 写完唯一的 diag UB 后，使用固定 EVENT_ID2 允许 MTE3 读取
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
-                // TLA 封装（与 P 的 P→L1 搬移同风格：表达布局意图，DataCopy 用裸地址 + DataCopyParams）
-                auto ubDiagDmLayoutTla = tla::MakeLayout<float, LayoutOutput>(diagDmRound, diagDmRound);
-                auto ubDiagDmTensorTla = tla::MakeTensor(diagUbTensor, ubDiagDmLayoutTla, Arch::PositionUB{});
-                auto ubDiagDmTensorTlaTile = GetTile(ubDiagDmTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(n, n));
-                auto l1DiagDmLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(64, 64);
-                auto l1DiagDmTensorTla = tla::MakeTensor(l1DiagTensor, l1DiagDmLayoutTla, Arch::PositionL1{});
-                auto l1DiagDmTensorTlaTile =
-                    GetTile(l1DiagDmTensorTla, tla::MakeCoord(subBlockIdx_ * 64, 0), tla::MakeShape(n, n));
                 // diag flag 双向 token：等 CUBE 消费完同 stage 的上一轮 diag（consumed）
                 // P 模式：DataCopy 前 wait（与 P 的 WaitCrossCoreSync(smToMm2Flag) 在 DataCopy 前一致），
                 // 保证 mmadPV 转置里的 RE 用完同 stage L1 diag 才覆写；VF 计算不被 CUBE 消费进度阻塞
                 WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
-                // MTE3：diag 中转 -> L1（3 份轮转，与 P 的 P→L1 搬移同款参数；双子核 L1 分块，
-                // 本子核块在 stage 内偏移 subBlockIdx × 4096 元素，避免互相覆盖）
+                // Pack diagonal 16x16 tiles as consecutive pairs of FP32 16x8 fractals.
+                // The CUBE consumer interprets this memory as zN [16, diagDmRound].
                 AscendC::DataCopyParams dataCopyParams;
-                dataCopyParams.blockCount = diagDmRound / 8;   // 8: element per datablock when float
-                dataCopyParams.blockLen = diagDmRound;
-                dataCopyParams.srcStride = 1;
-                dataCopyParams.dstStride = 0;
-                DataCopy(l1DiagTensor[subBlockIdx_ * 64 * 64], diagUbTensor, dataCopyParams);
+                dataCopyParams.blockCount = diagDmRound / 16;
+                dataCopyParams.blockLen = 16;
+                dataCopyParams.srcStride = 2 * (diagDmRound + 1);
+                dataCopyParams.dstStride = 16;
+
+                constexpr uint32_t FP32_ELEMS_PER_DATABLOCK = 8;
+                constexpr uint32_t DIAG_SUB_BLOCK_SLOT_ELEMS = 64 * 16;
+                uint32_t l1DiagSubBlockOffset = subBlockIdx_ * DIAG_SUB_BLOCK_SLOT_ELEMS;
+                uint32_t srcSecondFractalOffset =
+                    (diagDmRound + 1) * FP32_ELEMS_PER_DATABLOCK;
+                constexpr uint32_t dstSecondFractalOffset = 16 * FP32_ELEMS_PER_DATABLOCK;
+
+                DataCopy(l1DiagTensor[l1DiagSubBlockOffset], diagUbTensor, dataCopyParams);
+                DataCopy(l1DiagTensor[l1DiagSubBlockOffset + dstSecondFractalOffset],
+                    diagUbTensor[srcSecondFractalOffset], dataCopyParams);
                 // MTE3 读完成 → 下一轮覆写前 wait（P 对称组）
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
                 // diag 写完成（L1 就绪）：与 P 的 smToMm2 ready 方向对称，CUBE RE 读 diag 前 wait 同一 flag

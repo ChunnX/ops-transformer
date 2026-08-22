@@ -743,11 +743,11 @@ public:
             // go 仅末块使用（NZ2DN 搬入），1 份
             ubGoTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 uBufTileHelper_.goStartOffset);
-            // Keep one 16KB slot per subblock and three stages; VEC writes valid diagonal
-            // fractals at their original zN square-parent positions.
+            // DIAGDM uses two packed 64x16-float slots per stage (4KB each), with
+            // three stages aligned to the P/softmax pipeline: 2 * 3 * 4KB = 24KB.
             for (uint32_t i = 0; i < 3; i++) {
                 l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
-                    l1DiagAddrStart_ + 2 * 64 * 64 * sizeof(float) * i);
+                    l1DiagAddrStart_ + 2 * 64 * 16 * sizeof(float) * i);
             }
         } else {
             // 旧路径：lo 逐 tile 2 份轮转（VEC rescaleO 读取）
@@ -952,7 +952,7 @@ private:
     uint32_t mm2L0BTotalStages_;
     uint32_t mm2L1AddrStart_ = 0;
     uint32_t l1GoAddrStart_ = 0;      // rescaleOnCube on cube：GO^T [D, qS] 在 L1 的起始地址
-    uint32_t l1DiagAddrStart_ = 0;    // rescaleOnCube on cube：diag 块 [qS/2, qS/2] 在 L1 的起始地址
+    uint32_t l1DiagAddrStart_ = 0;    // rescaleOnCube：packed DIAGDM（每 group 固定 64x16 FP32）的 L1 起始地址
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
     Epilogue::Block::UBufTileHelper uBufTileHelper_;

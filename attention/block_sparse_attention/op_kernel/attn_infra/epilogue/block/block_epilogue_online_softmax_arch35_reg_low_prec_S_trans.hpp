@@ -286,27 +286,25 @@ public:
                 // P 模式：DataCopy 前 wait（与 P 的 WaitCrossCoreSync(smToMm2Flag) 在 DataCopy 前一致），
                 // 保证 mmadPV 转置里的 RE 用完同 stage L1 diag 才覆写；VF 计算不被 CUBE 消费进度阻塞
                 WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
-                // MTE3 writes only the two FP32 16x8 fractals of every diagonal 16x16 tile.
-                // Keep them at their original positions in a zN [diagDmRound, diagDmRound]
-                // parent layout; off-diagonal holes in the fixed L1 slot are not written.
+                // Pack only the two FP32 16x8 fractals of every diagonal 16x16 tile.
+                // The packed L1 order is F(0,0), F(0,1), F(1,2), F(1,3), ... and can
+                // be interpreted as a zN [16, diagDmRound] tensor by the CUBE consumer.
                 AscendC::DataCopyParams dataCopyParams;
                 dataCopyParams.blockCount = diagDmRound / 16;
                 dataCopyParams.blockLen = 16;
                 dataCopyParams.srcStride = 2 * (diagDmRound + 1);
-                dataCopyParams.dstStride = 2 * diagDmRound;
+                dataCopyParams.dstStride = 16;
 
                 constexpr uint32_t FP32_ELEMS_PER_DATABLOCK = 8;
-                constexpr uint32_t DIAG_SUB_BLOCK_SLOT_ELEMS = 64 * 64;
+                constexpr uint32_t DIAG_SUB_BLOCK_SLOT_ELEMS = 64 * 16;
                 uint32_t l1DiagSubBlockOffset = subBlockIdx_ * DIAG_SUB_BLOCK_SLOT_ELEMS;
                 uint32_t srcSecondFractalOffset =
                     (diagDmRound + 1) * FP32_ELEMS_PER_DATABLOCK;
-                uint32_t dstSecondFractalOffset =
-                    diagDmRound * FP32_ELEMS_PER_DATABLOCK;
+                constexpr uint32_t dstSecondFractalOffset = 16 * FP32_ELEMS_PER_DATABLOCK;
 
-                // First pass writes F(0,0), F(1,2), F(2,4), F(3,6) to their original
-                // positions in the square zN parent tensor.
+                // First pass writes the first 16x8 fractal of every packed 16x16 tile.
                 DataCopy(l1DiagTensor[l1DiagSubBlockOffset], diagUbTensor, dataCopyParams);
-                // Second pass writes F(0,1), F(1,3), F(2,5), F(3,7).
+                // Second pass fills the adjacent second fractal of every packed tile.
                 DataCopy(l1DiagTensor[l1DiagSubBlockOffset + dstSecondFractalOffset],
                     diagUbTensor[srcSecondFractalOffset], dataCopyParams);
                 // MTE3 读完成 → 下一轮覆写前 wait（P 对称组）
