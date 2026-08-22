@@ -382,7 +382,7 @@ private:
 class QSFATilingCheck {
 public:
     explicit QSFATilingCheck(const QSFATilingInfo &qsfaInfo)
-        : qsfaInfo_(qsfaInfo){};
+        : qsfaInfo_(qsfaInfo) {};
     ~QSFATilingCheck() = default;
     ge::graphStatus Process();
 
