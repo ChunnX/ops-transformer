@@ -1510,6 +1510,12 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeVec1(const Vec1RunInfo &
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
         uint64_t dBaseOffset = baseOffset + dLoopIdx * splitInfo.dSplitSize;
 
+        // Establish the APE tile before the V1 loop.  OverLapScoreKv may
+        // reuse VECCALC storage during its cache/workspace reads, so the tile
+        // is refreshed again immediately before the gate add below.
+        CopyInApe(apeUb, dBaseOffset, splitInfo.dSplitSize);
+        PipeBarrier<PIPE_ALL>();
+
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
         compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
         for (uint32_t tcIdx = 0; tcIdx < splitInfo.dealTcSize; tcIdx += splitInfo.tcSplitSize) {
