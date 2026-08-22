@@ -27,10 +27,10 @@
 
   `flash_mla_with_kvcache`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于调用`FlashMlaWithKvcache`算子完成DeepSeek MLA（Multi-head Latent Attention，非量化）注意力计算，支持prefill与decoder（flash-decode）场景。MLA将Key/Value压缩为低秩潜向量，注意力计算共享单一KV缓存：`k_cache`中同时存放Key与Value数据（**不单独传入v**），且**RoPE已合并进`q`与`k_cache`的最后64位**（q/k_cache最后维恒为576 = nope 512 + rope 64），接口不再有独立的`q_rope`/`k_rope`张量。
 
-  `flash_mla_metadata`是`flash_mla_with_kvcache`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果（含多section调度信息），主算子可选择传入该metadata以优化调度。典型调用流程如下：
+  `flash_mla_with_kvcache_metadata`是`flash_mla_with_kvcache`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果（含多section调度信息），主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
   1. 准备`q`、`k_cache`、`block_table`、`cache_seqlens`、`cu_seqlens_q`等输入。
-  2. 调用`flash_mla_metadata`生成`metadata`。
+  2. 调用`flash_mla_with_kvcache_metadata`生成`metadata`。
   3. 调用`flash_mla_with_kvcache`，将上一步得到的`metadata`传入主算子。
 
 - **计算公式**：
@@ -63,24 +63,24 @@
 
 ## 函数原型
 
-调用flash_mla_with_kvcache接口之前，请先调用前置接口flash_mla_metadata，完成flash_mla_with_kvcache负载均衡的计算。
+调用flash_mla_with_kvcache接口之前，请先调用前置接口flash_mla_with_kvcache_metadata，完成flash_mla_with_kvcache负载均衡的计算。
 
 ```python
-cann_ops_transformer.flash_mla_metadata(
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
-    *,
-    cu_seqlens_q=None,
-    cache_seqlens=None,
-    seqused_q=None,
+cann_ops_transformer.flash_mla_with_kvcache_metadata(
     batch_size=None,
     max_seqlen_q=None,
     max_seqlen_kv=None,
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
     mask_mode=None,
     layout_q=None,
     layout_kv=None,
-    layout_out=None
+    layout_out=None,
+    *,
+    cu_seqlens_q=None,
+    cache_seqlens=None,
+    seqused_q=None
 ) -> Tensor
 ```
 
@@ -108,23 +108,23 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 ## 参数说明
 
-### flash_mla_metadata
+### flash_mla_with_kvcache_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | int | 必选 | Query head数 | int32 | - | - |
-| num_heads_kv | int | 必选 | Key/Value head数，MLA场景固定为1 | int32 | - | - |
-| head_dim | int | 必选 | 每个注意力头的维度（qk nope部分，512） | int32 | - | - |
-| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) |
-| cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) |
-| seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
 | batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导 | int32 | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
-| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN（取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
+| num_heads_q | int | 必选 | Query head数 | int32 | - | - |
+| num_heads_kv | int | 必选 | Key/Value head数，MLA场景固定为1 | int32 | - | - |
+| head_dim | int | 必选 | 每个注意力头的维度（qk nope部分，512） | int32 | - | - |
+| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3，取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式，仅支持"TND" | string | - | - |
 | layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持"NZ" | string | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式，仅支持"NTD" | string | - | - |
+| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) |
+| cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) |
+| seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
 
 ### flash_mla_with_kvcache
 
@@ -137,10 +137,10 @@ cann_ops_transformer.flash_mla_with_kvcache(
 | cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0；layout_q为TND时必传 | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
 | attn_mask | Tensor | 可选 | 掩码矩阵（RIGHT_DOWN模式下配合使用） | int8 | ND | (2048, 2048) |
-| metadata | Tensor | 可选 | `flash_mla_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
+| metadata | Tensor | 可选 | `flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
 | head_dim_v | int | 可选 | nope（value）部分宽度，恒为512（=576−64，即 k_cache 最后维减去 rope 宽度）；传入其它值将被拒绝 | int32 | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
-| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN（取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
+| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3，取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式，仅支持"TND" | string | - | - |
@@ -150,7 +150,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 ## 返回值说明
 
-### flash_mla_metadata
+### flash_mla_with_kvcache_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -171,8 +171,8 @@ cann_ops_transformer.flash_mla_with_kvcache(
 ## 约束说明
 
 - 参数cu_seqlens_q、cache_seqlens、seqused_q、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-- flash_mla_metadata和flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-- metadata由`flash_mla_metadata`生成后原样传入`flash_mla_with_kvcache`；用户自建过小的metadata缓冲区将被容量校验拒绝。
+- flash_mla_with_kvcache_metadata和flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+- metadata由`flash_mla_with_kvcache_metadata`生成后原样传入`flash_mla_with_kvcache`；用户自建过小的metadata缓冲区将被容量校验拒绝。
 - 本接口的布局路由（R1）限定为：`layout_q="TND"`（需传cu_seqlens_q）、`layout_kv="NZ"`（PA_NZ，需传block_table）、`layout_out="NTD"`；其余布局组合（BSND/BNSD查询、连续KV、非NTD输出等）一律由算子校验拒绝。
 - `num_heads_kv`必须为1（单latent KV头）；`head_dim_v`必须为512；`q`与`k_cache`最后维必须为576（= head_dim_v 512 + rope 64），不允许512宽输入。
 - 掩码仅支持NO_MASK与RIGHT_DOWN（右下三角/因果类）两种模式，其余mask_mode取值将被拒绝。
@@ -215,7 +215,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 ## 调用示例
 
-- flash_mla_metadata + flash_mla_with_kvcache联合调用示例（TND / PA_NZ / NTD，RIGHT_DOWN掩码）
+- flash_mla_with_kvcache_metadata + flash_mla_with_kvcache联合调用示例（TND / PA_NZ / NTD，RIGHT_DOWN掩码）
 
     ```python
     import torch
@@ -243,19 +243,19 @@ cann_ops_transformer.flash_mla_with_kvcache(
     cache_seqlens = torch.tensor([8, 8], dtype=torch.int32, device="npu")
     block_table = torch.zeros(B, 2, dtype=torch.int32, device="npu")
 
-    metadata = cann_ops_transformer.ops.flash_mla_metadata(
-        Q_N,
-        KV_N,
-        HEAD_DIM_NOPE,
-        cu_seqlens_q=cu_seqlens_q,
-        cache_seqlens=cache_seqlens,
+    metadata = cann_ops_transformer.ops.flash_mla_with_kvcache_metadata(
         batch_size=B,
         max_seqlen_q=S,
         max_seqlen_kv=S,
-        mask_mode=1,  # RIGHT_DOWN（与 fused_infer_attention_score 的 sparse_mode 约定一致）
+        num_heads_q=Q_N,
+        num_heads_kv=KV_N,
+        head_dim=HEAD_DIM_NOPE,
+        mask_mode=3,  # RIGHT_DOWN/因果（与 fused_infer_attention_score 的 sparse_mode 约定一致）
         layout_q="TND",
         layout_kv="NZ",
         layout_out="NTD",
+        cu_seqlens_q=cu_seqlens_q,
+        cache_seqlens=cache_seqlens,
     )
 
     attn_out, softmax_lse = cann_ops_transformer.ops.flash_mla_with_kvcache(
@@ -267,7 +267,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
         metadata=metadata,
         head_dim_v=HEAD_DIM_NOPE,
         softmax_scale=1.0 / (HEAD_DIM_NOPE ** 0.5),
-        mask_mode=1,  # RIGHT_DOWN
+        mask_mode=3,  # RIGHT_DOWN/因果
         max_seqlen_q=S,
         max_seqlen_kv=S,
         layout_q="TND",
