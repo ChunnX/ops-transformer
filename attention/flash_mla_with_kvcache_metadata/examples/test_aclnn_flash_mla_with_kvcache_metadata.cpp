@@ -122,12 +122,12 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
                     FnRun run)
 {
     // flash_attn_metadata host checker: TND layoutQ requires cu_seqlens_q;
-    // PA layoutKv requires seqused_kv (per-batch KV lengths).
+    // PA layoutKv requires per-batch KV lengths.
     std::vector<int32_t> cuSeqlensQ(batch + 1, 0);
     for (int64_t b = 0; b < batch; ++b) {
         cuSeqlensQ[b + 1] = cuSeqlensQ[b] + static_cast<int32_t>(maxSeqQ);
     }
-    std::vector<int32_t> sequsedKv(batch, static_cast<int32_t>(maxSeqKv));
+    std::vector<int32_t> kvLens(batch, static_cast<int32_t>(maxSeqKv));
 
     void *metaDev = nullptr;
     std::vector<int32_t> hostData(bufferWords, 0);
@@ -145,7 +145,7 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     std::vector<int64_t> cuShape = {batch + 1};
     std::vector<int64_t> seqKvShape = {batch};
     r = CreateAclTensor(cuSeqlensQ, cuShape, &cuDev, aclDataType::ACL_INT32, &cuT);
-    r = r == ACL_SUCCESS ? CreateAclTensor(sequsedKv, seqKvShape, &seqKvDev, aclDataType::ACL_INT32, &seqKvT) : r;
+    r = r == ACL_SUCCESS ? CreateAclTensor(kvLens, seqKvShape, &seqKvDev, aclDataType::ACL_INT32, &seqKvT) : r;
     if (r != ACL_SUCCESS) {
         LOG_PRINT("CreateAclTensor(seq-lens) failed: %ld\n", r);
         return -1;
@@ -159,8 +159,8 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
                                                   headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
                                                   &workspaceSize, &executor);
     } else {
-        // flash_attn_metadata 侧仍为克隆前的旧签名（cuSeqlensKv/sequsedKv/winLeft/winRight），
-        // 语义等价映射：cuSeqlensQ=cuT、sequsedKv=seqKvT(每 batch kv 长)、win_*=-1。
+        // flash_attn_metadata 侧仍为克隆前的旧签名，语义等价映射：cuSeqlensQ 槽=cuT、
+        // cacheSeqlens 槽=seqKvT(每 batch kv 长)、其余两个槽=-1。
         r = aclnnFlashAttnMetadataGetWorkspaceSize(cuT, nullptr, nullptr, seqKvT, batch, maxSeqQ, maxSeqKv, nHeadQ,
                                                    nHeadKv, headDim, maskMode, -1, -1, layoutQ, layoutKv, layoutOut,
                                                    metaT, &workspaceSize, &executor);
