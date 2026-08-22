@@ -154,19 +154,165 @@ aclnnStatus aclnnBlockAttnResPrepare(
 | $d$     | hidden channel 下标，$0\le d<D$                                                                                                                                                                                                                                                                                                 |                                                |
 | $s$     | slot 下标，$0\le s<S$                                                                                                                                                                                                                                                                                                           |                                                |
 
-| 参数              | 输入/输出 | 类型               | 格式 | Shape       | 说明                         |
-| ----------------- | --------- | ------------------ | ---- | ----------- | ---------------------------- |
-| `blockRes`      | 输入      | FLOAT              | ND   | `[T,N,D]` | 残差块。                     |
-| `validBlocks`   | 输入      | INT64              | ND   | `[1]`     | 有效块数，裁剪至`[0,N]`。  |
-| `pseudoQuery`   | 输入      | FLOAT              | ND   | `[S,D]`   | 伪查询。                     |
-| `numerator`     | 输出      | FLOAT              | ND   | `[S,T,D]` | softmax 加权分子。           |
-| `logitMax`      | 输出      | FLOAT              | ND   | `[S,T]`   | softmax 最大值。             |
-| `expSum`        | 输出      | FLOAT              | ND   | `[S,T]`   | softmax 指数和。             |
-| `eps`           | 输入      | FLOAT              | -    | -           | RMS 稳定项，必须为有限正数。 |
-| `workspaceSize` | 输出      | UINT64             | -    | -           | Device workspace 字节数。    |
-| `executor`      | 输出      | `aclOpExecutor*` | -    | -           | 第二段接口的执行器。         |
-| `workspace`     | 输入      | `void*`          | -    | -           | Device workspace。           |
-| `stream`        | 输入      | `aclrtStream`    | -    | -           | 执行流。                     |
+### aclnnBlockAttnResPrepareGetWorkspaceSize
+
+- **参数说明：**
+
+  <table style="table-layout: fixed; width: 1503px"><colgroup>
+  <col style="width: 130px">
+  <col style="width: 97px">
+  <col style="width: 308px">
+  <col style="width: 488px">
+  <col style="width: 197px">
+  <col style="width: 77px">
+  <col style="width: 115px">
+  <col style="width: 95px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>blockRes</td>
+      <td>输入</td>
+      <td>表示残差块，对应公式中的输入V。</td>
+      <td>shape为[T, N, D]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>validBlocks</td>
+      <td>输入</td>
+      <td>表示当前有效历史块数。</td>
+      <td>shape为[1]，取值裁剪至[0, N]。</td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>pseudoQuery</td>
+      <td>输入</td>
+      <td>表示伪查询，对应公式中的输入Q。</td>
+      <td>shape为[S, D]，最后一维必须与blockRes的最后一维相同。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>numerator</td>
+      <td>输出</td>
+      <td>表示softmax加权分子，对应公式中的输出O。</td>
+      <td>shape为[S, T, D]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>logitMax</td>
+      <td>输出</td>
+      <td>表示softmax最大值，对应公式中的输出M。</td>
+      <td>shape为[S, T]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>expSum</td>
+      <td>输出</td>
+      <td>表示softmax指数和，对应公式中的输出L。</td>
+      <td>shape为[S, T]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>eps</td>
+      <td>输入</td>
+      <td>表示RMS归一化的稳定项。</td>
+      <td>属性，必须为有限正数。</td>
+      <td>FLOAT</td>
+      <td>-</td>
+      <td>-</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>
+
+### aclnnBlockAttnResPrepare
+
+- **参数说明：**
+
+  <table style="table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数说明</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnBlockAttnResPrepareGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 ## 约束说明
 
@@ -187,8 +333,170 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 ## 调用示例
 
-完整示例见 [`examples/test_aclnn_block_attn_res_prepare.cpp`](../examples/test_aclnn_block_attn_res_prepare.cpp)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```bash
-bash build.sh --run_example block_attn_res_prepare eager cust --vendor_name=custom --soc=ascend950
+```c++
+#include <cstdint>
+#include <cstdio>
+#include <vector>
+
+#include "acl/acl.h"
+#include "aclnnop/aclnn_block_attn_res_prepare.h"
+
+#define CHECK_RET(condition, message)           \
+    do {                                        \
+        if (!(condition)) {                     \
+            std::printf("%s\n", (message));    \
+            return 1;                           \
+        }                                       \
+    } while (0)
+
+namespace {
+
+int64_t GetElementCount(const std::vector<int64_t> &shape)
+{
+    int64_t count = 1;
+    for (const int64_t dim : shape) {
+        count *= dim;
+    }
+    return count;
+}
+
+template <typename T>
+int CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, aclDataType dataType,
+                 void **deviceAddress, aclTensor **tensor)
+{
+    const size_t bytes = static_cast<size_t>(GetElementCount(shape)) * sizeof(T);
+    aclError ret = aclrtMalloc(deviceAddress, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (ret != ACL_SUCCESS) {
+        return ret;
+    }
+    ret = aclrtMemcpy(*deviceAddress, bytes, hostData.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (ret != ACL_SUCCESS) {
+        return ret;
+    }
+
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddress);
+    return *tensor == nullptr ? ACL_ERROR_INVALID_PARAM : ACL_SUCCESS;
+}
+
+} // namespace
+
+int main()
+{
+    constexpr int32_t deviceId = 0;
+    aclError ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, "aclInit failed");
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, "aclrtSetDevice failed");
+
+    aclrtStream stream = nullptr;
+    ret = aclrtCreateStream(&stream);
+    CHECK_RET(ret == ACL_SUCCESS, "aclrtCreateStream failed");
+
+    const std::vector<int64_t> blockResShape = {1, 2, 4};
+    const std::vector<int64_t> validBlocksShape = {1};
+    const std::vector<int64_t> pseudoQueryShape = {2, 4};
+    const std::vector<int64_t> numeratorShape = {2, 1, 4};
+    const std::vector<int64_t> statsShape = {2, 1};
+
+    const std::vector<float> blockResData = {
+        1.0F, 2.0F, 3.0F, 4.0F,
+        2.0F, 0.0F, -1.0F, 1.0F,
+    };
+    const std::vector<int64_t> validBlocksData = {2};
+    const std::vector<float> pseudoQueryData = {
+        1.0F, 0.0F, 0.0F, 0.0F,
+        0.0F, 1.0F, 0.0F, 0.0F,
+    };
+    std::vector<float> numeratorData(GetElementCount(numeratorShape), 0.0F);
+    std::vector<float> logitMaxData(GetElementCount(statsShape), 0.0F);
+    std::vector<float> expSumData(GetElementCount(statsShape), 0.0F);
+
+    void *blockResAddress = nullptr;
+    void *validBlocksAddress = nullptr;
+    void *pseudoQueryAddress = nullptr;
+    void *numeratorAddress = nullptr;
+    void *logitMaxAddress = nullptr;
+    void *expSumAddress = nullptr;
+    aclTensor *blockRes = nullptr;
+    aclTensor *validBlocks = nullptr;
+    aclTensor *pseudoQuery = nullptr;
+    aclTensor *numerator = nullptr;
+    aclTensor *logitMax = nullptr;
+    aclTensor *expSum = nullptr;
+
+    ret = CreateTensor(blockResData, blockResShape, ACL_FLOAT, &blockResAddress, &blockRes);
+    CHECK_RET(ret == ACL_SUCCESS, "create blockRes failed");
+    ret = CreateTensor(validBlocksData, validBlocksShape, ACL_INT64, &validBlocksAddress, &validBlocks);
+    CHECK_RET(ret == ACL_SUCCESS, "create validBlocks failed");
+    ret = CreateTensor(pseudoQueryData, pseudoQueryShape, ACL_FLOAT, &pseudoQueryAddress, &pseudoQuery);
+    CHECK_RET(ret == ACL_SUCCESS, "create pseudoQuery failed");
+    ret = CreateTensor(numeratorData, numeratorShape, ACL_FLOAT, &numeratorAddress, &numerator);
+    CHECK_RET(ret == ACL_SUCCESS, "create numerator failed");
+    ret = CreateTensor(logitMaxData, statsShape, ACL_FLOAT, &logitMaxAddress, &logitMax);
+    CHECK_RET(ret == ACL_SUCCESS, "create logitMax failed");
+    ret = CreateTensor(expSumData, statsShape, ACL_FLOAT, &expSumAddress, &expSum);
+    CHECK_RET(ret == ACL_SUCCESS, "create expSum failed");
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    ret = aclnnBlockAttnResPrepareGetWorkspaceSize(blockRes, validBlocks, pseudoQuery, numerator, logitMax,
+                                                    expSum, 1.0e-6F, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, "aclnnBlockAttnResPrepareGetWorkspaceSize failed");
+
+    void *workspace = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, "allocate workspace failed");
+    }
+    ret = aclnnBlockAttnResPrepare(workspace, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, "aclnnBlockAttnResPrepare failed");
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, "aclrtSynchronizeStream failed");
+
+    ret = aclrtMemcpy(numeratorData.data(), numeratorData.size() * sizeof(float), numeratorAddress,
+                      numeratorData.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, "copy numerator failed");
+    ret = aclrtMemcpy(logitMaxData.data(), logitMaxData.size() * sizeof(float), logitMaxAddress,
+                      logitMaxData.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, "copy logitMax failed");
+    ret = aclrtMemcpy(expSumData.data(), expSumData.size() * sizeof(float), expSumAddress,
+                      expSumData.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, "copy expSum failed");
+
+    for (size_t i = 0; i < numeratorData.size(); ++i) {
+        std::printf("numerator[%zu] = %.6f\n", i, numeratorData[i]);
+    }
+    for (size_t i = 0; i < logitMaxData.size(); ++i) {
+        std::printf("logit_max[%zu] = %.6f, exp_sum[%zu] = %.6f\n",
+                    i, logitMaxData[i], i, expSumData[i]);
+    }
+
+    aclDestroyTensor(blockRes);
+    aclDestroyTensor(validBlocks);
+    aclDestroyTensor(pseudoQuery);
+    aclDestroyTensor(numerator);
+    aclDestroyTensor(logitMax);
+    aclDestroyTensor(expSum);
+    aclrtFree(blockResAddress);
+    aclrtFree(validBlocksAddress);
+    aclrtFree(pseudoQueryAddress);
+    aclrtFree(numeratorAddress);
+    aclrtFree(logitMaxAddress);
+    aclrtFree(expSumAddress);
+    if (workspace != nullptr) {
+        aclrtFree(workspace);
+    }
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+    return 0;
+}
+
 ```

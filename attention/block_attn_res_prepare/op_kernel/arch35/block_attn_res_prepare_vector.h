@@ -76,7 +76,7 @@ public:
         vBufferNum_ = tilingData_->vBufferNum;
 
         blockResAddr_ = reinterpret_cast<__gm__ float *>(blockRes);
-        validBlocksAddr_ = reinterpret_cast<__gm__ int32_t *>(validBlocks);
+        validBlocksAddr_ = reinterpret_cast<__gm__ int64_t *>(validBlocks);
         pseudoQueryAddr_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
         numeratorAddr_ = reinterpret_cast<__gm__ float *>(numerator);
         logitMaxAddr_ = reinterpret_cast<__gm__ float *>(logitMax);
@@ -99,7 +99,7 @@ public:
         const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
                                    ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
         const uint32_t workCount = tilingData_->blockFactor + ((blockIdx < tilingData_->bigCoreNum) ? 1U : 0U);
-        int32_t validNValue = ReadValidBlocks();
+        int64_t validNValue = ReadValidBlocks();
         if (validNValue <= 0) {
             // Section 2.1: values below zero are clipped to zero.  Zero valid
             // blocks produces the identity state of online softmax.
@@ -108,7 +108,7 @@ public:
             }
             return;
         } else if (validNValue > tilingData_->totalN) {
-            validNValue = static_cast<int32_t>(tilingData_->totalN);
+            validNValue = static_cast<int64_t>(tilingData_->totalN);
         }
         const uint32_t validN = static_cast<uint32_t>(validNValue);
         // validN comes from valid_blocks at runtime. The host only provides
@@ -123,6 +123,7 @@ public:
 private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
+    static constexpr uint32_t INT64_32B_ALIGN_ELEMS = 4U;
     static constexpr uint32_t MAX_PIPE_ID = 8U;
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint64_t MAX_UINT32_VALUE = 0xFFFFFFFFULL;
@@ -137,6 +138,18 @@ private:
     {
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
+    }
+
+    __aicore__ inline static void WaitMte2ToScalar(event_t eventId)
+    {
+        set_flag(PIPE_MTE2, PIPE_S, eventId);
+        wait_flag(PIPE_MTE2, PIPE_S, eventId);
+    }
+
+    __aicore__ inline static void WaitScalarToMte2(event_t eventId)
+    {
+        set_flag(PIPE_S, PIPE_MTE2, eventId);
+        wait_flag(PIPE_S, PIPE_MTE2, eventId);
     }
 
     __aicore__ inline void InitUbOffset()
@@ -203,10 +216,20 @@ private:
         AscendC::Te::Copy(copyUbToGm, gmTensor, ubTensor);
     }
 
-    __aicore__ inline int32_t ReadValidBlocks() const
+    __aicore__ inline int64_t ReadValidBlocks() const
     {
-        auto validBlocksTensor = MakeGmTensor<int32_t>(validBlocksAddr_, 1, 1);
-        return validBlocksTensor[AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0))];
+        // Reuse the first Q buffer before Q is loaded. It is at least 32B and
+        // therefore can hold one aligned INT64 transfer without extra UB.
+        auto validBlocksGmTensor = MakeGmTensor<int64_t>(validBlocksAddr_, 1, 1);
+        CopyGmToUb<int64_t>(qUbOffset_, validBlocksGmTensor, 0, 0, 1, INT64_32B_ALIGN_ELEMS);
+
+        const event_t eventId = static_cast<event_t>(EVENT_ID0);
+        WaitMte2ToScalar(eventId);
+        auto validBlocksUbTensor = MakeUbTensor<int64_t>(qUbOffset_, 1, INT64_32B_ALIGN_ELEMS);
+        const int64_t validBlocksValue = validBlocksUbTensor[
+            AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0))];
+        WaitScalarToMte2(eventId);
+        return validBlocksValue;
     }
 
     __aicore__ inline __ubuf__ float *CopyInQ(uint64_t sIndex, uint32_t dOffset, uint32_t validD,
@@ -359,8 +382,9 @@ private:
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
                 __ubuf__ float *vAddr;
                 if (cacheAllV) {
-                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + nIndex);
-                    const uint32_t cacheOffset = nIndex * dAlign_ + dOffset;
+                    uint32_t vBufferId = validN > 1 ? nIndex : (vLoop_ & 1);
+                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + static_cast<event_t>(vBufferId));
+                    const uint32_t cacheOffset = vBufferId * dAlign_ + dOffset;
                     vAddr = CopyVToCache(tIndex, nIndex, dOffset, cacheOffset, validD);
                 } else {
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ % vBufferNum_));
@@ -395,7 +419,8 @@ private:
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
                 __ubuf__ float *vAddr;
                 if (cacheAllV) {
-                    const uint32_t cacheOffset = nIndex * dAlign_ + dOffset;
+                    uint32_t vBufferId = validN > 1 ? nIndex : (vLoop_ & 1);
+                    const uint32_t cacheOffset = vBufferId * dAlign_ + dOffset;
                     vAddr = GetUbAddr<float>(vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES);
                 } else {
                     wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ % vBufferNum_));
@@ -403,11 +428,12 @@ private:
                 }
                 AccumulateOutput(vAddr, weightAddr + nIndex, outputAddr, nIndex, validN, validD);
                 if (cacheAllV) {
-                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + nIndex);
+                    uint32_t vBufferId = validN > 1 ? nIndex : (vLoop_ & 1);
+                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + vBufferId);
                 } else {
                     set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ % vBufferNum_));
-                    vLoop_++;
                 }
+                vLoop_++;
             }
 
             CopyOutO(sIndex, tIndex, dOffset, validD, oLoop_);
@@ -435,7 +461,7 @@ private:
     uint8_t vBufferNum_ = 1;
 
     __gm__ float *blockResAddr_ = nullptr;
-    __gm__ int32_t *validBlocksAddr_ = nullptr;
+    __gm__ int64_t *validBlocksAddr_ = nullptr;
     __gm__ float *pseudoQueryAddr_ = nullptr;
     __gm__ float *numeratorAddr_ = nullptr;
     __gm__ float *logitMaxAddr_ = nullptr;

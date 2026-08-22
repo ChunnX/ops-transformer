@@ -42,7 +42,7 @@ protected:
 TEST_F(BlockAttnResPrepareAclnnTest, Basic)
 {
     auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.1, 0.1);
-    auto validBlocks = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).Value(std::vector<int32_t>{TOTAL_N});
+    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND).Value(std::vector<int64_t>{TOTAL_N});
     auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.1, 0.1);
     auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -58,7 +58,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, Basic)
 TEST_F(BlockAttnResPrepareAclnnTest, RejectsInvalidBlockResDtype)
 {
     auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
     auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -74,7 +74,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsInvalidBlockResDtype)
 TEST_F(BlockAttnResPrepareAclnnTest, RejectsMismatchedOutputShape)
 {
     auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
     auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D + 1}, ACL_FLOAT, ACL_FORMAT_ND);
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -90,7 +90,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsMismatchedOutputShape)
 TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonPositiveEps)
 {
     auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
     auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -106,7 +106,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonPositiveEps)
 TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonFiniteEps)
 {
     auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
     auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);

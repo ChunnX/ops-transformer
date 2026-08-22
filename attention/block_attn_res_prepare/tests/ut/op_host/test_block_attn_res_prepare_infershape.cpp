@@ -30,7 +30,7 @@ std::vector<TensorDesc> MakeInputs(const std::initializer_list<int64_t> &blockRe
 {
     return {
         TensorDesc(gert::StorageShape(blockResShape, blockResShape), ge::DT_FLOAT, ge::FORMAT_ND),
-        TensorDesc(gert::StorageShape({1}, {1}), ge::DT_INT32, ge::FORMAT_ND),
+        TensorDesc(gert::StorageShape({1}, {1}), ge::DT_INT64, ge::FORMAT_ND),
         TensorDesc(gert::StorageShape(pseudoQueryShape, pseudoQueryShape), ge::DT_FLOAT,
                    ge::FORMAT_ND),
     };
@@ -89,17 +89,17 @@ TEST(BlockAttnResPrepareInfershapeTest, OutputDtypeFollowsBlockRes)
     ASSERT_NE(inferDtype, nullptr);
 
     ge::DataType fp32 = ge::DT_FLOAT;
-    ge::DataType int32 = ge::DT_INT32;
+    ge::DataType int64 = ge::DT_INT64;
     auto contextHolder = gert::InferDataTypeContextFaker()
                              .IrInputNum(3)
                              .NodeIoNum(3, 3)
                              .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                             .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_INT64, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-                             .InputDataTypes({&fp32, &int32, &fp32})
+                             .InputDataTypes({&fp32, &int64, &fp32})
                              .OutputDataTypes({&fp32, &fp32, &fp32})
                              .Build();
     auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
