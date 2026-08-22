@@ -1025,7 +1025,7 @@ aclnnStatus aclnnFFNGetWorkspaceSize(const aclTensor *x, const aclTensor *weight
                    DFX_IN(ffnParams.x, ffnParams.weight1, ffnParams.weight2, expertTokens, ffnParams.bias1,
                           ffnParams.bias2, ffnParams.scale, ffnParams.offset, ffnParams.deqScale1, ffnParams.deqScale2,
                           ffnParams.antiquantScale1, ffnParams.antiquantScale2, ffnParams.antiquantOffset1,
-                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise, -1, false),
+                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise),
                    DFX_OUT(ffnParams.y));
     return GetFFNResultByL0Api(ffnParams, activation, workspaceSize, executor);
 }
@@ -1083,7 +1083,7 @@ aclnnStatus aclnnFFNV2GetWorkspaceSize(const aclTensor *x, const aclTensor *weig
                    DFX_IN(ffnParams.x, ffnParams.weight1, ffnParams.weight2, expertTokens, ffnParams.bias1,
                           ffnParams.bias2, ffnParams.scale, ffnParams.offset, ffnParams.deqScale1, ffnParams.deqScale2,
                           ffnParams.antiquantScale1, ffnParams.antiquantScale2, ffnParams.antiquantOffset1,
-                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise, -1, tokensIndexFlag),
+                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise, tokensIndexFlag),
                    DFX_OUT(ffnParams.y));
     return GetFFNResultByL0Api(ffnParams, activation, workspaceSize, executor);
 }
@@ -1140,7 +1140,7 @@ aclnnStatus aclnnFFNV3GetWorkspaceSize(
                    DFX_IN(ffnParams.x, ffnParams.weight1, ffnParams.weight2, expertTokensOptional, ffnParams.bias1,
                           ffnParams.bias2, ffnParams.scale, ffnParams.offset, ffnParams.deqScale1, ffnParams.deqScale2,
                           ffnParams.antiquantScale1, ffnParams.antiquantScale2, ffnParams.antiquantOffset1,
-                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise, -1, tokensIndexFlag),
+                          ffnParams.antiquantOffset2, activation, ffnParams.innerPrecise, tokensIndexFlag),
                    DFX_OUT(ffnParams.y));
     return GetFFNResultByL0Api(ffnParams, activation, workspaceSize, executor);
 }
