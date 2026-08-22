@@ -517,17 +517,23 @@ static aclnnStatus CheckTensorListNotNull(const aclTensorList *tensorList, const
 
 static aclnnStatus CheckNotNull(const aclTensorList *x, const aclTensorList *weight, const aclTensorList *y)
 {
-    CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "x", "does not support nullptr"));
+    if (x == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "x", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(x->Size() != 0, ACLNN_ERR_PARAM_INVALID, "X must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(x, "X") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "X must not be nullptr.");
-    CHECK_COND(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "weight", "does not support nullptr"));
+    if (weight == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "weight", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(weight->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Weight must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(weight, "Weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "Weight must not be nullptr.");
-    CHECK_COND(y != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "y", "does not support nullptr"));
+    if (y == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("grouped_matmul", "y", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     CHECK_COND(y->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Y must not be empty tensorlist.");
     CHECK_COND(CheckTensorListNotNull(y, "Y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Y must not be nullptr.");
     return ACLNN_SUCCESS;
