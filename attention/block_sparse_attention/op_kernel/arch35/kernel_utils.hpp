@@ -53,6 +53,10 @@ struct TaskInfo {
     // O GM 偏移
     int64_t gmOffsetO = 0;
     uint32_t oShapeCol = 0;
+    // LSE GM 偏移
+    int64_t gmOffsetLse = 0;
+    uint32_t lseShapeCol = 0;
+    // qs 基本块对齐
     uint32_t qsActBaseTileAlign128 = 0;
     uint32_t qsActBaseTileAlign64 = 0;
     uint32_t qsActBaseTileAlign16 = 0;
@@ -69,6 +73,7 @@ struct BatchOffsetInfo {
     uint32_t curTotalTaskNum = 0; // 含 curBatch 在内的 task 总数（初始化为 firstBatchTaskNum）
     // TND 下各 GM 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算，不用这些字段）
     int64_t oBOffset = 0;      // O 输出
+    int64_t lseBOffset = 0;    // LSE 输出
     int64_t qBOffset = 0;      // Q 数据
     int64_t qScaleBOffset = 0; // Q-scale（字节）
     int64_t vBOffset = 0;      // V(=K) 数据
