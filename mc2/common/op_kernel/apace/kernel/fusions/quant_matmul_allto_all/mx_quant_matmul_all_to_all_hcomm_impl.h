@@ -310,59 +310,51 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
 
     // 逐tile通算掩盖流程:
-    // InitMmad在循环外只调用一次(避免Blaze模板重复内联导致编译卡死)
-    // for循环内只更新params的GM地址后调用operator()
+    // AIC负责matmul+HCCL通信, AIV不参与(if ASCEND_IS_AIC守卫避免AIV编译Blaze模板)
+    if ASCEND_IS_AIC {
+        Params params;
+        const auto &mmTile = tilingData_->tileQbmmTilingData;
+        SetupParams(mmTile, CalcTileM(0), params);
+        quantMatmulKernelImpl_.InitMmad(params);
 
-    Params params;
-    const auto &mmTile = tilingData_->tileQbmmTilingData;
-    SetupParams(mmTile, CalcTileM(0), params);
-    quantMatmulKernelImpl_.InitMmad(params);
+        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
+            uint32_t curTileM = CalcTileM(tid);
 
-    for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-        uint32_t curTileM = CalcTileM(tid);
+            if (hasPrevHandle_) {
+                hccl_.Wait(prevHandle_);
+            }
 
-        // pipeline深度2: Wait前一个tile的AllToAll
+            uint64_t tileOffset = CalcTileOffset(tid);
+            uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
+            uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
+            uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+            uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
+
+            params.mmadParams.aGmAddr = x1_ + aByteOffset;
+            params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
+            params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
+            params.problemShape = ProblemShape{
+                static_cast<int64_t>(curTileM),
+                static_cast<int64_t>(perRankN),
+                static_cast<int64_t>(mmTile.k),
+                static_cast<int64_t>(rankDim_)};
+
+            quantMatmulKernelImpl_(params);
+            AscendC::SyncAll();
+
+            prevHandle_ = curHandle_;
+            curHandle_ = IssueAllToAll(tid, curTileM);
+            hasPrevHandle_ = true;
+        }
+
+        AscendC::SyncAll();
         if (hasPrevHandle_) {
             hccl_.Wait(prevHandle_);
         }
+        hccl_.Wait(curHandle_);
 
-        // 更新当前tile的GM地址偏移(不重新InitMmad)
-        uint64_t tileOffset = CalcTileOffset(tid);
-        uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-        uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-        uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-        uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
-
-        params.mmadParams.aGmAddr = x1_ + aByteOffset;
-        params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
-        params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
-        params.problemShape = ProblemShape{
-            static_cast<int64_t>(curTileM),
-            static_cast<int64_t>(perRankN),
-            static_cast<int64_t>(mmTile.k),
-            static_cast<int64_t>(rankDim_)};
-
-        // matmul计算当前tile
-        quantMatmulKernelImpl_(params);
-
-        // 确保matmul结果写入GM
         AscendC::SyncAll();
-
-        // 异步下发当前tile的AllToAll
-        prevHandle_ = curHandle_;
-        curHandle_ = IssueAllToAll(tid, curTileM);
-        hasPrevHandle_ = true;
+        hccl_.Finalize();
     }
-
-    // 等待所有通信完成
-    AscendC::SyncAll();
-    if (hasPrevHandle_) {
-        hccl_.Wait(prevHandle_);
-    }
-    hccl_.Wait(curHandle_);
-
-    AscendC::SyncAll();
-    hccl_.Finalize();
-}
 
 } // namespace Apace
