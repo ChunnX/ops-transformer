@@ -11,7 +11,7 @@
 /*!
  * \file flash_mla_with_kvcache_infershape.cpp
  * \brief FlashMlaWithKvcache算子InferShape实现
- * \note 接口基准 flash_mla_with_kvcache (m0066/m0070)：
+ * \note 接口基准 flash_mla_with_kvcache：
  *       q/k_cache 最后维必须为 576 = head_dim_v(nope 512) + rope 64；
  *       attn_out 的最后维取 head_dim_v（q 的 576 含 rope，不能直接作为输出宽度）。
  */
@@ -24,23 +24,23 @@ using namespace ge;
 
 namespace ops {
 
-// 属性索引 对齐def注册索引（m0070：head_dim_v 在首位）
-static constexpr size_t ATTR_IDX_HEAD_DIM_V       = 0;
-static constexpr size_t ATTR_IDX_SOFTMAX_SCALE    = 1;
-static constexpr size_t ATTR_IDX_MASK_MODE        = 2;
-static constexpr size_t ATTR_IDX_MAX_SEQLEN_Q     = 3;
-static constexpr size_t ATTR_IDX_MAX_SEQLEN_KV    = 4;
-static constexpr size_t ATTR_IDX_LAYOUT_Q         = 5;
-static constexpr size_t ATTR_IDX_LAYOUT_KV        = 6;
-static constexpr size_t ATTR_IDX_LAYOUT_OUT       = 7;
+// 属性索引 对齐def注册索引（head_dim_v 在首位）
+static constexpr size_t ATTR_IDX_HEAD_DIM_V = 0;
+static constexpr size_t ATTR_IDX_SOFTMAX_SCALE = 1;
+static constexpr size_t ATTR_IDX_MASK_MODE = 2;
+static constexpr size_t ATTR_IDX_MAX_SEQLEN_Q = 3;
+static constexpr size_t ATTR_IDX_MAX_SEQLEN_KV = 4;
+static constexpr size_t ATTR_IDX_LAYOUT_Q = 5;
+static constexpr size_t ATTR_IDX_LAYOUT_KV = 6;
+static constexpr size_t ATTR_IDX_LAYOUT_OUT = 7;
 static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 8;
 
 // 输入索引
-static constexpr size_t INPUT_IDX_Q               = 0;
-static constexpr size_t INPUT_IDX_K_CACHE         = 1;
+static constexpr size_t INPUT_IDX_Q = 0;
+static constexpr size_t INPUT_IDX_K_CACHE = 1;
 // 输出索引
-static constexpr size_t OUTPUT_IDX_ATTN_OUT  = 0;
-static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE    = 1;
+static constexpr size_t OUTPUT_IDX_ATTN_OUT = 0;
+static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE = 1;
 
 // MLA rope 合并语义常量：q/k_cache 最后维 = head_dim_v + ROPE_HEAD_DIM
 static constexpr int64_t FLASH_MLA_WITH_KVCACHE_ROPE_HEAD_DIM = 64;
@@ -60,8 +60,8 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const char *layoutQ   = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
-    const char *layoutKv  = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_KV);
+    const char *layoutQ = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_Q);
+    const char *layoutKv = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_KV);
     const char *layoutOut = attrs->GetAttrPointer<char>(ATTR_IDX_LAYOUT_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutQ);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutKv);
@@ -78,61 +78,67 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
     // head_dim_v + rope(64) == 576 一致性校验（MLA 正确性关键，QA 项）
     if (headDimV <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "head_dim_v",
-            std::to_string(headDimV).c_str(), "The value of head_dim_v must be greater than 0");
+                                              std::to_string(headDimV).c_str(), "The value of head_dim_v must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     int64_t expectedLastDim = headDimV + FLASH_MLA_WITH_KVCACHE_ROPE_HEAD_DIM;
 
-    std::string layoutQStr   = std::string(layoutQ);
-    std::string layoutKvStr  = std::string(layoutKv);
+    std::string layoutQStr = std::string(layoutQ);
+    std::string layoutKvStr = std::string(layoutKv);
     std::string layoutOutStr = std::string(layoutOut);
 
     // 转为大写以便统一比较
-    for (auto &c : layoutQStr)   { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
-    for (auto &c : layoutKvStr)  { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
-    for (auto &c : layoutOutStr) { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
+    for (auto &c : layoutQStr) {
+        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    }
+    for (auto &c : layoutKvStr) {
+        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    }
+    for (auto &c : layoutOutStr) {
+        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    }
 
     OP_LOGI(context, "FlashMlaWithKvcache InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, headDimV=%ld, returnLSE=%ld.",
             layoutQStr.c_str(), layoutKvStr.c_str(), layoutOutStr.c_str(), headDimV, returnSoftmaxLse);
 
-    int64_t batchSize  = 1;
-    int64_t numHeadsQ  = 0;
-    int64_t seqLenQ    = 0;
-    bool    isTND      = false;
+    int64_t batchSize = 1;
+    int64_t numHeadsQ = 0;
+    int64_t seqLenQ = 0;
+    bool isTND = false;
 
     if (layoutQStr == "BSND") {
         if (qShape->GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
-                std::to_string(qShape->GetDimNum()).c_str(),
-                "The shape dim of q must be 4 when layout_q is BSND");
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 4 when layout_q is BSND");
             return ge::GRAPH_FAILED;
         }
         batchSize = qShape->GetDim(0);
-        seqLenQ   = qShape->GetDim(1);
+        seqLenQ = qShape->GetDim(1);
         numHeadsQ = qShape->GetDim(2);
     } else if (layoutQStr == "BNSD") {
         if (qShape->GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
-                std::to_string(qShape->GetDimNum()).c_str(),
-                "The shape dim of q must be 4 when layout_q is BNSD");
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 4 when layout_q is BNSD");
             return ge::GRAPH_FAILED;
         }
         batchSize = qShape->GetDim(0);
         numHeadsQ = qShape->GetDim(1);
-        seqLenQ   = qShape->GetDim(2);
+        seqLenQ = qShape->GetDim(2);
     } else if (layoutQStr == "TND") {
         if (qShape->GetDimNum() != 3) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
-                std::to_string(qShape->GetDimNum()).c_str(),
-                "The shape dim of q must be 3 when layout_q is TND");
+                                                     std::to_string(qShape->GetDimNum()).c_str(),
+                                                     "The shape dim of q must be 3 when layout_q is TND");
             return ge::GRAPH_FAILED;
         }
-        seqLenQ   = qShape->GetDim(0);  // T = total tokens
+        seqLenQ = qShape->GetDim(0); // T = total tokens
         numHeadsQ = qShape->GetDim(1);
-        isTND     = true;
+        isTND = true;
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_q",
-            layoutQStr.c_str(), "The value of layout_q must be in BSND/BNSD/TND");
+                                              layoutQStr.c_str(), "The value of layout_q must be in BSND/BNSD/TND");
         return ge::GRAPH_FAILED;
     }
 
@@ -140,17 +146,17 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
     int64_t qLastDim = qShape->GetDim(qShape->GetDimNum() - 1);
     if (qLastDim != -1 && qLastDim != expectedLastDim) {
         std::string reason = "The last dim of q must be equal to head_dim_v + rope(64) = " +
-            std::to_string(expectedLastDim);
+                             std::to_string(expectedLastDim);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "q",
-            std::to_string(qLastDim).c_str(), reason.c_str());
+                                              std::to_string(qLastDim).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t kCacheLastDim = kCacheShape->GetDim(kCacheShape->GetDimNum() - 1);
     if (kCacheLastDim != -1 && kCacheLastDim != expectedLastDim) {
         std::string reason = "The last dim of k_cache must be equal to head_dim_v + rope(64) = " +
-            std::to_string(expectedLastDim);
+                             std::to_string(expectedLastDim);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k_cache",
-            std::to_string(kCacheLastDim).c_str(), reason.c_str());
+                                              std::to_string(kCacheLastDim).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -172,7 +178,7 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
         attnOutShape->SetDim(3, headDimV);
     } else if (layoutOutStr == "TND") {
         attnOutShape->SetDimNum(3);
-        attnOutShape->SetDim(0, seqLenQ);  // T总token数
+        attnOutShape->SetDim(0, seqLenQ); // T总token数
         attnOutShape->SetDim(1, numHeadsQ);
         attnOutShape->SetDim(2, headDimV);
     } else if (layoutOutStr == "NTD") {
@@ -183,7 +189,7 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
         attnOutShape->SetDim(2, headDimV);
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out",
-            layoutOutStr.c_str(), "The value of layout_out must be in BSND/BNSD/TND/NTD");
+                                              layoutOutStr.c_str(), "The value of layout_out must be in BSND/BNSD/TND/NTD");
         return ge::GRAPH_FAILED;
     }
 
@@ -228,4 +234,4 @@ IMPL_OP_INFERSHAPE(FlashMlaWithKvcache)
     .InferShape(InferShapeFlashMlaWithKvcache)
     .InferDataType(InferDataTypeFlashMlaWithKvcache);
 
-}  // namespace ops
+} // namespace ops

@@ -12,13 +12,13 @@
  * \file paged_attention_checker.cpp
  * \brief Checker for PagedAttention parameters (文档约束: Paged Attention参数组)
  *
- * R1: kv layout is PA_NZ only -> block_table is REQUIRED (INT32, [b, max_blocks]).
+ * kv layout is PA_NZ only -> block_table is REQUIRED (INT32, [b, max_blocks]).
  * Per-batch block counts must be consistent with cache_seqlens: each batch's
  * KV length must fit in its block_table row (len <= dim1 * block_size), which
  * bounds the needed blocks by max_block_num (block_table dim1). The value
  * cross-check runs only when host tensor data is present (same guard as the
  * seq_len checker / FIA tiling). v contiguity checks do not exist in MLA:
- * k_cache is a single kv buffer (k == v, m0070).
+ * k_cache is a single kv buffer (k == v).
  */
 
 #include <map>
@@ -46,13 +46,13 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
     }
 
     OP_CHECK_IF(faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
-            "The value of block_size must be within the range [16, 1024]"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                                      "The value of block_size must be within the range [16, 1024]"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
-            "The value of block_size must be 16-aligned"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                                      "The value of block_size must be 16-aligned"),
                 return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
@@ -66,7 +66,7 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
 
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
                 OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "block_table",
-                        Ops::Base::ToString(blockTableDesc->GetDataType()).c_str(), "INT32"),
+                                          Ops::Base::ToString(blockTableDesc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(blockTableDesc, BLOCK_TABLE_NAME)) {
@@ -75,8 +75,8 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(dimNum != 2,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -87,16 +87,16 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FlashMlaWithKvca
         // 非 PA 模式下，block_table 不应传入
         auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
         OP_CHECK_IF(blockTableTensor != nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
-                "When layout_kv is not PA (PA_BBND/PA_BNBD/PA_NZ), block_table must not be provided"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
+                                                          "When layout_kv is not PA (PA_BBND/PA_BNBD/PA_NZ), block_table must not be provided"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     OP_CHECK_IF(blockTableTensor == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
-            "When PagedAttention is enabled (layout_kv is PA_NZ), block_table must not be empty"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
+                                                      "When PagedAttention is enabled (layout_kv is PA_NZ), block_table must not be empty"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -117,22 +117,23 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FlashMlaWithKvcacheT
     if (dim0 != faInfo.bSize) {
         std::string shapeStr = Ops::Base::ToString(blockTableTensor->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table", shapeStr.c_str(),
-            ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
+                                              ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(dim1 <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table",
-            Ops::Base::ToString(blockTableTensor->GetStorageShape()).c_str(),
-            "The second dim of block_table (max block num per batch) must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table",
+                                                      Ops::Base::ToString(blockTableTensor->GetStorageShape()).c_str(),
+                                                      "The second dim of block_table (max block num per batch) must be greater than 0"),
+                return ge::GRAPH_FAILED);
 
     // PA_NZ 场景下 kvcache 非连续stride校验 (dimIndex由parser预计算); k_cache 是唯一 kv buffer
     if (faInfo.hasViewStride && (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ)) {
         OP_CHECK_IF((faInfo.keyNonContigDim > 1),
                     OP_LOGE(faInfo.opName,
                             "In PA NZ scenarios, k_cache only supports non-contiguous tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.", faInfo.keyNonContigDim),
+                            "but the first non-contiguous dimension is index %d.",
+                            faInfo.keyNonContigDim),
                     return ge::GRAPH_FAILED);
     }
 

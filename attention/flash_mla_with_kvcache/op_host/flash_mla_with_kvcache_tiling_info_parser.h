@@ -102,7 +102,7 @@ public:
     int64_t ropeHeadDim_ = 0;
     int64_t queryTSize_ = 0;
     int64_t keyTSize_ = 0;
-    // R2: INT32 seq-lens buffer 元素数（cu_seqlens_q / cache_seqlens），kernel parser 的 actualLenDims
+    // INT32 seq-lens buffer 元素数（cu_seqlens_q / cache_seqlens），kernel parser 的 actualLenDims
     int64_t actualLenQDims_ = 0;
     int64_t actualLenKvDims_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;

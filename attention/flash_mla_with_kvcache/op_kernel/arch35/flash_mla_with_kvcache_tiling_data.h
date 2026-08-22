@@ -13,7 +13,7 @@
  * \brief flash_mla_with_kvcache arch35 kernel 侧 tiling struct 与 metadata 消费常量
  *
  * Tiling struct：字段布局与 FIA NoQuantTilingArch35 / FusedInferAttentionScoreTilingData 一致，
- * 仅改名（Fia* -> FlashMlaWithKvcache*），并按 D14 移除内嵌 fiaMetaData —— metadata 以 GM 输入 tensor 传入
+ * 仅改名（Fia* -> FlashMlaWithKvcache*），并移除内嵌 fiaMetaData —— metadata 以 GM 输入 tensor 传入
  * （flash_attn 式 AICPU 多 section 布局）。
  */
 
@@ -160,7 +160,7 @@ struct FlashMlaWithKvcacheEmptyTensorParams {
     uint64_t totalSoftMaxLseOutputSize = 0;
 };
 
-// FIA FusedInferAttentionScoreTilingData 的字段布局改名保留；FiaMetaData 成员按 D14 移除
+// FIA FusedInferAttentionScoreTilingData 的字段布局改名保留；FiaMetaData 成员已移除
 // （metadata 走 GM 输入，见 flash_mla_with_kvcache_kernel_noquant_mla.h）
 class FlashMlaWithKvcacheNoQuantTilingArch35 {
 public:

@@ -12,7 +12,7 @@
  * \file mask_checker.cpp
  * \brief Checker for mask_mode, attn_mask parameters (文档约束: Mask参数组)
  *
- * mask_mode <-> FIA sparseMode mapping (R1, Oracle BLOCKER 1):
+ * mask_mode <-> FIA sparseMode mapping:
  *   The fia*mla compute path has only ever been exercised with sparseMode in
  *   {NO_MASK(0), RIGHT_DOWN(3)} — hard gate at
  *   fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_mla.cpp:79
@@ -28,7 +28,7 @@
  *   FIA additionally requires attn_mask when sparseMode != 0
  *   (fia_tiling_info.cpp mask_checker CheckDimAndShape), so flash_attn's
  *   "attn_mask required for CAUSAL" existence rule is kept.
- *   The left/right window attrs are NOT part of the m0070 interface — no checks.
+ *   The left/right window attrs are NOT part of the interface — no checks.
  */
 
 #include <map>
@@ -52,15 +52,15 @@ using namespace arch35MLA;
 
 ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // R1: only {0 (NO_MASK), 3 (CAUSAL == FIA SPARSE_MODE_RIGHT_DOWN)} are valid.
-    // BAND(4)/LEFT_UP/etc. route in FIA MLA to nothing — reject (BLOCKER 1).
+    // only {0 (NO_MASK), 3 (CAUSAL == FIA SPARSE_MODE_RIGHT_DOWN)} are valid.
+    // BAND(4)/LEFT_UP/etc. route in FIA MLA to nothing — reject.
     const std::vector<int64_t> maskModeList = {static_cast<int64_t>(MaskMode::NO_MASK),
                                                static_cast<int64_t>(MaskMode::CAUSAL)};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "mask_mode",
-            std::to_string(faInfo.maskMode).c_str(),
-            "The value of mask_mode can only be 0 (NO_MASK) or 3 (CAUSAL, == FIA RIGHT_DOWN)"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "mask_mode",
+                                                      std::to_string(faInfo.maskMode).c_str(),
+                                                      "The value of mask_mode can only be 0 (NO_MASK) or 3 (CAUSAL, == FIA RIGHT_DOWN)"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
