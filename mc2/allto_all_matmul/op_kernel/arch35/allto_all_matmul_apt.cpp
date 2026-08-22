@@ -155,15 +155,12 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
     AscendC::GlobalTensor<DTYPE_X1> x1DumpGm;
     x1DumpGm.SetGlobalBuffer((__gm__ DTYPE_X1 *)x1);
-    AscendC::DumpTensor(x1DumpGm, 0,
-        tilingData.alltoAllQuantMatmulTilingInfo.rankM * tilingData.alltoAllQuantMatmulTilingInfo.rankK);
-    {
-        auto &&mxTiling = tilingData.alltoAllQuantMatmulTilingInfo;
-        uint64_t x1ScaleElemCnt = (mxTiling.rankK + 64UL - 1UL) / 64UL * 2UL * mxTiling.rankM;
-        AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGm;
-        x1ScaleDumpGm.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)x1_scale);
-        AscendC::DumpTensor(x1ScaleDumpGm, 1, x1ScaleElemCnt);
-    }
+    AscendC::DumpTensor(x1DumpGm, 0, 256);
+    auto &&mxTiling = tilingData.alltoAllQuantMatmulTilingInfo;
+    uint64_t x1ScaleElemCnt = (mxTiling.rankK + 64UL - 1UL) / 64UL * 2UL * mxTiling.rankM;
+    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGm;
+    x1ScaleDumpGm.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)x1_scale);
+    AscendC::DumpTensor(x1ScaleDumpGm, 1, 256);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;

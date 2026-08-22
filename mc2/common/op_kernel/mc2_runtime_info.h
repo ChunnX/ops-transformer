@@ -62,10 +62,10 @@ public:
         mySlot->execPosition = 0;
         mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_INIT);
 
-        FlushCache();
+        WriteGMByPassDCache();
     }
 
-    __aicore__ inline void UpdatePhase(uint8_t turn, uint8_t position, uint8_t phase)
+    __aicore__ inline void WriteGmByPassDCache(uint8_t turn, uint8_t position, uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
@@ -74,7 +74,7 @@ public:
         mySlot->execTurn = turn;
         mySlot->execPosition = position;
         mySlot->commPhase = phase;
-        FlushCache();
+        WriteGMByPassDCache();
     }
 
     __aicore__ inline void UpdatePhase(uint8_t phase)
@@ -84,11 +84,11 @@ public:
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->commPhase = phase;
-        FlushCache();
+        WriteGMByPassDCache();
     }
 
 private:
-    __aicore__ inline void FlushCache()
+    __aicore__ inline void WriteGMByPassDCache()
     {
         AscendC::GlobalTensor<uint8_t> cacheLine;
         cacheLine.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(&runtimeInfoBase_[slotIdx_]),

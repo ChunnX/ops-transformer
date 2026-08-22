@@ -898,13 +898,12 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
 
     // 4. 逐段 D2H 拷贝并落盘
-    constexpr uint64_t MAX_SEG_DUMP_SIZE = 64U * 1024U * 1024U;
     for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
         auto &seg = wsLayout.segments[i];
         if (seg.size == 0) {
             continue;
         }
-        uint64_t dumpSize = std::min(seg.size, MAX_SEG_DUMP_SIZE);
+        uint64_t dumpSize = seg.size;
         std::vector<uint8_t> segBuf(dumpSize, 0);
         void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
         OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",

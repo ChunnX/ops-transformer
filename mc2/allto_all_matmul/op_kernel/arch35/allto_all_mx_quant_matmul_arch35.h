@@ -16,6 +16,8 @@
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 #define ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 
+#include "../../../common/op_kernel/mc2_runtime_info.h"
+
 namespace Mc2Kernel {
 template <typename T1, typename T2>
 __aicore__ inline T1 CeilDiv(T1 a, T2 b)
@@ -55,6 +57,7 @@ private:
     uint64_t rankForComm_;
     uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     uint64_t x1HcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 
 private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
@@ -101,6 +104,8 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
     }
 
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
     // 初始化流水线
     pipeLine_->Init();
     // 获取流水线上下文
@@ -122,19 +127,23 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
 
     // 启动scale通信和转置
+    runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     ProcessScale();
 
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
+        runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
+        runtimeInfo_.WriteGmByPassDCache(1, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
     // 结束流水线
+    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
     pipeLine_->End();
 }
 
