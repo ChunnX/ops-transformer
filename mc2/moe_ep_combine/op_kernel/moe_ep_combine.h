@@ -382,18 +382,29 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(
     uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup, uint32_t &groupSize)
 {
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
+    bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
+    if (assignRemainingToLocal) {
+        // Put all remote communication AIVs first, then give every remaining AIV to local copies.
+        uint32_t remoteAivNum = (epWorldSize_ - 1U) * channelsPerRank_;
+        if (aivId_ < remoteAivNum) {
+            uint32_t remoteRankIndex = aivId_ / channelsPerRank_;
+            targetRank = remoteRankIndex < rankId_ ? remoteRankIndex : remoteRankIndex + 1U;
+            coreIndexInGroup = aivId_ % channelsPerRank_;
+            groupSize = channelsPerRank_;
+        } else {
+            targetRank = rankId_;
+            coreIndexInGroup = aivId_ - remoteAivNum;
+            groupSize = totalBlocks - remoteAivNum;
+        }
+        return;
+    }
+
     uint32_t baseGroupSize = totalBlocks / epWorldSize_;
     uint32_t remainder = totalBlocks % epWorldSize_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    // Keep channelsPerRank_ cores for every remote rank and give all excess AIVs to the local rank.
-    bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
-    uint32_t localGroupSize =
-        assignRemainingToLocal ? totalBlocks - (epWorldSize_ - 1U) * channelsPerRank_ : 0U;
     uint32_t accumulated = 0;
     for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-        uint32_t currentGroupSize = assignRemainingToLocal
-                                        ? (rank == rankId_ ? localGroupSize : channelsPerRank_)
-                                        : baseGroupSize + ((rank < remainder) ? 1U : 0U);
+        uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
         if (aivId_ < accumulated + currentGroupSize) {
             targetRank = rank;
             groupSize = currentGroupSize;
