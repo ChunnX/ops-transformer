@@ -186,6 +186,7 @@ private:
     uint32_t aivId_{0};
     HcommBatchHandle activeBatchHandle_{};
     uint64_t activeBatchChannel_{0};
+    bool activeBatchValid_{false};
     uint32_t preparedWriteCount_{0};
 };
 
@@ -292,8 +293,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
-    activeBatchHandle_ = {};
-    activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
 }
 
@@ -302,16 +301,20 @@ template <auto const& config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
+    if (activeBatchValid_ && activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
+        activeBatchHandle_ = {};
+        activeBatchChannel_ = 0;
+        activeBatchValid_ = false;
     }
     if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites();
     }
-    if (preparedWriteCount_ == 0) {
+    if (!activeBatchValid_) {
         activeBatchHandle_ = hcomm_.MakeBatchHandle(
             commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, dstBase);
         activeBatchChannel_ = commHandle;
+        activeBatchValid_ = true;
     }
     int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
@@ -424,6 +427,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
+    activeBatchValid_ = false;
     preparedWriteCount_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
