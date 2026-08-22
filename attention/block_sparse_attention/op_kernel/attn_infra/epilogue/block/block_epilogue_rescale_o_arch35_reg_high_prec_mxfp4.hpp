@@ -22,6 +22,7 @@
 #include "block_epilogue_arch35_utils.hpp"
 #include "mxfp4_vf/vf_rescale_o_dn_mxfp4.h"
 #include "mxfp4_vf/vf_attn_out_transpose_mxfp4.h"
+#include "mxfp4_vf/vf_compute_lse.h"
 
 namespace NpuArch::Epilogue::Block {
 using namespace MXFP4Kernel;
@@ -107,6 +108,7 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
             if (actMSizeThisCore != 0) {
+                uint32_t rowOffsetCurSubCore = subBlockIdx * splitMSizePerCore;
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub =
@@ -139,8 +141,7 @@ public:
                         tla::MakeStride(colStrideLseUb, tla::Int<1>{}));
                     auto ubLseTensorTla = tla::MakeTensor(lseUbTensor32, ubLseLayoutTla, Arch::PositionUB{});
                     // gm lse tla：基于 taskInfo.gmOffsetLse 和 lseShapeCol 在 epilogue 内部构建
-                    auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(
-                        tla::MakeShape(actQsTile, taskInfo.lseShapeCol));
+                    auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(actQsTile, taskInfo.lseShapeCol);
                     auto gLseTensorTla = tla::MakeTensor(gLseGm[taskInfo.gmOffsetLse], gmLseLayoutTla,
                                                           Arch::PositionGM{});
                     auto gLseTensorTlaTile = tla::GetTile(gLseTensorTla,
@@ -163,7 +164,6 @@ public:
 
                 // copyUBOToGm
                 uint32_t embdingSize = actualOriShape.m();
-                uint32_t rowOffsetCurSubCore = subBlockIdx * splitMSizePerCore;
                 uint32_t colNumCurSubCore = tla::get<1>(gOTensor.shape());
                 auto gOTensorTlaTile = GetTile(gOTensor, tla::MakeCoord(rowOffsetCurSubCore, 0),
                                                tla::MakeShape(actMSizeThisCore, colNumCurSubCore));

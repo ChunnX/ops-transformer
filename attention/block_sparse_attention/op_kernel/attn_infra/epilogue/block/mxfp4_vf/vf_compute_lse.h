@@ -15,8 +15,8 @@
  * \brief
  */
 
-#ifndef VF_RESCALE_O_DN_MXFP4_H_
-#define VF_RESCALE_O_DN_MXFP4_H_
+#ifndef VF_COMPUTE_LSE_H_
+#define VF_COMPUTE_LSE_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -107,4 +107,4 @@ __aicore__ inline void ComputeLseIncontinuousCallVF(const LocalTensor<float> &gm
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif // VF_RESCALE_O_DN_MXFP4_H_
+#endif // VF_COMPUTE_LSE_H_

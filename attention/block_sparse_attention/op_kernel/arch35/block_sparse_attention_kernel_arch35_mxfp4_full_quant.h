@@ -60,7 +60,7 @@ public:
     using LayoutTagL1P = typename BlockMmadPV::LayoutTagL1A;
 
     // LSE mode (从 DispatchPolicy 取值)
-    static constexpr LseMode LSE_MODE = EpilogueRescaleO::DispatchPolicy::LSE_MODE;
+    static constexpr Epilogue::LseMode LSE_MODE = EpilogueRescaleO::DispatchPolicy::LSE_MODE;
 
     // 核间同步
     static constexpr uint8_t SYNC_MODE_2 = 2;
@@ -528,7 +528,7 @@ public:
                 batchInfo.oBOffset += qSeqlen * strideO_;
                 batchInfo.qBOffset += qSeqlen * strideQData_;
                 batchInfo.qScaleBOffset += qSeqlen * static_cast<int64_t>(qHeads_) * qScaleStrideN_;
-                if constexpr (LSE_MODE == LseMode::OUT_ONLY) {
+                if constexpr (LSE_MODE == Epilogue::LseMode::OUT_ONLY) {
                     batchInfo.lseBOffset += qSeqlen * strideLse_;
                 }
             }
@@ -598,7 +598,7 @@ public:
             info.oShapeCol = static_cast<uint32_t>(strideOS_);
         }
 
-        if constexpr (LSE_MODE == LseMode::OUT_ONLY) {
+        if constexpr (LSE_MODE == Epilogue::LseMode::OUT_ONLY) {
             // LSE GM offset and shape col
             if constexpr (qFormat == Format::TND) {
                 info.gmOffsetLse = batchInfo.lseBOffset + qSOffset * strideLse_ + qHeadIdx;
