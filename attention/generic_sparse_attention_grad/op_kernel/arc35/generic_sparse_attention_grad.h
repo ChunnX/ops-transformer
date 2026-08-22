@@ -74,23 +74,6 @@ private:
     static constexpr int32_t UB_SIZE = 247 * 1024;
     static constexpr int32_t L1_SIZE = 512 * 1024;
 
-    // step: 0 Process; 1-2 Cube pre-wait FLAG_CUBE_POST; 10-14 Vec pre;
-    // 20 gather entry; 203 partition; 204 zero UB; 205 GM→UB done; 206 ND2NZ done;
-    // 207 before UB→L1; 208 UB→L1 done; 21 gather exit (legacy);
-    // 220-224 Vec gather set-flag; 301-304 Cube gather wait;
-    // 30-37 Cube main-loop (MM12/MM345 commented in Pre+Gather debug);
-    // 38 Cube loop exit; 39 Cube SyncAll; 40-42 Vec loop/post.
-    __aicore__ inline void GsagLog(int32_t step)
-    {
-        int32_t isAic = 0;
-        if ASCEND_IS_AIC {
-            isAic = 1;
-        }
-        AscendC::printf("[GSAG] aic=%d blk=%d sub=%d step=%d task=%d\n", isAic,
-                        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()), step,
-                        static_cast<int32_t>(taskId));
-    }
-
     // AIV0/AIV1 row partition: must match Softmax dualDst (mAlign/2) and CopyQAndDoutToL1.
     __aicore__ inline int32_t GatherAivRowCount(int32_t m, int32_t mAlign, int32_t aivHalfIdx) const
     {
@@ -129,11 +112,6 @@ public:
                                    GM_ADDR workspace, const TILING_CLASS *tilingData,
                                    TPipe *tPipe)
     {
-        AscendC::PRINTF(
-            "GenericSparseAttentionGradArch35 Process(full Pre+Gather+MM12+Vec+MM345, blockIdx=%d)\n",
-            GetBlockIdx());
-
-        GsagLog(0);
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
         uint32_t vec_base_m = base_m / 2;
@@ -245,11 +223,9 @@ public:
      */
     __aicore__ inline void CopyQAndDoutToL1(const RunTimeInfo &runTimeInfo, const uint32_t pingPongIdx)
     {
-        GsagLog(20);
         const int32_t m = static_cast<int32_t>(runTimeInfo.s1Len);
         const int32_t mAlign = static_cast<int32_t>(runTimeInfo.s1LenAlign);
         if (m <= 0 || mAlign <= 0) {
-            GsagLog(21);
             return;
         }
 
@@ -264,7 +240,6 @@ public:
         if (m < static_cast<int32_t>(C0_SIZE)) {
             // Only AIV0 writes the full mAlign tile (zero-padded) for Cube LoadData.
             if (aivHalfIdx != 0) {
-                GsagLog(21);
                 return;
             }
             rowBegin = 0;
@@ -283,11 +258,8 @@ public:
         }
 
         if (rowCount <= 0) {
-            GsagLog(21);
             return;
         }
-        GsagLog(203);
-
         // Dedicated events — avoid EVENT_ID0 (Vector) and EVENT_ID3/4 (vec/cube ping-pong).
         constexpr event_t evtGatherVmte2 = EVENT_ID2;
         constexpr event_t evtGatherMte2v = EVENT_ID5;
@@ -304,8 +276,6 @@ public:
         Duplicate(doutUb, static_cast<INPUT_TYPE>(0), ndElems);
         SET_FLAG(V, MTE2, evtGatherVmte2);
         WAIT_FLAG(V, MTE2, evtGatherVmte2);
-        GsagLog(204);
-
         for (int32_t row = 0; row < rowCount; ++row) {
             const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowBegin + row);
             const int64_t gmOffset = GetSparseTokenGmOffset(runTimeInfo, qTok);
@@ -314,18 +284,12 @@ public:
         }
         SET_FLAG(MTE2, V, evtGatherMte2v);
         WAIT_FLAG(MTE2, V, evtGatherMte2v);
-        GsagLog(205);
-        GsagLog(201);
-
         // VF always converts the full vec_base_m ND tile (FAG CopyUB2L1).
         const uint32_t vfM = vec_base_m_;
         TransdataND2NZ<INPUT_TYPE>(query_nz_ub_tensor_, qUb, vfM, head_dim_);
         TransdataND2NZ<INPUT_TYPE>(dout_nz_ub_tensor_, doutUb, vfM, head_dim_);
         SET_FLAG(V, MTE3, evtGatherVmte3);
         WAIT_FLAG(V, MTE3, evtGatherVmte3);
-        GsagLog(206);
-        GsagLog(202);
-
         // Copy a full 16-row-aligned shard into L1 NZ. Rows beyond rowCount
         // were zero-filled in UB, so writing the full aligned shard keeps the
         // L1 fractal layout regular for Cube consumers.
@@ -345,25 +309,10 @@ public:
         LocalTensor<INPUT_TYPE> doutL1 =
             pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
         const int32_t l1RowOffset = rowBegin * static_cast<int32_t>(C0_SIZE);
-        AscendC::printf(
-            "[GSAG-G] blk=%d sub=%d task=%d ping=%d m=%d ma=%d ha=%d ta=%d rb=%d rc=%d cr=%d hd=%d vfM=%d bc=%u bl=%u ss=%u ds=%u l1off=%d\n",
-            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()),
-            static_cast<int32_t>(taskId), static_cast<int32_t>(pingPongIdx), m, mAlign, halfAlign,
-            totalAlign, rowBegin, rowCount, copyRows, head_dim_, static_cast<int32_t>(vfM),
-            static_cast<uint32_t>(copyParams.blockCount),
-            static_cast<uint32_t>(copyParams.blockLen), static_cast<uint32_t>(copyParams.srcStride),
-            static_cast<uint32_t>(copyParams.dstStride), l1RowOffset);
-        GsagLog(207);
-        GsagLog(2071);
         DataCopy(qL1[l1RowOffset], query_nz_ub_tensor_, copyParams);
-        GsagLog(2072);
-        GsagLog(2073);
         DataCopy(doutL1[l1RowOffset], dout_nz_ub_tensor_, copyParams);
-        GsagLog(2074);
         SET_FLAG(MTE3, MTE2, evtGatherMte3mte2);
         WAIT_FLAG(MTE3, MTE2, evtGatherMte3mte2);
-        GsagLog(208);
-        GsagLog(21);
     }
 
     __aicore__ inline void CubeProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dout, GM_ADDR attention_out,
@@ -376,10 +325,7 @@ public:
         CubeOp<GSAG_TYPE> cubeOp;
         cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_, query_l1_tensor_ping_, query_l1_tensor_pong_,
                     dout_l1_tensor_ping_, dout_l1_tensor_pong_, rsvdBlockIdx, workspace);
-        GsagLog(1);
         CrossCoreWaitFlag(FLAG_CUBE_POST);
-        GsagLog(2);
-
         (void)query;
         (void)key;
         (void)value;
@@ -420,45 +366,35 @@ public:
                         CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_MM345_DONE);
                     }
                     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag);
-                    GsagLog(302);
                     if (GatherNeedAiv1(m, mAlign)) {
                         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag + AIV0_AIV1_FLAG_OFFSET);
                     }
-                    GsagLog(304);
                 }
-                GsagLog(31);
                 cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                GsagLog(315);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
-                GsagLog(32);
                 cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                GsagLog(325);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
-                GsagLog(33);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
-                GsagLog(34);
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                GsagLog(35);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                GsagLog(36);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx],
+                                    last_ping_pong_idx);
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
-                GsagLog(37);
-                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx],
+                                    last_ping_pong_idx);
+                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx],
+                                    last_ping_pong_idx);
                 SET_FLAG(MTE1, MTE2, EVENT_ID0);
                 WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
-                GsagLog(38);
                 break;
             }
             taskId++;
         }
         cubeOp.Destroy();
-        GsagLog(39);
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
@@ -474,21 +410,14 @@ public:
                    cuSeqLengthsQ, cuSeqLengthsKv, dq, dk, dv, workspace, tilingData, ub_buffer_, ub_offset_);
 
         (void)tPipe;
-        // GsagLog(10);
-
         vecOp.SendVecPre(dq_workspace_, dk_workspace_, dv_workspace_, dout_gm_, attention_out_gm_, sftg_workspace_,
                          tilingData, ub_buffer_);
         SET_FLAG(MTE3, MTE2, EVENT_ID0);
         WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        // GsagLog(11);
         vecOp.SendVecSftgFront(dout_gm_, attention_out_gm_, sftg_workspace_, tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
-        // GsagLog(12);
         SyncAll();
-        // GsagLog(13);
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
-        // GsagLog(14);
-
         vecOp.SetFlag();
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -506,9 +435,7 @@ public:
                     // task0: Cube is already in Wait gather before Vec Softmax of any prior task.
                     // task>0: wait until Cube finished prior MM345 so Wait gather is armed.
                     if (taskId > 0) {
-                        GsagLog(220);
                         CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_MM345_DONE);
-                        GsagLog(221);
                         // After Wait: Cube completed MM345 for the prior tile that lived in
                         // this ping slot (schedule: MM345 at Cube task T-1 uses last=T%2).
                         // taskId==1 Wait is vacuous (no prior MM345); scatter from taskId>=2.
@@ -523,25 +450,19 @@ public:
                             ping_pong_idx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
                         const uint32_t gatherFlag =
                             gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
-                        GsagLog(223);
                         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
-                        GsagLog(24);
                     }
                 }
                 vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                GsagLog(25);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
-                GsagLog(26);
+                // dualDst Fixpipe → both AIV UB; barrier before Softmax/Dump read mm1.
+                PipeBarrier<PIPE_ALL>();
                 vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
-                GsagLog(262);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-                GsagLog(27);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
-                GsagLog(29);
                 vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
                                          runTimeInfo_[ping_pong_idx]);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
-                // Snapshot for deferred dQ scatter (Cube MM4 Fixpipes dQ_sel later).
                 if (runTimeInfo_[ping_pong_idx].use_sparse_gather) {
                     dqScatterInfo_[ping_pong_idx] = runTimeInfo_[ping_pong_idx];
                     dqScatterPending_[ping_pong_idx] = 1;
@@ -549,25 +470,23 @@ public:
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
-                GsagLog(40);
                 break;
             }
             taskId++;
         }
         vecOp.WaitFlag();
-        GsagLog(41);
         PipeBarrier<PIPE_ALL>();
+
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         SyncAll();
-        // Final MM345 completed with CUBE_POST; drain any pending dQ_sel scatters.
         for (uint32_t s = 0; s < 2; ++s) {
             if (dqScatterPending_[s]) {
                 vecOp.ScatterDqSel(dqScatterInfo_[s], ub_buffer_, s);
                 dqScatterPending_[s] = 0;
             }
         }
-        GsagLog(42);
-        vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData, ub_buffer_);
+        vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData,
+                          ub_buffer_);
 
     }
 };

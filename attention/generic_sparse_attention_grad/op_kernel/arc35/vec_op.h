@@ -54,6 +54,8 @@ private:
     GlobalTensor<float> lse_gm_;
     GlobalTensor<float> sftg_workspace_;
     GlobalTensor<float> dq_workspace_;
+    GlobalTensor<float> dk_workspace_;
+    GlobalTensor<float> dv_workspace_;
     GlobalTensor<float> dq_sel_workspace_;
     GlobalTensor<int32_t> sparse_idx_gm_;
     uint64_t dq_sel_workspace_offset_ { 0 };
@@ -138,6 +140,8 @@ public:
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
         dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
         dq_sel_workspace_offset_ = tilingData->dqSelWorkspaceOffset;
         dq_sel_core_elems_ = static_cast<int64_t>(base_m) * head_dim_align_;
         const int64_t cubeBlk = static_cast<int64_t>(GetBlockIdx() / 2);
@@ -281,9 +285,8 @@ public:
         s1_process_ = runTimeInfo.s1Len;
         s1_process_align_ = runTimeInfo.s1LenAlign;
         s2_process_align_ = runTimeInfo.s2LenAlign;
+        // Design: AIV0 → mAlign/2, AIV1 → m - mAlign/2 (same as Fixpipe dualDst).
         half_s1_process_align_ = s1_process_align_ / 2;
-        data_size = half_s1_process_align_ * s2_process_align_;
-        // Split real rows across two AIV; clamp so sparse count < align does not OOB on idx
         if (v_sub_core_idx_ == 0) {
             half_s1_process_real_ =
                 half_s1_process_align_ < s1_process_ ? half_s1_process_align_ : s1_process_;
@@ -294,6 +297,7 @@ public:
             }
         }
         l1_offset_ = v_sub_core_idx_ * half_s1_process_align_ * C0_SIZE;
+        data_size = half_s1_process_align_ * s2_process_align_;
 
         if (half_s1_process_real_ > 0) {
             lse_tensor_ = pingpong_idx == 0 ? lse_tensor_ping_ : lse_tensor_pong_;
@@ -328,8 +332,9 @@ public:
                     sftg_front_tensor_.SetValue(r * 8 + c, sftg_workspace_.GetValue(sftgOff + c));
                 }
             }
-            SET_FLAG(MTE2, V, EVENT_ID0);
-            WAIT_FLAG(MTE2, V, EVENT_ID0);
+            // SetValue is PIPE_S; Softmax VF must see packed LSE/sftg (MTE2_V is wrong here).
+            SET_FLAG(S, V, EVENT_ID0);
+            WAIT_FLAG(S, V, EVENT_ID0);
         }
     }
 
@@ -355,31 +360,24 @@ public:
         }
     }
 
-    __aicore__ inline void GsagVecDbg(int32_t step) const
-    {
-        AscendC::printf("[GSAG-V] blk=%d sub=%d step=%d hr=%d ha=%d sa=%d mt=%d\n",
-                        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()), step,
-                        half_s1_process_real_, half_s1_process_align_, s2_process_align_, runTimeMaskType_);
-    }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
         if (half_s1_process_real_ <= 0) {
-            GsagVecDbg(600);
             return;
         }
 
         runTimeMaskType_ = runTimeInfo.mask_type;
-        GsagVecDbg(601);
         ApplyCausalAttenMask(src_ub_tensor, runTimeInfo);
-        GsagVecDbg(602);
-
+        // SetValue is PIPE_S; SimpleSoftmax VF is PIPE_V — must sync or mask is raced.
+        SET_FLAG(S, V, EVENT_ID1);
+        WAIT_FLAG(S, V, EVENT_ID1);
+        PipeBarrier<PIPE_V>();
         // Softmax on real rows only; pad [real, align) to 0 so CastND2NZ/DataCopy
         // can use half_s1_process_align_ (must match NZ fractal / BSAG).
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                       (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_real_, s2_process_align_);
-        GsagVecDbg(603);
         if (half_s1_process_real_ < half_s1_process_align_) {
             const int32_t padElems =
                 (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
@@ -390,8 +388,6 @@ public:
         CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
-        GsagVecDbg(604);
-
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
         dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
@@ -399,7 +395,6 @@ public:
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
-        GsagVecDbg(605);
     }
 
     __aicore__ inline void SendVecSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,

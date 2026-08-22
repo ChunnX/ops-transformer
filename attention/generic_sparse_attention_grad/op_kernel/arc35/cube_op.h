@@ -197,20 +197,11 @@ public:
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
-    // todo:test
-    __aicore__ inline void GsagCubeDbg(int32_t step, const RunTimeInfo &runTimeInfo, int32_t copyKv) const
-    {
-        AscendC::printf("[GSAG-C] blk=%d step=%d m=%d n=%d ma=%d na=%d kv=%d pp=%d\n",
-                        static_cast<int32_t>(GetBlockIdx()), step, static_cast<int32_t>(runTimeInfo.s1Len),
-                        static_cast<int32_t>(runTimeInfo.s2Len), static_cast<int32_t>(runTimeInfo.s1LenAlign),
-                        static_cast<int32_t>(runTimeInfo.s2LenAlign), copyKv, event_ping_pong_flag);
-    }
 
     __aicore__ inline void SendMatmulDyV(const GlobalTensor<INPUT_TYPE> &dyGm, const GlobalTensor<INPUT_TYPE> &valueGm,
                                          LocalTensor<float> &mm2OutUb, const RunTimeInfo &runTimeInfo,
                                          const uint32_t ping_pong_idx)
     {
-        GsagCubeDbg(320, runTimeInfo, runTimeInfo.need_copy_kv);
         LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
@@ -229,7 +220,6 @@ public:
             ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
                         mm2OutUb, runTimeInfo);
         }
-        GsagCubeDbg(321, runTimeInfo, runTimeInfo.need_copy_kv);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -289,27 +279,20 @@ private:
         LocalTensor<INPUT_TYPE> l0_b_tensor = event_ping_pong_flag ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
         LocalTensor<float> l0_c_tensor = event_ping_pong_flag ? l0_c_tensor_ping_ : l0_c_tensor_pong_;
         TEventID evnet_id = event_ping_pong_flag ? event_ping_ : event_pong_;
-
-        GsagCubeDbg(501, runTimeInfo, runTimeInfo.need_copy_kv);
         WAIT_FLAG(M, MTE1, evnet_id);
-        GsagCubeDbg(502, runTimeInfo, runTimeInfo.need_copy_kv);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);
         WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
         load_data_l1_2_l0_nz(l0_a_tensor, l1_a_tensor, mProcessAlign, head_dim_align_);
-        GsagCubeDbg(503, runTimeInfo, runTimeInfo.need_copy_kv);
         if (runTimeInfo.need_copy_kv) {
             load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
                                            head_dim_align_, kv_stride_);
         } else {
             load_data_l1_2_l0_nz(l0_b_tensor, l1_b_tensor, nProcessAlign, head_dim_align_);
         }
-        GsagCubeDbg(504, runTimeInfo, runTimeInfo.need_copy_kv);
-
         SET_FLAG(MTE1, M, EVENT_ID0);
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
         WAIT_FLAG(FIX, M, evnet_id);
-        GsagCubeDbg(505, runTimeInfo, runTimeInfo.need_copy_kv);
         MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
@@ -326,12 +309,12 @@ private:
         fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
         fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
         fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
+        // Design: always dualDst — AIV0 gets mAlign/2, AIV1 gets m-mAlign/2 (Softmax/Grad).
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
         SET_FLAG(FIX, M, evnet_id);
-        GsagCubeDbg(506, runTimeInfo, runTimeInfo.need_copy_kv);
     }
 
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
@@ -378,6 +361,7 @@ private:
         fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
         fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
         fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
+        // Design: always dualDst — AIV0 gets mAlign/2, AIV1 gets m-mAlign/2 (Softmax/Grad).
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
