@@ -1096,12 +1096,6 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
 {
     GlobalTensor<T> kvDBMm1ResGm =
         kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
-    LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-    FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo,
-                     dStartIdx, dDealSize);
-    inputQue1.EnQue(kvUb);
-    inputQue1.DeQue<T>();
-    RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * dDealSize);
 
     KeyPoolVec1SliceIterator<COMP> overLapSliceIterator(tools_);
     overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
@@ -1110,13 +1104,68 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
-                       stateBlockTableGm_, kvCacheTcGm_, info,
-                       overLapSliceInfo, loopInfo, dStartIdx,
-                       originSliceInfo.dealedSeqCnt, dDealSize);
+        if (overLapSliceInfo.dealTcSize > 0) {
+            ReadState<false>(kvLocal, stateCacheGm_, stateBlockTableGm_,
+                             overLapSliceInfo, dStartIdx, dDealSize, 0U);
+
+            if constexpr (COMP::coff == COFF::DISABLE) {
+                if (overLapSliceInfo.compressTcSize > 0) {
+                    uint32_t copyRowCount =
+                        overLapSliceInfo.compressTcSize * cmpRatio_ -
+                        overLapSliceInfo.headHolderSeqCnt;
+                    uint64_t dstUbOffset =
+                        (static_cast<uint64_t>(overLapSliceInfo.key_pooledScCnt) *
+                             cmpRatio_ +
+                         overLapSliceInfo.headHolderSeqCnt) *
+                        dDealSize;
+                    uint64_t srcGmOffset =
+                        (static_cast<uint64_t>(originSliceInfo.dealedSeqCnt) +
+                         overLapSliceInfo.dealedSeqCnt) *
+                            constInfo_.headDim +
+                        dStartIdx;
+                    uint32_t maxRowsPerChunk = max(
+                        1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32K /
+                                                  (dDealSize * sizeof(T))));
+                    for (uint32_t rowOffset = 0; rowOffset < copyRowCount;
+                         rowOffset += maxRowsPerChunk) {
+                        uint32_t curRows = min(maxRowsPerChunk,
+                                               copyRowCount - rowOffset);
+                        LocalTensor<T> inputChunk = inputQue1.AllocTensor<T>();
+                        DataCopyAlignGmToUb(
+                            inputChunk,
+                            kvDBMm1ResGm[srcGmOffset +
+                                         static_cast<uint64_t>(rowOffset) *
+                                             constInfo_.headDim],
+                            curRows, dDealSize, constInfo_.headDim,
+                            dDealSize);
+                        inputQue1.EnQue(inputChunk);
+                        inputQue1.DeQue<T>();
+                        RoundToHiddenDtype(inputChunk, curRows * dDealSize);
+                        DataCopyAlignUbToUb(
+                            kvLocal[dstUbOffset +
+                                    static_cast<uint64_t>(rowOffset) *
+                                        dDealSize],
+                            inputChunk, curRows, dDealSize, dDealSize,
+                            dDealSize);
+                        inputQue1.FreeTensor(inputChunk);
+                    }
+                }
+            } else {
+                LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
+                FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo,
+                                  statisticInfo, dStartIdx, dDealSize);
+                inputQue1.EnQue(kvUb);
+                inputQue1.DeQue<T>();
+                RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * dDealSize);
+                OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
+                               stateBlockTableGm_, kvCacheTcGm_, info,
+                               overLapSliceInfo, loopInfo, dStartIdx,
+                               originSliceInfo.dealedSeqCnt, dDealSize);
+                inputQue1.FreeTensor(kvUb);
+            }
+        }
         overLapSliceIterator.IteratorSlice();
     }
-    inputQue1.FreeTensor(kvUb);
     PipeBarrier<PIPE_V>();
 }
 
