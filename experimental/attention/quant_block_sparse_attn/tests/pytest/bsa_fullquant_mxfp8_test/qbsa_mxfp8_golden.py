@@ -227,9 +227,8 @@ def _parse_case_field(field_name, value):
             except json.JSONDecodeError:
                 if not value.endswith("]"):
                     raise
-                # JSON deliberately rejects IEEE spellings such as inf and
-                # nan.  Range columns are MXFP8 test data, so accept those
-                # tokens through float() while keeping ordinary JSON ranges.
+                # JSON 不接受 inf、nan 等 IEEE 拼写。这里是 MXFP8 测试数据
+                # 的取值范围，因此用 float() 解析这些值，普通范围仍按 JSON 解析。
                 parsed = [item.strip() for item in value[1:-1].split(",")]
         if isinstance(parsed, (list, tuple)):
             if len(parsed) != 2:
@@ -2173,10 +2172,9 @@ def cpu_mxfp8_golden(
                         m_run = torch.where(round_active, m_new, m_run)
                         any_softmax_active |= round_active
 
-                # Position validity and numerical softmax state are distinct.
-                # Rows with positions but only -Inf scores stay at the kernel's
-                # empty output (0 / EMPTY_LSE).  Active rows with NaN keep NaN,
-                # preserving the existing 00011 propagation behavior.
+                # 稀疏位置有效与 softmax 数值状态有效需要分别判断。仅包含 -Inf
+                # score 的行保留 kernel 空输出（0 / EMPTY_LSE）；softmax 已生效
+                # 且包含 NaN 的行继续传播 NaN，与已有 00011 行为保持一致。
                 row_active = any_position_valid & any_softmax_active
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
