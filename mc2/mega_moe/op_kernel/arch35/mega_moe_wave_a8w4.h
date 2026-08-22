@@ -128,6 +128,17 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
     UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
     if (useAllAivCores) {
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 0U) {
+                /*
+                 * AIV0 的 W4 prologue 使用 MTE3 将 [64 KiB, 192 KiB) 的反量化权重从 UB 搬到 L1，
+                 * Final Combine 随后使用 MTE2 覆盖同一 UB 区域。补齐 MTE3 -> MTE2 依赖即可安全复用，
+                 * 无需排空其他流水，也无需等待其余 AIV。
+                 */
+                SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+                WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            }
+        }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
         RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
