@@ -94,9 +94,10 @@ struct PostComputeCommPolicy {
         // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
         if (tileIdx > 0) {
             uint32_t prevTileIdx = tileIdx - 1;
-            // 无论主循环还是末尾循环,都下发prevTileIdx的AllToAll
-            // 末尾循环时所有matmul已完成,数据有效
-            IssueAllToAll(prevTileIdx);
+            // 只下发未下发过的tile(避免末尾循环重复下发导致数据错位)
+            if (prevTileIdx > lastIssuedTileIdx_) {
+                IssueAllToAll(prevTileIdx);
+            }
         }
         lastCommTileIdx_ = tileIdx;
     }
