@@ -38,7 +38,7 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnn/opdev/bfloat16.h"
 #include "../op_api/aclnn_flash_mla_with_kvcache.h"
-#include "../../flash_mla_metadata/op_host/op_api/aclnn_flash_mla_metadata.h"
+#include "../../flash_mla_with_kvcache_metadata/op_host/op_api/aclnn_flash_mla_with_kvcache_metadata.h"
 
 using namespace std;
 
@@ -493,11 +493,11 @@ int main()
         }
         uint64_t wsSize = 0;
         aclOpExecutor *executor = nullptr;
-        // 16 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, numHeadsQ, numHeadsKv, headDim,
-        // batchSize, maxSeqlenQ, maxSeqlenKv, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
+        // 16 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, batchSize, maxSeqlenQ, maxSeqlenKv,
+        // numHeadsQ, numHeadsKv, headDim, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
         // headDim=512: MLA checker 强制 head_dim==512（qk nope 宽）。
-        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.numHeadsQ, 1, 512, cs.batch,
-                                                    cs.qLens[0], cs.kvLen, 3, layoutQ, layoutKv, layoutOut, metaT,
+        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.batch, cs.qLens[0], cs.kvLen,
+                                                    cs.numHeadsQ, 1, 512, 3, layoutQ, layoutKv, layoutOut, metaT,
                                                     &wsSize, &executor);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             LOG_PRINT("aclnnFlashMlaMetadataGetWorkspaceSize failed: %d\n", ret);

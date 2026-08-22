@@ -11,7 +11,7 @@
  */
 
 /*!
- * \file test_aclnn_flash_mla_metadata.cpp
+ * \file test_aclnn_flash_mla_with_kvcache_metadata.cpp
  * \brief aclnn FlashMlaMetadata byte-golden vs FlashAttnMetadata.
  *
  * Checks (M8/B3/B2/D17):
@@ -155,8 +155,8 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     uint64_t workspaceSize = 0;
     void *workspaceAddr = nullptr;
     if (isMla) {
-        r = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, nHeadQ, nHeadKv, headDim, batch, maxSeqQ,
-                                                  maxSeqKv, maskMode, layoutQ, layoutKv, layoutOut, metaT,
+        r = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
+                                                  headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
                                                   &workspaceSize, &executor);
     } else {
         // flash_attn_metadata 侧仍为克隆前的旧签名（cuSeqlensKv/sequsedKv/winLeft/winRight），
@@ -344,7 +344,7 @@ static int RunNegativeCapacity(aclrtStream stream)
     pid_t pid = fork();
     if (pid == 0) {
         setenv("FLASH_MLA_WITH_KVCACHE_METADATA_NEGATIVE_ONLY", "1", 1);
-        execl("/proc/self/exe", "test_aclnn_flash_mla_metadata", (char *)nullptr);
+        execl("/proc/self/exe", "test_aclnn_flash_mla_with_kvcache_metadata", (char *)nullptr);
         _exit(127);
     }
     int status = 0;
@@ -441,8 +441,8 @@ static int RunNegativeRuntimeOnly()
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
-            ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, 17, 1,
-                                                        512, batch, 8, 32768,
+            ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
+                                                        17, 1, 512,
                                                         3, "TND", "PA_NZ", "NTD", metaT, &ws,
                                                         &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
@@ -522,8 +522,8 @@ int main()
         aclOpExecutor *executor = nullptr;
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
-        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, numHeads,
-                                                    numKeyValueHeads, headDim, batchSize, qS, kvS,
+        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, batchSize, qS, kvS,
+                                                    numHeads, numKeyValueHeads, headDim,
                                                     3, "TND", "PA_NZ", "NTD",
                                                     metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
