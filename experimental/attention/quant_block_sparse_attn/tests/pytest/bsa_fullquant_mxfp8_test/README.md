@@ -4,10 +4,15 @@
 
 Golden 将“存在稀疏 KV 位置”和“已建立数值 softmax 状态”分开处理：若某行的所有合法 QK score
 均为 `-Inf`，则与 kernel 一致保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
-触发的有效 softmax 行仍传播 `NaN`。该语义同时适用于单 tile 和多 tile 的最终归一化。
+触发的有效 softmax 行仍传播 `NaN`。MXFP8 的 `EMPTY_LSE` 为 `-Inf`，与 CUDA SDPA
+空 softmax 行语义一致；该语义同时适用于单 tile 和多 tile 的最终归一化。
+
+非有限输入按 CUDA SDPA 语义保持：Q/K 产生 `NaN` 或 `+Inf` score 时，
+`attention_out` 和 LSE 传播 `NaN`；Q/K 使所有 score 为 `-Inf` 时输出
+`0 / -Inf`；V 中的 `NaN/±Inf` 只传播到 `attention_out`，LSE 仍由 Q/K 决定。
 
 STC 的 Q/K/V 数据范围支持标量 `inf`、`-inf`、`nan` 以及区间 `[-inf, inf]`。
-无界区间会在每个 D 向量中同时放入两个无穷端点；`±Inf` 使用 E4M3FN 的 `±448`
+无界区间会在每个 D 向量的不同 MX group 中放入两个无穷端点；`±Inf` 使用 E4M3FN 的 `±448`
 与最大有限 E8M0 descale `2^127` 配对，使 FP32 反量化得到同符号 Inf。`NaN` 保留在
 E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 1）。
 

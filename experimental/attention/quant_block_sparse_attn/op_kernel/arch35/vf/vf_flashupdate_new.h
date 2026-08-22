@@ -485,7 +485,7 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T> &dstTensor, const 
     InvalidLineUpdateVF<T, srcD>(dstUb, srcUb, maxUb, m, d, minValue, invalidValue);
 }
 
-template <typename T>
+template <typename T, bool negativeInfWhenEmpty = false>
 __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb,
                                            const uint32_t dealCount)
 {
@@ -501,6 +501,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     constexpr uint32_t dealRows = 8;
     constexpr uint32_t floatRepSize = 64; // 64: 一个寄存器存64个float
     constexpr float infValue = 3e+99;     // 3e+99 for float inf
+    constexpr float negInfValue = -3e+99; // -3e+99 for float -inf
     constexpr uint32_t tmpMin = 0xFF7FFFFF;
     float minValue = *((float *)&tmpMin);
     uint16_t updateLoops = dealCount / dealRows;
@@ -510,7 +511,12 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
-    MicroAPI::Duplicate<float, float>(vregInfValue, infValue);
+    if constexpr (negativeInfWhenEmpty) {
+        MicroAPI::Duplicate<float, float>(vregInfValue, negInfValue);
+    } else {
+        // 保持原 FP8 实例化的寄存器初始化与指令路径不变。
+        MicroAPI::Duplicate<float, float>(vregInfValue, infValue);
+    }
     MicroAPI::Duplicate<float, float>(vregZero, 0.0f);
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
@@ -521,11 +527,19 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, vregMax, pregAll);
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
-        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+        if constexpr (negativeInfWhenEmpty) {
+            MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        } else {
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+        }
 
-        // sum == 0 保护：ln(0) + max = -inf, 需替换为 vregMinValue
+        // sum == 0 表示空 softmax 行：MX 输出 -Inf，其他路径保留 -FLT_MAX。
         MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregSum, vregZero, pregAll);
-        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
+        if constexpr (negativeInfWhenEmpty) {
+            MicroAPI::Select<T>(vregResFinal, vregInfValue, vregResFinal, pregZeroSum);
+        } else {
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
+        }
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + (i * floatRepSize), vregResFinal, pregAll);
     }
@@ -538,18 +552,26 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, vregMax, pregTail);
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregTail);
-        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+        if constexpr (negativeInfWhenEmpty) {
+            MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        } else {
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
+        }
 
-        // sum == 0 保护：ln(0) + max = -inf, 需替换为 vregMinValue
+        // sum == 0 表示空 softmax 行：MX 输出 -Inf，其他路径保留 -FLT_MAX。
         MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregSum, vregZero, pregTail);
-        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
+        if constexpr (negativeInfWhenEmpty) {
+            MicroAPI::Select<T>(vregResFinal, vregInfValue, vregResFinal, pregZeroSum);
+        } else {
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregResFinal, pregZeroSum);
+        }
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal,
                                                                     pregTail);
     }
 }
 
-template <typename T>
+template <typename T, bool negativeInfWhenEmpty = false>
 __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T> &dstTensor, const LocalTensor<T> &softmaxSumTensor,
                                           const LocalTensor<T> &softmaxMaxTensor, uint32_t dealCount)
 {
@@ -557,7 +579,7 @@ __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T> &dstTensor, const
     __ubuf__ T *srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
     __ubuf__ T *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
 
-    ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount);
+    ComputeLseOutputVF<T, negativeInfWhenEmpty>(srcSumUb, srcMaxUb, dstUb, dealCount);
 }
 
 template <typename T>

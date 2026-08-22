@@ -613,10 +613,15 @@ def _rand_float(shape, generator, data_range=1.0):
     if explicit_bounds and result.numel() > 0:
         if low == float("-inf") and high == float("inf"):
             # Q/K/V all use D as their last dimension.  Cover both unbounded
-            # endpoints in every vector so an actually consumed token, rather
-            # than merely the global tensor boundary, exercises both signs.
+            # endpoints in every vector and place them in different MX groups.
+            # Otherwise MX cube can cancel -448/+448 inside one group before
+            # applying descale, while dequantized CUDA observes -Inf + +Inf =
+            # NaN.  Separating the groups makes both execution orders produce
+            # the same non-finite result.
             result[..., 0] = low
-            if result.shape[-1] > 1:
+            if result.shape[-1] > QUANT_GROUP_SIZE:
+                result[..., QUANT_GROUP_SIZE] = high
+            elif result.shape[-1] > 1:
                 result[..., 1] = high
             else:
                 result.reshape(-1)[-1] = high
@@ -1463,7 +1468,7 @@ def generate_data():
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
 # ==============================================================================
 
-EMPTY_LSE = -3.4028234663852886e38
+EMPTY_LSE = float("-inf")
 MASK_VALUE = -10000.0
 # Keep the exact FP32 constants and operation order used by the VF.  For
 # large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
@@ -2173,7 +2178,7 @@ def cpu_mxfp8_golden(
                         any_softmax_active |= round_active
 
                 # 稀疏位置有效与 softmax 数值状态有效需要分别判断。仅包含 -Inf
-                # score 的行保留 kernel 空输出（0 / EMPTY_LSE）；softmax 已生效
+                # score 的行保留 CUDA 空输出（0 / -Inf LSE）；softmax 已生效
                 # 且包含 NaN 的行继续传播 NaN，与已有 00011 行为保持一致。
                 row_active = any_position_valid & any_softmax_active
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
