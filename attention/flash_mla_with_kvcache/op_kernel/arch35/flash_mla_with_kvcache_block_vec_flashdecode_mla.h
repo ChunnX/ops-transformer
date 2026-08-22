@@ -28,6 +28,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "memory_copy_arch35.h"
+#include "flash_mla_with_kvcache_type.h"
 
 namespace BaseApi {
 struct TaskInfoMla {
@@ -37,13 +38,15 @@ struct TaskInfoMla {
     uint32_t actualCombineLoopSize;
 };
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0>
+template <typename FA_T>
 class FlashMlaWithKvcacheBlockVecFlashDecodeMla {
 public:
+    using INPUT_T = typename FA_T::inputType;
+    using T = typename FA_T::mmType;
+    using OUTPUT_T = typename FA_T::outputType;
+    static constexpr LayOutTypeEnum layout = FA_T::qLayout;
+    static constexpr LayOutTypeEnum outLayout = FA_T::attnOutLayout;
+    static constexpr bool hasAtten = FA_T::hasMask;
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
@@ -76,7 +79,7 @@ private:
     static constexpr bool attenMaskFlag = hasAtten;
     using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
     // 基本块大小
-    static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s1BaseSize = (uint32_t)FA_T::mBaseSize;
 
 protected:
     GlobalTensor<float> lseSumFdGm;
@@ -90,7 +93,7 @@ protected:
 
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
     static constexpr bool isS1G = (UB_FORMAT == UbFormat::S1G);
-    static constexpr bool isPa = KvLayoutType > 0;
+    static constexpr bool isPa = FA_T::kvLayoutType > 0;
 
     // =======================获取实际Act_S===========================
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
@@ -538,11 +541,7 @@ public:
     }
 };
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0>
+template <typename FA_T>
 class FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy {
 public:
     using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
