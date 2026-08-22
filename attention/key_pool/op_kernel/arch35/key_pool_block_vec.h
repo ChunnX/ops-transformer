@@ -1344,9 +1344,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1Run
         CopyInApe(apeUb, dStartIdx, dDealSize);
         // CopyInApe stages GM data through inputQue2 and then writes the
         // persistent VECCALC tile with an asynchronous UB copy.  The queue
-        // dequeue covers the GM->UB leg; this barrier covers the final MTE2
-        // write before Vector consumes apeUb.
-        PipeBarrier<PIPE_MTE2>();
+        // dequeue covers the GM->UB leg; the full barrier also orders the
+        // final UB copy before Vector consumes apeUb.
+        PipeBarrier<PIPE_ALL>();
         AddApeToPooledScore(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         SoftmaxDN(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
