@@ -23,6 +23,14 @@
  *   - D/2 非对齐: 按半行拆分 (blockLen=D/2), grad/dx 逐 bsIdx 搬运。
  * 计算风格与 A/单路 AB 一致: HalfGradAlignVF 使用半行对齐步长。
  * dCosFlag=1: 部分积 SET/ACCUMULATE 择路、UB 行距固定 ubFactorN_、写回走队列同步 (与 BAB 对齐)。
+ *
+ * 性能改造 (P0/P1, 仅 DcosFlag=0):
+ *   P0: Q/K 串行处理时复用同一对 grad-in/grad-out DB=2 队列 (gradXInQue_/gradXOutQue_),
+ *       UB 大 tensor 份数 8→4 (tiling AB_UB_DIVISOR_WITHOUT_DCOS 同步改 4), tile 行数翻倍,
+ *       chunk 数/MTE2 描述符数/同步点减半。
+ *   P1: ProcessNPipelined 软件流水 — Q/K 输入 MTE2 指令背靠背下发, cos/sin 先下发后等待,
+ *       VF Q 期间预取 K 输入保证 V 指令流连续, Q-out MTE3 与 VF K 重叠,
+ *       消除原 ProcessN 逐 tile 的 MTE2→V→MTE3 全同步空泡。
  */
 
 #ifndef APPLY_ROTARY_POS_EMB_GRAD_AB_H
@@ -76,6 +84,11 @@ private:
     TQue<QuePosition::VECOUT, bufferNum> gradQOutQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradKOutQue_;
 
+    // P0: kDcosFlag=0 时 Q/K 串行处理, 复用同一对 DB=2 队列替代上面 4 个 grad 队列,
+    // UB 大 tensor 份数 8→4 (与 tiling AB_UB_DIVISOR_WITHOUT_DCOS=4 严格对应), tile 行数翻倍
+    TQue<QuePosition::VECIN, bufferNum> gradXInQue_;
+    TQue<QuePosition::VECOUT, bufferNum> gradXOutQue_;
+
     TQue<QuePosition::VECIN, bufferNum> queryInQue_;
     TQue<QuePosition::VECIN, bufferNum> keyInQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradCosOutQue_;
@@ -97,6 +110,16 @@ private:
 private:
     __aicore__ inline void PrePareParams();
     __aicore__ inline void ProcessNLoop(int64_t bsAbsIdx, int64_t nStart, uint32_t currBS, int64_t nBlockCount);
+    // P1: kDcosFlag=0 软件流水路径 — Q/K 输入 MTE2 背靠背下发, Compute/CopyOut 与 MTE2 重叠
+    __aicore__ inline void ProcessNPipelined(
+        LocalTensor<T>& sinTensor, LocalTensor<T>& cosTensor,
+        int64_t bsAbsIdx, int64_t nStart, uint32_t currBS, int64_t nBlockCount);
+    __aicore__ inline void CopyInGradX(
+        const LocalTensor<T>& dst, GlobalTensor<T>& gradXGm, int64_t gradGmOffset,
+        int64_t nPath, int64_t currXN, uint32_t currBS);
+    __aicore__ inline void CopyOutGradX(
+        GlobalTensor<T>& gradXOutGm, const LocalTensor<T>& src, int64_t gradGmOffset,
+        int64_t nPath, int64_t currXN, uint32_t currBS);
     __aicore__ inline void ProcessN(
         const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
         GlobalTensor<T>& gradXGm, GlobalTensor<T>& gradXOutGm, GlobalTensor<T>& xGm,
@@ -152,13 +175,20 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
     cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
     sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
 
-    // UB: cos/sin 各 ubFactorBS 行; grad/dx 各 ubFactorBS*ubFactorN 行 (双缓冲)
+    // UB: cos/sin 各 ubFactorBS 行; DcosFlag=0 时 Q/K 复用同一对 grad/dx 队列 (UB 除数 4),
+    // DcosFlag=1 时保持 Q/K 独立四队列 + query/key/partial (UB 除数 16/20)
     pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
     pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradQInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradKInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradQOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradKOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+    if constexpr (kDcosFlag) {
+        pipe_->InitBuffer(gradQInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        pipe_->InitBuffer(gradKInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        pipe_->InitBuffer(gradQOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        pipe_->InitBuffer(gradKOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+    } else {
+        // P0: Q/K 串行复用同一对 DB=2 队列, 大 tensor 4 份 → tile 翻倍 (ubFactorBS×2)
+        pipe_->InitBuffer(gradXInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        pipe_->InitBuffer(gradXOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+    }
 
     if constexpr (kDcosFlag) {
         // query/key/gradCos/gradSin 与 grad 同形 (ubFactorBS*ubFactorN*dAlign), 仅 dCosFlag=1 时分配
@@ -234,6 +264,16 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
     DataCopyPad(cosTensor, cosGm_[bsAbsIdx * d], copyCosParams, padParams);
     sinInQue_.EnQue(sinTensor);
     cosInQue_.EnQue(cosTensor);
+
+    if constexpr (!kDcosFlag) {
+        // P1: 流水路径 — cos/sin 的 DeQue 推迟到 Q/K grad 输入 MTE2 指令下发之后,
+        // 等待窗口内 MTE2 按 issue 顺序连续执行 sin→cos→grad 搬运, 消除 chunk 头部串行等待
+        ProcessNPipelined(sinTensor, cosTensor, bsAbsIdx, nStart, currBS, nBlockCount);
+        sinInQue_.FreeTensor(sinTensor);
+        cosInQue_.FreeTensor(cosTensor);
+        return;
+    }
+
     sinTensor = sinInQue_.DeQue<T>();
     cosTensor = cosInQue_.DeQue<T>();
 
@@ -335,9 +375,166 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
 }
 
 // =================================================================
+// CopyInGradX / CopyOutGradX — P1 流水路径的公共搬运 (与 ProcessN 的
+// 对齐/非对齐两分支等价: 对齐走整行 2D 搬运, 非对齐按半行逐 bs 搬运)
+// =================================================================
+template <typename T, bool kDcosFlag>
+__aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::CopyInGradX(
+    const LocalTensor<T>& dst, GlobalTensor<T>& gradXGm, int64_t gradGmOffset,
+    int64_t nPath, int64_t currXN, uint32_t currBS)
+{
+    int64_t d = tilingData_->d;
+    uint32_t dHalfByteSize = static_cast<uint32_t>(d / HALF_COEF * sizeof(T));
+    int64_t dByteSize = d * sizeof(T);
+    DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+    if (dHalfAligned_) {
+        DataCopyExtParams copyParams = {static_cast<uint16_t>(currBS),
+                                        static_cast<uint32_t>(currXN * dByteSize),
+                                        static_cast<uint32_t>((nPath - currXN) * dByteSize), 0, 0};
+        DataCopyPad(dst, gradXGm[gradGmOffset], copyParams, padParams);
+    } else {
+        DataCopyExtParams copyParams = {static_cast<uint16_t>(currXN * HALF_COEF), dHalfByteSize, 0, 0, 0};
+        for (uint32_t bsIdx = 0; bsIdx < currBS; bsIdx++) {
+            int64_t gmOffset = gradGmOffset + bsIdx * nPath * d;
+            int64_t ubOffset = bsIdx * currXN * dAlign_;
+            DataCopyPad(dst[ubOffset], gradXGm[gmOffset], copyParams, padParams);
+        }
+    }
+}
+
+template <typename T, bool kDcosFlag>
+__aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::CopyOutGradX(
+    GlobalTensor<T>& gradXOutGm, const LocalTensor<T>& src, int64_t gradGmOffset,
+    int64_t nPath, int64_t currXN, uint32_t currBS)
+{
+    int64_t d = tilingData_->d;
+    uint32_t dHalfByteSize = static_cast<uint32_t>(d / HALF_COEF * sizeof(T));
+    int64_t dByteSize = d * sizeof(T);
+    if (dHalfAligned_) {
+        // UB→GM 的 DataCopyPad 无四参重载, 与 ProcessN CopyOut 写法一致
+        DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currBS),
+                                           static_cast<uint32_t>(currXN * dByteSize), 0,
+                                           static_cast<uint32_t>((nPath - currXN) * dByteSize), 0};
+        DataCopyPad(gradXOutGm[gradGmOffset], src, copyOutParams);
+    } else {
+        DataCopyExtParams copyParams = {static_cast<uint16_t>(currXN * HALF_COEF), dHalfByteSize, 0, 0, 0};
+        for (uint32_t bsIdx = 0; bsIdx < currBS; bsIdx++) {
+            int64_t gmOffset = gradGmOffset + bsIdx * nPath * d;
+            int64_t ubOffset = bsIdx * currXN * dAlign_;
+            DataCopyPad(gradXOutGm[gmOffset], src[ubOffset], copyParams);
+        }
+    }
+}
+
+// =================================================================
+// ProcessNPipelined — P1 软件流水 (仅 kDcosFlag=0, dx-only 路径)
+//   每 nLoop 迭代的下发顺序 (消除逐 tile 的 MTE2→V→MTE3 全同步):
+//     1. Q-in、K-in 的 MTE2 指令背靠背下发 (V 计算 Q 期间 MTE2 搬 K 输入)
+//     2. 首次计算前 DeQue cos/sin (等待窗口内 MTE2 继续搬 grad)
+//     3. VF Q 下发后立即归还 Q-in → DeQue K-in → VF K 下发 (V 指令流连续)
+//     4. DeQue Q-out (等 V 写完即返回) → 下发 Q-out MTE3 (与 VF K 重叠)
+//     5. DeQue K-out → 下发 K-out MTE3
+//   Q/K 共享 DB=2 队列 (gradXInQue_/gradXOutQue_), 相邻 chunk/路径间轮转复用
+// =================================================================
+template <typename T, bool kDcosFlag>
+__aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNPipelined(
+    LocalTensor<T>& sinTensor, LocalTensor<T>& cosTensor,
+    int64_t bsAbsIdx, int64_t nStart, uint32_t currBS, int64_t nBlockCount)
+{
+    int64_t d = tilingData_->d;
+    uint32_t nLoopCnt = Ops::Base::CeilDiv(nBlockCount, ubFactorN_);
+    bool cosSinReady = false;
+    for (uint32_t nLoop = 0; nLoop < nLoopCnt; nLoop++) {
+        int64_t absN = nStart + nLoop * ubFactorN_;
+        int64_t currQN = (absN < tilingData_->nQ)
+            ? min(ubFactorN_, tilingData_->nQ - absN) : 0;
+        int64_t currKN = (absN < tilingData_->nK)
+            ? min(ubFactorN_, tilingData_->nK - absN) : 0;
+        if (currQN <= 0 && currKN <= 0) {
+            // 防御: 保证返回前 cos/sin 已 DeQue (空 tile 时跳过计算但句柄状态完整)
+            if (!cosSinReady) {
+                sinTensor = sinInQue_.DeQue<T>();
+                cosTensor = cosInQue_.DeQue<T>();
+                cosSinReady = true;
+            }
+            break;
+        }
+
+        // ---- 1. Q/K 输入背靠背下发到 MTE2 (Q/K 共享队列, DB=2 各占一份) ----
+        LocalTensor<T> gradQIn, gradKIn;
+        if (currQN > 0) {
+            int64_t qGmOffset = bsAbsIdx * tilingData_->nQ * d + absN * d;
+            gradQIn = gradXInQue_.AllocTensor<T>();
+            CopyInGradX(gradQIn, gradQGm_, qGmOffset, tilingData_->nQ, currQN, currBS);
+            gradXInQue_.EnQue(gradQIn);
+        }
+        if (currKN > 0) {
+            int64_t kGmOffset = bsAbsIdx * tilingData_->nK * d + absN * d;
+            gradKIn = gradXInQue_.AllocTensor<T>();
+            CopyInGradX(gradKIn, gradKGm_, kGmOffset, tilingData_->nK, currKN, currBS);
+            gradXInQue_.EnQue(gradKIn);
+        }
+
+        // ---- 2. 首次 VF 前等待 cos/sin 就绪 (此时 MTE2 在后台搬 grad) ----
+        if (!cosSinReady) {
+            sinTensor = sinInQue_.DeQue<T>();
+            cosTensor = cosInQue_.DeQue<T>();
+            cosSinReady = true;
+        }
+
+        // ---- 3/4. VF Q → 归还 Q-in → DeQue K-in → VF K → Q-out MTE3 ----
+        LocalTensor<T> gradQOut;
+        if (currQN > 0) {
+            int64_t qGmOffset = bsAbsIdx * tilingData_->nQ * d + absN * d;
+            gradQIn = gradXInQue_.DeQue<T>();
+            gradQOut = gradXOutQue_.AllocTensor<T>();
+            ComputeOnePath(sinTensor, cosTensor, gradQIn, gradQOut,
+                           currBS, static_cast<uint32_t>(currQN));
+            gradXInQue_.FreeTensor(gradQIn);
+            if (currKN > 0) {
+                // V 在跑 Q: 提前取 K 输入并下发 VF K, 保证 V 指令流连续
+                gradKIn = gradXInQue_.DeQue<T>();
+                LocalTensor<T> gradKOut = gradXOutQue_.AllocTensor<T>();
+                ComputeOnePath(sinTensor, cosTensor, gradKIn, gradKOut,
+                               currBS, static_cast<uint32_t>(currKN));
+                gradXInQue_.FreeTensor(gradKIn);
+                gradXOutQue_.EnQue(gradQOut);
+                gradQOut = gradXOutQue_.DeQue<T>();
+                CopyOutGradX(gradQOutGm_, gradQOut, qGmOffset, tilingData_->nQ, currQN, currBS);
+                gradXOutQue_.FreeTensor(gradQOut);
+                gradXOutQue_.EnQue(gradKOut);
+                gradKOut = gradXOutQue_.DeQue<T>();
+                int64_t kGmOffset = bsAbsIdx * tilingData_->nK * d + absN * d;
+                CopyOutGradX(gradKOutGm_, gradKOut, kGmOffset, tilingData_->nK, currKN, currBS);
+                gradXOutQue_.FreeTensor(gradKOut);
+            } else {
+                gradXOutQue_.EnQue(gradQOut);
+                gradQOut = gradXOutQue_.DeQue<T>();
+                CopyOutGradX(gradQOutGm_, gradQOut, qGmOffset, tilingData_->nQ, currQN, currBS);
+                gradXOutQue_.FreeTensor(gradQOut);
+            }
+            continue;
+        }
+
+        // ---- 5. 仅 K 路 (currQN == 0, nQ < nK 的尾 tile) ----
+        gradKIn = gradXInQue_.DeQue<T>();
+        LocalTensor<T> gradKOutOnly = gradXOutQue_.AllocTensor<T>();
+        ComputeOnePath(sinTensor, cosTensor, gradKIn, gradKOutOnly,
+                       currBS, static_cast<uint32_t>(currKN));
+        gradXInQue_.FreeTensor(gradKIn);
+        gradXOutQue_.EnQue(gradKOutOnly);
+        gradKOutOnly = gradXOutQue_.DeQue<T>();
+        int64_t kGmOffsetOnly = bsAbsIdx * tilingData_->nK * d + absN * d;
+        CopyOutGradX(gradKOutGm_, gradKOutOnly, kGmOffsetOnly, tilingData_->nK, currKN, currBS);
+        gradXOutQue_.FreeTensor(gradKOutOnly);
+    }
+}
+
+// =================================================================
 // ProcessN — 单 tile 单路径: CopyIn grad (+x) -> Compute -> CopyOut dx
 //   isQPath: true=Q 路, false=K 路 (选择 grad/x 对应 GM 与队列)
 //   isAccumulate: true=cosPartial/sinPartial 累加模式, false=SET 初始化模式 (与 BAB 一致)
+//   (仅 kDcosFlag=1 使用; kDcosFlag=0 走 ProcessNPipelined)
 // =================================================================
 template <typename T, bool kDcosFlag>
 __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessN(
