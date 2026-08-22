@@ -28,7 +28,7 @@ FLASH_ATTN_AVAILABLE = False
 
 _MLA_NOT_IMPLEMENTED = (
     "MLA 无 GPU 实现（占位）：flash_mla_with_kvcache 依赖 Ascend 950 / DAV_3510 的 "
-    "flash_mla_metadata + flash_mla_with_kvcache，无 flash_attn GPU API 等价物。"
+    "flash_mla_with_kvcache_metadata + flash_mla_with_kvcache，无 flash_attn GPU API 等价物。"
     "待未来补充 GPU golden（TND/NZ/NTD R1 布局）时替换本函数。"
 )
 
