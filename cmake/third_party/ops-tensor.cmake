@@ -7,14 +7,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID 85562eb60bdccc7ec831766b8d29a9680087feeb)
+set(OPTENSOR_TAG_ID eab7698797ff9621de66b88f2741ac688a3f0708)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
   get_filename_component(TENSOR_API
-                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+                         ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
