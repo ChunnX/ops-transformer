@@ -15,7 +15,12 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_KVCACHE_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_KVCACHE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "util_regbase.h"
@@ -61,12 +66,9 @@ __aicore__ inline void GetSingleCoreParam(
                 actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
             } else if (hasCuSeqlensCmpKv) {
                 actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
-            } else {
-                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
-            actualS2CmpSize =
-                (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) : actualSeqCmpKvlenGm.GetValue(bIdx);
+            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -84,10 +86,10 @@ __aicore__ inline void GetSingleCoreParam(
         }
     }
     const int64_t casualOffset = runParam.actualS2OriSize - runParam.actualS1Size;
-    if (constInfo.oriMaskMode == 3) {
+    if (constInfo.oriMaskMode == 3U) {
         runParam.nextTokensPerBatchOri = casualOffset;
         runParam.preTokensPerBatch = runParam.actualS1Size;
-    } else if (constInfo.oriMaskMode == 4) {
+    } else if (constInfo.oriMaskMode == 4U) {
         runParam.preTokensPerBatch =
             (constInfo.oriWinLeft == -1) ? runParam.actualS1Size : constInfo.oriWinLeft - casualOffset;
         runParam.nextTokensPerBatchOri =
@@ -122,11 +124,25 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        if (runParam.nextTokensPerBatchOri < 0) {
-            int64_t gs1LoopStartIdx =
-                runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
-            if (gs1LoopStartIdx > gS1StartIdx) {
-                runParam.gs1LoopStartIdx = gs1LoopStartIdx;
+        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+            int64_t skipThreshold = 0;
+            if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
+                skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
+            }
+            if (skipThreshold > 0) {
+                int64_t gs1LoopStartIdx = skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+                if (gs1LoopStartIdx > gS1StartIdx) {
+                    runParam.gs1LoopStartIdx = gs1LoopStartIdx;
+                }
+            }
+        } else {
+            if (runParam.nextTokensPerBatchOri < 0) {
+                int64_t gs1LoopStartIdx =
+                    runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+                if (gs1LoopStartIdx > gS1StartIdx) {
+                    runParam.gs1LoopStartIdx = gs1LoopStartIdx;
+                }
             }
         }
     }
@@ -238,10 +254,23 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 {
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        if (runParam.nextTokensPerBatchOri < 0) {
-            if (runParam.s1oIdx <
-                (runParam.nextTokensPerBatchOri * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
-                return true;
+        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+            int64_t skipThreshold = 0;
+            if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
+                skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
+            }
+            if (skipThreshold > 0) {
+                if (runParam.s1oIdx < skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+                    return true;
+                }
+            }
+        } else {
+            if (runParam.nextTokensPerBatchOri < 0) {
+                if (runParam.s1oIdx <
+                    (runParam.nextTokensPerBatchOri * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+                    return true;
+                }
             }
         }
     }

@@ -45,7 +45,10 @@
       [split(w, [n, n]), 0], & alpha.shape=[2]
   \end{cases}\\
   hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
-  hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+  hPost &= \begin{cases}
+      2\sigma(pPost \odot alpha1 + bias1), & alpha.shape=[3] \\
+      2\sigma(pPost \odot alpha1 + bias1) + hcEps, & alpha.shape=[2]
+  \end{cases}\\
   hRes &= \begin{cases}
       pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
       0, & alpha.shape=[2]
@@ -174,7 +177,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hcEps</td>
       <td>可选输入</td>
-      <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
+      <td>h_pre的sigmoid后的eps参数，以及当alpha.shape=[2]时h_post的sigmoid后的eps参数，对应公式中的hcEps。</td>
       <td>建议值：1e-6。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -350,6 +353,9 @@ aclnnStatus aclnnMhcPre(
 
 - 确定性计算：
   - aclnnMhcPre默认确定性实现。
+
+- Batch一致性说明：
+  - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
 
 - 规格约束：
   - n目前支持4、6、8。

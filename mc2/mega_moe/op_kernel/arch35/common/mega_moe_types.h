@@ -12,6 +12,7 @@
 #define MEGA_MOE_TYPES_H
 
 #include "lib/std/tuple.h"
+#include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
@@ -20,6 +21,22 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+
+// GMM1/GMM2 逐专家遍历的公共状态。expertIdx 标识当前专家，globalTokenStartIndex 表示该专家
+// 在本卡 MoE 专家紧凑 token 序列中的起始索引。
+struct ExpertLoopState {
+    ProblemShape problemShape;
+    int64_t globalTokenStartIndex = 0;
+    uint32_t expertIdx = 0U;
+};
+
+// 标识 MoE 专家序列中的二维 token 位置。
+struct ExpertTokenPosition {
+    uint32_t expertIdx = 0U;
+    uint32_t tokenIndexInExpert = 0U;
+};
 
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
@@ -37,7 +54,7 @@ struct GMMAddrInfo {
     GM_ADDR gmm1OutGlobal;
     GM_ADDR gmm2OutGlobal;
     GM_ADDR metaInfoGlobal;
-    __gm__ int32_t *swigluToGmm2Flag;
+    __gm__ int32_t *activationToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
     __gm__ int32_t *gmm2CombineSyncCounter;
     __gm__ int32_t *gmmToEpilogueFlag;
@@ -116,9 +133,19 @@ struct MoeStageCommonConfig {
     uint32_t gmm1OutputDim;
 };
 
-struct DispatchPrepareConfig {
-    AivJobContext job;
-    MoeStageCommonConfig common;
+// GMM1/GMM2 共用的执行方式：当前 block 的任务分工、矩阵模板模式和专家权重布局。
+struct GmmExecutionConfig {
+    BlockJobContext blockJob;
+    int32_t groupedMatmulMode;
+    bool isPerExpertWeightTensor;
+};
+
+// 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。
+struct MoeSyncWorkspaceLayout {
+    int32_t dispatchFlagSlotCountPerExpert;
+    int32_t activationFlagSlotCountPerExpert;
+    uint32_t gmm1TileStatusCountPerExpert;
+    uint64_t combineSyncSlotCountPerExpert;
 };
 
 struct GroupSyncSlotLayout {

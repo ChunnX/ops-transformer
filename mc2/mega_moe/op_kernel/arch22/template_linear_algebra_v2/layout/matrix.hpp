@@ -12,11 +12,11 @@
 #define CATLASS_LAYOUT_MATRIX_HPP
 
 #include "../../template_linear_algebra_v2/catlass.hpp"
-#include "../../template_linear_algebra_v2/coord.hpp"
-#include "../../template_linear_algebra_v2/numeric_size.hpp"
-#include "../../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../../template_linear_algebra_v2/tla_v2_coord.hpp"
+#include "../../template_linear_algebra_v2/tla_v2_numeric_size.hpp"
+#include "../../template_linear_algebra_v2/detail/tla_v2_alignment.hpp"
 #include "../../template_linear_algebra_v2/matrix_coord.hpp"
-#include "../../template_linear_algebra_v2/conv_coord.hpp"
+#include "../../template_linear_algebra_v2/tla_v2_conv_coord.hpp"
 
 namespace Catlass::layout {
 

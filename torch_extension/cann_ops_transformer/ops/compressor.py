@@ -8,10 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Optional, Tuple
+
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY, OpBuilder
 
 
 class CompressorOpBuilder(OpBuilder):
@@ -35,13 +36,14 @@ class CompressorOpBuilder(OpBuilder):
 
 
 compressor_op_builder = CompressorOpBuilder()
-op_module = compressor_op_builder.load()
 
 
 # ===========================================================================
 # Register compressor forward
 # ===========================================================================
-@torch.library.custom_op("cann_ops_transformer::_compressor_forward", mutates_args=(), device_types="npu")
+@torch.library.custom_op(
+    "cann_ops_transformer::_compressor_forward", mutates_args=(), device_types="npu"
+)
 def _compressor_forward(
     x: torch.Tensor,
     wkv: torch.Tensor,
@@ -55,8 +57,9 @@ def _compressor_forward(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-    grad_enabled: Optional[bool] = False
+    grad_enabled: Optional[bool] = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    op_module = compressor_op_builder.load()
     return op_module.compressor(
         x,
         wkv,
@@ -70,7 +73,7 @@ def _compressor_forward(
         start_pos,
         coff,
         cache_mode,
-        grad_enabled
+        grad_enabled,
     )
 
 
@@ -88,7 +91,7 @@ def _compressor_forward_fake(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-    grad_enabled: Optional[bool] = False
+    grad_enabled: Optional[bool] = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     d = wkv.size(0) // coff
     coff_cmp = coff * cmp_ratio
@@ -106,7 +109,7 @@ def _compressor_forward_fake(
         cmp_kv_size = (cmp_size, d)
         softmax_score_size = (cmp_size, coff_cmp, d)
         kv_size = (cmp_size, coff_cmp, d)
-        
+
     cmp_kv_out = torch.empty(cmp_kv_size, dtype=x.dtype, device=x.device)
     softmax_score_out = torch.empty(
         softmax_score_size, dtype=torch.float32, device=x.device
@@ -118,7 +121,9 @@ def _compressor_forward_fake(
 # ===========================================================================
 # Register compressor backward
 # ===========================================================================
-@torch.library.custom_op("cann_ops_transformer::_compressor_backward", mutates_args=(), device_types="npu")
+@torch.library.custom_op(
+    "cann_ops_transformer::_compressor_backward", mutates_args=(), device_types="npu"
+)
 def _compressor_backward(
     d_cmp_kv: torch.Tensor,
     x: torch.Tensor,
@@ -132,14 +137,24 @@ def _compressor_backward(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    op_module = compressor_op_builder.load()
     d_x = torch.empty_like(x)
     d_wkv = torch.empty_like(wkv)
     d_wgate = torch.empty_like(wgate)
     d_ape_size = (cmp_ratio, wkv.size(0))
     d_ape = torch.empty(d_ape_size, dtype=torch.float32, device=x.device)
     return op_module.compressor_backward(
-        d_cmp_kv, x, wkv, wgate, softmax_score, kv, 
-        cu_seqlens, seqused, start_pos, cmp_ratio, coff
+        d_cmp_kv,
+        x,
+        wkv,
+        wgate,
+        softmax_score,
+        kv,
+        cu_seqlens,
+        seqused,
+        start_pos,
+        cmp_ratio,
+        coff,
     )
 
 
@@ -190,11 +205,20 @@ def backward(ctx, dout, *grads):
     coff = ctx.coff
 
     d_x, d_wkv, d_wgate, d_ape = _compressor_backward(
-        dout, x, wkv, wgate, softmax_score, kv, 
-        cu_seqlens, seqused, start_pos, cmp_ratio, coff
+        dout,
+        x,
+        wkv,
+        wgate,
+        softmax_score,
+        kv,
+        cu_seqlens,
+        seqused,
+        start_pos,
+        cmp_ratio,
+        coff,
     )
-    return d_x, d_wkv, d_wgate, None, d_ape, *((None, ) * 8)
-    
+    return d_x, d_wkv, d_wgate, None, d_ape, *((None,) * 8)
+
 
 _compressor_forward.register_autograd(backward, setup_context=setup_context)
 
@@ -232,6 +256,6 @@ def compressor(
         cmp_ratio,
         coff,
         cache_mode,
-        grad_enabled
+        grad_enabled,
     )
     return cmp_kv

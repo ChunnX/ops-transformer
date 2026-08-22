@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "paged_attention_checker.h"
+#include "paged_attention_checker_quant_flash_attn.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -77,13 +77,21 @@ ge::graphStatus PagedAttentionChecker::CheckSingleParaBlockTable(const QfaTiling
     // B 由 qfaInfo.bSize 给出; Bn(每批次最大块数) 由 qfaInfo.maxBlockNumPerBatch 给出
     int64_t dim0 = static_cast<int64_t>(shape.GetDim(0));
     int64_t dim1 = static_cast<int64_t>(shape.GetDim(1));
-    OP_CHECK_IF(dim0 != qfaInfo.bSize,
-                OP_LOGE(qfaInfo.opName, "block_table shape dim0 should be %ld (B), but got %ld.", qfaInfo.bSize, dim0),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(dim1 != qfaInfo.maxBlockNumPerBatch,
-                OP_LOGE(qfaInfo.opName, "block_table shape dim1 should be %ld (Bn), but got %ld.",
-                        qfaInfo.maxBlockNumPerBatch, dim1),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dim0 != qfaInfo.bSize,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            qfaInfo.opName, BLOCK_TABLE_NAME.c_str(),
+            ("[" + std::to_string(dim0) + ", " + std::to_string(dim1) + "]").c_str(),
+            ("The value of dim0 of block_table shape must be " + std::to_string(qfaInfo.bSize) + " (B)").c_str()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dim1 != qfaInfo.maxBlockNumPerBatch,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            qfaInfo.opName, BLOCK_TABLE_NAME.c_str(),
+            ("[" + std::to_string(dim0) + ", " + std::to_string(dim1) + "]").c_str(),
+            ("The value of dim1 of block_table shape must be " + std::to_string(qfaInfo.maxBlockNumPerBatch) + " (Bn)")
+                .c_str()),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -98,6 +106,36 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const QfaTilingInfo &qfaI
     if (CheckSingleParaBlockTable(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus PagedAttentionChecker::CheckBlockSizeMxFp8(const QfaTilingInfo &qfaInfo) const
+{
+    if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // MxFP8 场景: blockSize 仅支持 64、128、256、512或1024
+    OP_CHECK_IF(qfaInfo.blockSize != 64 && qfaInfo.blockSize != 128 && qfaInfo.blockSize != 256 &&
+                    qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "block_size", std::to_string(qfaInfo.blockSize).c_str(),
+                    "When quant_mode is MxFP8, block_size must be in [64, 128, 256, 512, 1024]"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus PagedAttentionChecker::CheckBlockSizeGqaFp8(const QfaTilingInfo &qfaInfo) const
+{
+    if (qfaInfo.quantMode !=
+        QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // GQA FP8 fullquant 场景: blockSize 固定 128
+    OP_CHECK_IF(
+        qfaInfo.blockSize != 128,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "block_size", std::to_string(qfaInfo.blockSize).c_str(),
+                                              "When quant_mode is GQA_FP8_FULLQUANT, block_size must be 128"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -124,14 +162,9 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QfaTilingInfo &qfaInfo
                                                   "When PagedAttention is enabled, seqused_kv must be provided"),
             return ge::GRAPH_FAILED);
 
-        // MxFP8 场景: blockSize 仅支持 64、128、256、512或1024
-        if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
-            OP_CHECK_IF(qfaInfo.blockSize != 64 && qfaInfo.blockSize != 128 && qfaInfo.blockSize != 256 &&
-                        qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            qfaInfo.opName, "block_size", std::to_string(qfaInfo.blockSize).c_str(),
-                            "When quant_mode is MxFP8, block_size must be in [64, 128, 256, 512, 1024]"),
-                        return ge::GRAPH_FAILED);
+        // 场景: blockSize 校验
+        if (CheckBlockSizeMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckBlockSizeGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
         }
     } else {
         // 非 PA 场景: block_table 不应传入
