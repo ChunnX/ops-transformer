@@ -288,9 +288,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig();
 
-    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(
-        exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo, sendMaskConfig_.maskAlignSize,
-        reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
+                                                              params_.peermemInfo, sendMaskConfig_.maskAlignSize,
+                                                              reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // =================================================================================================

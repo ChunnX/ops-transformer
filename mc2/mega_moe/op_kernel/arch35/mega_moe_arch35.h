@@ -290,9 +290,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     InitCombineBuffers();
     InitTokenUnpermuteConfig();
 
-    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(
-        exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo, sendMaskConfig_.maskAlignSize,
-        reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
+                                                              params_.peermemInfo, sendMaskConfig_.maskAlignSize,
+                                                              reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。

@@ -56,9 +56,11 @@ struct MegaMoeExceptionDumpPolicy {
 
 using ExceptionDumpEngine = MC2ExceptionDump::ExceptionDump<MegaMoeExceptionDumpPolicy>;
 
-__aicore__ inline __gm__ GmmLoopCount *RegisterMegaMoeExceptionDump(
-    ExceptionDumpEngine &engine, GM_ADDR dumpBase, GM_ADDR tilingGM, const MegaMoeTilingData *tilingData,
-    const MegaMoeImpl::PeermemInfo &peermemInfo, uint32_t maskAlignSize, GM_ADDR epRankIdAddr)
+__aicore__ inline __gm__ GmmLoopCount *RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine, GM_ADDR dumpBase,
+                                                                    GM_ADDR tilingGM,
+                                                                    const MegaMoeTilingData *tilingData,
+                                                                    const MegaMoeImpl::PeermemInfo &peermemInfo,
+                                                                    uint32_t maskAlignSize, GM_ADDR epRankIdAddr)
 {
     engine.Init(dumpBase, tilingGM);
     engine.UpdateStage(Stage::INIT);
