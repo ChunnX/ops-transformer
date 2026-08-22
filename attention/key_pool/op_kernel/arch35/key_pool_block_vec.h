@@ -171,9 +171,6 @@ private:
     uint32_t cmpRatio_ = 0U;
     uint32_t coff_ = 0U;
     uint32_t compressedCnt_ = 0;
-    uint32_t prevApeDStartIdx_ = 0;
-    uint32_t prevApeDDealSize_ = 0;
-    bool apeIsLoad_ = false;
     bool isExistSeqUsed_ = false;
     bool isExistStartPos_ = false;
     KeyPoolTools<COMP> tools_;
@@ -326,10 +323,6 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx,
                                                               uint32_t dDealSize)
 {
-    if (apeIsLoad_ && prevApeDStartIdx_ == dStartIdx && prevApeDDealSize_ == dDealSize) {
-        return;
-    }
-
     uint32_t copyRowCount = coff_ * cmpRatio_;
     uint32_t copyColCount = dDealSize;
     uint32_t dstSingleRowCount = dDealSize;
@@ -338,10 +331,6 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> 
     uint64_t gmOffset = dStartIdx;
 
     DataCopyWithInputQue(apeUb, apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
-
-    prevApeDStartIdx_ = dStartIdx;
-    prevApeDDealSize_ = dDealSize;
-    apeIsLoad_ = true;
 }
 
 template <typename COMP>
@@ -1341,10 +1330,18 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1Run
     LocalTensor<T> scoreLocal = tmpBuff1.Get<T>();
     LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
 
+    // The overlap path consumes the APE tile inside OverLapScoreKv.  KPool
+    // uses COFF::DISABLE, but keep that template path valid for the shared
+    // implementation.  For the normal KPool path, load APE only after all
+    // overlap/cache reads have finished because they reuse the same UB area.
+    if constexpr (COMP::coff == COFF::OVERLAP) {
+        CopyInApe(apeUb, dStartIdx, dDealSize);
+    }
     OverLapScoreKv(scoreLocal, kvLocal, info, loopInfo, statisticInfo, originSliceInfo, dStartIdx, dDealSize, dBaseSize,
                    needDealTcSize);
 
     if (statisticInfo.key_poolScCnt > 0) {
+        CopyInApe(apeUb, dStartIdx, dDealSize);
         AddApeToPooledScore(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         SoftmaxDN(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
@@ -1507,8 +1504,6 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeVec1(const Vec1RunInfo &
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
         uint64_t dBaseOffset = baseOffset + dLoopIdx * splitInfo.dSplitSize;
-
-        CopyInApe(apeUb, dBaseOffset, splitInfo.dSplitSize);
 
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
         compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
