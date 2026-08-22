@@ -9,12 +9,17 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # =====================================================================
-# build_mla.sh - 一键编译 flash_mla_with_kvcache 算子（Ascend 950）
+# build_mla.sh - 一键编译 flash_mla_with_kvcache 算子族（主算子 + metadata AICPU 算子，Ascend 950）
 #
 # 用途：
-#   封装仓根 build.sh，以固定参数构建 flash_mla_with_kvcache 算子的
+#   封装仓根 build.sh，以固定参数构建 flash_mla_with_kvcache 算子族的
 #   run 包（含 kernel bin）：
-#     bash build.sh --pkg --soc=ascend950 --ops=flash_mla_with_kvcache -j20
+#     bash build.sh --pkg --soc=ascend950 \
+#       --ops=flash_mla_with_kvcache,flash_mla_with_kvcache_metadata -j20
+#   其中 flash_mla_with_kvcache_metadata 为纯 AICPU（仅 op_kernel_aicpu）
+#   算子；如遇缺少 aic-*-ops-info.ini 的 OpFileNotExistsError，与 AICPU
+#   kernel 编译相关，参见 docs/zh/install/compile.md 与 aicpu 开发指南
+#   （docs/zh/develop/aicpu_develop_guide.md）。
 #   -j20 由本脚本强制统一（不得被外部覆盖），并剥离用户透传的
 #   --ops= / --soc= / -j / -jN，防止与固定标志冲突（双标志冲突）。
 #
@@ -63,8 +68,10 @@ if ! command -v bisheng >/dev/null 2>&1; then
 fi
 
 # ---------- 编译参数（固定值，不对外部开放） ----------
+# flash_mla_with_kvcache: 主算子；flash_mla_with_kvcache_metadata: 纯 AICPU
+# metadata 算子（仅 op_kernel_aicpu）。
 SOC=ascend950
-OPS=flash_mla_with_kvcache
+OPS=flash_mla_with_kvcache,flash_mla_with_kvcache_metadata
 
 # ---------- 透传参数剥离（防双标志冲突） ----------
 pass_args=()
