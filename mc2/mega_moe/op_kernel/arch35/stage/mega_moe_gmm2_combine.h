@@ -98,8 +98,7 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
 
-    AscendC::DataCopyExtParams ub2GmParams{
-        1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
+    AscendC::DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
     AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
 }
 
@@ -316,8 +315,7 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const MoeStageC
 // AIV1 复用既有配置；AIV0 仅在最终 Combine 到来时绑定同布局的私有 UB 视图。
 template <uint8_t CombineMode>
 __aicore__ inline WaveCombineBufferConfig PrepareFinalWaveCombineBuffers(
-    const MoeStageCommonConfig &common, const WaveCombineBufferConfig &currentBufferConfig,
-    WaveCombineScratch &scratch)
+    const MoeStageCommonConfig &common, const WaveCombineBufferConfig &currentBufferConfig, WaveCombineScratch &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return currentBufferConfig;
@@ -352,8 +350,7 @@ __aicore__ inline AivJobContext GetWaveCombineJob(const AivJobContext &job)
     if constexpr (UseAllAivCores) {
         constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
         uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
-        return {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx,
-                job.totalJobs * AIV_CORE_COUNT_PER_AIC};
+        return {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx, job.totalJobs * AIV_CORE_COUNT_PER_AIC};
     }
     return job;
 }
@@ -381,13 +378,15 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
 }
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount, uint32_t rowBufferCount)
+__aicore__ inline void DrainWaveCombineRowRing(uint32_t &issuedRowCount, uint32_t rowBufferCount)
 {
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
         WaitFlag<HardEvent::MTE3_MTE2>(
             static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot)));
     }
+    // Drain 已消费所有在途事件；下一段必须从空闲的 slot 0 重新开始，不能再次等待旧事件。
+    issuedRowCount = 0U;
 }
 
 // 加载一段连续 wave Combine token 的 metadata。
@@ -965,9 +964,8 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
-                                     const ProblemShape &problemShape,
-                                     GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
-                                     bool allowWeightL2Bypass = false)
+                                     const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
+                                     void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         RunGmm2A8W4<A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
