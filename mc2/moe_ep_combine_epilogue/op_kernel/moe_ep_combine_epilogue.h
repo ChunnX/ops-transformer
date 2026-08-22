@@ -292,10 +292,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (aivId_ == 0U) {
         while (!WaitDispatch(completionChannelCount)) {
         }
-    }
-    SyncAll<true>();
-
-    if (aivId_ == 0U) {
         LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
         SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<uint32_t>(stateTensor, static_cast<uint32_t>(0), flagBufferBytes / sizeof(uint32_t));
