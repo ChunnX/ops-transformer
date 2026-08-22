@@ -467,9 +467,15 @@ def _mxfp8_customize_inputs(
     _inplace_copy(k_descale, module.fp32_to_e8m0fnu_safe(k_scale_pa, "K descale"))
     _inplace_copy(v_descale, module.fp32_to_e8m0fnu_safe(v_scale_pa, "V descale"))
     if p_scale is not None and _numel(p_scale) > 0:
+        # TTK keeps a one-element placeholder for this optional input.  When
+        # p_scale_value is omitted, materialize the operator's default scale
+        # so that the placeholder is initialized and remains equivalent to 1.
+        p_scale_source = data["p_scale"]
+        if p_scale_source is None:
+            p_scale_source = torch.ones((1,), dtype=torch.float32)
         _inplace_copy(
             p_scale,
-            module.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale"),
+            module.fp32_to_e8m0fnu_safe(p_scale_source, "P scale"),
         )
     _inplace_copy(sparse_indices, data["sparse_indices"])
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
