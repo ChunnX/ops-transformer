@@ -111,7 +111,6 @@ public:
     constexpr static bool IS_L1_PRELOAD = false;
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
     constexpr static bool IS_DKV_RESIDENT_L0C = false;
-    constexpr static bool IS_CUBE_DUMMY = false;
     constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
 
     constexpr static uint32_t DQ_L0_SPLIT_K = 128;
@@ -699,7 +698,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvRe
 TEMPLATES_DEF
 class FAGBlockCubeDummy {
 public:
-    constexpr static bool IS_CUBE_DUMMY = true;
     __aicore__ inline FAGBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *pipe, SFagTilingType tilingData,
                                               BufferManager<BufferType::L1> *l1BuffMgr) {};
