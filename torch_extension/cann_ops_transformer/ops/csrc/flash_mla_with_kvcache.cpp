@@ -72,7 +72,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
     TORCH_CHECK(static_cast<int64_t>(output.nbytes()) >= requiredBytes,
                 "The metadata tensor is too small: ", output.nbytes(), " bytes, required at least ", requiredBytes,
                 " bytes for batch_size=", batchSize, " (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 int32 words, "
-                "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
+                                                     "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cacheSeqlensVal = get_valid_tensor(cacheSeqlens, outputDevice);
@@ -93,11 +93,11 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
 
 std::tuple<at::Tensor, at::Tensor>
 FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::optional<at::Tensor> &blockTable,
-         const c10::optional<at::Tensor> &cacheSeqlens, const c10::optional<at::Tensor> &cuSeqlensQ,
-         const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
-         const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
-         int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-         int64_t returnSoftmaxLse)
+                    const c10::optional<at::Tensor> &cacheSeqlens, const c10::optional<at::Tensor> &cuSeqlensQ,
+                    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
+                    const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
+                    int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
+                    int64_t returnSoftmaxLse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -156,7 +156,7 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
         int64_t words = metadata.value().numel();
         TORCH_CHECK(words >= MLA_AIC_CORE_NUM + MLA_AIV_CORE_NUM,
                     "The metadata tensor is too small: ", words, " words, expected the buffer produced by "
-                    "flash_mla_with_kvcache_metadata (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
+                                                                 "flash_mla_with_kvcache_metadata (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
