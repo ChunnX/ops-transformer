@@ -1120,8 +1120,26 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
     smlaInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
-    smlaInfo.oriKeyStride0 = !oriKeyStridesVec_.empty() ? static_cast<uint32_t>(oriKeyStridesVec_[0]) : 0;
-    smlaInfo.cmpKeyStride0 = !cmpKeyStridesVec_.empty() ? static_cast<uint32_t>(cmpKeyStridesVec_[0]) : 0;
+    if (!IsA5Arch(npuArch_)) {
+        smlaInfo.oriKeyStride0 = 0;
+        smlaInfo.cmpKeyStride0 = 0;
+    } else {
+        if (!oriKeyStridesVec_.empty()) {
+            smlaInfo.oriKeyStride0 = static_cast<uint32_t>(oriKeyStridesVec_[0]);
+        } else if (kvLayout_ == SMLALayout::PA_BBND) {
+            smlaInfo.oriKeyStride0 = oriBlockSize_ * oriKvHeadDim_;
+        } else {
+            smlaInfo.oriKeyStride0 = 0;
+        }
+
+        if (!cmpKeyStridesVec_.empty()) {
+            smlaInfo.cmpKeyStride0 = static_cast<uint32_t>(cmpKeyStridesVec_[0]);
+        } else if (kvLayout_ == SMLALayout::PA_BBND) {
+            smlaInfo.cmpKeyStride0 = cmpBlockSize_ * cmpKvHeadDim_;
+        } else {
+            smlaInfo.cmpKeyStride0 = 0;
+        }
+    }
 }
 
 ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
