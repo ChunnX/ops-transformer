@@ -979,24 +979,34 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     DataCopy(flagInit, flagLocal, STATE_OFFSET / sizeof(int32_t));
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 
-    GlobalTensor<int32_t> sendCountsOutGM;
-    sendCountsOutGM.SetGlobalBuffer((__gm__ int32_t *)sendCountsOutGM_);
-    GlobalTensor<int32_t> recvCountsOutGM;
-    recvCountsOutGM.SetGlobalBuffer((__gm__ int32_t *)recvCountsOutGM_);
+    LocalTensor<int32_t> countsBuf = indicesBuf_.Get<int32_t>();
+    GlobalTensor<int32_t> recvCountsGM;
+    recvCountsGM.SetGlobalBuffer((__gm__ int32_t *)recvCountsOutGM_);
+    DataCopyExtParams rcParams{1U, numRanks_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> i32Pad{false, 0, 0, 0};
+    DataCopyPad(countsBuf, recvCountsGM, rcParams, i32Pad);
+
+    uint32_t sendUbIdx = numRanks_;
+    GlobalTensor<int32_t> sendCountsGM;
+    sendCountsGM.SetGlobalBuffer((__gm__ int32_t *)sendCountsOutGM_);
+    DataCopyExtParams scParams{1U, numRanks_ * UB_ALIGN, 0U, 0U, 0U};
+    DataCopyPad(countsBuf[sendUbIdx * SENDCOUNT_STRIDE_RATIO], sendCountsGM, scParams, i32Pad);
+    EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
 
     int64_t sAccum = 0;
     int64_t rAccum = 0;
+    DataCopyParams displParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
     for (uint32_t r = 0; r < numRanks_; r++) {
+        int32_t sCount = countsBuf.GetValue(sendUbIdx * SENDCOUNT_STRIDE_RATIO + r * SENDCOUNT_STRIDE_RATIO);
+        int32_t rCount = countsBuf.GetValue(r);
+
         LocalTensor<int64_t> displVal = tempBuf_.Get<int64_t>();
         displVal.SetValue(0, sAccum);
         EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
         GlobalTensor<int64_t> sdGM;
         sdGM.SetGlobalBuffer((__gm__ int64_t *)(sdisplsGM_ + r * UB_ALIGN));
-        DataCopyParams displParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
         DataCopyPad(sdGM, displVal, displParams);
         EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-        int32_t sCount = sendCountsOutGM.GetValue(r * SENDCOUNT_STRIDE_RATIO);
-        sAccum += sCount;
 
         displVal.SetValue(0, rAccum);
         EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
@@ -1004,7 +1014,8 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
         rdGM.SetGlobalBuffer((__gm__ int64_t *)(rdisplsGM_ + r * UB_ALIGN));
         DataCopyPad(rdGM, displVal, displParams);
         EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-        int32_t rCount = recvCountsOutGM.GetValue(r);
+
+        sAccum += sCount;
         rAccum += rCount;
     }
 }
