@@ -510,6 +510,7 @@ private:
             Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, process_size);
             PipeBarrier<PIPE_V>();
 
+            
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             DataCopy(dst_tensor[gm_offset], vecOut, process_size);
