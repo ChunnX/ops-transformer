@@ -53,8 +53,8 @@ constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
 constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
 constexpr uint32_t CV_RATIO = 1;
 constexpr uint64_t SYNC_MODE = 4;
-constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8};  // mm2ResIntraEvent
-constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; // mm1ResIntraEvent
+// 核内事件号一律走AllocEventID/FetchEventID从硬件事件池申请，不要再写死常量，
+// 写死值会与动态分配的事件号撞号
 constexpr uint64_t KB_TO_BYTES = 1024;
 constexpr uint64_t L0C_SIZE = 256;
 constexpr uint64_t BASE_SIZE_128 = 128;

@@ -373,8 +373,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
                 constInfo.quantScalePValue);
         }
     }
-    SetFlag<HardEvent::V_MTE3>(MM1_RES_INTRA_EVENT[runInfo.taskIdMod2]);
-    WaitFlag<HardEvent::V_MTE3>(MM1_RES_INTRA_EVENT[runInfo.taskIdMod2]);
     if constexpr (hasAtten) {
         this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
     }
@@ -391,8 +389,10 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
               (uint16_t)(runInfo.s1RealSize),
               (uint16_t)(vec1Srcstride - runInfo.s1RealSize),
               (uint16_t)(s1BaseSize - runInfo.s1RealSize)});
-    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+    
     SetFlag<HardEvent::MTE3_MTE1>(SYNC_V1_C2_FLAG[runInfo.taskIdMod3]);
+    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+    
     // ======================================================
     if constexpr (IsSameType<INPUT_T, float>::value) {
         this->sumBrdcst.template FreeTensor(apiTmpBuffer);
@@ -411,7 +411,8 @@ FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUbRegbaseV2(LocalTensor<T> mmRe
                                                              ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (unlikely(runInfo.vec2S1BaseSize == 0)) {
-        SetFlag<HardEvent::MTE3_V>(MM2_RES_INTRA_EVENT[runInfo.taskIdMod2]); // 疑问：此处是否是MTE3等V
+        // 本分支既不WaitFlag也不写stage2OutBuf，必须原样保留mte3ToVId[0]的信号量。
+        // 多发一次SetFlag会让后续WaitFlag提前放行，与上一轮CopyOut的MTE3读形成WAR踩踏
         return;
     }
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize; // halfS1RealSize, 52没有除2
@@ -476,6 +477,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTenso
                                                                       ConstInfo<isInfer, hasRope> &constInfo,
                                                                       int64_t dSizeAligned64)
 {
+    // 如果mask中出现整行0，走这个函数做处理，使用casual mask时不存在这个场景
     if constexpr (isInfer && hasAtten) {
         if (!constInfo.isRowInvalid ||
             attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {
