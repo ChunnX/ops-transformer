@@ -11,8 +11,8 @@
 /*!
  * \file flash_mla_with_kvcache_tiling.cpp
  * \brief FlashMlaWithKvcache arch35 tiling（MLA D512 noquant，基于
- *        fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_mla.cpp 移植，R3）
- *        D7: metadata 输入存在时跳过切分计算直接透传（kernel 驱动 section）。
+ *        fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_mla.cpp 移植）；
+ *        metadata 输入存在时跳过切分计算直接透传（kernel 驱动 section）。
  */
 
 #include "flash_mla_with_kvcache_tiling.h"
@@ -33,13 +33,13 @@ using namespace AscendC;
 namespace optiling {
 namespace flash_mla_with_kvcache {
 
-// R3（E14/Oracle MAJOR 3）: 与 fia_tiling_nonquant_mla.cpp:34 逐字一致
+// 与 fia_tiling_nonquant_mla.cpp 的 PRE_LOAD_NUM 常量定义逐字一致
 constexpr uint64_t PRE_LOAD_NUM_MLA_ARCH35 = 2;
 
 void FlashMlaWithKvcacheTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
 {
     faInfo_ = static_cast<FlashMlaWithKvcacheTilingInfo *>(tilingInfo);
-    // D7: IsCapable 阶段即需判定 metadata（必传）——透传路径跳过切分计算
+    // IsCapable 阶段即需判定 metadata（必传）——透传路径跳过切分计算
     metadataPassthrough_ = (faInfo_->opParamInfo.metadata.tensor != nullptr);
 }
 
@@ -61,7 +61,7 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableBasicCheckMla()
 
 bool FlashMlaWithKvcacheTilingImpl::IsCapableFeatureCheckMla()
 {
-    if (faInfo_->kvStorageMode != KvStorageMode::PAGE_ATTENTION) { // R1: 仅 PA 路由
+    if (faInfo_->kvStorageMode != KvStorageMode::PAGE_ATTENTION) { // 仅 PA 路由
         return false;
     }
     return true;
@@ -69,7 +69,7 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableFeatureCheckMla()
 
 bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
 {
-    // R1（Oracle BLOCKER-1）: 与 fia_tiling_nonquant_mla.cpp:79-109 的硬约束一致
+    // 与 fia_tiling_nonquant_mla.cpp 的硬约束一致
     int64_t sparseMode = faInfo_->maskMode;
     if (sparseMode != static_cast<int64_t>(MaskMode::NO_MASK) &&
         sparseMode != static_cast<int64_t>(MaskMode::CAUSAL)) { // CAUSAL == RIGHT_DOWN (3)
@@ -108,7 +108,7 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
 bool FlashMlaWithKvcacheTilingImpl::IsCapable()
 {
     if (!metadataPassthrough_) {
-        // D7: metadata 为必传（flash_attn metadata_checker 语义），缺失即不可达
+        // metadata 为必传（flash_attn metadata_checker 语义），缺失即不可达
         OP_LOGE(faInfo_->opName, "FlashMlaWithKvcache is not capable: metadata is required but is null.");
         return false;
     }
@@ -128,7 +128,7 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapable()
     return true;
 }
 
-// R3 (:134): FIA 最大 workspace 公式（tiling 下沉/无切分结果场景），逐字移植
+// FIA 最大 workspace 公式（tiling 下沉/无切分结果场景），逐字移植
 void FlashMlaWithKvcacheTilingImpl::CalcMaxWorkspaceSize()
 {
     constexpr uint64_t mSize = 64;
@@ -203,9 +203,9 @@ ge::graphStatus FlashMlaWithKvcacheTilingImpl::SetPlatMemoryInfo()
 }
 
 // ACLNN 直调路径下 seq-lens tensor 的 GetData<int32_t>() 返回设备指针（host 侧解引用即段错误），
-// 与 flash_attn 的 host tiling 同策略：只按 shape/attr 存在性推导，不读 GM 值（Todo 14 实测）。
+// 与 flash_attn 的 host tiling 同策略：只按 shape/attr 存在性推导，不读 GM 值（编译期实测）。
 // 每 batch 实际长度统一取 s1Size/s2Size（= max_seqlen_q/kv attr）；needInit 仅当总 token 数为 0。
-// kernel 侧的 ACTLEN_T=uint32_t 解析器（R2）仍按 cu_seqlens_q/cache_seqlens 的 GM 值工作，不受影响。
+// kernel 侧的 ACTLEN_T=uint32_t 解析器仍按 cu_seqlens_q/cache_seqlens 的 GM 值工作，不受影响。
 void FlashMlaWithKvcacheTilingImpl::InitImplParam()
 {
     const gert::Tensor *cuSeqlensQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
@@ -246,7 +246,7 @@ void FlashMlaWithKvcacheTilingImpl::SplitPolicy()
     AdjustSinnerAndSouter(); // 确定tiling切块
 
     if (!metadataPassthrough_) {
-        // D7 兜底：metadata 缺失（正常应被 checker 拒绝）——无法获知分核结果，按最大 workspace 处理
+        // 兜底：metadata 缺失（正常应被 checker 拒绝）——无法获知分核结果，按最大 workspace 处理
         CalcMaxWorkspaceSize();
         CalcNumBlocks(platformInfo_.aicNum);
         flashDecodeFlag_ = true;
@@ -254,7 +254,7 @@ void FlashMlaWithKvcacheTilingImpl::SplitPolicy()
         return;
     }
 
-    // D7: metadata 透传——跳过 split_core_v2 切分计算（无内嵌 fiaMetaData 可写，kernel 按 GM
+    // metadata 透传——跳过 split_core_v2 切分计算（无内嵌 fiaMetaData 可写，kernel 按 GM
     // metadata 逐 section 驱动）；全核分工，FD 使能以各 section 的 FD 元数据（mLen>0）为准。
     // 路由：只要 metadata 可能存在 FD/s2-核间切分归约（长 KV 的 SectionStreamK WithFd 调度），
     // 就必须实例化 FD 能力 → 恒真（与 flash_attn tiling flashDecodeFlag_=true 一致）。曾用
@@ -267,7 +267,7 @@ void FlashMlaWithKvcacheTilingImpl::SplitPolicy()
             flashDecodeFlag_ ? 1U : 0U);
 }
 
-// R3 (:526): FIA CalcNumBlocks，逐字移植；metadata 透传路径 usedAicNum = 全核
+// FIA CalcNumBlocks，逐字移植；metadata 透传路径 usedAicNum = 全核
 void FlashMlaWithKvcacheTilingImpl::CalcNumBlocks(uint32_t usedAicNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(faInfo_->platformInfo);
@@ -285,7 +285,7 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyLayout()
 {
-    // R1: q=TND -> InOutLayoutType_TND_TND（out 布局走 tiling 运行时字段，不占键位）
+    // q=TND -> InOutLayoutType_TND_TND（out 布局走 tiling 运行时字段，不占键位）
     tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
 }
 
@@ -295,7 +295,7 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     tilingKeyInfo_.isFd = flashDecodeFlag_;
     tilingKeyInfo_.hasAttenMask = faInfo_->attenMaskFlag;
-    // R1: KV 固定 PA_NZ -> kvLayoutType=3
+    // KV 固定 PA_NZ -> kvLayoutType=3
     tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
 }
 
@@ -314,7 +314,7 @@ void FlashMlaWithKvcacheTilingImpl::GenTilingKey()
             tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 }
 
-// R3 (:535): FIA MLA workspace 公式，逐字移植（accumOutSize/logSumExpSize 与 FD 槽位
+// FIA MLA workspace 公式，逐字移植（accumOutSize/logSumExpSize 与 FD 槽位
 // mBaseSize=64/dSizeV=512 保持一致，见 flash_mla_with_kvcache_block_vec_flashdecode_mla.h taskOffset 注释）
 void FlashMlaWithKvcacheTilingImpl::CalcWorkspaceSize()
 {
@@ -370,7 +370,7 @@ void FlashMlaWithKvcacheTilingImpl::SetAttenMaskTilingData()
         tilingData_.baseTiling.flashMlaWithKvcacheAttenMaskParams.attenMaskS2Size = 0;
     }
     tilingData_.baseTiling.flashMlaWithKvcacheAttenMaskParams.sparseMode = static_cast<uint8_t>(faInfo_->maskMode);
-    // R1: preTokens/nextTokens 由 maskMode 推导（FIA UpdatePreNextTokenBySparseMode 语义）
+    // preTokens/nextTokens 由 maskMode 推导（FIA UpdatePreNextTokenBySparseMode 语义）
     tilingData_.baseTiling.flashMlaWithKvcacheAttenMaskParams.preTokens = static_cast<int32_t>(faInfo_->preTokens);
     tilingData_.baseTiling.flashMlaWithKvcacheAttenMaskParams.nextTokens = static_cast<int32_t>(faInfo_->nextTokens);
     tilingData_.baseTiling.flashMlaWithKvcacheAttenMaskParams.isRowInvalidOpen = 0;
@@ -410,12 +410,12 @@ void FlashMlaWithKvcacheTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.dSizeRope = faInfo_->ropeHeadDim;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.scaleValue = faInfo_->softmaxScale;
-    // R2: kernel ActualSeqLensParser<ACTLEN_T=uint32_t> 的 actualLenDims（INT32 buffer 元素数）
+    // kernel ActualSeqLensParser<ACTLEN_T=uint32_t> 的 actualLenDims（INT32 buffer 元素数）
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.actualSeqLengthsQSize =
         static_cast<uint32_t>(faInfo_->actualLenQDims);
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.actualSeqLengthsKVSize =
         static_cast<uint32_t>(faInfo_->actualLenKvDims);
-    // m0070: k_cache 单缓冲承载 key+value（PA）-> 非连续，isKvContinuous = 0
+    // k_cache 单缓冲承载 key+value（PA）-> 非连续，isKvContinuous = 0
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.isKvContinuous =
         (faInfo_->kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) ? 1 : 0;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
@@ -441,7 +441,7 @@ void FlashMlaWithKvcacheTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashMlaWithKvcacheEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
     tilingData_.baseTiling.flashMlaWithKvcacheEmptyTensorParams.needInit = needInit_ ? 1 : 0;
 
-    // k==v（m0070）: k_cache 单缓冲，key/value stride 同源；kRope 在合并缓冲内 offset=head_dim_v，
+    // k==v: k_cache 单缓冲，key/value stride 同源；kRope 在合并缓冲内 offset=head_dim_v，
     // 其 stride 与 key 一致（按同 buffer 推导，FIA 有独立 k_rope 时同款赋值）
     if (faInfo_->hasViewStride) {
         tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.keyStrides.bnStride = faInfo_->keyBnStride;
