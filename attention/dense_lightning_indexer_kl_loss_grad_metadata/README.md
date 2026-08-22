@@ -158,6 +158,10 @@
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 
+## 问题定位说明
+
+- AICPU算子内部触发拦截校验或者异常错误，请根据<https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html>中指引进行定界。
+
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |

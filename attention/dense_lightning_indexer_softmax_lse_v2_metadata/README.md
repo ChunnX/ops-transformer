@@ -162,6 +162,10 @@
 - layout_q必须为BSND或TND，layout_k必须与layout_q保持一致。
 - num_heads_q取值范围为[1, 128]，必须能被num_heads_k整除，num_heads_k当前仅支持1，head_dim当前仅支持128。
 
+## 问题定位说明
+
+- AICPU算子内部触发拦截校验或者异常错误，请根据<https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html>中指引进行定界。
+
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |

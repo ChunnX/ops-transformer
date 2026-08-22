@@ -57,6 +57,10 @@
     - cmp_ratio取值范围为[1, 128]。
     - mask_mode当前仅支持0和3。
 
+## 问题定位说明
+
+- AICPU算子内部触发拦截校验或者异常错误，请根据<https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html>中指引进行定界。
+
 ## Metadata输出布局
 
 metadata输出为INT32 Tensor，shape固定为(64,)，字段布局如下：
