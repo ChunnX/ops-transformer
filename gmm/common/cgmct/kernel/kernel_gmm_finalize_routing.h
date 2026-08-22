@@ -198,19 +198,13 @@ public:
     __aicore__ inline void BaseMBalance(BlockSchedulerOp &scheduler, int64_t m, int64_t hostBaseM)
     {
         const int64_t safeBaseM = hostBaseM > 0 ? hostBaseM : static_cast<int64_t>(BLOCK_CUBE);
-
-        curBaseM_ = static_cast<uint32_t>(safeBaseM);
-        scheduler.UpdateBaseM(curBaseM_);
-
-        if (m <= 0) {
-            return;
+        int64_t baseM = safeBaseM;
+        if (m > 0) {
+            const int64_t mCnt = CeilDiv(m, safeBaseM);
+            baseM = CeilAlign(CeilDiv(m, mCnt), static_cast<int64_t>(BLOCK_CUBE));
         }
 
-        const int64_t mCnt = CeilDiv(m, safeBaseM);
-        const int64_t balancedBaseM = CeilDiv(m, mCnt);
-
-        curBaseM_ = static_cast<uint32_t>(CeilAlign(balancedBaseM, static_cast<int64_t>(BLOCK_CUBE)));
-
+        curBaseM_ = static_cast<uint32_t>(baseM);
         scheduler.UpdateBaseM(curBaseM_);
     }
 
