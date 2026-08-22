@@ -338,11 +338,13 @@ public:
         repeatParams.src1RepStride = 0;
 
         if (vectorCycles > 0 && remainElements > 0) {
+            PipeBarrier<PIPE_V>();
             Max(tempRes, tempRes, tempRes[vectorCycles * MAX_CALC_NUM], remainElements, 1, repeatParams);
             PipeBarrier<PIPE_V>();
         }
 
         if (vectorCycles > 1) {
+            PipeBarrier<PIPE_V>();
             Max(tempRes,  tempRes[MAX_CALC_NUM], tempRes, MAX_CALC_NUM, vectorCycles - 1, repeatParams);
             PipeBarrier<PIPE_V>();
         }
@@ -411,6 +413,7 @@ public:
             LocalTensor<float> tmpUbF32 = tmpBuf1_.AllocTensor<float>();
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy * SWI_FACTOR);
+            PipeBarrier<PIPE_V>();
             Copy<float, false>(tmpUbF32, weightScaleLocal, MASK_PLACEHOLDER, proDimsx,
                 {1, 1, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 0});
             SetMaskNorm();
@@ -446,20 +449,24 @@ public:
             LocalTensor<float> xLocalF32 = xActLocalF32;
             LocalTensor<float> activationScaleLocal = xActLocalF32[tilingData_->ubFactorDimx * tilingData_->N];
             
+            PipeBarrier<PIPE_V>();
             Cast(xLocalF32, xLocal, RoundMode::CAST_NONE, SWI_FACTOR * proDimsx * tilingData_->ubFactorDimy);
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Mul(xLocalF32, tmpUbF32, xLocalF32, tilingData_->ubFactorDimy * SWI_FACTOR * proDimsx);
             PipeBarrier<PIPE_V>();
 
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy * SWI_FACTOR);
+            PipeBarrier<PIPE_V>();
             Copy<float, false>(tmpUbF32, activationScaleLocal, AscendC::MASK_PLACEHOLDER, proDimsx,
                 {1, 0, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 1});
             SetMaskNorm();
             ResetMask();
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Mul(xLocalF32, tmpUbF32, xLocalF32, tilingData_->ubFactorDimy * SWI_FACTOR * proDimsx);
             PipeBarrier<PIPE_V>();
 
@@ -467,9 +474,11 @@ public:
             LocalTensor<float> tmpUbF32Gate = tmpUbF32[tilingData_->ubFactorDimy * proDimsx];
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy);
+            PipeBarrier<PIPE_V>();
             Copy<float, false>(tmpUbF32Act, xLocalF32[actOffset], AscendC::MASK_PLACEHOLDER, proDimsx,
                 {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
                 static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
+            PipeBarrier<PIPE_V>();
             Copy<float, false>(tmpUbF32Gate, xLocalF32[gateOffset], AscendC::MASK_PLACEHOLDER, proDimsx,
                 {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
                 static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
@@ -477,6 +486,7 @@ public:
             ResetMask();
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Muls(xLocalF32, tmpUbF32Act, static_cast<float>(-1.0), tilingData_->ubFactorDimy * proDimsx);
             PipeBarrier<PIPE_V>();
             Exp(xLocalF32, xLocalF32, tilingData_->ubFactorDimy * proDimsx);
@@ -487,9 +497,11 @@ public:
             PipeBarrier<PIPE_V>();
 
             xActQueue_.FreeTensor(xActLocal);
+            PipeBarrier<PIPE_V>();
             Mul(tmpUbF32Act, tmpUbF32Gate, tmpUbF32Act, tilingData_->ubFactorDimy * proDimsx);
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Abs(tmpUbF32Gate, tmpUbF32Act, tilingData_->ubFactorDimy * proDimsx);
 
             LocalTensor<float> outLocal = outQueue_.AllocTensor<float>();
@@ -509,36 +521,44 @@ public:
                 realReduceMaxCalcNum = tilingData_->ubFactorDimy;
             }
 
+            PipeBarrier<PIPE_V>();
             WholeReduceMax(tmpUbF32Gate, tmpUbF32Gate, realReduceMaxCalcNum,  proDimsx, 1, 1,
                 tilingData_->ubFactorDimy / BLOCK_ELEM, ReduceOrder::ORDER_ONLY_VALUE);
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Muls(scaleOut, tmpUbF32Gate, DYNAMIC_QUANT_FACTOR, proDimsx);
             PipeBarrier<PIPE_V>();
 
             int64_t blockCount = (proDimsx + BLOCK_ELEM - 1) / BLOCK_ELEM;
+            PipeBarrier<PIPE_V>();
             Brcb(outLocal, scaleOut, blockCount, {1, 8});
             PipeBarrier<PIPE_V>();
 
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy);
+            PipeBarrier<PIPE_V>();
             Copy<float, false>(tmpUbF32Gate, outLocal, AscendC::MASK_PLACEHOLDER, proDimsx,
                 {1, 0, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM), 1});
             SetMaskNorm();
             ResetMask();
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Div(tmpUbF32Act, tmpUbF32Act, tmpUbF32Gate, tilingData_->ubFactorDimy * proDimsx);
             PipeBarrier<PIPE_V>();
 
             LocalTensor<int32_t> tmpUbF32ActI32 = tmpUbF32Act.ReinterpretCast<int32_t>();
+            PipeBarrier<PIPE_V>();
             Cast(tmpUbF32ActI32, tmpUbF32Act, RoundMode::CAST_RINT, tilingData_->ubFactorDimy * proDimsx);
             SetDeqScale((half)1.000000e+00f);
 
             LocalTensor<half> tmpUbF32Gate16 = tmpUbF32Gate.template ReinterpretCast<half>();
+            PipeBarrier<PIPE_V>();
             Cast(tmpUbF32Gate16, tmpUbF32ActI32, RoundMode::CAST_ROUND, tilingData_->ubFactorDimy * proDimsx);
             PipeBarrier<PIPE_V>();
 
+            PipeBarrier<PIPE_V>();
             Cast(yOut, tmpUbF32Gate16, RoundMode::CAST_TRUNC, tilingData_->ubFactorDimy * proDimsx);
             PipeBarrier<PIPE_V>();
 

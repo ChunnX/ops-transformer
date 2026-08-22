@@ -218,16 +218,19 @@ __aicore__ inline void ReduceMaxSmall(const LocalTensor<float> &dstLocal, const 
     uint32_t repeat = count / VEC_LEN_ONCE_REPEAT_ELE;
     uint32_t tailNum = count % VEC_LEN_ONCE_REPEAT_ELE;
     if (likely(repeat > 0)) {
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(workLocal, srcLocal, VEC_LEN_ONCE_REPEAT_ELE, repeat, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
     }
     if (unlikely(tailNum != 0)) {
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(workLocal[repeat], srcLocal[count - tailNum], tailNum, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
         repeat += 1;
     }
+    PipeBarrier<PIPE_V>();
     WholeReduceMax(dstLocal, workLocal, repeat, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK, ReduceOrder::ORDER_ONLY_VALUE);
 }
 
@@ -243,12 +246,15 @@ __aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, con
         ReduceMaxSmall(dstLocal, workLocal, srcLocal, count);
         PipeBarrier<PIPE_V>();
     } else {
+        PipeBarrier<PIPE_V>();
         BlockReduceMax(workLocal, srcLocal, REPEAT_64, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK);
         PipeBarrier<PIPE_V>();
 
+        PipeBarrier<PIPE_V>();
         BlockReduceMax(workLocal, workLocal, REPEAT_8, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK);
         PipeBarrier<PIPE_V>();
 
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(resTmpLocal, workLocal, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
@@ -257,6 +263,7 @@ __aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, con
         PipeBarrier<PIPE_V>();
 
         const BinaryRepeatParams repeatParams = {1, 1, 1, NUM_8, NUM_8, NUM_8};
+        PipeBarrier<PIPE_V>();
         Max(dstLocal, dstLocal, resTmpLocal, 1, 1, repeatParams);
     }
 }
@@ -265,18 +272,31 @@ __aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t> &dstLocal, Loc
                                               LocalTensor<int8_t> &oneBlockWorkspace, int32_t dstOffset,
                                               int32_t srcOffset, int32_t count)
 {
+    PipeBarrier<PIPE_V>();
     Cast(srcLocal[srcOffset].ReinterpretCast<half>(), srcLocal[srcOffset], RoundMode::CAST_RINT, count);
     PipeBarrier<PIPE_V>();
     if ((dstOffset & MOD_32_MASK) == 0) {
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(dstLocal[dstOffset], srcLocal[srcOffset].ReinterpretCast<half>(), RoundMode::CAST_RINT, count);
     } else if ((dstOffset & MOD_16_MASK) == 0) {
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(dstLocal[dstOffset + ALIGN_16_ELE], srcLocal[srcOffset + ALIGN_8_ELE].ReinterpretCast<half>(),
              RoundMode::CAST_RINT, count - ALIGN_16_ELE);
         PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(oneBlockWorkspace, srcLocal[srcOffset].ReinterpretCast<half>(), RoundMode::CAST_RINT, ALIGN_16_ELE);
         PipeBarrier<PIPE_ALL>();
         for (int32_t i = 0; i < ALIGN_16_ELE; i++) {
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             int8_t temp = oneBlockWorkspace.GetValue(i);
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             dstLocal.SetValue(dstOffset + i, temp);
         }
         PipeBarrier<PIPE_ALL>();

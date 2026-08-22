@@ -111,12 +111,17 @@ __aicore__ inline void GMMA4W4PostProcess::customDataCopyIn(uint32_t outLoopIdx,
     const int64_t processNum = vecConfig.innerLoopNum * gmmSwigluQuantV2->tokenLen;
     DataCopyExtParams copyParams_0{1, static_cast<uint32_t>(processNum * SIZE_OF_HALF_2), 0, 0, 0};
     DataCopyPadExtParams<half> padParams_0{false, 0, 0, 0};
+    SetFlag<HardEvent::S_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
     DataCopyPad(mmLocal_fp16[processNum], mmOutGM[vecConfig.curOffset], copyParams_0, padParams_0);
 
     mmOutQueue.EnQue(mmLocal_fp16);
     mmLocal_fp16 = mmOutQueue.DeQue<half>();
 
     // 1. fp16 -> fp32
+    PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     Cast(mmLocal_fp32, mmLocal_fp16[processNum], RoundMode::CAST_NONE, processNum);
     PipeBarrier<PIPE_V>();
 
@@ -147,6 +152,8 @@ __aicore__ inline void GMMA4W4PostProcess::MulPertokenScale(uint32_t loopIdx, Ve
     }
     float scale = perTokenScaleGM.GetValue(loopIdx + workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx);
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     Muls(mmLocal_fp32[loopIdx * gmmSwigluQuantV2->tokenLen], mmLocal_fp32[loopIdx * gmmSwigluQuantV2->tokenLen], scale,
          gmmSwigluQuantV2->tokenLen);
 }
@@ -161,6 +168,8 @@ __aicore__ inline void GMMA4W4PostProcess::Swiglu(uint32_t loopIdx, VecConfig &v
     LocalTensor<float> src1Local = mmLocal_fp32[loopIdx * gmmSwigluQuantV2->tokenLen];
 
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     SwiGLU<float, false>(workspaceLocal, src0Local, src1Local, beta, gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR);
     PipeBarrier<PIPE_V>();
     DataCopyParams repeatParams{
@@ -204,6 +213,8 @@ __aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, Ve
 
     if (smoothScaleDimNum == NUM_2) {
         // smoothScale形状为 (E, N/2)，只需要当前group的那一行
+        SetFlag<HardEvent::V_S>(EVENT_ID0);
+        WaitFlag<HardEvent::V_S>(EVENT_ID0);
         for (uint32_t j = 0; j < halfTokenLen; j++) {
             float scale = smoothScaleGM.GetValue(groupIdx * halfTokenLen + j);
             float val = mmLocal_fp32.GetValue(preOffset + j);
@@ -222,6 +233,8 @@ __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     uint64_t preOffset = loopIdx * gmmSwigluQuantV2->tokenLen;
     uint64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / BISECT;
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     Abs(mmLocal_fp32[preOffset + gmmSwigluQuantV2->tokenLen / BISECT], mmLocal_fp32[preOffset], halfTokenLen);
     PipeBarrier<PIPE_V>();
     // reduceMax
@@ -235,6 +248,8 @@ __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     int32_t eventIdVToS = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
     WaitFlag<HardEvent::V_S>(eventIdVToS);
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     float quantScale = reduceResLocal.GetValue(0) / QUANT_SCALE_INT8;
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     quantScaleLocal.SetValue(loopIdx, quantScale);
@@ -242,6 +257,7 @@ __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     int32_t eventIdSToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventIdSToV);
     WaitFlag<HardEvent::S_V>(eventIdSToV);
+    PipeBarrier<PIPE_V>();
     Muls(mmLocal_fp32[preOffset], mmLocal_fp32[preOffset], quantScale, halfTokenLen);
     PipeBarrier<PIPE_V>();
     LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
@@ -334,6 +350,18 @@ __aicore__ inline void GMMA4W4PostProcess::Process(WorkSpaceSplitConfig &workspa
             mmOutQueue.EnQue(mmLocal);
             quantScaleOutQueue.EnQue(quantScaleLocal);
             quantOutQueue.EnQue(quantLocal);
+            SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            SetFlag<HardEvent::S_MTE2>(EVENT_ID0);
+            SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            SetFlag<HardEvent::S_V>(EVENT_ID0);
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::S_V>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             for (uint32_t outLoopIdx = 0; outLoopIdx < vecConfig.outLoopNum; outLoopIdx++) {
                 vecConfig.innerLoopNum = outLoopIdx == (vecConfig.outLoopNum - 1) ? vecConfig.tailLoopNum :
                                                                                     gmmSwigluQuantV2->maxProcessRowNum;
@@ -343,6 +371,12 @@ __aicore__ inline void GMMA4W4PostProcess::Process(WorkSpaceSplitConfig &workspa
                 // 1.matmul中间结果搬入
                 customDataCopyIn(outLoopIdx, mmOutGM, vecConfig, workspaceSplitConfig);
 
+                SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+                SetFlag<HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
+                WaitFlag<HardEvent::V_S>(EVENT_ID0);
                 for (uint32_t innerLoopIdx = 0; innerLoopIdx < vecConfig.innerLoopNum; innerLoopIdx++) {
                     // 2. 四步vector计算（perToken反量化、Swiglu、SmoothScale、Quant）
                     VectorCompute(innerLoopIdx, vecConfig, workspaceSplitConfig);
@@ -368,6 +402,8 @@ __aicore__ inline void GMMA4W4PostProcess::customDataCopyOut(VecConfig &vecConfi
 {
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     DataCopyParams copyParams_0{1, (uint16_t)(vecConfig.innerLoopNum * sizeof(float)), 0, 0};
+    SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+    WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
     DataCopyPad(quantScaleOutputGM[workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx], quantScaleLocal,
                 copyParams_0);
     LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
