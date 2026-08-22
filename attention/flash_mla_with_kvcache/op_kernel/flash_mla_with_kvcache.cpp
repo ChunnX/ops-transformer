@@ -179,20 +179,21 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     using VecFaBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<FA_T_Vec>;
     using VecFaBlockDummy = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
 
-    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0；无 isFd 聚合成员）
+    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0；无 isFd 聚合成员；
+    // 无 FD 专属 Dummy —— AIC TU 的 FD 槽复用 vec 哑块，与 flash_attn.cpp:166 同构）
     using FA_T_Fd = BaseApi::FATypeFd<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
                                       GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
                                       dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockNormal = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<FA_T_Fd>;
-    using VecFdBlockDummy = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy<FA_T_Fd>;
 
     // 编译期 core-type 选型（与 flash_attn.cpp:150-169 的 #ifdef __DAV_C310_CUBE__ 同构）：
     // 该宏由 950 编译在 AIC TU 定义、AIV TU 不定义（mla 编译产物实测确认），语义与
-    // g_coreType==AscendC::AIC/AIV 等价 —— AIC 核取 cube 实块 + vec/fd 哑块，AIV 核反之。
+    // g_coreType==AscendC::AIC/AIV 等价 —— AIC 核取 cube 实块 + vec 哑块（FD 槽复用，
+    // 与 flash_attn 的 KernelNd<..., VecDummy, VecDummy> 一致），AIV 核反之。
 #ifdef __DAV_C310_CUBE__
     using CubBlock = CubBlockNormal;
     using VecFaBlock = VecFaBlockDummy;
-    using VecFdBlock = VecFdBlockDummy;
+    using VecFdBlock = VecFaBlockDummy;
 #else
     using CubBlock = CubBlockDummy;
     using VecFaBlock = VecFaBlockNormal;
