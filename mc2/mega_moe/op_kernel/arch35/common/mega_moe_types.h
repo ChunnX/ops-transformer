@@ -27,19 +27,11 @@ using namespace AscendC;
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
 // GMM1/GMM2 逐专家遍历的公共状态。expertIdx 标识当前专家，globalTokenStartIndex 表示该专家
-// 在本卡 MoE 专家紧凑 token 序列中的起始索引。
+// 在当前专家集合的紧凑 token 序列中的起始索引。
 struct ExpertLoopState {
     ProblemShape problemShape;
     int64_t globalTokenStartIndex = 0;
     uint32_t expertIdx = 0U;
-};
-
-// GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
-struct GmmRuntimeState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
 };
 
 // 标识 MoE 专家序列中的二维 token 位置。
