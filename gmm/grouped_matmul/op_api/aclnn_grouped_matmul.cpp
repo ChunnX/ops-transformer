@@ -127,7 +127,7 @@ static aclnnStatus SetSpecialNZTensorToNormalNZFormat(const aclTensorList *&tens
     return ACLNN_SUCCESS;
 }
 
-static void SetStorageShapeForNZ(aclTensor *tensor)
+static void SetStorageShapeForNZ(const aclTensor *tensor)
 {
     // A 32-bit carrier stores eight 4-bit values. Reinterpreting the carrier as
     // INT4 keeps the bytes in place and expands only the last storage dimension,
@@ -1251,12 +1251,10 @@ static aclnnStatus CheckA8W4SymmQuantParamsRelationship(const gmm::GroupedMatmul
     bool hasBias = (gmmParams.biasOptional != nullptr && (*gmmParams.biasOptional)[0] != nullptr);
     const op::Shape &xShape = (*gmmParams.x)[0]->GetViewShape();
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
-    size_t biasDim = 0;
     op::Shape biasShape;
     const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     size_t scaleDim = scaleShape.GetDimNum();
-    size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
     int64_t e = weightShape.GetDim(0);
     int64_t m = xShape.GetDim(0);
     int64_t xK = xShape.GetDim(1);
@@ -3076,7 +3074,7 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
     const aclTensorList *perTokenScaleOptional, const aclIntArray *groupListOptional,
     const aclTensor *groupTensorOptional, const aclTensorList *activationInputOptional,
     const aclTensorList *activationQuantScaleOptional, const aclTensorList *activationQuantOffsetOptional,
-    int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType, aclIntArray *tuningConfigOptional,
+    int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType, const aclIntArray *tuningConfigOptional,
     gmm::GMMApiVersion apiVersion, const aclTensorList *y, const aclTensorList *activationFeatureOutOptional,
     const aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor,
     const char *opName)
