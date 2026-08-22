@@ -209,13 +209,13 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     GET_TILING_DATA_MEMBER(optiling::FlashMlaWithKvcacheTilingData, baseTiling, baseTilingIn, tiling);
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
 
-    TPipe tPipe;
     Kernel op;
     // m0070：无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
     // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义，R9）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
+    // TPipe 由 kernel 自持（Todo 5：与 flash_attn Init 15 参风格一致，入口不再接线外部 TPipe）
     op.Init(query, key, value, attenMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attentionOut,
-            workspace, metadata, tilingData, &tPipe);
+            workspace, metadata, tilingData);
     op.Process();
 }
 

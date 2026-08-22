@@ -65,6 +65,8 @@ public:
     static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, (FA_T::kvLayoutType > 0)>();
+    using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
     static constexpr MaskFormat MASK_LAYOUT =
         (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) ? MaskFormat::SG :
                                                                                          MaskFormat::GS;
@@ -84,10 +86,9 @@ public:
     TPipe *tPipe = nullptr;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
-
-    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），ACTLEN_T=uint32_t
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    ActualSeqLensParser<Q_MODE, uint32_t, true> qActSeqLensParser;
+    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），ACTLEN_T=uint32_t；
+    // parser 所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
+    SeqLensToolType &seqLensTool_;
 
     attenMaskGmType attenMaskGmInt;
 
@@ -116,35 +117,24 @@ public:
     int64_t vec2SubBlockOffset = 0;
 
     // ==================== Functions ======================
-    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockVec(ConstInfoNoQuant &constInfo)
-        : constInfo(constInfo){};
+    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockVec(ConstInfoNoQuant &constInfo, SeqLensToolType &seqLensTool)
+        : constInfo(constInfo),
+          seqLensTool_(seqLensTool){};
 
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQAddr, __gm__ uint8_t *sequsedQAddr,
-                                        __gm__ uint8_t *cacheSeqlensAddr, __gm__ uint8_t *attenMask,
-                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace)
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        InitVecInput(cuSeqlensQAddr, sequsedQAddr, cacheSeqlensAddr, attenMask, softmaxLse, attentionOut, workspace);
+        InitVecInput(attenMask, softmaxLse, attentionOut, workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *cuSeqlensQAddr, __gm__ uint8_t *sequsedQAddr,
-                                        __gm__ uint8_t *cacheSeqlensAddr, __gm__ uint8_t *attenMask,
-                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace)
+    __aicore__ inline void InitVecInput(__gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
 
         if (unlikely(constInfo.isSoftmaxLseEnable)) {
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-        }
-
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQAddr, constInfo.actualSeqLenSize);
-        if (sequsedQAddr == nullptr) {
-            qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
-        } else {
-            qActSeqLensParser.Init(cuSeqlensQAddr, constInfo.actualSeqLenSize, sequsedQAddr,
-                                   constInfo.actualSeqLenSize - 1);
         }
 
         if constexpr (hasAtten) {
@@ -210,7 +200,7 @@ public:
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
                       layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
-            tSize = qActSeqLensParser.GetTSize();
+            tSize = seqLensTool_.qActSeqLensParser.GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV;
         int64_t singleCoreSize =
@@ -230,7 +220,7 @@ public:
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
                       layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
-            tSize = qActSeqLensParser.GetTSize();
+            tSize = seqLensTool_.qActSeqLensParser.GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize;
         int64_t singleCoreSize =
@@ -281,26 +271,26 @@ public:
         // flash_mla_with_kvcache LSE 契约为 (N,T) 头主序：runInfo 的 gS1 区间是 [gIdx][s1Idx] token 主序排布，
         // 用 TND→(N,T) 转置写出（flash_attn 范式）；bN2Offset = n2Idx * gSize * t1Size = head 块 GM 起址。
         if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
+            uint32_t s1Size = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                              runInfo.actVecMSize, constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
+            uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, prefixBS1, constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                               runInfo.actVecMSize, constInfo, 0);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                               runInfo.actVecMSize, constInfo, qActSeqLens, 0);
         }
@@ -580,7 +570,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
@@ -588,14 +578,14 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -603,7 +593,7 @@ public:
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -612,7 +602,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -781,27 +771,27 @@ public:
         if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
             OffsetCalculator<GmFormat::BSNGD, uint32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
             OffsetCalculator<GmFormat::BNGSD, uint32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             OffsetCalculator<GmFormat::TNGD, uint32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                   constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             OffsetCalculator<GmFormat::NGTD, uint32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                   constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
             OffsetCalculator<GmFormat::NGBSD, uint32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
@@ -816,7 +806,9 @@ public:
     static constexpr bool FLASH_DECODE = FA_T::flashDecode;
     using OUT_T = OUTPUT_T;
     using ConstInfoNoQuant = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
-    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockVecDummy(ConstInfoNoQuant &constInfo){};
+    template <typename FlashMlaSeqLensToolT>
+    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockVecDummy(ConstInfoNoQuant &constInfo,
+                                                                 FlashMlaSeqLensToolT &seqLensTool){};
 };
 
 } // namespace BaseApi
