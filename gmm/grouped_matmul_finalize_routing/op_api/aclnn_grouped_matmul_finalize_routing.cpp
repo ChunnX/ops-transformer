@@ -1057,8 +1057,28 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &param
                  params.logitOptional != nullptr && params.groupListOptional != nullptr &&
                  params.rowIndexOptional != nullptr;
 
-    if (!scene) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s do not support input nullptr.", opName);
+    if (params.x == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "x", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (params.w == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "weight", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (params.scaleOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "scale", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (params.logitOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "logit", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (params.groupListOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "groupList", "does not support nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (params.rowIndexOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "rowIndex", "does not support nullptr");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
@@ -1138,11 +1158,11 @@ static inline aclnnStatus CheckInputParamsForWeightNzV2(const aclTensor *x, cons
                                                         const aclTensor *antiquantOffsetOptional)
 {
     if (x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingWeightNzV2: x should not be nullptr.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("aclnnGroupedMatmulFinalizeRoutingWeightNzV2", "x", "does not support nullptr");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (weight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingWeightNzV2: weight should not be nullptr.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("aclnnGroupedMatmulFinalizeRoutingWeightNzV2", "weight", "does not support nullptr");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (antiquantScaleOptional != nullptr) {

@@ -73,11 +73,9 @@ std::string ViewShapeToString(const aclTensor *tensor)
 static aclnnStatus CheckX1X2NotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x1 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", "nullptr",
-                                              "the value of x1 cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", "does not support nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", "nullptr",
-                                              "the value of x2 cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", "does not support nullptr"));
     return ACLNN_SUCCESS;
 }
 
@@ -85,17 +83,13 @@ static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddPara
 {
     CHECK_RET(CheckX1X2NotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     QGMM_INPLACE_ADD_CHECK_REPORT(params.scale2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", "nullptr",
-                                              "the value of scale2 cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", "does not support nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(params.groupList != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList", "nullptr",
-                                              "the value of groupList cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList", "does not support nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(params.yRef != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef", "nullptr",
-                                              "the value of yRef cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef", "does not support nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(params.scale1Optional != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1", "nullptr",
-                                              "the value of scale1 cannot be nullptr"));
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1", "does not support nullptr"));
     return ACLNN_SUCCESS;
 }
 

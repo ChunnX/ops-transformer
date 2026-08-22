@@ -110,8 +110,7 @@ public:
         gmmParams_ = gmmParams;
         // 0. 进入判断逻辑之前先判断是哪种量化
         GMMFR_CHECK_REPORT(gmmParams_.scale != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", "nullptr",
-                                                                 "the value of scale cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", "does not support nullptr"));
         DataType scaleDtype = gmmParams_.scale->GetDataType();
         if (CheckType(scaleDtype, SCALE_TYPE_SUPPORT_LIST_MX)) {
             quantMode_ = QuantMode::MX;
@@ -170,26 +169,20 @@ public:
     aclnnStatus CheckNotNull()
     {
         GMMFR_CHECK_REPORT(gmmParams_.x1 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", "nullptr",
-                                                                 "the value of x cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.x2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "weight", "nullptr",
-                                                                 "the value of weight cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "weight", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.scale != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", "nullptr",
                                                                  "the value of scale cannot be nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.groupList != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "groupList", "nullptr",
-                                                                 "the value of groupList cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "groupList", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.logit != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "logit", "nullptr",
-                                                                 "the value of logit cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "logit", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.rowIndex != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "rowIndex", "nullptr",
-                                                                 "the value of rowIndex cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "rowIndex", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.out != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
-                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "y", "nullptr",
-                                                                 "the value of y cannot be nullptr"));
+                           OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "y", "does not support nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.offset == nullptr, return ACLNN_ERR_PARAM_INVALID,
                            OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "offset", "nonnull", "nullptr"));
         if (quantMode_ == QuantMode::MX) {

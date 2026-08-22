@@ -60,22 +60,19 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x1", "nullptr",
-                                                      "xStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "x1", "does not support nullptr"),
                 return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
 
     auto wStorageShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_IF(wStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x2", "nullptr",
-                                                      "wStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "x2", "does not support nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
 
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale2", "nullptr",
-                                                      "scaleStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "scale2", "does not support nullptr"),
                 return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
@@ -85,8 +82,7 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
                return false);
     auto x1ScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale1", "nullptr",
-                                                      "x1ScaleStorageShape cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opType, "scale1", "does not support nullptr"),
                 return false);
     const gert::Shape &x1ScaleShape = x1ScaleStorageShape->GetOriginShape();
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."),

@@ -53,20 +53,17 @@ bool AnalyzeDtypeForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opType, "x1", "nullptr",
-                                                      "xDesc cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams.opType, "x1", "does not support nullptr"),
                 return false);
     inputParams.aDtype = xDesc->GetDataType();
     auto wDesc = context->GetInputDesc(WEIGHT_INDEX);
     OP_CHECK_IF(wDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opType, "x2", "nullptr",
-                                                      "wDesc cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams.opType, "x2", "does not support nullptr"),
                 return false);
     inputParams.bDtype = wDesc->GetDataType();
     auto scaleDesc = context->GetInputDesc(SCALE_INDEX);
     OP_CHECK_IF(scaleDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opType, "scale2", "nullptr",
-                                                      "scaleDesc cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams.opType, "scale2", "does not support nullptr"),
                 return false);
     inputParams.scaleDtype = scaleDesc->GetDataType();
     auto pertokenScaleDesc = context->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
@@ -74,8 +71,7 @@ bool AnalyzeDtypeForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams.perTokenScaleDtype;
     auto yDesc = context->GetOutputDesc(Y_INDEX);
     OP_CHECK_IF(yDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams.opType, "y", "nullptr",
-                                                      "yDesc cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams.opType, "y", "does not support nullptr"),
                 return false);
     inputParams.cDtype = yDesc->GetDataType();
     return true;
