@@ -113,6 +113,7 @@ public:
     static constexpr uint32_t DIAG_SUB_BLOCK_SIZE = 64;
     static constexpr uint32_t DIAG_PACKED_COLS = 16;
     static constexpr uint32_t DIAG_SUB_BLOCK_ELEMS = DIAG_SUB_BLOCK_SIZE * DIAG_PACKED_COLS;
+    static constexpr uint32_t DIAG_STAGE_PACKED_ROWS = SUB_BLOCK_NUM * DIAG_SUB_BLOCK_SIZE;
     static constexpr uint32_t DIAG_MMAD_TILE_SIZE = 16;
     static constexpr uint32_t DIAG_MMAD_TILES_PER_SUB_BLOCK = DIAG_SUB_BLOCK_SIZE / DIAG_MMAD_TILE_SIZE;
     // 双子核块宽必须与 S_trans 一致：FP8 为 RoundUp(rowNum, 64) / 2，非 FP8 为 /32。
@@ -411,24 +412,15 @@ public:
             uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum;
             uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
             uint32_t l0BEventId = l0BBufId + 2;
-            // Copy the smallest contiguous prefix that contains the last valid packed
-            // tile. Fixed 4KB group slots can leave holes between the two groups; the
-            // holes are copied but are never selected by the MMAD loop below.
-            uint32_t lastGrpIdx = frGrpNum - 1;
-            uint32_t lastGrpColStart = lastGrpIdx * qHalf;
-            uint32_t lastGrpCols = rowNum - lastGrpColStart;
-            uint32_t lastGrpTileCount = CeilDiv(lastGrpCols, DIAG_MMAD_TILE_SIZE);
-            uint32_t diagPackedTileCount =
-                lastGrpIdx * DIAG_MMAD_TILES_PER_SUB_BLOCK + lastGrpTileCount;
-            uint32_t diagPackedRows = diagPackedTileCount * DIAG_MMAD_TILE_SIZE;
-
+            // Copy the complete fixed 8KB stage in one LoadData. Unused tile slots are
+            // transferred as well, but the MMAD loop only selects valid group/tile indices.
             auto l1DiagStageLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
-                DIAG_PACKED_COLS, diagPackedRows);
+                DIAG_PACKED_COLS, DIAG_STAGE_PACKED_ROWS);
             auto l1DiagStageTensorTla = tla::MakeTensor(
                 l1DiagTensor[l1DiagBufId], l1DiagStageLayoutTla,
                 tla::MakeCoord(0U, 0U), Arch::PositionL1{});
             auto l0BDiagStageLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(
-                diagPackedRows, DIAG_PACKED_COLS);
+                DIAG_STAGE_PACKED_ROWS, DIAG_PACKED_COLS);
             auto l0BDiagStageTensorTla = tla::MakeTensor(
                 l0BRescaleTensor[l0BBufId], l0BDiagStageLayoutTla,
                 tla::MakeCoord(0U, 0U), Arch::PositionL0B{});
