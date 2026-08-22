@@ -15,8 +15,8 @@
 
 namespace BlockAttnResPrepareVF {
 
-using namespace AscendC;
-using MemType = AscendC::MicroAPI::MemType;
+using namespace AscendC::Reg;
+using MemType = AscendC::Reg::MemType;
 
 constexpr uint32_t FP32_REG_ELEMS = 64U;
 constexpr uint32_t SUM_SQUARE_OFFSET = 0U;
@@ -27,31 +27,31 @@ constexpr float FP32_LOWEST_FINITE = -3.4028234663852886e+38F;
 
 __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
 {
-    MicroAPI::RegTensor<float> maxReg;
-    MicroAPI::RegTensor<float> sumReg;
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    RegTensor<float> maxReg;
+    RegTensor<float> sumReg;
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
 
-    MicroAPI::Duplicate(maxReg, FP32_LOWEST_FINITE, oneMask);
-    MicroAPI::Duplicate(sumReg, 1.0F, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    Duplicate(maxReg, FP32_LOWEST_FINITE, oneMask);
+    Duplicate(sumReg, 1.0F, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
 {
-    MicroAPI::RegTensor<float> zeroReg;
-    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::Duplicate(zeroReg, 0.0F, allMask);
+    RegTensor<float> zeroReg;
+    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
+    Duplicate(zeroReg, 0.0F, allMask);
 
     uint32_t remaining = validD;
     const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, zeroReg, validMask);
+        StoreAlign<float, StoreDist::DIST_NORM>(outputAddr + offset, zeroReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
@@ -59,235 +59,235 @@ template <bool FIRST_D_TILE>
 __simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ float *vAddr,
                                             __ubuf__ float *statAddr, uint32_t validD, uint32_t nIndex)
 {
-    MicroAPI::RegTensor<float> qReg;
-    MicroAPI::RegTensor<float> vReg;
-    MicroAPI::RegTensor<float> squareReg;
-    MicroAPI::RegTensor<float> dotReg;
-    MicroAPI::RegTensor<float> squareAccReg;
-    MicroAPI::RegTensor<float> dotAccReg;
-    MicroAPI::RegTensor<float> squareReduceReg;
-    MicroAPI::RegTensor<float> dotReduceReg;
+    RegTensor<float> qReg;
+    RegTensor<float> vReg;
+    RegTensor<float> squareReg;
+    RegTensor<float> dotReg;
+    RegTensor<float> squareAccReg;
+    RegTensor<float> dotAccReg;
+    RegTensor<float> squareReduceReg;
+    RegTensor<float> dotReduceReg;
 
-    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-    MicroAPI::Duplicate(squareAccReg, 0.0F, allMask);
-    MicroAPI::Duplicate(dotAccReg, 0.0F, allMask);
+    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
+    Duplicate(squareAccReg, 0.0F, allMask);
+    Duplicate(dotAccReg, 0.0F, allMask);
 
     uint32_t remaining = validD;
     const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qReg, qAddr + offset);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vReg, vAddr + offset);
-        MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
-        MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(dotReg, qReg, vReg, validMask);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(dotAccReg, dotAccReg, dotReg, allMask);
+        LoadAlign<float, LoadDist::DIST_NORM>(qReg, qAddr + offset);
+        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        Mul<float, MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
+        Mul<float, MaskMergeMode::ZEROING>(dotReg, qReg, vReg, validMask);
+        Add<float, MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
+        Add<float, MaskMergeMode::ZEROING>(dotAccReg, dotAccReg, dotReg, allMask);
     }
 
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
         squareReduceReg, squareAccReg, allMask);
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
         dotReduceReg, dotAccReg, allMask);
 
     if constexpr (!FIRST_D_TILE) {
-        MicroAPI::RegTensor<float> oldValueReg;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(oldValueReg,
+        RegTensor<float> oldValueReg;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg,
                                                                      statAddr + SUM_SQUARE_OFFSET + nIndex);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
+        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
                                                                oneMask);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(oldValueReg, statAddr + DOT_OFFSET + nIndex);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(dotReduceReg, dotReduceReg, oldValueReg, oneMask);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, statAddr + DOT_OFFSET + nIndex);
+        Add<float, MaskMergeMode::ZEROING>(dotReduceReg, dotReduceReg, oldValueReg, oneMask);
     }
 
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(
         statAddr + SUM_SQUARE_OFFSET + nIndex, squareReduceReg, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(
         statAddr + DOT_OFFSET + nIndex, dotReduceReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 template <bool FIRST_D_TILE>
 __simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *sumSquareAddr,
                                          uint32_t validD, uint32_t nIndex)
 {
-    MicroAPI::RegTensor<float> vReg;
-    MicroAPI::RegTensor<float> squareReg;
-    MicroAPI::RegTensor<float> squareAccReg;
-    MicroAPI::RegTensor<float> squareReduceReg;
-    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-    MicroAPI::Duplicate(squareAccReg, 0.0F, allMask);
+    RegTensor<float> vReg;
+    RegTensor<float> squareReg;
+    RegTensor<float> squareAccReg;
+    RegTensor<float> squareReduceReg;
+    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
+    Duplicate(squareAccReg, 0.0F, allMask);
 
     uint32_t remaining = validD;
     const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vReg, vAddr + offset);
-        MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
+        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        Mul<float, MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
+        Add<float, MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
     }
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
         squareReduceReg, squareAccReg, allMask);
     if constexpr (!FIRST_D_TILE) {
-        MicroAPI::RegTensor<float> oldValueReg;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(oldValueReg, sumSquareAddr + nIndex);
-        MicroAPI::Add<float, MicroAPI::MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
+        RegTensor<float> oldValueReg;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, sumSquareAddr + nIndex);
+        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
                                                                oneMask);
     }
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex,
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex,
                                                                              squareReduceReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reciprocalD, float eps)
 {
-    MicroAPI::RegTensor<float> sumSquareReg;
-    MicroAPI::RegTensor<float> dotReg;
-    MicroAPI::RegTensor<float> rmsReg;
-    MicroAPI::RegTensor<float> zReg;
-    MicroAPI::RegTensor<float> oneReg;
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    RegTensor<float> sumSquareReg;
+    RegTensor<float> dotReg;
+    RegTensor<float> rmsReg;
+    RegTensor<float> zReg;
+    RegTensor<float> oneReg;
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
-    MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, oneMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, oneMask);
-    MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, oneMask);
-    MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, oneMask);
-    MicroAPI::Duplicate(oneReg, 1.0F, oneMask);
+    LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
+    LoadAlign<float, LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
+    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, oneMask);
+    Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, oneMask);
+    Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, oneMask);
+    Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, oneMask);
+    Duplicate(oneReg, 1.0F, oneMask);
 
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, zReg, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, oneReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, zReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, oneReg, oneMask);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t validN, float reciprocalD, float eps)
 {
-    MicroAPI::RegTensor<float> sumSquareReg;
-    MicroAPI::RegTensor<float> dotReg;
-    MicroAPI::RegTensor<float> rmsReg;
-    MicroAPI::RegTensor<float> zReg;
-    MicroAPI::RegTensor<float> maxReg;
-    MicroAPI::RegTensor<float> maxBroadcastReg;
-    MicroAPI::RegTensor<float> expReg;
-    MicroAPI::RegTensor<float> expSumReg;
+    RegTensor<float> sumSquareReg;
+    RegTensor<float> dotReg;
+    RegTensor<float> rmsReg;
+    RegTensor<float> zReg;
+    RegTensor<float> maxReg;
+    RegTensor<float> maxBroadcastReg;
+    RegTensor<float> expReg;
+    RegTensor<float> expSumReg;
 
-    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
     uint32_t remaining = validN;
-    MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+    MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
-    MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
+    LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
+    LoadAlign<float, LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
+    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
                                                                    validMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
-    MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
-    MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
+    Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
+    Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
+    Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
 
-    MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(maxReg, zReg,
+    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg,
                                                                                                 validMask);
-    MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
+    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(
         maxBroadcastReg, maxReg, allMask);
-    MicroAPI::Sub<float, MicroAPI::MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
-    MicroAPI::Exp<float, MicroAPI::MaskMergeMode::ZEROING>(expReg, expReg, validMask);
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(expSumReg, expReg,
+    Sub<float, MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
+    Exp<float, MaskMergeMode::ZEROING>(expReg, expReg, validMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg,
                                                                                                 validMask);
 
     // E reuses the physical dot buffer after Z no longer needs to be retained.
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(statAddr + DOT_OFFSET, expReg, validMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, expSumReg,
+    StoreAlign<float, StoreDist::DIST_NORM>(statAddr + DOT_OFFSET, expReg, validMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, expSumReg,
                                                                              oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubuf__ float *dotAddr,
                                             __ubuf__ float *maxAddr, __ubuf__ float *sumAddr, uint32_t validN,
                                             uint32_t nAlign, float reciprocalD, float eps)
 {
-    MicroAPI::RegTensor<float> sumSquareReg;
-    MicroAPI::RegTensor<float> dotReg;
-    MicroAPI::RegTensor<float> rmsReg;
-    MicroAPI::RegTensor<float> zReg;
-    MicroAPI::RegTensor<float> maxReg;
-    MicroAPI::RegTensor<float> maxBroadcastReg;
-    MicroAPI::RegTensor<float> expReg;
-    MicroAPI::RegTensor<float> expSumReg;
-    MicroAPI::RegTensor<float> zeroReg;
+    RegTensor<float> sumSquareReg;
+    RegTensor<float> dotReg;
+    RegTensor<float> rmsReg;
+    RegTensor<float> zReg;
+    RegTensor<float> maxReg;
+    RegTensor<float> maxBroadcastReg;
+    RegTensor<float> expReg;
+    RegTensor<float> expSumReg;
+    RegTensor<float> zeroReg;
 
-    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
+    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
     uint32_t validRemaining = validN;
     uint32_t alignRemaining = nAlign;
-    MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(validRemaining);
-    MicroAPI::MaskReg alignMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(alignRemaining);
+    MaskReg validMask = UpdateMask<float, RegTraitNumOne>(validRemaining);
+    MaskReg alignMask = UpdateMask<float, RegTraitNumOne>(alignRemaining);
 
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(sumSquareReg, sumSquareAddr);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(dotReg, dotAddr);
-    MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
+    LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, sumSquareAddr);
+    LoadAlign<float, LoadDist::DIST_NORM>(dotReg, dotAddr);
+    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
                                                                    validMask);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
-    MicroAPI::Sqrt<float, MicroAPI::MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
-    MicroAPI::Div<float, MicroAPI::MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
-    MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(maxReg, zReg,
+    Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
+    Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
+    Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
+    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg,
                                                                                                 validMask);
-    MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
+    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(
         maxBroadcastReg, maxReg, allMask);
-    MicroAPI::Sub<float, MicroAPI::MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
-    MicroAPI::Exp<float, MicroAPI::MaskMergeMode::ZEROING>(expReg, expReg, validMask);
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(expSumReg, expReg,
+    Sub<float, MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
+    Exp<float, MaskMergeMode::ZEROING>(expReg, expReg, validMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg,
                                                                                                 validMask);
 
-    MicroAPI::Duplicate(zeroReg, 0.0F, allMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(dotAddr, zeroReg, alignMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(dotAddr, expReg, validMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(maxAddr, maxReg, oneMask);
-    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(sumAddr, expSumReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    Duplicate(zeroReg, 0.0F, allMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(dotAddr, zeroReg, alignMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(dotAddr, expReg, validMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(maxAddr, maxReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumAddr, expSumReg, oneMask);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 template <bool FIRST_BLOCK>
 __simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float *weightAddr,
                                            __ubuf__ float *outputAddr, uint32_t validD)
 {
-    MicroAPI::RegTensor<float> vReg;
-    MicroAPI::RegTensor<float> weightReg;
-    MicroAPI::RegTensor<float> outputReg;
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(weightReg, weightAddr);
+    RegTensor<float> vReg;
+    RegTensor<float> weightReg;
+    RegTensor<float> outputReg;
+    LoadAlign<float, LoadDist::DIST_BRC_B32>(weightReg, weightAddr);
 
     uint32_t remaining = validD;
     const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
         if constexpr (FIRST_BLOCK) {
-            MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(outputReg, vReg, weightReg, validMask);
+            Mul<float, MaskMergeMode::ZEROING>(outputReg, vReg, weightReg, validMask);
         } else {
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(outputReg, outputAddr + offset);
-            MicroAPI::MulAddDst<float, MicroAPI::MaskMergeMode::ZEROING>(outputReg, vReg, weightReg, validMask);
+            LoadAlign<float, LoadDist::DIST_NORM>(outputReg, outputAddr + offset);
+            MulAddDst<float, MaskMergeMode::ZEROING>(outputReg, vReg, weightReg, validMask);
         }
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, outputReg, validMask);
+        StoreAlign<float, StoreDist::DIST_NORM>(outputAddr + offset, outputReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void CopySingleBlock(__ubuf__ float *vAddr, __ubuf__ float *outputAddr, uint32_t validD)
 {
-    MicroAPI::RegTensor<float> vReg;
+    RegTensor<float> vReg;
     uint32_t remaining = validD;
     const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
     for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vReg, vAddr + offset);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, vReg, validMask);
+        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
+        StoreAlign<float, StoreDist::DIST_NORM>(outputAddr + offset, vReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 } // namespace BlockAttnResPrepareVF
