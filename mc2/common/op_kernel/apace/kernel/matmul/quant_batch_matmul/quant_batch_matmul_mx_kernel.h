@@ -49,7 +49,6 @@ public:
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
     using LayoutC = typename BlockMmad::LayoutC;
-    using LayoutScaleB = typename BlockMmad::LayoutScaleB;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t kCacheLineAlignMask = IsFp4<AType>() ? 0xff : 0x7f;
     static constexpr int32_t SCALE_C0 = 2;
@@ -58,11 +57,11 @@ public:
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE>>;
     using MakeLayoutScaleA = Std::conditional_t<IsFp4<AType>(),
-        Te::FrameLayoutFormat<LayoutScaleA, Std::Int<SCALE_C0>>,
-        Te::FrameLayoutFormat<LayoutScaleA, Std::Int<C0_SIZE>>>;
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Std::Int<SCALE_C0>>,
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Std::Int<C0_SIZE>>>;
     using MakeLayoutScaleB = Std::conditional_t<IsFp4<AType>(),
-        Te::FrameLayoutFormat<LayoutScaleB, Std::Int<SCALE_C0>>,
-        Te::FrameLayoutFormat<LayoutScaleB, Std::Int<C0_SIZE>>>;
+        Te::FrameLayoutFormat<Te::DNExtLayoutPtn, Std::Int<SCALE_C0>>,
+        Te::FrameLayoutFormat<Te::DNExtLayoutPtn, Std::Int<C0_SIZE>>>;
 
     using BlockShape = Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = Te::Coord<int64_t, int64_t, int64_t, int64_t>;
