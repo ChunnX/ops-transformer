@@ -27,13 +27,11 @@ namespace MegaMoeImpl {
 #define TemplateMegaMoeA4W4WaveTypeFunc \
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
-// 每个逻辑 AIC 任务以两个 GMM1 scheduler tile 作为 Wave 目标负载。
-constexpr uint32_t A4W4_GMM1_TILES_PER_JOB_TARGET = 2U;
-
 template <TemplateMegaMoeA4W4WaveTypeClass>
 class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc> {
 private:
     using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc>;
+    friend MegaMoeBase;
 
 public:
     using MegaMoeBase::Init;
@@ -49,38 +47,22 @@ private:
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
-    static_assert(Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value,
-                  "MegaMoeA4W4Wave requires fp4 activation and fp4 weight");
-
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::DispatchMoeExpert;
-    using MegaMoeBase::InitTokenUnpermuteBuffers;
-    using MegaMoeBase::ProcessInputPreparationStage;
-    using MegaMoeBase::ProcessSharedExpertGmm1;
-    using MegaMoeBase::ProcessSharedExpertGmm2;
-    using MegaMoeBase::aivJob_;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
     using MegaMoeBase::gmmExecutionConfig_;
+    using MegaMoeBase::mGroupsPerWave_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
     using MegaMoeBase::quantCombineBufferConfig_;
     using MegaMoeBase::quantCombineConfig_;
-    using MegaMoeBase::rankId_;
-    using MegaMoeBase::sharedExpertNum_;
     using MegaMoeBase::syncWorkspaceLayout_;
-    using MegaMoeBase::tokenDispatchConfig_;
-    using MegaMoeBase::tokenDispatchScratch_;
-    using MegaMoeBase::tokenUnpermuteConfig_;
-    using MegaMoeBase::tokenUnpermuteScratch_;
-    using MegaMoeBase::worldSize_;
-
-    uint32_t waveMGroupTarget_ = 0U;
 
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
-        return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < waveMGroupTarget_;
+        return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
     }
 
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
@@ -134,9 +116,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
 }
 
 /*
- * 按 GMM1 调度负载将专家划分为动态 Wave。启动阶段先 Dispatch 第一个完整 Wave；稳态阶段由 AIV1
- * 逐专家 Dispatch 下一 Wave，同时 AIC/AIV0 执行当前 Wave 的 GMM1/Activation。当前 Wave 完成后
- * 立即启动 GMM2/Combine，无需等待所有专家的 GMM1。
+ * 按专家顺序将 token 划分为连续 Wave。Wave 以 256 行 M group 为单位，根据 GMM1 的 N tile 数
+ * 控制总负载；空间不足时可在专家内部切分，但同一 Wave 的 GMM1 和 GMM2 始终处理相同的 token 范围。
+ *
+ * Dispatch 预取用于提前准备下一 Wave 的 GMM1 输入。启动阶段先 Dispatch 第一个完整 Wave；稳态阶段
+ * 由 AIV1 准备下一 Wave，同时 AIC/AIV0 执行当前 Wave 的 GMM1/Activation。当前 Wave 完成后执行其
+ * GMM2/Combine，再切换到已经准备好的下一 Wave。
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
@@ -157,8 +142,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
-    waveMGroupTarget_ =
-        Ops::Base::CeilDiv(A4W4_GMM1_TILES_PER_JOB_TARGET * gmmExecutionConfig_.blockJob.totalJobs, gmm1TilesPerMGroup);
 
     ExpertTokenPosition dispatchPosition{};
 
@@ -172,7 +155,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                         DispatchMoeExpert(dispatchPosition.expertIdx) :
                         GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
                                                          dispatchPosition.expertIdx);
-                AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, waveMGroupTarget_,
+                AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
                                                               dispatchedWaveMGroupCount, dispatchPosition);
             }
         }
@@ -193,6 +176,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             }
         }
 
+        // 两侧进度可能不同：AIV1 可能先完成下一 Wave 的 Dispatch，AIC/AIV0 也可能先完成当前 Wave。
+        // 只有当前计算和下轮输入准备都结束后，才能切换到当前 Wave 的 GMM2。
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
             // AIV1 逐专家准备下一 Wave；AIC/AIV0 同时推进当前 Wave 的 GMM1/Activation。
             if constexpr (g_coreType == AIV) {
@@ -202,7 +187,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                             DispatchMoeExpert(dispatchPosition.expertIdx) :
                             GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
                                                              countWorkspace_, dispatchPosition.expertIdx);
-                    AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, waveMGroupTarget_,
+                    AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
                                                                   nextDispatchWaveMGroupCount, dispatchPosition);
                     nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
                 }
@@ -215,7 +200,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
                 uint32_t sliceTokenCount = AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(
-                    expertTokenCount, waveMGroupTarget_, currentWaveMGroupCount, gmm1Position);
+                    expertTokenCount, mGroupsPerWave_, currentWaveMGroupCount, gmm1Position);
                 if (sliceTokenCount != 0U) {
                     RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, sliceTokenStartIndexInExpert,
                                                sliceTokenCount, gmm1TilesPerMGroup);
@@ -253,40 +238,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process()
 {
-    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-
-    ProcessInputPreparationStage();
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<false>();
-
-    int32_t gmTileSequence = 0;
-    if (sharedExpertNum_ > 0U) {
-        ProcessSharedExpertGmm1(gmTileSequence);
-    }
-
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-    ProcessMoeExpertStages(gmTileSequence);
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U && countWorkspace_.blockIdx == 0U) {
-            ExportExpertTokenCounts<ActivationType, true>(commonConfig_, tokenDispatchScratch_, params_);
-        }
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
-    if (sharedExpertNum_ > 0U) {
-        ProcessSharedExpertGmm2(gmTileSequence);
-    }
-    if constexpr (g_coreType == AIV) {
-        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-        MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
-        UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
-            tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-    }
-
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    this->ProcessWave(*this);
 }
 
 } // namespace MegaMoeImpl

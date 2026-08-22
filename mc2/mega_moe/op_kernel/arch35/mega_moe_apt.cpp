@@ -34,7 +34,7 @@
 #endif
 
 #ifdef ENABLE_TENSOR_API
-#include "mega_moe_wave.h"
+#include "mega_moe_wave_a8w8.h"
 #include "mega_moe_wave_a4w4.h"
 #include "mega_moe_wave_a8w4.h"
 #endif
@@ -64,8 +64,8 @@ namespace MegaMoeImpl {
 
 template <typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode,
           int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
-class MegaMoeMteWave : public MegaMoeWave<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode,
-                                          TopkWeightsPrefetch, IsGmm1Interleaved> {
+class MegaMoeMteWave : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode,
+                                              TopkWeightsPrefetch, IsGmm1Interleaved> {
     static_assert((QuantMode == DISPATCH_QUANT_OUT_DTYPE_E5M2 && Std::IsSame<Weight1Type, fp8_e5m2_t>::value) ||
                       (QuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN && Std::IsSame<Weight1Type, fp8_e4m3fn_t>::value),
                   "A8W8 requires matching FP8 activation and weight types");

@@ -382,7 +382,7 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
 
-// 原型：MegaMoeWave::ProcessCombineGm。发送一个逻辑 AIV 任务负责的已就绪 token 范围。
+// 使用行级流水发送当前逻辑 AIV 任务负责的已就绪 token 区间。
 template <uint8_t CombineMode>
 __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
