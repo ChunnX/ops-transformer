@@ -91,9 +91,9 @@ public:
     __aicore__ inline void Run()
     {
         const auto &commTiling = tilingData_->commTilingData;
-        const uint64_t tileCount = static_cast<uint64_t>(commTiling.splitAxisTileCnt);
-        const uint64_t tailCount = static_cast<uint64_t>(commTiling.splitAxisTailCnt);
-        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM ||
+        const uint32_t tileCount = static_cast<uint32_t>(commTiling.splitAxisTileCnt);
+        const uint32_t tailCount = static_cast<uint32_t>(commTiling.splitAxisTailCnt);
+        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM || tileCount == 0 ||
             (tileCount > 0 && tilingData_->tileQbmmTilingData.m !=
                 static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankDim_) ||
             (tailCount > 0 && tilingData_->tailQbmmTilingData.m !=
@@ -102,20 +102,35 @@ public:
             hccl_.Finalize();
             return;
         }
-        RunMatmulReduceScatterSlices(&tilingData_->tileQbmmTilingData,
-                                     static_cast<uint32_t>(commTiling.splitAxisTileCnt), false);
-        if (commTiling.splitAxisTailCnt > 0) {
-            RunMatmulReduceScatterSlices(&tilingData_->tailQbmmTilingData,
-                                         static_cast<uint32_t>(commTiling.splitAxisTailCnt), true);
-        }
+
+        const uint64_t tileM = static_cast<uint64_t>(commTiling.splitAxisTileSize);
+        const uint64_t tailM = static_cast<uint64_t>(commTiling.splitAxisTailSize);
+        const uint64_t perRankM = tileM * tileCount + tailM * tailCount;
+        Params tileParams = BuildMatmulParams(&tilingData_->tileQbmmTilingData, tileM, perRankM);
+        const QuantMatmulTilingData *tailTiling = tailCount > 0 ?
+            &tilingData_->tailQbmmTilingData : &tilingData_->tileQbmmTilingData;
+        Params tailParams = BuildMatmulParams(tailTiling, tailCount > 0 ? tailM : tileM, perRankM);
+
+        // One APACE QBMM invocation owns the complete per-rank M. The kernel
+        // iterates communication slices internally and calls IssueSlice after
+        // each slice becomes globally visible in workspace.
+        kernel_.RunSlices(tileParams, tileCount, tailParams, tailCount, *this);
         WaitPendingReduceScatter();
         hccl_.Finalize();
     }
 
+    __aicore__ inline void IssueSlice(uint64_t sliceStart, uint64_t sliceM)
+    {
+        const uint64_t rankN = static_cast<uint64_t>(tilingData_->commTilingData.nonSplitAxisSize);
+        GM_ADDR sendBuffer = workspaceGM_ +
+            sliceStart * rankDim_ * rankN * sizeof(CType);
+        GM_ADDR recvBuffer = yGM_ + sliceStart * rankN * sizeof(CType);
+        IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN);
+    }
+
 private:
-    __aicore__ inline void RunMatmul(
-        const QuantMatmulTilingData *tiling, uint64_t sliceStart, uint64_t sliceM,
-        uint64_t perRankM, bool initializeMmad)
+    __aicore__ inline Params BuildMatmulParams(
+        const QuantMatmulTilingData *tiling, uint64_t sliceM, uint64_t perRankM)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
@@ -124,10 +139,8 @@ private:
         mmParams.scaleAGmAddr = x1ScaleGM_;
         mmParams.bGmAddr = bGM_;
         mmParams.scaleBGmAddr = x2ScaleGM_;
-        // Each communication slice owns one contiguous logical-M workspace
-        // interval: [rank0 slice][rank1 slice]...[rankR-1 slice].
-        mmParams.cGmAddr = workspaceGM_ +
-            sliceStart * rankDim_ * static_cast<uint64_t>(tiling->n) * sizeof(CType);
+        // RunSlices derives every slice address from this workspace base.
+        mmParams.cGmAddr = workspaceGM_;
         mmParams.biasGmAddr = biasGM_;
         L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
                           tiling->scaleKL1, tiling->nBufferNum};
@@ -137,43 +150,8 @@ private:
         QBMMTiling qbmmParams{
             tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
-        SliceParams sliceParams{rankDim_, perRankM, sliceStart, sliceM};
-        Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
-        if (initializeMmad) {
-            kernel_.Init(params);
-        }
-        kernel_.RunInitialized(params);
-    }
-
-    __aicore__ inline void RunMatmulReduceScatterSlices(
-        const QuantMatmulTilingData *tiling, uint32_t sliceCount, bool isTail)
-    {
-        const auto &commTiling = tilingData_->commTilingData;
-        const uint64_t tileM = commTiling.splitAxisTileSize;
-        const uint64_t tailM = commTiling.splitAxisTailSize;
-        const uint64_t tileCnt = commTiling.splitAxisTileCnt;
-        const uint64_t tailCnt = commTiling.splitAxisTailCnt;
-        const uint64_t rankN = commTiling.nonSplitAxisSize;
-        const uint64_t perRankM = tileM * tileCnt + tailM * tailCnt;
-        const uint64_t sliceM = isTail ? tailM : tileM;
-        const uint64_t outputBase = isTail ? tileCnt * tileM * rankN : 0;
-
-        for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
-            const uint64_t sliceStart = isTail
-                ? tileCnt * tileM + static_cast<uint64_t>(sliceIdx) * tailM
-                : static_cast<uint64_t>(sliceIdx) * tileM;
-            // The kernel presents the same local-M interval from every rank as
-            // one logical M and splits an MM block only when it crosses a rank
-            // boundary. One scheduler can therefore cover all rank slices.
-            RunMatmul(tiling, sliceStart, sliceM, perRankM, sliceIdx == 0);
-            AscendC::SyncAll();
-            GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankDim_ * rankN * sizeof(CType);
-            GM_ADDR recvBuffer = yGM_ +
-                (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * rankN) * sizeof(CType);
-            // Slice-major C makes the source rank fragments contiguous. Match
-            // the legacy contiguous ReduceScatter convention and use stride 0.
-            IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN);
-        }
+        SliceParams sliceParams{rankDim_, perRankM, 0, sliceM};
+        return {problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
     }
 
     __aicore__ inline void IssueReduceScatter(
@@ -186,6 +164,7 @@ private:
         const uint32_t slot = issuedHandleCount_ % HCOMM_PIPELINE_DEPTH;
         if (issuedHandleCount_ >= HCOMM_PIPELINE_DEPTH) {
             hccl_.Wait(pipelineHandles_[slot]);
+            AscendC::SyncAll();
         }
         pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
             sendBuffer, recvBuffer, recvCount,

@@ -46,12 +46,10 @@ constexpr uint64_t MX_SCALE_OFFSET = 64;
 constexpr uint64_t EVEN_ALIGN = 2;
 constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
 constexpr double APACE_RS_FP4_COMPUTE_PER_CYCLE_RATIO = 1.0;
-constexpr uint64_t APACE_RS_LOGICAL_BASE_M = 256;
-constexpr uint64_t APACE_RS_CUBE_M_ALIGN = 16;
-// Four stages are sufficient to warm up, overlap and drain the depth-2
-// Matmul/ReduceScatter pipeline. More stages mostly add BlockScheduler,
-// SyncAll and HCCL task-launch overhead for this compute-first operator.
-constexpr uint64_t APACE_RS_MAX_PIPELINE_STAGE = 4;
+// Keep each rank fragment large enough for the standard APACE BlockMmad.
+// Aligning the assembled logical M to 256 would leave only 32 rows per rank
+// at 8P and force one scheduler block to be split repeatedly at rank borders.
+constexpr uint64_t APACE_RS_PER_RANK_BASE_M = 256;
 constexpr uint64_t PERTENSOR_SCALE_DIM = 1;
 constexpr uint64_t PERBLOCK_SCALE_DIM = 2;
 constexpr uint64_t MX_SCALE_DIM = 3;
@@ -87,7 +85,7 @@ constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8,
     ge::DataType::DT_FLOAT4_E2M1};
 
-void ConfigureApaceFormulaModel(MMPlusReduceScatter &formulaTiling, uint32_t rankDim, bool isMxfp4)
+void ConfigureApaceFormulaModel(MMPlusReduceScatter &formulaTiling, bool isMxfp4)
 {
     // Keep all APACE calibration in the APACE caller.  The shared
     // MMPlusReduceScatter class and every legacy constructor remain unchanged.
@@ -105,10 +103,7 @@ void ConfigureApaceFormulaModel(MMPlusReduceScatter &formulaTiling, uint32_t ran
             formulaTiling.matmulPerf_.mmShapeInfo_.computesPerCycle;
     }
 
-    const uint64_t safeRankDim = std::max(static_cast<uint64_t>(rankDim), uint64_t{1});
-    const uint64_t logicalBasePerRank =
-        Ops::Base::CeilDiv(APACE_RS_LOGICAL_BASE_M, safeRankDim);
-    const uint64_t perRankBaseM = mc2tiling::AlignUp(logicalBasePerRank, APACE_RS_CUBE_M_ALIGN);
+    const uint64_t perRankBaseM = APACE_RS_PER_RANK_BASE_M;
     formulaTiling.matmulPerf_.mmShapeInfo_.baseM = perRankBaseM;
     formulaTiling.clusterInfo_.baseM = perRankBaseM;
     formulaTiling.tilingM_.SetAlignLength(perRankBaseM);
@@ -1086,7 +1081,7 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
     if (usingApaceImpl_) {
         MMPlusReduceScatter reduceScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER,
                                                  SocVersion::SOC950, false);
-        ConfigureApaceFormulaModel(reduceScatterTiling, args_.rankDim, isMxfp4_);
+        ConfigureApaceFormulaModel(reduceScatterTiling, isMxfp4_);
         reduceScatterTiling.GetTiling();
         CutResult cutRes = reduceScatterTiling.tilingM_.cutRes;
         AlignCutResForApace(cutRes, args_.mValue);
@@ -1112,25 +1107,20 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 
 void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const
 {
-    // APACE presents one local slice from every rank as one logical M:
-    // logicalM = perRankSliceM * rankDim. Align the M seen by the scheduler to
-    // 256. Aligning perRankSliceM itself to 256 would over-align the logical
-    // problem to 256 * rankDim and leave too few stages for communication to
-    // overlap with the next Matmul slice.
-    constexpr uint64_t APACE_LOGICAL_M_ALIGN = 256;
-    constexpr uint64_t APACE_CUBE_M_ALIGN = 16;
+    // The QBMM scheduler sees rankDim fragments concatenated in logical M, but
+    // its standard BlockMmad must not be fed tiny sub-M fragments every time a
+    // scheduler block crosses a rank boundary. Align the per-rank slice to 256
+    // (the same granularity used by the AllToAll APACE path), so normal head
+    // blocks stay inside one rank fragment. Only a possible tail remains small.
+    constexpr uint64_t APACE_PER_RANK_M_ALIGN = 256;
     if (cutRes.longTileLen == 0 || mValue == 0) {
         OP_LOGD(opName_, "AlignCutResForApace skip: longTileLen=%lu, mValue=%lu", cutRes.longTileLen, mValue);
         return;
     }
     const uint64_t rankDim = std::max(static_cast<uint64_t>(args_.rankDim), uint64_t{1});
-    const uint64_t perRankAlign = mc2tiling::AlignUp(
-        Ops::Base::CeilDiv(APACE_LOGICAL_M_ALIGN, rankDim), APACE_CUBE_M_ALIGN);
+    const uint64_t perRankAlign = APACE_PER_RANK_M_ALIGN;
     const bool shortTileAtBack = cutRes.shortTileAtBack;
-    const uint64_t formulaLongTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
-    const uint64_t minTileForPipeline = mc2tiling::AlignUp(
-        Ops::Base::CeilDiv(mValue, APACE_RS_MAX_PIPELINE_STAGE), perRankAlign);
-    const uint64_t longTile = std::max(formulaLongTile, minTileForPipeline);
+    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
     if (longTile >= mValue) {
         cutRes.longTileLen = mValue;
         cutRes.numLongTile = 1;
@@ -1147,10 +1137,9 @@ void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_
     cutRes.shortTileAtBack = shortTileAtBack;
     cutRes.totalTileCnt = cutRes.numLongTile + cutRes.numShortTile;
     OP_LOGD(opName_,
-            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, maxStage=%lu, "
+            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, "
             "long=%lu x %lu, short=%lu x %lu, shortAtBack=%d",
-            mValue, rankDim, perRankAlign, APACE_RS_MAX_PIPELINE_STAGE,
-            cutRes.longTileLen, cutRes.numLongTile,
+            mValue, rankDim, perRankAlign, cutRes.longTileLen, cutRes.numLongTile,
             cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 // 注册Tiling类

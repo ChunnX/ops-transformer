@@ -9,298 +9,197 @@
  */
 
 /*!
- * \file matmul_reduce_scatter_v2_qbmm_mx_kernel.h
- * \brief APACE MXFP8/MXFP4 QBMM kernel for MatmulReduceScatterV2.
+ * \file matmul_reduce_scatter_v2_mx_quant_hcomm_impl.h
+ * \brief APACE MXFP8/MXFP4 Matmul + ReduceScatter implementation using pure AIC Hcomm.
  */
 
 #pragma once
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
-#endif
-
+#include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "../../matmul/quant_batch_matmul/matmul_reduce_scatter_v2_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
+#include "matmul_reduce_scatter_v2_tiling_data.h"
 
-namespace Blaze {
-namespace Gemm {
-namespace Kernel {
+namespace Apace {
 
-// The scheduler sees rankDim * sliceM as one logical M. Each scheduler block
-// is explicitly split at a rank boundary and then passed to the same standard
-// MX BlockMmad used by AllToAllMatmul. This keeps all ranks in one scheduler
-// without requiring FragmentTensor or a fragment-MMAD dependency.
-template <class ProblemShape, class BlockMmad, class BlockScheduler>
-class MatmulReduceScatterV2QbmmMxKernel {
-public:
-    static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
-    static constexpr bool transA = BlockMmad::TRANS_A;
-    static constexpr bool transB = BlockMmad::TRANS_B;
-
-    using BlockMmadParams = typename BlockMmad::Params;
-    using L1Params = typename BlockMmad::L1Params;
-    using AType = typename BlockMmad::AType;
-    using BType = typename BlockMmad::BType;
-    using CType = typename BlockMmad::CType;
-    using BiasType = typename BlockMmad::BiasType;
-    using LayoutA = typename BlockMmad::LayoutA;
-    using LayoutB = typename BlockMmad::LayoutB;
-    using LayoutC = typename BlockMmad::LayoutC;
-
-    static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
-    static constexpr int64_t CACHE_LINE_ALIGN_MASK = IsFp4<AType>() ? 0xff : 0x7f;
-    static constexpr int32_t SCALE_C0 = 2;
-
-    using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
-    using BlockSchedulerParams = typename BlockScheduler::Params;
-    using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutScaleA = AscendC::Std::conditional_t<
-        transA,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleADNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
-    using MakeLayoutScaleB = AscendC::Std::conditional_t<
-        transB,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
-
-    struct QBMMTiling {
-        enum BiasMode : uint32_t {
-            BIAS_DISABLED = 0,
-            BIAS_ENABLED = 1
-        };
-        uint32_t baseM;
-        uint32_t baseN;
-        uint32_t baseK;
-        uint32_t dbL0C;
-        uint32_t isBias;
-    };
-
-    struct SliceParams {
-        uint32_t rankDim;
-        uint64_t perRankM;
-        uint64_t sliceStart;
-        uint64_t sliceM;
-    };
-
-    struct Params {
-        ProblemShape problemShape;
-        BlockMmadParams mmParams;
-        L1Params l1Params;
-        BlockSchedulerParams schedulerParams;
-        QBMMTiling qbmmParams;
-        SliceParams sliceParams;
-    };
-
-    __aicore__ inline void Run(const Params &params)
-    {
-        if ASCEND_IS_AIV {
-            return;
-        }
-
-        if (!IsValid(params)) {
-            return;
-        }
-
-        Init(params);
-        RunInitialized(params);
-    }
-
-    // All head slices (and all tail slices) share the same problem shape and
-    // QBMM tiling. Hcomm initializes BlockMmad once per group, then only
-    // updates the GM slice addresses between calls.
-    __aicore__ inline void Init(const Params &params)
-    {
-        if ASCEND_IS_AIV {
-            return;
-        }
-
-        const bool isBias = params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED;
-        BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN,
-                               params.qbmmParams.baseK, 0};
-        mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
-                   params.qbmmParams.dbL0C > 1, 1);
-    }
-
-    __aicore__ inline void RunInitialized(const Params &params)
-    {
-        if ASCEND_IS_AIV {
-            return;
-        }
-        if (!IsValid(params)) {
-            return;
-        }
-
-        BlockScheduler scheduler(params.problemShape, params.schedulerParams);
-        Process(params, scheduler);
-    }
-
-    __aicore__ inline void operator()(const Params &params)
-    {
-        Run(params);
-    }
-
-private:
-    __aicore__ inline bool IsValid(const Params &params) const
-    {
-        const auto &sp = params.sliceParams;
-        const uint64_t logicalM = sp.sliceM * sp.rankDim;
-        return sp.rankDim != 0 && sp.sliceM != 0 && sp.perRankM != 0 &&
-               sp.sliceStart + sp.sliceM <= sp.perRankM &&
-               static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) == logicalM;
-    }
-
-    template <typename TensorScaleB>
-    __aicore__ inline void SetScaleL2Cache(
-        const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)
-    {
-        if (AscendC::Te::Get<MNK_B>(problemShape) != 1) {
-            return;
-        }
-        if constexpr (transB) {
-            const int64_t scaleKRowBytes =
-                CeilDiv(AscendC::Te::Get<MNK_K>(problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-                MXFP_MULTI_BASE_SIZE;
-            const int64_t scaleKL1RowBytes =
-                CeilDiv(scaleKL1, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-            const bool aligned = (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 &&
-                                 (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
-            gmScaleB.SetL2CacheHint(
-                aligned ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-        } else {
-            const int64_t scaleNStrideBytes = AscendC::Te::Get<MNK_N>(problemShape) * MXFP_MULTI_BASE_SIZE;
-            const int64_t scaleBaseNStrideBytes = baseN * MXFP_MULTI_BASE_SIZE;
-            const bool aligned = (scaleNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0 &&
-                                 (scaleBaseNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0;
-            gmScaleB.SetL2CacheHint(
-                aligned ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-        }
-    }
-
-    template <typename TensorB, typename TensorScaleB>
-    __aicore__ inline void SetL2Cache(
-        const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN,
-        uint64_t scaleKL1, TensorB &gmB, TensorScaleB &gmScaleB)
-    {
-        if (curBaseM < static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(problemShape))) {
-            return;
-        }
-
-        SetScaleL2Cache(problemShape, baseN, scaleKL1, gmScaleB);
-        if constexpr (weightNz) {
-            gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-        } else if constexpr (transB) {
-            const bool aligned = (AscendC::Te::Get<MNK_K>(problemShape) & CACHE_LINE_ALIGN_MASK) == 0;
-            gmB.SetL2CacheHint(
-                aligned ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-        } else {
-            const bool aligned = (AscendC::Te::Get<MNK_N>(problemShape) & CACHE_LINE_ALIGN_MASK) == 0 &&
-                                 (baseN & CACHE_LINE_ALIGN_MASK) == 0;
-            gmB.SetL2CacheHint(
-                aligned ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-        }
-    }
-
-    __aicore__ inline void Process(const Params &params, BlockScheduler &scheduler)
-    {
-        using AscendC::Te::Get;
-        const auto &sp = params.sliceParams;
-        const int64_t logicalM = Get<MNK_M>(params.problemShape);
-        const int64_t n = Get<MNK_N>(params.problemShape);
-        const int64_t k = Get<MNK_K>(params.problemShape);
-        const int64_t totalInputM = static_cast<int64_t>(sp.perRankM * sp.rankDim);
-        const int64_t scaleK =
-            CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-
-        auto gmA = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ AType *>(params.mmParams.aGmAddr)),
-            MakeLayoutA{}(totalInputM, k));
-        auto gmScaleA = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.mmParams.scaleAGmAddr)),
-            MakeLayoutScaleA{}(totalInputM, scaleK));
-        auto gmB = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ BType *>(params.mmParams.bGmAddr)),
-            MakeLayoutB{}(k, n));
-        auto gmScaleB = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.mmParams.scaleBGmAddr)),
-            MakeLayoutScaleB{}(scaleK, n));
-        auto gmBias = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ BiasType *>(params.mmParams.biasGmAddr)),
-            AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(1L, n));
-        auto gmC = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ CType *>(params.mmParams.cGmAddr)),
-            MakeLayoutC{}(logicalM, n));
-
-        auto &mTailTile = params.schedulerParams.mTailTile;
-        auto &nTailTile = params.schedulerParams.nTailTile;
-        if ((scheduler.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
-            scheduler.UpdateTailTile(mTailTile, nTailTile);
-        }
-        SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN,
-                   params.l1Params.scaleKL1, gmB, gmScaleB);
-
-        BlockCoord blockIdx;
-        int64_t mPos = 0;
-        int64_t nPos = 0;
-        while (scheduler.GetTileIdx(blockIdx)) {
-            BlockShape singleShape = scheduler.template GetBlockShape<
-                QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
-            const int64_t currentM = Get<IDX_M_TILEIDX>(singleShape);
-            const int64_t currentN = Get<IDX_N_TILEIDX>(singleShape);
-            if (currentM <= 0 || currentN <= 0) {
-                return;
-            }
-
-            scheduler.GetTileCoord(blockIdx, mPos, nPos);
-            auto blockB = gmB.Slice(
-                AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(k, currentN));
-            auto blockScaleB = gmScaleB.Slice(
-                AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(scaleK, currentN));
-            auto blockBias = gmBias.Slice(
-                AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(1L, currentN));
-
-            int64_t logicalMPos = mPos;
-            int64_t remainingM = currentM;
-            while (remainingM > 0) {
-                const uint64_t rankIdx = static_cast<uint64_t>(logicalMPos) / sp.sliceM;
-                const uint64_t rankSliceOffset = static_cast<uint64_t>(logicalMPos) % sp.sliceM;
-                const int64_t currentRankM = static_cast<int64_t>(sp.sliceM - rankSliceOffset);
-                const int64_t subM = remainingM < currentRankM ? remainingM : currentRankM;
-                const int64_t inputMPos = static_cast<int64_t>(
-                    rankIdx * sp.perRankM + sp.sliceStart + rankSliceOffset);
-
-                auto blockA = gmA.Slice(
-                    AscendC::Te::MakeCoord(inputMPos, 0L), AscendC::Te::MakeShape(subM, k));
-                auto blockScaleA = gmScaleA.Slice(
-                    AscendC::Te::MakeCoord(inputMPos, 0L), AscendC::Te::MakeShape(subM, scaleK));
-                auto blockC = gmC.Slice(
-                    AscendC::Te::MakeCoord(logicalMPos, nPos), AscendC::Te::MakeShape(subM, currentN));
-                BlockShape subShape{subM, currentN, k, 0};
-                mmOp_(blockA, blockB, blockScaleA, blockScaleB, blockBias, blockC, subShape, 0);
-
-                logicalMPos += subM;
-                remainingM -= subM;
-            }
-        }
-    }
-
-private:
-    BlockMmad mmOp_;
+template <bool BTrans>
+struct MatmulReduceScatterV2BLayout {
+    using Type = AscendC::Te::NDExtLayoutPtn;
 };
 
-} // namespace Kernel
-} // namespace Gemm
-} // namespace Blaze
+template <>
+struct MatmulReduceScatterV2BLayout<true> {
+    using Type = AscendC::Te::DNExtLayoutPtn;
+};
+
+template <typename AType, typename BType, typename CType, bool BTrans,
+          typename TilingDataType, AscendC::HcclServerType ServerType>
+class MatmulReduceScatterV2MxQuantHcommImpl {
+public:
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = typename MatmulReduceScatterV2BLayout<BTrans>::Type;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using BiasType = float;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
+        ProblemShape, 0, LayoutA, LayoutB, AType>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
+    using Kernel = Blaze::Gemm::Kernel::MatmulReduceScatterV2QbmmMxKernel<
+        ProblemShape, BlockMmad, BlockScheduler>;
+    using Params = typename Kernel::Params;
+    using BlockMmadParams = typename Kernel::BlockMmadParams;
+    using L1Params = typename Kernel::L1Params;
+    using BlockSchedulerParams = typename Kernel::BlockSchedulerParams;
+    using QBMMTiling = typename Kernel::QBMMTiling;
+    using SliceParams = typename Kernel::SliceParams;
+
+    static constexpr uint32_t APACE_MAX_RANK_DIM = 8U;
+
+    // Follow the proven AllToAll Hcomm pattern: keep the communication dtype
+    // as an integral compile-time constant, then cast at the HCCL call site.
+    static constexpr uint64_t outputHcclDataType_ =
+        AscendC::IsSameType<CType, float>::value ? AscendC::HCCL_DATA_TYPE_FP32 :
+        (AscendC::IsSameType<CType, bfloat16_t>::value ? AscendC::HCCL_DATA_TYPE_BFP16 :
+                                                        AscendC::HCCL_DATA_TYPE_FP16);
+
+    __aicore__ inline explicit MatmulReduceScatterV2MxQuantHcommImpl(TilingDataType *tilingData)
+        : tilingData_(tilingData)
+    {}
+
+    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM,
+                                GM_ADDR x2ScaleGM, GM_ADDR yGM, GM_ADDR contextGM, GM_ADDR workspaceGM)
+    {
+        aGM_ = aGM;
+        bGM_ = bGM;
+        biasGM_ = biasGM;
+        x1ScaleGM_ = x1ScaleGM;
+        x2ScaleGM_ = x2ScaleGM;
+        yGM_ = yGM;
+        workspaceGM_ = workspaceGM;
+        hccl_.InitV2(contextGM, &tilingData_->mc2InitTiling);
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(TilingDataType, mc2CcTiling)));
+        rankDim_ = hccl_.GetRankDim();
+    }
+
+    __aicore__ inline void Run()
+    {
+        const auto &commTiling = tilingData_->commTilingData;
+        const uint32_t tileCount = static_cast<uint32_t>(commTiling.splitAxisTileCnt);
+        const uint32_t tailCount = static_cast<uint32_t>(commTiling.splitAxisTailCnt);
+        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM || tileCount == 0 ||
+            (tileCount > 0 && tilingData_->tileQbmmTilingData.m !=
+                static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankDim_) ||
+            (tailCount > 0 && tilingData_->tailQbmmTilingData.m !=
+                static_cast<uint64_t>(commTiling.splitAxisTailSize) * rankDim_);
+        if (invalidTiling) {
+            hccl_.Finalize();
+            return;
+        }
+
+        const uint64_t tileM = static_cast<uint64_t>(commTiling.splitAxisTileSize);
+        const uint64_t tailM = static_cast<uint64_t>(commTiling.splitAxisTailSize);
+        const uint64_t perRankM = tileM * tileCount + tailM * tailCount;
+        Params tileParams = BuildMatmulParams(&tilingData_->tileQbmmTilingData, tileM, perRankM);
+        const QuantMatmulTilingData *tailTiling = tailCount > 0 ?
+            &tilingData_->tailQbmmTilingData : &tilingData_->tileQbmmTilingData;
+        Params tailParams = BuildMatmulParams(tailTiling, tailCount > 0 ? tailM : tileM, perRankM);
+
+        // One APACE QBMM invocation owns the complete per-rank M. The kernel
+        // iterates communication slices internally and calls IssueSlice after
+        // each slice becomes globally visible in workspace.
+        kernel_.RunSlices(tileParams, tileCount, tailParams, tailCount, *this);
+        WaitPendingReduceScatter();
+        hccl_.Finalize();
+    }
+
+    __aicore__ inline void IssueSlice(uint64_t sliceStart, uint64_t sliceM)
+    {
+        const uint64_t rankN = static_cast<uint64_t>(tilingData_->commTilingData.nonSplitAxisSize);
+        GM_ADDR sendBuffer = workspaceGM_ +
+            sliceStart * rankDim_ * rankN * sizeof(CType);
+        GM_ADDR recvBuffer = yGM_ + sliceStart * rankN * sizeof(CType);
+        IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN);
+    }
+
+private:
+    __aicore__ inline Params BuildMatmulParams(
+        const QuantMatmulTilingData *tiling, uint64_t sliceM, uint64_t perRankM)
+    {
+        ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
+                                  static_cast<int64_t>(tiling->k), 1L};
+        BlockMmadParams mmParams;
+        mmParams.aGmAddr = aGM_;
+        mmParams.scaleAGmAddr = x1ScaleGM_;
+        mmParams.bGmAddr = bGM_;
+        mmParams.scaleBGmAddr = x2ScaleGM_;
+        // RunSlices derives every slice address from this workspace base.
+        mmParams.cGmAddr = workspaceGM_;
+        mmParams.biasGmAddr = biasGM_;
+        L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
+                          tiling->scaleKL1, tiling->nBufferNum};
+        BlockSchedulerParams schedulerParams{
+            tiling->baseM, tiling->baseN, tiling->mTailTile, tiling->nTailTile,
+            tiling->mBaseTailSplitCnt, tiling->nBaseTailSplitCnt, tiling->mTailMain, tiling->nTailMain};
+        QBMMTiling qbmmParams{
+            tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
+            biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
+        SliceParams sliceParams{rankDim_, perRankM, 0, sliceM};
+        return {problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
+    }
+
+    __aicore__ inline void IssueReduceScatter(
+        GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint64_t recvCount)
+    {
+        // Keep at most two asynchronous ReduceScatter tasks in flight. Before
+        // reusing a slot, wait for the task issued two rounds earlier. This
+        // removes the fixed per-tile handle array while preserving a depth-2
+        // compute/communication pipeline.
+        const uint32_t slot = issuedHandleCount_ % HCOMM_PIPELINE_DEPTH;
+        if (issuedHandleCount_ >= HCOMM_PIPELINE_DEPTH) {
+            hccl_.Wait(pipelineHandles_[slot]);
+            AscendC::SyncAll();
+        }
+        pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
+            sendBuffer, recvBuffer, recvCount,
+            static_cast<AscendC::HcclDataType>(outputHcclDataType_),
+            AscendC::HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
+        ++issuedHandleCount_;
+    }
+
+    __aicore__ inline void WaitPendingReduceScatter()
+    {
+        const uint32_t pendingCount = issuedHandleCount_ < HCOMM_PIPELINE_DEPTH ?
+            issuedHandleCount_ : HCOMM_PIPELINE_DEPTH;
+        const uint32_t firstPending = issuedHandleCount_ - pendingCount;
+        for (uint32_t i = 0; i < pendingCount; ++i) {
+            const uint32_t slot = (firstPending + i) % HCOMM_PIPELINE_DEPTH;
+            hccl_.Wait(pipelineHandles_[slot]);
+        }
+        AscendC::SyncAll();
+    }
+
+private:
+    TilingDataType *tilingData_{nullptr};
+    Kernel kernel_;
+    AscendC::Hccl<ServerType> hccl_;
+    static constexpr uint32_t HCOMM_PIPELINE_DEPTH = 2U;
+    AscendC::HcclHandle pipelineHandles_[HCOMM_PIPELINE_DEPTH]{};
+    GM_ADDR aGM_{nullptr};
+    GM_ADDR bGM_{nullptr};
+    GM_ADDR biasGM_{nullptr};
+    GM_ADDR x1ScaleGM_{nullptr};
+    GM_ADDR x2ScaleGM_{nullptr};
+    GM_ADDR yGM_{nullptr};
+    GM_ADDR workspaceGM_{nullptr};
+    uint32_t issuedHandleCount_{0};
+    uint32_t rankDim_{0};
+};
+
+} // namespace Apace
