@@ -150,6 +150,12 @@ public:
     using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
     FaGmTensorOut outGmTensor_;
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+
+    static constexpr GmFormat LSE_FORMAT = (LAYOUT_T == FA_LAYOUT::TND) ? GmFormat::LSE_N2GT : GmFormat::LSE_BN2GS1;
+    using LseGmTensorOut = FaGmTensor<T, LSE_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
+    LseGmTensorOut lseGmTensor_;
+    CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
     GlobalTensor<uint8_t> attenMaskGmInt_;
@@ -183,6 +189,8 @@ public:
 
         if (constInfo_.isSoftmaxLseEnable) {
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            InitLseOutBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, lseGmTensor_,
+                             softmaxLse);
         }
 
         if constexpr (HAS_MASK) {
@@ -333,6 +341,17 @@ public:
         }
     }
 
+    __aicore__ inline void InitLseOutBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
+                                            LseGmTensorOut &lseGmTensor, __gm__ uint8_t *gm)
+    {
+        lseGmTensor.gmTensor.SetGlobalBuffer((__gm__ T *)gm);
+        if constexpr (GmLayoutParams<LSE_FORMAT>::CATEGORY == FormatCategory::GM_LSE_BN2GS1) {
+            lseGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, qSeqLensTool_.seqUsedParser);
+        } else {
+            lseGmTensor.offsetCalculator.Init(n2Size, gSize, qSeqLensTool_.cuSeqLensParser);
+        }
+    }
+
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if (constInfo_.enableFlashDecode) {
@@ -366,27 +385,15 @@ public:
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
         Mutex::Unlock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
-        if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
-            uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset = runInfo.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-            DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>()>(
-                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                {.gSize = constInfo_.gSize, .t1Size = constInfo_.t1Size});
-        } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
-            uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-            uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                {.s1Size = constInfo_.s1Size, .gSize = constInfo_.gSize});
-        } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-            uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-            uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(runInfo.bIdx);
-            DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-                softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                {.s1Size = constInfo_.s1Size, .qActSeqLens = qActSeqLens});
-        }
+
+        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+                        .n2Idx = runInfo.n2Idx,
+                        .gS1Idx = vecMIdx,
+                        .dIdx = 0,
+                        .gS1DealSize = runInfo.actVecMSize,
+                        .dDealSize = 0};
+        copyLseUbToGm_(lseGmTensor_, lseUb, gmCoord);
+
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
         lseOutUbBufId_ = (lseOutUbBufId_ + 1) % UB_LSE_OUT_BUFCNT;
     }

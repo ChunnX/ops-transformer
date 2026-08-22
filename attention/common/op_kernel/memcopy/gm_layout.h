@@ -531,13 +531,13 @@ struct GmLayout<GmFormat::LSE_N2GT> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t n2, uint32_t g, uint32_t t)
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n2, uint32_t g)
     {
-        shape = AscendC::MakeShape(n2, g, t);
+        shape = AscendC::MakeShape(t, n2, g);
         uint64_t tStride = 1;
         uint64_t gStride = tStride * t;
         uint64_t n2Stride = gStride * g;
-        stride = AscendC::MakeStride(n2Stride, gStride, tStride);
+        stride = AscendC::MakeStride(tStride, n2Stride, gStride);
     }
 };
 
