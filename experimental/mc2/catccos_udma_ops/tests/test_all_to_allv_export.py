@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 
+import struct
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,11 +34,19 @@ def _load_ops(monkeypatch, calls, world_size=2):
         def sum(self):
             return SimpleNamespace(item=lambda: sum(self.values))
 
+        def to(self, *, device):
+            self.device = device
+            return self
+
     fake_torch = types.ModuleType("torch")
     fake_torch.Tensor = FakeTensor
     fake_torch.int64 = "int64"
+    fake_torch.uint8 = "uint8"
     fake_torch.is_tensor = lambda value: isinstance(value, FakeTensor)
     fake_torch.tensor = lambda values, **kwargs: FakeTensor(values, **kwargs)
+    fake_torch.frombuffer = lambda buffer, **kwargs: FakeTensor(
+        buffer, **kwargs
+    )
     fake_torch.empty = lambda shape, **kwargs: FakeTensor(shape=shape, **kwargs)
 
     class FakeOps:
@@ -119,7 +128,56 @@ def test_host_routes_allocate_exact_export_rows(monkeypatch):
     )
     assert output == "output"
     assert exported.shape == (3, 8)
-    assert calls[-1][1][-2] == 3
+    assert calls[-1][1][-3] == 3
+
+
+def test_host_global_route_supplies_packed_route_metadata(monkeypatch):
+    calls = []
+    operator, _ = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    x = SimpleNamespace(shape=(10, 8), dtype="bf16", device=device)
+    operator(
+        x,
+        "weight",
+        [1, 2, 3, 4],
+        [1, 2, 3, 4],
+        ep_size=2,
+        expert_num=4,
+        output_all_to_allv=True,
+    )
+
+    metadata = calls[-1][1][-2]
+    packed = bytes(metadata.values)
+    assert metadata.dtype == "uint8"
+    assert metadata.device is device
+    assert len(packed) == 12880
+    assert struct.unpack_from("<IIII", packed, 0) == (2, 2, 4, 0)
+    assert struct.unpack_from("<8Q", packed, 16)[:2] == (3, 7)
+    assert struct.unpack_from("<64Q", packed, 80)[:2] == (4, 6)
+    assert struct.unpack_from("<QQIHH", packed, 592) == (0, 0, 1, 0, 0)
+    assert struct.unpack_from("<QQIHH", packed, 616) == (0, 1, 3, 1, 0)
+    assert struct.unpack_from("<QQIHH", packed, 640) == (1, 4, 2, 0, 1)
+    assert struct.unpack_from("<QQIHH", packed, 664) == (3, 6, 4, 1, 1)
+
+
+def test_device_global_route_keeps_null_metadata_fallback(monkeypatch):
+    calls = []
+    operator, tensor_type = _load_ops(monkeypatch, calls)
+    device = SimpleNamespace(type="npu")
+    local = tensor_type([1, 1, 1, 1], device=device)
+    route = tensor_type([1, 1, 1, 0], device=device)
+    x = SimpleNamespace(shape=(4, 8), dtype="bf16", device=device)
+    operator(
+        x,
+        "weight",
+        local,
+        route,
+        ep_size=2,
+        expert_num=4,
+        received_rows=3,
+        output_all_to_allv=True,
+    )
+    assert calls[-1][1][-2] is None
 
 
 def test_python_facade_exposes_optional_all_to_allv_output():
@@ -244,6 +302,20 @@ def test_delivery_route_metadata_and_export_worker_pool_are_optional():
     assert "params.routeMetadata == nullptr" in kernel
     assert "params.exportCoreCount" in kernel
     assert "struct MoeRouteSegment" in metadata
+
+
+def test_host_binding_forwards_optional_route_metadata_to_kernel():
+    host = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "all_to_allv_grouped_mat_mul_udma.cpp"
+    ).read_text(encoding="utf-8")
+    assert "Tensor? route_metadata" in host
+    assert 'CheckNpuTensor(routeMetadata, "route_metadata", at::kByte)' in host
+    assert "routeMetadataOptional.value().data_ptr()" in host
+    assert "unexpected MoeRouteMetadata ABI" in host
 
 
 def test_workspace_reuse_guard_checks_loop_count_before_unsigned_subtraction():

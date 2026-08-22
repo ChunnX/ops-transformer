@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 """Stable Python facade for CatCCOS UDMA operators."""
 
+import struct
 from numbers import Integral
 from typing import Optional, Sequence, Tuple, Union
 
@@ -10,6 +11,25 @@ from .runtime import get_udma_config
 
 
 RouteInput = Union[torch.Tensor, Sequence[int]]
+
+_MOE_ROUTE_MAX_RANKS = 8
+_MOE_ROUTE_MAX_LOCAL_EXPERTS = 64
+_MOE_ROUTE_MAX_SEGMENTS = (
+    _MOE_ROUTE_MAX_RANKS * _MOE_ROUTE_MAX_LOCAL_EXPERTS
+)
+_MOE_ROUTE_HEADER_SIZE = 4 * 4
+_MOE_ROUTE_PEER_ROWS_OFFSET = _MOE_ROUTE_HEADER_SIZE
+_MOE_ROUTE_EXPERT_ROWS_OFFSET = (
+    _MOE_ROUTE_PEER_ROWS_OFFSET + _MOE_ROUTE_MAX_RANKS * 8
+)
+_MOE_ROUTE_SEGMENTS_OFFSET = (
+    _MOE_ROUTE_EXPERT_ROWS_OFFSET + _MOE_ROUTE_MAX_LOCAL_EXPERTS * 8
+)
+_MOE_ROUTE_SEGMENT_SIZE = 24
+_MOE_ROUTE_METADATA_SIZE = (
+    _MOE_ROUTE_SEGMENTS_OFFSET
+    + _MOE_ROUTE_MAX_SEGMENTS * _MOE_ROUTE_SEGMENT_SIZE
+)
 
 
 def _host_route_values(route: RouteInput, name: str):
@@ -96,6 +116,74 @@ def _normalize_received_rows(
     return received_rows
 
 
+def _build_route_metadata(
+    global_host_values,
+    ep_size: int,
+    expert_num: int,
+    device,
+) -> torch.Tensor:
+    """Pack CatCCOS route prefixes on the host and copy them to the NPU."""
+    local_expert_num = expert_num // ep_size
+    if ep_size > _MOE_ROUTE_MAX_RANKS:
+        raise ValueError("route metadata supports at most 8 EP ranks")
+    if local_expert_num > _MOE_ROUTE_MAX_LOCAL_EXPERTS:
+        raise ValueError("route metadata supports at most 64 local experts")
+
+    segment_count = ep_size * local_expert_num
+    metadata = bytearray(_MOE_ROUTE_METADATA_SIZE)
+    struct.pack_into(
+        "<IIII", metadata, 0,
+        ep_size, local_expert_num, segment_count, 0,
+    )
+    source_offsets = [0] * ep_size
+    peer_rows = [0] * ep_size
+    expert_rows = [0] * local_expert_num
+    output_offset = 0
+    segment_index = 0
+    for local_expert in range(local_expert_num):
+        for source_rank in range(ep_size):
+            rows = global_host_values[
+                source_rank * local_expert_num + local_expert
+            ]
+            if rows > 0xFFFFFFFF:
+                raise ValueError(
+                    "global_tokens_per_local_expert values must fit uint32"
+                )
+            struct.pack_into(
+                "<QQIHH",
+                metadata,
+                _MOE_ROUTE_SEGMENTS_OFFSET
+                + segment_index * _MOE_ROUTE_SEGMENT_SIZE,
+                source_offsets[source_rank],
+                output_offset,
+                rows,
+                source_rank,
+                local_expert,
+            )
+            source_offsets[source_rank] += rows
+            peer_rows[source_rank] += rows
+            expert_rows[local_expert] += rows
+            output_offset += rows
+            segment_index += 1
+
+    for source_rank, rows in enumerate(peer_rows):
+        struct.pack_into(
+            "<Q", metadata, _MOE_ROUTE_PEER_ROWS_OFFSET + source_rank * 8, rows
+        )
+    for local_expert, rows in enumerate(expert_rows):
+        struct.pack_into(
+            "<Q",
+            metadata,
+            _MOE_ROUTE_EXPERT_ROWS_OFFSET + local_expert * 8,
+            rows,
+        )
+
+    # frombuffer avoids converting the 12.6-KiB descriptor into Python ints.
+    # The following .to() is the one additional H2D accepted by the host-route
+    # convenience path.
+    return torch.frombuffer(metadata, dtype=torch.uint8).to(device=device)
+
+
 def all_to_allv_grouped_mat_mul(
     x: torch.Tensor,
     weight: torch.Tensor,
@@ -121,7 +209,10 @@ def all_to_allv_grouped_mat_mul(
     equals the sum of the global route table. Pass the host-known value to avoid
     a device-to-host synchronization when the global route is an NPU tensor.
     Host routes are a convenience path that performs a small host-to-device copy
-    on every call; reuse device route tensors for performance-critical loops.
+    on every call. When exporting AllToAllV, a host global route additionally
+    builds and copies CatCCOS route-prefix metadata so the kernel can select its
+    optimized metadata path. Reuse device route tensors for performance-critical
+    loops; their export path avoids D2H and uses the compatible kernel fallback.
 
     When ``output_all_to_allv=True``, the call returns ``(output,
     all_to_allv_output)``. The second tensor is the exact BF16 activation consumed
@@ -183,12 +274,19 @@ def all_to_allv_grouped_mat_mul(
             "all_to_allv_out must have shape "
             "[sum(global_tokens_per_local_expert), x.shape[1]]"
         )
+    route_metadata = (
+        _build_route_metadata(
+            global_host_values, ep_size, expert_num, x.device
+        )
+        if global_host_values is not None
+        else None
+    )
     if out is None:
         return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_export(
-            *arguments, all_to_allv_out
+            *arguments, route_metadata, all_to_allv_out
         )
     return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_out_export(
-        *arguments, out, all_to_allv_out
+        *arguments, route_metadata, out, all_to_allv_out
     )
 
 

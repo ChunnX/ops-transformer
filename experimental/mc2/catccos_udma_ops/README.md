@@ -101,8 +101,12 @@ The facade converts host routes to the same NPU as `x`; NPU routes must already
 reside there. Values must be non-negative and fit in the kernel's `uint32` shape
 range. Pass a host-known `received_rows` with NPU routes to avoid a device-to-host
 synchronization during output allocation. Host sequences are convenient for
-one-off calls; repeated launches should reuse device route tensors and pass the
-same host-known row count to avoid per-call metadata allocation and H2D copies.
+one-off calls. When AllToAllV export is enabled, a host `global_tokens` also
+builds a 12,880-byte CatCCOS prefix descriptor and performs one additional H2D
+so the kernel can use its precomputed-metadata path. An NPU `global_tokens`
+never triggers D2H and instead selects the compatible kernel fallback. Repeated
+launches should reuse device route tensors and pass the same host-known row
+count to avoid per-call route allocation and H2D copies.
 
 A directly runnable multi-process example is available at
 `examples/run_all_to_allv_grouped_mat_mul.py`. It constructs balanced test

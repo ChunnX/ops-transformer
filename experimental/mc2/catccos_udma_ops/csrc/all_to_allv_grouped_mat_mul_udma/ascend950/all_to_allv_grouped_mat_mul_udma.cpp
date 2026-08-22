@@ -19,6 +19,7 @@
 #include "udma_runtime.h"
 
 #include "catccos/dgemm/device/kernel_adapter.hpp"
+#include "catccos/dgemm/moe_route_metadata.hpp"
 #include "platform/platform_ascendc.h"
 
 #include <cstdint>
@@ -33,6 +34,10 @@ constexpr uint32_t kMaxLocalExperts = 64;
 constexpr uint64_t kSymmetricDataBytes =
     200UL * 1024 * 1024 * sizeof(uint16_t);
 constexpr uint32_t kMaxK0 = 256;
+static_assert(sizeof(Catccos::DGemm::MoeRouteSegment) == 24,
+              "unexpected MoeRouteSegment ABI");
+static_assert(sizeof(Catccos::DGemm::MoeRouteMetadata) == 12880,
+              "unexpected MoeRouteMetadata ABI");
 
 enum class KernelVariant {
     kM0_128,
@@ -173,6 +178,7 @@ void InitializeAndLaunch(
     uint8_t *globalTokensPerLocalExpert,
     uint8_t *workspace,
     uint8_t *allToAllVOutput,
+    uint8_t *routeMetadata,
     uint32_t blockDim,
     aclrtStream stream,
     uint64_t fftsAddress)
@@ -203,10 +209,10 @@ void InitializeAndLaunch(
         commBlockShape,
         commTileShape,
         allToAllVOutput,
-        // PyTorch receives route metadata as a device tensor. The optimized
-        // kernel keeps a null-compatible fallback rather than introducing a
-        // synchronous route-table D2H copy on every operator invocation.
-        nullptr,
+        // Host route inputs supply precomputed prefixes through this pointer.
+        // Device-only routes keep it null and use the kernel's fallback,
+        // avoiding a synchronous route-table D2H copy.
+        routeMetadata,
         tiling.stageRows,
         tiling.exportCoreCount,
         tiling.selfCopyCores,
@@ -234,7 +240,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     int64_t expertNum,
     int64_t receivedRows64,
     const c10::optional<at::Tensor> &outputOptional,
-    const c10::optional<at::Tensor> &allToAllVOutputOptional)
+    const c10::optional<at::Tensor> &allToAllVOutputOptional,
+    const c10::optional<at::Tensor> &routeMetadataOptional)
 {
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
@@ -318,6 +325,17 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                          allToAllVOutput.data_ptr() != output.data_ptr()),
                     "all_to_allv_out must not alias x, weight, or out");
     }
+    if (routeMetadataOptional.has_value()) {
+        const at::Tensor &routeMetadata = routeMetadataOptional.value();
+        TORCH_CHECK(allToAllVOutputOptional.has_value(),
+                    "route_metadata is only valid when exporting AllToAllV");
+        CheckNpuTensor(routeMetadata, "route_metadata", at::kByte);
+        TORCH_CHECK(routeMetadata.device() == x.device(),
+                    "route_metadata and x must be on the same NPU");
+        TORCH_CHECK(routeMetadata.numel() ==
+                        static_cast<int64_t>(sizeof(Catccos::DGemm::MoeRouteMetadata)),
+                    "route_metadata has an invalid packed size");
+    }
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
@@ -351,6 +369,9 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             runtime.Workspace(),
             allToAllVOutputOptional.has_value()
                 ? reinterpret_cast<uint8_t *>(allToAllVOutput.data_ptr())
+                : nullptr,
+            routeMetadataOptional.has_value()
+                ? reinterpret_cast<uint8_t *>(routeMetadataOptional.value().data_ptr())
                 : nullptr,
             blockDim, stream, fftsAddress);
     };
@@ -425,7 +446,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaNpu(
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, receivedRows, c10::nullopt, c10::nullopt);
+        epSize, expertNum, receivedRows, c10::nullopt, c10::nullopt,
+        c10::nullopt);
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
@@ -440,7 +462,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, receivedRows, output, c10::nullopt);
+        epSize, expertNum, receivedRows, output, c10::nullopt,
+        c10::nullopt);
 }
 
 std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
@@ -451,11 +474,13 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
+    const c10::optional<at::Tensor> &routeMetadata,
     const at::Tensor &allToAllVOutput)
 {
     at::Tensor output = AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, receivedRows, c10::nullopt, allToAllVOutput);
+        epSize, expertNum, receivedRows, c10::nullopt, allToAllVOutput,
+        routeMetadata);
     return {output, allToAllVOutput};
 }
 
@@ -467,12 +492,14 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportNpu(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
+    const c10::optional<at::Tensor> &routeMetadata,
     const at::Tensor &output,
     const at::Tensor &allToAllVOutput)
 {
     AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, receivedRows, output, allToAllVOutput);
+        epSize, expertNum, receivedRows, output, allToAllVOutput,
+        routeMetadata);
     return {output, allToAllVOutput};
 }
 
@@ -517,6 +544,7 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportMeta(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
+    const c10::optional<at::Tensor> &,
     const at::Tensor &allToAllVOutput)
 {
     TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
@@ -534,6 +562,7 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
+    const c10::optional<at::Tensor> &,
     const at::Tensor &output,
     const at::Tensor &allToAllVOutput)
 {
@@ -561,10 +590,10 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
           "Tensor(a!) out) -> Tensor(a!)");
     m.def("all_to_allv_grouped_mat_mul_udma_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
-          "Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
+          "Tensor? route_metadata, Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
     m.def("all_to_allv_grouped_mat_mul_udma_out_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
-          "Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
+          "Tensor? route_metadata, Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
