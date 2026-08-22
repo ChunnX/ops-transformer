@@ -86,7 +86,48 @@ def test_selected_profile_drives_all_effective_runtime_tiling_fields():
         encoding="utf-8"
     )
     assert "tiling.commBlockM" in source
-    assert "tiling.commTileM / 2" in source
+    assert "tiling.localCopyTileRows" in source
     assert "tiling.commInterval" in source
-    assert "tiling.m0 * tiling.k0 * kLoops" in source
+    assert "tiling.stageRows" in source
+    assert "tiling.workspaceStages" in source
+    assert "tiling.mSplit" in source
+    assert "tiling.exportCoreCount" in source
+    assert "tiling.selfCopyCores" in source
+    assert "requiredWorkspaceBytes <= kSymmetricDataBytes" in source
     assert "does not consume either legacy host field" in source
+
+
+def test_delivery_commit_compute_scheduler_and_physical_tiling_are_wired():
+    host = (ASCEND950_ROOT / "all_to_allv_grouped_mat_mul_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    device = (
+        ASCEND950_ROOT / "all_to_allv_grouped_mat_mul_udma_device.h"
+    ).read_text(encoding="utf-8")
+    scheduler = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "block"
+        / "block_scheduler_alltoallv_allgather.hpp"
+    ).read_text(encoding="utf-8")
+    assert "uint32_t WorkspaceStages = 2, uint32_t MSplit = 1" in device
+    assert "BlockMmadSchedulerAllToAllVAllGather<MoeConstraints, MSplit>" in device
+    assert "scheduler.UpdateMmadContext(localExpertIdx);" in (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    assert "MatrixSwizzle<M_SPLIT, 0>::GetCoord" in scheduler
+    assert "tiling.stageRows" in host
+    assert "tiling.workspaceStages" in host
+    assert "launchByMSplit" in host
+    assert "true, 3, 4" in host

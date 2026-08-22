@@ -19,6 +19,7 @@
 #include "catlass/matrix_coord.hpp"
 
 #include "catccos/catccos.hpp"
+#include "catccos/dgemm/moe_route_metadata.hpp"
 #include "catccos/layout/dist_matrix.hpp"
 #ifdef ENABLE_TIMER
 #include "AscendTimer_device.hpp"
@@ -146,6 +147,8 @@ public:
     struct Params : ExportParams {
         ProblemShape problemShape;
         uint32_t commInterval;
+        uint32_t stageRows;
+        __gm__ MoeRouteMetadata const *routeMetadata;
         __gm__ ElementA *ptrA;
         LayoutA layoutA;
         __gm__ ElementB *ptrB;
@@ -157,6 +160,8 @@ public:
         GM_ADDR ptrSymmetric;
         GM_ADDR syncMmadFinish;
         GM_ADDR syncCommFinish;
+        uint32_t exportCoreCount;
+        uint32_t selfCopyCores;
         BlockCommParams blockCommParams;
 
         CATLASS_HOST_DEVICE
@@ -172,14 +177,20 @@ public:
             LayoutTagA layoutTagA_, LayoutTagB layoutTagB_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
             BlockCommParams const &allToAllVGmmParams_,
-            GM_ADDR ptrAllToAllVOutput_ = nullptr
+            GM_ADDR ptrAllToAllVOutput_ = nullptr,
+            GM_ADDR ptrRouteMetadata_ = nullptr,
+            uint32_t stageRows_ = 0,
+            uint32_t exportCoreCount_ = 0,
+            uint32_t selfCopyCores_ = 0
         ) : ExportParams(ptrAllToAllVOutput_), problemShape(problemShape_),
-            commInterval(commInterval_),
+            commInterval(commInterval_), stageRows(stageRows_),
+            routeMetadata(reinterpret_cast<__gm__ MoeRouteMetadata const *>(ptrRouteMetadata_)),
             ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
             ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
             ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_),
             layoutTagA(layoutTagA_), layoutTagB(layoutTagB_),
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
+            exportCoreCount(exportCoreCount_), selfCopyCores(selfCopyCores_),
             blockCommParams(allToAllVGmmParams_)
         {
         }
@@ -193,6 +204,7 @@ public:
         uint32_t commInterval;
         uint32_t epSize;
         uint32_t expertNum;
+        // Exact route-dependent GMM output capacity supplied by the PyTorch wrapper.
         uint32_t outputRows;
         GM_ADDR ptrA;
         GM_ADDR ptrB;
@@ -203,6 +215,10 @@ public:
         Catlass::MatrixCoord commBlockShape;
         Catlass::MatrixCoord commTileShape;
         GM_ADDR ptrAllToAllVOutput{nullptr};
+        GM_ADDR ptrRouteMetadata{nullptr};
+        uint32_t stageRows{0};
+        uint32_t exportCoreCount{0};
+        uint32_t selfCopyCores{0};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr) {
@@ -240,7 +256,11 @@ public:
             tagA, tagB,
             gmSymmetric, syncMmadFinish, syncCommFinish,
             blockCommParams,
-            args.ptrAllToAllVOutput
+            args.ptrAllToAllVOutput,
+            args.ptrRouteMetadata,
+            args.stageRows,
+            args.exportCoreCount,
+            args.selfCopyCores
         );
     }
 
@@ -279,7 +299,8 @@ public:
         BlockMmad mmad{resource};
 
         GemmCoord blockShape = GemmCoord{L1_TILE_M, L1_TILE_N, L1_TILE_K};
-        uint32_t commShapeM = params.commInterval * L1_TILE_M;
+        uint32_t commShapeM = params.stageRows == 0 ?
+            params.commInterval * L1_TILE_M : params.stageRows;
         MatrixCoord commShape{commShapeM, params.problemShape.k()};
         BlockMmadScheduler scheduler{params.problemShape, commShapeM, blockShape.GetCoordMN()};
 
@@ -318,32 +339,42 @@ public:
                 size_t localExpertOffsetB = localExpertIdx * layout::Capacity(layoutB);
                 auto tensorB = tla::MakeTensor(gmB[localExpertOffsetB], params.layoutB, Catlass::Arch::PositionGM{});
 
-                for (uint32_t srcRankIdx = 0; srcRankIdx < params.problemShape.rankSize(); ++srcRankIdx) {
-                    scheduler.UpdateMmadContext(localExpertIdx, srcRankIdx);
-                    auto remapperA = scheduler.GetRemapperA(commIdx, localExpertIdx, srcRankIdx);
-                    auto remapperC = scheduler.GetRemapperC(commIdx, localExpertIdx, srcRankIdx);
+                // Aggregate every source-rank fragment of one expert into one
+                // AIC task domain.  Small per-peer GEMMs can then occupy all
+                // cores while every task still reuses the same expert weight.
+                scheduler.UpdateMmadContext(localExpertIdx);
+                auto remapperA = scheduler.GetRemapperA(commIdx, localExpertIdx);
+                auto remapperC = scheduler.GetRemapperC(commIdx, localExpertIdx);
 
-                    for (auto iter = scheduler.Begin(); !iter.End(); iter.Next()) {
-                        auto blockOffset = scheduler.GetBlockOffset(iter);
+                for (auto iter = scheduler.Begin(); !iter.End(); iter.Next()) {
+                    auto blockOffset = scheduler.GetBlockOffset(iter);
 
-                        MatrixCoord commOffsetA{layoutSymmetricRow(Catlass::MakeCoord<int>(stageIdx, srcRankIdx, 0)), 0};
-                        auto blockOffsetA = remapperA(blockOffset);
-                        MatrixCoord blockOffsetB = blockOffset.GetCoordKN();
-                        auto blockOffsetC = remapperC(blockOffset);
-                        auto actualBlockShape = scheduler.RemapActualBlockShape(blockOffset, remapperA, remapperC);
+                    MatrixCoord commOffsetA{
+                        layoutSymmetricRow(Catlass::MakeCoord<int>(
+                            stageIdx, blockOffset.rank(), 0)),
+                        0};
+                    auto blockOffsetA = remapperA(blockOffset);
+                    MatrixCoord blockOffsetB = blockOffset.GetCoordKN();
+                    auto blockOffsetC = remapperC(blockOffset);
+                    auto actualBlockShape =
+                        scheduler.RemapActualBlockShape(blockOffset, remapperA, remapperC);
 
-                        auto tensorBlockA = GetTile(tensorSymmetric,
-                                                    tla::MakeCoord(blockOffsetA.row() + commOffsetA.row(), blockOffsetA.column()),
-                                                    tla::MakeShape(actualBlockShape.m(), actualBlockShape.k()));
-                        auto tensorBlockB = GetTile(tensorB,
-                                                    tla::MakeCoord(blockOffsetB.row(), blockOffsetB.column()),
-                                                    tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
-                        auto tensorBlockC = GetTile(tensorC,
-                                                    tla::MakeCoord(blockOffsetC.row(), blockOffsetC.column()),
-                                                    tla::MakeShape(actualBlockShape.m(), actualBlockShape.n()));
+                    auto tensorBlockA = GetTile(
+                        tensorSymmetric,
+                        tla::MakeCoord(
+                            blockOffsetA.row() + commOffsetA.row(),
+                            blockOffsetA.column()),
+                        tla::MakeShape(actualBlockShape.m(), actualBlockShape.k()));
+                    auto tensorBlockB = GetTile(
+                        tensorB,
+                        tla::MakeCoord(blockOffsetB.row(), blockOffsetB.column()),
+                        tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
+                    auto tensorBlockC = GetTile(
+                        tensorC,
+                        tla::MakeCoord(blockOffsetC.row(), blockOffsetC.column()),
+                        tla::MakeShape(actualBlockShape.m(), actualBlockShape.n()));
 
-                        mmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape);
-                    }
+                    mmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape);
                 }
             }
 
@@ -364,7 +395,8 @@ public:
         AllToAllVExportPipeline<EXPORT_ALLTOALLV, BlockExport> exportPipeline{
             resource, params.blockCommParams};
 
-        uint32_t commShapeM = params.commInterval * L1_TILE_M;
+        uint32_t commShapeM = params.stageRows == 0 ?
+            params.commInterval * L1_TILE_M : params.stageRows;
         MatrixCoord commShape{commShapeM, params.problemShape.k()};
         MatrixCoord blockShape = params.blockCommParams.BlockShape();
         BlockCommScheduler scheduler{params.problemShape, commShapeM, blockShape};
@@ -384,7 +416,23 @@ public:
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
 
-        // 闁瀚ㄩ崬顖欑閻?aicore閿涘苯顕ぐ鎾冲 rank 閻ㄥ嫪淇婇崣宄版勾閸р偓鏉╂稖顢戦崚婵嗩潗閸?
+        uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
+        uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint32_t coreCount = AscendC::GetBlockNum();
+        uint32_t exportCoreCount = params.exportCoreCount == 0 ?
+            coreCount : Min(params.exportCoreCount, coreCount);
+        uint32_t availableSelfCores = coreCount >= rankSize ?
+            coreCount - rankSize + 1 : 1;
+        uint32_t selfCopyCores = params.selfCopyCores == 0 ? 1U :
+            Min(params.selfCopyCores, availableSelfCores);
+        bool isExportWorker = EXPORT_ALLTOALLV && subcoreIdx == 0 &&
+            aicoreIdx < exportCoreCount;
+        bool isCommWorker = subcoreIdx == 1 &&
+            (aicoreIdx < rankSize ||
+             (aicoreIdx >= rankSize &&
+              aicoreIdx < rankSize + selfCopyCores - 1));
+
+        // 选择唯一的 aicore，对当前 rank 的信号地址进行初始化
         bool isRootCore = (AscendC::GetBlockIdx() == 0);
         auto rankIdx = params.problemShape.rankIdx();
         if (isRootCore) {
@@ -399,14 +447,13 @@ public:
             static_assert(!std::is_void_v<BlockExport>,
                 "The AllToAllV export kernel requires a local GM copy block");
         }
-        uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
         if constexpr (EXPORT_ALLTOALLV) {
             // Keep communication and export on different AIV subcores. UB and
             // MTE event IDs are private to an AIV subcore, so the two blocks
             // can now make progress independently without aliasing resources.
-            if (subcoreIdx == 0) {
+            if (isExportWorker) {
                 exportPipeline.InitBlockLoop();
-            } else {
+            } else if (isCommWorker) {
                 blockRemoteCopy.InitBlockLoop();
             }
         } else {
@@ -418,10 +465,10 @@ public:
             uint32_t completionPeerIdx = 0;
             int32_t completedBlocks = 0;
 
-            // 妫板嫯顓搁張顒冪枂鏉╁洤鎮楅敍灞界秼閸?rank 鐏忓棛鐤拋鈩冩暪閸掓澘顦跨亸?token
+            // 预计本轮过后，当前 rank 将累计收到多少 token
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
             auto remapperSrc = scheduler.GetRemapperSrc(commIdx);
-            // 缁涘绶熸稉濠佺娑擃亣顓哥粻妤勭枂濞嗏剝澧嶉張?aicore 閻ㄥ嫯顓哥粻妤€鐣幋?
+            // 等待上一个计算轮次所有 aicore 的计算完成
             if (commIdx >= WORKSPACE_STAGES) {
                 Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
                 Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
@@ -429,7 +476,7 @@ public:
 #ifdef ENABLE_TIMER
             timer.Tik(AscendTimer::AIV);
 #endif
-            // 闁瀚ㄩ崬顖欑閻?aicore閿涘苯鐨㈣ぐ鎾冲 rank 閻?syncMmadFinish 鐠佸墽鐤嗘稉?commIdx + 1閿涘矁銆冪粈杞扮瑐娑撯偓娑擃亪鈧矮淇婃潪顔筋偧鐠侊紕鐣绘禒璇插瀹告彃鐣幋?
+            // 选择唯一的 aicore，将当前 rank 的 syncMmadFinish 设置为 commIdx + 1，表示上一个通信轮次计算任务已完成
             if (isRootCore) {
                 aclshmemx_signal_op(syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
             }
@@ -439,7 +486,7 @@ public:
                 // current stage's communication. Both consumers only read the
                 // staging buffers, and the per-loop barrier below guarantees
                 // that export(i - 1) finishes before its stage can be reused.
-                if (commIdx > 0 && subcoreIdx == 0) {
+                if (commIdx > 0 && isExportWorker) {
                     uint32_t exportIdx = commIdx - 1;
                     uint32_t exportStageIdx = exportIdx % WORKSPACE_STAGES;
                     ExportCurrentStage(params, exportIdx, commShapeM,
@@ -454,19 +501,26 @@ public:
                 // drop requests. The regular variant keeps local MTE on subcore 0
                 // and remote UDMA puts on subcore 1; the export variant reserves
                 // subcore 0 for the preceding stage's export.
-                uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-                if (aicoreIdx < rankSize) {
-                    uint32_t dstRankIdx = aicoreIdx;
+                bool isPrimaryPeerCore = aicoreIdx < rankSize;
+                bool isExtraSelfCopyCore =
+                    aicoreIdx >= rankSize &&
+                    aicoreIdx < rankSize + selfCopyCores - 1;
+                if (isPrimaryPeerCore || isExtraSelfCopyCore) {
+                    uint32_t dstRankIdx = isExtraSelfCopyCore ? rankIdx : aicoreIdx;
                     bool isLocalCopy = dstRankIdx == rankIdx;
+                    uint32_t selfWorkerIdx = isExtraSelfCopyCore ?
+                        aicoreIdx - rankSize + 1 : 0;
                     bool ownsPeer;
                     if constexpr (EXPORT_ALLTOALLV) {
                         // Subcore 0 is dedicated to export. Subcore 1 owns both
                         // the self MTE copy and remote UDMA submission so the
                         // complete next communication round overlaps export.
-                        ownsPeer = subcoreIdx == 1;
+                        ownsPeer = subcoreIdx == 1 &&
+                            (!isLocalCopy || selfWorkerIdx < selfCopyCores);
                     } else {
-                        ownsPeer = (isLocalCopy && subcoreIdx == 0) ||
-                                   (!isLocalCopy && subcoreIdx == 1);
+                        ownsPeer = (isLocalCopy && subcoreIdx == 0 &&
+                                    selfWorkerIdx < selfCopyCores) ||
+                                   (!isLocalCopy && isPrimaryPeerCore && subcoreIdx == 1);
                     }
                     if (ownsPeer) {
                         auto commOffset = scheduler.GetBlockOffset(0, dstRankIdx);
@@ -481,7 +535,9 @@ public:
                             if (isLocalCopy) {
                                 // The MTE path stages data through a bounded UB tile, so
                                 // retain the regular communication-block granularity.
-                                for (uint32_t blockIdx = 0; blockIdx < scheduler.GetBlockCount(); ++blockIdx) {
+                                for (uint32_t blockIdx = selfWorkerIdx;
+                                     blockIdx < scheduler.GetBlockCount();
+                                     blockIdx += selfCopyCores) {
                                     auto blockOffset = scheduler.GetBlockOffset(blockIdx, dstRankIdx);
                                     auto blockOffsetSrc = remapperSrc(blockOffset);
                                     auto blockOffsetDst = blockOffset.GetLocalCoord();
@@ -500,12 +556,22 @@ public:
                                         gmBlockDst, layoutBlockDst,
                                         actualBlockShape, dstRankIdx
                                     );
+                                }
+                                // All self-copy workers are joined by the
+                                // loop-end hardware barrier. Keep a single
+                                // SHMEM signal owner for the local PE; the
+                                // leader publishes the scheduler's complete
+                                // block count while the barrier protects data
+                                // visibility before AIC is released.
+                                if (selfWorkerIdx == 0) {
+                                    auto peerCompletedBlocks = static_cast<int32_t>(
+                                        Numel(CeilDiv(actualCommShape, blockShape)));
                                     if constexpr (EXPORT_ALLTOALLV) {
-                                        ++completedBlocks;
+                                        completedBlocks = peerCompletedBlocks;
                                     } else {
                                         aclshmem_fence();
                                         aclshmemx_signal_op(
-                                            syncCommFinish, 1,
+                                            syncCommFinish, peerCompletedBlocks,
                                             ACLSHMEM_SIGNAL_ADD, dstRankIdx);
                                     }
                                 }
@@ -542,12 +608,11 @@ public:
                     }
                 }
 
-                // UDMA puts are non-blocking. A fence orders their submission but
-                // does not make the remote staging data consumable. Drain the
-                // current peer before publishing its receive-counter increment;
-                // otherwise a receiver can export the unfinished tail of a stage.
+                // UDMA puts are non-blocking. Publish completion only after
+                // quiet has drained this worker's queue; a fence alone does
+                // not make the remote stage consumable by the export path.
                 if constexpr (EXPORT_ALLTOALLV) {
-                    if (subcoreIdx == 1) {
+                    if (isCommWorker) {
                         blockRemoteCopy.FinalizeBlockLoop();
                     }
                     if (completedBlocks > 0) {
@@ -555,7 +620,7 @@ public:
                             syncCommFinish, completedBlocks,
                             ACLSHMEM_SIGNAL_ADD, completionPeerIdx);
                     }
-                    if (subcoreIdx == 1 && commIdx + 1 < commLoops) {
+                    if (isCommWorker && commIdx + 1 < commLoops) {
                         blockRemoteCopy.InitBlockLoop();
                     }
                 }
@@ -591,25 +656,20 @@ public:
                 }
             }
 
-            // 缁涘绶熻ぐ鎾冲 commIdx 娑撳绱濋幍鈧張澶婂晸閸掓澘缍嬮崜?rank symmetric 娑撳﹦娈戦弫鐗堝祦闁棄鍟撶€?
+            // 等待当前 commIdx 下，所有写到当前 rank symmetric 上的数据都写完
             if (isRootCore) {
                 aclshmem_signal_wait_until(syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
-            // 缁涘绶熻ぐ鎾冲闁矮淇婃潪顔筋偧娑撳鏆熼幑顔藉复閺€璺虹暚閹存劕鎮楅敍灞惧閺堝娈?aic 闁氨鐓?aiv 瀵偓婵顓哥粻妤佹拱鏉烆喚娈?            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+            // 等待当前通信轮次下数据接收完成后，所有的 aic 通知 aiv 开始计算本轮的
             if constexpr (EXPORT_ALLTOALLV) {
                 // Export reads stage(i - 1), so it does not depend on the
-                // current receive-counter wait. Drain export(i - 1) and
-                // communication(i) independently, then use one barrier to
-                // publish both completions and protect staging reuse.
-                if (subcoreIdx == 0) {
+                // current receive-counter wait. The single loop-end barrier
+                // joins export and communication workers and also guarantees
+                // that every self-copy slice is visible before AIC is released.
+                if (isExportWorker) {
                     if (commIdx > 0) {
                         exportPipeline.FinalizeBlockLoop();
                         exportPipeline.InitBlockLoop();
-                    }
-                } else if constexpr (!USE_UDMA_PEER_SERIAL_SCHEDULE) {
-                    blockRemoteCopy.FinalizeBlockLoop();
-                    if (commIdx + 1 < commLoops) {
-                        blockRemoteCopy.InitBlockLoop();
                     }
                 }
                 Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
@@ -620,13 +680,12 @@ public:
             timer.Tok<Overwrite>(AscendTimer::AIV);
 #endif
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[stageIdx]);
-
         }
         if constexpr (EXPORT_ALLTOALLV) {
             // Drain the final stage; there is no communication(i + 1) with
             // which to overlap it. AIC can still compute the same stage in
             // parallel because both operations are read-only on staging GM.
-            if (subcoreIdx == 0) {
+            if (isExportWorker) {
                 if (commLoops > 0) {
                     uint32_t exportIdx = commLoops - 1;
                     uint32_t exportStageIdx = exportIdx % WORKSPACE_STAGES;
@@ -667,7 +726,10 @@ private:
         // GetBlockNum() is already the number of physical AI cores for this
         // mixed AIC/AIV launch; only GetBlockIdx() contains the subcore index.
         uint32_t coreCount = AscendC::GetBlockNum();
-        if (AscendC::GetSubBlockIdx() != 0 || coreCount == 0) {
+        uint32_t exportCoreCount = params.exportCoreCount == 0 ?
+            coreCount : Min(params.exportCoreCount, coreCount);
+        if (AscendC::GetSubBlockIdx() != 0 || coreCount == 0 ||
+            coreIdx >= exportCoreCount) {
             return;
         }
 
@@ -684,18 +746,28 @@ private:
                 uint64_t sourceOffset = sourceOffsets[srcRankIdx];
                 uint64_t tokenCount = params.problemShape.globalTokensPerLocalExpert(
                     srcRankIdx, localExpertIdx);
+                uint64_t segmentOutputOffset = outputOffset;
+                if (params.routeMetadata != nullptr) {
+                    uint32_t segmentIdx =
+                        localExpertIdx * params.problemShape.rankSize() + srcRankIdx;
+                    sourceOffset = params.routeMetadata->segments[segmentIdx].sourceRowOffset;
+                    tokenCount = params.routeMetadata->segments[segmentIdx].rows;
+                    segmentOutputOffset =
+                        params.routeMetadata->segments[segmentIdx].outputRowOffset;
+                }
                 uint64_t copyBegin = Max(sourceOffset, windowStart);
                 uint64_t copyEnd = Min(sourceOffset + tokenCount, windowEnd);
                 copyEnd = Max(copyBegin, copyEnd);
                 uint32_t rows = static_cast<uint32_t>(copyEnd - copyBegin);
                 uint64_t stageTokenOffset = copyBegin - windowStart;
-                uint64_t outputTokenOffset = outputOffset + copyBegin - sourceOffset;
+                uint64_t outputTokenOffset =
+                    segmentOutputOffset + copyBegin - sourceOffset;
                 MatrixCoord segmentShape{rows, params.problemShape.k()};
                 MatrixCoord blockGrid = CeilDiv(segmentShape, blockShape);
                 uint32_t segmentTasks = Numel(blockGrid);
                 for (uint32_t segmentTask = 0; segmentTask < segmentTasks;
                      ++segmentTask, ++taskIdx) {
-                    if (taskIdx % coreCount != coreIdx) {
+                    if (taskIdx % exportCoreCount != coreIdx) {
                         continue;
                     }
                     MatrixCoord blockCoord{
@@ -720,8 +792,10 @@ private:
                         gmSrc, layoutSrc, gmDst, layoutDst,
                         actualBlockShape);
                 }
-                sourceOffsets[srcRankIdx] += tokenCount;
-                outputOffset += tokenCount;
+                if (params.routeMetadata == nullptr) {
+                    sourceOffsets[srcRankIdx] += tokenCount;
+                    outputOffset += tokenCount;
+                }
             }
         }
     }

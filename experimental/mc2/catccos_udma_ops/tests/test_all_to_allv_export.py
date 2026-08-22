@@ -191,7 +191,8 @@ def test_export_overlaps_previous_stage_with_current_communication():
     assert "WORKSPACE_STAGES >= 2" in kernel
     assert "USE_UDMA_PEER_SERIAL_SCHEDULE" in kernel
     assert "uint32_t exportIdx = commIdx - 1;" in kernel
-    assert "ownsPeer = subcoreIdx == 1;" in kernel
+    assert "ownsPeer = subcoreIdx == 1 &&" in kernel
+    assert "selfWorkerIdx < selfCopyCores" in kernel
     assert "exportPipeline.GetBlockExport()" in kernel
     assert "uint32_t exportIdx = commLoops - 1;" in kernel
 
@@ -207,9 +208,7 @@ def test_peer_completion_signal_is_published_after_data_completion():
         / "kernel"
         / "ascend950_alltoallv_grouped_matmul.hpp"
     ).read_text(encoding="utf-8")
-    completion_comment = kernel.index(
-        "current peer before publishing its receive-counter increment"
-    )
+    completion_comment = kernel.index("Publish completion only after")
     finalize = kernel.index(
         "blockRemoteCopy.FinalizeBlockLoop();", completion_comment
     )
@@ -218,6 +217,33 @@ def test_peer_completion_signal_is_published_after_data_completion():
         "aclshmem_signal_wait_until(syncCommFinish", completion_signal
     )
     assert finalize < completion_signal < receiver_wait
+
+
+def test_delivery_route_metadata_and_export_worker_pool_are_optional():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    metadata = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "moe_route_metadata.hpp"
+    ).read_text(encoding="utf-8")
+    assert "__gm__ MoeRouteMetadata const *routeMetadata" in kernel
+    assert "params.routeMetadata != nullptr" in kernel
+    assert "params.routeMetadata == nullptr" in kernel
+    assert "params.exportCoreCount" in kernel
+    assert "struct MoeRouteSegment" in metadata
 
 
 def test_workspace_reuse_guard_checks_loop_count_before_unsigned_subtraction():

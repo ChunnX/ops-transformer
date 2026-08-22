@@ -30,13 +30,14 @@ namespace OpsTransformer::CatccosUdma {
 namespace {
 
 constexpr uint32_t kMaxLocalExperts = 64;
-constexpr uint64_t kIpcBufferBytes = 1000UL * 1024 * 1024;
-constexpr uint32_t kMaxBlockCount = 2;
+constexpr uint64_t kSymmetricDataBytes =
+    200UL * 1024 * 1024 * sizeof(uint16_t);
 constexpr uint32_t kMaxK0 = 256;
 
 enum class KernelVariant {
     kM0_128,
     kM0_256,
+    kM0_256N0_256,
 };
 
 template <class T>
@@ -56,18 +57,32 @@ struct TilingProfile {
     // CatCCOS UDMA kernel ABI does not consume either legacy host field.
     uint32_t commNpuSplit;
     uint32_t commDataSplit;
+    // Physical pipeline controls introduced by CatCCOS 54522865. Keeping
+    // these explicit decouples communication capacity from legacy tiling
+    // fields and lets workspace depth/worker pools evolve independently.
+    uint32_t stageRows;
+    uint32_t workspaceStages;
+    uint32_t localCopyTileRows;
+    uint32_t mSplit;
+    uint32_t exportCoreCount;
+    uint32_t selfCopyCores;
 };
 
 constexpr TilingProfile kDefaultTiling{
-    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
+    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16,
+    1280, 2, 32, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N1024NonExportTiling{
-    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4};
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4,
+    1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N1024ExportTiling{
-    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8};
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8,
+    1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N512NonExportTiling{
-    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4};
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4,
+    1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N512ExportTiling{
-    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20};
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20,
+    1536, 2, 64, 1, 0, 1};
 
 const TilingProfile &SelectTiling(
     uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,
@@ -164,8 +179,13 @@ void InitializeAndLaunch(
 {
     using DeviceOp = typename Config::Device;
     using Kernel = typename Config::Kernel;
+    TORCH_CHECK(tiling.m0 == Config::kM0 && tiling.n0 == Config::kN0 &&
+                    tiling.k0 == Config::kK0 &&
+                    tiling.workspaceStages == Config::kWorkspaceStages &&
+                    tiling.mSplit == Config::kMSplit,
+                "tiling profile does not match the selected kernel instance");
     Catlass::MatrixCoord commBlockShape{tiling.commBlockM, RoundUp(shape.k(), tiling.k0)};
-    Catlass::MatrixCoord commTileShape{tiling.commTileM / 2, tiling.k0};
+    Catlass::MatrixCoord commTileShape{tiling.localCopyTileRows, tiling.k0};
     typename DeviceOp::Arguments arguments{
         shape,
         rank,
@@ -183,6 +203,13 @@ void InitializeAndLaunch(
         commBlockShape,
         commTileShape,
         allToAllVOutput,
+        // PyTorch receives route metadata as a device tensor. The optimized
+        // kernel keeps a null-compatible fallback rather than introducing a
+        // synchronous route-table D2H copy on every operator invocation.
+        nullptr,
+        tiling.stageRows,
+        tiling.exportCoreCount,
+        tiling.selfCopyCores,
     };
 
     DeviceOp deviceOp;
@@ -255,11 +282,15 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const TilingProfile &tiling = SelectTiling(
         m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
         allToAllVOutputOptional.has_value());
-    const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
-    const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
-    TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <
-                    maxPeerElements,
-                "shape exceeds the CatCCOS UDMA peer-memory constraint");
+    TORCH_CHECK((tiling.workspaceStages == 2 || tiling.workspaceStages == 3) &&
+                    tiling.stageRows > 0 && tiling.stageRows % tiling.m0 == 0,
+                "invalid CatCCOS physical staging profile");
+    const uint64_t requiredWorkspaceBytes =
+        static_cast<uint64_t>(tiling.workspaceStages) * tiling.stageRows *
+        static_cast<uint64_t>(worldSize) * k * sizeof(uint16_t);
+    TORCH_CHECK(requiredWorkspaceBytes <= kSymmetricDataBytes,
+                "kernel tiling requires ", requiredWorkspaceBytes,
+                " symmetric workspace bytes, exceeding ", kSymmetricDataBytes);
 
     at::Tensor output = outputOptional.has_value()
         ? outputOptional.value()
@@ -294,6 +325,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const uint32_t blockDim =
         platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
     TORCH_CHECK(blockDim > 0, "failed to query Ascend AI-core count");
+    const uint32_t exportCoreCount =
+        tiling.exportCoreCount == 0 ? blockDim : tiling.exportCoreCount;
+    TORCH_CHECK(exportCoreCount > 0 && exportCoreCount <= blockDim,
+                "export_core_count must be in [1, AI-core count]");
+    TORCH_CHECK(tiling.selfCopyCores > 0 &&
+                    static_cast<uint64_t>(worldSize) + tiling.selfCopyCores - 1 <= blockDim,
+                "self_copy_cores exceeds the available AIV worker pool");
     const uint64_t fftsAddress = runtime.FftsAddress();
     auto launchWithConfig = [&](auto configTag) {
         using SelectedConfig = typename decltype(configTag)::type;
@@ -316,14 +354,62 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                 : nullptr,
             blockDim, stream, fftsAddress);
     };
-    if (tiling.kernelVariant == KernelVariant::kM0_256 && allToAllVOutputOptional.has_value()) {
-        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>{});
-    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
-        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>{});
-    } else if (allToAllVOutputOptional.has_value()) {
-        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultExportConfig>{});
+    auto launchByMSplit = [&](auto mSplit1, auto mSplit2, auto mSplit4) {
+        if (tiling.mSplit == 2) {
+            launchWithConfig(mSplit2);
+        } else if (tiling.mSplit == 4) {
+            launchWithConfig(mSplit4);
+        } else {
+            launchWithConfig(mSplit1);
+        }
+    };
+    if (allToAllVOutputOptional.has_value()) {
+        if (tiling.kernelVariant == KernelVariant::kM0_256N0_256) {
+            if (tiling.workspaceStages == 3) {
+                launchByMSplit(
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 3, 1>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 3, 2>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 3, 4>>{});
+            } else {
+                launchByMSplit(
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 2, 1>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 2, 2>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256, true, 2, 4>>{});
+            }
+        } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
+            if (tiling.workspaceStages == 3) {
+                launchByMSplit(
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 128, 256, true, 3, 1>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 128, 256, true, 3, 2>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 128, 256, true, 3, 4>>{});
+            } else {
+                launchByMSplit(
+                    TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 128, 256, true, 2, 2>>{},
+                    TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<256, 128, 256, true, 2, 4>>{});
+            }
+        } else if (tiling.workspaceStages == 3) {
+            launchByMSplit(
+                TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<128, 256, 256, true, 3, 1>>{},
+                TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<128, 256, 256, true, 3, 2>>{},
+                TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<128, 256, 256, true, 3, 4>>{});
+        } else {
+            launchByMSplit(
+                TypeTag<AllToAllVGroupedMatMulUdmaDefaultExportConfig>{},
+                TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<128, 256, 256, true, 2, 2>>{},
+                TypeTag<Bf16AllToAllVGroupedMatMulUdmaConfig<128, 256, 256, true, 2, 4>>{});
+        }
     } else {
-        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultConfig>{});
+        TORCH_CHECK(tiling.workspaceStages == 2 && tiling.mSplit == 1,
+                    "non-export kernel currently supports workspace_stages=2 and m_split=1");
+        if (tiling.kernelVariant == KernelVariant::kM0_256N0_256) {
+            launchWithConfig(TypeTag<
+                Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256>>{});
+        } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
+            launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>{});
+        } else {
+            launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultConfig>{});
+        }
     }
     return output;
 }

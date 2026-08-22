@@ -40,7 +40,7 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
     assert "MoeConstraints<1, 8, 32>" in source
     assert "BlockMmadSchedulerGmmAllToAllVTargetOrder" in source
     assert "BlockCommSchedulerGmmAllToAllVTargetOrder" in source
-    assert "kWorkspaceStages, kSymmetricDataBytes, true" in source
+    assert "WorkspaceStages, kSymmetricDataBytes, true" in source
     assert "CopyDirect::Get" in source
     assert "CopyTransport::Mte" in source
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
@@ -191,9 +191,36 @@ def test_tuned_profile_drives_kernel_and_all_runtime_tiling_fields():
     assert "256, 128, 256>;" in device
     assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>" in host
     assert "tiling.commInterval" in host
-    assert "tiling.commTileM / 2" in host
+    assert "tiling.localCopyTileRows" in host
     assert "tiling.commBlockM" in host
     assert "tiling.commDataSplit, tiling.commNpuSplit" in host
     assert "tiling.n0" in host
     assert "tiling.m0" in host
     assert "tiling.k0 == SelectedConfig::kK0" in host
+
+
+def test_delivery_commit_adds_physical_staging_and_parallel_self_copy():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    device = (
+        ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    assert "GroupedMatMulAllToAllVUdmaM0_256N0_256Config" in device
+    assert "GroupedMatMulAllToAllVUdmaM0_256N0_256WS3Config" in device
+    assert "256, 256, 256>" in device
+    assert "tiling.workspaceStages" in host
+    assert "static_cast<uint32_t>(stageRows)" in host
+    assert "tiling.selfCopyCores" in host
+    assert "uint32_t rowsPerWorker = CeilDiv(actualRows, selfCopyCores)" in kernel
+    assert "bool isExtraSelfCopyCore" in kernel

@@ -24,3 +24,15 @@ staged in destination order, reducing each source-rank/round transfer to one
 contiguous UDMA request; the final scheduler coordinate-type fixes are included.
 The overlaid problem-shape ABI reads both route-count tables from contiguous
 signed 64-bit storage, matching the public PyTorch `torch.int64` interface.
+
+CatCCOS delivery commit `54522865d82ecf988d306fa42329d77cca9a179e`
+adds the physical-tiling foundation used by both kernels: explicit staging-row
+capacity, two/three-buffer kernel templates, configurable export/self-copy AIV
+worker pools, and the `256x256x256` GMM-AllToAllV template. For
+AllToAllV-GroupedMatmul it also aggregates all source-rank fragments of one
+expert into a single AIC task domain and supports the `mSplit` M-axis swizzle.
+The optional route-metadata ABI remains nullable in this PyTorch integration so
+device route tensors do not force a synchronous host round trip per invocation.
+Repository-local fixes layered after the CatCCOS branch—dynamic output extents,
+UDMA completion publication after queue quiet, and guarded workspace-loop
+subtraction—remain applied on top of this delivery update.
