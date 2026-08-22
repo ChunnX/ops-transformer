@@ -289,13 +289,17 @@ void QSFAMlaTiling::CalcVectorizeFlag()
         return;
     }
     if (qsfaInfo_->kvLayout == QSFALayout::PA_BSND) {
+        constexpr uint32_t S2_NUM_PER_LOOP = 128U;
         int64_t blockSize = qsfaInfo_->blockSize;
         uint32_t blocksizeFlag = static_cast<uint32_t>((blockSize & (blockSize - 1)) == 0);
         constexpr uint32_t UB_SIZE = 248 * 1024; // UB共256KB，预留8KB
+        uint32_t alignedSparseBlockCount =
+            (static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) + S2_NUM_PER_LOOP - 1U) /
+            S2_NUM_PER_LOOP * S2_NUM_PER_LOOP;
         uint32_t vectorizeUbSize =
             Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int32_t), BYTE_BLOCK) +
-            Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int64_t), BYTE_BLOCK);
+            alignedSparseBlockCount * sizeof(int64_t);
         vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag);
     }
 }

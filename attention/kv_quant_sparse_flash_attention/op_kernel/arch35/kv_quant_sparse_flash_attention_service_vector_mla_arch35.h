@@ -209,13 +209,13 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
-        token0Idx = kvPhyAddrGm64.GetValue(topkBS1Idx + runInfo.s2StartIdx + topkKIdx);
+        token0Idx = kvPhyAddrGm64.GetValue(topkBS1Idx + topkKIdx);
     }
     topkKIdx += 1;
     if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
-        token1Idx = kvPhyAddrGm64.GetValue(topkBS1Idx + runInfo.s2StartIdx + topkKIdx);
+        token1Idx = kvPhyAddrGm64.GetValue(topkBS1Idx + topkKIdx);
     }
 }
 
@@ -1096,8 +1096,10 @@ __simd_vf__ void GetKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int
     }
 
     for (uint16_t i = s2Loop - 1; i < s2Loop; i++) {
-        MicroAPI::MaskReg preg_tail_1_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::MaskReg preg_tail_2_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
+        uint32_t tailCount1 = (s2Tail < s2NumPerReg) ? s2Tail : s2NumPerReg;
+        uint32_t tailCount2 = (s2Tail > s2NumPerReg) ? (s2Tail - s2NumPerReg) : 0;
+        MicroAPI::MaskReg preg_tail_1_b32 = MicroAPI::UpdateMask<int32_t>(tailCount1);
+        MicroAPI::MaskReg preg_tail_2_b32 = MicroAPI::UpdateMask<int32_t>(tailCount2);
         MicroAPI::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
         MicroAPI::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
 
@@ -1179,13 +1181,12 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTe
                                                                          int64_t alignNum, ConstInfo &constInfo)
 {
     static constexpr int64_t numPerBlock = 32;
-    DataCopyParams dataCopyParams;
+    DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U; // 每次处理1行
-    dataCopyParams.blockLen = ((validS2 + alignNum - 1) / alignNum * alignNum) * sizeof(int64_t) / numPerBlock;
-    dataCopyParams.srcGap = 0U;
-    dataCopyParams.dstGap = 0U;
-    // gm数据类型int32，实际元素类型int64，字节长度为2倍
-    DataCopy(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
+    dataCopyParams.blockLen = validS2 * sizeof(int64_t);
+    dataCopyParams.srcStride = 0U;
+    dataCopyParams.dstStride = 0U;
+    DataCopyPad(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1256,7 +1257,9 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetKVPhyAddr(uint32_t h
     // blkTableBuf 对齐到 512B，保证后续 sparseIdxBuf 的 UB 地址满足 LoadAlign 512B 对齐要求
     tPipe->InitBuffer(blkTableBuf, ((constInfo.maxBlockNumPerBatch * sizeof(int32_t) + 511U) / 512U) * 512U);
     tPipe->InitBuffer(sparseIdxBuf, ((constInfo.sparseBlockCount * sizeof(int32_t) + 31U) / 32U) * 32U);
-    tPipe->InitBuffer(kvPhyAddrBuf, ((constInfo.sparseBlockCount * sizeof(int64_t) + 31U) / 32U) * 32U);
+    const uint32_t alignedSparseBlockCount =
+        ((constInfo.sparseBlockCount + s2NumPerLoop - 1) / s2NumPerLoop) * s2NumPerLoop;
+    tPipe->InitBuffer(kvPhyAddrBuf, alignedSparseBlockCount * sizeof(int64_t));
     LocalTensor<int32_t> blkTableUb = blkTableBuf.template Get<int32_t>();
     LocalTensor<int32_t> sparseIdxUb = sparseIdxBuf.template Get<int32_t>(); // 逐行处理
     LocalTensor<uint32_t> kvPhyAddrUb = kvPhyAddrBuf.template Get<uint32_t>();
