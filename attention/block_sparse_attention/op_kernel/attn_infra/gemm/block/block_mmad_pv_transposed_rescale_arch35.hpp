@@ -35,6 +35,7 @@
 #include "../../../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad_rescale.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
 
@@ -76,6 +77,7 @@ public:
     using ElementS = ElementS_;
 
     using TileMmad = TileMmad_;
+    using TileMmadRescale = Gemm::Tile::TileMmadRescaleTla<ArchTag>;
 
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;      // fp8（PV^T 用）
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;      // fp8（PV^T 用）
@@ -485,7 +487,7 @@ public:
                         auto l0BTensorTlaTile = GetTile(l0BDiagStageTensorTla,
                             tla::MakeCoord(diagPackedTileIdx * DIAG_MMAD_TILE_SIZE, 0U),
                             tla::MakeShape(DIAG_MMAD_TILE_SIZE, DIAG_MMAD_TILE_SIZE));
-                        tileMmad(
+                        tileMmadRescale(
                             l0CTensorTlaTileFr,
                             l0ATensorTlaTile,
                             l0BTensorTlaTile,
@@ -570,6 +572,7 @@ protected:
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];
 
     TileMmad tileMmad;
+    TileMmadRescale tileMmadRescale;
     CopyL1ToL0A copyL1ToL0A;
     CopyL1ToL0B copyL1ToL0B;
 
