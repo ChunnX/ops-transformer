@@ -35,8 +35,10 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            int64_t topkWeightsType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
-    TORCH_CHECK((x.dim() >= DIM_TWO) && (topkIds.dim() >= DIM_TWO),
-                "The x and topk_ids must have at least 2 dimensions for output construction");
+    TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
+    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
+                    (topkIds.scalar_type() == at::kInt),
+                "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
     TORCH_CHECK(!weight1.empty() && !weight2.empty(), "weight1 and weight2 must not be empty");
 
     at::TensorList weight1Ref = weight1;

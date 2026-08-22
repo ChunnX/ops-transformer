@@ -974,6 +974,11 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
                         "The tensor list lengths of weight1 and weight2 must be the same."),
                     return GRAPH_FAILED);
 
+    OP_TILING_CHECK(N % 2U != 0U,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, "weight1",
+                                                          ("dim1=" + std::to_string(N)).c_str(),
+                                                          "dim1 must be even because it equals 2 * intermediate_hidden"),
+                    return GRAPH_FAILED);
     uint32_t n2 = N / 2;
     OP_TILING_CHECK(n2 % HIDDEN_SIZE_ALIGN != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_OP_NAME, "weight2",

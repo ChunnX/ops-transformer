@@ -103,9 +103,9 @@ struct PerTokenV2Params : PerTokenV2ServerIdStorage<HAS_SERVER_ID> {
 };
 
 CATLASS_DEVICE
-inline void ApplyPerTokenScales(AscendC::LocalTensor<float> ubData,
-                                AscendC::LocalTensor<float> ubScales,
-                                int32_t rowCount, int32_t columnCount, int32_t rowStride)
+void ApplyPerTokenScales(AscendC::LocalTensor<float> ubData,
+                         AscendC::LocalTensor<float> ubScales,
+                         int32_t rowCount, int32_t columnCount, int32_t rowStride)
 {
     int32_t repeat = (columnCount + 127) / 128 * 2;
     for (int32_t row = 0; row < rowCount; ++row) {
