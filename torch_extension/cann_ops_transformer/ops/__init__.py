@@ -13,7 +13,10 @@ from .moe_token_permute import moe_token_permute
 from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
-from .flash_mla_with_kvcache import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata
+from .flash_mla_with_kvcache import (
+    flash_mla_with_kvcache,
+    flash_mla_with_kvcache_metadata,
+)
 from .quant_flash_attn import quant_flash_attn, quant_flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import (
     mixed_quant_sparse_flash_mla,

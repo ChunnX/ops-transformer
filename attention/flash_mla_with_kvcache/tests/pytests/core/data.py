@@ -22,9 +22,9 @@ import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # MLA 常量（R1 / m0070）
-MLA_D_TOTAL = 576          # q/k_cache 最后维 = nope 512 + rope 64
-MLA_HEAD_DIM_V = 512       # head_dim_v（nope/value 宽）
-MLA_NZ_BLK_ELEM = 16       # fp16/bf16 的 NZ 块内元素数（32B / 2B）
+MLA_D_TOTAL = 576  # q/k_cache 最后维 = nope 512 + rope 64
+MLA_HEAD_DIM_V = 512  # head_dim_v（nope/value 宽）
+MLA_NZ_BLK_ELEM = 16  # fp16/bf16 的 NZ 块内元素数（32B / 2B）
 MLA_ROPE_DIM = 64
 
 
@@ -32,8 +32,10 @@ MLA_ROPE_DIM = 64
 # 参数组构造 — MLA (m0070)
 # ============================================================
 
-def build_flash_mla_with_kvcache_params(p: dict, device: torch.device, inputs: dict
-                           ) -> Tuple[dict, dict, str]:
+
+def build_flash_mla_with_kvcache_params(
+    p: dict, device: torch.device, inputs: dict
+) -> Tuple[dict, dict, str]:
     """从 normalized params 构造 (meta_kwargs, kernel_kwargs, out_layout)。
 
     meta_kwargs  → flash_mla_with_kvcache_metadata（AICPU 分核预算）
@@ -44,7 +46,7 @@ def build_flash_mla_with_kvcache_params(p: dict, device: torch.device, inputs: d
     layout_out = p.get("layout_out", "NTD")
     d = p["D"]  # 512（qk nope / head_dim_v）
 
-    scale = p.get("scale", 1 / (d ** 0.5))
+    scale = p.get("scale", 1 / (d**0.5))
     mask_mode = p.get("mask_mode", 0)
 
     # mask_mode=3 (CAUSAL/RIGHT_DOWN)：attn_mask 必传 INT8 [2048,2048]（checker 语义）
@@ -78,25 +80,43 @@ def build_flash_mla_with_kvcache_params(p: dict, device: torch.device, inputs: d
     bs = p.get("B", 1)
 
     msq = _resolve_max_seqlen(p.get("max_seqlen_q"), sq, cu_q, p.get("S1", 1))
-    msk = _resolve_max_seqlen(p.get("max_seqlen_kv"), cache_lens, None, p.get("S2", p.get("S1", 1)))
+    msk = _resolve_max_seqlen(
+        p.get("max_seqlen_kv"), cache_lens, None, p.get("S2", p.get("S1", 1))
+    )
 
     # === metadata kwargs ===
     meta_kwargs = dict(
-        num_heads_q=nqh, num_heads_kv=1, head_dim=MLA_HEAD_DIM_V,
-        cu_seqlens_q=cu_q, cache_seqlens=cache_lens, seqused_q=sq,
-        batch_size=bs, max_seqlen_q=msq, max_seqlen_kv=msk,
+        num_heads_q=nqh,
+        num_heads_kv=1,
+        head_dim=MLA_HEAD_DIM_V,
+        cu_seqlens_q=cu_q,
+        cache_seqlens=cache_lens,
+        seqused_q=sq,
+        batch_size=bs,
+        max_seqlen_q=msq,
+        max_seqlen_kv=msk,
         mask_mode=mask_mode,
-        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
     )
 
     # === kernel kwargs ===
     kernel_kwargs = dict(
-        softmax_scale=scale, mask_mode=mask_mode,
-        block_table=None if inputs.get("block_table") is None else inputs["block_table"].to(device),
-        cache_seqlens=cache_lens, cu_seqlens_q=cu_q, seqused_q=sq,
+        softmax_scale=scale,
+        mask_mode=mask_mode,
+        block_table=None
+        if inputs.get("block_table") is None
+        else inputs["block_table"].to(device),
+        cache_seqlens=cache_lens,
+        cu_seqlens_q=cu_q,
+        seqused_q=sq,
         attn_mask=attn_mask,
-        max_seqlen_q=msq, max_seqlen_kv=msk,
-        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        max_seqlen_q=msq,
+        max_seqlen_kv=msk,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
         return_softmax_lse=p.get("return_softmax_lse", False),
     )
     return meta_kwargs, kernel_kwargs, layout_out
@@ -109,23 +129,35 @@ class InputSpec:
         self.name = name
         self._items: List[dict] = []
 
-    def tensor(self, name: str, *,
-               shape: str = "",
-               layout: dict = None,
-               dtype=None,
-               method: str = "randn",
-               when: Callable = None,
-               range_key: str = None,
-               **kwargs) -> "InputSpec":
-        self._items.append(dict(
-            name=name, shape=shape, layout=layout or {},
-            dtype=dtype, method=method, when=when,
-            range_key=range_key, kwargs=kwargs,
-        ))
+    def tensor(
+        self,
+        name: str,
+        *,
+        shape: str = "",
+        layout: dict = None,
+        dtype=None,
+        method: str = "randn",
+        when: Callable = None,
+        range_key: str = None,
+        **kwargs,
+    ) -> "InputSpec":
+        self._items.append(
+            dict(
+                name=name,
+                shape=shape,
+                layout=layout or {},
+                dtype=dtype,
+                method=method,
+                when=when,
+                range_key=range_key,
+                kwargs=kwargs,
+            )
+        )
         return self
 
-    def generate(self, params: dict, device,
-                 layout: str = "TND", seed: int = 42) -> Dict[str, torch.Tensor]:
+    def generate(
+        self, params: dict, device, layout: str = "TND", seed: int = 42
+    ) -> Dict[str, torch.Tensor]:
         rng = torch.Generator(device=device)
         rng.manual_seed(seed)
         tensors = {}
@@ -133,7 +165,9 @@ class InputSpec:
             if it["when"] and not it["when"](params):
                 continue
             # k_cache 的布局键 = layout_kv（PA_NZ/NZ），其余按 input layout
-            eff_layout = params.get("layout_kv", layout) if it["name"] == "k_cache" else layout
+            eff_layout = (
+                params.get("layout_kv", layout) if it["name"] == "k_cache" else layout
+            )
             shape = self._resolve(it, params, eff_layout)
             if not shape:
                 continue
@@ -192,16 +226,30 @@ def _generate(method, shape, dtype, device, rng, **kw):
 # ── MLA 输入 recipe（R1：q=TND 576 宽，k_cache=PA_NZ 576 宽，无 v）──
 flash_mla_with_kvcache_inputs = (
     InputSpec("flash_mla_with_kvcache")
-    .tensor("q", layout={"TND": "total_s1,N1,576"},
-            method="uniform", low=-5.0, high=5.0, range_key="q_range",
-            when=lambda p: "q_range" in p)
-    .tensor("q", layout={"TND": "total_s1,N1,576"},
-            when=lambda p: "q_range" not in p)
+    .tensor(
+        "q",
+        layout={"TND": "total_s1,N1,576"},
+        method="uniform",
+        low=-5.0,
+        high=5.0,
+        range_key="q_range",
+        when=lambda p: "q_range" in p,
+    )
+    .tensor("q", layout={"TND": "total_s1,N1,576"}, when=lambda p: "q_range" not in p)
     # k_cache: PA_NZ [num_blocks, n2=1, D_nz_sub, block_size, nz_blk_elem]
     # D_nz_sub = 576 / 16 = 36（fp16/bf16 的 NZ 块）
-    .tensor("k_cache", layout={"PA_NZ": "num_blocks,1,D_nz_sub,block_size,nz_blk_elem"},
-            method="uniform", low=-5.0, high=5.0, range_key="k_range",
-            when=lambda p: "k_range" in p)
-    .tensor("k_cache", layout={"PA_NZ": "num_blocks,1,D_nz_sub,block_size,nz_blk_elem"},
-            when=lambda p: "k_range" not in p)
+    .tensor(
+        "k_cache",
+        layout={"PA_NZ": "num_blocks,1,D_nz_sub,block_size,nz_blk_elem"},
+        method="uniform",
+        low=-5.0,
+        high=5.0,
+        range_key="k_range",
+        when=lambda p: "k_range" in p,
+    )
+    .tensor(
+        "k_cache",
+        layout={"PA_NZ": "num_blocks,1,D_nz_sub,block_size,nz_blk_elem"},
+        when=lambda p: "k_range" not in p,
+    )
 )

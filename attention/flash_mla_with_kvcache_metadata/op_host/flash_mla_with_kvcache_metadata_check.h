@@ -16,7 +16,6 @@
  * derived); flash_mla kernel-side static_assert (flash_mla_block_cube_noquant_mla.h) is the invariant.
  */
 
-
 #ifndef FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H
 #define FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H
 
@@ -70,10 +69,10 @@ private:
 
 inline aclnnStatus
 FlashMlaMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                    const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
-                                    int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                    int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
-                                    const char *layoutOut, const aclTensor *metadata)
+                                   const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                   int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                                   int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
+                                   const char *layoutOut, const aclTensor *metadata)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                              layoutQ, layoutKv, layoutOut);
@@ -90,8 +89,8 @@ FlashMlaMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const ac
 
 inline aclnnStatus
 FlashMlaMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                      int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                      const char *layoutQ, const char *layoutKv, const char *layoutOut)
+                                     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                     const char *layoutQ, const char *layoutKv, const char *layoutOut)
 {
     int64_t MIN_BATCH = 0;
     int64_t MAX_BATCH = 65536;
@@ -132,10 +131,10 @@ inline aclnnStatus FlashMlaMetadataCheck::CheckMask(int64_t maskMode)
 
 inline aclnnStatus
 FlashMlaMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                       const char *layoutQ, const char *layoutKv,
-                                       const aclTensor *cuSeqlensQOptional,
-                                       const aclTensor *cacheSeqlensOptional,
-                                       const aclTensor *sequsedQOptional, const aclTensor *metadata)
+                                      const char *layoutQ, const char *layoutKv,
+                                      const aclTensor *cuSeqlensQOptional,
+                                      const aclTensor *cacheSeqlensOptional,
+                                      const aclTensor *sequsedQOptional, const aclTensor *metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
 
@@ -159,9 +158,9 @@ FlashMlaMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int
 
 inline aclnnStatus
 FlashMlaMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
-                                         const aclTensor *cuSeqlensQOptional,
-                                         const aclTensor *cacheSeqlensOptional,
-                                         const aclTensor *sequsedQOptional)
+                                        const aclTensor *cuSeqlensQOptional,
+                                        const aclTensor *cacheSeqlensOptional,
+                                        const aclTensor *sequsedQOptional)
 {
     if (batchSize <= 0) {
         return ACLNN_SUCCESS;
