@@ -38,33 +38,44 @@ protected:
     }
 };
 
-TEST_F(L2AlltoAllvGroupedMatMulV2Test, Test)
+static aclnnStatus CallGetWorkspaceSize(const char *commMode, aclDataType dtype,
+                                        aclFormat weightFormat = ACL_FORMAT_ND)
 {
-    TensorDesc gmmX = TensorDesc({4096, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc gmmWeight = TensorDesc({4, 7168, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmX = TensorDesc({4096, 7168}, dtype, ACL_FORMAT_ND);
+    TensorDesc gmmWeight = TensorDesc({4, 7168, 4096}, dtype, weightFormat);
 
     constexpr int64_t epWorldSize = 8;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
-    constexpr int64_t H = 7168;
     constexpr int64_t e = 4;
     std::vector<int64_t> sendCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
     std::vector<int64_t> recvCountsList(epWorldSize * e, BS * K / (epWorldSize * e));
     aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
     aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-    bool transGmmWeight = false;
-    bool transMmWeight = false;
-    bool permuteOutFlag = false;
-    TensorDesc gmmY_desc = TensorDesc({4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gmmY = TensorDesc({4096, 4096}, dtype, ACL_FORMAT_ND);
     auto ut =
         OP_API_UT(aclnnAlltoAllvGroupedMatMulV2,
-                  INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr, "test_allto_allv_grouped_mat_mul_ep_group",
-                        "ai_cpu", epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag),
-                  OUTPUT(gmmY_desc, nullptr, nullptr));
-    uint64_t workspace_size = 0;
+                  INPUT(gmmX, gmmWeight, nullptr, nullptr, nullptr, nullptr,
+                        "test_allto_allv_grouped_mat_mul_ep_group", commMode, epWorldSize, sendCounts, recvCounts,
+                        false, false, false),
+                  OUTPUT(gmmY, nullptr, nullptr));
+    uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    return ret;
+}
+
+TEST_F(L2AlltoAllvGroupedMatMulV2Test, Test)
+{
+    // A valid call reaches NNopbase initialization. The API UT has no bound device
+    // context, so assert that the V2 parameter checker accepts the request.
+    EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CallGetWorkspaceSize("ai_cpu", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CallGetWorkspaceSize("ccu", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CallGetWorkspaceSize("", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CallGetWorkspaceSize("aiv", ACL_FLOAT16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_BF16, ACL_FORMAT_NCL), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CallGetWorkspaceSize("aiv", ACL_BF16, ACL_FORMAT_FRACTAL_NZ), ACLNN_ERR_PARAM_INVALID);
 }
 
 // sendCounts null
