@@ -14,7 +14,7 @@
  *
  * 模板实例化组合继承 fused_infer_attention_score/op_kernel/arch35 的 MLA 分发宏集
  * （fia_arch35_noquant.h 中 dTemplateType == Aligned576 路径 → run_fia_noquant_mla_kernel 实例化集），
- * 并按 R1（Oracle BLOCKER 1）限定到唯一被 fia*mla 四件套验证过的路由：
+ * 并限定到唯一被 fia*mla 四件套验证过的路由：
  *   q = TND（varlen, cu_seqlens_q）、kv = PA_NZ（block_table + cache_seqlens）、out = NTD（运行时 tiling 字段）。
  * **不实例化 BSND/BNSD query、连续/非-NZ KV、非-NTD 输出组合**（checker 拒绝，FIA MLA 从未运行过）。
  *
@@ -126,9 +126,8 @@ static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[6][2] = {
 // 布尔 template 参数值必须带数字 token：CANN ASCENDC_TPL_PRE 预编译产出的
 // `@@ASCENDC_TPL_BOOL_DECL_<name>@@ = {<values>}` 由 template_tiling.py 的
 // extract_num(re.findall(r'\d+', ...)) 解析（pkg_inc/op_common/atvoss 的 C0/C1 同款约定）。
-// 字面 "false"/"true" 无数字 → "values of ASCENDC_TPL_BOOL_DECL <name> is empty!"。
-// （Todo 14 实测：本文件原声明用 false,true 导致 tbe opc 编译失败；此为最小修复，
-// 真实 bug 记录见 learnings。）
+// 字面 "false"/"true" 无数字 → "values of ASCENDC_TPL_BOOL_DECL <name> is empty!"，
+// tbe opc 编译即失败；数字 token 是工具链契约要求（历史真实损坏点，勿回退为字面 bool）。
 #define FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE 0
 #define FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE 1
 
@@ -200,7 +199,7 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // 28
 };
 
-// 只实例化 MLA 恒真配置（R1/活动范围限定；数值对齐 fia 同名宏）
+// 只实例化 MLA 恒真配置（活动范围限定；数值对齐 fia 同名宏）
 #define Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 9
 #define PSE_MODE_PSE_NONE_TYPE 9
 #define KvLayoutType_NO_PA 0
@@ -208,36 +207,37 @@ static constexpr ConfigParams ConfigValue[] = {
 #define NoQuantMode 31
 
 ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
-                      //    bit 7-0 InOutLayoutType（MLA 限定：仅 2 = InOutLayoutType_TND_TND）
-                      //    0: InOutLayoutType_BNSD_BNSD   （不实例化，R1）
-                      //    1: InOutLayoutType_BSH_BSH     （不实例化，R1）
+                      // InOutLayoutType（位宽 8-bit，key 位 7-0；MLA 限定：仅 2 = InOutLayoutType_TND_TND）
+                      //    0: InOutLayoutType_BNSD_BNSD   （不实例化）
+                      //    1: InOutLayoutType_BSH_BSH     （不实例化）
                       //    2: InOutLayoutType_TND_TND     （q=TND；out 布局走 tiling 运行时字段）
-                      //    3: InOutLayoutType_BNSD_BSND   （不实例化，R1）
-                      //    4: InOutLayoutType_NTD_NTD     （不实例化，R1）
-                      //    5: InOutLayoutType_NTD_TND     （不实例化，R1）
+                      //    3: InOutLayoutType_BNSD_BSND   （不实例化）
+                      //    4: InOutLayoutType_NTD_NTD     （不实例化）
+                      //    5: InOutLayoutType_NTD_TND     （不实例化）
                       ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 255),
-                      //    bit 17-8 Config(S1,S2,D,DV)：MLA 唯一配置
+                      // Config（位宽 10-bit，key 位 17-8，S1/S2/D/DV 组合）：MLA 唯一配置
                       //    9: Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512
                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_10_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1023),
-                      //    bit 18 HasAttenMask
+                      // HasAttenMask（位宽 1-bit，key 位 18）
                       //    0: false
                       //    1: true
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),
-                      //    bit 20-19 KvLayoutType（MLA 限定：仅 3 = KvLayoutType_PA_NZ）
-                      //    0: KvLayoutType_NO_PA          （不实例化：连续 KV 从未被 fia MLA 跑过，R1）
-                      //    1: KvLayoutType_PA_BBH         （不实例化，R1）
-                      //    2: KvLayoutType_PA_BNBD        （不实例化，R1）
+                      // KvLayoutType（位宽 2-bit，key 位 20-19；MLA 限定：仅 3 = KvLayoutType_PA_NZ）
+                      //    0: KvLayoutType_NO_PA          （不实例化：连续 KV 从未被 fia MLA 跑过）
+                      //    1: KvLayoutType_PA_BBH         （不实例化）
+                      //    2: KvLayoutType_PA_BNBD        （不实例化）
                       //    3: KvLayoutType_PA_NZ
                       ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
-                      //    bit 21 IsFd
+                      // IsFd（位宽 1-bit，key 位 21，flash-decode 分派）
                       //    0: false
                       //    1: true
-                      ASCENDC_TPL_BOOL_DECL(IsFd, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),);
+                      ASCENDC_TPL_BOOL_DECL(IsFd, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE), );
 // tiling key 编码（权威 = AscendC::FastEncodeTilingKeyDirect，DECL 序累积 bitWidth、UINT 记 DECL 值表索引）：
 // key = InOutLayoutType | Config<<8 | HasAttenMask<<18 | KvLayoutType<<19 | IsFd<<21
 //   = 2 | 9<<8 | m<<18 | 3<<19 | f<<21  ⇒  4 个组合 key：1575170(m0f0) / 1837314(m1f0) / 3672322(m0f1) / 3934466(m1f1)
-// 注意：desc 注释的 "bit 8-1" 等是 FIA 旧文案（其 DECL 参数位域不同），实际编码以本行为准
-//（Todo 14 实测：按旧注释推导的 key 被 asc_opc "None of the given tiling keys are in the supported list" 拒绝）。
+// 注意：各字段注释中的 key 位标注（bit 7-0 / 17-8 / 18 / 20-19 / 21）按上述编码推导；
+// FIA 旧文案的位域标注与其 DECL 参数布局不同，按旧注释推导的 key 与真实编码不符，
+// 会被 asc_opc 以 "None of the given tiling keys are in the supported list" 拒绝。实际编码以本行为准。
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
