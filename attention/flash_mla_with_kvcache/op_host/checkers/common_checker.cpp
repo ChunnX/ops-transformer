@@ -12,12 +12,12 @@
  * \file common_checker.cpp
  * \brief Common checker for layout, shape, dtype, and scalar attr parameters
  *
- * MLA contract (m0070 + R1):
+ * MLA contract:
  *   - Inputs: q, k_cache, block_table, cache_seqlens, cu_seqlens_q, seqused_q,
  *     attn_mask, metadata. No v / q_rope / k_rope; rope is merged into q and
  *     k_cache (last dim 576 = nope 512 + rope 64), k_cache carries BOTH key and
  *     value data (k == v, single latent KV head: kvHeadNum == n2Size == 1).
- *   - Layouts restricted to the FIA-validated set (R1, Oracle BLOCKER 1):
+ *   - Layouts restricted to the FIA-validated set:
  *     q=TND (cu_seqlens_q required), kv=PA_NZ (block_table required),
  *     out=NTD. BSND/BNSD query, continuous KV, non-NTD out are rejected.
  *     Gate mirror: fused_infer_attention_score/op_host/arch35/
@@ -46,25 +46,25 @@ using namespace arch35MLA;
 using namespace Ops::Base;
 
 // ============================================================================
-// Layout — SinglePara (R1: only the FIA-validated routing set)
+// Layout — SinglePara (only the FIA-validated routing set)
 // ============================================================================
 
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // R1 (Oracle BLOCKER 1): the fia*mla four-piece has only ever been
+    // the fia*mla four-piece has only ever been
     // exercised with q=TND / kv=PA_NZ / out=NTD (fia_tiling_nonquant_mla.cpp:99-107).
     // BSND/BNSD query, continuous KV and any other output layout are rejected.
     const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {FlashMlaWithKvcacheLayout::TND};
-    // kv 侧接受 "NZ" 与 "PA_NZ" 两个别名（m0070 默认 layout_kv="NZ"；parser 会把 PA_NZ 归一为 NZ，
-    // 见 arch35/flash_mla_with_kvcache_tiling.cpp:101 的 FlashMlaWithKvcacheLayout::NZ 断言 —— Todo 14 实测两者都必须放行）
+    // kv 侧接受 "NZ" 与 "PA_NZ" 两个别名（默认 layout_kv="NZ"；parser 会把 PA_NZ 归一为 NZ，
+    // 见 arch35/flash_mla_with_kvcache_tiling.cpp 的 FlashMlaWithKvcacheLayout::NZ 断言 —— 实测两者都必须放行）
     const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_NZ};
     const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {FlashMlaWithKvcacheLayout::NTD};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
         supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
-            LayoutToSerialString(faInfo.qLayout).c_str(),
-            "The value of layout_q must be TND (MLA R1: BSND/BNSD query is not supported)");
+                                              LayoutToSerialString(faInfo.qLayout).c_str(),
+                                              "The value of layout_q must be TND (BSND/BNSD query is not supported)");
         return ge::GRAPH_FAILED;
     }
 
@@ -72,14 +72,14 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTi
                     supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-                    "The value of layout_kv must be PA_NZ (MLA R1: continuous/other paged KV is not supported)"),
+                    "The value of layout_kv must be PA_NZ (continuous/other paged KV is not supported)"),
                 return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
-            LayoutToSerialString(faInfo.outLayout).c_str(),
-            "The value of layout_out must be NTD (MLA R1: non-NTD output is not supported)");
+                                              LayoutToSerialString(faInfo.outLayout).c_str(),
+                                              "The value of layout_out must be NTD (non-NTD output is not supported)");
         return ge::GRAPH_FAILED;
     }
 
@@ -143,7 +143,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FlashMlaWithKvcacheTi
             std::string reason =
                 "The dtype of k_cache must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "k_cache",
-                ToString(kCacheDesc->GetDataType()).c_str(), reason.c_str());
+                                                  ToString(kCacheDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -151,9 +151,9 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FlashMlaWithKvcacheTi
     if (attnOutDesc != nullptr) {
         if (attnOutDesc->GetDataType() != queryDtype) {
             std::string reason = "The dtype of attn_out must be the same as dtype(" +
-                ToString(queryDtype) + ") of query";
+                                 ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "attn_out",
-                ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
+                                                  ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -169,23 +169,23 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FlashMlaWithKvcacheTil
 {
     if ((faInfo.n1Size < 0) || (faInfo.n2Size < 0)) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-            ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
+                               ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and k_cache",
-            shapeStr.c_str(), "N of query and k_cache must be greater than or equal to 0");
+                                               shapeStr.c_str(), "N of query and k_cache must be greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
     if (faInfo.n1Size < faInfo.n2Size) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-            ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
+                               ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and k_cache",
-            shapeStr.c_str(), "N of query must be greater than or equal to the same axis of k_cache");
+                                               shapeStr.c_str(), "N of query must be greater than or equal to the same axis of k_cache");
         return ge::GRAPH_FAILED;
     }
     if (faInfo.n1Size % faInfo.n2Size != 0) {
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-            ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
+                               ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and k_cache",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of k_cache");
+                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of k_cache");
         return ge::GRAPH_FAILED;
     }
 
@@ -201,44 +201,44 @@ ge::graphStatus CommonChecker::CheckAxis(const FlashMlaWithKvcacheTilingInfo &fa
     if (faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0) {
         std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ")";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis B",
-            std::to_string(faInfo.bSize).c_str(), reason.c_str());
+                                              std::to_string(faInfo.bSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (faInfo.qLayout == FlashMlaWithKvcacheLayout::TND) {
         OP_CHECK_IF(faInfo.qTSize <= 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-                ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                "T of query must be greater than 0"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
+                                                          ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                                                          "T of query must be greater than 0"),
+                    return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(faInfo.n1Size <= 0 || faInfo.n1Size > NUM_128,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-            ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "N of query must be within the range (0, 128] (FIA MLA gate)"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
+                                                      ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                                                      "N of query must be within the range (0, 128] (FIA MLA gate)"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "k_cache",
-            ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape()).c_str(),
-            "N of k_cache must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "k_cache",
+                                                      ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape()).c_str(),
+                                                      "N of k_cache must be greater than 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s1Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
-            ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "S of query must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
+                                                      ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                                                      "S of query must be greater than 0"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s2Size <= 0,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "k_cache",
-            ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape()).c_str(),
-            "S of k_cache must be greater than 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "k_cache",
+                                                      ToString(faInfo.opParamInfo.kCache.shape->GetStorageShape()).c_str(),
+                                                      "S of k_cache must be greater than 0"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 // ============================================================================
-// MLA geometry (D4 hard constraints)
+// MLA geometry (hard constraints)
 // ============================================================================
 
 ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingInfo &faInfo)
@@ -265,7 +265,7 @@ ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingI
                                                       "vHeadDim must be 512 in MLA (== head_dim_v)"),
                 return ge::GRAPH_FAILED);
 
-    // head_dim_v attr: required, == 512, and head_dim_v + 64 == 576 (m0070 rope merge)
+    // head_dim_v attr: required, == 512, and head_dim_v + 64 == 576 (rope merged into k_cache)
     const int64_t *headDimV = faInfo.opParamInfo.headDimV;
     OP_CHECK_IF(headDimV == nullptr,
                 OP_LOGE(faInfo.opName, "head_dim_v is required but is null!"),
@@ -307,7 +307,7 @@ ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingI
 }
 
 // ============================================================================
-// Layout — MultiPara constraint table (R1 single valid combo)
+// Layout — MultiPara constraint table (single valid combo)
 // ============================================================================
 
 struct LayoutConstraintConfig {
@@ -316,7 +316,7 @@ struct LayoutConstraintConfig {
 };
 
 static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    // kv 两别名：m0070 默认 "NZ"；parser 归一 FlashMlaWithKvcacheLayout::NZ（arch35/flash_mla_with_kvcache_tiling.cpp:101），PA_NZ 保留
+    // kv 两别名：默认 "NZ"；parser 归一 FlashMlaWithKvcacheLayout::NZ（arch35/flash_mla_with_kvcache_tiling.cpp），PA_NZ 保留
     {FlashMlaWithKvcacheLayout::TND, {{FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_NZ}, {FlashMlaWithKvcacheLayout::NTD}}},
 };
 
@@ -351,11 +351,11 @@ ge::graphStatus CommonChecker::CheckMultiParaLayout(const FlashMlaWithKvcacheTil
 void CommonChecker::SetFaShapeCompare(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     queryShapeCmp_ = std::make_shared<FlashMlaWithKvcacheTilingShapeCompare>(faInfo.opParamInfo.query.shape->GetStorageShape(),
-                                                            faInfo.qLayout, QUERY_NAME, faInfo.opName);
+                                                                             faInfo.qLayout, QUERY_NAME, faInfo.opName);
     keyShapeCmp_ = std::make_shared<FlashMlaWithKvcacheTilingShapeCompare>(faInfo.opParamInfo.kCache.shape->GetStorageShape(),
-                                                          faInfo.kvLayout, K_CACHE_NAME, faInfo.opName);
+                                                                           faInfo.kvLayout, K_CACHE_NAME, faInfo.opName);
     attnOutShapeCmp_ = std::make_shared<FlashMlaWithKvcacheTilingShapeCompare>(faInfo.opParamInfo.attnOut.shape->GetStorageShape(),
-                                                               faInfo.outLayout, ATTN_OUT_NAME, faInfo.opName);
+                                                                               faInfo.outLayout, ATTN_OUT_NAME, faInfo.opName);
 }
 
 ge::graphStatus CommonChecker::CheckQueryShape(const FlashMlaWithKvcacheTilingInfo &faInfo) const
@@ -377,9 +377,9 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FlashMlaWithKv
 
     if (faInfo.blockSize % kvBlockElemNum != 0) {
         std::string reason = "The value of block_size must be a multiple of " + std::to_string(kvBlockElemNum) +
-            " (32 / sizeof(kv_dtype))";
+                             " (32 / sizeof(kv_dtype))";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size",
-            std::to_string(faInfo.blockSize).c_str(), reason.c_str());
+                                              std::to_string(faInfo.blockSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -396,7 +396,7 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FlashMlaWithKv
 
 ge::graphStatus CommonChecker::CheckKVShape(const FlashMlaWithKvcacheTilingInfo &faInfo) const
 {
-    // R1: only PA_NZ KV is supported; block_table drives the paging（kvLayout 可能为归一后的 NZ 别名）
+    // only PA_NZ KV is supported; block_table drives the paging（kvLayout 可能为归一后的 NZ 别名）
     if (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ) {
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
@@ -407,9 +407,9 @@ ge::graphStatus CommonChecker::CheckKVShape(const FlashMlaWithKvcacheTilingInfo 
     }
 
     std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) +
-        " is not supported (MLA R1: only PA_NZ KV)";
+                         " is not supported (only PA_NZ KV)";
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
-        LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
+                                          LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
     return ge::GRAPH_FAILED;
 }
 

@@ -17,7 +17,7 @@
  * actually present (`GetData<T>() != nullptr`, same guard as FIA tiling
  * InitImplParam); during graph compile the data may be absent, in which case
  * the shape/dtype rules still hold and the kernel enforces the values at
- * runtime (ACTLEN_T=uint32_t parser, R2).
+ * runtime (ACTLEN_T=uint32_t parser).
  */
 
 #include <map>
@@ -47,10 +47,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FlashMlaWithK
 
     const gert::CompileTimeTensorDesc *sequsedQDesc = faInfo.opParamInfo.sequsedQ.desc;
     OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "seqused_q",
-            DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str(),
-            "The dtype of seqused_q must be INT32"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "seqused_q",
+                                                      DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str(),
+                                                      "The dtype of seqused_q must be INT32"),
+                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(sequsedQDesc, SEQUSED_Q_NAME)) {
         return ge::GRAPH_FAILED;
@@ -58,9 +58,9 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FlashMlaWithK
 
     uint32_t sequsedQDimNum = sequsedQTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(sequsedQDimNum != 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "seqused_q",
-            std::to_string(sequsedQDimNum).c_str(), "The shape dim of seqused_q must be 1"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "seqused_q",
+                                                         std::to_string(sequsedQDimNum).c_str(), "The shape dim of seqused_q must be 1"),
+                return ge::GRAPH_FAILED);
 
     uint32_t sequsedQShapeSize = sequsedQTensor->GetShapeSize();
     if (sequsedQShapeSize != faInfo.bSize) {
@@ -82,10 +82,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCacheSeqlens(const FlashMlaW
 
     const gert::CompileTimeTensorDesc *cacheSeqlensDesc = faInfo.opParamInfo.cacheSeqlens.desc;
     OP_CHECK_IF(cacheSeqlensDesc != nullptr && cacheSeqlensDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cache_seqlens",
-            DataTypeToSerialString(cacheSeqlensDesc->GetDataType()).c_str(),
-            "The dtype of cache_seqlens must be INT32"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cache_seqlens",
+                                                      DataTypeToSerialString(cacheSeqlensDesc->GetDataType()).c_str(),
+                                                      "The dtype of cache_seqlens must be INT32"),
+                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cacheSeqlensDesc, CACHE_SEQLENS_NAME)) {
         return ge::GRAPH_FAILED;
@@ -93,9 +93,9 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCacheSeqlens(const FlashMlaW
 
     uint32_t cacheSeqlensDimNum = cacheSeqlensTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(cacheSeqlensDimNum != 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cache_seqlens",
-            std::to_string(cacheSeqlensDimNum).c_str(), "The shape dim of cache_seqlens must be 1"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cache_seqlens",
+                                                         std::to_string(cacheSeqlensDimNum).c_str(), "The shape dim of cache_seqlens must be 1"),
+                return ge::GRAPH_FAILED);
 
     uint32_t cacheSeqlensShapeSize = cacheSeqlensTensor->GetShapeSize();
     if (cacheSeqlensShapeSize != faInfo.bSize) {
@@ -118,10 +118,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FlashMlaWit
 
     const gert::CompileTimeTensorDesc *cuSeqlensQDesc = faInfo.opParamInfo.cuSeqlensQ.desc;
     OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-            DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str(),
-            "The dtype of cu_seqlens_q must be INT32"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cu_seqlens_q",
+                                                      DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str(),
+                                                      "The dtype of cu_seqlens_q must be INT32"),
+                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensQDesc, CU_SEQLENS_Q_NAME)) {
         return ge::GRAPH_FAILED;
@@ -129,9 +129,9 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FlashMlaWit
 
     uint32_t cuSeqlensQDimNum = cuSeqlensQTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(cuSeqlensQDimNum != 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-            std::to_string(cuSeqlensQDimNum).c_str(), "The shape dim of cu_seqlens_q must be 1"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cu_seqlens_q",
+                                                         std::to_string(cuSeqlensQDimNum).c_str(), "The shape dim of cu_seqlens_q must be 1"),
+                return ge::GRAPH_FAILED);
 
     uint32_t cuSeqlensQShapeSize = cuSeqlensQTensor->GetShapeSize();
     if (cuSeqlensQShapeSize != faInfo.bSize + 1) {
@@ -148,18 +148,18 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FlashMlaWit
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     OP_CHECK_IF(faInfo.maxSeqQ < -1,
-        OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_q",
-            std::to_string(faInfo.maxSeqQ).c_str(), "= -1 or >= 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_q",
+                                          std::to_string(faInfo.maxSeqQ).c_str(), "= -1 or >= 0"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     OP_CHECK_IF(faInfo.maxSeqKv < -1,
-        OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_kv",
-            std::to_string(faInfo.maxSeqKv).c_str(), "= -1 or >= 0"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_kv",
+                                          std::to_string(faInfo.maxSeqKv).c_str(), "= -1 or >= 0"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -177,27 +177,27 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FlashMlaWithKvcacheTi
 
 ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // m0070: KV is paged-only -> cache_seqlens always required
+    // KV is paged-only -> cache_seqlens always required
     if (faInfo.pageAttentionFlag) {
         auto &cacheSeqlensTensor = faInfo.opParamInfo.cacheSeqlens.tensor;
         OP_CHECK_IF(cacheSeqlensTensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cache_seqlens",
-                "cache_seqlens cannot be empty when paged attention is enabled"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cache_seqlens",
+                                                             "cache_seqlens cannot be empty when paged attention is enabled"),
+                    return ge::GRAPH_FAILED);
     }
 
-    // R1: layout_q is always TND -> cu_seqlens_q always required
+    // layout_q is always TND -> cu_seqlens_q always required
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (faInfo.qLayout == FlashMlaWithKvcacheLayout::TND) {
         OP_CHECK_IF(cuSeqlensQTensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-                "cu_seqlens_q cannot be empty when layout_q is TND"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_q",
+                                                             "cu_seqlens_q cannot be empty when layout_q is TND"),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cuSeqlensQTensor != nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-                "cu_seqlens_q must be empty when layout_q is not TND, only supported in TND layout"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_q",
+                                                             "cu_seqlens_q must be empty when layout_q is not TND, only supported in TND layout"),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -212,7 +212,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeature(const FlashMlaWithKvcacheTilin
 ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     // ACLNN 直调路径下 GetData<int32_t>() 返回设备指针，host 侧值校验会段错误
-    //（与 flash_attn 同策略：只做 shape/dtype 校验；值约束由 kernel 的 ACTLEN_T=uint32_t 解析器兜底，R2）。
+    // （与 flash_attn 同策略：只做 shape/dtype 校验；值约束由 kernel 的 ACTLEN_T=uint32_t 解析器兜底）。
     return ge::GRAPH_SUCCESS;
 }
 

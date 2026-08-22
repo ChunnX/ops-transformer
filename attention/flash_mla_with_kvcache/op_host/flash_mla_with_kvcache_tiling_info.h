@@ -28,7 +28,7 @@ namespace optiling {
 namespace flash_mla_with_kvcache {
 // ============================================================
 // String name constants for tensor and attribute parameters
-// (m0070 interface: no v / q_rope / k_rope / sinks / win_left / win_right;
+// (interface: no v / q_rope / k_rope / sinks / win_left / win_right;
 //  rope merged into q and k_cache, last dim 576 = head_dim_v(512) + rope(64))
 // ============================================================
 const std::string QUERY_NAME = "q";
@@ -54,7 +54,7 @@ const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 // (from flash_mla_with_kvcache_tiling_index.h)
 // ============================================================
 
-// Inputs Index (m0070 order: q, k_cache, block_table, cache_seqlens, cu_seqlens_q,
+// Inputs Index (order: q, k_cache, block_table, cache_seqlens, cu_seqlens_q,
 // seqused_q, attn_mask, metadata)
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t K_CACHE_INDEX = 1;
@@ -65,9 +65,9 @@ constexpr uint32_t SEQUSED_Q_INDEX = 5;
 constexpr uint32_t ATTN_MASK_INDEX = 6;
 constexpr uint32_t METADATA_INDEX = 7;
 
-// Attributes Index (m0070 order: head_dim_v, softmax_scale, mask_mode, max_seqlen_q,
+// Attributes Index (order: head_dim_v, softmax_scale, mask_mode, max_seqlen_q,
 // max_seqlen_kv, layout_q, layout_kv, layout_out, return_softmax_lse)
-constexpr uint32_t ATTR_HEAD_DIM_V_INDEX = 0;   // head_dim_v (nope/value width inside k_cache, default 512)
+constexpr uint32_t ATTR_HEAD_DIM_V_INDEX = 0;    // head_dim_v (nope/value width inside k_cache, default 512)
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1; // softmax_scale
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 2;     // mask_mode
 constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 3;  // max_seqlen_q
@@ -108,13 +108,13 @@ using FlashMlaWithKvcacheTilingShape = FiaTilingShape;
 using FlashMlaWithKvcacheTilingShapeCompare = FiaTilingShapeCompare;
 
 const std::map<std::string, FlashMlaWithKvcacheLayout> layoutMap = {{"BSND", FlashMlaWithKvcacheLayout::BSND},
-                                                   {"BNSD", FlashMlaWithKvcacheLayout::BNSD},
-                                                   {"TND", FlashMlaWithKvcacheLayout::TND},
-                                                   {"NZ", FlashMlaWithKvcacheLayout::NZ},
-                                                   {"NTD", FlashMlaWithKvcacheLayout::NTD},
-                                                   {"PA_BBND", FlashMlaWithKvcacheLayout::PA_BBND},
-                                                   {"PA_BNBD", FlashMlaWithKvcacheLayout::PA_BNBD},
-                                                   {"PA_NZ", FlashMlaWithKvcacheLayout::PA_NZ}};
+                                                                    {"BNSD", FlashMlaWithKvcacheLayout::BNSD},
+                                                                    {"TND", FlashMlaWithKvcacheLayout::TND},
+                                                                    {"NZ", FlashMlaWithKvcacheLayout::NZ},
+                                                                    {"NTD", FlashMlaWithKvcacheLayout::NTD},
+                                                                    {"PA_BBND", FlashMlaWithKvcacheLayout::PA_BBND},
+                                                                    {"PA_BNBD", FlashMlaWithKvcacheLayout::PA_BNBD},
+                                                                    {"PA_NZ", FlashMlaWithKvcacheLayout::PA_NZ}};
 
 enum class FlashMlaWithKvcacheQuantMode : uint32_t {
     NO_QUANT = 0,
@@ -163,9 +163,9 @@ struct FlashMlaWithKvcacheParaInfo {
     FlashMlaWithKvcacheOptionalParaInfo attnMask = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo metadata = {nullptr, nullptr};
 
-    // 已从接口移除（m0070）：key/value/cu_seqlens_kv/seqused_kv 输入与 win_left/win_right 属性。
-    // 说明：cuSeqlensKv/sequsedKv 仍保留字段占位（parser 不再填充，恒为 nullptr），供 Todo 6
-    // tiling 改造前 arch35/flash_mla_with_kvcache_tiling.cpp 编译过渡使用。
+    // 已从接口移除：key/value/cu_seqlens_kv/seqused_kv 输入与 win_left/win_right 属性。
+    // 说明：cuSeqlensKv/sequsedKv 仍保留字段占位（parser 不再填充，恒为 nullptr），
+    // 供 arch35/flash_mla_with_kvcache_tiling.cpp 编译过渡使用。
     FlashMlaWithKvcacheOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
     FlashMlaWithKvcacheOptionalParaInfo sequsedKv = {nullptr, nullptr};
 
@@ -201,18 +201,18 @@ public:
     int64_t s2Size = 0;
     int64_t qkHeadDim = 0;
     int64_t vHeadDim = 0;
-    int64_t ropeHeadDim = 0; // rope 段宽（m0070: rope 合并进 q/k_cache 末 64 道, 默认 64）
+    int64_t ropeHeadDim = 0; // rope 段宽（rope 合并进 q/k_cache 末 64 道, 默认 64）
     int64_t gSize = 0;
     int64_t qTSize = 0;
     int64_t kTSize = 0;
     float softmaxScale = 0;
 
-    // R2: INT32 seq-lens 元素数（kernel ActualSeqLensParser<ACTLEN_T=uint32_t> 的 actualLenDims，
+    // INT32 seq-lens 元素数（kernel ActualSeqLensParser<ACTLEN_T=uint32_t> 的 actualLenDims，
     // 直接指向 cu_seqlens_q / cache_seqlens 两个 INT32 GM buffer；无 int64 物化）
     int64_t actualLenQDims = 0;  // cu_seqlens_q 元素数 = bSize + 1（TND 累计语义, 含头部 0）
     int64_t actualLenKvDims = 0; // cache_seqlens 元素数 = bSize（BY_BATCH 每 batch 长度）
 
-    // mask 参数组（R1：仅 {NO_MASK, RIGHT_DOWN}）
+    // mask 参数组（仅 {NO_MASK, RIGHT_DOWN}）
     int64_t maskMode = 0;
     bool attenMaskFlag = false;
 
@@ -263,7 +263,7 @@ public:
     FlashMlaWithKvcacheLayout qLayout = FlashMlaWithKvcacheLayout::BSND;
     FlashMlaWithKvcacheLayout outLayout = FlashMlaWithKvcacheLayout::BSND;
     FlashMlaWithKvcacheLayout kvLayout = FlashMlaWithKvcacheLayout::BSND;
-    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），R1 路由下恒为 NTD(5)
+    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为 NTD(5)
     int64_t kernelOutputLayout = 0;
 };
 
@@ -325,7 +325,7 @@ constexpr uint32_t MLA_VD_SIZE = 128;
 constexpr uint32_t MLA_D_DIM_512 = 512;
 constexpr uint32_t MLA_ROPE_D_DIM_64 = 64;
 // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 枚举数值（flash_mla_with_kvcache_public_define_arch35.h:31-38）
-constexpr uint32_t KERNEL_LAYOUT_BSH = 0;  // BSH/BSND
+constexpr uint32_t KERNEL_LAYOUT_BSH = 0; // BSH/BSND
 constexpr uint32_t KERNEL_LAYOUT_BNSD = 1;
 constexpr uint32_t KERNEL_LAYOUT_NZ = 2;
 constexpr uint32_t KERNEL_LAYOUT_TND = 3;

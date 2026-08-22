@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache_tiling.h
- * \brief FlashMlaWithKvcache arch35 tiling impl 声明（基于 fia_tiling_nonquant_mla.h 移植，R3）
+ * \brief FlashMlaWithKvcache arch35 tiling impl 声明（基于 fia_tiling_nonquant_mla.h 移植）
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_TILING_IMPL_H_
 #define FLASH_MLA_WITH_KVCACHE_TILING_IMPL_H_
@@ -27,7 +27,7 @@ namespace flash_mla_with_kvcache {
 
 // 5 字段 tiling key —— 与 flash_mla_with_kvcache_template_tiling_key.h 的 ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache, ...)
 // 声明序一致（InOutLayoutType 8bw / Config 10bw / HasAttenMask 1bw / KvLayoutType 2bw / IsFd 1bw）。
-// 键内含语义按 R1 裁剪：InOutLayoutType 恒 TND_TND、Config 恒 MLA(config 9)、KvLayoutType 恒 PA_NZ。
+// 键内含语义按限定路由裁剪：InOutLayoutType 恒 TND_TND、Config 恒 MLA(config 9)、KvLayoutType 恒 PA_NZ。
 struct FlashMlaWithKvcacheTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t config = 0;
@@ -52,7 +52,8 @@ struct FlashMlaWithKvcachePlatFormInfo {
 
 class FlashMlaWithKvcacheTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashMlaWithKvcacheTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit FlashMlaWithKvcacheTilingImpl(gert::TilingContext *context)
+        : FiaTilingBase(context)
     {
     }
     ~FlashMlaWithKvcacheTilingImpl() override = default;
@@ -96,7 +97,7 @@ private:
     bool metadataPassthrough_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
-    // host 侧推导的每 batch 实际长度（R2，INT32 输入，无 int64 GM 物化）
+    // host 侧推导的每 batch 实际长度（INT32 输入，无 int64 GM 物化）
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
     bool needInit_ = false;

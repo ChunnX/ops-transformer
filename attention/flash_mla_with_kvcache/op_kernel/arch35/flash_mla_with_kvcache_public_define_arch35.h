@@ -150,7 +150,7 @@ struct MlaExtConstInfo {
     uint32_t realGSize;
     uint32_t realN2Size;
 
-    /* strides（m0070：q/k_cache 576 宽单张量，nope+rope 分段 stride 分离） */
+    /* strides（q/k_cache 576 宽单张量，nope+rope 分段 stride 分离） */
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
     StridesConstInfo kRopeStrides;

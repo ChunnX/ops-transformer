@@ -11,7 +11,7 @@
 /*!
  * \file flash_mla_with_kvcache_kernel_noquant_mla.h
  * \brief arch35 flash_mla_with_kvcache 非量化 MLA kernel（由 fia_kernel_noquant_mla.h 复制改名；
- *        metadata 消费改为 flash_attn AICPU 多 section 布局，见 B1/D14/D15 重映射表）
+ *        metadata 消费改为 flash_attn AICPU 多 section 布局，与 flash_attn 同构）
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_NOQUANT_MLA_H_
@@ -67,7 +67,7 @@ public:
     // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1KvPBuffers_;
 
-    // 多 section AICPU metadata（flash_attn 布局，B1/D15 重映射）：
+    // 多 section AICPU metadata（flash_attn 布局）：
     // 字节布局 = [16-word header][sectionNum*36*16 (FA)][sectionNum*72*16 (FD)]，FA/FD 区分别绑定 GM tensor。
     AscendC::GlobalTensor<uint32_t> faMetaDataGm_;
     AscendC::GlobalTensor<uint32_t> fdMetaDataGm_;
@@ -76,7 +76,7 @@ public:
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
 
-    // R7/D31: 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：
+    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：
     // AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，
     // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。
     static_assert(FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
@@ -86,7 +86,7 @@ public:
     FlashMlaSeqLensTool<Q_MODE, KV_MODE> seqLensTool_;
 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData_;
-    // kernel 自持 TPipe（Todo 5/8/9：去掉入口外部 tPipe 接线，与 flash_attn Init 15 参风格一致）；
+    // kernel 自持 TPipe（去掉入口外部 tPipe 接线，与 flash_attn Init 15 参风格一致）；
     // 所有 buffer manager / block 的 TPipe 使用路径统一从本成员获取（&pipe_）
     AscendC::TPipe pipe_;
     CubeBlockType cubeBlock_;
@@ -127,9 +127,9 @@ public:
     {
         this->tilingData_ = tiling;
 
-        // metadata（GM 输入，D14）: section 数在 16-word header 第 0 个 uint32
+        // metadata（GM 输入）：section 数在 16-word header 第 0 个 uint32
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
-        // FA 区从 header 后开始（镜像 flash_attn_kernel_nd.h:121-142）
+        // FA 区从 header 后开始（与 flash_attn 同构，参见 flash_attn_kernel_nd.h metadata 消费段）
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
                                       FA_AIC_CORE_NUM * FLASH_ATTN_METADATA_SIZE * sectionNum_);
         fdMetaDataGm_.SetGlobalBuffer(
@@ -142,8 +142,8 @@ public:
         keyPtr_ = key;
         valuePtr_ = value;
 
-        // R2：seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
-        // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用（Todo 8）
+        // seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
+        // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用
         seqLensTool_.InitQ(cuSeqlensQ, sequsedQ, constInfo_.actualSeqLenSize, constInfo_.s1Size);
         seqLensTool_.InitKv(cacheSeqlens, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
 
@@ -256,7 +256,7 @@ public:
             constInfo_.totalSize = flashMlaWithKvcacheS1OuterSplitCoreParams.totalSize;
         } else {
             // 非 S1 外切：每 section 的 FA 任务区间在 FlashAttention(sectionIdx) 内
-            // 由 GetFASectionInfo 从 AICPU metadata 读取（多 section 0 基布局，B1/D15）
+            // 由 GetFASectionInfo 从 AICPU metadata 读取（多 section 0 基布局）
             constInfo_.enableS1OutSplit = false;
         }
         constInfo_.dBasicBlock = AttentionCommon::Align(constInfo_.dSizeV, 64U);
@@ -275,7 +275,7 @@ public:
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    // 单 section FA 任务区间读取（重映射表 B1/D15：FIA 8 字段 CORE_ENABLE 布局 -> AICPU 16 字段 0 基布局，
+    // 单 section FA 任务区间读取（重映射：FIA 8 字段 CORE_ENABLE 布局 -> AICPU 16 字段 0 基布局，
     // FA 各字段索引 -1；FA_CORE_ENABLE 删除，核活跃由区间隐含）
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {

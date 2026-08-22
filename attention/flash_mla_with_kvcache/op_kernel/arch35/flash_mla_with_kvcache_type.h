@@ -100,7 +100,7 @@ struct FATypeFd {
 //    会错误合并空指针分支并改变 seqused=NULL/0 槽位边角语义；
 // 2) q 侧 ACCUM 带首零头（WITH_ZERO_HEAD=true，flash_attn cu_seqlens 约定）；
 // 3) kv 侧 BY_BATCH（cache_seqlens 非累加）。
-// seq-lens 为 INT32 接口（R2/D26），ACTLEN_T=uint32_t；cu_seqlens_q [b+1] / seqused_q [b] / cache_seqlens [b]。
+// seq-lens 为 INT32 接口，ACTLEN_T=uint32_t；cu_seqlens_q [b+1] / seqused_q [b] / cache_seqlens [b]。
 template <ActualSeqLensMode Q_MODE, ActualSeqLensMode KV_MODE>
 class FlashMlaSeqLensTool {
 public:

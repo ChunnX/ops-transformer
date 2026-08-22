@@ -86,8 +86,8 @@ protected:
     GlobalTensor<float> lseMaxFdGm;
     GlobalTensor<float> accumOutGm;
     GlobalTensor<OUTPUT_T> attentionOutGm;
-    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），kv 侧 BY_BATCH（cache_seqlens）；
-    // parser 与 GM 张量所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
+    // seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），kv 侧 BY_BATCH（cache_seqlens）；
+    // parser 与 GM 张量所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
     GlobalTensor<float> softmaxLseGm;
 
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
@@ -485,7 +485,7 @@ public:
         taskInfo.gS1Idx = fd.fdMIdx * s1BaseSize;
         taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
-        // R5/D30 (Oracle MAJOR 5): FD 归约槽位一致性确认 —— FD 阶段按 fdWorkspaceIdx 读 FA 阶段
+        // FD 归约槽位一致性确认 —— FD 阶段按 fdWorkspaceIdx 读 FA 阶段
         // 写出的 accumOut/LSE 块，三处偏移公式核对一致（单位均为行，行宽 dSizeV）：
         //   FA 写：faTmpOutWsPos * mBaseSize * dSizeV 元素（FIA fia_block_vec_noquant_mla.h
         //          Bmm2ResForFDCopyOut；flash_attn 同构 flash_attn_block_vec_nd.h:611）
