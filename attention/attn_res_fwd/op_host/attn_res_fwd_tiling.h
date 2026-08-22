@@ -72,8 +72,12 @@ protected:
     AttnResFwdCompileInfo compileInfo_;
     AttnResFwd::AttnResFwdTilingData tilingData_;
     AttnResFwdInfo inputParams_;
-    uint64_t tilingKey_{TILING_KEY_BF16_RELOAD};
+    ge::DataType inputDtype_{ge::DT_BF16};
+    uint64_t tilingKey_{TILING_KEY_RELOAD};
     uint64_t workspaceSize_{0UL};
+
+    uint32_t DtypeElemBytes() const;
+    uint32_t DtypeElemsPerBlk() const;
 };
 
 } // namespace optiling

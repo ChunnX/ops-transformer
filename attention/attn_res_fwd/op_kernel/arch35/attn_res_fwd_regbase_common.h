@@ -138,7 +138,8 @@ __aicore__ inline void CastB16ToFp32Dual(const LocalTensor<float> &dstFp32, cons
     __local_mem__ float *dstAddr = (__local_mem__ float *)dstFp32.GetPhyAddr();
 
     if constexpr (IsSameType<D_IN, float>::value) {
-        DataCopy(dstFp32, srcB16, hiddenSize);
+        // fp32 直拷：DataCopy 计数需 32B 整段（8 float），尾部由 RoundUpFp32 覆盖（缓冲按 8 对齐分配）
+        DataCopy(dstFp32, srcB16, RoundUpFp32(hiddenSize));
         return;
     }
 
@@ -190,7 +191,8 @@ __aicore__ inline void CastFp32ToB16Dual(const LocalTensor<D_OUT> &dstB16, const
     __local_mem__ D_OUT *dstAddr = (__local_mem__ D_OUT *)dstB16.GetPhyAddr();
 
     if constexpr (IsSameType<D_OUT, float>::value) {
-        DataCopy(dstB16, srcFp32, hiddenSize);
+        // fp32 直拷：DataCopy 计数需 32B 整段（8 float），尾部由 RoundUpFp32 覆盖（缓冲按 8 对齐分配）
+        DataCopy(dstB16, srcFp32, RoundUpFp32(hiddenSize));
         return;
     }
 

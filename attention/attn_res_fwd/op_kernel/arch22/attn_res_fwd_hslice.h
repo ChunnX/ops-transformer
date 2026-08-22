@@ -183,12 +183,12 @@ private:
     __aicore__ inline void LoadScoreWeightChunk(uint64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> inLocal = CopyInRowSyncOff(projWeightGm_, hcOffset, hcLen);
-        Cast(vRow_, inLocal, RoundMode::CAST_NONE, hcLen);
+        CastRowToFp32(vRow_, inLocal, hcLen);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
         inLocal = CopyInRowSyncOff(normWeightGm_, hcOffset, hcLen);
-        Cast(outFp32_, inLocal, RoundMode::CAST_NONE, hcLen);
+        CastRowToFp32(outFp32_, inLocal, hcLen);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
@@ -199,7 +199,7 @@ private:
     /*! 本块行归约：vecMeta[n]=Σv²；metaSoftmax[n]=Σ(v*scoreWeight)。metaIdx 标量槽（WholeReduce 标量 sink）。 */
     __aicore__ inline void ProcessRowScoreChunk(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, uint32_t hcLen)
     {
-        Cast(vRow_, inLocal, RoundMode::CAST_NONE, hcLen);
+        CastRowToFp32(vRow_, inLocal, hcLen);
         PipeBarrier<PIPE_V>();
         Mul(outFp32_, vRow_, vRow_, hcLen);
         PipeBarrier<PIPE_V>();
@@ -326,7 +326,7 @@ private:
     __aicore__ inline void WriteHiddenStatesChunk(uint32_t tokenIdx, uint64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        Cast(outLocal, outFp32_, RoundMode::CAST_RINT, hcLen);
+        CastFp32ToRow(outLocal, outFp32_, hcLen);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
         const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_ + hcOffset;

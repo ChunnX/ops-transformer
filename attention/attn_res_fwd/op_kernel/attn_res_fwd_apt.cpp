@@ -20,6 +20,12 @@
 using namespace AscendC;
 using namespace AttnResFwd;
 
+// 输入 dtype 由编译期宏注入（框架按 def 的 DataType 组合为每个 dtype 生成独立二进制，
+// 并以 -DDTYPE_PREFIX_SUM=<type> 编译，参考 moe_token_permute）；未注入时默认 BF16。
+#if !defined(DTYPE_PREFIX_SUM)
+#define DTYPE_PREFIX_SUM bfloat16_t
+#endif
+
 extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR blockResidual, GM_ADDR projWeight,
                                                    GM_ADDR normWeight, GM_ADDR hiddenStates, GM_ADDR invRms,
                                                    GM_ADDR probs, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -32,12 +38,13 @@ extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR bl
     TPipe pipe;
     AttnResFwdInitParams initParams{prefixSum, blockResidual, projWeight, normWeight, hiddenStates, invRms, probs};
 
-    if (TILING_KEY_IS(TILING_KEY_BF16_RELOAD)) {
-        AttnResFwdReload<bfloat16_t> op(&pipe, &tilingData);
+    // 按 tiling key 分派算法分支（RELOAD/RESIDENT）；dtype 由编译期宏 DTYPE_PREFIX_SUM 决定
+    if (TILING_KEY_IS(TILING_KEY_RELOAD)) {
+        AttnResFwdReload<DTYPE_PREFIX_SUM> op(&pipe, &tilingData);
         op.Init(initParams);
         op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_BF16_RESIDENT)) {
-        AttnResFwdResident<bfloat16_t> op(&pipe, &tilingData);
+    } else if (TILING_KEY_IS(TILING_KEY_RESIDENT)) {
+        AttnResFwdResident<DTYPE_PREFIX_SUM> op(&pipe, &tilingData);
         op.Init(initParams);
         op.Process();
     }

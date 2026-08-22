@@ -173,7 +173,7 @@ private:
     __aicore__ inline void ProcessRowScore(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx,
                                            uint32_t tokenIdx)
     {
-        Cast(vRow_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+        CastRowToFp32(vRow_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
         // 非原地平方：outFp32=v²，保留 vRow=v
         Mul(outFp32_, vRow_, vRow_, hiddenSize_);
@@ -215,12 +215,12 @@ private:
     __aicore__ inline void LoadScoreWeight()
     {
         LocalTensor<D_IN> inLocal = CopyInRowSync(projWeightGm_, 0);
-        Cast(vRow_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+        CastRowToFp32(vRow_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
         inLocal = CopyInRowSync(normWeightGm_, 0);
-        Cast(outFp32_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+        CastRowToFp32(outFp32_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
@@ -296,7 +296,7 @@ private:
     __aicore__ inline void WriteHiddenStates(uint32_t tokenIdx)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        Cast(outLocal, outFp32_, RoundMode::CAST_RINT, hiddenSize_);
+        CastFp32ToRow(outLocal, outFp32_, hiddenSize_);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
         const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_;

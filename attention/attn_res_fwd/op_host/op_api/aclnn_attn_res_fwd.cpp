@@ -43,7 +43,10 @@ struct AttnResFwdParams {
     const aclTensor *probs{nullptr};
 };
 
-static const std::initializer_list<op::DataType> BF16_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+// 输入/输出 hidden_states 支持 BF16 / FP16 / FP32（kernel 由编译期宏按 dtype 生成独立二进制）
+static const std::initializer_list<op::DataType> BF16_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
+                                                                           op::DataType::DT_FLOAT16,
+                                                                           op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> FLOAT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
 static inline bool CheckNotNull(const AttnResFwdParams &params)

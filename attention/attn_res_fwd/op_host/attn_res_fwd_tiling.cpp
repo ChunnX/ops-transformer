@@ -114,18 +114,20 @@ uint32_t AttnResFwdTiling::CalcMaxResidentRows(uint32_t hiddenSize) const
     // UB ≈ B*H*2 + 4*H*4(scoreWeight/vRow/out/brc) + B*4 + 2*H*2(Que) + overhead (+ minStaging)
     // N_ub_max = floor( (UB - 4*H*4 - 2*H*2 - overhead - minStaging) / (H*2 + 4) )
     // 保持保守估计，避免误选 RESIDENT（大 H 下 B 稍大即可能 UB 打满/精度异常）
+    // fp16/fp32 输入按元素字节数等比放大（fp32 为 2 倍）
     if (hiddenSize == 0) {
         return 0;
     }
+    const uint32_t elemBytes = DtypeElemBytes();
     const uint64_t workBytes =
         static_cast<uint64_t>(4U) * hiddenSize * sizeof(float) +
-        static_cast<uint64_t>(2U) * hiddenSize * sizeof(uint16_t) + UB_OVERHEAD_BYTES +
+        static_cast<uint64_t>(2U) * hiddenSize * elemBytes + UB_OVERHEAD_BYTES +
         static_cast<uint64_t>(GetMinStagingBytes());
     if (workBytes >= UB_AVAIL_BYTES) {
         return 0;
     }
     const uint64_t remain = UB_AVAIL_BYTES - workBytes;
-    const uint64_t perRow = static_cast<uint64_t>(hiddenSize) * sizeof(uint16_t) + sizeof(float);
+    const uint64_t perRow = static_cast<uint64_t>(hiddenSize) * elemBytes + sizeof(float);
     return static_cast<uint32_t>(remain / perRow);
 }
 
@@ -137,13 +139,15 @@ bool AttnResFwdTiling::CanResidentAllBlocks(uint32_t blockCount, uint32_t hidden
 uint32_t AttnResFwdTiling::CalcHSliceChunk() const
 {
     // TK-HSLICE 的 h 切块大小：取满足切块 UB 预算的最大 chunk。
-    // 切块缓冲：inQue 2×chunkBf16×2B + outQue 1×chunkBf16×2B + 3 个 fp32 buf ×chunkFp32×4B；
+    // 切块缓冲：inQue 2×chunk×elemBytes + outQue 1×chunk×elemBytes + 3 个 fp32 buf ×chunk×4B；
     // 元数据：vecMeta+metaSoftmax+sumSq+score(各 metaAlign×4B) + metaBrc(metaAlign×8×4B) + scalar + 全局开销。
     const uint32_t B = tilingData_.blockCount;
     const uint32_t H = tilingData_.hiddenSize;
     if (B == 0 || H == 0) {
         return 0;
     }
+    const uint32_t elemBytes = DtypeElemBytes();
+    const uint32_t elemsPerBlk = DtypeElemsPerBlk();
     const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
     constexpr uint32_t META_FLOAT_PER_ALIGN = 1U + 1U + 8U + 1U + 1U; // vecMeta+metaSoftmax+metaBrc+sumSq+score
     uint64_t metaBytes =
@@ -156,11 +160,12 @@ uint32_t AttnResFwdTiling::CalcHSliceChunk() const
         return H; // 保护：退化为整行单块（此时 kernel 按 hiddenSizeChunk=H 处理）
     }
     const uint64_t remain = UB_AVAIL_BYTES - metaBytes;
-    constexpr uint64_t PER_ELEM_BYTES = 18U; // inQue 2×2B + outQue 1×2B + 3 个 fp32 buf ×4B
-    uint32_t chunk = static_cast<uint32_t>(remain / PER_ELEM_BYTES);
-    chunk = AlignDownU32(chunk, ELEM_PER_BLK_BF16);
-    if (chunk < ELEM_PER_BLK_BF16) {
-        chunk = ELEM_PER_BLK_BF16;
+    constexpr uint64_t FP32_COMPUTE_PER_ELEM = 3U * sizeof(float); // scoreWeight + vRow + outFp32
+    const uint64_t perElemBytes = 3U * elemBytes + FP32_COMPUTE_PER_ELEM; // inQue 2× + outQue 1×
+    uint32_t chunk = static_cast<uint32_t>(remain / perElemBytes);
+    chunk = AlignDownU32(chunk, elemsPerBlk);
+    if (chunk < elemsPerBlk) {
+        chunk = elemsPerBlk;
     }
     if (chunk > H) {
         chunk = H;
@@ -174,17 +179,18 @@ uint64_t AttnResFwdTiling::EstimateUbComputeBytes(bool resident) const
     const uint32_t B = tilingData_.blockCount;
     const uint32_t HAlignBf16 = AlignUpU32(H, ELEM_PER_BLK_BF16);
     const uint32_t HAlignFp32 = AlignUpU32(H, ELEM_PER_BLK_FP32);
+    const uint32_t elemBytes = DtypeElemBytes();
     // 与 arch22 / kernel 一致：meta 按 32B block（8 fp32）对齐
     const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
 
     uint64_t ub = 0;
     if (resident) {
-        ub += static_cast<uint64_t>(1) * HAlignBf16 * sizeof(uint16_t); // inQue
-        ub += static_cast<uint64_t>(1) * HAlignBf16 * sizeof(uint16_t); // outQue
-        ub += static_cast<uint64_t>(B) * HAlignBf16 * sizeof(uint16_t); // vBf16 resident
+        ub += static_cast<uint64_t>(1) * HAlignBf16 * elemBytes; // inQue
+        ub += static_cast<uint64_t>(1) * HAlignBf16 * elemBytes; // outQue
+        ub += static_cast<uint64_t>(B) * HAlignBf16 * elemBytes; // vBf16 resident
     } else {
-        ub += static_cast<uint64_t>(2) * HAlignBf16 * sizeof(uint16_t); // inQue BUFFER_NUM=2
-        ub += static_cast<uint64_t>(1) * HAlignBf16 * sizeof(uint16_t); // outQue
+        ub += static_cast<uint64_t>(2) * HAlignBf16 * elemBytes; // inQue BUFFER_NUM=2
+        ub += static_cast<uint64_t>(1) * HAlignBf16 * elemBytes; // outQue
     }
     ub += static_cast<uint64_t>(3) * HAlignFp32 * sizeof(float); // scoreWeight + vRow + outFp32
     ub += static_cast<uint64_t>(metaAlign) * sizeof(float); // vecMeta
@@ -234,28 +240,32 @@ ge::graphStatus AttnResFwdTiling::DoLibApiTiling()
 {
     const uint32_t B = tilingData_.blockCount;
     const uint32_t H = tilingData_.hiddenSize;
+    // dtype 不编码进 key：框架按 dtype 编译独立 kernel 二进制，key 只区分算法分支。
+    // 此处仍按运行时 dtype 估算 UB，保证 RELOAD/RESIDENT/HSLICE 选择对 fp16/fp32 成立。
+    uint64_t variantKey = TILING_KEY_RELOAD;
     if (CanResidentAllBlocks(B, H)) {
-        tilingKey_ = TILING_KEY_BF16_RESIDENT;
+        variantKey = TILING_KEY_RESIDENT;
         tilingData_.hiddenSizeChunk = 0;
         OP_LOGI(context_->GetNodeName(),
                 "Select TK-RESIDENT (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
-                static_cast<unsigned long>(tilingKey_), B, H,
+                static_cast<unsigned long>(variantKey), B, H,
                 CalcMaxResidentRows(H), tilingData_.needBackward);
     } else if (EstimateUbComputeBytes(false) <= UB_AVAIL_BYTES) {
-        tilingKey_ = TILING_KEY_BF16_RELOAD;
+        variantKey = TILING_KEY_RELOAD;
         tilingData_.hiddenSizeChunk = 0;
         OP_LOGI(context_->GetNodeName(),
                 "Select TK-RELOAD (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
-                static_cast<unsigned long>(tilingKey_), B, H,
+                static_cast<unsigned long>(variantKey), B, H,
                 CalcMaxResidentRows(H), tilingData_.needBackward);
     } else {
-        tilingKey_ = TILING_KEY_BF16_HSLICE;
+        variantKey = TILING_KEY_HSLICE;
         tilingData_.hiddenSizeChunk = CalcHSliceChunk();
         OP_LOGI(context_->GetNodeName(),
                 "Select TK-HSLICE (%lu): B=%u H=%u chunk=%u N_ub_max=%u needBackward=%u",
-                static_cast<unsigned long>(tilingKey_), B, H, tilingData_.hiddenSizeChunk,
+                static_cast<unsigned long>(variantKey), B, H, tilingData_.hiddenSizeChunk,
                 CalcMaxResidentRows(H), tilingData_.needBackward);
     }
+    tilingKey_ = variantKey;
     OP_CHECK_IF(FillStagingFields() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "FillStagingFields failed"), return ge::GRAPH_FAILED);
     PrintTilingData();
@@ -326,17 +336,34 @@ ge::graphStatus AttnResFwdTiling::AnalyzeDtype()
     auto normDtype = context_->GetInputDesc(NORM_WEIGHT_INDEX)->GetDataType();
     auto outDtype = context_->GetOutputDesc(HIDDEN_STATES_INDEX)->GetDataType();
 
-    OP_CHECK_IF(prefixDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "prefix_sum dtype must be BF16"),
+    const auto dtypeOk = [](ge::DataType dt) { return dt == ge::DT_BF16 || dt == ge::DT_FLOAT16 || dt == ge::DT_FLOAT; };
+    OP_CHECK_IF(!dtypeOk(prefixDtype), OP_LOGE(context_->GetNodeName(), "prefix_sum dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "block_residual dtype must be BF16"),
+    OP_CHECK_IF(!dtypeOk(blockDtype), OP_LOGE(context_->GetNodeName(), "block_residual dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(projDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "proj_weight dtype must be BF16"),
+    OP_CHECK_IF(!dtypeOk(projDtype), OP_LOGE(context_->GetNodeName(), "proj_weight dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(normDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "norm_weight dtype must be BF16"),
+    OP_CHECK_IF(!dtypeOk(normDtype), OP_LOGE(context_->GetNodeName(), "norm_weight dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(outDtype != ge::DT_BF16, OP_LOGE(context_->GetNodeName(), "hidden_states dtype must be BF16"),
+    OP_CHECK_IF(!dtypeOk(outDtype), OP_LOGE(context_->GetNodeName(), "hidden_states dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(prefixDtype != blockDtype || prefixDtype != projDtype || prefixDtype != normDtype ||
+                    prefixDtype != outDtype,
+                OP_LOGE(context_->GetNodeName(), "all inputs and hidden_states must share the same dtype"),
+                return ge::GRAPH_FAILED);
+    inputDtype_ = prefixDtype;
     return ge::GRAPH_SUCCESS;
+}
+
+uint32_t AttnResFwdTiling::DtypeElemBytes() const
+{
+    return (inputDtype_ == ge::DT_FLOAT) ? sizeof(float) : sizeof(uint16_t);
+}
+
+uint32_t AttnResFwdTiling::DtypeElemsPerBlk() const
+{
+    // 32B block 可容纳的元素数：16bit → 16，fp32 → 8
+    return (inputDtype_ == ge::DT_FLOAT) ? ELEM_PER_BLK_FP32 : ELEM_PER_BLK_BF16;
 }
 
 ge::graphStatus AttnResFwdTiling::AnalyzeShapes()

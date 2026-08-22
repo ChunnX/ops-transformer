@@ -21,6 +21,39 @@
 using namespace AscendC;
 using namespace AttnResFwd;
 
+// 输入 dtype 由编译期宏注入（框架按 def 的 DataType 组合为每个 dtype 生成独立二进制，
+// 并以 -DDTYPE_PREFIX_SUM=<type> 编译，参考 moe_token_permute）；未注入时默认 BF16。
+#if !defined(DTYPE_PREFIX_SUM)
+#define DTYPE_PREFIX_SUM bfloat16_t
+#endif
+
+template <typename D_IN>
+__aicore__ inline void RunReload(TPipe *pipe, const AttnResFwdTilingData &tilingData,
+                                 const AttnResFwdInitParams &initParams)
+{
+    AttnResFwdReload<D_IN> op(pipe, &tilingData);
+    op.Init(initParams);
+    op.Process();
+}
+
+template <typename D_IN>
+__aicore__ inline void RunResident(TPipe *pipe, const AttnResFwdTilingData &tilingData,
+                                   const AttnResFwdInitParams &initParams)
+{
+    AttnResFwdResident<D_IN> op(pipe, &tilingData);
+    op.Init(initParams);
+    op.Process();
+}
+
+template <typename D_IN>
+__aicore__ inline void RunHSlice(TPipe *pipe, const AttnResFwdTilingData &tilingData,
+                                 const AttnResFwdInitParams &initParams)
+{
+    AttnResFwdHSlice<D_IN> op(pipe, &tilingData);
+    op.Init(initParams);
+    op.Process();
+}
+
 extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR blockResidual, GM_ADDR projWeight,
                                                    GM_ADDR normWeight, GM_ADDR hiddenStates, GM_ADDR invRms,
                                                    GM_ADDR probs, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -33,17 +66,12 @@ extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR bl
     TPipe pipe;
     AttnResFwdInitParams initParams{prefixSum, blockResidual, projWeight, normWeight, hiddenStates, invRms, probs};
 
-    if (TILING_KEY_IS(TILING_KEY_BF16_RELOAD)) {
-        AttnResFwdReload<bfloat16_t> op(&pipe, &tilingData);
-        op.Init(initParams);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_BF16_RESIDENT)) {
-        AttnResFwdResident<bfloat16_t> op(&pipe, &tilingData);
-        op.Init(initParams);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_BF16_HSLICE)) {
-        AttnResFwdHSlice<bfloat16_t> op(&pipe, &tilingData);
-        op.Init(initParams);
-        op.Process();
+    // 按 tiling key 分派算法分支（RELOAD/RESIDENT/HSLICE）；dtype 由编译期宏 DTYPE_PREFIX_SUM 决定
+    if (TILING_KEY_IS(TILING_KEY_RELOAD)) {
+        RunReload<DTYPE_PREFIX_SUM>(&pipe, tilingData, initParams);
+    } else if (TILING_KEY_IS(TILING_KEY_RESIDENT)) {
+        RunResident<DTYPE_PREFIX_SUM>(&pipe, tilingData, initParams);
+    } else if (TILING_KEY_IS(TILING_KEY_HSLICE)) {
+        RunHSlice<DTYPE_PREFIX_SUM>(&pipe, tilingData, initParams);
     }
 }

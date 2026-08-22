@@ -354,14 +354,57 @@ __aicore__ inline void MulAddRowByBrcBlock(const LocalTensor<float>& dst, const 
  * BF16→FP32：Counter 外置 + Level0 连续 stride（等价 Adds 前n 的 isSetMask=false）。
  * Cast Level2 无 isSetMask，故用 Level0 连续：{dstBlk,srcBlk,dstRep,srcRep}={1,1,8,4}。
  * 调用前须已 SetMaskCount + SetVectorMask<float, COUNTER>(elemCount)。
+ * FP32 输入：同型直拷（Copy Level0，isSetMask=false，Counter 外置）。
  */
 template <typename SrcT>
 __aicore__ inline void CastRowToFp32CounterNoSetMask(const LocalTensor<float>& dst, const LocalTensor<SrcT>& src)
 {
-    // 与 Level2 Cast 内部一致：fp32 dstRep=8，bf16/half srcRep=4
-    const UnaryRepeatParams castParams{1, 1, static_cast<uint8_t>(MUL_BRC_REP_STRIDE),
-                                       static_cast<uint8_t>(MUL_BRC_REP_STRIDE / 2U)};
-    Cast<float, SrcT, false>(dst, src, RoundMode::CAST_NONE, MASK_PLACEHOLDER, 1, castParams);
+    if constexpr (IsSameType<SrcT, float>::value) {
+        // fp32→fp32：与 16bit→fp32 等价步长（dstRep=8，src 每 repeat 64 元素）
+        const CopyRepeatParams copyParams{1, 1, static_cast<uint8_t>(MUL_BRC_REP_STRIDE),
+                                          static_cast<uint8_t>(MUL_BRC_REP_STRIDE)};
+        Copy<float, false>(dst, src, MASK_PLACEHOLDER, 1, copyParams);
+    } else {
+        // 与 Level2 Cast 内部一致：fp32 dstRep=8，bf16/half srcRep=4
+        const UnaryRepeatParams castParams{1, 1, static_cast<uint8_t>(MUL_BRC_REP_STRIDE),
+                                           static_cast<uint8_t>(MUL_BRC_REP_STRIDE / 2U)};
+        Cast<float, SrcT, false>(dst, src, RoundMode::CAST_NONE, MASK_PLACEHOLDER, 1, castParams);
+    }
+}
+
+/*! dst(fp32) = src：16bit Cast 或 fp32 直拷（普通 mask，非 Counter）。 */
+template <typename SrcT>
+__aicore__ inline void CastRowToFp32(const LocalTensor<float>& dst, const LocalTensor<SrcT>& src, uint32_t elemCount)
+{
+    if constexpr (IsSameType<SrcT, float>::value) {
+        CopyCompactFloatsUb(dst, src, elemCount);
+    } else {
+        Cast(dst, src, RoundMode::CAST_NONE, elemCount);
+        PipeBarrier<PIPE_V>();
+    }
+}
+
+/*! dst = fp32 src：16bit 输出 CAST_RINT 或 fp32 直拷。 */
+template <typename DstT>
+__aicore__ inline void CastFp32ToRow(const LocalTensor<DstT>& dst, const LocalTensor<float>& src, uint32_t elemCount)
+{
+    if constexpr (IsSameType<DstT, float>::value) {
+        CopyCompactFloatsUb(dst, src, elemCount);
+    } else {
+        Cast(dst, src, RoundMode::CAST_RINT, elemCount);
+        PipeBarrier<PIPE_V>();
+    }
+}
+
+/*! UB→UB 紧凑拷贝（16bit 用 128 元素/rep，fp32 用 64 元素/rep）。 */
+template <typename T>
+__aicore__ inline void CopyCompactUb(const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t elemCount)
+{
+    if constexpr (sizeof(T) == 2) {
+        CopyCompactHalfsUb(dst, src, elemCount);
+    } else {
+        CopyCompactFloatsUb(dst, src, elemCount);
+    }
 }
 
 /*! 小 B 末轴归约 max/sum（等价 mhc LastDimReduceMax/SumPerf，curRowNum=1）。 */

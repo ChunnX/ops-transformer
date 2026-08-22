@@ -139,12 +139,12 @@ private:
     {
         // Phase-0：proj×norm → scoreWeight
         LocalTensor<D_IN> inLocal = CopyInRow(projWeightGm_, 0);
-        Cast(vRow_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+        CastRowToFp32(vRow_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
         inLocal = CopyInRow(normWeightGm_, 0);
-        Cast(outFp32_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+        CastRowToFp32(outFp32_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
@@ -172,8 +172,8 @@ private:
             }
             LocalTensor<D_IN> dstRow = GetResidentRow(n);
             // UB→UB：Vector Copy 分段拷贝（Level0 mask-count 单指令上限：16bit 128 元素/rep，勿用 DataCopy）
-            CopyCompactHalfsUb(dstRow, inLocal, hiddenSizeAlignBf16_);
-            Cast(vRow_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
+            CopyCompactUb(dstRow, inLocal, hiddenSizeAlignBf16_);
+            CastRowToFp32(vRow_, inLocal, hiddenSize_);
             PipeBarrier<PIPE_V>();
             FreeInRow(inLocal);
 
@@ -250,7 +250,7 @@ private:
     __aicore__ inline void WriteHiddenStates(uint32_t tokenIdx)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        Cast(outLocal, outFp32_, RoundMode::CAST_RINT, hiddenSize_);
+        CastFp32ToRow(outLocal, outFp32_, hiddenSize_);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
         const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_;
