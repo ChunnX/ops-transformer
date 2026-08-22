@@ -23,6 +23,7 @@
 
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/memcopy/parser.h"
 
 namespace BaseApi {
 
@@ -90,6 +91,47 @@ struct FATypeFd {
     static constexpr bool hasMask = HAS_MASK;
     static constexpr uint8_t kvLayoutType = KvLayoutType;
     static constexpr bool pageAttention = (KvLayoutType > 0);
+};
+
+// kernel 持有的 seq-lens 解析工具（镜像 flash_attn utils/flash_attn_type.h:134-155 SeqLensTool
+// 的"kernel 持有工具、block 构造收引用"组织方式）。与 FA 的关键差异（Oracle 约束）：
+// 1) 保留 q 侧 seqused_q==nullptr 双分支——FA 的 SeqLensTool 无 null-seqused 概念，直接移植
+//    会错误合并空指针分支并改变 seqused=NULL/0 槽位边角语义；
+// 2) q 侧 ACCUM 带首零头（WITH_ZERO_HEAD=true，flash_attn cu_seqlens 约定）；
+// 3) kv 侧 BY_BATCH（cache_seqlens 非累加）。
+// seq-lens 为 INT32 接口（R2/D26），ACTLEN_T=uint32_t；cu_seqlens_q [b+1] / seqused_q [b] / cache_seqlens [b]。
+template <ActualSeqLensMode Q_MODE, ActualSeqLensMode KV_MODE>
+class FlashMlaSeqLensTool {
+public:
+    using SEQLEN_T = uint32_t;
+
+    // cu_seqlens_q / cache_seqlens 的 GM 张量（offsetCalculator 直接消费；kernel Init 内绑定
+    // 后各 block 只读引用，替代 block 各自持副本）
+    GlobalTensor<SEQLEN_T> actualSeqLengthsGmQ;
+    GlobalTensor<SEQLEN_T> actualSeqLengthsGm;
+
+    ActualSeqLensParser<Q_MODE, SEQLEN_T, true> qActSeqLensParser;
+    ActualSeqLensParser<KV_MODE, SEQLEN_T, false> kvActSeqLensParser;
+
+    __aicore__ inline void InitQ(__gm__ uint8_t *cuSeqlensQAddr, __gm__ uint8_t *sequsedQAddr,
+                                 uint32_t actualSeqLenSize, uint64_t s1Size)
+    {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ SEQLEN_T *)cuSeqlensQAddr, actualSeqLenSize);
+        if (sequsedQAddr == nullptr) {
+            // 双分支 1（保留，不压平）：无 seqused_q → cu_seqlens_q 差分语义（含首零头累加）
+            qActSeqLensParser.Init(actualSeqLengthsGmQ, actualSeqLenSize, s1Size);
+        } else {
+            // 双分支 2：有 seqused_q → 按逐 batch 实际长度取值（seqused 长度 = b = actualSeqLenSize - 1）
+            qActSeqLensParser.Init((__gm__ uint8_t *)cuSeqlensQAddr, actualSeqLenSize,
+                                   (__gm__ uint8_t *)sequsedQAddr, actualSeqLenSize - 1);
+        }
+    }
+
+    __aicore__ inline void InitKv(__gm__ uint8_t *cacheSeqlensAddr, uint32_t actualSeqLenKVSize, uint64_t s2Size)
+    {
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ SEQLEN_T *)cacheSeqlensAddr, actualSeqLenKVSize);
+        kvActSeqLensParser.Init(actualSeqLengthsGm, actualSeqLenKVSize, s2Size);
+    }
 };
 
 } // namespace BaseApi
