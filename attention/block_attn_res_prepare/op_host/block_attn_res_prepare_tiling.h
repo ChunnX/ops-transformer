@@ -11,6 +11,9 @@
 #ifndef BLOCK_ATTN_RES_PREPARE_TILING_H
 #define BLOCK_ATTN_RES_PREPARE_TILING_H
 
+#include <cstddef>
+#include <cstdint>
+
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "platform/platform_info.h"
@@ -34,27 +37,41 @@ struct BlockAttnResPrepareCompileInfo {
 ge::graphStatus TilingBlockAttnResPrepare(gert::TilingContext *context);
 ge::graphStatus TilingPrepareBlockAttnResPrepare(gert::TilingParseContext *context);
 
-class BlockAttnResPrepareTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+// Owns the template-independent tiling workflow. A new template derives directly from this class and only provides
+// its capability check, tile calculation, tiling key, data view and diagnostic dump.
+class BlockAttnResPrepareTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockAttnResPrepareTiling(gert::TilingContext *context)
+    explicit BlockAttnResPrepareTilingBase(gert::TilingContext *context)
         : TilingBaseClass(context)
     {}
-    ~BlockAttnResPrepareTiling() override = default;
+    ~BlockAttnResPrepareTilingBase() override = default;
 
 protected:
-    bool IsCapable() override;
+    struct WorkDistribution {
+        uint32_t usedCoreNum = 0;
+        uint32_t bigCoreNum = 0;
+        uint32_t blockFactor = 0;
+        uint32_t tailBlockFactor = 0;
+    };
+
+    struct TilingDataView {
+        const void *data = nullptr;
+        size_t size = 0;
+        const char *templateName = nullptr;
+    };
+
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;
-    ge::graphStatus DoOpTiling() override;
     ge::graphStatus DoLibApiTiling() override;
-    uint64_t GetTilingKey() const override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    void DumpTilingInfo() override;
 
-protected:
+    virtual TilingDataView GetTilingDataView() const = 0;
+
     ge::graphStatus CheckInputShapes();
     ge::graphStatus CheckInputDtypes() const;
+    ge::graphStatus CalculateWorkDistribution(uint64_t totalWorkUnits, uint64_t maxCoreNum,
+                                              const char *templateName, WorkDistribution &distribution) const;
 
     uint64_t totalT_ = 0;
     uint64_t totalN_ = 0;
@@ -70,11 +87,28 @@ protected:
     uint64_t l0BSize_ = 0;
     uint64_t l0CSize_ = 0;
     uint64_t systemWorkspaceSize_ = 0;
+    uint64_t workspaceSize_ = 0;
+    uint32_t usedCoreNum_ = 0;
+};
+
+// Vector fallback template.
+class BlockAttnResPrepareTiling final : public BlockAttnResPrepareTilingBase {
+public:
+    explicit BlockAttnResPrepareTiling(gert::TilingContext *context)
+        : BlockAttnResPrepareTilingBase(context)
+    {}
+    ~BlockAttnResPrepareTiling() override = default;
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    uint64_t GetTilingKey() const override;
+    void DumpTilingInfo() override;
+    TilingDataView GetTilingDataView() const override;
 
 private:
     bool SelectVectorBaseD(bool hasMultipleWorkRounds);
 
-    uint32_t usedCoreNum_ = 0;
     uint32_t baseD_ = 0;
     uint32_t qBufferNum_ = 1;
     uint32_t vBufferNum_ = 1;
@@ -84,26 +118,24 @@ private:
     BlockAttnResPrepareTilingData tilingData_{};
 };
 
-class BlockAttnResPrepareCubeTiling : public BlockAttnResPrepareTiling {
+// Mixed Cube/Vector template.
+class BlockAttnResPrepareCubeTiling final : public BlockAttnResPrepareTilingBase {
 public:
     explicit BlockAttnResPrepareCubeTiling(gert::TilingContext *context)
-        : BlockAttnResPrepareTiling(context)
+        : BlockAttnResPrepareTilingBase(context)
     {}
     ~BlockAttnResPrepareCubeTiling() override = default;
 
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
-    ge::graphStatus DoLibApiTiling() override;
     uint64_t GetTilingKey() const override;
-    ge::graphStatus GetWorkspaceSize() override;
-    ge::graphStatus PostTiling() override;
     void DumpTilingInfo() override;
+    TilingDataView GetTilingDataView() const override;
 
 private:
     bool SelectCubeTileShape();
 
-    uint32_t usedCoreNum_ = 0;
     uint32_t baseT_ = 1;
     uint32_t baseS_ = 0;
     uint32_t baseD_ = 0;
@@ -125,7 +157,6 @@ private:
     uint64_t reduceUbElems_ = 0;
     uint64_t softmaxUbElems_ = 0;
     uint64_t workspacePerCoreElems_ = 0;
-    uint64_t workspaceSize_ = 0;
 
     BlockAttnResPrepareCubeTilingData tilingData_{};
 };
