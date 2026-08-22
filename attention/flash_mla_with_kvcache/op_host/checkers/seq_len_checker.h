@@ -12,10 +12,10 @@
  * \file actual_seq_len_checker.h
  * \brief Checker for cache_seqlens (B), cu_seqlens_q (B+1) and seqused_q (B)
  *
- * m0070 seq-lens contract: the KV side is paged, so the flash_attn
+ * seq-lens contract: the KV side is paged, so the flash_attn
  * KV-side cumulative/used seq-lens inputs do NOT exist; per-batch KV-cache
  * lengths are carried by cache_seqlens (INT32 [b]), which is REQUIRED (paged
- * KV). cu_seqlens_q is REQUIRED when layout_q is TND (R1: always, since TND is
+ * KV). cu_seqlens_q is REQUIRED when layout_q is TND (always, since TND is
  * the only query layout). seqused_q remains optional [b].
  */
 

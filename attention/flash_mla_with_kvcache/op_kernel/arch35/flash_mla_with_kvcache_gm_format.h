@@ -14,7 +14,7 @@
  *        flash_attention_score_block_cube.h:30-70 逐字一致（只读参考）。
  *        四件套（flash_mla_with_kvcache_block_cube_noquant_mla.h:44-47）直接调用这两个模板；
  *        FIA 的 TU 经由其自家 block_cube_base 链自然携带，flash_mla_with_kvcache 的 kernel 拷贝树
- *        不含跨算子文件，故在本算子内部补一份（Todo 14 实测依赖）。
+ *        不含跨算子文件，故在本算子内部补一份（编译期实测依赖）。
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_GM_FORMAT_H_

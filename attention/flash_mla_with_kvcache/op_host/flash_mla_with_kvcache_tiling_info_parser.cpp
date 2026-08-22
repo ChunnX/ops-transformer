@@ -188,7 +188,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetStrides()
         hasViewStride_ = false;
         return ge::GRAPH_SUCCESS;
     }
-    // k == v 单 buffer (m0070: k_cache 同时承载 key 与 value 数据)
+    // k == v 单 buffer (k_cache 同时承载 key 与 value 数据)
     keyStrides_ = context_->GetInputStride(K_CACHE_INDEX);
     valueStrides_ = keyStrides_;
     return ge::GRAPH_SUCCESS;
@@ -240,7 +240,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetAttrParaInfo()
 
 void FlashMlaWithKvcacheInfoParser::GetMaskParams()
 {
-    // 文档约束：不传或传入-1代表正无穷，默认值为-1；win_left/win_right 已从 m0070 接口移除，恒为 -1
+    // 文档约束：不传或传入-1代表正无穷，默认值为-1；win_left/win_right 已从接口移除，恒为 -1
     winLeft_ = -1;
     winRight_ = -1;
     maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
@@ -294,8 +294,8 @@ void FlashMlaWithKvcacheInfoParser::GetKeyTSize()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetQkHeadDim()
 {
-    // m0070: q 最后维 = 576（nope 512 + rope 64 合并）。dSize(attention 计算宽度) = head_dim_v(nope 段),
-    // dSizeRope 从 576 - head_dim_v 推导；R1 仅 MLA D512：head_dim_v==512、rope==64。
+    // q 最后维 = 576（nope 512 + rope 64 合并）。dSize(attention 计算宽度) = head_dim_v(nope 段),
+    // dSizeRope 从 576 - head_dim_v 推导；仅 MLA D512：head_dim_v==512、rope==64。
     if (queryShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -337,17 +337,17 @@ void FlashMlaWithKvcacheInfoParser::GetKvIsContiguous()
     if (keyStrides_ != nullptr) {
         const gert::Shape &keyShape = opParamInfo_.kCache.shape->GetStorageShape();
         keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
-                      ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
     }
 
     if (valueStrides_ != nullptr) {
         const gert::Shape &valueShape = opParamInfo_.kCache.shape->GetStorageShape();
         valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
-                        ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
-    
+
     if (layoutKV_ == FlashMlaWithKvcacheLayout::PA_BBND) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
@@ -417,9 +417,9 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetBlockNum()
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetS2SizeForPageAttention()
 {
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+                                                      "When layout_kv is PA, block_table must be provided but got nullptr."),
+                return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -445,7 +445,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetS2Size()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetValueHeadDim()
 {
-    // k==v（m0070）：k_cache 最后维 576 承载 key(nope512+rope64) 与 value(nope512)。
+    // k==v：k_cache 最后维 576 承载 key(nope512+rope64) 与 value(nope512)。
     // vHeadDim = head_dim_v（nope/value 段宽）；同时校验 k_cache 最后维 = head_dim_v + rope。
     if (valueShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -467,7 +467,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+                                              opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -476,7 +476,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+                                              opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -485,20 +485,20 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+                                              opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
 
-    // R1 hard gate（Oracle BLOCKER-1）：fia*mla 四件套仅验证过 q=TND / kv=PA_NZ / out=NTD。
+    // 硬性路由约束：fia*mla 四件套仅验证过 q=TND / kv=PA_NZ / out=NTD。
     // bsnd/bnsd/连续 KV/非 NTD 输出一律拒绝；"PA_NZ" 归一为 "NZ"（FIA MLA gate 用 FiaLayout::NZ）。
     if (layoutQ_ != FlashMlaWithKvcacheLayout::TND || layoutOut_ != FlashMlaWithKvcacheLayout::NTD) {
-        OP_LOGE(opName_, "R1 gate: only q=TND, out=NTD supported for flash_mla_with_kvcache, got q=%s out=%s.",
+        OP_LOGE(opName_, "gate: only q=TND, out=NTD supported for flash_mla_with_kvcache, got q=%s out=%s.",
                 LayoutToSerialString(layoutQ_).c_str(), LayoutToSerialString(layoutOut_).c_str());
         return ge::GRAPH_FAILED;
     }
     if (layoutKV_ != FlashMlaWithKvcacheLayout::NZ && layoutKV_ != FlashMlaWithKvcacheLayout::PA_NZ) {
-        OP_LOGE(opName_, "R1 gate: only kv=NZ(PA_NZ, block_table required) supported for flash_mla_with_kvcache, got kv=%s.",
+        OP_LOGE(opName_, "gate: only kv=NZ(PA_NZ, block_table required) supported for flash_mla_with_kvcache, got kv=%s.",
                 LayoutToSerialString(layoutKV_).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -535,7 +535,7 @@ void FlashMlaWithKvcacheInfoParser::SetFaShape()
 {
     queryShape_ =
         std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.query.shape->GetStorageShape(), layoutQ_, QUERY_NAME, opName_);
-    // m0070: 单个 k_cache 同时承载 key 与 value（k == v 语义），key/value 形状按同一张量推导
+    // 单个 k_cache 同时承载 key 与 value（k == v 语义），key/value 形状按同一张量推导
     keyShape_ =
         std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.kCache.shape->GetStorageShape(), layoutKV_, K_CACHE_NAME, opName_);
     valueShape_ =
@@ -551,9 +551,9 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.kCache.shape->GetStorageShape());
+                               ToString(opParamInfo_.kCache.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and k_cache",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of k_cache");
+                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of k_cache");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -562,7 +562,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetGSize()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetActualSeqInfo()
 {
-    // R2（Oracle BLOCKER-2）：不物化 int64 —— kernel ActualSeqLensParser 以 ACTLEN_T=uint32_t
+    // 不物化 int64 —— kernel ActualSeqLensParser 以 ACTLEN_T=uint32_t
     // 直接读取 host 传入的 INT32 GM buffer（cu_seqlens_q / cache_seqlens），此处只统计元素数。
     //   cu_seqlens_q  [b+1]：TND 累计语义（含头部 0）→ actualLenQDims = b + 1
     //   cache_seqlens [b]  ：每 batch 的实际 KV-cache 长度（BY_BATCH 语义）→ actualLenKvDims = b
@@ -580,14 +580,14 @@ void FlashMlaWithKvcacheInfoParser::GenerateFeatureInfo(FlashMlaWithKvcacheTilin
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 
-    // Mask 参数组（R1：maskMode ∈ {NO_MASK, RIGHT_DOWN}；attenMaskFlag = attn_mask 张量存在，FIA 语义）
+    // Mask 参数组（maskMode ∈ {NO_MASK, RIGHT_DOWN}；attenMaskFlag = attn_mask 张量存在，FIA 语义）
     faInfo.maskMode = maskMode_;
     faInfo.attenMaskFlag =
         (opParamInfo_.attnMask.tensor != nullptr) && (opParamInfo_.attnMask.tensor->GetStorageShape().GetShapeSize() != 0);
     faInfo.winLeft = winLeft_;
     faInfo.winRight = winRight_;
 
-    // R1: preTokens/nextTokens 由 maskMode 推导（FIA UpdatePreNextTokenBySparseMode 语义）
+    // preTokens/nextTokens 由 maskMode 推导（FIA UpdatePreNextTokenBySparseMode 语义）
     faInfo.preTokens = MASK_MODE_INT_MAX;
     faInfo.nextTokens = MASK_MODE_INT_MAX;
     if (maskMode_ == static_cast<int64_t>(MaskMode::CAUSAL)) {
@@ -599,7 +599,7 @@ void FlashMlaWithKvcacheInfoParser::GenerateFeatureInfo(FlashMlaWithKvcacheTilin
     faInfo.totalLseSize =
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
 
-    // R2: INT32 seq-lens buffer 元素数
+    // INT32 seq-lens buffer 元素数
     faInfo.actualLenQDims = actualLenQDims_;
     faInfo.actualLenKvDims = actualLenKvDims_;
 
@@ -613,7 +613,7 @@ void FlashMlaWithKvcacheInfoParser::GenerateLayoutInfo(FlashMlaWithKvcacheTiling
     faInfo.qLayout = layoutQ_;
     faInfo.kvLayout = layoutKV_;
     faInfo.outLayout = layoutOut_;
-    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h:31-38），R1 路由下恒为 NTD(5)
+    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为 NTD(5)
     switch (layoutOut_) {
         case FlashMlaWithKvcacheLayout::BSH:
         case FlashMlaWithKvcacheLayout::BSND:
@@ -754,7 +754,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::ParseAxisInfo()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::ParseFeatureInfo()
 {
-    // Mask 参数组解析；R1 合法集 {NO_MASK(0), RIGHT_DOWN(3)}（FIA MLA 仅验证过这两个 sparseMode）
+    // Mask 参数组解析；合法集 {NO_MASK(0), RIGHT_DOWN(3)}（FIA MLA 仅验证过这两个 sparseMode）
     GetMaskParams();
     if (maskMode_ != static_cast<int64_t>(MaskMode::NO_MASK) &&
         maskMode_ != static_cast<int64_t>(MaskMode::CAUSAL)) {

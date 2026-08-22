@@ -88,8 +88,8 @@ public:
     TPipe *tPipe = nullptr;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
-    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），ACTLEN_T=uint32_t；
-    // parser 所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
+    // seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），ACTLEN_T=uint32_t；
+    // parser 所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
     SeqLensToolType &seqLensTool_;
 
     attenMaskGmType attenMaskGmInt;
