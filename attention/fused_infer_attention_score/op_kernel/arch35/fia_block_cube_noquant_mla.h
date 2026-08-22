@@ -82,9 +82,6 @@ public:
 
     BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
 
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
@@ -133,11 +130,9 @@ public:
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
                     actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryGm, query);
 
-        keyPtr = key;
-        valuePtr = value;
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(key));
         __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(value));
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
@@ -277,7 +272,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
