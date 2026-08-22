@@ -478,7 +478,7 @@ public:
         softmaxLseQueue.DeQue<float>();
 
         GmCoord lseGmCoord{.bIdx = runInfo.bIdx,
-                           .n2Idx = runInfo.n2Idx,
+                           .n2Idx = runInfo.realN2Idx,
                            .gS1Idx = vecMIdx,
                            .dIdx = 0,
                            .gS1DealSize = gmDealRowCount,
@@ -489,7 +489,7 @@ public:
                 (layout == LayOutTypeEnum::LAYOUT_TND) ? GmFormat::LSE_TN2G : GmFormat::LSE_N2GT;
             FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
             lseGmTensor_.gmTensor = softmaxLseGm;
-            lseGmTensor_.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, actualSeqLengthsGmQ,
+            lseGmTensor_.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, actualSeqLengthsGmQ,
                                                constInfo.actualSeqLenSize);
             CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
             copyLseUbToGm_(lseGmTensor_, lseUb, lseGmCoord);
@@ -497,8 +497,8 @@ public:
             constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
             FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
             lseGmTensor_.gmTensor = softmaxLseGm;
-            lseGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+            lseGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
+                                               constInfo.s1Size, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
             copyLseUbToGm_(lseGmTensor_, lseUb, lseGmCoord);
         }
