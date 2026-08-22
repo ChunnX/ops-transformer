@@ -530,14 +530,5 @@ public:
     }
 };
 
-template <typename FA_T>
-class FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy {
-public:
-    using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
-    template <typename FlashMlaSeqLensToolT>
-    __aicore__ inline FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy(ConstInfoX &constInfo,
-                                                                     FlashMlaSeqLensToolT &seqLensTool){};
-};
-
 } // namespace BaseApi
 #endif
