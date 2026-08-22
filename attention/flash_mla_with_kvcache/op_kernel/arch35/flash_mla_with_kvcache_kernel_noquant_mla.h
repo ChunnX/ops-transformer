@@ -76,10 +76,19 @@ public:
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
 
+    // R7/D31: 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：
+    // AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，
+    // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。
+    static_assert(FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
+                  "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
+
     ConstInfoX constInfo_;
+    FlashMlaSeqLensTool<Q_MODE, KV_MODE> seqLensTool_;
 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData_;
-    AscendC::TPipe *pipe_ = nullptr;
+    // kernel 自持 TPipe（Todo 5/8/9：去掉入口外部 tPipe 接线，与 flash_attn Init 15 参风格一致）；
+    // 所有 buffer manager / block 的 TPipe 使用路径统一从本成员获取（&pipe_）
+    AscendC::TPipe pipe_;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -105,33 +114,17 @@ public:
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
 
-    // R2/D26：seq-lens 为 INT32 接口（cu_seqlens_q [b+1]/seqused_q [b] 可选/cache_seqlens [b]），
-    // 解析器全部以 ACTLEN_T=uint32_t 实例化（无 int64 GM 物化）；q 侧 ACCUM 带首零头
-    // （flash_attn cu_seqlens 约定，WITH_ZERO_HEAD=true），kv 侧 BY_BATCH（cache_seqlens 非累加）。
-    using QActSeqLens = ActualSeqLensParser<Q_MODE, uint32_t, true>;
-    using KvActSeqLens = ActualSeqLensParser<KV_MODE, uint32_t, false>;
-    QActSeqLens qActSeqLensParser_;
-    KvActSeqLens kvActSeqLensParser_;
-
-    // R7/D31: 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：
-    // AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，
-    // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。
-    static_assert(FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
-                  "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
-
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantMlaKernel()
-        : cubeBlock_(constInfo_),
-          vecFaBlock_(constInfo_),
-          vecFdBlock_(constInfo_){};
+        : cubeBlock_(constInfo_, seqLensTool_),
+          vecFaBlock_(constInfo_, seqLensTool_),
+          vecFdBlock_(constInfo_, seqLensTool_){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                 __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
-                                const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tiling,
-                                AscendC::TPipe *tPipe)
+                                const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tiling)
     {
-        this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
         // metadata（GM 输入，D14）: section 数在 16-word header 第 0 个 uint32
@@ -149,40 +142,27 @@ public:
         keyPtr_ = key;
         valuePtr_ = value;
 
-        // R2：seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass
-        AscendC::GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-        AscendC::GlobalTensor<uint32_t> actualSeqLengthsGmKv;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ, constInfo_.actualSeqLenSize);
-        if (sequsedQ == nullptr) {
-            // cu_seqlens_q 差分语义（actualSeqLenSize 约定为 b+1，含首零头，flash_attn 约定）
-            qActSeqLensParser_.Init(actualSeqLengthsGmQ, constInfo_.actualSeqLenSize, constInfo_.s1Size);
-        } else {
-            // seqused_q 可选：给定后按逐 batch 实际长度取值（seqused 长度 = b = actualSeqLenSize - 1）
-            qActSeqLensParser_.Init((__gm__ uint8_t *)cuSeqlensQ, constInfo_.actualSeqLenSize,
-                                    (__gm__ uint8_t *)sequsedQ, constInfo_.actualSeqLenSize - 1);
-        }
-
-        actualSeqLengthsGmKv.SetGlobalBuffer((__gm__ uint32_t *)cacheSeqlens, constInfo_.actualSeqLenKVSize);
-        kvActSeqLensParser_.Init(actualSeqLengthsGmKv, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
+        // R2：seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
+        // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用（Todo 8）
+        seqLensTool_.InitQ(cuSeqlensQ, sequsedQ, constInfo_.actualSeqLenSize, constInfo_.s1Size);
+        seqLensTool_.InitKv(cacheSeqlens, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
 
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitVecBlock(tPipe, cuSeqlensQ, sequsedQ, cacheSeqlens, attenMask, softmaxLse, attentionOut,
-                                     workspace);
+            vecFaBlock_.InitVecBlock(&pipe_, attenMask, softmaxLse, attentionOut, workspace);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, cuSeqlensQ, cacheSeqlens);
+            cubeBlock_.InitCubeBlock(&pipe_, &l1BufferManager_, query, key, value, blockTable);
         }
 
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm, this->vecFaBlock_.softmaxFDSumGm,
-                                             this->vecFaBlock_.accumOutGm, this->vecFaBlock_.attentionOutGm,
-                                             actualSeqLengthsGmQ, sequsedQ, actualSeqLengthsGmKv, keyPtr_);
+                                             this->vecFaBlock_.accumOutGm, this->vecFaBlock_.attentionOutGm, keyPtr_);
                 if (unlikely(constInfo_.isSoftmaxLseEnable)) {
                     AscendC::GlobalTensor<float> softmaxLseGm;
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
@@ -197,10 +177,10 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         uint32_t mm12RightSize = s2BaseSize * 576 * sizeof(INPUT_T);
-        l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
+        l1BufferManager_.Init(&pipe_, 524288); // 512 * 1024
         // 3Buffer
         l1KvPBuffers_.Init(l1BufferManager_, mm12RightSize); // L1: 144k * 3 = 432k
-        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize * 2);
+        ubBufferManager_.Init(&pipe_, mm1ResultSize * 2 + mm2ResultSize * 2);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
@@ -471,8 +451,8 @@ public:
         uint32_t bIdx = bN2Cur / constInfo_.n2Size;
         if (isFirstTask || prevBIdx_ != bIdx) {
             prevBIdx_ = bIdx;
-            actSeqLensKv_ = kvActSeqLensParser_.GetActualSeqLength(bIdx);
-            actSeqLensQ_ = qActSeqLensParser_.GetActualSeqLength(bIdx);
+            actSeqLensKv_ = seqLensTool_.kvActSeqLensParser.GetActualSeqLength(bIdx);
+            actSeqLensQ_ = seqLensTool_.qActSeqLensParser.GetActualSeqLength(bIdx);
             cachedS2LoopTimes_ = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
             uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
             cachedG1S1LoopTimes_ = (gS1Size + mBaseSize - 1) / mBaseSize;
@@ -796,8 +776,8 @@ public:
 
         // 跳batch
         while (bIdx < constInfo_.bSize) {
-            actSeqLensQ_ = qActSeqLensParser_.GetActualSeqLength(bIdx);
-            actSeqLensKv_ = kvActSeqLensParser_.GetActualSeqLength(bIdx);
+            actSeqLensQ_ = seqLensTool_.qActSeqLensParser.GetActualSeqLength(bIdx);
+            actSeqLensKv_ = seqLensTool_.kvActSeqLensParser.GetActualSeqLength(bIdx);
             gS1Size = actSeqLensQ_ * constInfo_.gSize;
             gS1LoopTimes = actSeqLensQ_ == 0 ? constInfo_.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
             if (gS1Skip >= n2Size * gS1LoopTimes) {
@@ -854,7 +834,7 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        vecFdBlock_.InitBuffers(&this->pipe_);
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         AscendC::SyncAll();

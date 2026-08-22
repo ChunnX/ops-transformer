@@ -86,9 +86,8 @@ protected:
     GlobalTensor<float> lseMaxFdGm;
     GlobalTensor<float> accumOutGm;
     GlobalTensor<OUTPUT_T> attentionOutGm;
-    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），kv 侧 BY_BATCH（cache_seqlens）
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint32_t> actualSeqLengthsGm;
+    // R2/D26：seq-lens INT32；q 侧 ACCUM 带首零头（cu_seqlens_q [b+1]），kv 侧 BY_BATCH（cache_seqlens）；
+    // parser 与 GM 张量所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
     GlobalTensor<float> softmaxLseGm;
 
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<layout>();
@@ -98,10 +97,9 @@ protected:
     // =======================获取实际Act_S===========================
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, isPa>();
+    using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
     // tensorlist
     __gm__ uint8_t *keyPtr = nullptr;
-    ActualSeqLensParser<Q_MODE, uint32_t, true> qActSeqLensParser;
-    ActualSeqLensParser<KV_MODE, uint32_t, false> kvActSeqLensParser;
 
     int64_t preTokensPerBatch = 0;
     int64_t nextTokensPerBatch = 0;
@@ -115,6 +113,7 @@ protected:
     // ================================类成员变量====================================
     // 结构体
     const ConstInfoX &constInfo;
+    SeqLensToolType &seqLensTool_;
     TaskInfoMla taskInfo{};
 
 private:
@@ -138,29 +137,19 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FlashMlaWithKvcacheBlockVecFlashDecodeMla(ConstInfoX &constInfo)
-        : constInfo(constInfo){};
+    __aicore__ inline FlashMlaWithKvcacheBlockVecFlashDecodeMla(ConstInfoX &constInfo, SeqLensToolType &seqLensTool)
+        : constInfo(constInfo),
+          seqLensTool_(seqLensTool){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
-                                            GlobalTensor<uint32_t> cuSeqlensQGm, __gm__ uint8_t *sequsedQAddr,
-                                            GlobalTensor<uint32_t> cacheSeqlensGm, __gm__ uint8_t *key)
+                                            __gm__ uint8_t *key)
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
         this->accumOutGm = accumOutGm;
         this->attentionOutGm = attentionOutGm;
-        this->actualSeqLengthsGmQ = cuSeqlensQGm;
-        this->actualSeqLengthsGm = cacheSeqlensGm;
         this->keyPtr = key;
-
-        if (sequsedQAddr == nullptr) {
-            qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
-        } else {
-            qActSeqLensParser.Init((__gm__ uint8_t *)this->actualSeqLengthsGmQ.GetPhyAddr(0),
-                                   constInfo.actualSeqLenSize, sequsedQAddr, constInfo.actualSeqLenSize - 1);
-        }
-        kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
     }
 
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
@@ -293,7 +282,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
@@ -301,14 +290,14 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -316,7 +305,7 @@ protected:
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -325,7 +314,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -359,8 +348,8 @@ protected:
     }
     __aicore__ inline void CalcPreNextTokens()
     {
-        actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+        actSeqLensQ = seqLensTool_.qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+        actSeqLensKv = seqLensTool_.kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
         int64_t safePreToken = constInfo.preTokens;
         int64_t safeNextToken = constInfo.nextTokens;
 
@@ -451,13 +440,13 @@ public:
             WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             uint32_t mOffset = taskInfo.gS1Idx + startRow;
             if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
                 DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                                                            constInfo);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                uint32_t s1Size = seqLensTool_.qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
                 DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                                                            constInfo, s1Size);
@@ -469,7 +458,7 @@ public:
             } else { // BNSD
                 uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                      taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                 DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
                                                             actualGSplitSize, constInfo, qActSeqLens);
             }
@@ -545,7 +534,9 @@ template <typename FA_T>
 class FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy {
 public:
     using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
-    __aicore__ inline FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy(ConstInfoX &constInfo){};
+    template <typename FlashMlaSeqLensToolT>
+    __aicore__ inline FlashMlaWithKvcacheBlockVecFlashDecodeMlaDummy(ConstInfoX &constInfo,
+                                                                     FlashMlaSeqLensToolT &seqLensTool){};
 };
 
 } // namespace BaseApi

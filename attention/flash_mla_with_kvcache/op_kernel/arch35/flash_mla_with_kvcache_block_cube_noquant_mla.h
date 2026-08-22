@@ -39,6 +39,9 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
     static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
+    using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true}; // true: bmm2Write2Ub
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<FA_T::qLayout>();
@@ -63,8 +66,8 @@ public:
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
     FaGmTensor<KV_T, KV_FORMAT> valueGm;
     GlobalTensor<int32_t> blockTableGm;
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint32_t> actualSeqLengthsGm;
+    // seq-lens GM 张量与解析器所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
+    SeqLensToolType &seqLensTool_;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
@@ -87,16 +90,16 @@ public:
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
-    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockCube(ConstInfoX &constInfo)
-        : constInfo(constInfo){};
+    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockCube(ConstInfoX &constInfo, SeqLensToolType &seqLensTool)
+        : constInfo(constInfo),
+          seqLensTool_(seqLensTool){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
-                                         __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-                                         __gm__ uint8_t *cuSeqlensQAddr, __gm__ uint8_t *cacheSeqlensAddr)
+                                         __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable)
     {
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
-        InitCubeInput(query, key, value, blockTable, cuSeqlensQAddr, cacheSeqlensAddr);
+        InitCubeInput(query, key, value, blockTable);
     }
 
     __aicore__ inline void InitBuffers()
@@ -115,15 +118,8 @@ public:
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqlensQAddr,
-                                         __gm__ uint8_t *cacheSeqlensAddr)
+                                         __gm__ uint8_t *blockTable)
     {
-        if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQAddr, constInfo.actualSeqLenSize);
-        }
-        if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)cacheSeqlensAddr, constInfo.actualSeqLenKVSize);
-        }
         if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
@@ -131,8 +127,8 @@ public:
         // m0070：query 576 宽单张量（nope 512 + rope 64 合并）——GM stride 按 576 初始化，
         // 供 CopyQueryAndRopeTile 的 rope 段按 dIdx=512 偏移定位
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                    constInfo.dSize + constInfo.dSizeRope, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryGm,
-                    query);
+                    constInfo.dSize + constInfo.dSizeRope, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                    queryGm, query);
 
         keyPtr = key;
         valuePtr = value;
@@ -143,10 +139,10 @@ public:
 
         // m0070：k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
         // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），valueGm 仅初始化不再单独读取
-        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, keyGm, key_,
                      constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
-        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV + constInfo.dSizeRope, valueGm, value_,
                      constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
     }
@@ -166,7 +162,7 @@ public:
     }
 
     __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize,
-                                        GlobalTensor<uint32_t> actualSeqLengthsGmQ, uint32_t actualLenDims,
+                                        GlobalTensor<uint32_t> actualSeqLengthsGm, uint32_t actualLenDims,
                                         uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
                                         FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm, uint32_t bnStride,
                                         uint32_t n2Stride)
@@ -391,7 +387,9 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
-    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy(ConstInfoX &constInfo){};
+    template <typename FlashMlaSeqLensToolT>
+    __aicore__ inline FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy(ConstInfoX &constInfo,
+                                                                  FlashMlaSeqLensToolT &seqLensTool){};
 };
 
 } // namespace BaseApi
