@@ -46,6 +46,7 @@ constexpr uint32_t CUBE_MIN_D = 256U;
 constexpr uint64_t MAX_HEAD_DIM = 8192UL;
 constexpr uint32_t MAX_BLOCK_NUM = FP32_REG_ELEMS;
 constexpr uint32_t STAT_VECTOR_COUNT = 2U;
+constexpr uint32_t STAT_BUFFER_NUM = 2U;
 constexpr uint32_t SCALAR_BLOCK_ELEMS = 8U;
 constexpr uint32_t STAT_UB_ELEMS = STAT_VECTOR_COUNT * FP32_REG_ELEMS + 2U * SCALAR_BLOCK_ELEMS;
 constexpr uint32_t VECTOR_SCHEDULE_MODE = 1U;
@@ -221,7 +222,8 @@ bool BlockAttnResPrepareTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
         const uint64_t vLoopNum = dTileNum * totalN_;
         const uint64_t vBufferNum = (vLoopNum > 1) ? 2UL : 1UL;
         const uint64_t fixedElems =
-            (qBufferNum + vBufferNum + oBufferNum) * baseDAlign + static_cast<uint64_t>(STAT_UB_ELEMS);
+            (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
+            static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS;
         const uint64_t fixedBytes = fixedElems * FP32_BYTES;
         if (fixedBytes > usableUbBytes) {
             continue;
