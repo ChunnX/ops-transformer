@@ -111,7 +111,6 @@ private:
     const MixedQuantSparseFlashMlaTilingData *__restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 3;
-    uint32_t crossCoreSyncBufId = 0;
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
 
@@ -398,23 +397,13 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     l1BufferManager.Init(pipe, mm2LeftSize * 2);
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
-    crossCoreSyncBufId++;
 
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
@@ -425,12 +414,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                                         static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
 
     uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3 * (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
     uint64_t phyAddrRegionSize = 0;
