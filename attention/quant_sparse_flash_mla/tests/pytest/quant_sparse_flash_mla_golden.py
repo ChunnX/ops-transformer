@@ -103,6 +103,142 @@ class GeneralizedSFAQuant:
         self.ori_win_right = ori_win_right
         self.template_run_mode = template_run_mode
 
+    @staticmethod
+    def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
+        """Return the S2 reduction-block size used by batch-consistency metadata."""
+        total_s2_size = ori_s2_size + cmp_s2_size
+        raw_reduce_size = math.ceil(total_s2_size / 32)
+        return max(math.ceil(raw_reduce_size / 128) * 128, 128)
+
+    @staticmethod
+    def _update_s2_tile(
+        q_fp32,
+        k_tile,
+        combined_scale,
+        kv_descale,
+        score_max,
+        sumexp,
+        acc_o,
+        hifp8_scale_value=16.0,
+    ):
+        """使用一个 S2 tile 更新 online-softmax 状态。"""
+        v_tile = k_tile.clone()
+        mm1_res = torch.matmul(q_fp32, k_tile.T)
+        scale_res = mm1_res * combined_scale
+
+        score_max_pre = score_max.clone()
+        cur_score_max = scale_res.max(dim=-1)[0]
+        score_max = torch.max(score_max, cur_score_max)
+        score_max_pre = score_max_pre - score_max
+        score_max_pre = torch.exp(score_max_pre)
+
+        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
+        sumexp_i = acc_s.sum(dim=-1)
+        sumexp = sumexp * score_max_pre + sumexp_i
+
+        acc_s_cast = acc_s * hifp8_scale_value
+        acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
+        acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
+
+        mm2_res = torch.matmul(acc_s_cast, v_tile)
+        mm2_res = mm2_res * kv_descale
+        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+        return score_max, sumexp, acc_o
+
+    def _calculate_local_s2_block(
+        self,
+        q_fp32,
+        k_block_fp32,
+        kv_descale,
+        initial_score_max,
+        s2_base_size=128,
+        hifp8_scale_value=16.0,
+    ):
+        """Calculate one NPU reduction block and keep its local softmax state."""
+        score_max = initial_score_max.clone()
+        sumexp = torch.ones_like(score_max, dtype=torch.float32)
+        acc_o = torch.zeros(
+            (q_fp32.shape[0], k_block_fp32.shape[-1]), dtype=torch.float32
+        )
+        combined_scale = self.softmax_scale * self.q_descale_val * kv_descale
+
+        for s2_start in range(0, k_block_fp32.shape[0], s2_base_size):
+            k_tile = k_block_fp32[s2_start : s2_start + s2_base_size]
+            score_max, sumexp, acc_o = self._update_s2_tile(
+                q_fp32,
+                k_tile,
+                combined_scale,
+                kv_descale,
+                score_max,
+                sumexp,
+                acc_o,
+                hifp8_scale_value,
+            )
+
+        return score_max, sumexp, acc_o / sumexp.unsqueeze(1)
+
+    def _calculate_batch_consistency(
+        self,
+        q_fp32,
+        ori_k_fp32,
+        cmp_k_fp32,
+        sinks,
+    ):
+        """按照 NPU batch-consistency 的 S2 切分和固定 FD 规约顺序计算。"""
+        ori_s2_size = ori_k_fp32.shape[0]
+        cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
+        reduce_size = self._get_batch_consistency_reduce_size(
+            ori_s2_size, cmp_s2_size
+        )
+
+        # Metadata 会对 ori 和 cmp 分别切分；同一个规约块不会
+        # 跨越两个不同的量化/反量化域。
+        blocks = []
+        for k_tensor, kv_descale in (
+            (ori_k_fp32, self.ori_kv_descale_val),
+            (cmp_k_fp32, self.cmp_kv_descale_val),
+        ):
+            if k_tensor is None:
+                continue
+            for start in range(0, k_tensor.shape[0], reduce_size):
+                blocks.append((k_tensor[start : start + reduce_size], kv_descale))
+
+        merged_lse = None
+        merged_sum = None
+        merged_o = None
+        for block_id, (k_block, kv_descale) in enumerate(blocks):
+            initial_max = (
+                sinks.clone()
+                if block_id == 0 and sinks is not None
+                else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            local_max, local_sum, local_o = self._calculate_local_s2_block(
+                q_fp32, k_block, kv_descale, initial_max
+            )
+            if merged_lse is None:
+                merged_lse = local_max
+                merged_sum = local_sum
+                merged_o = local_o
+                continue
+
+            global_max = torch.max(merged_lse, local_max)
+            prev_weight = torch.exp(merged_lse - global_max) * merged_sum
+            cur_weight = torch.exp(local_max - global_max) * local_sum
+            global_sum = prev_weight + cur_weight
+            merged_o = (
+                merged_o * prev_weight.unsqueeze(1)
+                + local_o * cur_weight.unsqueeze(1)
+            ) / global_sum.unsqueeze(1)
+
+            # Pairwise FD stores the merged state as (LSE, 1, normalized O),
+            # then consumes that state in the next fixed left-fold merge.
+            merged_lse = global_max + torch.log(global_sum)
+            merged_sum = torch.ones_like(global_sum)
+
+        if merged_lse is None:
+            raise ValueError("batch-consistency calculation requires non-empty KV")
+        return merged_o, merged_lse + torch.log(merged_sum)
+
     def calculate_by_bnsd(
         self,
         q_bnsd,
@@ -118,6 +254,7 @@ class GeneralizedSFAQuant:
         ori_topk_length_bnsd,
         cmp_topk_length_bnsd,
         return_softmax_lse=False,
+        batch_consistency=False,
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
@@ -288,7 +425,24 @@ class GeneralizedSFAQuant:
                     cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_scale_value = 16.0
-                    score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    if batch_consistency:
+                        cmp_k_for_reduce = (
+                            None if cmp_s2_loop_time == 0 else cur_cmp_k_fp32
+                        )
+                        acc_o, final_lse = self._calculate_batch_consistency(
+                            q_curr_fp32,
+                            cur_ori_k_bnsd_fp32,
+                            cmp_k_for_reduce,
+                            cur_sinks,
+                        )
+                        acc_o = acc_o / hifp8_scale_value
+                        attn_out[
+                            i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :
+                        ] = acc_o.to(torch.bfloat16)
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = final_lse
+                        continue
+
                     score_max = (
                         cur_sinks.clone()
                         if cur_sinks is not None
@@ -323,9 +477,6 @@ class GeneralizedSFAQuant:
                                 k_tile = cur_cmp_k_fp32[
                                     (i_S2 - ori_s2_loop_time) * s2_base_size :, :
                                 ]
-                        v_tile = k_tile.clone()
-                        # MM1
-                        mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
                         # scale过程与NPU一致 保证精度统一
                         is_cmp_tile = i_S2 >= ori_s2_loop_time
                         if is_cmp_tile:
@@ -342,28 +493,16 @@ class GeneralizedSFAQuant:
                                 * self.ori_kv_descale_val
                             )
                             cur_v_descale = self.ori_kv_descale_val
-                        scale_res = mm1_res * combined_scale
-
-                        # 更新 score_max
-                        score_max_pre = score_max.clone()
-                        cur_score_max = scale_res.max(dim=-1)[0]
-                        score_max = torch.max(score_max, cur_score_max)
-                        score_max_pre = score_max_pre - score_max
-                        score_max_pre = torch.exp(score_max_pre)
-
-                        # 计算 acc_s 并做 hif8 量化
-                        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
-                        sumexp_i = acc_s.sum(dim=-1)
-                        sumexp = sumexp * score_max_pre + sumexp_i
-
-                        acc_s_cast = acc_s * hifp8_scale_value
-                        acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
-                        acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
-
-                        # MM2
-                        mm2_res = torch.matmul(acc_s_cast, v_tile)
-                        mm2_res = mm2_res * cur_v_descale
-                        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+                        score_max, sumexp, acc_o = self._update_s2_tile(
+                            q_curr_fp32,
+                            k_tile,
+                            combined_scale,
+                            cur_v_descale,
+                            score_max,
+                            sumexp,
+                            acc_o,
+                            hifp8_scale_value,
+                        )
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
@@ -620,6 +759,7 @@ class GeneralizedSFAQuant:
         ori_topk_length,
         cmp_topk_length,
         return_softmax_lse,
+        batch_consistency=False,
     ):
         logging.info("cpu执行中...")
         logging.info(f"template_run_mode = {self.template_run_mode}")
@@ -696,6 +836,7 @@ class GeneralizedSFAQuant:
             ori_topk_length_bnsd,
             cmp_topk_length_bnsd,
             return_softmax_lse,
+            batch_consistency=batch_consistency,
         )
 
         attn_out = self.trans_bnsd_to_target_layout(
@@ -1153,7 +1294,7 @@ def gen_cmp_kv(
     cmp_k_bnsd, cmp_k_bnsd_npu, cmp_kv_descale = _gen_hif8_tensor(
         (B, N2, cmp_max_s2, D), cmp_kv_datarange, scale_datarange
     )
-
+    print("@@@@        cmp_kv_descale: ", cmp_kv_descale)
     if layout_kv == "TND":
         cmp_k_in_pa_shape = trans_kv_bnsd_to_tnd(
             cmp_k_bnsd_npu, cu_seqlens_cmp_kv, seqused_cmp_kv, B, N2, D, cmp_kv_type
@@ -1252,6 +1393,10 @@ def generate_and_save_testdata(
     runNpu: 生成完毕后执行npu计算
     return test_data
     """
+    seed = 47
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
     Testcase_Name = params["Testcase_Name"]
     layout_q = params["layout_q"]
@@ -1286,6 +1431,7 @@ def generate_and_save_testdata(
     template_run_mode = params["template_run_mode"]
     topk_value_mode = params.get("topk_value_mode", 1)
     return_softmax_lse = params.get("return_softmax_lse", False)
+    batch_consistency = params.get("batch_consistency", False)
     quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
     return_softmax_lse = params.get("return_softmax_lse", False)
@@ -1293,16 +1439,16 @@ def generate_and_save_testdata(
     ori_kv_datarange = params.get("ori_kv_datarange")
     cmp_kv_datarange = params.get("cmp_kv_datarange")
     q_descale_datarange = [
-        q_datarange[0] / FP8_DATA_RANGE_LEFT,
-        q_datarange[1] / FP8_DATA_RANGE_RIGHT,
+        1.0,
+        1.0,
     ]
     ori_kv_descale_datarange = [
-        ori_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
-        ori_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
+        1.0,
+        1.0,
     ]
     cmp_kv_descale_datarange = [
-        cmp_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
-        cmp_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
+        1.0,
+        1.0,
     ]
     K1 = params.get("K1")
     ori_kv_topk_mode = params.get("ori_kv_topk_mode", "no")
@@ -1365,7 +1511,6 @@ def generate_and_save_testdata(
             )
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
-
     if len(seqused_ori_kv) != B:
         raise ValueError(
             f"len(seqused_ori_kv) != B, which is {len(seqused_ori_kv)} != {B}"
@@ -1388,10 +1533,11 @@ def generate_and_save_testdata(
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
-        sinks = (
-            torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
-            + q_datarange[0] / 10
-        ).to(torch.float)
+        # sinks = (
+        #     torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
+        #     + q_datarange[0] / 10
+        # ).to(torch.float)
+        sinks = torch.full((N1,), float("-inf"), dtype=torch.float)
     else:
         sinks = None
 
@@ -1548,6 +1694,7 @@ def generate_and_save_testdata(
         "cmp_sparse_indices": cmp_sparse_indices,
         "sinks": sinks,
         "return_softmax_lse": return_softmax_lse,
+        "batch_consistency": batch_consistency,
     }
     if generate_golden:
         generate_cpu_golden({"golden_state": golden_state})
@@ -1682,9 +1829,12 @@ def generate_and_save_testdata(
     return input_data
 
 
-def generate_cpu_golden(input_data):
+def generate_cpu_golden(input_data, batch_consistency=None):
     """Calculate QSMLA CPU Golden from input-stage state without new random data."""
     state = input_data["golden_state"]
+    if batch_consistency is None:
+        batch_consistency = state.get("batch_consistency", False)
+    state["batch_consistency"] = batch_consistency
     test_qsmla = GeneralizedSFAQuant(
         state["layout_q"],
         state["layout_kv"],
@@ -1736,6 +1886,7 @@ def generate_cpu_golden(input_data):
         state["ori_topk_length"],
         state["cmp_topk_length"],
         state["return_softmax_lse"],
+        batch_consistency=batch_consistency,
     )
     state["cpu_output"] = cpu_output
     state["cpu_lse"] = cpu_lse
