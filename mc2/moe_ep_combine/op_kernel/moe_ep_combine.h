@@ -44,9 +44,11 @@
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
+#include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 #include "moe_ep_combine_base.h"
@@ -256,6 +258,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+
+    WriteMoeEpDumpMetadataToWin(winRankAddr_[rankId_], &(tilingData->dumpMetadata));
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);

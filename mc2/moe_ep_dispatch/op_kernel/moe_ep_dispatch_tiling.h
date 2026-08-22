@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
+#include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
 
 constexpr uint32_t MOE_EP_SEND_ENTRY_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
 
@@ -74,6 +75,7 @@ struct MoeEpDispatchInfo {
     uint32_t networkMode;
     uint32_t dispatchNotifyCount;
     uint32_t aivNum;
+    MoeEpDumpMetadata dumpMetadata;
 };
 
 struct MoeEpDispatchTilingData {

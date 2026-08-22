@@ -190,6 +190,7 @@ def _get_moe_ep_window_layout(
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
+    moe_ep_fixed_prefix = 64 * 1024 + 100 * 512
     local_experts_num = num_experts // world_size
 
     dispatch_count_size = world_size * _inline_align(
@@ -205,7 +206,7 @@ def _get_moe_ep_window_layout(
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
     )
-    state_buffer_size = dispatch_count_size + dispatch_notify_size + combine_state_size
+    state_buffer_size = moe_ep_fixed_prefix + dispatch_count_size + dispatch_notify_size + combine_state_size
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)

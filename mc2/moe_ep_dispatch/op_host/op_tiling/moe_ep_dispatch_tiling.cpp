@@ -22,6 +22,8 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_tiling_utils.h"
+#include "moe_ep_window_layout.h"
+#include "moe_ep_exception_dump.h"
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -643,9 +645,12 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     info.hybrid.rankNumPerServer = static_cast<uint32_t>(rankNumPerServer);
-    info.hybrid.serverNum = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
-    info.networkMode = (requestedNetworkMode == NETWORK_HYBRID && info.hybrid.serverNum > 1U) ?
-        NETWORK_HYBRID : NETWORK_DIRECT;
+    MoeEpTopology topology;
+    OP_TILING_CHECK(ResolveMoeEpTopology(static_cast<uint32_t>(epWorldSize), requestedNetworkMode,
+                                         rankNumPerServer, topology) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "ResolveMoeEpTopology failed."), return ge::GRAPH_FAILED);
+    info.hybrid.serverNum = topology.serverNum;
+    info.networkMode = topology.networkMode;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -784,56 +789,33 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
-    uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
-    uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
-    uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
-    uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
-    uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
 
-    uint64_t cntWinStateSize =
-        epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchNotifyCount = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN;
-    uint64_t dispatchWinStateSize = cntWinStateSize + dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
-    uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN * UB_ALIGN;
-    uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
-    // 布局按固定保留stride计算，与epilogue/combine保持一致；kernel仍使用真实slot大小寻址和搬运
-    uint64_t scaleoutReservedPerSlotBytes = AlignUpWin(dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
-    uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
-    uint64_t winNeed;
-    if (info.networkMode == NETWORK_HYBRID) {
-        uint64_t scaleoutRecvDataSize = superNodeCount * nmt * scaleoutReservedPerSlotBytes;
-        uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
-        uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
-        info.window.scaleoutRecvDataOffset = totalStateWinSizeEp;
-        uint64_t scaleupFinalRecvDataOffset = info.window.scaleoutRecvDataOffset + scaleoutRecvDataSize;
-        info.window.scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
-        uint64_t combineDataOffset = info.window.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        info.window.payloadStashWinOffset = combineDataOffset + combineWinDataSize;
-        uint64_t payloadStashWinSize = nmt * scaleoutReservedPerSlotBytes;
-        info.window.winDataOffset = scaleupFinalRecvDataOffset;
-        winNeed = info.window.payloadStashWinOffset + payloadStashWinSize;
-    } else {
-        uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
-        uint64_t stateAndRecvDataWinSize =
-            dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
-        uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
-        info.window.scaleoutRecvDataOffset = 0UL;
-        info.window.scaleoutRecvStatusOffset = 0UL;
-        info.window.winDataOffset = totalStateWinSizeEp;
-        info.window.payloadStashWinOffset = stateAndRecvDataWinSize;
-        winNeed = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
-    }
-    OP_TILING_CHECK(winNeed > maxWindowSize,
-                    OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, need %luMB, available %luMB.",
-                            (winNeed / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
-                    return ge::GRAPH_FAILED);
+    MoeEpWindowLayoutParams params;
+    params.epWorldSize = info.cfg.epWorldSize;
+    params.localExpertNum = info.cfg.numLocalExperts;
+    params.nmt = info.cfg.numMaxTokensPerRank;
+    params.topK = info.cfg.topK;
+    params.hidden = info.cfg.hidden;
+    params.networkMode = info.networkMode;
+    params.rankNumPerServer = info.hybrid.rankNumPerServer;
+    params.serverNum = info.hybrid.serverNum;
+
+    MoeEpWindowLayout layout;
+    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "CalcMoeEpWindowLayout failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "CheckMoeEpWindowCapacity failed."), return ge::GRAPH_FAILED);
+
     info.totalWinSizeEp = maxWindowSize;
-    info.dispatchNotifyCount = static_cast<uint32_t>(dispatchNotifyCount);
-    info.window.cntWinStateOffset = 0UL;
-    info.window.slotWinStateOffset = cntWinStateSize;
+    info.dispatchNotifyCount = layout.dispatchNotifyCount;
+    info.window.cntWinStateOffset = layout.cntWinStateOffset;
+    info.window.slotWinStateOffset = layout.slotWinStateOffset;
+    info.window.winDataOffset = layout.winDataOffset;
+    info.window.scaleoutRecvDataOffset = layout.scaleoutRecvDataOffset;
+    info.window.scaleoutRecvStatusOffset = layout.scaleoutRecvStatusOffset;
+    info.window.payloadStashWinOffset = layout.payloadStashWinOffset;
+
+    FillMoeEpDumpMetadata(params, layout, info.aivNum, info.dumpMetadata);
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
 }
@@ -948,6 +930,34 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
 
     return ge::GRAPH_SUCCESS;
 }
+
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+inline void MoeEpDispatchExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2Exception::MoeEpExceptionImpl(args, userdata, "MoeEpDispatch");
+}
+
+__attribute__((constructor)) void RegisterMoeEpDispatchExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MoeEpDispatch", "Get runtime version failed when register exception func.");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MoeEpDispatch", "Get metadef version failed when register exception func.");
+        return;
+    }
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGW("MoeEpDispatch",
+                "Runtime(%d) or metadef(%d) version lower than %d, skip exception func registration.",
+                runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
+        return;
+    }
+    IMPL_OP(MoeEpDispatch).ExceptionDumpParseFunc(MoeEpDispatchExceptionImplWrapper);
+}
+#endif
 
 IMPL_OP_OPTILING(MoeEpDispatch).Tiling(MoeEpDispatchTilingFunc);
 } // namespace Mc2Tiling
