@@ -563,6 +563,21 @@ static bool IsMxA8W4(const GroupedMatmulParams &params)
            params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
 }
 
+static bool IsMxFullQuant(const GroupedMatmulParams &params)
+{
+    return CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+           CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+}
+
+static int64_t GetL0OutputDtype(const GroupedMatmulParams &params)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(params) &&
+        params.out->GetDataType() == DataType::DT_BF16) {
+        return ACLNN_OUT_DTYPE_BF16;
+    }
+    return params.dtype;
+}
+
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -969,9 +984,10 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
 
     // 调用l0算子GroupedMatmulFinalizeRouting进行计算，包含infershape
+    int64_t l0Dtype = GetL0OutputDtype(params2);
     auto matmulRet = l0op::GroupedMatmulFinalizeRouting(
         reformatedX1, params2.x2, params2.scale, reformatedBias, reformatedPertokenScaleOptional, reformatedGroupList,
-        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, params.dtype,
+        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, l0Dtype,
         params.shareInputWeight, params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS,
         params.groupListType, params.tuningConfig, executor);
     ret = PostMatmulCalcProcess(matmulRet, params, executor);

@@ -90,7 +90,8 @@ static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIS
 static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST_BF16 = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT = {op::DataType::DT_FLOAT,
+                                                                                        op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT,
                                                                              op::DataType::DT_BF16};
@@ -454,7 +455,7 @@ public:
         GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
         bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
         if (isBf16Output) {
-            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16, return false);
+            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT, return false);
             GMMFR_CHECK_REPORT(
                 gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16, return false,
                 OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));

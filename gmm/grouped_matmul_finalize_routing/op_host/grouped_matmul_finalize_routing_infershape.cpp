@@ -106,6 +106,14 @@ static bool IsMxBf16Output(const int64_t *outputDtype)
     return outputDtype != nullptr && *outputDtype == OUT_DTYPE_BF16;
 }
 
+static bool IsSupportMxLogitDtype(ge::DataType logitDtype, const int64_t *outputDtype)
+{
+    if (IsMxBf16Output(outputDtype)) {
+        return logitDtype == ge::DT_FLOAT || logitDtype == ge::DT_BF16;
+    }
+    return logitDtype == ge::DT_FLOAT;
+}
+
 struct CheckXandWParams {
     const gert::Shape *shape_x1 = nullptr;
     const gert::Shape *shape_x2 = nullptr;
@@ -390,6 +398,8 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
 
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST)) {
+        auto attrs = context->GetAttrs();
+        const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
@@ -406,7 +416,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
                                       "The MXFP4/MXFP8 InputDataType of rowIndex is wrong.Supported type:INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            (context->GetOptionalInputDataType(logitOptionIndex) != ge::DT_FLOAT),
+            !IsSupportMxLogitDtype(context->GetOptionalInputDataType(logitOptionIndex), outputDtype),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The MXFP4/MXFP8 InputDataType of logit is wrong."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
@@ -430,14 +440,14 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
     return ge::GRAPH_FAILED;
 }
 
-static bool IsSupportMX(const gert::InferDataTypeContext *context)
+static bool IsSupportMX(const gert::InferDataTypeContext *context, const int64_t *outputDtype)
 {
     if (CheckType(context->GetInputDataType(xIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         context->GetOptionalInputDataType(scaleOptionIndex) == ge::DT_FLOAT8_E8M0 &&
         context->GetOptionalInputDataType(groupListOptionIndex) == ge::DT_INT64 &&
         context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 &&
-        context->GetOptionalInputDataType(logitOptionIndex) == ge::DT_FLOAT &&
+        IsSupportMxLogitDtype(context->GetOptionalInputDataType(logitOptionIndex), outputDtype) &&
         context->GetOptionalInputDataType(pertokenScaleOptionIndex) == ge::DT_FLOAT8_E8M0) {
         return true;
     }
@@ -450,7 +460,7 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                 return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
-    bool supportDataTypeMX = IsSupportMX(context);
+    bool supportDataTypeMX = IsSupportMX(context, outputDtype);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||
                                 context->GetInputDataType(xIndex) == ge::DT_FLOAT8_E4M3FN ||
