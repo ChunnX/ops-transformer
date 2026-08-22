@@ -95,7 +95,7 @@ struct StridesConstInfo {
 };
 
 struct CommonConstInfo {
-    /* 轴长度 */
+    /* 轴长度（与 flash_attn CommonConstInfo 同构的公共字段：b/t/d/g/n/s 系列） */
     uint32_t bSize;
     uint64_t t1Size;
     uint64_t t2Size;
@@ -105,19 +105,10 @@ struct CommonConstInfo {
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
     uint32_t n2Size;
-    uint32_t realGSize;
-    uint32_t realN2Size;
     uint64_t s1Size;             /* s1总大小 */
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
-
-    /* strides */
-    StridesConstInfo keyStrides;
-    StridesConstInfo valueStrides;
-    StridesConstInfo kRopeStrides;
-    StridesConstInfo kScaleStrides;
-    StridesConstInfo vScaleStrides;
 
     /* FA kernel meta */
     uint32_t bN2Start;
@@ -135,7 +126,6 @@ struct CommonConstInfo {
     uint32_t attenMaskS2Size;
     int64_t preTokens;
     int64_t nextTokens;
-    bool isRowInvalidOpen;
     bool isExistRowInvalid;
     float scaleValue;
 
@@ -145,16 +135,33 @@ struct CommonConstInfo {
     uint8_t subBlockIdx;
     uint32_t coreNum;
 
-    /* S1外切 */
-    bool enableS1OutSplit;
-    uint32_t totalSize;
-
     /* FA中间结果写出workspace信息 */
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
 
     /* 输出shape */
     FLASH_MLA_WITH_KVCACHE_LAYOUT outputLayout;
+};
+
+/* MLA 特有扩展层（flash_attn 基础结构不含、MLA 独有的字段，如 rope/KV strides/S1 外切/无效行开关）；
+ * 与 flash_attn 的 Layering（公共基础 → PA → LSE → 特有扩展）同构，禁为对齐而继承 mla 不需要的
+ * Sink/Pse/PostQuant/LeftPadding/SysPrefix 等基础结构（避免内存布局与成员遮蔽语义漂移）。 */
+struct MlaExtConstInfo {
+    uint32_t realGSize;
+    uint32_t realN2Size;
+
+    /* strides（m0070：q/k_cache 576 宽单张量，nope+rope 分段 stride 分离） */
+    StridesConstInfo keyStrides;
+    StridesConstInfo valueStrides;
+    StridesConstInfo kRopeStrides;
+    StridesConstInfo kScaleStrides;
+    StridesConstInfo vScaleStrides;
+
+    bool isRowInvalidOpen;
+
+    /* S1 外切 */
+    bool enableS1OutSplit;
+    uint32_t totalSize;
 };
 
 /* 高阶特性 */
@@ -209,10 +216,10 @@ template <FlashMlaWithKvcacheKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo {};
+struct ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT> : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo {};
 
 template <>
-struct ConstInfo_t<FlashMlaWithKvcacheKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
+struct ConstInfo_t<FlashMlaWithKvcacheKernelType::FULL_QUANT> : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {
