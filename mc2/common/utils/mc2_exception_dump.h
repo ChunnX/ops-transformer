@@ -349,7 +349,7 @@ inline void *GetPeermemBase(const char *socName, uint64_t argsAddr)
             return nullptr;
         }
         void *winAddr = reinterpret_cast<void *>(ctx->epHcclBuffer_[ctx->epRankId]);
-        OP_LOGD(OP_NAME, "GetPeermemBase: A5 epRankId=%u peermemBase=%p", ctx->epRankId, winAddr);
+        OP_LOGD(OP_NAME, "GetPeermemBase: epRankId=%u peermemBase=%p", ctx->epRankId, winAddr);
         return winAddr;
     }
 
@@ -550,7 +550,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         argsOffset = sizeof(uint64_t);
     }
 
-    if ((std::strstr(op, "MegaMoe") != nullptr) && (std::strstr(socName, "Ascend950") == nullptr)) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(op, "MegaMoe") != nullptr)) {
         argsOffset = sizeof(uint64_t);
     }
     ret =

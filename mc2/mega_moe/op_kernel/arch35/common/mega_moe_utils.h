@@ -241,11 +241,11 @@ __aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context, u
     return mc2Context->hcommHandle[index];
 }
 
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+inline GM_ADDR g_winRankAddr_[HCCL_MAX_RANK_SIZE];
 
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
-    return (GM_ADDR)(winRankAddr_[rankId] + offset);
+    return (GM_ADDR)(g_winRankAddr_[rankId] + offset);
 }
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)

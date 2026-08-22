@@ -29,8 +29,8 @@
 
 namespace MegaMoeImpl {
 
-constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL;
-constexpr int64_t PEERMEM_DATA_OFFSET = 60 * 1024LL;
+constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL; // 异常dump区
+constexpr int64_t PEERMEM_DATA_OFFSET = 60 * 1024LL; // rankSyncInWorld 同步区
 // rankSyncInWorld 区内部布局：前 48KB 为各 rank 同步槽，其后为各 AIV 的同步轮次槽。
 constexpr int64_t AIV_SYNC_COUNT_OFFSET = 48 * 1024LL;
 constexpr int64_t SIZE_INT_8 = 1U;

@@ -175,7 +175,7 @@ protected:
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
-    MC2MegaMoeA5Dump::ExceptionDumpEngine exceptionDump_;
+    MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -301,7 +301,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     rankId_ = mc2Context_->epRankId;
     GM_ADDR dumpBase = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[rankId_]);
     for (int i = 0; i < worldSize_; i++) {
-        winRankAddr_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[i]) + EXCEPTION_DUMP_REGION_SIZE;
+        // g_winRankAddr_从win区地址偏移60K开始用，前面60K是异常dump区
+        g_winRankAddr_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[i]) + EXCEPTION_DUMP_REGION_SIZE;
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -317,7 +318,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
-    params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
+    params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
     epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
                       .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
@@ -352,7 +353,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     InitCombineBuffers();
     InitTokenUnpermuteConfig(commonConfig_);
 
-    MC2MegaMoeA5Dump::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
+    MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
                                                    sendMaskConfig_.maskAlignSize,
                                                    reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
@@ -587,7 +588,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
     int32_t count = ReadGmByPassDCache(syncCount) + 1;
     for (uint32_t rankIdx = aivCoreIdx_; rankIdx < worldSize_; rankIdx += blockAivNum_) {
         __gm__ int32_t *remoteSyncAddr =
-            reinterpret_cast<__gm__ int32_t *>(winRankAddr_[rankIdx]) + rankId_ * INT_CACHELINE;
+            reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId_ * INT_CACHELINE;
         WriteGmByPassDCache(remoteSyncAddr, count);
         GmSignalWaitBarrier(syncRank + rankIdx * INT_CACHELINE, count);
     }
@@ -691,7 +692,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm1ActivationForExp
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
     DispatchBuffInit();
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
@@ -703,12 +704,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
     uint32_t nextSendCnt = 0U;
 
     RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, 0U, nextSendCnt);
+        tokenDispatchConfig_, syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, 0U, nextSendCnt);
     for (uint32_t expertIdx = 0U; expertIdx < commonConfig_.moeExpertPerRank; ++expertIdx) {
         currentSendCnt = nextSendCnt;
         if (expertIdx + 1U < commonConfig_.moeExpertPerRank) {
             RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_,
+                tokenDispatchConfig_, syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_,
                 expertIdx + 1U, nextSendCnt);
         }
         RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, currentSendCnt);
@@ -725,7 +726,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
         SyncAll<false>();
     }
 
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM2_COMBINE);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM2_COMBINE);
     uint32_t gmm2StartBlockIdx = gmm1RuntimeState.startBlockIdx;
     int32_t gmm2VecSetSyncCom = 0;
     Gmm2RuntimeState gmm2RuntimeState{gmm2StartBlockIdx, gmm2VecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
@@ -767,10 +768,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SendAndQuantBuffInit();
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::INPUT_PREPARE);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         dispatchPrepareConfig_, params_, quantProcessConfig_, quantScratch_);
-    GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
+    GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
     ResetSyncStatus<TopkWeightsPrefetch>(dispatchPrepareConfig_, params_, resetWorkspaceConfig_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         PrepareSharedExpertInput<ActivationType, QuantScaleOutType, A_ELEMS_PER_BYTE>(
@@ -783,11 +784,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     int32_t gmTileSequence = 0;
     if (sharedExpertNum_ > 0) {
-        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM1);
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1(gmTileSequence);
     }
 
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_INPUT);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
     CrossRankSyncInWorldSize();
 
     // 2. MoE 专家 Dispatch -> GMM1/SwiGLU -> GMM2/Combine。
@@ -799,21 +800,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     if (sharedExpertNum_ > 0) {
-        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM2);
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
         ProcessSharedExpertGmm2(gmTileSequence);
     }
 
     // 3. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
-        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_OUTPUT);
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
         CrossRankSyncInWorldSize();
-        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::UNPERMUTE);
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::COMPLETE);
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
 }
 
 } // namespace MegaMoeImpl

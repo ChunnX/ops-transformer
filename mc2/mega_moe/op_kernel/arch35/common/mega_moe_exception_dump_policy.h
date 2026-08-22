@@ -15,7 +15,7 @@
 #include "mega_moe_workspace.h"
 #include "../mega_moe_tiling.h"
 
-namespace MC2MegaMoeA5Dump {
+namespace MegaMoeImpl {
 
 enum class Stage : uint32_t {
     INIT = 0,
@@ -28,7 +28,7 @@ enum class Stage : uint32_t {
     CROSS_RANK_SYNC_OUTPUT = 7,
     UNPERMUTE = 8,
     COMPLETE = 9,
-    END = 10
+    END = 10 // 公共文件会用END判断，小于END的stage才会dump
 };
 
 struct MegaMoeExceptionDumpPolicy {
@@ -56,6 +56,6 @@ __aicore__ inline void RegisterMegaMoeExceptionDump(ExceptionDumpEngine &engine,
     engine.Dump(peermemInfo.maskRecvPtr, maskRecvSize);
 }
 
-} // namespace MC2MegaMoeA5Dump
+} // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_ARCH35_EXCEPTION_DUMP_POLICY_H
