@@ -11,7 +11,12 @@ import types
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
-def _load_ops(monkeypatch, calls, world_size=2):
+def _load_ops(
+    monkeypatch,
+    calls,
+    world_size=2,
+    operator_name="all_to_allv_grouped_mat_mul",
+):
     class FakeTensor:
         def __init__(self, values=None, *, shape=None, dtype="int64", device=None):
             self.values = list(values) if values is not None else None
@@ -68,7 +73,7 @@ def _load_ops(monkeypatch, calls, world_size=2):
         (PROJECT_ROOT / "ops_transformer_catccos_udma" / "ops.py").read_text(encoding="utf-8"),
         namespace,
     )
-    return namespace["all_to_allv_grouped_mat_mul"], FakeTensor
+    return namespace[operator_name], FakeTensor
 
 
 def test_optional_flag_selects_export_schema(monkeypatch):
@@ -178,6 +183,63 @@ def test_device_global_route_keeps_null_metadata_fallback(monkeypatch):
         output_all_to_allv=True,
     )
     assert calls[-1][1][-2] is None
+
+
+def test_grouped_mat_mul_all_to_allv_accepts_host_route_lists(monkeypatch):
+    calls = []
+    operator, _ = _load_ops(
+        monkeypatch,
+        calls,
+        operator_name="grouped_mat_mul_all_to_allv",
+    )
+    device = SimpleNamespace(type="npu")
+    x = SimpleNamespace(shape=(10, 8), dtype="bf16", device=device)
+    weight = SimpleNamespace(shape=(2, 8, 16))
+    result = operator(
+        x,
+        weight,
+        [1, 2, 3, 4],
+        [1, 2, 3, 4],
+        ep_size=2,
+        expert_num=4,
+    )
+
+    op_name, arguments = calls[-1]
+    assert result == "output"
+    assert op_name == "grouped_mat_mul_all_to_allv_udma_out"
+    assert arguments[2].dtype == "int64"
+    assert arguments[2].device is device
+    assert arguments[3].dtype == "int64"
+    assert arguments[3].device is device
+    assert arguments[-1].shape == (10, 16)
+
+
+def test_grouped_mat_mul_all_to_allv_device_routes_keep_raw_allocation_path(
+    monkeypatch,
+):
+    calls = []
+    operator, tensor_type = _load_ops(
+        monkeypatch,
+        calls,
+        operator_name="grouped_mat_mul_all_to_allv",
+    )
+    device = SimpleNamespace(type="npu")
+    local = tensor_type([1, 2, 3, 4], device=device)
+    route = tensor_type([1, 2, 3, 4], device=device)
+    local.sum = lambda: (_ for _ in ()).throw(
+        AssertionError("unexpected Python device sum")
+    )
+    x = SimpleNamespace(shape=(10, 8), dtype="bf16", device=device)
+    weight = SimpleNamespace(shape=(2, 8, 16))
+    operator(
+        x,
+        weight,
+        local,
+        route,
+        ep_size=2,
+        expert_num=4,
+    )
+    assert calls[-1][0] == "grouped_mat_mul_all_to_allv_udma"
 
 
 def test_python_facade_exposes_optional_all_to_allv_output():

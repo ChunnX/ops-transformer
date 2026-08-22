@@ -80,14 +80,20 @@ constexpr TilingProfile kM131072K2048N1024NonExportTiling{
     KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4,
     1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N1024ExportTiling{
-    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8,
-    1536, 2, 64, 1, 0, 1};
+    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16,
+    2048, 2, 16, 1, 16, 8};
 constexpr TilingProfile kM131072K2048N512NonExportTiling{
     KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4,
     1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N512ExportTiling{
-    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20,
-    1536, 2, 64, 1, 0, 1};
+    KernelVariant::kM0_256N0_256, 256, 256, 256, 12, 32, 32, 1, 16,
+    3072, 3, 16, 2, 32, 4};
+
+// Dynamic-tiling compatibility mapping for the two export records above:
+//   * MMAD config id 2 is encoded by kM0_256N0_256 and (256, 256, 256).
+//   * execution mode is not part of the migrated kernel ABI.
+// commNpuSplit/commDataSplit remain recorded for traceability but are not
+// consumed by this operator's current host/kernel ABI.
 
 const TilingProfile &SelectTiling(
     uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,

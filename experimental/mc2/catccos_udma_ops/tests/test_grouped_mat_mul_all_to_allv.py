@@ -151,13 +151,17 @@ def test_ep8_256_expert_business_shapes_use_rank_invariant_tuned_profiles():
         encoding="utf-8"
     )
     assert (
-        "KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4"
+        "KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16"
         in host
     )
+    assert "2048, 2, 16, 4" in host
     assert (
-        "KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20"
+        "KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 62, 62, 1, 16"
         in host
     )
+    assert "2048, 2, 31, 2" in host
+    assert "MMAD config id 2 is encoded by kM0_256N0_256" in host
+    assert "execution mode is not in the kernel ABI" in host
     assert "worldSize == 8 && expertNum == 256" in host
     assert (
         "isEightRank256ExpertCase && k == 1024 && n == 2048"
@@ -187,9 +191,9 @@ def test_tuned_profile_drives_kernel_and_all_runtime_tiling_fields():
         ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
     ).read_text(encoding="utf-8")
 
-    assert "using GroupedMatMulAllToAllVUdmaM0_256Config" in device
-    assert "256, 128, 256>;" in device
-    assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>" in host
+    assert "using GroupedMatMulAllToAllVUdmaM0_256N0_256Config" in device
+    assert "256, 256, 256>;" in device
+    assert "TypeTag<GroupedMatMulAllToAllVUdmaM0_256N0_256Config>" in host
     assert "tiling.commInterval" in host
     assert "tiling.localCopyTileRows" in host
     assert "tiling.commBlockM" in host

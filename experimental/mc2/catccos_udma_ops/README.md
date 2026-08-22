@@ -205,6 +205,13 @@ row. Every Rank must allocate and release registered tensors in the same order.
 The runtime rejects finalization while such tensors are alive instead of
 leaving dangling PyTorch storage.
 
+Like the forward direction, both route inputs accept an NPU `torch.int64`
+tensor, a CPU `torch.int64` tensor, or a host integer sequence. Host routes are
+converted to NPU int64 tensors on every call. If `local_tokens` is host-resident,
+the facade uses its sum to allocate the exact output and dispatches the reusable
+out variant, avoiding the C++ route-count D2H synchronization. Reuse NPU route
+tensors and an explicit `out=` in performance-critical loops.
+
 ## Accuracy and performance validation
 
 Install the validation extra together with the Wheel. The tests deliberately
@@ -330,16 +337,19 @@ path.
 non-export calls select separate records. All other shapes and topologies
 retain the default profile.
 
-| AllToAllV output | M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
-|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| disabled | 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 | 4 | 4 |
-| enabled | 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 | 2 | 8 |
-| disabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 | 4 | 4 |
-| enabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 | 1 | 20 |
+| AllToAllV output | M | K | N | MMAD id | M split | M0 | N0 | K0 | interval | comm tile M | comm block M | NPU/data split | stage rows | WS stages | local-copy rows | export cores | self-copy cores |
+|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|---:|
+| disabled | 131072 | 2048 | 1024 | 0 | 1 | 128 | 256 | 256 | 12 | 128 | 128 | 4/4 | 1536 | 2 | 64 | 0 | 1 |
+| enabled | 131072 | 2048 | 1024 | 2 | 1 | 256 | 256 | 256 | 8 | 32 | 32 | 1/16 | 2048 | 2 | 16 | 16 | 8 |
+| disabled | 131072 | 2048 | 512 | 1 | 1 | 256 | 128 | 256 | 6 | 128 | 128 | 4/4 | 1536 | 2 | 64 | 0 | 1 |
+| enabled | 131072 | 2048 | 512 | 2 | 2 | 256 | 256 | 256 | 12 | 32 | 32 | 1/16 | 3072 | 3 | 16 | 32 | 4 |
 
-`commNpuSplit` and `commDataSplit` are legacy example-host fields. The migrated CatCCOS UDMA
-`DeviceOp::Arguments` and its device schedulers do not consume them, so they are
-retained as profile metadata rather than presented as effective kernel inputs.
+For AllToAllV-GroupedMatMul, `commNpuSplit`, `commDataSplit`, and the explicit
+`commTileM` value are compatibility fields: the migrated kernel consumes
+`commBlockM` and `localCopyTileRows` instead. MMAD id 2 maps to the compiled
+`256x256x256` instance. The search result's execution mode is not part of this
+kernel ABI. The new search was performed through the training/export entry, so
+the non-export profiles remain unchanged.
 
 `grouped_mat_mul_all_to_allv` independently selects these profiles for the
 same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
@@ -348,12 +358,15 @@ all peers therefore keep the same M0 and communication schedule. The M column
 below records the balanced workload used for tuning and is not a runtime
 selection predicate. Other K/N shapes and topologies retain the default profile.
 
-| Tuning M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 131072 | 1024 | 2048 | 128 | 256 | 256 | 14 | 64 | 64 | 4 | 4 |
-| 131072 | 512 | 2048 | 256 | 128 | 256 | 12 | 16 | 16 | 1 | 20 |
+| Tuning M | K | N | MMAD id | M0 | N0 | K0 | interval | comm tile M | comm block M | NPU/data split | stage rows | WS stages | local-copy rows | self-copy cores |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|
+| 131072 | 1024 | 2048 | 2 | 256 | 256 | 256 | 8 | 32 | 32 | 1/16 | 2048 | 2 | 16 | 4 |
+| 131072 | 512 | 2048 | 2 | 256 | 256 | 256 | 8 | 62 | 62 | 1/16 | 2048 | 2 | 31 | 2 |
 
 The grouped-matmul host forwards both split values through `commCoreSplit` for
 ABI parity with the tuning record. The target-order scheduler currently does
-not use them to partition transfers; M0, `commInterval`, `commTileM`, and
-`commBlockM` are effective in the selected kernel path.
+not use them to partition transfers. The explicit `localCopyTileRows` supersedes
+the compatibility `commTileM`; MMAD shape, `commInterval`, `commBlockM`,
+`stageRows`, workspace depth, and self-copy core count are effective. The
+search-only `mSplit=1`, `exportCoreCount=0`, and execution mode fields do not
+add runtime controls to this direction.

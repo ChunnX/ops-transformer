@@ -293,8 +293,8 @@ def all_to_allv_grouped_mat_mul(
 def grouped_mat_mul_all_to_allv(
     x: torch.Tensor,
     weight: torch.Tensor,
-    local_tokens_per_expert: torch.Tensor,
-    global_tokens_per_local_expert: torch.Tensor,
+    local_tokens_per_expert: RouteInput,
+    global_tokens_per_local_expert: RouteInput,
     *,
     ep_size: int,
     expert_num: int,
@@ -305,9 +305,11 @@ def grouped_mat_mul_all_to_allv(
     ``x`` is a regular contiguous BF16 NPU tensor grouped by this rank's local
     experts and has ``sum(global_tokens_per_local_expert)`` rows. The result has
     shape ``[sum(local_tokens_per_expert), n]`` and resides in regular NPU memory.
-    Both route tensors returned by :func:`build_rank_route_tensors` are flat and
-    have shape ``[expert_num]``. The global table is laid out by source rank and
-    then local expert.
+    Route inputs may be flat int64 tensors or host integer sequences with
+    ``expert_num`` elements. The global table is laid out by source rank and
+    then local expert. Host routes are copied to the same NPU as ``x`` on every
+    call. When ``local_tokens_per_expert`` is host-resident, its known sum is
+    used to allocate the exact output without a route-count D2H synchronization.
     UDMA GET writes directly to that local allocation, so a reusable ``out`` can
     be created with :func:`torch.empty` and no symmetric-output staging or D2D
     copy is required.
@@ -315,7 +317,35 @@ def grouped_mat_mul_all_to_allv(
     config = get_udma_config()
     if ep_size != config.world_size:
         raise ValueError("TP=1 requires ep_size == UDMA world_size")
-    global_tokens_per_local_expert = global_tokens_per_local_expert.view(-1)
+    if expert_num <= 0 or expert_num % ep_size:
+        raise ValueError("expert_num must be positive and divisible by ep_size")
+    local_tokens_per_expert, local_host_values = _normalize_route(
+        local_tokens_per_expert,
+        "local_tokens_per_expert",
+        x,
+        expert_num,
+    )
+    global_tokens_per_local_expert, global_host_values = _normalize_route(
+        global_tokens_per_local_expert,
+        "global_tokens_per_local_expert",
+        x,
+        expert_num,
+    )
+    if global_host_values is not None and sum(global_host_values) != x.shape[0]:
+        raise ValueError(
+            "sum(global_tokens_per_local_expert) must equal x.shape[0]"
+        )
+    if local_host_values is not None:
+        output_rows = sum(local_host_values)
+        expected_output_shape = (output_rows, weight.shape[2])
+        if out is None:
+            out = torch.empty(
+                expected_output_shape, dtype=x.dtype, device=x.device
+            )
+        elif tuple(out.shape) != expected_output_shape:
+            raise ValueError(
+                "out must have shape [sum(local_tokens_per_expert), n]"
+            )
     arguments = (
         x,
         weight,

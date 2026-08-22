@@ -54,19 +54,26 @@ constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16,
     0, 2, 32, 1};
 constexpr TilingProfile kK1024N2048Tiling{
-    KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4,
-    0, 2, 32, 1};
+    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16,
+    2048, 2, 16, 4};
 constexpr TilingProfile kK512N2048Tiling{
-    KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20,
-    0, 2, 8, 1};
+    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 62, 62, 1, 16,
+    2048, 2, 31, 2};
+
+// Dynamic-tiling compatibility mapping for the two records above:
+// MMAD config id 2 is encoded by kM0_256N0_256. The search framework's
+// mSplit=1 is the only supported GMM-AllToAllV value, exportCoreCount is not
+// applicable to this direction, and execution mode is not in the kernel ABI.
 
 const TilingProfile &SelectTiling(
     uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)
 {
-    // The local GMM input rows equal sum(global_tokens) and may differ across
-    // ranks under imbalanced routing. UDMA peers must nevertheless use the same
-    // M0 and communication schedule, so selection may only depend on topology
-    // and K/N, which are rank-invariant for one collective launch.
+    // The searched M=131072 is the balanced operating point. The local GMM
+    // input rows equal sum(global_tokens) and may differ across ranks under
+    // imbalanced routing. UDMA peers must nevertheless use the same M0 and
+    // communication schedule, so selection deliberately excludes local M and
+    // depends only on topology and K/N, which are rank-invariant for one
+    // collective launch.
     const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
     if (isEightRank256ExpertCase && k == 1024 && n == 2048) {
         return kK1024N2048Tiling;

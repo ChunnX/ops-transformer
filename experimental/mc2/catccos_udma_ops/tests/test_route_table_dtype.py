@@ -55,5 +55,7 @@ def test_public_ops_normalize_route_tables_before_dispatch():
         PROJECT_ROOT / "ops_transformer_catccos_udma" / "ops.py"
     ).read_text(encoding="utf-8")
     assert "route = route.reshape(-1).contiguous()" in source
-    assert "global_tokens_per_local_expert = global_tokens_per_local_expert.view(-1)" in source
+    assert "local_tokens_per_expert: RouteInput" in source
+    assert "global_tokens_per_local_expert: RouteInput" in source
+    assert "global_tokens_per_local_expert.view(-1)" not in source
     assert "torch.tensor(host_values, dtype=torch.int64, device=x.device)" in source

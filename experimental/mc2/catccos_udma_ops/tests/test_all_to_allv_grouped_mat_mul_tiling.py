@@ -55,10 +55,20 @@ def test_export_business_shapes_use_separate_tuned_profiles():
     )
     assert "kM131072K2048N1024NonExportTiling" in source
     assert "kM131072K2048N1024ExportTiling" in source
-    assert "KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8" in source
+    assert (
+        "KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16"
+        in source
+    )
+    assert "2048, 2, 16, 1, 16, 8" in source
     assert "kM131072K2048N512NonExportTiling" in source
     assert "kM131072K2048N512ExportTiling" in source
-    assert "KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20" in source
+    assert (
+        "KernelVariant::kM0_256N0_256, 256, 256, 256, 12, 32, 32, 1, 16"
+        in source
+    )
+    assert "3072, 3, 16, 2, 32, 4" in source
+    assert "MMAD config id 2 is encoded by kM0_256N0_256" in source
+    assert "execution mode is not part of the migrated kernel ABI" in source
     assert "bool outputAllToAllV" in source
     assert "? kM131072K2048N1024ExportTiling" in source
     assert ": kM131072K2048N1024NonExportTiling" in source
@@ -79,6 +89,8 @@ def test_m0_256_profile_has_a_dedicated_kernel_instance():
     assert "TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>" in host
     assert "using AllToAllVGroupedMatMulUdmaM0_256ExportConfig" in device
     assert "TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>" in host
+    assert "Bf16AllToAllVGroupedMatMulUdmaConfig<256, 256, 256" in host
+    assert "true, 3, 2" in host
 
 
 def test_selected_profile_drives_all_effective_runtime_tiling_fields():
