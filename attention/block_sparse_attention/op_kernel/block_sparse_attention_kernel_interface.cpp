@@ -287,6 +287,9 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using ElementO = Otype; // bfloat16_t / fp16
     using ElementGroupMax = SMDtype;
     using ElementLocalGlobalMax = SMDtype;
+    using ElementLse = float;
+    using LayoutLse = layout::RowMajor;
+    using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
     // layout tags
     using LayoutQ = layout::RowMajor;
     using LayoutK = layout::ColumnMajor;
@@ -346,7 +349,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleOMX<lseMode, lseFormat, transposedMm1>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementDm,
-                                                            TileCopyRescaleO, Arch::PositionL0C>;
+                                                            TileCopyRescaleO, Arch::PositionL0C, LseType>;
 
     using BsaMXFP4FullQuantKernelArch35 =
         BsaMXFP4FullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV,

@@ -341,7 +341,7 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise, int64_t quantM
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLseFlag, int64_t innerPrecise,
+static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t innerPrecise,
                                             const aclTensor *attenMaskOptional, const aclTensor *blockTableOptional)
 {
     if (quantMode != MXFP4_OCP_QUANT && quantMode != MXFP4_CX_QUANT) {
@@ -353,12 +353,7 @@ static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLs
                 innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // mxfp4 量化场景下暂不支持 LSE、attenMask、pageAttention
-    if (softmaxLseFlag != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxLseFlag must be 0 in mxfp4 quantMode(%lld), got %lld.", quantMode,
-                softmaxLseFlag);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+    // mxfp4 量化场景下暂不支持 attenMask、pageAttention
     if (attenMaskOptional != nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMaskOptional must be nullptr in mxfp4 quantMode(%lld).", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
@@ -397,7 +392,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     }
 
     // mxfp4 量化限制检查
-    ret = ValidateMxfp4Constraints(quantMode, softmaxLseFlag, innerPrecise, attenMaskOptional, blockTableOptional);
+    ret = ValidateMxfp4Constraints(quantMode, innerPrecise, attenMaskOptional, blockTableOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
