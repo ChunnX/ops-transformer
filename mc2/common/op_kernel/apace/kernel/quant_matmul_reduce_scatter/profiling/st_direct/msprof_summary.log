@@ -1,0 +1,87 @@
+=== 12 Case msprof 采集 (ops-transformer, task-based) ===
+
+########## M=8192 K=1536 N=12288 R=2 headM=512 ##########
+  device 0 median(后5次) = 2438.338us
+  device 1 median(后5次) = 2432.217us
+  >>> MAX across ranks = 2438.338us
+  M=8192 K=1536 N=12288 R=2 MAX=2438.338us
+
+########## M=8192 K=1536 N=12288 R=4 headM=128 ##########
+  device 0 median(后5次) = 1337.072us
+  device 1 median(后5次) = 1335.774us
+  device 2 median(后5次) = 1335.087us
+  device 3 median(后5次) = 1337.285us
+  >>> MAX across ranks = 1337.285us
+  M=8192 K=1536 N=12288 R=4 MAX=1337.285us
+
+########## M=8192 K=3696 N=8192 R=2 headM=512 ##########
+  device 0 median(后5次) = 1771.882us
+  device 1 median(后5次) = 1771.363us
+  >>> MAX across ranks = 1771.882us
+  M=8192 K=3696 N=8192 R=2 MAX=1771.882us
+
+########## M=8192 K=3696 N=8192 R=4 headM=128 ##########
+  device 0 median(后5次) = 1322.518us
+  device 1 median(后5次) = 1317.333us
+  device 2 median(后5次) = 1315.172us
+  device 3 median(后5次) = 1320.743us
+  >>> MAX across ranks = 1322.518us
+  M=8192 K=3696 N=8192 R=4 MAX=1322.518us
+
+########## M=8192 K=1024 N=8192 R=2 headM=512 ##########
+  device 0 median(后5次) = 1623.433us
+  device 1 median(后5次) = 1621.337us
+  >>> MAX across ranks = 1623.433us
+  M=8192 K=1024 N=8192 R=2 MAX=1623.433us
+
+########## M=8192 K=1024 N=8192 R=4 headM=128 ##########
+  device 0 median(后5次) = 917.125us
+  device 1 median(后5次) = 921.353us
+  device 2 median(后5次) = 921.427us
+  device 3 median(后5次) = 920.590us
+  >>> MAX across ranks = 921.427us
+  M=8192 K=1024 N=8192 R=4 MAX=921.427us
+
+########## M=4096 K=3584 N=4096 R=2 headM=512 ##########
+  device 0 median(后5次) = 471.610us
+  device 1 median(后5次) = 473.381us
+  >>> MAX across ranks = 473.381us
+  M=4096 K=3584 N=4096 R=2 MAX=473.381us
+
+########## M=4096 K=3584 N=4096 R=4 headM=128 ##########
+  device 0 median(后5次) = 305.408us
+  device 1 median(后5次) = 305.723us
+  device 2 median(后5次) = 308.210us
+  device 3 median(后5次) = 307.696us
+  >>> MAX across ranks = 308.210us
+  M=4096 K=3584 N=4096 R=4 MAX=308.210us
+
+########## M=2048 K=3584 N=4096 R=2 headM=512 ##########
+  device 0 median(后5次) = 272.581us
+  device 1 median(后5次) = 272.465us
+  >>> MAX across ranks = 272.581us
+  M=2048 K=3584 N=4096 R=2 MAX=272.581us
+
+########## M=2048 K=3584 N=4096 R=4 headM=128 ##########
+  device 0 median(后5次) = 175.913us
+  device 1 median(后5次) = 179.611us
+  device 2 median(后5次) = 173.990us
+  device 3 median(后5次) = 176.292us
+  >>> MAX across ranks = 179.611us
+  M=2048 K=3584 N=4096 R=4 MAX=179.611us
+
+########## M=4032 K=8192 N=4096 R=2 headM=512 ##########
+  device 0 median(后5次) = 574.858us
+  device 1 median(后5次) = 574.645us
+  >>> MAX across ranks = 574.858us
+  M=4032 K=8192 N=4096 R=2 MAX=574.858us
+
+########## M=4032 K=8192 N=4096 R=4 headM=128 ##########
+  device 0 median(后5次) = 613.537us
+  device 1 median(后5次) = 612.214us
+  device 2 median(后5次) = 613.392us
+  device 3 median(后5次) = 611.811us
+  >>> MAX across ranks = 613.537us
+  M=4032 K=8192 N=4096 R=4 MAX=613.537us
+
+==================== 12 Case msprof 汇总 ====================
