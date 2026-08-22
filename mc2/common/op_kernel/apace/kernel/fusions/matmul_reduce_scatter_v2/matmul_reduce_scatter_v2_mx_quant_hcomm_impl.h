@@ -106,10 +106,12 @@ public:
         const uint64_t tileM = static_cast<uint64_t>(commTiling.splitAxisTileSize);
         const uint64_t tailM = static_cast<uint64_t>(commTiling.splitAxisTailSize);
         const uint64_t perRankM = tileM * tileCount + tailM * tailCount;
-        Params tileParams = BuildMatmulParams(&tilingData_->tileQbmmTilingData, tileM, perRankM);
-        const QuantMatmulTilingData *tailTiling = tailCount > 0 ?
-            &tilingData_->tailQbmmTilingData : &tilingData_->tileQbmmTilingData;
-        Params tailParams = BuildMatmulParams(tailTiling, tailCount > 0 ? tailM : tileM, perRankM);
+        Params tileParams;
+        Params tailParams;
+        SetupMatmulParams(tileParams, &tilingData_->tileQbmmTilingData, tileM, perRankM);
+        if (tailCount > 0) {
+            SetupMatmulParams(tailParams, &tilingData_->tailQbmmTilingData, tailM, perRankM);
+        }
 
         // One APACE QBMM invocation owns the complete per-rank M. The kernel
         // iterates communication slices internally and calls IssueSlice after
@@ -129,8 +131,8 @@ public:
     }
 
 private:
-    __aicore__ inline Params BuildMatmulParams(
-        const QuantMatmulTilingData *tiling, uint64_t sliceM, uint64_t perRankM)
+    __aicore__ inline void SetupMatmulParams(
+        Params &params, const QuantMatmulTilingData *tiling, uint64_t sliceM, uint64_t perRankM)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
@@ -151,7 +153,7 @@ private:
             tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
         SliceParams sliceParams{rankDim_, perRankM, 0, sliceM};
-        return {problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
+        params = {problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
     }
 
     __aicore__ inline void IssueReduceScatter(
