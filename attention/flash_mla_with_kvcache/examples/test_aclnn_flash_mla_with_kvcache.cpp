@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_flash_mla_with_kvcache.cpp
- * \brief aclnn FlashMlaWithKvcache (m0070) end-to-end example with independent CPU golden verification.
+ * \brief aclnn FlashMlaWithKvcache end-to-end example with independent CPU golden verification.
  *
  * Pipeline per case:
  *   1. aclnnFlashMlaMetadataGetWorkspaceSize / aclnnFlashMlaMetadata  -> multi-section metadata (INT32)
@@ -19,7 +19,7 @@
  *      flash_attn pytests thresholds (attention/flash_attn/tests/pytests/utils/compare.py,
  *      check_result: fp16 atol=2.5e-5 rtol=5e-3; bf16 atol=1e-4 rtol=7.8125e-3; failRatio<=0.5%)
  *
- * Geometry (R1 routing set, m0070): q TND [T,n1,576] (nope512+rope64 merged), k_cache PA_NZ
+ * Geometry (routing set): q TND [T,n1,576] (nope512+rope64 merged), k_cache PA_NZ
  * (Bn,N_kv,D1,Bs,D0) = (numBlocks,1,36,blockSize,16), block_table [b,maxBlocks], cache_seqlens [b],
  * cu_seqlens_q [b+1], attn_mask INT8 [2048,2048] causal (mask_mode=3 = RIGHT_DOWN), attrs
  * head_dim_v=512, softmax_scale=1/sqrt(512), layout_q=TND layout_kv=NZ layout_out=NTD,
@@ -46,21 +46,21 @@ namespace {
 
 #define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
-constexpr int64_t QK_HEAD_DIM = 512;   // nope width (head_dim_v)
-constexpr int64_t ROPE_HEAD_DIM = 64;  // rope lanes merged at the tail of the 576-wide q/k_cache
-constexpr int64_t MLA_D = QK_HEAD_DIM + ROPE_HEAD_DIM;  // 576
-constexpr int64_t BLOCK_SIZE = 128;    // paged-attention block size (tokens) for the NZ k_cache
-constexpr int64_t NZ_D0 = 16;          // NZ inner depth (32B / typeSize(fp16))
-constexpr int64_t NZ_D1 = MLA_D / NZ_D0;  // 36
+constexpr int64_t QK_HEAD_DIM = 512;                   // nope width (head_dim_v)
+constexpr int64_t ROPE_HEAD_DIM = 64;                  // rope lanes merged at the tail of the 576-wide q/k_cache
+constexpr int64_t MLA_D = QK_HEAD_DIM + ROPE_HEAD_DIM; // 576
+constexpr int64_t BLOCK_SIZE = 128;                    // paged-attention block size (tokens) for the NZ k_cache
+constexpr int64_t NZ_D0 = 16;                          // NZ inner depth (32B / typeSize(fp16))
+constexpr int64_t NZ_D1 = MLA_D / NZ_D0;               // 36
 
 constexpr int64_t AIC_CORE_NUM = 36;
 constexpr int64_t AIV_CORE_NUM = 72;
-constexpr int64_t METADATA_ALIGN = 4096;  // words (same as flash_attn.py / flash_mla_with_kvcache.py alignment)
+constexpr int64_t METADATA_ALIGN = 4096; // words (same as flash_attn.py / flash_mla_with_kvcache.py alignment)
 
 // --- compare.py thresholds (get_tolerance / check_result) -------------------------------
 constexpr double FP16_ATOL = 2.5e-5;
@@ -101,8 +101,10 @@ int Init(int32_t deviceId, aclrtStream *stream)
 // Deterministic pseudo-random generator (xorshift64) so goldens are reproducible.
 struct Rng {
     uint64_t state_;
-    explicit Rng(uint64_t seed) : state_(seed) {}
-    double Next()  // uniform in (-0.5, 0.5)
+    explicit Rng(uint64_t seed)
+        : state_(seed)
+    {}
+    double Next() // uniform in (-0.5, 0.5)
     {
         state_ ^= state_ << 13;
         state_ ^= state_ >> 7;
@@ -157,12 +159,12 @@ int64_t RequiredMetadataBytes(int64_t batchSize)
 // ------------------------------------------------------------------------------------------
 struct Case {
     const char *name;
-    aclDataType dtype;              // ACL_FLOAT16 or ACL_BF16
+    aclDataType dtype; // ACL_FLOAT16 or ACL_BF16
     int64_t batch;
-    std::vector<int64_t> qLens;     // per-batch query lengths (sum == T)
-    int64_t kvLen;                  // uniform per-batch KV length
+    std::vector<int64_t> qLens; // per-batch query lengths (sum == T)
+    int64_t kvLen;              // uniform per-batch KV length
     int64_t numHeadsQ;
-    bool expectMultiSection;        // expect metadata sectionNum >= 2
+    bool expectMultiSection; // expect metadata sectionNum >= 2
 };
 
 struct PreparedInputs {
@@ -294,8 +296,8 @@ PreparedInputs PrepareCase(const Case &cs, uint64_t seed)
 // LSE[n][t] = max_j(S) + log(sum_j exp(S[j]-max)), over allowed (unmasked) j.
 // ------------------------------------------------------------------------------------------
 struct GoldenResult {
-    std::vector<double> o;    // [numHeadsQ * T * 512]
-    std::vector<double> lse;  // [numHeadsQ * T]
+    std::vector<double> o;   // [numHeadsQ * T * 512]
+    std::vector<double> lse; // [numHeadsQ * T]
 };
 
 GoldenResult ComputeGolden(const Case &cs, const PreparedInputs &in, double scale, bool causal)
@@ -343,7 +345,7 @@ GoldenResult ComputeGolden(const Case &cs, const PreparedInputs &in, double scal
                     }
                     s *= scale;
                     if (causal && j > i + (cs.kvLen - cs.qLens[b])) {
-                        s = -1e300;  // masked out (never contributes to max/sum)
+                        s = -1e300; // masked out (never contributes to max/sum)
                     }
                     scores[j] = s;
                     if (s > maxS) {
@@ -407,7 +409,7 @@ bool CompareWithTolerance(const char *tag, const std::vector<double> &expect, co
     return passed;
 }
 
-}  // namespace
+} // namespace
 
 int main()
 {
@@ -446,10 +448,10 @@ int main()
         std::vector<int64_t> cuShape = {cs.batch + 1};
         std::vector<int64_t> maskShape = {2048, 2048};
         std::vector<int64_t> metaShape = {static_cast<int64_t>(in.metadata.size())};
-        std::vector<int64_t> outShape = {cs.numHeadsQ, in.totalTokens, QK_HEAD_DIM};  // NTD = (N,T,D)
+        std::vector<int64_t> outShape = {cs.numHeadsQ, in.totalTokens, QK_HEAD_DIM}; // NTD = (N,T,D)
         std::vector<int64_t> lseShape = {cs.numHeadsQ, in.totalTokens};
 
-        aclDataType qDtype = cs.dtype;  // fp16/bf16 with matching host vector
+        aclDataType qDtype = cs.dtype; // fp16/bf16 with matching host vector
         if (cs.dtype == ACL_FLOAT16) {
             ret = CreateAclTensor(in.qFp16, qShape, &qDev, qDtype, &qT);
             ret = ret == ACL_SUCCESS ? CreateAclTensor(in.kCacheFp16, kShape, &kDev, qDtype, &kT) : ret;
@@ -463,10 +465,9 @@ int main()
         ret = ret == ACL_SUCCESS ? CreateAclTensor(in.attnMask, maskShape, &maskDev, ACL_INT8, &maskT) : ret;
         ret = ret == ACL_SUCCESS ? CreateAclTensor(in.metadata, metaShape, &metaDev, ACL_INT32, &metaT) : ret;
         std::vector<uint16_t> outRaw(outShape[0] * outShape[1] * outShape[2], 0);
-        ret = ret == ACL_SUCCESS
-                  ? CreateRawAclTensor(outRaw.data(), outRaw.size() * sizeof(uint16_t), outShape, qDtype, &outDev,
-                                       &outT)
-                  : ret;
+        ret = ret == ACL_SUCCESS ? CreateRawAclTensor(outRaw.data(), outRaw.size() * sizeof(uint16_t), outShape, qDtype, &outDev,
+                                                      &outT) :
+                                   ret;
         std::vector<float> lseHost(lseShape[0] * lseShape[1], 0.0f);
         ret = ret == ACL_SUCCESS ? CreateAclTensor(lseHost, lseShape, &lseDev, ACL_FLOAT, &lseT) : ret;
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -477,7 +478,7 @@ int main()
         // ---- 1. metadata op -------------------------------------------------------------
         char layoutQ[] = "TND";
         char layoutKv[] = "PA_NZ";
-        char layoutOut[] = "NTD";  // MLA 输出头主序 (N,T,D)（R1/learnings NTD 定论）
+        char layoutOut[] = "NTD"; // MLA 输出头主序 (N,T,D)
         void *cuDevM = nullptr;
         void *seqKvDevM = nullptr;
         aclTensor *cuTM = nullptr;
@@ -485,15 +486,14 @@ int main()
         std::vector<int64_t> cuShapeM = {cs.batch + 1};
         std::vector<int64_t> seqKvShapeM = {cs.batch};
         ret = CreateAclTensor(in.cuSeqlensQ, cuShapeM, &cuDevM, ACL_INT32, &cuTM);
-        ret = ret == ACL_SUCCESS ? CreateAclTensor(in.cacheSeqlens, seqKvShapeM, &seqKvDevM, ACL_INT32, &seqKvTM)
-                                 : ret;
+        ret = ret == ACL_SUCCESS ? CreateAclTensor(in.cacheSeqlens, seqKvShapeM, &seqKvDevM, ACL_INT32, &seqKvTM) : ret;
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             LOG_PRINT("CreateAclTensor(metadata seq-lens) failed: %d\n", ret);
             return ret;
         }
         uint64_t wsSize = 0;
         aclOpExecutor *executor = nullptr;
-        // m0070 16 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, numHeadsQ, numHeadsKv, headDim,
+        // 16 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, numHeadsQ, numHeadsKv, headDim,
         // batchSize, maxSeqlenQ, maxSeqlenKv, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
         // headDim=512: MLA checker 强制 head_dim==512（qk nope 宽）。
         ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.numHeadsQ, 1, 512, cs.batch,
@@ -544,9 +544,9 @@ int main()
         wsSize = 0;
         executor = nullptr;
         ret = aclnnFlashMlaWithKvcacheGetWorkspaceSize(qT, kT, btT, clT, cuT, nullptr, maskT, metaT, QK_HEAD_DIM, softmaxScale, 3,
-                                            cs.qLens[0] > 8 ? cs.qLens[0] : -1,
-                                            cs.qLens[0] > 8 ? cs.kvLen : -1, layoutQ, layoutKv, layoutOut, 1, outT,
-                                            lseT, &wsSize, &executor);
+                                                       cs.qLens[0] > 8 ? cs.qLens[0] : -1,
+                                                       cs.qLens[0] > 8 ? cs.kvLen : -1, layoutQ, layoutKv, layoutOut, 1, outT,
+                                                       lseT, &wsSize, &executor);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             LOG_PRINT("aclnnFlashMlaWithKvcacheGetWorkspaceSize failed: %d\n", ret);
             return ret;

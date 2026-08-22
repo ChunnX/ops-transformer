@@ -11,9 +11,9 @@
 /*!
  * \file flash_mla_with_kvcache.cpp
  * \brief flash_mla_with_kvcache Kernel 唯一入口；按 tiling key 编译期推导模板参数，
- *        分发 FlashAttentionNoQuantMlaKernel（fia_kernel_noquant_mla.h 改名，D20/D6）。
+ *        分发 FlashAttentionNoQuantMlaKernel（由 fia_kernel_noquant_mla.h 复制改名）。
  *        模板实例化集合 = fia MLA 分发宏（fia_arch35_noquant.h Aligned576 路径）限定到
- *        TND/PA_NZ/NTD（R1）；rope 已并入 q/k_cache 576 宽单张量（m0070），无独立 rope 输入。
+ *        TND/PA_NZ/NTD 路由组合；rope 已并入 q/k_cache 576 宽单张量，无独立 rope 输入。
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -45,7 +45,7 @@ using namespace AttentionCommon; // flash_mla_with_kvcache_kernel_noquant_mla.h 
 // GetQueryLayout/GetOutLayout/GetKvLayout/IsPageAttention，命名保留 MLA 语境）。
 // 等价性锚点 = arch35/flash_mla_with_kvcache_template_tiling_key.h 的 InOutLayoutTypeValue 表
 // 与 KvLayoutType 存储模式语义；每条分支与表值 static_assert 互锁（防漂移），
-// R1 实际实例化组合 = inOutLayoutType=2(TND_TND)、KvLayoutType=3(PA_NZ)。 ============
+// 实际实例化组合 = inOutLayoutType=2(TND_TND)、KvLayoutType=3(PA_NZ)。 ============
 template <uint8_t inOutLayoutType>
 __aicore__ inline constexpr LayOutTypeEnum GetQueryLayoutMla()
 {
@@ -133,7 +133,7 @@ static_assert(GetQueryLayoutMla<InOutLayoutType_NTD_TND>() ==
 static_assert(GetOutLayoutMla<InOutLayoutType_NTD_TND>() ==
               static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_NTD_TND][1]));
 
-// —— 互锁②：R1 实际实例化组合的语义断言（inOutLayoutType=2(TND_TND)→inputLayout=TND/outLayout=TND；
+// —— 互锁②：实际实例化组合的语义断言（inOutLayoutType=2(TND_TND)→inputLayout=TND/outLayout=TND；
 // KvLayoutType=3(PA_NZ)→page attention + kv 格式 PA_NZ）——
 static_assert(GetQueryLayoutMla<InOutLayoutType_TND_TND>() == LayOutTypeEnum::LAYOUT_TND);
 static_assert(GetOutLayoutMla<InOutLayoutType_TND_TND>() == LayOutTypeEnum::LAYOUT_TND);
@@ -142,7 +142,7 @@ static_assert(IsPageAttentionMla<KvLayoutType_NO_PA>() == false);
 static_assert(GetKvLayoutMla<LayOutTypeEnum::LAYOUT_TND, KvLayoutType_PA_NZ, true>() == GmFormat::PA_NZ);
 
 // 解析 tiling key，选择 MLA 四件套（镜像 fused_infer_attention_score/op_kernel/arch35/
-// fia_template_dispatcher.h run_fia_noquant_mla_kernel 的实例化逻辑，删减到 R1 限定组合）
+// fia_template_dispatcher.h run_fia_noquant_mla_kernel 的实例化逻辑，删减到限定路由组合）
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
           uint8_t KvLayoutType, bool isFd>
 inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -214,10 +214,10 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
 
     Kernel op;
-    // m0070：无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
-    // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义，R9）。
+    // 无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
+    // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
-    // TPipe 由 kernel 自持（Todo 5：与 flash_attn Init 15 参风格一致，入口不再接线外部 TPipe）
+    // TPipe 由 kernel 自持（与 flash_attn Init 15 参风格一致，入口不再接线外部 TPipe）
     op.Init(query, key, value, attenMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attentionOut,
             workspace, metadata, tilingData);
     op.Process();
@@ -225,7 +225,7 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
 
 template <uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask, uint8_t KvLayoutType, bool isFd>
 // 形参序必须吃齐 def 输入序 cache_seqlens(3)/cu_seqlens_q(4)/seqused_q(5)（运行时按 def 序绑槽位；
-// 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 → AIC 263）。
+// 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 越界）。
 __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockTable,
                                                   __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                                   __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,

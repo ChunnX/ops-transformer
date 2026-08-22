@@ -59,14 +59,14 @@ public:
     TPipe *tPipe = nullptr;
 
     /* =====================GM变量(with layout)==================== */
-    // m0070：q/k_cache 为 576 宽单张量（nope 512 + rope 64 合并），无独立 queryRope/keyRope 张量；
+    // q/k_cache 为 576 宽单张量（nope 512 + rope 64 合并），无独立 queryRope/keyRope 张量；
     // query 与 key 的 GM stride 布局按 576 宽初始化（偏移切分见 CopyQueryAndRopeTile/CopyKeyAndRopeTile）。
-    // seq-lens（cu_seqlens_q/cache_seqlens）为 INT32，ACTLEN_T=uint32_t（R2/D26）。
+    // seq-lens（cu_seqlens_q/cache_seqlens）为 INT32，ACTLEN_T=uint32_t。
     FaGmTensor<Q_T, Q_FORMAT, uint32_t, true> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
     FaGmTensor<KV_T, KV_FORMAT> valueGm;
     GlobalTensor<int32_t> blockTableGm;
-    // seq-lens GM 张量与解析器所有权在 kernel 侧 FlashMlaSeqLensTool（Todo 8），本 block 只读引用
+    // seq-lens GM 张量与解析器所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
     SeqLensToolType &seqLensTool_;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
@@ -124,7 +124,7 @@ public:
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        // m0070：query 576 宽单张量（nope 512 + rope 64 合并）——GM stride 按 576 初始化，
+        // query 576 宽单张量（nope 512 + rope 64 合并）——GM stride 按 576 初始化，
         // 供 CopyQueryAndRopeTile 的 rope 段按 dIdx=512 偏移定位
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                     constInfo.dSize + constInfo.dSizeRope, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
@@ -132,12 +132,12 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        // k_cache 为普通 ND 张量（m0070，非 TensorList）：直接取裸指针，
+        // k_cache 为普通 ND 张量（非 TensorList）：直接取裸指针，
         // 不能用 ListTensorDesc 解码（会把 k_cache 数据首部误解析为 list 描述符 → GM 越界）
         __gm__ uint8_t *key_ = key;
         __gm__ uint8_t *value_ = value;
 
-        // m0070：k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
+        // k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
         // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），valueGm 仅初始化不再单独读取
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, keyGm, key_,
@@ -197,7 +197,7 @@ public:
         mmL0CBuffers.Uninit(l0cBufferManager);
     }
 
-    // copy query（m0070：q 为 576 宽单张量，GM 上 nope+rope 合并存储，
+    // copy query（q 为 576 宽单张量，GM 上 nope+rope 合并存储，
     // L1 上按行切分为 [nope 512) + [rope 64) 两段拼出 mm1 K=576 的 S 矩阵；
     // rope 段 GM 偏移 = dIdx = dSize(=head_dim_v=512)，L1 偏移 = dSize*dstStride 与双张量版本一致）
     __aicore__ inline void CopyQueryAndRopeTile(const LocalTensor<Q_T> &dstTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
@@ -229,7 +229,7 @@ public:
         }
     }
 
-    // copy key（m0070：k_cache 为 576 宽单张量，GM 上 nope+rope 合并存储，
+    // copy key（k_cache 为 576 宽单张量，GM 上 nope+rope 合并存储，
     // L1 上按行切分为 [nope 512) + [rope 64) 两段；rope 段 GM 偏移 = dIdx = dSize(=head_dim_v=512)；
     // key and value 是同一份数据（k==v），bmm2 的 V 段 = L1 nope 区（512 宽），无独立 value GM 读取）
     __aicore__ inline void CopyKeyAndRopeTile(const LocalTensor<KV_T> &dstTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
