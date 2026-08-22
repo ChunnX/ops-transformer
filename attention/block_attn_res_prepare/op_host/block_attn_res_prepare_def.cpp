@@ -29,7 +29,7 @@ public:
             .AutoContiguous();
         this->Input("valid_blocks")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("pseudo_query")
