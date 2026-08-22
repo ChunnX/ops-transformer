@@ -39,7 +39,6 @@ struct ExpertLoopState {
 struct GmmRuntimeState {
     uint32_t &startBlockIdx;
     int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
     uint16_t &pingpongIdx;
 };
 
