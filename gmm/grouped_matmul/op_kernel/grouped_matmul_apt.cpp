@@ -103,7 +103,7 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
 
-#if defined(FORMAT_SCALE) && defined(FORMAT_WEIGHT) && defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E8M0) &&         \
+#if defined(FORMAT_SCALE) && defined(FORMAT_WEIGHT) && defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E8M0) && \
     FORMAT_SCALE == FORMAT_FRACTAL_NZ && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ && ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0
 constexpr bool scaleNz = true;
 #else
@@ -232,8 +232,8 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
-                             yLayout, DTYPE_L0C_LOCAL, scaleNz>                                                       \
-            (x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe);    \
+                             yLayout, DTYPE_L0C_LOCAL, scaleNz>(x, weight, bias, scale, groupList, perTokenScale, y,   \
+                                                                user1, &gmmQuantParams_, &mmTilingData_, &tPipe);      \
     } while (0)
 #else
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
