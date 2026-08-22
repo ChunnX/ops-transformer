@@ -201,19 +201,22 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     uint64_t axisK = mmTile.k;
     uint64_t perRankN = axisN / rankDim_;
 
-    // ProblemShape: M=curTileM, N=perRankN(每卡N), K=完整K, batch=rankDim(遍历所有rank的B)
+    // 与urma方案保持一致:
+    // ProblemShape: M=curTileM, N=perRankN(每卡N), K=完整K, batch=rankDim
     params.problemShape = ProblemShape{
         static_cast<int64_t>(curTileM),
         static_cast<int64_t>(perRankN),
         static_cast<int64_t>(axisK),
         static_cast<int64_t>(rankDim_)};
 
-    // B矩阵按rank切分: bGm + rankId * perRankN * K
     constexpr uint64_t sizeShift = IsMxFp4 ? 1 : 0;
     uint64_t scaleKLen = Blaze::Gemm::CeilDiv(axisK, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
 
+    // A: 全局布局[rankDim*rankM, K], kernel内部按rank*oriM偏移
     params.mmadParams.aGmAddr = x1_;
+    // B: 全局布局, kernel内部按rank*K偏移读取各rank的B段
     params.mmadParams.bGmAddr = x2_;
+    // C: 写入mmResult(workspace)
     params.mmadParams.cGmAddr = mmResultGM_;
     params.mmadParams.biasGmAddr = bias_;
     params.mmadParams.scaleAGmAddr = x1Scale_;
@@ -232,12 +235,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     params.qbmmParams.dbL0c = mmTile.dbL0c;
     params.qbmmParams.skipSelfBatch = false;
 
-    // rankId/rankSize用实际值,Blaze kernel按rank遍历B矩阵
+    // rankId/rankSize用实际值,与urma方案一致
     params.localParams.rankId = rankId_;
     params.localParams.rankSize = rankDim_;
     params.localParams.originalM = curTileM;
     params.localParams.selfRankId = rankId_;
-    params.localParams.cGmSelfAddr = 0;  // 不分离self C
+    params.localParams.cGmSelfAddr = 0;
     params.localParams.skipSelfBatch = false;
 }
 
@@ -255,11 +258,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     Params params;
     SetupParams(mmTile, curTileM, params);
 
-    // 计算当前tile在mmResult中的偏移
+    // 计算当前tile在各rank的A中的M偏移
+    // urma方案: A是全局布局[rankDim*rankM, K], 每个tile的A偏移 = tileOffset * K
+    // kernel内部按 rank * curTileM + mPos 遍历各rank的A段
     uint64_t tileOffset = CalcTileOffset(tileIdx);
-    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
 
-    // A矩阵偏移: x1_ + tileOffset * K
+    // A矩阵偏移: x1_ + tileOffset * K (每个tile在M方向的起始偏移)
     uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
     params.mmadParams.aGmAddr = x1_ + aByteOffset;
 
@@ -268,7 +272,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
     params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
 
-    // C输出偏移: mmResult_ + tileOffset * perRankN
+    // C输出偏移: mmResult_ + tileOffset * perRankN (每个tile输出perRankN列)
+    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
     params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
 
     quantMatmulKernelImpl_.InitMmad(params);
