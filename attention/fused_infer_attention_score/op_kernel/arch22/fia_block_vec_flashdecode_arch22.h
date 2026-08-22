@@ -891,47 +891,31 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo.gS1Idx + startRow;
-                if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
-                    uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
-                    uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<LAYOUT_T>()>(
-                        softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
-                } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
-                    uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
-                    uint32_t s1Size = taskInfo.bIdx == 0U ? actualSeqLengthsGmQ.GetValue(0U) :
-                                                            actualSeqLengthsGmQ.GetValue(taskInfo.bIdx) -
-                                                                actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1U);
-                    uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<LAYOUT_T>()>(
-                        softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = s1Size, .gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
-                } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    uint64_t s1LeftPaddingSize = 0;
-                    if (constInfo.isQHasLeftPadding) {
-                        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize -
-                                            qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    }
-                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-                        softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = constInfo.qSeqSize,
-                         .gSize = constInfo.gSize,
-                         .s1LeftPaddingSize = s1LeftPaddingSize});
-                } else { // BNSD
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    uint64_t s1LeftPaddingSize = 0;
-                    if (constInfo.isQHasLeftPadding) {
-                        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
-                    }
-                    DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-                        softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                        {.s1Size = constInfo.qSeqSize,
-                         .qActSeqLens = qActSeqLens,
-                         .s1LeftPaddingSize = s1LeftPaddingSize});
+                
+                GmCoord lseGmCoord{.bIdx = taskInfo.bIdx,
+                                .n2Idx = taskInfo.n2Idx,
+                                .gS1Idx = mOffset,
+                                .dIdx = 0,
+                                .gS1DealSize = actualGSplitSize,
+                                .dDealSize = 0};
+
+                if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
+                    constexpr GmFormat LSE_FORMAT = (LAYOUT_T == FIA_LAYOUT::TND) ? GmFormat::LSE_TN2G : GmFormat::LSE_N2GT;
+                    FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+                    lseGmTensor_.gmTensor = softmaxLseGm;
+                    lseGmTensor_.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, actualSeqLengthsGmQ,
+                                                       constInfo.actualLenQDims);
+                    CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+                    copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
+                } else { // BSND BSH BNSD
+                    constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+                    FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+                    lseGmTensor_.gmTensor = softmaxLseGm;
+                    lseGmTensor_.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                        constInfo.qSeqSize, actualSeqLengthsGmQ, constInfo.actualLenQDims,
+                        constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
+                    CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+                    copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
                 }
                 SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }

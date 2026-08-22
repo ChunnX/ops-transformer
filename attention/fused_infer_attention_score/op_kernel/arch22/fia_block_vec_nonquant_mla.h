@@ -836,35 +836,29 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
+    GmCoord lseGmCoord{.bIdx = info.bIdx,
+                    .n2Idx = info.n2Idx,
+                    .gS1Idx = mOffset,
+                    .dIdx = 0,
+                    .gS1DealSize = mSplitInfo.vecDealM,
+                    .dDealSize = 0};
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
-        uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
-        uint64_t bN2Offset =
-            static_cast<uint64_t>(prefixBS1) * constInfo.qHeadNum + static_cast<uint64_t>(info.n2Idx) * constInfo.gSize;
-        DataCopySoftmaxLse<T, GmFormat::LSE_TN2G, GetOutUbFormat<LAYOUT_T>()>(
-            softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
-            {.gSize = constInfo.gSize, .n2Size = constInfo.kvHeadNum});
-    } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
-        uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
-                             static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        uint64_t s1LeftPaddingSize = 0;
-        if (constInfo.isQHasLeftPadding) {
-            s1LeftPaddingSize =
-                constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(info.bIdx);
-        }
-        DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-            softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
-            {.s1Size = constInfo.qSeqSize, .gSize = constInfo.gSize, .s1LeftPaddingSize = s1LeftPaddingSize});
+        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_TN2G;
+        FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+        lseGmTensor_.gmTensor = softmaxLseGm;
+        lseGmTensor_.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, actualSeqLengthsGmQ,
+                                            constInfo.actualLenQDims);
+        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+        copyLseUbToGm_(lseGmTensor_, lseSrc, lseGmCoord);
     } else {
-        uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
-                             static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(info.bIdx);
-        uint64_t s1LeftPaddingSize = 0;
-        if (constInfo.isQHasLeftPadding) {
-            s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLens;
-        }
-        DataCopySoftmaxLse<T, GmFormat::LSE_BN2GS1, GetOutUbFormat<LAYOUT_T>()>(
-            softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
-            {.s1Size = constInfo.qSeqSize, .qActSeqLens = qActSeqLens, .s1LeftPaddingSize = s1LeftPaddingSize});
+        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+        FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+        lseGmTensor_.gmTensor = softmaxLseGm;
+        lseGmTensor_.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+            constInfo.qSeqSize, actualSeqLengthsGmQ, constInfo.actualLenQDims,
+            constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
+        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+        copyLseUbToGm_(lseGmTensor_, lseSrc, lseGmCoord);
     }
 }
 
