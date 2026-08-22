@@ -9,5 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
-    AddOpTestCase(allto_allv_grouped_mat_mul "Ascend910_9391" "-DDTYPE_X_REF=half -include${CMAKE_CURRENT_SOURCE_DIR}/allto_allv_grouped_mat_mul_tiling_def.h" "")
+    AddOpTestCase(allto_allv_grouped_mat_mul "Ascend910_9391" "-DDTYPE_X_REF=half -include${CMAKE_CURRENT_SOURCE_DIR}/allto_allv_grouped_mat_mul_tiling_def.h" ""
+        "${CMAKE_CURRENT_SOURCE_DIR}/allto_allv_grouped_mat_mul_v2_kt_stub.cpp")
 endif()

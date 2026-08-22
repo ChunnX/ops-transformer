@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlltoAllvGroupedMatMul V2 AIV 内核交互讲解</title>
+<style>
+:root{--bg:#f5f5f5;--card-bg:#fff;--text:#1a1a2e;--t2:#555;--accent:#2563eb;--al:#dbeafe;--border:#e2e8f0;
+--code-bg:#1e293b;--code-text:#e2e8f0;--annot-bg:#fffbeb;--annot-border:#f59e0b;
+--step-bg:#f0f4ff;--step-border:#93c5fd;--info-bg:#dbeafe;--info-border:#3b82f6;
+--warn-bg:#fef3c7;--warn-border:#f59e0b;--tip-bg:#d1fae5;--tip-border:#10b981;
+--hl-bg:#fef08a;--decl-bg:#dcfce7;--use-bg:#dbeafe;--var-bg:#fce7f3;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{font-size:2em;text-align:center;margin:24px 0 8px;background:linear-gradient(135deg,#2563eb,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.subtitle{text-align:center;color:var(--t2);margin-bottom:24px;font-size:.95em}
+.card{background:var(--card-bg);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);padding:28px 32px;margin-bottom:24px;border:1px solid var(--border)}
+.card h2{font-size:1.4em;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--al);color:var(--accent)}
+.card h3{font-size:1.15em;margin:24px 0 12px;color:#1e3a5f}
+.card h4{font-size:1.02em;margin:16px 0 8px;color:#334155}
+.flow-step{display:flex;gap:16px;align-items:flex-start;margin:20px 0;padding:20px;background:var(--step-bg);border-radius:10px;border-left:4px solid var(--step-border)}
+.flow-num{width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.95em;flex-shrink:0;margin-top:2px}
+.flow-body{flex:1;min-width:0}
+.flow-body>strong{display:block;font-size:1.08em;color:#1e3a5f;margin-bottom:8px}
+pre{background:var(--code-bg);color:var(--code-text);padding:14px 18px;border-radius:8px;overflow-x:auto;font-size:.85em;line-height:1.55;margin:10px 0;white-space:pre-wrap;word-break:break-all}
+code{font-family:'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace}
+:not(pre)>code{background:#f1f5f9;color:#c2410c;padding:1px 5px;border-radius:4px;font-size:.92em}
+.annot{background:var(--annot-bg);border-left:3px solid var(--annot-border);padding:10px 14px;margin:8px 0;border-radius:0 6px 6px 0;font-size:.9em}
+.annot strong{color:#b45309}
+.callout{border-left:4px solid;padding:12px 16px;margin:12px 0;border-radius:0 8px 8px 0;font-size:.92em}
+.callout.info{background:var(--info-bg);border-color:var(--info-border)}
+.callout.warn{background:var(--warn-bg);border-color:var(--warn-border)}
+.callout.tip{background:var(--tip-bg);border-color:var(--tip-border)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.9em}
+th,td{padding:8px 12px;border:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:#f8fafc;font-weight:600}
+tr:hover td{background:#fafbfc}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.78em;font-weight:600;margin-right:4px}
+.tag.input{background:#dbeafe;color:#1d4ed8}.tag.output{background:#d1fae5;color:#047857}
+.tag.ws{background:#fef3c7;color:#b45309}.tag.ccl{background:#fce7f3;color:#be185d}
+ul,ol{padding-left:22px}li{margin:3px 0}
+nav.toc{background:#fff;border-radius:10px;padding:20px 28px;margin-bottom:24px;border:1px solid var(--border)}
+nav.toc h3{margin:0 0 12px;font-size:1.1em;color:var(--accent)}
+nav.toc ol{columns:2;column-gap:40px}nav.toc li{margin:4px 0;font-size:.93em}
+nav.toc a{color:var(--accent);text-decoration:none}nav.toc a:hover{text-decoration:underline}
+
+/* variable reference */
+.vr{color:#7c3aed;border-bottom:1px dashed #7c3aed;cursor:pointer;position:relative}
+.vr:hover{background:#ede9fe;border-radius:3px}
+.vr.gm{color:#1d4ed8;border-color:#1d4ed8}.vr.gm:hover{background:#dbeafe}
+.vr.ub{color:#b45309;border-color:#b45309}.vr.ub:hover{background:#fef3c7}
+.vr.cfg{color:#047857;border-color:#047857}.vr.cfg:hover{background:#d1fae5}
+
+/* popover */
+.popover{display:none;position:fixed;z-index:9999;background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:16px 18px;min-width:260px;max-width:420px;font-size:.88em;border:1px solid #e2e8f0}
+.popover.show{display:block}
+.popover h4{margin:0 0 8px;color:#334155;font-size:.95em;border-bottom:1px solid #e2e8f0;padding-bottom:6px}
+.popover .btn-row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.popover button{font-size:.82em;padding:5px 10px;border-radius:5px;border:1px solid #d1d5db;cursor:pointer;background:#f9fafb;color:#374151;white-space:nowrap}
+.popover button:hover{background:#e5e7eb}
+.popover button.d{background:#dcfce7;border-color:#86efac}.popover button.d:hover{background:#bbf7d0}
+.popover button.u{background:#dbeafe;border-color:#93c5fd}.popover button.u:hover{background:#bfdbfe}
+.popover button.v{background:#fce7f3;border-color:#f9a8d4}.popover button.v:hover{background:#fbcfe8}
+.popover .tag{font-size:.72em;margin:0 2px}
+
+/* source panel */
+#src-panel{display:none;position:fixed;bottom:0;left:0;right:0;height:55vh;z-index:9998;background:#1e293b;color:#e2e8f0;border-top:3px solid #2563eb;overflow:hidden;flex-direction:column}
+#src-panel.open{display:flex}
+#src-header{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#0f172a;border-bottom:1px solid #334155;flex-shrink:0}
+#src-header span{font-size:.9em;color:#94a3b8}
+#src-header button{background:#334155;color:#e2e8f0;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:.82em;margin-left:8px}
+#src-header button:hover{background:#475569}
+#src-code{flex:1;overflow-y:auto;padding:8px 0;font-family:'JetBrains Mono','Fira Code','Consolas',monospace;font-size:.82em;line-height:1.5;counter-reset:line}
+#src-code .ln{display:block;padding:0 8px;white-space:pre;counter-increment:line;min-height:1.5em}
+#src-code .ln::before{content:counter(line);display:inline-block;width:48px;text-align:right;margin-right:12px;color:#64748b;font-size:.85em;user-select:none}
+#src-code .ln.hl{background:rgba(250,204,21,0.2);border-left:3px solid #facc15}
+#src-code .ln.hl::before{color:#facc15}
+#src-code .ln.d{background:rgba(74,222,128,0.15);border-left:3px solid #4ade80}
+#src-code .ln.u{background:rgba(96,165,250,0.15);border-left:3px solid #60a5fa}
+#src-code .ln.vv{background:rgba(244,114,182,0.15);border-left:3px solid #f472b6}
+#src-code .kw{color:#c084fc}#src-code .ty{color:#60a5fa}#src-code .co{color:#64748b;font-style:italic}
+#src-code .str{color:#4ade80}#src-code .nu{color:#fb923c}
+#src-code .fn{color:#facc15;cursor:pointer;border-bottom:1px dashed #facc15}
+#src-code .fn:hover{background:rgba(250,204,21,0.2);border-radius:2px}
+
+#src-toggle{position:fixed;bottom:16px;right:16px;z-index:9997;background:#1e293b;color:#e2e8f0;border:2px solid #475569;border-radius:24px;padding:8px 16px;cursor:pointer;font-size:.85em;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+#src-toggle:hover{background:#334155}
+
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#334155;color:#fff;padding:8px 20px;border-radius:20px;font-size:.85em;z-index:9999;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+
+@media(max-width:768px){.card{padding:16px}table{font-size:.78em}th,td{padding:6px 8px}nav.toc ol{columns:1}}
+</style>
+
+<!-- ===== TOC ===== -->
+</head>
+<body>
+<div class="container">
+<h1>AlltoAllvGroupedMatMul V2 内核交互讲解</h1>
+<p class="subtitle">AIV 手写 peer-window 通信 · 按 expert 粒度搬运 · AIC/CATLASS BF16 GEMM · 完整源码可点击跳转</p>
+<nav class="toc">
+  <h3>阅读目录</h3>
+  <ol>
+    <li><a href="#mental">先建立心智模型</a></li>
+    <li><a href="#layout">三种数据排列</a></li>
+    <li><a href="#entry">Run 总入口</a></li>
+    <li><a href="#aiv">ProcessAiv 逐步执行</a></li>
+    <li><a href="#copy">两类搬运函数</a></li>
+    <li><a href="#sync">epoch 与同步</a></li>
+    <li><a href="#aic">ProcessAic 与 CATLASS</a></li>
+    <li><a href="#functions">函数总表</a></li>
+    <li><a href="#bugs">关键稳定性修复</a></li>
+    <li><a href="#source-guide">如何使用源码面板</a></li>
+  </ol>
+</nav>
+
+
+<!-- ===== EXPLANATION SECTIONS ===== -->
+<section class="card" id="mental">
+  <h2>1. 先建立心智模型</h2>
+  <p>这个文件是 V2 的“调度中枢”。同一个 MIX kernel 中，AIV 先把各 rank 的输入重排到本地 <span class="vr gm" data-v="recvBuffer">recvBuffer</span>，AIC 再把每个专家的连续片段交给 CATLASS。点击文中的紫色、蓝色、绿色变量，可以在弹窗里查看声明/使用位置，并跳到下方完整源码。</p>
+  <div class="callout info"><strong>当前边界：</strong>只讲 BF16 + AIV + 910C 最终实现；外层循环粒度是 expert，不含 chunk，也不宣称当前已有专家级通算重叠。</div>
+  <table>
+    <tr><th>参与者</th><th>职责</th><th>关键对象</th></tr>
+    <tr><td>AIV</td><td>把本卡输入发布到窗口；从每个 peer 拉取当前 expert</td><td><span class="vr cfg" data-v="context">context</span>、<span class="vr cfg" data-v="layout">layout</span>、<span class="vr ub" data-v="copyBuffer">copyBuffer</span></td></tr>
+    <tr><td>AIC</td><td>等待完整数据，然后逐 expert GEMM</td><td><span class="vr gm" data-v="gmmweight">gmmweight</span>、<span class="vr gm" data-v="gmmy">gmmy</span></td></tr>
+    <tr><td>控制面</td><td>区分不同调用轮次并做 publish/release barrier</td><td><span class="vr cfg" data-v="epoch">epoch</span>、<span class="vr ub" data-v="flagBuffer">flagBuffer</span></td></tr>
+  </table>
+</section>
+
+<section class="card" id="layout">
+  <h2>2. 先分清三种排列</h2>
+  <pre><code>源 rank 的 gmm_x/send_counts: destination-major, expert-minor
+目标 rank 的 recv_counts:    source-major, expert-minor
+目标 recvBuffer:              expert-major, source-minor</code></pre>
+  <p><span class="vr" data-v="BuildExpertMetaForIndex">BuildExpertMetaForIndex</span> 计算某个专家的总起点和总量；<span class="vr" data-v="GetDestinationSourceTokenOffset">GetDestinationSourceTokenOffset</span> 再在该专家内按 source 前缀和定位。远端源窗口中的起点由 <span class="vr" data-v="GetPeerSourceTokenOffset">GetPeerSourceTokenOffset</span> 按 destination 前缀和计算。</p>
+  <div class="callout warn">最常见的精度错误不是 CATLASS，而是把 <code>source*E+expert</code> 与 <code>destination*E+expert</code> 混用。</div>
+</section>
+
+<section class="card" id="entry">
+  <h2>3. Run 总入口：先决定接收区，再分 AIV/AIC</h2>
+  <div class="flow-step"><div class="flow-num">1</div><div class="flow-body"><strong>选择接收缓冲</strong>若用户需要 <span class="vr gm" data-v="permuteOut">permuteOut</span>，它本身就是 <span class="vr gm" data-v="recvBuffer">recvBuffer</span>；否则使用 <span class="vr gm" data-v="userWorkspace">userWorkspace</span> 加 <span class="vr cfg" data-v="recvTokenOffset">recvTokenOffset</span>。这样不会为可选输出重复复制。</div></div>
+  <div class="flow-step"><div class="flow-num">2</div><div class="flow-body"><strong>AIV 初始化通信上下文</strong><span class="vr cfg" data-v="context">context</span> 取得 rank/window；校验其 <span class="vr cfg" data-v="rankSize">rankSize</span> 与 tiling 一致。</div></div>
+  <div class="flow-step"><div class="flow-num">3</div><div class="flow-body"><strong>求窗口布局</strong>累计 <span class="vr cfg" data-v="sendCounts">sendCounts</span> 得 <span class="vr cfg" data-v="inputTokens">inputTokens</span>，交给 <span class="vr" data-v="BuildDeviceWindowLayout">BuildDeviceWindowLayout</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">4</div><div class="flow-body"><strong>建立 UB buffer</strong><span class="vr" data-v="GetCopyQueueBytes">GetCopyQueueBytes</span> 给出 <span class="vr ub" data-v="queueBytes">queueBytes</span>，分配 <span class="vr ub" data-v="copyBuffer">copyBuffer</span> 与 <span class="vr ub" data-v="flagBuffer">flagBuffer</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">5</div><div class="flow-body"><strong>两条核路径</strong>AIV 调 <span class="vr" data-v="ProcessAiv">ProcessAiv</span>；AIC 调 <span class="vr" data-v="ProcessAic">ProcessAic</span>。入口函数本身是 <span class="vr" data-v="Run">Run</span>。</div></div>
+</section>
+
+<section class="card" id="aiv">
+  <h2>4. ProcessAiv：20 步看懂一轮通信</h2>
+  <div class="flow-step"><div class="flow-num">6</div><div class="flow-body"><strong>识别 worker</strong>读取 <span class="vr cfg" data-v="taskIdx">taskIdx</span>、<span class="vr cfg" data-v="subBlockIdx">subBlockIdx</span> 和 <span class="vr cfg" data-v="taskRatio">taskRatio</span>，计算 <span class="vr cfg" data-v="blockIdx">blockIdx</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">7</div><div class="flow-body"><strong>产生本轮 epoch</strong>只有 task0 修改 <span class="vr cfg" data-v="epoch">epoch</span>；本 rank AIV `SyncAll` 后用 <span class="vr" data-v="LoadInvocationEpoch">LoadInvocationEpoch</span> 读取统一值。</div></div>
+  <div class="flow-step"><div class="flow-num">8</div><div class="flow-body"><strong>发布本卡输入</strong><span class="vr" data-v="CopyInitialWindowPayload">CopyInitialWindowPayload</span> 把 <span class="vr gm" data-v="gmmx">gmmx</span> 和 <span class="vr cfg" data-v="sendCounts">sendCounts</span> 放进本卡窗口。</div></div>
+  <div class="flow-step"><div class="flow-num">9</div><div class="flow-body"><strong>输入分核</strong><span class="vr" data-v="PartitionElements">PartitionElements</span> 返回每个 worker 的 <span class="vr cfg" data-v="range">range</span>，依据总 <span class="vr cfg" data-v="inputElements">inputElements</span> 均匀切分。</div></div>
+  <div class="flow-step"><div class="flow-num">10</div><div class="flow-body"><strong>publish barrier</strong>每个 rank 发布当前 <span class="vr cfg" data-v="epoch">epoch</span>；task0 等全部 peer。控制地址来自 <span class="vr cfg" data-v="layout">layout</span>，读写借助 <span class="vr ub" data-v="flagBuffer">flagBuffer</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">11</div><div class="flow-body"><strong>进入 expert 外循环</strong><span class="vr cfg" data-v="expertIdx">expertIdx</span> 从 0 到 <span class="vr cfg" data-v="expertPerRank">expertPerRank</span>-1；本版没有 chunk。</div></div>
+  <div class="flow-step"><div class="flow-num">12</div><div class="flow-body"><strong>把 block 映射到 source</strong><span class="vr cfg" data-v="sourceRank">sourceRank</span> 取 <span class="vr cfg" data-v="blockIdx">blockIdx</span>；<span class="vr" data-v="IsSourceWorker">IsSourceWorker</span> 保证仅 subBlock0 且一 block 对一 source。</div></div>
+  <div class="flow-step"><div class="flow-num">13</div><div class="flow-body"><strong>拉当前 expert 的一个源片段</strong><span class="vr" data-v="CopyExpertFromSource">CopyExpertFromSource</span> 同时计算 <span class="vr cfg" data-v="sourceTokenOffset">sourceTokenOffset</span> 与 <span class="vr cfg" data-v="destinationTokenOffset">destinationTokenOffset</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">14</div><div class="flow-body"><strong>交叉验数</strong>远端 <span class="vr gm" data-v="peerCounts">peerCounts</span> 得到 <span class="vr cfg" data-v="sourceTokenCount">sourceTokenCount</span>，必须等于本地 <span class="vr cfg" data-v="recvCounts">recvCounts</span> 对应项。</div></div>
+  <div class="flow-step"><div class="flow-num">15</div><div class="flow-body"><strong>expert 末尾同步</strong>同一 expert 的所有 source worker 完成后 `SyncAll`，再进入下一个 <span class="vr cfg" data-v="expertIdx">expertIdx</span>；UB 继续复用 <span class="vr ub" data-v="copyBuffer">copyBuffer</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">16</div><div class="flow-body"><strong>通知 AIC</strong>全部专家都搬完后调用 <span class="vr" data-v="SignalAicDataReady">SignalAicDataReady</span>，事件号为 <span class="vr cfg" data-v="kAicDataReadyEventId">kAicDataReadyEventId</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">17</div><div class="flow-body"><strong>release barrier</strong>只有所有 rank 都读完 peer window 才结束当前 <span class="vr cfg" data-v="epoch">epoch</span>，否则下一轮可能覆盖仍被读取的 payload。</div></div>
+</section>
+
+<section class="card" id="copy">
+  <h2>5. 两类搬运：发布与拉取</h2>
+  <h3>CopyInitialWindowPayload</h3>
+  <p>先把 token 数乘 <span class="vr cfg" data-v="hiddenSize">hiddenSize</span> 变为 BF16 元素数。主 payload 由所有 AIV 分工；counts 只有 task0 写。<span class="vr cfg" data-v="countNum">countNum</span> 最多 128，32B 小批写入能明确标量到 MTE3 的依赖。</p>
+  <h3>CopyExpertFromSource</h3>
+  <p>它从远端 <span class="vr cfg" data-v="context">context</span> 的指定窗口读取，并写到本地 <span class="vr gm" data-v="recvBuffer">recvBuffer</span>。实际搬运元素数为 <span class="vr cfg" data-v="sourceTokenCount">sourceTokenCount</span> × K。</p>
+  <div class="callout tip">数据路径是 peer GM → UB → local GM。单个 TBuf 配合 MTE2↔MTE3 硬事件，比这里早期使用的双深度 TQue 更直接。</div>
+</section>
+
+<section class="card" id="sync">
+  <h2>6. 为什么既有 SyncAll，又有 peer flag，还有 cross-core flag</h2>
+  <table>
+    <tr><th>机制</th><th>同步范围</th><th>用途</th></tr>
+    <tr><td>`SyncAll&lt;true&gt;`</td><td>本 rank 内 AIV tasks</td><td>本卡所有 worker 的阶段同步</td></tr>
+    <tr><td>window epoch slots</td><td>不同 rank</td><td>publish/release barrier</td></tr>
+    <tr><td>CATLASS CrossCoreFlag</td><td>配对 AIV → AIC</td><td>完整接收区就绪后允许 GEMM</td></tr>
+  </table>
+  <p><span class="vr cfg" data-v="kControlRegionBytes">kControlRegionBytes</span> 固定为 16 MiB，<span class="vr cfg" data-v="windowBytes">windowBytes</span> 决定控制区尾地址；<span class="vr cfg" data-v="requiredBytes">requiredBytes</span> 用来拒绝装不下的窗口。</p>
+</section>
+
+<section class="card" id="aic">
+  <h2>7. ProcessAic：数据完整后逐 expert 计算</h2>
+  <div class="flow-step"><div class="flow-num">18</div><div class="flow-body"><strong>等待 AIV</strong>AIC 等 <span class="vr cfg" data-v="kAicDataReadyEventId">kAicDataReadyEventId</span>，不再依赖 user workspace 的逐 expert ready。</div></div>
+  <div class="flow-step"><div class="flow-num">19</div><div class="flow-body"><strong>构建单 expert 元数据</strong><span class="vr" data-v="BuildExpertMetaForIndex">BuildExpertMetaForIndex</span> 计算 <span class="vr cfg" data-v="recvTokenBase">recvTokenBase</span> 和 <span class="vr cfg" data-v="tokenCount">tokenCount</span>。</div></div>
+  <div class="flow-step"><div class="flow-num">20</div><div class="flow-body"><strong>运行主 GEMM</strong>A 取 <span class="vr gm" data-v="recvBuffer">recvBuffer</span>，B 取 <span class="vr gm" data-v="gmmweight">gmmweight</span>，C 写 <span class="vr gm" data-v="gmmy">gmmy</span>。零 token 专家不发起 GEMM。</div></div>
+  <div class="flow-step"><div class="flow-num">21</div><div class="flow-body"><strong>可选共享 MM</strong>主专家循环后，如已提供 <span class="vr gm" data-v="mmx">mmx</span>、<span class="vr gm" data-v="mmweight">mmweight</span> 和 <span class="vr gm" data-v="mmy">mmy</span>，再执行共享 GEMM。</div></div>
+  <p>CATLASS 文件不在本页完整源码面板中，但调用语义是 BF16 A/B/C、FP32 accumulator、四种预编译 tile。完整工程教程请配套阅读 Markdown 文档。</p>
+</section>
+
+<section class="card" id="bugs">
+  <h2>8. 这份最终代码背后的稳定性修复</h2>
+  <ol>
+    <li>搬运中间态由 TQue 改成单 <span class="vr ub" data-v="copyBuffer">copyBuffer</span>，显式 MTE2/MTE3 事件。</li>
+    <li>counts 不再把 tiling 内字段二次包装为 GM tensor；task0 标量装入 <span class="vr ub" data-v="flagBuffer">flagBuffer</span> 后写窗口。</li>
+    <li><span class="vr cfg" data-v="context">context</span>、TPipe 和 AIV buffers 只在 AIV 分支初始化，AIC 不碰 peer-window 资源。</li>
+    <li>早期逐 expert ready 改为所有通信完成后一次 <span class="vr" data-v="SignalAicDataReady">SignalAicDataReady</span>，先稳定正确性。</li>
+    <li>publish/release 都带 <span class="vr cfg" data-v="epoch">epoch</span>，避免第二轮误吃第一轮 flag。</li>
+  </ol>
+</section>
+
+<section class="card" id="source-guide">
+  <h2>9. 如何使用完整源码面板</h2>
+  <p>点击右下角“源代码”可打开 540 行完整 `allto_allv_grouped_mat_mul_aiv_mode.h`。点击本文任意变量后：</p>
+  <ul>
+    <li>绿色按钮跳到声明；</li>
+    <li>蓝色按钮可在所有使用点之间循环；</li>
+    <li>键盘左右键切换当前高亮位置，Esc 关闭；</li>
+    <li>建议从 <span class="vr" data-v="Run">Run</span> → <span class="vr" data-v="ProcessAiv">ProcessAiv</span> → <span class="vr" data-v="CopyExpertFromSource">CopyExpertFromSource</span> → <span class="vr" data-v="ProcessAic">ProcessAic</span> 顺序阅读。</li>
+  </ul>
+</section>
+
+
+<!-- ===== APPENDIX TABLES ===== -->
+<section class="card" id="functions">
+  <h2>附录 A：本文件全部函数速查</h2>
+  <table>
+    <tr><th>行</th><th>函数</th><th>职责</th></tr>
+    <tr><td>31</td><td>BuildExpertMetaForIndex</td><td>只构建一个 expert 的目标起点与总 token 数</td></tr>
+    <tr><td>74</td><td>GetDestinationSourceTokenOffset</td><td>求目标 expert 内某 source 的起点</td></tr>
+    <tr><td>99</td><td>PartitionElements</td><td>均匀切分本地输入发布任务</td></tr>
+    <tr><td>118</td><td>IsSourceWorker</td><td>将逻辑 block 唯一映射到 source rank</td></tr>
+    <tr><td>142</td><td>LoadInvocationEpoch</td><td>从本地窗口读取本轮 epoch</td></tr>
+    <tr><td>153</td><td>SignalAicDataReady</td><td>AIV 向 AIC 发送完整数据就绪事件</td></tr>
+    <tr><td>159</td><td>GetPeerSourceTokenOffset</td><td>从远端 send counts 求源窗口片段</td></tr>
+    <tr><td>189</td><td>BuildDeviceWindowLayout</td><td>规划 payload/count/control 区并做容量检查</td></tr>
+    <tr><td>239</td><td>GetCopyQueueBytes</td><td>计算单个 UB copy buffer 大小</td></tr>
+    <tr><td>251</td><td>CopyInitialWindowPayload</td><td>发布本 rank 输入与 send counts</td></tr>
+    <tr><td>317</td><td>CopyExpertFromSource</td><td>拉取一个 source 的一个 expert 片段</td></tr>
+    <tr><td>380</td><td>ProcessAic</td><td>等待通信并逐 expert 调 CATLASS</td></tr>
+    <tr><td>419</td><td>ProcessAiv</td><td>epoch、publish、expert 循环、release 总时序</td></tr>
+    <tr><td>484</td><td>Run</td><td>选择 recvBuffer 并分派 AIV/AIC 路径</td></tr>
+  </table>
+</section>
+<section class="card">
+  <h2>附录 B：读代码时的四条不变量</h2>
+  <ol>
+    <li>所有 counts 都必须非负，任何 offset 加法都不能溢出。</li>
+    <li>远端源偏移按 destination-major；本地目标偏移按 expert-major。</li>
+    <li>AIC 看到 data-ready 时，完整 recvBuffer 必须已对 AIC 可见。</li>
+    <li>任一 rank 复用窗口前，所有 peer 必须完成 release barrier。</li>
+  </ol>
+</section>
+</div>
+<div class="toast" id="toast"></div>
+
+
+<!-- ===== SOURCE CODE PANEL ===== -->
+<button id="src-toggle" onclick="toggleSrc()">📄 源代码</button>
+<div id="src-panel">
+<div id="src-header" style="cursor:default">
+  <span id="src-info">allto_allv_grouped_mat_mul_aiv_mode.h — 点击变量跳转按钮可定位</span>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span id="src-nav" style="display:none;color:#facc15;font-size:.85em">
+      <button onclick="navHighlight(-1)" style="background:#334155;color:#facc15;border:1px solid #facc15;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.85em" title="上一处 (←)">◀</button>
+      <span id="src-nav-text" style="margin:0 4px">1/15</span>
+      <button onclick="navHighlight(1)" style="background:#334155;color:#facc15;border:1px solid #facc15;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.85em" title="下一处 (→)">▶</button>
+    </span>
+    <button onclick="closeSrc()" style="font-size:1.1em;padding:6px 16px;cursor:pointer;background:#dc2626;color:#fff;border:none;border-radius:4px">✕ 关闭 (Esc)</button>
+  </div>
+</div>
+<div id="src-code"></div>
+</div>
+
+
+
+<script>
+// ===== VARIABLE MAP =====
+// Fill in entries for each variable/function. Format:
+//   "varName":{d:line, t:"type hint", desc:"description",
+//     u:[usage_lines],
+//     v:[{l:line, t:"reinterpret_type"}, ...]},  // only for UB buffers with variants
+const V = {
+"ElementRange":{d:20,t:"struct",desc:"某 worker 被分配的元素起点与数量。",u:[101,104,110,111,113,275]},
+"BuildExpertMetaForIndex":{d:31,t:"function",desc:"只计算一个专家的 recvTokenBase 和 tokenCount。",u:[80,395]},
+"GetDestinationSourceTokenOffset":{d:74,t:"function",desc:"在 expert-major 目标区中定位某 source 片段。",u:[325]},
+"PartitionElements":{d:99,t:"function",desc:"用商和余数把元素均匀分给 AIV workers。",u:[276]},
+"IsSourceWorker":{d:118,t:"function",desc:"判断当前 task 是否是指定 source rank 的唯一搬运者。",u:[459]},
+"kControlRegionBytes":{d:138,t:"constexpr uint64_t",desc:"peer window 尾部固定控制区，16 MiB。",u:[218,220,225]},
+"kAicDataReadyEventId":{d:139,t:"constexpr uint32_t",desc:"AIV 通知 AIC 数据完整就绪的 cross-core event id。",u:[155,389]},
+"kFlagBufferBytes":{d:140,t:"constexpr uint32_t",desc:"flag/count 标量中转小 UB buffer，32 字节。",u:[296,519]},
+"LoadInvocationEpoch":{d:142,t:"function",desc:"从本地窗口控制区读取本次调用 epoch。",u:[439]},
+"SignalAicDataReady":{d:153,t:"function",desc:"所有通信完成后由 AIV 向 AIC 发一次就绪信号。",u:[468]},
+"GetPeerSourceTokenOffset":{d:159,t:"function",desc:"读取远端 send counts，求目标 rank/expert 在源窗口的起点与长度。",u:[337]},
+"BuildDeviceWindowLayout":{d:189,t:"function",desc:"device-safe 窗口布局和容量检查。",u:[511]},
+"GetCopyQueueBytes":{d:239,t:"function",desc:"计算 copy TBuf 所需字节；名称保留了早期 queue 方案。",u:[521]},
+"CopyInitialWindowPayload":{d:251,t:"function",desc:"并行发布本 rank gmm_x，并由 task0 发布 send counts。",u:[441]},
+"CopyExpertFromSource":{d:317,t:"function",desc:"从一个 source peer window 拉取当前 expert 数据到目标区。",u:[461]},
+"ProcessAic":{d:380,t:"function",desc:"AIC 等待 data-ready，逐 expert CATLASS，再做可选共享 MM。",u:[531]},
+"ProcessAiv":{d:419,t:"function",desc:"AIV 的 publish、expert 循环、release 总流程。",u:[526]},
+"Run":{d:484,t:"function",desc:"AIV mode 总入口，选择接收区并分派 AIV/AIC。",u:[]},
+"recvCounts":{d:32,t:"const int64_t* / tiling array",desc:"目标 rank 的 source-major/expert-minor 接收计数。",u:[35,44,56,75,80,89,326,346,396]},
+"rankSize":{d:32,t:"uint32_t",desc:"EP 通信域 rank 数；V2 tiling 只允许 2/4/8。",u:[35,42,54,75,80,120,160,326,338,396,460,497]},
+"expertPerRank":{d:32,t:"uint32_t",desc:"当前目标 rank 持有的本地专家数 E。",u:[35,44,56,75,80,89,161,326,339,393,457]},
+"expertIdx":{d:33,t:"uint32_t",desc:"当前按粒度处理的本地专家编号。",u:[36,41,56,76,80,89,161,321,327,339,345,392,397,456,462]},
+"tokenCapacity":{d:33,t:"uint64_t",desc:"目标接收区可容纳 token 上限，用于边界检查。",u:[64,76,81,96]},
+"recvTokenBase":{d:68,t:"uint64_t",desc:"当前专家在 expert-major 接收区中的 token 起点。",u:[86]},
+"tokenCount":{d:69,t:"uint64_t / uint32_t",desc:"某专家总 token 数，或某远端片段 token 数。",u:[162,185]},
+"tokenOffset":{d:77,t:"uint64_t",desc:"通用 token 偏移，按 counts 前缀和得到。",u:[86,92,96,162,171,176]},
+"sourceRank":{d:42,t:"uint32_t",desc:"当前被拉取的源 rank。",u:[44,54,56,76,82,87,120,126,321,327,334,345,368,458,462]},
+"range":{d:101,t:"ElementRange& / local",desc:"输入发布任务的元素区间。",u:[104,110,111,113,275,277,287]},
+"taskIdx":{d:119,t:"uint32_t",desc:"当前 AIV task 索引。",u:[125,256,276,290,427,431,434,442,449,459,474]},
+"taskRatio":{d:119,t:"uint32_t",desc:"一个逻辑 block 对应的 task 比例。",u:[122,125,429,431,459]},
+"subBlockIdx":{d:119,t:"uint32_t",desc:"混合任务的子 block 标识；source worker 只使用 0。",u:[122,256,290,428,434,442,447,449,459,472]},
+"context":{d:143,t:"PeerWindowContext",desc:"封装本地 rank、rank size 以及各 peer window 地址。",u:[148,254,285,293,319,334,339,368,422,436,442,451,460,471,476,495,513,527]},
+"layout":{d:144,t:"A2avWindowLayout",desc:"peer window 的 payload、counts、control 区偏移。",u:[148,192,210,216,224,227,230,255,293,320,334,423,436,442,451,462,471,476,501,513,527]},
+"inputTokens":{d:190,t:"uint64_t",desc:"本 rank 需要发布的输入 token 总数。",u:[194,199,502,507,512]},
+"hiddenSize":{d:190,t:"uint32_t",desc:"主 GMM K，token 向量宽度。",u:[199]},
+"countNum":{d:190,t:"uint32_t",desc:"有效 send/recv count 项数，等于 rankSize*expertPerRank。",u:[212,261,297,300,301,503,512]},
+"windowBytes":{d:191,t:"uint64_t",desc:"HCCL 提供的单 rank peer window 容量。",u:[219,220,225,513]},
+"inputElements":{d:197,t:"uint64_t",desc:"输入 token 数乘 K 后的 BF16 元素数。",u:[200,208,260,265,269,272,273,276]},
+"countAreaBytes":{d:204,t:"uint64_t",desc:"对齐后的 int64 send counts 区字节数。",u:[214,216,227,230]},
+"requiredBytes":{d:206,t:"uint64_t",desc:"payload+counts+控制区总需求，用于窗口容量检查。",u:[218,219,235]},
+"sendCounts":{d:262,t:"tiling int64 array",desc:"源 rank 的 destination-major/expert-minor 发送计数。",u:[303,504]},
+"gmmx":{d:252,t:"GM_ADDR",desc:"本 rank 已按目标/专家排列的 BF16 主输入。",u:[282,420,442,485,527]},
+"copyBuffer":{d:257,t:"TBuf<VECCALC>",desc:"peer GM 与 local GM 之间的单 UB relay buffer。",u:[288,322,375,424,442,463,520,525,527]},
+"flagBuffer":{d:145,t:"TBuf<VECCALC>",desc:"epoch/phase flag 读写和小批 counts 写入的 UB buffer。",u:[150,425,436,439,443,447,452,472,477,518,519,528]},
+"peerCounts":{d:160,t:"GlobalTensor<int64_t>",desc:"映射到远端 source window counts 区。",u:[173,181,332,333,338]},
+"sourceTokenOffset":{d:335,t:"uint64_t",desc:"当前片段在远端源 payload 中的 token 起点。",u:[340,352,358]},
+"sourceTokenCount":{d:336,t:"uint32_t",desc:"当前 source 发给本 rank 当前 expert 的 token 数。",u:[340,348,364]},
+"destinationTokenOffset":{d:324,t:"uint64_t",desc:"当前片段在本地 expert-major recvBuffer 中的 token 起点。",u:[328,353,361]},
+"recvBuffer":{d:318,t:"GM_ADDR",desc:"通信重排目标；可直接复用 permute_out 或 workspace。",u:[371,382,402,420,462,489,527,532]},
+"gmmweight":{d:381,t:"GM_ADDR",desc:"当前 rank 的本地专家 BF16 权重集合。",u:[402,485,532]},
+"gmmy":{d:381,t:"GM_ADDR",desc:"Grouped MatMul 主输出。",u:[402,486,532]},
+"mmx":{d:381,t:"GM_ADDR",desc:"可选共享 MM 输入。",u:[410,412,485,532]},
+"mmweight":{d:381,t:"GM_ADDR",desc:"可选共享 MM 权重。",u:[410,412,485,532]},
+"mmy":{d:382,t:"GM_ADDR",desc:"可选共享 MM 输出。",u:[410,412,486,532]},
+"epoch":{d:433,t:"int32_t",desc:"区分相邻 kernel invocation 的通信轮次。",u:[435,439,447,452,472,477]},
+"blockIdx":{d:125,t:"uint32_t",desc:"taskIdx/taskRatio 得到的逻辑 block，前 R 个映射 source rank。",u:[126,430,447,458,472]},
+"queueBytes":{d:521,t:"uint32_t",desc:"copy TBuf 字节数。",u:[522,525]},
+"userWorkspace":{d:486,t:"GM_ADDR",desc:"用户 workspace；未输出 permute 时容纳 recvBuffer。",u:[492]},
+"recvTokenOffset":{d:492,t:"tiling offset",desc:"recvBuffer 在 user workspace 内的 512B 对齐偏移。",u:[]},
+"permuteOut":{d:486,t:"GM_ADDR",desc:"可选通信重排输出，同时可作为 CATLASS A 输入。",u:[490,491]}
+
+};
+
+// Current highlighted variable
+let curVar = null;
+
+// ===== BUILD SOURCE CODE =====
+// Raw source lines (1-indexed)
+const SRC = [];
+// The source code is embedded as a JS array below
+</script>
+<script>
+// ★ 从嵌入的 src-data 加载完整源码（无需 fetch，离线可用）
+// 用 DOMContentLoaded 确保 src-data 元素已被解析
+window.addEventListener('DOMContentLoaded', function(){
+  var el = document.getElementById('src-data');
+  if(el && el.textContent){
+    SRC.push(...el.textContent.split('\n'));
+    if(SRC[0]==='') SRC.shift();
+    renderSrc();
+    document.getElementById('src-info').textContent = 'allto_allv_grouped_mat_mul_aiv_mode.h — 完整源码 ('+SRC.length+'行)';
+  } else {
+    document.getElementById('src-info').textContent = '⚠ 源码加载失败，请检查文件完整性';
+  }
+});</script>
+
+<script id="src-data" type="text/plain">
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under
+ * the terms and conditions of CANN Open Software License Agreement Version 2.0.
+ */
+
+#ifndef ALLTO_ALLV_GROUPED_MAT_MUL_AIV_MODE_H
+#define ALLTO_ALLV_GROUPED_MAT_MUL_AIV_MODE_H
+
+#include <cstdint>
+
+#include "allto_allv_grouped_mat_mul_aiv_comm.h"
+#include "allto_allv_grouped_mat_mul_catlass.h"
+#include "allto_allv_grouped_mat_mul_tiling.h"
+
+namespace AlltoAllvGroupedMatMulAivMode {
+
+using ExpertMeta = AlltoAllvGroupedMatMulAiv::ExpertMeta;
+
+struct ElementRange {
+    uint64_t offset = 0U;
+    uint64_t count = 0U;
+};
+
+#if defined(__CCE_AICORE__)
+#define A2AVGMM_AIV_MODE_HOST_DEVICE __aicore__ inline
+#else
+#define A2AVGMM_AIV_MODE_HOST_DEVICE inline
+#endif
+
+A2AVGMM_AIV_MODE_HOST_DEVICE bool BuildExpertMetaForIndex(
+    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank,
+    uint32_t expertIdx, uint64_t tokenCapacity, ExpertMeta &expert)
+{
+    if (recvCounts == nullptr || rankSize == 0U || expertPerRank == 0U ||
+        expertIdx >= expertPerRank) {
+        return false;
+    }
+
+    uint64_t expertBase = 0U;
+    for (uint32_t priorExpert = 0U; priorExpert < expertIdx; ++priorExpert) {
+        for (uint32_t sourceRank = 0U; sourceRank < rankSize; ++sourceRank) {
+            const int64_t count =
+                recvCounts[static_cast<uint64_t>(sourceRank * expertPerRank + priorExpert)];
+            if (count < 0 ||
+                !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                    expertBase, static_cast<uint64_t>(count), expertBase)) {
+                return false;
+            }
+        }
+    }
+
+    uint64_t expertTokens = 0U;
+    for (uint32_t sourceRank = 0U; sourceRank < rankSize; ++sourceRank) {
+        const int64_t count =
+            recvCounts[static_cast<uint64_t>(sourceRank * expertPerRank + expertIdx)];
+        if (count < 0 ||
+            !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                expertTokens, static_cast<uint64_t>(count), expertTokens)) {
+            return false;
+        }
+    }
+
+    if (expertBase > tokenCapacity || expertTokens > tokenCapacity - expertBase ||
+        expertTokens > 0xffffffffULL) {
+        return false;
+    }
+    expert.recvTokenBase = expertBase;
+    expert.tokenCount = static_cast<uint32_t>(expertTokens);
+    expert.reserved = 0U;
+    return true;
+}
+
+A2AVGMM_AIV_MODE_HOST_DEVICE bool GetDestinationSourceTokenOffset(
+    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank,
+    uint32_t expertIdx, uint32_t sourceRank, uint64_t tokenCapacity,
+    uint64_t &tokenOffset)
+{
+    ExpertMeta expert = {};
+    if (!BuildExpertMetaForIndex(recvCounts, rankSize, expertPerRank, expertIdx,
+                                 tokenCapacity, expert) ||
+        sourceRank >= rankSize) {
+        return false;
+    }
+
+    tokenOffset = expert.recvTokenBase;
+    for (uint32_t source = 0U; source < sourceRank; ++source) {
+        const int64_t count =
+            recvCounts[static_cast<uint64_t>(source * expertPerRank + expertIdx)];
+        if (count < 0 ||
+            !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                tokenOffset, static_cast<uint64_t>(count), tokenOffset)) {
+            return false;
+        }
+    }
+    return tokenOffset <= tokenCapacity;
+}
+
+A2AVGMM_AIV_MODE_HOST_DEVICE bool PartitionElements(
+    uint64_t totalElements, uint32_t workerIdx, uint32_t workerNum,
+    ElementRange &range)
+{
+    if (workerNum == 0U || workerIdx >= workerNum) {
+        range = {};
+        return false;
+    }
+
+    const uint64_t quotient = totalElements / workerNum;
+    const uint64_t remainder = totalElements % workerNum;
+    range.count = quotient + (workerIdx < remainder ? 1U : 0U);
+    range.offset = workerIdx < remainder ? workerIdx : remainder;
+    for (uint32_t worker = 0U; worker < workerIdx; ++worker) {
+        range.offset += quotient;
+    }
+    return true;
+}
+
+A2AVGMM_AIV_MODE_HOST_DEVICE bool IsSourceWorker(
+    uint32_t taskIdx, uint32_t taskRatio, uint32_t subBlockIdx,
+    uint32_t rankSize, uint32_t sourceRank)
+{
+    if (taskRatio == 0U || subBlockIdx != 0U || sourceRank >= rankSize) {
+        return false;
+    }
+    const uint32_t blockIdx = taskIdx / taskRatio;
+    return blockIdx < rankSize && blockIdx == sourceRank;
+}
+
+#undef A2AVGMM_AIV_MODE_HOST_DEVICE
+
+} // namespace AlltoAllvGroupedMatMulAivMode
+
+#if defined(__CCE_AICORE__) && !defined(__CCE_KT_TEST__)
+
+namespace AlltoAllvGroupedMatMulAivMode {
+namespace detail {
+
+constexpr uint64_t kControlRegionBytes = 16U * 1024U * 1024U;
+constexpr uint32_t kAicDataReadyEventId = 12U;
+constexpr uint32_t kFlagBufferBytes = 32U;
+
+__aicore__ inline int32_t LoadInvocationEpoch(
+    const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
+    const AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &flagBuffer)
+{
+    __gm__ int32_t *epochAddress = AlltoAllvGroupedMatMulAiv::GetFlagAddress(
+        context.Window(context.RankId()), layout.controlOffset,
+        AlltoAllvGroupedMatMulAiv::kEpochOffset);
+    return AlltoAllvGroupedMatMulAiv::LoadFlag(epochAddress, flagBuffer);
+}
+
+__aicore__ inline void SignalAicDataReady()
+{
+    Catlass::Arch::CrossCoreFlag flag{kAicDataReadyEventId};
+    Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flag);
+}
+
+__aicore__ inline bool GetPeerSourceTokenOffset(
+    AscendC::GlobalTensor<int64_t> &peerCounts, uint32_t rankSize,
+    uint32_t expertPerRank, uint32_t destinationRank, uint32_t expertIdx,
+    uint64_t &tokenOffset, uint32_t &tokenCount)
+{
+    if (rankSize == 0U || expertPerRank == 0U || destinationRank >= rankSize ||
+        expertIdx >= expertPerRank) {
+        return false;
+    }
+
+    const uint64_t target =
+        static_cast<uint64_t>(destinationRank * expertPerRank + expertIdx);
+    tokenOffset = 0U;
+    for (uint64_t index = 0U; index < target; ++index) {
+        const int64_t count = peerCounts.GetValue(index);
+        if (count < 0 ||
+            !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                tokenOffset, static_cast<uint64_t>(count), tokenOffset)) {
+            return false;
+        }
+    }
+
+    const int64_t count = peerCounts.GetValue(target);
+    if (count < 0 || static_cast<uint64_t>(count) > 0xffffffffULL) {
+        return false;
+    }
+    tokenCount = static_cast<uint32_t>(count);
+    return true;
+}
+
+__aicore__ inline bool BuildDeviceWindowLayout(
+    uint64_t inputTokens, uint32_t hiddenSize, uint32_t countNum,
+    uint64_t windowBytes,
+    AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout)
+{
+    if (inputTokens > 0xffffffffULL) {
+        return false;
+    }
+    const uint64_t inputElements =
+        AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+            static_cast<uint32_t>(inputTokens), hiddenSize);
+    if (inputElements > (~static_cast<uint64_t>(0U) >> 1U)) {
+        return false;
+    }
+
+    uint64_t countAreaBytes = 0U;
+    uint64_t payloadAndCounts = 0U;
+    uint64_t requiredBytes = 0U;
+    if (!AlltoAllvGroupedMatMulAiv::AlignUpU64(
+            inputElements << 1U,
+            AlltoAllvGroupedMatMulAiv::kWindowAlignment,
+            layout.inputBytes) ||
+        !AlltoAllvGroupedMatMulAiv::AlignUpU64(
+            static_cast<uint64_t>(countNum) << 3U,
+            AlltoAllvGroupedMatMulAiv::kWindowAlignment,
+            countAreaBytes) ||
+        !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+            layout.inputBytes, countAreaBytes, payloadAndCounts) ||
+        !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+            payloadAndCounts, kControlRegionBytes, requiredBytes) ||
+        requiredBytes > windowBytes ||
+        kControlRegionBytes > windowBytes) {
+        return false;
+    }
+
+    layout.controlOffset = AlltoAllvGroupedMatMulAiv::AlignDownU64(
+        windowBytes - kControlRegionBytes,
+        AlltoAllvGroupedMatMulAiv::kWindowAlignment);
+    if (layout.controlOffset < countAreaBytes) {
+        return false;
+    }
+    layout.countsOffset = layout.controlOffset - countAreaBytes;
+    if (layout.inputBytes > layout.countsOffset) {
+        return false;
+    }
+    layout.readyOffset = AlltoAllvGroupedMatMulAiv::kFirstExpertFlagOffset;
+    layout.totalBytes = requiredBytes;
+    return true;
+}
+
+__aicore__ inline uint32_t GetCopyQueueBytes(
+    const AlltoAllvGmmAivTilingData &tiling)
+{
+    const uint64_t payloadBytes =
+        static_cast<uint64_t>(tiling.gmmCocTiling.ubMoveNum) * sizeof(bfloat16_t);
+    const uint64_t countBytes =
+        static_cast<uint64_t>(A2AVGMM_MAX_COUNT_NUM) * sizeof(int64_t);
+    const uint64_t bytes = payloadBytes > countBytes ? payloadBytes : countBytes;
+    return static_cast<uint32_t>(
+        bytes > static_cast<uint64_t>(0xffffffffU) ? 0xffffffffU : bytes);
+}
+
+__aicore__ inline bool CopyInitialWindowPayload(
+    GM_ADDR gmmx,
+    const AlltoAllvGmmAivTilingData &tiling,
+    const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
+    const AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout,
+    uint32_t taskIdx, uint32_t subBlockIdx,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &countBuffer)
+{
+    uint64_t inputElements = 0U;
+    for (uint32_t index = 0U; index < tiling.countNum; ++index) {
+        const int64_t count = tiling.sendCounts[index];
+        if (count < 0 ||
+            !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                inputElements, static_cast<uint64_t>(count), inputElements)) {
+            return false;
+        }
+    }
+    if (inputElements > 0xffffffffULL) {
+        return false;
+    }
+    inputElements = AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+        static_cast<uint32_t>(inputElements), tiling.gmmInfo.K);
+
+    ElementRange range = {};
+    if (!PartitionElements(inputElements, taskIdx, tiling.gmmInfo.aivCoreNum,
+                           range)) {
+        return false;
+    }
+
+    AscendC::GlobalTensor<bfloat16_t> input;
+    input.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmmx));
+    AscendC::GlobalTensor<bfloat16_t> localWindow;
+    localWindow.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+        context.Window(context.RankId())));
+    AlltoAllvGroupedMatMulAiv::CopyLocalGmToWindow(
+        localWindow[range.offset], input[range.offset], range.count,
+        tiling.gmmCocTiling.ubMoveNum, copyBuffer);
+
+    if (taskIdx == 0U && subBlockIdx == 0U) {
+        AscendC::GlobalTensor<int64_t> windowCounts;
+        windowCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(
+            context.Window(context.RankId()) + layout.countsOffset));
+        AscendC::LocalTensor<int64_t> localCounts = countBuffer.Get<int64_t>();
+        constexpr uint32_t countsPerBatch =
+            kFlagBufferBytes / sizeof(int64_t);
+        for (uint32_t offset = 0U; offset < tiling.countNum;
+             offset += countsPerBatch) {
+            const uint32_t current =
+                (tiling.countNum - offset) > countsPerBatch
+                    ? countsPerBatch : (tiling.countNum - offset);
+            for (uint32_t index = 0U; index < current; ++index) {
+                localCounts.SetValue(index, tiling.sendCounts[offset + index]);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID2);
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID2);
+            AscendC::DataCopyExtParams params(
+                1U, current * sizeof(int64_t), 0U, 0U, 0U);
+            AscendC::DataCopyPad(windowCounts[offset], localCounts, params);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
+        }
+    }
+    return true;
+}
+
+__aicore__ inline bool CopyExpertFromSource(
+    GM_ADDR recvBuffer, const AlltoAllvGmmAivTilingData &tiling,
+    const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
+    const AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout,
+    uint32_t expertIdx, uint32_t sourceRank,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer)
+{
+    uint64_t destinationTokenOffset = 0U;
+    if (!GetDestinationSourceTokenOffset(
+            tiling.recvCounts, tiling.gmmInfo.rankSize,
+            tiling.gmmInfo.expertPerRank, expertIdx, sourceRank,
+            tiling.gmmInfo.maxOutputSize, destinationTokenOffset)) {
+        return false;
+    }
+
+    AscendC::GlobalTensor<int64_t> peerCounts;
+    peerCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(
+        context.Window(sourceRank) + layout.countsOffset));
+    uint64_t sourceTokenOffset = 0U;
+    uint32_t sourceTokenCount = 0U;
+    if (!GetPeerSourceTokenOffset(
+            peerCounts, tiling.gmmInfo.rankSize,
+            tiling.gmmInfo.expertPerRank, context.RankId(), expertIdx,
+            sourceTokenOffset, sourceTokenCount)) {
+        return false;
+    }
+
+    const uint32_t countIndex =
+        sourceRank * tiling.gmmInfo.expertPerRank + expertIdx;
+    const int64_t expectedCount = tiling.recvCounts[countIndex];
+    if (expectedCount < 0 ||
+        static_cast<uint64_t>(expectedCount) != sourceTokenCount) {
+        return false;
+    }
+
+    if (sourceTokenOffset > 0xffffffffULL ||
+        destinationTokenOffset > 0xffffffffULL) {
+        return false;
+    }
+    const uint64_t sourceElementOffset =
+        AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+            static_cast<uint32_t>(sourceTokenOffset), tiling.gmmInfo.K);
+    const uint64_t destinationElementOffset =
+        AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+            static_cast<uint32_t>(destinationTokenOffset), tiling.gmmInfo.K);
+    const uint64_t elementCount =
+        AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+            sourceTokenCount, tiling.gmmInfo.K);
+
+    AscendC::GlobalTensor<bfloat16_t> peerInput;
+    peerInput.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+        context.Window(sourceRank)));
+    AscendC::GlobalTensor<bfloat16_t> destination;
+    destination.SetGlobalBuffer(
+        reinterpret_cast<__gm__ bfloat16_t *>(recvBuffer));
+    AlltoAllvGroupedMatMulAiv::CopyPeerGmToLocalGm(
+        destination[destinationElementOffset],
+        peerInput[sourceElementOffset], elementCount,
+        tiling.gmmCocTiling.ubMoveNum, copyBuffer);
+    return true;
+}
+
+template <bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
+__aicore__ inline void ProcessAic(
+    GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweight, GM_ADDR gmmy,
+    GM_ADDR mmy, GM_ADDR recvBuffer,
+    const AlltoAllvGmmAivTilingData &tiling)
+{
+    AscendC::SetLoadDataPaddingValue(0);
+    AscendC::SetAtomicNone();
+    AscendC::SetFixpipeNz2ndFlag(1, 0, 0);
+
+    Catlass::Arch::CrossCoreFlag dataReady{kAicDataReadyEventId};
+    Catlass::Arch::CrossCoreWaitFlag(dataReady);
+
+    for (uint32_t expertIdx = 0U;
+         expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
+        ExpertMeta expert = {};
+        if (!BuildExpertMetaForIndex(
+                tiling.recvCounts, tiling.gmmInfo.rankSize,
+                tiling.gmmInfo.expertPerRank, expertIdx,
+                tiling.gmmInfo.maxOutputSize, expert)) {
+            return;
+        }
+        if (!AlltoAllvGroupedMatMulCatlass::RunExpertGemm<
+                GMM_TRANSPOSE_B>(recvBuffer, gmmweight, gmmy, expertIdx,
+                                 expert, tiling.gmmInfo,
+                                 tiling.gmmCocTiling)) {
+            return;
+        }
+    }
+
+    if (tiling.gmmInfo.hasSharedExpert != 0U) {
+        if (mmx == nullptr || mmweight == nullptr || mmy == nullptr ||
+            !AlltoAllvGroupedMatMulCatlass::RunSharedExpertGemm<
+                MM_TRANSPOSE_B>(mmx, mmweight, mmy, tiling.mmInfo,
+                                tiling.mmCocTiling)) {
+            return;
+        }
+    }
+}
+
+__aicore__ inline void ProcessAiv(
+    GM_ADDR gmmx, GM_ADDR recvBuffer,
+    const AlltoAllvGmmAivTilingData &tiling,
+    const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
+    const AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer,
+    AscendC::TBuf<AscendC::TPosition::VECCALC> &flagBuffer)
+{
+    const uint32_t taskIdx = AscendC::GetBlockIdx();
+    const uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+    const uint32_t taskRatio = AscendC::GetTaskRation();
+    const uint32_t blockIdx =
+        taskRatio == 0U ? 0xffffffffU : taskIdx / taskRatio;
+
+    int32_t epoch = 0;
+    if (taskIdx == 0U && subBlockIdx == 0U) {
+        epoch = AlltoAllvGroupedMatMulAiv::NextInvocationEpoch(
+            context, layout, flagBuffer);
+    }
+    AscendC::SyncAll<true>();
+    epoch = LoadInvocationEpoch(context, layout, flagBuffer);
+
+    (void)CopyInitialWindowPayload(
+        gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer,
+        flagBuffer);
+    AscendC::SyncAll<true>();
+    AlltoAllvGroupedMatMulAiv::PublishPeerPhase(
+        context, layout, AlltoAllvGroupedMatMulAiv::kPublishSlotsOffset,
+        epoch, blockIdx, subBlockIdx, flagBuffer);
+    AscendC::SyncAll<true>();
+    if (taskIdx == 0U && subBlockIdx == 0U) {
+        AlltoAllvGroupedMatMulAiv::WaitPeerPhase(
+            context, layout, AlltoAllvGroupedMatMulAiv::kPublishSlotsOffset,
+            epoch, flagBuffer);
+    }
+    AscendC::SyncAll<true>();
+
+    for (uint32_t expertIdx = 0U;
+         expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
+        const uint32_t sourceRank = blockIdx;
+        if (IsSourceWorker(taskIdx, taskRatio, subBlockIdx,
+                           context.RankSize(), sourceRank)) {
+            (void)CopyExpertFromSource(
+                recvBuffer, tiling, context, layout, expertIdx, sourceRank,
+                copyBuffer);
+        }
+        AscendC::SyncAll<true>();
+    }
+
+    SignalAicDataReady();
+
+    AlltoAllvGroupedMatMulAiv::PublishPeerPhase(
+        context, layout, AlltoAllvGroupedMatMulAiv::kReleaseSlotsOffset,
+        epoch, blockIdx, subBlockIdx, flagBuffer);
+    AscendC::SyncAll<true>();
+    if (taskIdx == 0U && subBlockIdx == 0U) {
+        AlltoAllvGroupedMatMulAiv::WaitPeerPhase(
+            context, layout, AlltoAllvGroupedMatMulAiv::kReleaseSlotsOffset,
+            epoch, flagBuffer);
+    }
+}
+
+} // namespace detail
+
+template <bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
+__aicore__ inline void Run(
+    GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweight,
+    GM_ADDR gmmy, GM_ADDR mmy, GM_ADDR permuteOut, GM_ADDR userWorkspace,
+    const AlltoAllvGmmAivTilingData &tiling)
+{
+    GM_ADDR recvBuffer =
+        tiling.gmmInfo.hasPermuteOut != 0U && permuteOut != nullptr
+            ? permuteOut
+            : userWorkspace + tiling.recvTokenOffset;
+
+    if ASCEND_IS_AIV {
+        AlltoAllvGroupedMatMulAiv::PeerWindowContext context;
+        if (!context.Init() ||
+            context.RankSize() != tiling.gmmInfo.rankSize) {
+            return;
+        }
+
+        AlltoAllvGroupedMatMulAiv::A2avWindowLayout layout = {};
+        uint64_t inputTokens = 0U;
+        for (uint32_t index = 0U; index < tiling.countNum; ++index) {
+            const int64_t count = tiling.sendCounts[index];
+            if (count < 0 ||
+                !AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                    inputTokens, static_cast<uint64_t>(count), inputTokens)) {
+                return;
+            }
+        }
+        if (!detail::BuildDeviceWindowLayout(
+                inputTokens, tiling.gmmInfo.K, tiling.countNum,
+                context.WindowBytes(), layout)) {
+            return;
+        }
+        AscendC::TPipe pipe;
+
+        AscendC::TBuf<AscendC::TPosition::VECCALC> flagBuffer;
+        pipe.InitBuffer(flagBuffer, detail::kFlagBufferBytes);
+        AscendC::TBuf<AscendC::TPosition::VECCALC> copyBuffer;
+        const uint32_t queueBytes = detail::GetCopyQueueBytes(tiling);
+        if (queueBytes == 0U) {
+            return;
+        }
+        pipe.InitBuffer(copyBuffer, queueBytes);
+        detail::ProcessAiv(
+            gmmx, recvBuffer, tiling, context, layout, copyBuffer,
+            flagBuffer);
+    }
+    if ASCEND_IS_AIC {
+        detail::ProcessAic<GMM_TRANSPOSE_B, MM_TRANSPOSE_B>(
+            gmmweight, mmx, mmweight, gmmy, mmy, recvBuffer, tiling);
+    }
+}
+
+} // namespace AlltoAllvGroupedMatMulAivMode
+
+#endif // defined(__CCE_AICORE__) && !defined(__CCE_KT_TEST__)
+
+#endif // ALLTO_ALLV_GROUPED_MAT_MUL_AIV_MODE_H
+</script>
+
+<script>
+function renderSrc(){
+  const container = document.getElementById('src-code');
+  if(!SRC.length){ container.innerHTML='<div style="padding:20px;color:#94a3b8">源代码加载中...</div>'; return; }
+  let html = '';
+  for(let i=0; i<SRC.length; i++){
+    const ln = i+1;
+    let cls = 'ln';
+    let txt = escHtml(SRC[i]);
+    html += `<div class="${cls}" id="L${ln}">${txt}</div>`;
+  }
+  container.innerHTML = html;
+}
+
+// 从 V 中提取所有函数名，构建正则（按长度降序避免短名误匹配）
+var FN_NAMES = Object.keys(V).filter(function(k){return V[k].t==='函数'}).sort(function(a,b){return b.length-a.length});
+var FN_RE = new RegExp('\\b('+FN_NAMES.join('|')+')\\b', 'g');
+
+function escHtml(s){
+  var ph = [], n = 0;
+  function hold(re, cls, attr){
+    s = s.replace(re, function(m){
+      var p = '\x00'+(n++)+'\x00';
+      var escaped = m.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var attrs = attr ? ' '+attr+'="'+escaped.replace(/"/g,'&quot;')+'"' : '';
+      ph.push({p:p, h:'<span class="'+cls+'"'+attrs+'>'+escaped+'</span>'});
+      return p;
+    });
+  }
+  hold(/\/\/.*/g, 'co');
+  hold(FN_RE, 'fn', 'data-v');  // 函数名: 带 data-v 属性，点击可跳转
+  hold(/\b(uint32_t|uint64_t|int32_t|float|bool|half|GM_ADDR|void|class|template|const|auto|static|inline)\b/g, 'ty');
+  hold(/\b(if|else|for|while|return|continue|break|constexpr)\b/g, 'kw');
+  hold(/\b(\d+UL?)\b/g, 'nu');
+  s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  for(var i=0;i<ph.length;i++) s = s.split(ph[i].p).join(ph[i].h);
+  return s;
+}
+
+// ===== POPOVER =====
+document.addEventListener('click', function(e){
+  var vr = e.target.closest('.vr');
+  if(!vr) vr = e.target.closest('.fn');  // 源码面板中的函数名也可点击
+  if(vr){
+    e.stopPropagation();
+    showPopover(vr);
+    return;
+  }
+  if(!e.target.closest('.popover')){
+    document.getElementById('popover').classList.remove('show');
+  }
+});
+
+function showPopover(el){
+  const vname = el.dataset.v;
+  const info = V[vname];
+  if(!info) return;
+
+  curVar = vname;
+  const pop = document.getElementById('popover');
+  let html = `<h4>${vname} <span class="tag">${info.t||''}</span></h4>`;
+  html += `<p style="margin-bottom:8px;color:#555">${info.desc||''}</p>`;
+
+  // Declaration button
+  if(info.d){
+    html += `<div class="btn-row">`;
+    html += `<button class="d" onclick="jumpTo(${info.d},'d')">📌 声明 (L${info.d})</button>`;
+    // Usage buttons (show first 15, rest via "more")
+    const uses = (info.u||[]).filter(l=>l!==info.d);
+    const showUses = uses.slice(0,18);
+    html += `<button class="u" onclick="jumpTo([${showUses.join(',')}],'u')">🔗 使用 (${uses.length}处)</button>`;
+    // Variant buttons
+    if(info.v && info.v.length){
+      html += `<button class="v" onclick="jumpToVariants('${vname}')">🔄 变体 (${info.v.length}种)</button>`;
+    }
+    html += `</div>`;
+  }
+
+  pop.innerHTML = html;
+  pop.classList.add('show');
+
+  // Position the popover
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  let left = rect.left;
+  if(top + 200 > window.innerHeight) top = rect.top - 200;
+  if(left + 300 > window.innerWidth) left = window.innerWidth - 310;
+  if(left < 10) left = 10;
+  pop.style.top = top+'px';
+  pop.style.left = left+'px';
+}
+
+// ===== SOURCE PANEL =====
+function toggleSrc(){
+  const panel = document.getElementById('src-panel');
+  if(panel.classList.contains('open')){
+    closeSrc();
+  } else {
+    panel.classList.add('open');
+    panel.style.display = 'flex';
+    document.getElementById('src-toggle').textContent = '📄 关闭源码';
+    if(!document.getElementById('src-code').children.length) renderSrc();
+  }
+}
+function closeSrc(){
+  var panel = document.getElementById('src-panel');
+  panel.classList.remove('open');
+  panel.style.display = 'none';
+  document.getElementById('src-toggle').textContent = '📄 源代码';
+}
+// Click outside source panel to close
+document.addEventListener('click', function(e){
+  var panel = document.getElementById('src-panel');
+  if(panel.classList.contains('open') && !panel.contains(e.target) && e.target.id !== 'src-toggle'){
+    // Don't close if clicking a popover or vr link
+    if(!e.target.closest('.popover') && !e.target.closest('.vr')){
+      closeSrc();
+    }
+  }
+});
+
+// ===== HIGHLIGHT NAVIGATION STATE =====
+var hlLines = [];      // currently highlighted line numbers
+var hlIndex = 0;       // current index in hlLines
+var hlClass = '';      // current highlight CSS class
+
+function navHighlight(dir){
+  if(hlLines.length <= 1) return;
+  hlIndex = (hlIndex + dir + hlLines.length) % hlLines.length;
+  var el = document.getElementById('L'+hlLines[hlIndex]);
+  if(el){
+    el.scrollIntoView({block:'center',behavior:'smooth'});
+    document.getElementById('src-nav-text').textContent = (hlIndex+1)+'/'+hlLines.length;
+  }
+}
+
+// ===== JUMP TO LINE =====
+function jumpTo(lines, cls){
+  const panel = document.getElementById('src-panel');
+  panel.classList.add('open');
+  panel.style.display = 'flex';  // 覆盖 closeSrc 的内联 display:none
+  document.getElementById('src-toggle').textContent = '📄 关闭源码';
+  if(!document.getElementById('src-code').children.length) renderSrc();
+
+  // Clear previous highlights
+  document.querySelectorAll('#src-code .ln.hl,#src-code .ln.d,#src-code .ln.u,#src-code .ln.vv')
+    .forEach(el=>{el.className='ln';});
+
+  const arr = Array.isArray(lines)?lines:[lines];
+  hlLines = arr;
+  hlIndex = 0;
+  hlClass = cls;
+
+  // Highlight all
+  arr.forEach(l=>{
+    const el = document.getElementById('L'+l);
+    if(el){ el.className += ' '+cls; }
+  });
+
+  // Show/hide nav buttons
+  var navEl = document.getElementById('src-nav');
+  if(arr.length > 1){
+    navEl.style.display = 'inline';
+    document.getElementById('src-nav-text').textContent = '1/'+arr.length;
+  } else {
+    navEl.style.display = 'none';
+  }
+
+  // Scroll to first
+  const first = document.getElementById('L'+arr[0]);
+  if(first){
+    first.scrollIntoView({block:'center',behavior:'smooth'});
+    const toast = document.getElementById('toast');
+    toast.textContent = `已跳转到 L${arr[0]}` + (arr.length>1?` (共 ${arr.length} 处，← → 切换)`:'');
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),1500);
+  }
+
+  // Update header info
+  if(curVar){
+    const info = V[curVar];
+    let desc = `${curVar}: ${info.desc||''}`;
+    if(cls==='d') desc += ' [声明]';
+    else if(cls==='u') desc += ` [使用: ${arr.length}处]`;
+    else if(cls==='vv') desc += ' [变体]';
+    document.getElementById('src-info').textContent = desc;
+  }
+}
+
+function jumpToVariants(vname){
+  const info = V[vname];
+  if(!info||!info.v) return;
+  const panel = document.getElementById('src-panel');
+  panel.classList.add('open');
+  panel.style.display = 'flex';
+  document.getElementById('src-toggle').textContent = '📄 关闭源码';
+  if(!document.getElementById('src-code').children.length) renderSrc();
+
+  document.querySelectorAll('#src-code .ln.hl,#src-code .ln.d,#src-code .ln.u,#src-code .ln.vv')
+    .forEach(el=>{el.className='ln';});
+
+  const lines = info.v.map(v=>v.l);
+  hlLines = lines;
+  hlIndex = 0;
+  hlClass = 'vv';
+
+  lines.forEach(l=>{
+    const el = document.getElementById('L'+l);
+    if(el) el.className += ' vv';
+  });
+
+  // Show nav if multiple
+  var navEl = document.getElementById('src-nav');
+  if(lines.length > 1){
+    navEl.style.display = 'inline';
+    document.getElementById('src-nav-text').textContent = '1/'+lines.length;
+  } else {
+    navEl.style.display = 'none';
+  }
+
+  if(lines[0]){
+    document.getElementById('L'+lines[0]).scrollIntoView({block:'center',behavior:'smooth'});
+  }
+  document.getElementById('src-info').textContent =
+    `${vname} 变体: ${info.v.map(v=>'L'+v.l+'→'+v.t).join(', ')}`;
+  const toast = document.getElementById('toast');
+  toast.textContent = `${vname}: ${info.v.length} 种类型变体` + (lines.length>1?` (← → 切换)`:'');
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'),1500);
+}
+
+// ===== KEYBOARD SHORTCUT =====
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape'){
+    document.getElementById('popover').classList.remove('show');
+    // Also close source panel on Esc if it's open
+    var panel = document.getElementById('src-panel');
+    if(panel.classList.contains('open')) closeSrc();
+  }
+  // Arrow keys to navigate highlighted lines
+  if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
+    var panel = document.getElementById('src-panel');
+    if(panel.classList.contains('open') && hlLines.length > 1){
+      e.preventDefault();
+      navHighlight(e.key==='ArrowRight' ? 1 : -1);
+    }
+  }
+  if(e.ctrlKey && e.key==='`'){
+    e.preventDefault();
+    toggleSrc();
+  }
+});
+</script>
+</body>
+</html>
