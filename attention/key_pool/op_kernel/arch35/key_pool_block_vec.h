@@ -975,6 +975,25 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::KvMulReduceScore(const LocalTen
                                                                      const LocalTensor<T> &dstLocal,
                                                                      uint32_t tcDealSize, uint32_t dDealSize)
 {
+    if (hasLayerNorm_ && cmpRatio_ == 128U) {
+        const uint32_t rowsPerPool = coff_ * cmpRatio_;
+        LocalTensor<T> productLocal = outputQue1.AllocTensor<T>();
+        for (uint32_t tcIdx = 0; tcIdx < tcDealSize; ++tcIdx) {
+            const uint32_t srcBase = tcIdx * rowsPerPool * dDealSize;
+            const uint32_t dstBase = tcIdx * dDealSize;
+            Mul(dstLocal[dstBase], kvLocal[srcBase], scoreLocal[srcBase], dDealSize);
+            PipeBarrier<PIPE_V>();
+            for (uint32_t rowIdx = 1; rowIdx < rowsPerPool; ++rowIdx) {
+                const uint32_t rowOffset = srcBase + rowIdx * dDealSize;
+                Mul(productLocal, kvLocal[rowOffset], scoreLocal[rowOffset], dDealSize);
+                PipeBarrier<PIPE_V>();
+                Add(dstLocal[dstBase], dstLocal[dstBase], productLocal, dDealSize);
+                PipeBarrier<PIPE_V>();
+            }
+        }
+        outputQue1.FreeTensor(productLocal);
+        return;
+    }
     MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, coff_, cmpRatio_, dDealSize, tcDealSize);
 }
 
@@ -1326,6 +1345,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1Run
         PipeBarrier<PIPE_V>();
         RoundToHiddenDtype(scoreLocal, statisticInfo.key_poolScCnt * cmpRatio_ * dDealSize);
         LocalTensor<T> comperssoredUb = scoreLocal;
+        if (hasLayerNorm_ && cmpRatio_ == 128U) {
+            comperssoredUb = apeUb;
+        }
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
