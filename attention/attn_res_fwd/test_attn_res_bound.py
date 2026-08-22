@@ -323,7 +323,7 @@ def main():
     parser.add_argument("--N", type=int, default=4)
     parser.add_argument("--H", type=int, default=7168)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--dtype", default="bf16", choices=["fp16", "bf16"])
+    parser.add_argument("--dtype", default="bf16", choices=["fp16", "bf16", "fp32"])
     parser.add_argument("--mode", default="bound", choices=["bound", "fwd", "bwd", "vs", "mid"],
                         help="bound=正反向绑定一次调用; fwd=单独测正向; bwd=单独测反向; "
                              "vs=同输入下手动两段式 vs 绑定自动反向互相对比; "
@@ -345,7 +345,7 @@ def main():
     sys.stdout = _Tee(sys.stdout, logf)
     sys.stderr = _Tee(sys.stderr, logf)
 
-    dtype = torch.float16 if args.dtype == "fp16" else torch.bfloat16
+    dtype = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}[args.dtype]
     ok = run_case(dtype, args.B, args.N, args.H, args.seed, mode=args.mode,
                   show_points=args.show_points, grad_scale=args.grad_scale,
                   input_mode=args.input_mode)
