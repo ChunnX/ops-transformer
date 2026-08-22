@@ -76,7 +76,9 @@ private:
     __aicore__ inline void SendGradToPeers();
     __aicore__ inline void SendGradLocal(int32_t sendCount, int64_t sdispl, GM_ADDR localWinBase);
     __aicore__ inline void SendGradRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl, GM_ADDR localWinBase);
+    __aicore__ inline void DrainAndSendFlags();
     __aicore__ inline void RecvGradFromPeers();
+    __aicore__ inline void FinishExchangeGrad();
     __aicore__ inline void UniqueScatterAdd();
     __aicore__ inline void InitCompanion(uint32_t numRecv);
     __aicore__ inline void RunSort(uint32_t numRecv);
@@ -122,10 +124,14 @@ private:
 
     uint64_t uniqueScatterAddStartCycle_{0};
     uint64_t uniqueScatterAddEndCycle_{0};
-    uint64_t usaCompanionCycle_{0};
+    uint64_t usaInitAndOverlapSendCycle_{0};
+    uint64_t usaZeroCycle_{0};
     uint64_t usaSortCycle_{0};
+    uint64_t usaDrainRecvCycle_{0};
     uint64_t processStartCycle_{0};
     uint64_t processEndCycle_{0};
+    uint64_t sendStartCycle_{0};
+    uint64_t sendEndCycle_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenFlagOffset_{0};
@@ -137,6 +143,9 @@ private:
 
     uint32_t numSendCores_{0};
     uint32_t numRecvCores_{0};
+    uint32_t pendingHandleCount_{0};
+    uint64_t pendingHandles_[8]{0};
+    uint32_t pendingDstRanks_[8]{0};
     bool isSender_{false};
     bool isReceiver_{false};
     bool isFlagCore_{false};
@@ -473,8 +482,25 @@ __aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
     SyncAll<true>();
 }
 
+__aicore__ inline void EngramFetchGradArch35::FinishExchangeGrad()
+{
+    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
+
+    DrainAndSendFlags();
+    RecvGradFromPeers();
+
+    if (isFlagCore_) {
+        GM_ADDR localFlagBase = localWinBase + tokenFlagOffset_;
+        WaitAllStatusFlags(localFlagBase, numRanks_);
+        ClearStatusFlags(localFlagBase);
+    }
+
+    SyncAll<true>();
+}
+
 __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
 {
+    pendingHandleCount_ = 0;
     if (!isSender_) {
         return;
     }
@@ -557,15 +583,26 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
                                                 static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        DrainChecked(handle);
 
         localWriteCnt++;
         totalSent += chunkLen;
     }
 
-    GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
-    WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-    DrainChecked(handle);
+    pendingHandles_[pendingHandleCount_] = handle;
+    pendingDstRanks_[pendingHandleCount_] = dstRank;
+    pendingHandleCount_++;
+}
+
+__aicore__ inline void EngramFetchGradArch35::DrainAndSendFlags()
+{
+    for (uint32_t i = 0; i < pendingHandleCount_; i++) {
+        DrainChecked(pendingHandles_[i]);
+        uint32_t dstRank = pendingDstRanks_[i];
+        GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
+        WriteNbiChecked(pendingHandles_[i], remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
+        DrainChecked(pendingHandles_[i]);
+    }
+    pendingHandleCount_ = 0;
 }
 
 __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
@@ -654,7 +691,9 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
-    sorter_.SetMaxValue(static_cast<uint32_t>(numRanks_) * static_cast<uint32_t>(numEntriesPerRank_));
+    int32_t offset = static_cast<int32_t>(rankId_) * static_cast<int32_t>(numEntriesPerRank_);
+    sorter_.SetValueOffset(offset);
+    sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
 }
 
@@ -665,6 +704,7 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
     uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
     if (numRecv == 0) {
+        FinishExchangeGrad();
         uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
         return;
     }
@@ -675,15 +715,24 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     RunSort(numRecv);
-    SyncAll<true>();
     uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    uniqueScatter_.Run(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                       gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
-                       sortCompanionGM_);
+    uniqueScatter_.RunCount(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+    uint64_t tc = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    usaCompanionCycle_ = t1 - t0;
+    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_, gradUniqueFp32GM_);
+
+    FinishExchangeGrad();
+    SyncAll<true>();
+    uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
+                                  gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                  sortCompanionGM_);
+
+    usaInitAndOverlapSendCycle_ = t1 - t0;
     usaSortCycle_ = t2 - t1;
+    usaDrainRecvCycle_ = t3 - tc - uniqueScatter_.usaZeroCycle_;
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
@@ -801,24 +850,30 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         CrossRankBarrier();
 
         UnsortGrad();
-        ExchangeGrad();
+        sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        SendGradToPeers();
+        sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         uniqueScatterAddStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UniqueScatterAdd();
         uniqueScatterAddEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
         processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-       
-            uint64_t totalUs = (processEndCycle_ - processStartCycle_) / 1000U;
-            uint64_t usaUs = (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U;
-            uint64_t preUs = (uniqueScatterAddStartCycle_ - processStartCycle_) / 1000U;
-            AscendC::printf("ENGRAM total=%lluu pre=%lluu usa=%lluu | companion=%lluu sort=%lluu zeroCount=%lluu scatterAdd=%lluu cast=%lluu\n",
-                            totalUs, preUs, usaUs,
-                            usaCompanionCycle_ / 1000U, usaSortCycle_ / 1000U,
-                            uniqueScatter_.usaZeroCountCycle_ / 1000U,
-                            uniqueScatter_.usaScatterAddCycle_ / 1000U,
-                            uniqueScatter_.usaCastCycle_ / 1000U);
-        
+        uint64_t totalUs = (processEndCycle_ - processStartCycle_) / 1000U;
+        uint64_t preUs = (uniqueScatterAddStartCycle_ - processStartCycle_) / 1000U;
+        uint64_t usaUs = (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U;
+        uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
+        uint64_t sortUs = usaSortCycle_ / 1000U;
+        uint64_t drainRecvUs = usaDrainRecvCycle_ / 1000U;
+        AscendC::printf("ENGRAM core=%uu total=%lluu pre=%lluu send=%lluu usa=%lluu | initAndOverlapSend=%lluu sort=%lluu count=%lluu zero=%lluu drainRecv=%lluu scatterAdd=%lluu cast=%lluu\n",
+                        aivId_, totalUs, preUs, sendUs, usaUs,
+                        usaInitAndOverlapSendCycle_ / 1000U,
+                        sortUs,
+                        uniqueScatter_.usaCountCycle_ / 1000U,
+                        uniqueScatter_.usaZeroCycle_ / 1000U,
+                        drainRecvUs,
+                        uniqueScatter_.usaScatterAddCycle_ / 1000U,
+                        uniqueScatter_.usaCastCycle_ / 1000U);
     }
 }
 

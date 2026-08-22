@@ -50,6 +50,7 @@ constexpr uint32_t ATTR_COMM_BUFFER_SIZE = 1U;
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
+constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
@@ -497,6 +498,21 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     tilingData.aivNum = aivNum;
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
+    uint64_t ubSize = 0;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    int64_t availUbSize = static_cast<int64_t>(ubSize) - SIMT_DCACHE_SIZE;
+    OP_TILING_CHECK(availUbSize <= 0,
+                    OP_LOGE(nodeName, "availUbSize(%ld) <= 0, ubSize=%lu, SIMT_DCACHE_SIZE=%ld",
+                            availUbSize, ubSize, SIMT_DCACHE_SIZE),
+                    return ge::GRAPH_FAILED);
+    auto ret = context->SetLocalMemorySize(static_cast<size_t>(availUbSize));
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "SetLocalMemorySize failed, availUbSize=%ld", availUbSize),
+                    return ge::GRAPH_FAILED);
+    tilingData.ubSize = static_cast<uint64_t>(availUbSize);
+    OP_LOGD(nodeName, "SetLocalMemorySize: ubSize=%lu, availUbSize=%ld, SIMT_DCACHE_SIZE=%ld",
+            ubSize, availUbSize, SIMT_DCACHE_SIZE);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -530,13 +546,6 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
 
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
     tilingData.commBufferSize = *commBufferSizePtr;
-
-    auto platformInfo = context->GetPlatformInfo();
-    OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    uint64_t ubSize = 0;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    tilingData.ubSize = ubSize;
 
     OP_LOGD(nodeName,
             "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
@@ -598,13 +607,19 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
                     return ge::GRAPH_FAILED);
     int64_t sortTempSize = (maxSortCount * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     int64_t sortTileCount = (maxSortCount + 4096 - 1) / 4096;
+    int64_t sortTileCountByCore = static_cast<int64_t>(tilingData.aivNum);
+    if (sortTileCountByCore > sortTileCount) {
+        sortTileCount = sortTileCountByCore;
+    }
     int64_t wsSortTempVal = sortTempSize;
     int64_t wsSortTempIdx = sortTempSize;
     int64_t wsSortCompanion = sortTempSize;
     int64_t wsSortHist = sortTileCount * 256 * sizeof(int32_t);
     int64_t wsSortPrefix = 256 * sizeof(int32_t);
+    int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
-    int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortOffsets;
+    int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist +
+                          wsSortPrefix + wsSortCoreSums + wsSortOffsets;
 
     int64_t wsGradUniqueFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
 
