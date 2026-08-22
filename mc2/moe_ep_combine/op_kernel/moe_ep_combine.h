@@ -72,6 +72,9 @@ static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+// Performance validation only. Modes 1 and 2 intentionally produce incorrect remote payloads.
+// 0: original per-token xGm_ address; 1: fixed xGm_[0] address; 2: fixed address in the local HCCL window.
+static constexpr uint32_t SOURCE_ADDRESS_PERF_TEST_MODE = 2;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
@@ -334,6 +337,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
     if (srcRank != static_cast<int32_t>(rankId_)) {
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+        if constexpr (SOURCE_ADDRESS_PERF_TEST_MODE == 1) {
+            tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(0);
+        } else if constexpr (SOURCE_ADDRESS_PERF_TEST_MODE == 2) {
+            tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + sendDataWorkspaceSizePerRank_;
+        }
         PrepareWrite<DEFAULT_WQE_CONFIG>(
             commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
             axisH_ * sizeof(XType));
@@ -424,6 +432,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     uint32_t activeAivNum = aivNum_;
     uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
     bool useRemainingAivForLocal = activeAivNum > maxChannelAivNum;
+
+    if constexpr (SOURCE_ADDRESS_PERF_TEST_MODE == 2) {
+        // The area immediately following the local combine receive region is reserved HCCL-window storage.
+        // Stage one token once, then reuse its address for every remote WQE to isolate source-address effects.
+        if (actualA_ != 0 && aivId_ == 0) {
+            GM_ADDR stagedSourceAddr =
+                GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + sendDataWorkspaceSizePerRank_;
+            SendLocalToken(0, stagedSourceAddr);
+            SyncFunc<AscendC::HardEvent::MTE3_S>();
+        }
+        SyncAll<true>();
+    }
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
