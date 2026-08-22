@@ -21,6 +21,7 @@
 #define FLASH_MLA_WITH_KVCACHE_GM_FORMAT_H_
 
 #include "kernel_operator_list_tensor_intf.h"
+#include "../../../common/op_kernel/memcopy/gm_layout.h"
 
 namespace BaseApi {
 
