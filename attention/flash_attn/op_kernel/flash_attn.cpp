@@ -15,7 +15,6 @@
  */
 
 #include "arch35/flash_attn_template_tiling_key.h"
-#include "utils/flash_attn_utils.h"
 #include "utils/flash_attn_common_def.h"
 #if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
