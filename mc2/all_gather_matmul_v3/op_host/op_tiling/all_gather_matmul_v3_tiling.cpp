@@ -58,7 +58,8 @@ constexpr uint32_t SCALE_DIM_NUM = 3U;
 constexpr uint64_t MX_SCALE_BLOCK = 64UL;
 constexpr uint64_t SCALE_LAST_DIM = 2UL;
 constexpr int64_t MAX_INT32_VAL = 2147483647;
-constexpr uint64_t K_MAX_VAL = 65535UL;     // todo: 范围待确认, v2资料是有k轴大小的限制的
+constexpr int64_t K_MIN_VAL = 256;
+constexpr int64_t K_MAX_VAL = 65535;
 constexpr uint64_t COMM_TILE_M = 512UL;
 
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
@@ -286,22 +287,27 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                         "The k-axis of x1 and x2 must be the same."),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(kX1 % static_cast<int64_t>(MX_SCALE_BLOCK) != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1.K",
+    OP_TILING_CHECK(kX1 < K_MIN_VAL || kX1 >= K_MAX_VAL,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "K",
                         std::to_string(kX1).c_str(),
-                        (std::string("must be divisible by ") + std::to_string(MX_SCALE_BLOCK)).c_str()),
+                        (std::string("must be in range [") + std::to_string(K_MIN_VAL) + ", " +
+                         std::to_string(K_MAX_VAL) + ")").c_str()),
                     return ge::GRAPH_FAILED);
+
+    // fp4 要求 K 为偶数（packed 存储 2 个 fp4/byte）
+    auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+    if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+        OP_TILING_CHECK(kX1 % 2 != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "K",
+                            std::to_string(kX1).c_str(),
+                            "must be even in mxfp4 scene"),
+                        return ge::GRAPH_FAILED);
+    }
 
     OP_TILING_CHECK(mPerRank > MAX_INT32_VAL || x2N > MAX_INT32_VAL,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1.M/x2.N",
                         (std::to_string(mPerRank) + "/" + std::to_string(x2N)).c_str(),
                         "must not exceed INT32_MAX"),
-                    return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(kX1 > static_cast<int64_t>(K_MAX_VAL),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "K",
-                        std::to_string(kX1).c_str(),
-                        (std::string("must not exceed ") + std::to_string(K_MAX_VAL)).c_str()),
                     return ge::GRAPH_FAILED);
 
     // rank_size from attr
@@ -336,7 +342,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
     }
 
     // scale shapes: x1_scale [M, K/64, 2]; x2_scale [N, K/64, 2]
-    int64_t kg = kX1 / static_cast<int64_t>(MX_SCALE_BLOCK);
+    int64_t kg = (kX1 + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
     auto x1ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
     OP_TILING_CHECK(x1ScaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1_scale"),
                     return ge::GRAPH_FAILED);
@@ -420,9 +426,22 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
     OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*rankSizePtr != 2 && *rankSizePtr != 4 && *rankSizePtr != 8 && *rankSizePtr != 16,
+    OP_TILING_CHECK(*rankSizePtr != 2 && *rankSizePtr != 4 && *rankSizePtr != 8 && *rankSizePtr != 16 &&
+                    *rankSizePtr != 32 && *rankSizePtr != 64,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(*rankSizePtr).c_str(),
                                               "2/4/8/16"),
+                    return ge::GRAPH_FAILED);
+    // 拦截：1:1 核配比下实际可用 block 数 = min(aicNum, aivNum)
+    // rankSize 不能超过实际可用 block 数，否则通信挂死或 matmul tile 丢失
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t actualBlockNum = std::min(aicNum, aivNum);
+    OP_TILING_CHECK(static_cast<uint32_t>(*rankSizePtr) > actualBlockNum,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size",
+                        (std::to_string(*rankSizePtr) + " > min(aicNum=" + std::to_string(aicNum) +
+                         ", aivNum=" + std::to_string(aivNum) + ")=" + std::to_string(actualBlockNum)).c_str(),
+                        "<= min(aicNum, aivNum)"),
                     return ge::GRAPH_FAILED);
 
     // is_trans_b
@@ -441,7 +460,8 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "urma"),
                     return ge::GRAPH_FAILED);
 
-    // group_size (MX quant: [1,1,32])，V3 仅支持 MX 量化，必须为 [1,1,32]
+    // group_size (MX quant: [1,1,32])，V3 仅支持 MX 量化
+    // 与 V2 对齐：值为 0 的维度自动从 scale shape 推导，推导后校验是否为 [1,1,32]
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
     OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group_size"),
                     return ge::GRAPH_FAILED);
@@ -449,6 +469,52 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
     uint64_t gsK = gs & GROUP_MNK_BIT_SIZE;
     uint64_t gsN = (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+
+    // 自动推导：值为 0 的维度从 scale shape 反推
+    const gert::StorageShape *x1Shape = context->GetInputShape(IDX_INPUT_X1);
+    const gert::StorageShape *x2Shape = context->GetInputShape(IDX_INPUT_X2);
+    auto x1ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
+    auto x2ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X2_SCALE);
+    int64_t mValue = x1Shape->GetStorageShape().GetDim(0);
+    int64_t kValue = x1Shape->GetStorageShape().GetDim(1);
+    int64_t nValue = x2Shape->GetStorageShape().GetDim(0);
+
+    if (gsM == 0) {
+        int64_t scaleM = x1ScaleShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(scaleM == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1_scale M", "0", "non-zero"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mValue % scaleM != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1 M / x1_scale M",
+                            (std::to_string(mValue) + " / " + std::to_string(scaleM)).c_str(), "divisible"),
+                        return ge::GRAPH_FAILED);
+        gsM = static_cast<uint64_t>(mValue / scaleM);
+    }
+    if (gsN == 0) {
+        int64_t scaleN = x2ScaleShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(scaleN == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x2_scale N", "0", "non-zero"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(nValue % scaleN != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x2 N / x2_scale N",
+                            (std::to_string(nValue) + " / " + std::to_string(scaleN)).c_str(), "divisible"),
+                        return ge::GRAPH_FAILED);
+        gsN = static_cast<uint64_t>(nValue / scaleN);
+    }
+    if (gsK == 0) {
+        // mxfp scale shape [M, CeilDiv(K,64), 2]，K维 group size = K / (CeilDiv(K,64) * 2)
+        int64_t scaleKDim = x1ScaleShape->GetStorageShape().GetDim(1);
+        int64_t scaleKValue = scaleKDim * 2;
+        OP_TILING_CHECK(scaleKValue == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1_scale K dim", "0", "non-zero"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(kValue % scaleKValue != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1 K / x1_scale K",
+                            (std::to_string(kValue) + " / " + std::to_string(scaleKValue)).c_str(), "divisible"),
+                        return ge::GRAPH_FAILED);
+        gsK = static_cast<uint64_t>(kValue / scaleKValue);
+    }
+
+    OP_LOGI(nodeName, "group_size: attr=[%lu,%lu,%lu], inferred [M=%lu N=%lu K=%lu].",
+            (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE, (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE,
+            gs & GROUP_MNK_BIT_SIZE, gsM, gsN, gsK);
     OP_TILING_CHECK(gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "group_size",
                         (std::string("[") + std::to_string(gsM) + "," + std::to_string(gsN) + "," +
@@ -482,6 +548,12 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     uint64_t n = static_cast<uint64_t>(shapeInfo.n);
     uint64_t rankSize = shapeInfo.rankSize;
 
+    OP_LOGI(nodeName, "quant dtype: x1=%s x2=%s y=%s, m=%lu k=%lu n=%lu rankSize=%lu.",
+            Ops::Base::ToString(context->GetInputDesc(IDX_INPUT_X1)->GetDataType()).c_str(),
+            Ops::Base::ToString(context->GetInputDesc(IDX_INPUT_X2)->GetDataType()).c_str(),
+            Ops::Base::ToString(context->GetOutputDesc(IDX_OUTPUT_Y)->GetDataType()).c_str(),
+            m, k, n, rankSize);
+
     // comm tile: split per-rank M into 512-row tiles
     uint64_t tileM = COMM_TILE_M;
     uint64_t tileCnt = m / tileM;
@@ -502,6 +574,10 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingEngine.SetMTailAlignEnable(true);
     tilingEngine.SetAdjustBasicBlockEnable(false);
     tilingEngine.GetTilingData(totalLogicalM, n, k, tilingData->mmTile);
+    OP_LOGD(nodeName, "mmTile(swat): baseM=%u baseN=%u baseK=%u dbL0c=%u swatUsedCoreNum=%u.",
+            static_cast<uint32_t>(tilingData->mmTile.baseM), static_cast<uint32_t>(tilingData->mmTile.baseN),
+            static_cast<uint32_t>(tilingData->mmTile.baseK), static_cast<uint32_t>(tilingData->mmTile.dbL0c),
+            static_cast<uint32_t>(tilingData->mmTile.usedCoreNum));
 
     // AIV comm loop requires rankSize <= launched cores
     uint32_t usedCoreNum = tilingData->mmTile.usedCoreNum < static_cast<uint32_t>(rankSize)
@@ -520,8 +596,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 
     OP_LOGI(nodeName,
             "AllGatherMatmulV3 tiling: mPerRank=%lu totalLogicalM=%lu k=%lu n=%lu rankSize=%lu usedCoreNum=%u "
-            "commTile[tileSize=%lu tileCnt=%lu tailSize=%lu tailCnt=%lu]",
-            m, totalLogicalM, k, n, rankSize, usedCoreNum,
+            "isBias=%u commTile[tileSize=%lu tileCnt=%lu tailSize=%lu tailCnt=%lu]",
+            m, totalLogicalM, k, n, rankSize, usedCoreNum, static_cast<uint32_t>(tilingData->isBias),
             tilingData->commTile.splitAxisTileSize, tilingData->commTile.splitAxisTileCnt,
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
 
@@ -549,6 +625,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(context->GetNodeName(), "workSpaces is nullptr."),
                     return ge::GRAPH_FAILED);
     workSpaces[0] = workspaceSize;
+    OP_LOGD(context->GetNodeName(), "workspace size is %lu.", workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 

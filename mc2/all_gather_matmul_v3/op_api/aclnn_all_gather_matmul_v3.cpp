@@ -13,7 +13,7 @@
  * \brief aclnn API implementation for AllGatherMatmulV3 (MX-quant FP8/FP4, apace UDMA path)
  */
 
-#include "aclnn_all_gather_matmul_v3.h"
+#include "aclnnInner_all_gather_matmul_v3.h"
 
 #include <cstring>
 #include <initializer_list>
@@ -223,18 +223,13 @@ aclnnStatus CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
                 "(x2 must be [N, K] layout).", kX1, kX2);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (kX1 % MX_SCALE_BLOCK != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAllGatherQuantMatmulV3: K=%ld must be divisible by %ld.",
-                kX1, MX_SCALE_BLOCK);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     if (output->GetViewShape().GetDim(1) != nVal) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAllGatherQuantMatmulV3: output.N=%ld != x2.N=%ld.",
                 output->GetViewShape().GetDim(1), nVal);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // scale: x1Scale [M, K/64, 2]; x2Scale [N, K/64, 2]
-    int64_t kg = kX1 / MX_SCALE_BLOCK;
+    // scale: x1Scale [M, Ceil(K/64), 2]; x2Scale [N, Ceil(K/64), 2]
+    int64_t kg = (kX1 + MX_SCALE_BLOCK - 1) / MX_SCALE_BLOCK;
     if (x1Scale != nullptr) {
         if (x1Scale->GetViewShape().GetDimNum() != SCALE_DIMS) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAllGatherQuantMatmulV3: x1_scale must be %ldD, got %zuD.",
@@ -285,16 +280,6 @@ aclnnStatus CheckAttrs(const char *group, const char *commMode)
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-extern "C" aclnnStatus aclnnInnerAllGatherMatmulV3GetWorkspaceSize(
-    const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-    const aclTensor *x1Scale, const aclTensor *x2Scale, char *group, int64_t hcclBufferSize,
-    bool isTransA, bool isTransB, int64_t rankSize, int64_t groupSize, int64_t yDtype,
-    char *commModeOptional, const aclTensor *yOut, const aclTensor *gatherOutOptional,
-    const aclTensor *amaxOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-extern "C" aclnnStatus aclnnInnerAllGatherMatmulV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                   aclrtStream stream);
-
 extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t rankSize,
@@ -314,11 +299,15 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     ret = CheckAttrs(group, commMode);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
+    OP_LOGD("X1 is %s.", x1->ToString().GetString());
+    OP_LOGD("X2 is %s.", x2->ToString().GetString());
+
     constexpr bool kIsTransA = false;
     constexpr bool kIsTransB = true;
     auto transX2 = x2;
     auto transX2Scale = x2ScaleOptional;
     if (IsTransposeLastTwoDims(x2)) {
+        OP_LOGI("x2 is a transposed [K,N] view, transpose back to [N,K].");
         transX2 = TransX2Tensor(x2);
         if (transX2 == nullptr) {
             return ACLNN_ERR_INNER_NULLPTR;
@@ -330,7 +319,7 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
         if (transX2Scale == nullptr) {
             return ACLNN_ERR_INNER_NULLPTR;
         }
-        OP_LOGI("aclnnAllGatherQuantMatmulV3", "x2Scale after trans: dim0=%ld dim1=%ld dim2=%ld",
+        OP_LOGI("x2Scale after trans: dim0=%ld dim1=%ld dim2=%ld",
                 transX2Scale->GetViewShape().GetDim(0), transX2Scale->GetViewShape().GetDim(1),
                 transX2Scale->GetViewShape().GetDim(2));
     }
@@ -339,6 +328,7 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     uint64_t outDtype = static_cast<uint64_t>(output->GetDataType());
+    OP_LOGD("outDtype value is: %lu.", outDtype);
 
     ret = aclnnInnerAllGatherMatmulV3GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, transX2Scale,
@@ -347,6 +337,7 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
         const_cast<char *>(commMode), output, gatherOut, nullptr,
         workspaceSize, executor);
 
+    OP_LOGD("aclnnInnerAllGatherMatmulV3GetWorkspaceSize ret = %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAllGatherMatmulV3GetWorkspaceSize failed, ret=%d", ret);
     }

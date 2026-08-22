@@ -100,9 +100,16 @@ ge::graphStatus AllGatherMatmulV3InferShape(gert::InferShapeContext *context)
 
     // ---- Validate constraints (skip if dynamic shape) --------------------
     if (m != DIM_MINUS_ONE && k != DIM_MINUS_ONE && n != DIM_MINUS_ONE) {
-        OPS_CHECK(k % MX_SCALE_BLOCK_SIZE != 0,
-                  OP_LOGE(nodeName, "K=%ld must be divisible by %ld", k, MX_SCALE_BLOCK_SIZE),
+        OPS_CHECK(k < 256 || k >= 65535,
+                  OP_LOGE(nodeName, "K=%ld must be in range [256, 65535)", k),
                   return ge::GRAPH_FAILED);
+
+        // fp4 要求 K 为偶数
+        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+            OPS_CHECK(k % 2 != 0,
+                      OP_LOGE(nodeName, "K=%ld must be even in mxfp4 scene", k),
+                      return ge::GRAPH_FAILED);
+        }
 
         // Validate scale shapes
         // x1_scale: [M, Ceil(K/64), 2]; x2_scale: [N, Ceil(K/64), 2]
@@ -152,7 +159,12 @@ ge::graphStatus AllGatherMatmulV3InferShape(gert::InferShapeContext *context)
 
     // Dtype and format are inferred from the proto definition
 
-    OP_LOGD(nodeName, "InferShape success: M_per_rank=%ld K=%ld N=%ld world_size=%ld", m, k, n, worldSize);
+    OP_LOGD(nodeName,
+            "InferShape success: M_per_rank=%ld K=%ld N=%ld world_size=%ld, y=[%ld,%ld] gather_out=[%ld,%ld]",
+            m, k, n, worldSize,
+            outShape->GetDim(0U), outShape->GetDim(1U),
+            gatherOutShape != nullptr ? gatherOutShape->GetDim(0U) : 0L,
+            gatherOutShape != nullptr ? gatherOutShape->GetDim(1U) : 0L);
     return ge::GRAPH_SUCCESS;
 }
 
