@@ -1150,13 +1150,19 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
                         uint32_t curRows = min(maxRowsPerChunk,
                                                copyRowCount - rowOffset);
                         LocalTensor<T> inputChunk = inputQue1.AllocTensor<T>();
-                        DataCopyAlignGmToUb(
-                            inputChunk,
-                            kvDBMm1ResGm[srcGmOffset +
-                                         static_cast<uint64_t>(rowOffset) *
-                                             constInfo_.headDim],
-                            curRows, dDealSize, constInfo_.headDim,
-                            dDealSize);
+                        GlobalTensor<T> srcChunk = kvDBMm1ResGm[
+                            srcGmOffset + static_cast<uint64_t>(rowOffset) *
+                                               constInfo_.headDim];
+                        if (constInfo_.kBaseNum == 1) {
+                            DataCopyAlignGmToUb(inputChunk, srcChunk, curRows,
+                                                dDealSize, constInfo_.headDim,
+                                                dDealSize);
+                        } else {
+                            AddMultiDataToUb(
+                                inputChunk, srcChunk, curRows, dDealSize,
+                                constInfo_.headDim, dDealSize,
+                                constInfo_.kBaseNum, constInfo_.mm1KvResSize);
+                        }
                         inputQue1.EnQue(inputChunk);
                         inputQue1.DeQue<T>();
                         RoundToHiddenDtype(inputChunk, curRows * dDealSize);
