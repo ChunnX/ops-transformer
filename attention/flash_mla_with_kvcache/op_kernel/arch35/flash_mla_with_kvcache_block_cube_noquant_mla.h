@@ -19,6 +19,7 @@
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "memory_copy_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "flash_mla_with_kvcache_type.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -27,23 +28,21 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0>
+template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockCube {
 public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    using INPUT_T = typename FA_T::inputType;
+    using T = typename FA_T::mmType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true}; // true: bmm2Write2Ub
-    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<FA_T::qLayout>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<FA_T::qLayout, FA_T::kvLayoutType, PAGE_ATTENTION>();
 
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
@@ -338,7 +337,7 @@ public:
         fixpipeParams.nSize = (realN + 7) >> 3 << 3;
         fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
-        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        fixpipeParams.dstStride = ((uint32_t)FA_T::dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
@@ -351,7 +350,7 @@ public:
         kvpSharedBuf.WaitCrossCore();
         outputBuf.WaitCrossCore();
         {
-            uint64_t VDsize = (uint32_t)dVTemplateType;
+            uint64_t VDsize = (uint32_t)FA_T::dVBaseSize;
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
             MMParam param =
@@ -373,19 +372,17 @@ public:
     }
 }; // FlashMlaWithKvcacheNoQuantMlaBlockCube
 
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0>
+template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy {
 public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    using INPUT_T = typename FA_T::inputType;
+    using T = typename FA_T::mmType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
 
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
