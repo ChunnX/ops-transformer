@@ -112,7 +112,7 @@ public:
         isBias_ = (params.qbmmParams.isBias != Params::QBMMTiling::BIAS_DISABLED);
         isAtomicAdd_ = false;
         mmadOp_.Init(params.problemShape,
-                     Te::MakeShape(Get<IDX_M_BASE>(params.schParams), Get<IDX_N_BASE>(params.schParams),
+                     Te::MakeShape(params.schParams.baseM, params.schParams.baseN,
                                    Te::Get<MNK_K>(params.problemShape), C0_SIZE),
                      params.l1Params, isBias_, params.qbmmParams.dbL0c > 1,
                      params.localParams.rankSize);
