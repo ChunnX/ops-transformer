@@ -181,6 +181,7 @@ private:
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
+    __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
 };
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -287,9 +288,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig();
 
-    MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
-                                               sendMaskConfig_.maskAlignSize,
-                                               reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(
+        exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo, sendMaskConfig_.maskAlignSize,
+        reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // =================================================================================================
@@ -764,7 +765,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages()
 {
+    // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
+    uint64_t gmm1Count = 0U;
+    uint64_t gmm2Count = 0U;
     tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
     DispatchBuffInit();
@@ -795,7 +799,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
         ExpertTokenPosition waveEndPosition = waveBeginPosition;
         const uint32_t waveStartBlockIndex = startBlockIdx_;
 
@@ -808,12 +811,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         } else {
             waveEndPosition = ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
         }
+        UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
         int32_t gmm2TileSequence = 0;
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM2_COMBINE);
         ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
+        UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =
