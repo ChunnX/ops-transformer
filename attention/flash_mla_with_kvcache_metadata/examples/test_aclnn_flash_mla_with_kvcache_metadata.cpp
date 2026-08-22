@@ -155,7 +155,7 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     uint64_t workspaceSize = 0;
     void *workspaceAddr = nullptr;
     if (isMla) {
-        r = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
+        r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
                                                   headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
                                                   &workspaceSize, &executor);
     } else {
@@ -230,7 +230,7 @@ static int RunByteGolden(aclrtStream stream)
     std::vector<int32_t> mlaOut(words, 0);
 
     int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDim, maskMode, layoutQ, layoutKv,
-                                layoutOut, words, &mlaOut, true, aclnnFlashMlaMetadata);
+                                layoutOut, words, &mlaOut, true, aclnnFlashMlaWithKvcacheMetadata);
     if (r != 0) {
         LOG_PRINT("[FAIL] flash_mla_with_kvcache_metadata run failed\n");
         return -1;
@@ -441,7 +441,7 @@ static int RunNegativeRuntimeOnly()
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
-            ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
+            ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
                                                         17, 1, 512,
                                                         3, "TND", "PA_NZ", "NTD", metaT, &ws,
                                                         &executor);
@@ -451,8 +451,8 @@ static int RunNegativeRuntimeOnly()
                 if (ws > 0U) {
                     aclrtMalloc(&wsAddr, ws, ACL_MEM_MALLOC_HUGE_FIRST);
                 }
-                ret = aclnnFlashMlaMetadata(wsAddr, ws, executor, stream);
-                printf("[negative-child] aclnnFlashMlaMetadata with undersized buffer: aclnnStatus=%ld\n", ret);
+                ret = aclnnFlashMlaWithKvcacheMetadata(wsAddr, ws, executor, stream);
+                printf("[negative-child] aclnnFlashMlaWithKvcacheMetadata with undersized buffer: aclnnStatus=%ld\n", ret);
                 ret = aclrtSynchronizeStream(stream);
                 printf("[negative-child] sync: aclnnStatus=%ld\n", ret);
                 if (wsAddr != nullptr) {
@@ -520,12 +520,12 @@ int main()
         aclOpExecutor *executor = nullptr;
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
-        ret = aclnnFlashMlaMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, batchSize, qS, kvS,
+        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, batchSize, qS, kvS,
                                                     numHeads, numKeyValueHeads, headDim,
                                                     3, "TND", "PA_NZ", "NTD",
                                                     metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
-            printf("aclnnFlashMlaMetadataGetWorkspaceSize %d\n", ret);
+            printf("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize %d\n", ret);
             return -1;
         }
         if (workspaceSize > 0U) {
@@ -534,9 +534,9 @@ int main()
                 return -1;
             }
         }
-        ret = aclnnFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
+        ret = aclnnFlashMlaWithKvcacheMetadata(workspaceAddr, workspaceSize, executor, stream);
         if (ret != ACL_SUCCESS) {
-            printf("aclnnFlashMlaMetadata %d\n", ret);
+            printf("aclnnFlashMlaWithKvcacheMetadata %d\n", ret);
             return -1;
         }
         ret = aclrtSynchronizeStream(stream);
