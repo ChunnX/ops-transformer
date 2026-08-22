@@ -138,19 +138,34 @@ WS_SEG_TYPE_MAP = {
     255: "RESERVED",
 }
 
-# RuntimePhase 枚举（与 mc2_tiling_struct.h RuntimePhase 保持一致）
+# RuntimePhase 枚举（与 mc2_tiling_struct.h RuntimePhase 保持一致，HCCL 五态）
 RUNTIME_PHASE_MAP = {
     0: "INIT",
     1: "COMM_PREPARE",
-    2: "COMM_WAIT",
-    3: "COMM_PROCESS",
-    4: "COMPUTE_LOCAL",
-    5: "COMPUTE_GATHER",
-    6: "TRANSPOSE",
-    7: "REDUCE",
-    8: "FINALIZE",
+    2: "COMM_COMMIT",
+    3: "COMM_WAIT",
+    4: "FINALIZE",
     255: "RESERVED",
 }
+
+# execPosition 位置 tag 编码: [高 3bit part][低 5bit taskIdx]
+RT_POS_PART_SHIFT = 5
+RT_POS_IDX_MASK = 0x1F
+RT_POS_PART_MAP = {0: "SCALE", 1: "TILE", 2: "TAIL"}
+
+# 环形 buffer 单条记录大小 (8B): turn(1) + pos(1) + phase(1) + pad(1) + cycle(4)
+RT_TRACE_ENTRY_SIZE = 8
+RT_TRACE_CAPACITY = 62
+# 固定头大小: magic(4) + coreId(2) + execTurn(1) + execPosition(1) + commPhase(1) +
+#             reserved1(1) + traceHead(2) + traceCount(2) + reserved2(2) = 16
+RT_HEADER_SIZE = 16
+
+
+def decode_pos_tag(tag):
+    """解码 execPosition 位置 tag，返回 (part_name, task_idx)。"""
+    part = tag >> RT_POS_PART_SHIFT
+    idx = tag & RT_POS_IDX_MASK
+    return RT_POS_PART_MAP.get(part, f"PART({part})"), idx
 
 
 def safe_str(raw: bytes) -> str:
@@ -414,19 +429,43 @@ def parse_workspace_layout_info(data: bytes, offset: int) -> dict:
 
 
 def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
-    """解析单个 RuntimeInfoPerCore（512B）。"""
+    """解析单个 RuntimeInfoPerCore（512B，含环形 buffer trace）。"""
     if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
         return {"error": "data too short for RuntimeInfoPerCore"}
-    magic_num, core_id = struct.unpack_from("<IH", data, offset)
-    exec_turn, exec_position, comm_phase = struct.unpack_from("<3B", data, offset + 6)
+    # 固定头 16B
+    magic_num, core_id, exec_turn, exec_position, comm_phase, _reserved1, \
+        trace_head, trace_count = struct.unpack_from("<I H B B B B H H", data, offset)
+    # 解码 position tag
+    part_name, task_idx = decode_pos_tag(exec_position)
+    # 解析 trace 环形 buffer
+    trace_entries = []
+    entries_to_read = min(trace_count, RT_TRACE_CAPACITY)
+    for i in range(entries_to_read):
+        entry_off = offset + RT_HEADER_SIZE + i * RT_TRACE_ENTRY_SIZE
+        t_turn, t_pos, t_phase, _t_pad, t_cycle = struct.unpack_from("<B B B B I", data, entry_off)
+        t_part_name, t_task_idx = decode_pos_tag(t_pos)
+        trace_entries.append({
+            "turn": t_turn,
+            "part": t_part_name,
+            "taskIdx": t_task_idx,
+            "pos": t_pos,
+            "phase": RUNTIME_PHASE_MAP.get(t_phase, f"UNKNOWN({t_phase})"),
+            "phaseVal": t_phase,
+            "cycle": t_cycle,
+        })
     return {
         "magicNum": magic_num,
         "magicValid": magic_num == RUNTIME_INFO_MAGIC,
         "coreId": core_id,
         "execTurn": exec_turn,
         "execPosition": exec_position,
+        "posPart": part_name,
+        "posTaskIdx": task_idx,
         "commPhase": comm_phase,
         "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
+        "traceHead": trace_head,
+        "traceCount": trace_count,
+        "trace": trace_entries,
     }
 
 
@@ -564,18 +603,15 @@ def print_runtime_info_segment(rt_info: dict):
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
     logging.info("")
-    logging.info("  %-6s  %-8s  %-8s  %-10s  %-10s  %-16s",
-                 "Slot", "CoreId", "Valid", "ExecTurn", "ExecPos", "CommPhase")
-    logging.info("  " + "-" * 70)
+    logging.info("  %-6s  %-8s  %-8s  %-10s  %-16s  %-10s  %-10s",
+                 "Slot", "CoreId", "Valid", "ExecTurn", "CommPhase", "PosPart", "PosTaskIdx")
+    logging.info("  " + "-" * 80)
     for slot in rt_info["slots"]:
         if slot.get("magicValid", False):
-            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-10d  %s (%d)",
+            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-16s  %-10s  %-10d",
                          slot["slotIdx"], slot["coreId"], "YES",
-                         slot["execTurn"], slot["execPosition"],
-                         slot["commPhaseName"], slot["commPhase"])
-        else:
-            # 只在前后有 active slot 的范围内打印 inactive，避免刷屏
-            pass
+                         slot["execTurn"], slot["commPhaseName"],
+                         slot.get("posPart", "?"), slot.get("posTaskIdx", 0))
     logging.info("")
     logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
     active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
@@ -584,10 +620,21 @@ def print_runtime_info_segment(rt_info: dict):
     else:
         for slot in active_slots:
             core_type = "V核" if slot["coreId"] >= 128 else "C核"
-            # 尝试从 tiling info 推断 aicCoreNum 来区分 C/V 核
-            logging.info("  Core %-4d (%s):  turn=%d, position=%d, phase=%s",
+            logging.info("")
+            logging.info("  Core %-4d (%s):  turn=%d, pos=%s[%d], phase=%s, traceCount=%d",
                          slot["coreId"], core_type,
-                         slot["execTurn"], slot["execPosition"], slot["commPhaseName"])
+                         slot["execTurn"], slot.get("posPart", "?"), slot.get("posTaskIdx", 0),
+                         slot["commPhaseName"], slot.get("traceCount", 0))
+            trace = slot.get("trace", [])
+            if trace:
+                logging.info("    Trace (最近 %d 条):", len(trace))
+                logging.info("    %-4s  %-6s  %-10s  %-6s  %-10s  %s",
+                             "#", "Turn", "Part", "Task", "Phase", "Cycle")
+                logging.info("    " + "-" * 60)
+                for idx, entry in enumerate(trace):
+                    logging.info("    %-4d  %-6d  %-10s  %-6d  %-10s  0x%08X",
+                                 idx, entry["turn"], entry["part"], entry["taskIdx"],
+                                 entry["phase"], entry["cycle"])
 
 
 def print_workspace_segment(result: dict):

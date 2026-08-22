@@ -176,7 +176,7 @@ protected:
         AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
     uint32_t batchWeight_[MAX_RANK_DIM] = {0};
     Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData_;
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 
 private:
     __aicore__ inline void UpdateNotifyFlag()

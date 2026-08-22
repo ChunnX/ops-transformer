@@ -78,7 +78,7 @@ private:
         bool notifyFlag_{false};
     typename HcclTypeSelector<ServerMode>::type hccl_;
     AscendC::HcclHandle hHandles_[MAX_HANDLE]; // 最大支持63个handleID
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, uint8_t ServerMode>
@@ -191,7 +191,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
         StartNotify();
 
         // 计算本卡、远端数据
-        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_LOCAL));
+        runtimeInfo_.RecordPosition(0, 0);
         InnerProcess();
 
         // 结束通信
@@ -286,7 +286,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
             runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
             hccl_.Wait(hHandles_[i + shift]);
         }
-        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_GATHER));
+        runtimeInfo_.RecordPosition(isTail ? 1U : 0U, static_cast<uint8_t>(i));
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (count - 1)));
     }

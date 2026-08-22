@@ -57,7 +57,7 @@ private:
     uint64_t rankForComm_;
     uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     uint64_t x1HcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 
 private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
@@ -110,6 +110,8 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLine_->Init();
     // 获取流水线上下文
     pipeLine_->GetContext(&pipeLineContext_);
+    // 注入运行时信息到 pipeline
+    pipeLine_->SetRuntimeInfo(&runtimeInfo_);
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
@@ -127,23 +129,26 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
 
     // 启动scale通信和转置
-    runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    runtimeInfo_.Record(0, Mc2Tiling::MakePosTag(Mc2Tiling::RT_POS_PART_SCALE, 0),
+                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     ProcessScale();
 
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.Record(0, Mc2Tiling::MakePosTag(Mc2Tiling::RT_POS_PART_TILE, 0),
+                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        runtimeInfo_.WriteGmByPassDCache(1, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.Record(1, Mc2Tiling::MakePosTag(Mc2Tiling::RT_POS_PART_TAIL, 0),
+                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
     // 结束流水线
-    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
+    runtimeInfo_.RecordPhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
     pipeLine_->End();
 }
 
@@ -231,7 +236,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
 
-    pipeLine_->Process(taskCnt);
+    pipeLine_->Process(taskCnt, 0, Mc2Tiling::RT_POS_PART_TILE);
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
@@ -279,7 +284,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);
 
-    pipeLine_->Process(taskCnt);
+    pipeLine_->Process(taskCnt, 1, Mc2Tiling::RT_POS_PART_TAIL);
 }
 
 } // namespace Mc2Kernel

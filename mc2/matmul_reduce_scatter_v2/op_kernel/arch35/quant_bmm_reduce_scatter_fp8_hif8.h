@@ -80,7 +80,7 @@ private:
     AscendC::HcclHandle handles_[MAX_HANDLE]; // 最大支持64个handleId
         uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS

@@ -85,7 +85,7 @@ private:
         uint64_t aivNum_{0};
     uint64_t fullMN_{0};
     uint64_t tileOffset_{0};
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -184,7 +184,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     mmv3.Init(aGM_, bGM_, sendBuf_, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
 
         for (uint32_t i = 0; i < count; i++) {
-        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_LOCAL));
+        runtimeInfo_.RecordPosition(isTail ? 1U : 0U, static_cast<uint8_t>(i));
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 
@@ -248,7 +248,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
             hccl_.template AlltoAll<true>(currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat);
 
         // 3. 执行上一轮 (i) 数据的 ReduceSum
-        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_REDUCE));
+        runtimeInfo_.RecordPosition(isTail ? 1U : 0U, static_cast<uint8_t>(i));
         // 计算地址 = 当前指针 - 一步偏移
         GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
         GM_ADDR calcOutPtr = currOutPtr - rankSliceBytes;

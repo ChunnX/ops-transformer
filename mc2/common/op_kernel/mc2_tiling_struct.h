@@ -210,29 +210,54 @@ constexpr uint32_t RUNTIME_INFO_PER_CORE_SIZE = 512U;  // 每核 512 字节
 constexpr uint32_t RUNTIME_INFO_TOTAL_SIZE =
     RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE; // 64KB
 
-// 通信/计算阶段枚举 (各算子共用)
+// 通信阶段枚举 (参考 HCCL: Init / Prepare / Commit / Wait / Finalize)
 enum RuntimePhase : uint8_t {
-    RT_PHASE_INIT           = 0,
-    RT_PHASE_COMM_PREPARE   = 1,   // 通信准备 (AllGather/AlltoAll prepare)
-    RT_PHASE_COMM_WAIT      = 2,   // 通信等待 (hccl.Wait)
-    RT_PHASE_COMM_PROCESS   = 3,   // 通信执行中
-    RT_PHASE_COMPUTE_LOCAL  = 4,   // 本卡计算
-    RT_PHASE_COMPUTE_GATHER = 5,   // 远端数据计算
-    RT_PHASE_TRANSPOSE      = 6,   // 转置
-    RT_PHASE_REDUCE         = 7,   // 归约
-    RT_PHASE_FINALIZE       = 8,   // 结束清理
-    RT_PHASE_RESERVED       = 255,
+    RT_PHASE_INIT         = 0,   // 通信初始化 (hccl.InitV2)
+    RT_PHASE_COMM_PREPARE = 1,   // 通信任务准备 (primitive.Prepare 返回 handle)
+    RT_PHASE_COMM_COMMIT  = 2,   // 通信任务提交 (hccl.Commit)
+    RT_PHASE_COMM_WAIT    = 3,   // 等待通信完成 (hccl.Wait)
+    RT_PHASE_FINALIZE     = 4,   // 通信结束 (hccl.Finalize)
+    RT_PHASE_RESERVED     = 255,
 };
 
-// 每个 core 的运行时信息 (512 字节)
+// execPosition 位置 tag 编码: [高 3bit part][低 5bit taskIdx]
+constexpr uint8_t RT_POS_PART_SCALE = 0;
+constexpr uint8_t RT_POS_PART_TILE  = 1;
+constexpr uint8_t RT_POS_PART_TAIL  = 2;
+
+constexpr uint8_t RT_POS_IDX_MASK   = 0x1F;
+constexpr uint8_t RT_POS_PART_SHIFT = 5;
+
+constexpr uint8_t MakePosTag(uint8_t part, uint8_t taskIdx)
+{
+    return static_cast<uint8_t>((part << RT_POS_PART_SHIFT) | (taskIdx & RT_POS_IDX_MASK));
+}
+constexpr uint8_t GetPosPart(uint8_t tag) { return tag >> RT_POS_PART_SHIFT; }
+constexpr uint8_t GetPosTaskIdx(uint8_t tag) { return tag & RT_POS_IDX_MASK; }
+
+// 环形 buffer 单条记录 (8 字节)
+struct RtTraceEntry {
+    uint8_t  turn;      // 1B  执行轮次
+    uint8_t  pos;       // 1B  位置 tag ([part][taskIdx])
+    uint8_t  phase;     // 1B  通信阶段 (RuntimePhase)
+    uint8_t  reserved;  // 1B  对齐
+    uint32_t cycle;     // 4B  GetSystemCycle() 低 32bit
+};
+
+constexpr uint32_t RT_TRACE_CAPACITY = 62U;
+
 struct alignas(512) RuntimeInfoPerCore {
-    uint32_t magicNum;        // 4B  魔数 0x4D433252 ("MC2R")
+    uint32_t magicNum;        // 4B  魔数 0x5A5A5A5A
     uint16_t coreId;          // 2B  core ID (C核: 0~aicCoreNum-1, V核: aicCoreNum~total-1)
-    uint8_t  execTurn;        // 1B  执行轮次 (从 0 开始递增)
-    uint8_t  execPosition;    // 1B  执行位置 (当前 tile/turn 索引)
-    uint8_t  commPhase;       // 1B  当前阶段 (RuntimePhase)
-    uint8_t  reserved[503];   // 503B 预留
-}; // 512 bytes
+    uint8_t  execTurn;        // 1B  执行轮次 (最新)
+    uint8_t  execPosition;    // 1B  执行位置 tag (最新, [part][taskIdx])
+    uint8_t  commPhase;       // 1B  通信阶段 (最新, RuntimePhase)
+    uint8_t  reserved1;       // 1B  对齐
+    uint16_t traceHead;       // 2B  环形 buffer 写头索引
+    uint16_t traceCount;      // 2B  已写入条目数 (饱和到 RT_TRACE_CAPACITY)
+    uint8_t  reserved2[2];    // 2B  对齐到 16B 边界
+    RtTraceEntry trace[RT_TRACE_CAPACITY]; // 62 × 8B = 496B
+}; // 16 + 496 = 512 bytes
 
 } // namespace Mc2Tiling
 #endif // MC2_TILING_STRUCT_H

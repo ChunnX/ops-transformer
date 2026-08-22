@@ -17,6 +17,7 @@
 #define ALLTO_ALL_MX_QUANT_MATMUL_PIPELINE_H
 
 #include "../../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 
 // 流水线模板
 namespace Mc2Kernel {
@@ -46,7 +47,12 @@ public:
 
     __aicore__ inline void GetContext(ContextType *context);
 
-    __aicore__ inline void Process(uint32_t taskCnt);
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> *rtInfo)
+    {
+        rtInfo_ = rtInfo;
+    }
+
+    __aicore__ inline void Process(uint32_t taskCnt, uint8_t turn, uint8_t part);
 
     __aicore__ inline void ProcessScale();
 
@@ -57,6 +63,7 @@ private:
     TransposeType *transStage_;           // 转置计算的计算节点
     ScaleTransposeType *scaleTransStage_; // 缩放转置的计算节点
     ComputationType *computeStage_;       // 矩阵乘的计算节点
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> *rtInfo_ = nullptr;
 };
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
@@ -80,15 +87,26 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 }
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
-          typename ContextType>
+           typename ContextType>
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
-                                                     ComputationType, ContextType>::Process(uint32_t taskCnt)
+                                                      ComputationType, ContextType>::Process(
+    uint32_t taskCnt, uint8_t turn, uint8_t part)
 {
     commStage_->PrepareAll(taskCnt);
+    if (rtInfo_ != nullptr) {
+        rtInfo_->RecordPhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+    }
     for (uint32_t index = 0; index < taskCnt; index++) {
         if ASCEND_IS_AIV {
+            if (rtInfo_ != nullptr) {
+                rtInfo_->Record(turn, Mc2Tiling::MakePosTag(part, static_cast<uint8_t>(index)),
+                                static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+            }
             commStage_->Process(index);
             AscendC::SyncAll<true>();
+            if (rtInfo_ != nullptr) {
+                rtInfo_->RecordPosition(turn, Mc2Tiling::MakePosTag(part, static_cast<uint8_t>(index)));
+            }
             transStage_->Process(index);
             // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
             AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
@@ -97,6 +115,9 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
             
         }
         if ASCEND_IS_AIC {
+            if (rtInfo_ != nullptr) {
+                rtInfo_->RecordPosition(turn, Mc2Tiling::MakePosTag(part, static_cast<uint8_t>(index)));
+            }
             AscendC::CrossCoreWaitFlag(9);
             computeStage_->Process(index);
         }
@@ -106,12 +127,20 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
           typename ContextType>
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
-                                                     ComputationType, ContextType>::ProcessScale()
+                                                      ComputationType, ContextType>::ProcessScale()
 {
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
+        if (rtInfo_ != nullptr) {
+            rtInfo_->RecordPhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+            rtInfo_->Record(0, Mc2Tiling::MakePosTag(Mc2Tiling::RT_POS_PART_SCALE, 0),
+                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+        }
         commStage_->Process(0);
         AscendC::SyncAll<true>();
+        if (rtInfo_ != nullptr) {
+            rtInfo_->RecordPosition(0, Mc2Tiling::MakePosTag(Mc2Tiling::RT_POS_PART_SCALE, 0));
+        }
         scaleTransStage_->Process(0);
     }
 }

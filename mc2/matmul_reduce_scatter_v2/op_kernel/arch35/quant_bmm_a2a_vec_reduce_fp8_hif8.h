@@ -104,7 +104,7 @@ private:
         uint64_t tileMN_{0};
     uint64_t tailMN_{0};
     uint64_t tileOffset_{0};
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS

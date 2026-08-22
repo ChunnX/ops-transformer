@@ -39,7 +39,7 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR commOutGM_;
     GM_ADDR transOutGM_;
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);

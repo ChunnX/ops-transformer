@@ -63,7 +63,7 @@ private:
     uint8_t debugMode_;
         typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE]; // 最大支持64个handleId
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    Mc2Kernel::Mc2RuntimeInfo<Mc2Kernel::DefaultRtPolicy> runtimeInfo_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -172,7 +172,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
     uint8_t repeat = 1;
         for (uint32_t i = 0; i < count; i++) {
-        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_LOCAL));
+        runtimeInfo_.RecordPosition(isTail ? 1U : 0U, static_cast<uint8_t>(i));
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (count - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
