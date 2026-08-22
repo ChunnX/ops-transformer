@@ -10,8 +10,6 @@
 
 import numpy as np
 import torch
-import torch_npu
-import sys
 import tensorflow as tf
 from scipy.special import softmax
 
@@ -69,4 +67,5 @@ def generate_data(groupNum, batch, topK, m, k, n):
     y = torch.from_numpy(y)
     torch.save(y, "y.bin")
 
-generate_data(8, 72, 8, 576, 2048, 7168)
+if __name__ == "__main__":
+    generate_data(8, 72, 8, 576, 2048, 7168)

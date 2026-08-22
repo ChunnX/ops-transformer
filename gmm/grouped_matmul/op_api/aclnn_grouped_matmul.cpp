@@ -2989,8 +2989,11 @@ static aclnnStatus GetGMMResultByL0Api(gmm::GroupedMatmulParams &params, uint64_
             uniqueExecutor->ConvertToTensor(params.groupListOptional, op::ToOpDataType(ACL_INT64));
         CHECK_RET(params.groupTensorOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    auto perTokenScaleOptional =
-        (*params.perTokenScaleOptional)[0]->IsEmpty() ? nullptr : (*params.perTokenScaleOptional)[0];
+    const aclTensor *perTokenScaleOptional = nullptr;
+    if (params.perTokenScaleOptional != nullptr && params.perTokenScaleOptional->Size() > 0 &&
+        (*params.perTokenScaleOptional)[0] != nullptr && !(*params.perTokenScaleOptional)[0]->IsEmpty()) {
+        perTokenScaleOptional = (*params.perTokenScaleOptional)[0];
+    }
     // Invoke l0 operator GroupedMatmul for calculation.
     auto result =
         l0op::GroupedMatmul(params.x, params.weight, params.biasOptional, params.scaleOptional, params.offsetOptional,

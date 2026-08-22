@@ -41,6 +41,8 @@ def gen_golden_data(dtype, group_num, m, k, n):
     groupedList.tofile(f"groupedList.bin")
 
 if __name__ == "__main__":
-    os.system("rm -rf *.bin")
+    for file_name in os.listdir("."):
+        if file_name.endswith(".bin"):
+            os.remove(file_name)
     gen_golden_data(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
 
