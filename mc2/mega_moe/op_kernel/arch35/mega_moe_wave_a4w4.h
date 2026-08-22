@@ -125,6 +125,13 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
     UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
     if (useAllAivCores) {
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 0U) {
+                /* A4W4 复用同一 W4 prologue UB；Final Combine 覆盖前等待该 MTE3 搬运完成。 */
+                SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+                WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            }
+        }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
         RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
