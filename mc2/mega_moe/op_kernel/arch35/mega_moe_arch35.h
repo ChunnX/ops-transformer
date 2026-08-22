@@ -537,6 +537,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
+        InitSharedExpertGmm1Epilogue();
         derived.ProcessSharedExpertGmm1();
     }
 

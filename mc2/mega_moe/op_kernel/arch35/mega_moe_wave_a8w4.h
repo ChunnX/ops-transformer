@@ -83,8 +83,6 @@ private:
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessSharedExpertGmm1()
 {
-    this->InitSharedExpertGmm1Epilogue();
-
     ExpertLoopState state = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmmAddrInfo{};
     uint32_t startBlockIdx = 0U;
