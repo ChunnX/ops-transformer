@@ -59,6 +59,9 @@ public:
 
     using LayoutTagL1P = typename BlockMmadPV::LayoutTagL1A;
 
+    // LSE mode (从 DispatchPolicy 取值)
+    static constexpr LseMode LSE_MODE = EpilogueRescaleO::DispatchPolicy::LSE_MODE;
+
     // 核间同步
     static constexpr uint8_t SYNC_MODE_2 = 2;
     static constexpr uint8_t SYNC_MODE_4 = 4;
@@ -259,7 +262,7 @@ public:
                             tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
                         GemmCoord actualBlockShapeVPT{embed_, delay20TaskInfo.qsActBaseTile,
                                                       delay20TileInfo.kvsActBaseTile};
-                        epilogueRescaleO(gmOTensorTla, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo);
+                        epilogueRescaleO(gmOTensorTla, gLse, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
@@ -407,14 +410,21 @@ public:
         // O stride
         if constexpr (qFormat == Format::TND) {
             strideO_ = static_cast<int64_t>(qHeads_) * embed_;
+            strideLse_ = qHeads_;
         } else if constexpr (qFormat == Format::BNSD) {
             strideOB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_ * embed_;
             strideON_ = qSeqlenAligned_ * embed_;
             strideOS_ = embed_;
+            strideLseB_ = static_cast<int64_t>(qHeads_) * qSeqlenAligned_;
+            strideLseN_ = qSeqlenAligned_;
+            strideLseS_ = 1;
         } else if constexpr (qFormat == Format::BSND) {
             strideOB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_) * embed_;
             strideOS_ = static_cast<int64_t>(qHeads_) * embed_;
             strideON_ = embed_;
+            strideLseB_ = qSeqlenAligned_ * static_cast<int64_t>(qHeads_);
+            strideLseS_ = qHeads_;
+            strideLseN_ = 1;
         }
         // V / V-scale / K-scale stride
         const int64_t kScaleBytesPerToken = static_cast<int64_t>(embed_ / 64) * 2;
@@ -518,6 +528,9 @@ public:
                 batchInfo.oBOffset += qSeqlen * strideO_;
                 batchInfo.qBOffset += qSeqlen * strideQData_;
                 batchInfo.qScaleBOffset += qSeqlen * static_cast<int64_t>(qHeads_) * qScaleStrideN_;
+                if constexpr (LSE_MODE == LseMode::OUT_ONLY) {
+                    batchInfo.lseBOffset += qSeqlen * strideLse_;
+                }
             }
             if constexpr (kvFormat == Format::TND) {
                 batchInfo.vBOffset += kvSeqlen * strideKVData_;
@@ -583,6 +596,22 @@ public:
             info.oShapeCol = static_cast<uint32_t>(strideOS_);
         } else if constexpr (qFormat == Format::BSND) {
             info.oShapeCol = static_cast<uint32_t>(strideOS_);
+        }
+
+        if constexpr (LSE_MODE == LseMode::OUT_ONLY) {
+            // LSE GM offset and shape col
+            if constexpr (qFormat == Format::TND) {
+                info.gmOffsetLse = batchInfo.lseBOffset + qSOffset * strideLse_ + qHeadIdx;
+                info.lseShapeCol = static_cast<uint32_t>(strideLse_);
+            } else if constexpr (qFormat == Format::BNSD) {
+                int64_t lseBOffset = static_cast<int64_t>(curBatch) * strideLseB_;
+                info.gmOffsetLse = lseBOffset + qHeadIdx * strideLseN_ + qSOffset * strideLseS_;
+                info.lseShapeCol = static_cast<uint32_t>(strideLseS_);
+            } else if constexpr (qFormat == Format::BSND) {
+                int64_t lseBOffset = static_cast<int64_t>(curBatch) * strideLseB_;
+                info.gmOffsetLse = lseBOffset + qSOffset * strideLseS_ + qHeadIdx * strideLseN_;
+                info.lseShapeCol = static_cast<uint32_t>(strideLseS_);
+            }
         }
 
         info.batchIdx = curBatch;
@@ -789,6 +818,11 @@ private:
     int64_t strideOB_;
     int64_t strideON_;
     int64_t strideOS_;
+    // ===== LSE stride（LSE 输出为 float, GM 布局与 Q layout 对齐）=====
+    int64_t strideLse_ = 0;
+    int64_t strideLseB_ = 0;
+    int64_t strideLseN_ = 0;
+    int64_t strideLseS_ = 0;
     // ===== V 数据 / V-scale stride（PV 稀疏 gather 用，operator() 内预算一次）=====
     // V 数据为 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移
     int64_t strideKVData_ = 0;

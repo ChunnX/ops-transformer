@@ -54,6 +54,10 @@ static constexpr uint32_t UB_P_SCALE_CNT = 8;
 static constexpr uint32_t UB_P_SCALE_BUF_SIZE = 1280;
 static constexpr uint32_t UB_P_SCALE_BUF_OFFSET = 178 * KB_BYTE + 512;
 
+// LSE(reuse P):: 2K, BUFCNT=1, resident
+static constexpr uint32_t UB_LSE_BUF_SIZE = 2 * KB_BYTE;
+static constexpr uint32_t UB_LSE_BUF_OFFSET = 188 * KB_BYTE + 512;
+
 // attentionOut: 32K, BUFCNT=1, output buffer
 static constexpr uint32_t UB_O_BUF_SIZE = 32 * KB_BYTE;
 static constexpr uint32_t UB_O_BUF_OFFSET = 192 * KB_BYTE + 512;

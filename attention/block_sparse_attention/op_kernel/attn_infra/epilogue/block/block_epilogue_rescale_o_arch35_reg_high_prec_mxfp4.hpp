@@ -25,21 +25,23 @@
 
 namespace NpuArch::Epilogue::Block {
 using namespace MXFP4Kernel;
-template <class ElementO_, class ElementOTmp_, class ElementDm_, class TileCopy_, class OTmpSrcPos_, LseMode LSE_MODE_,
-          LseFormat LSE_FORMAT_>
+template <class ElementO_, class ElementOTmp_, class ElementDm_, class TileCopy_, class OTmpSrcPos_, class LseType_,
+          LseMode LSE_MODE_, LseFormat LSE_FORMAT_>
 class BlockEpilogue<EpilogueAtlasA5BsaRescaleOMX<LSE_MODE_, LSE_FORMAT_, true>, ElementO_, ElementOTmp_, ElementDm_,
-                    TileCopy_, OTmpSrcPos_> {
+                    TileCopy_, OTmpSrcPos_, LseType_> {
 public:
     using DispatchPolicy = EpilogueAtlasA5BsaRescaleOMX<LSE_MODE_, LSE_FORMAT_, true>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = ElementO_;
     using ElementOTmp = ElementOTmp_;
-    using ElementLse = ElementOTmp_;
+    using ElementLse = typename LseType_::Element;
     using ElementDm = ElementDm_;
     using ElementSum = ElementOTmp;
+    using ElementGmax = ElementOTmp;
     using TileCopy = TileCopy_;
     using OTmpSrcPos = OTmpSrcPos_;
     using LayoutO = typename TileCopy::LayoutO;
+    using LayoutLse = typename LseType_::Layout;
 
     using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
@@ -50,6 +52,8 @@ public:
         globalRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP4::UB_GLOBAL_ROW_SUM_BUF_OFFSET);
         oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementO>(MXFP4::UB_O_TRANS_BUF_OFFSET);
         oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(MXFP4::UB_O_BUF_OFFSET);
+        lseUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementLse>(MXFP4::UB_LSE_BUF_OFFSET);
+        softmaxMaxUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_SOFTMAX_MAX_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_UPDATE_SCALE_CNT; i++) {
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(MXFP4::UB_UPDATE_SCALE_BUF_OFFSET +
                                                                                MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
@@ -58,9 +62,30 @@ public:
 
     __aicore__ inline ~BlockEpilogue() {}
 
+    template <class TensorLseGm, class TensorLseUb>
+    __aicore__ inline void CopyUbToGmLse(TensorLseGm const &gLseTensorTlaTile, TensorLseUb const &ubLseTensorTla)
+    {
+        AscendC::DataCopyExtParams repeatParams;
+        if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
+            (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
+            repeatParams.blockCount = tla::get<0>(ubLseTensorTla.shape());
+            repeatParams.blockLen = sizeof(ElementLse);
+            repeatParams.srcStride = 0;
+            repeatParams.dstStride = (tla::get<0>(gLseTensorTlaTile.stride()) - 1) * sizeof(ElementLse);
+        } else if constexpr (DispatchPolicy::LSE_FORMAT == LseFormat::BNS1) {
+            repeatParams.blockCount = 1;
+            repeatParams.blockLen = tla::get<0>(ubLseTensorTla.shape()) * sizeof(ElementLse);
+            repeatParams.srcStride = 0;
+            repeatParams.dstStride = 0;
+        }
+        auto dstOffset = gLseTensorTlaTile.layout()(gLseTensorTlaTile.coord());
+        auto srcOffset = ubLseTensorTla.layout()(ubLseTensorTla.coord());
+        AscendC::DataCopyPad(gLseTensorTlaTile.data()[dstOffset], ubLseTensorTla.data()[srcOffset], repeatParams);
+    }
+
     template <class TensorO>
-    __aicore__ inline void operator()(TensorO &gOTensor, GemmCoord &actualOriShape, TaskInfo &taskInfo,
-                                      TileInfo &tileInfo)
+    __aicore__ inline void operator()(TensorO &gOTensor, AscendC::GlobalTensor<ElementLse> &gLseGm, GemmCoord &actualOriShape,
+                                      TaskInfo &taskInfo, TileInfo &tileInfo)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementDm> dm = dmUBTensor[tileInfo.updateScaleIdx];
@@ -89,6 +114,41 @@ public:
                 Mxfp4VF::TransposeAttnOutCallVF<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor,
                                                                                globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
+                // LSE 输出：从 globalRowSum 计算 LSE = log(globalRowSum) 并写回 GM
+                if constexpr (DispatchPolicy::LSE_MODE == LseMode::OUT_ONLY) {
+                    uint32_t colNumLseUb = 0;
+                    uint32_t colStrideLseUb = 0;
+                    if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
+                        (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
+                        colNumLseUb = MXFP4::DATA_BLOCK_BYTE / sizeof(ElementLse);
+                        colStrideLseUb = MXFP4::DATA_BLOCK_BYTE / sizeof(ElementLse);
+                        // 计算LSE
+                        Mxfp4VF::ComputeLseIncontinuousCallVF(softmaxMaxUBTensor, globalRowSumUBTensor, lseUbTensor32, actMSizeThisCore);
+
+                    } else if constexpr (DispatchPolicy::LSE_FORMAT == LseFormat::BNS1) {
+                        colNumLseUb = 1;
+                        colStrideLseUb = 1;
+                        // 计算LSE
+                        Mxfp4VF::ComputeLseContinuousCallVF(softmaxMaxUBTensor, globalRowSumUBTensor, lseUbTensor32, actMSizeThisCore);
+                    }
+
+                    AscendC::PipeBarrier<PIPE_V>();
+                    // ub lse tla
+                    auto ubLseLayoutTla = tla::MakeLayout(
+                        tla::MakeShape(actMSizeThisCore, colNumLseUb),
+                        tla::MakeStride(colStrideLseUb, tla::Int<1>{}));
+                    auto ubLseTensorTla = tla::MakeTensor(lseUbTensor32, ubLseLayoutTla, Arch::PositionUB{});
+                    // gm lse tla：基于 taskInfo.gmOffsetLse 和 lseShapeCol 在 epilogue 内部构建
+                    auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(
+                        tla::MakeShape(actQsTile, taskInfo.lseShapeCol));
+                    auto gLseTensorTla = tla::MakeTensor(gLseGm[taskInfo.gmOffsetLse], gmLseLayoutTla,
+                                                          Arch::PositionGM{});
+                    auto gLseTensorTlaTile = tla::GetTile(gLseTensorTla,
+                                                    tla::MakeCoord(rowOffsetCurSubCore, 0),
+                                                    tla::MakeShape(actMSizeThisCore, 1));
+                    
+                    CopyUbToGmLse(gLseTensorTlaTile, ubLseTensorTla);
+                }
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
                 uint32_t embedColumnCnt = EMB_ALIGN128 + MXFP4::DATA_BLOCK_BYTE / sizeof(ElementO);
@@ -124,6 +184,8 @@ private:
     AscendC::LocalTensor<ElementO> oTransUBTensor;                          // attnTrans(空间复用P)
     AscendC::LocalTensor<ElementOTmp> oUBTensor;                            // attentionOut
     AscendC::LocalTensor<ElementDm> dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
+    AscendC::LocalTensor<ElementLse> lseUbTensor32;                        // LSE 输出
+    AscendC::LocalTensor<float> softmaxMaxUBTensor; ;                              // softmaxMax
     CopyUbToGmO copyUbToGmO;
     static constexpr uint32_t VEC0 = 0;
     static constexpr uint32_t EMB_ALIGN128 = 128;

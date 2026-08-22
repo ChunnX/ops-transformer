@@ -83,6 +83,7 @@ constexpr half INV_LN2 = static_cast<half>(1.4426950409f);
 constexpr half NEG_TWO_VALE = static_cast<half>(-2.0f);
 constexpr half TWO_VALE = static_cast<half>(2.0f);
 constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
+constexpr LnSpecificMode LN_MODE = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
 #endif // VF_COMMON_DEF_H_
