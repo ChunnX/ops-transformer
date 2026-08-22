@@ -29,7 +29,6 @@ constexpr int32_t CONSTANT_TWO = 2;
 constexpr int32_t CONSTANT_THREE = 3;
 constexpr int32_t CONSTANT_FOUR = 4;
 constexpr int32_t CONSTANT_EIGHT = 8;
-constexpr int32_t B32_BLOCK_COUNT = 8;
 constexpr uint32_t VL_FLOAT_SIZE = VECTOR_REG_WIDTH / sizeof(float);
 constexpr MicroAPI::DivSpecificMode mode = {MicroAPI::MaskMergeMode::ZEROING, true};
 
@@ -776,29 +775,14 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
     LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>(); // 组内排序的结果, 后续归并需要
     LocalTensor<float> tmpLocal = finalSortBuffer_.Get<float>();
 
+    Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
+                      perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
+
     LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
     LocalTensor<T> yTensor = yOutQueue_.AllocTensor<T>();
     LocalTensor<int32_t> expertIdxTensor = expertIdxOutQueue_.AllocTensor<int32_t>();
 
     LocalTensor<int32_t> sortedInGroupTensorCast = sortedInGroupTensor.template ReinterpretCast<int32_t>();
-
-    if (k_ == 1 && expertCount_ <= B32_BLOCK_COUNT) {
-        __local_mem__ float *xBiasAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
-        __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedInGroupTensor.GetPhyAddr();
-        uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
-        __VEC_SCOPE__
-        {
-            RegTensor<float> valueAndIndexReg;
-            MicroAPI::MaskReg maskForVL2 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::VL2>();
-            MicroAPI::MaskReg maskForExpertCount = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
-            MicroAPI::DataCopy(valueAndIndexReg, xBiasAddr);
-            MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
-            MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
-        }
-    } else {
-        Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
-                          perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
-    }
 
     int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
     if (k_ <= VL_FLOAT_SIZE) {
