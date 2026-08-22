@@ -541,9 +541,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     FlushPreparedWrites();
     AscendC::printf(
-        "[MoeEpCombineBatch] rank=%u, aivId=%u, batchCommitCount=%u, totalWriteNbiCount=%u, "
-        "lastBatchWriteNbiCount=%u\n",
-        rankId_, aivId_, batchCommitCount_, totalWriteNbiCount_, lastBatchWriteNbiCount_);
+        "[MoeEpCombineBatch] rank=%u, aivId=%u, aivNum=%u, epWorldSize=%u, channelsPerRank=%u, "
+        "targetRank=%u, coreIndexInGroup=%u, groupSize=%u, publishesChannelFlag=%u, "
+        "batchCommitCount=%u, totalWriteNbiCount=%u, lastBatchWriteNbiCount=%u\n",
+        rankId_, aivId_, aivNum_, epWorldSize_, channelsPerRank_, targetRank, coreIndexInGroup, groupSize,
+        static_cast<uint32_t>(publishesChannelFlag), batchCommitCount_, totalWriteNbiCount_, lastBatchWriteNbiCount_);
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
