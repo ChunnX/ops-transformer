@@ -16,29 +16,28 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
-std::tuple<at::Tensor, at::Tensor>
-NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
-           const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
-           int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
-           const c10::optional<std::vector<at::Tensor>> &weightScales2,
-           const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias1,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
-           int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
-           std::string activation, std::vector<float> activationParams,
-           c10::optional<int64_t> dispatchQuantOutDtype, c10::optional<int64_t> weight1Type,
-           c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
-           int64_t topkWeightsType)
+std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
+    const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
+    const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
+    int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
+    const c10::optional<std::vector<at::Tensor>> &weightScales2, const c10::optional<std::vector<at::Tensor>> &bias1,
+    const c10::optional<std::vector<at::Tensor>> &bias2, const c10::optional<at::Tensor> &xActiveMask,
+    const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+    const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
+    const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
+    const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
+    const c10::optional<std::vector<at::Tensor>> &sharedBias1,
+    const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+    int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
+    std::vector<float> activationParams, c10::optional<int64_t> dispatchQuantOutDtype,
+    c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
+    c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
-                    (topkIds.scalar_type() == at::kInt),
-                "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    TORCH_CHECK(
+        ((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) && (topkIds.scalar_type() == at::kInt),
+        "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
@@ -142,11 +141,12 @@ constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t RESERVED_SPACE_SIZE = 10LL * 1024 * 1024;
 constexpr int64_t MAX_EXPERTS_PER_RANK_A2A3 = 128LL;
 constexpr int64_t SYNC_STATE_RESERVED_SIZE = 512LL * 1024;
+// 异常 Dump 区
+constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
+// rankSyncInWorld 同步区
+constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
 
-int64_t CeilAlign(int64_t val, int64_t align)
-{
-    return (val + align - 1) / align * align;
-}
+int64_t CeilAlign(int64_t val, int64_t align) { return (val + align - 1) / align * align; }
 
 // A2 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
@@ -212,9 +212,6 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
-    // 全卡软同步使用 60KB
-    int64_t peermemDataOffset = 60LL * 1024LL;
-
     // mask_recv_size
     int64_t compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
     int64_t maskAlignSize = CeilAlign(compareCount / 8, 32);
@@ -234,7 +231,8 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    int64_t totalBytes =
+        EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineOut;
 
     return totalBytes;
 }
