@@ -16,7 +16,7 @@
 torch.nn.Module 包裹 metadata + kernel 全链路灯，供 ttk e2e 静态图路径调用）。
 
 MLA 侧实现参考：tests/pytests/core/backends/npu.py 的
-`_FlashMlaWithKvcacheGraphNetwork`（torch.ops.cann_ops_transformer.flash_mla_metadata
+`_FlashMlaWithKvcacheGraphNetwork`（torch.ops.cann_ops_transformer.flash_mla_with_kvcache_metadata
 + flash_mla_with_kvcache 全链路灯，含静态图 export 分支）。本文件仅提供同名类占位，
 forward 抛 NotImplementedError；填充时请以 npu.py 的网络为蓝本并适配
 TTK graph 调用约定（FA 侧签名见 spec.py 的 torch_graph 用法）。
