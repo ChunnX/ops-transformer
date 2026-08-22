@@ -66,44 +66,51 @@ public:
     using BlockShape = Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = Te::Coord<int64_t, int64_t, int64_t, int64_t>;
 
+    // 类型提升为kernel类直接成员(与all_to_all_qbmm_mx_kernel.h一致)
+    struct BlockMmadParams {
+        GM_ADDR aGmAddr;
+        GM_ADDR bGmAddr;
+        GM_ADDR cGmAddr;
+        GM_ADDR biasGmAddr = nullptr;
+        GM_ADDR scaleAGmAddr;
+        GM_ADDR scaleBGmAddr;
+    };
+    struct L1Params {
+        uint64_t kL1Size;
+        uint32_t scaleKL1;
+        uint8_t nBufferNum;
+    };
+    struct BlockSchedulerParams {
+        uint64_t baseM, baseN;
+        uint64_t mTailTile, nTailTile;
+        uint64_t mBaseTailSplitCnt, nBaseTailSplitCnt;
+        uint64_t mTailMain, nTailMain;
+    };
+    struct QBMMTiling {
+        static constexpr uint8_t BIAS_DISABLED = 0;
+        static constexpr uint8_t BIAS_ENABLED = 1;
+        uint32_t batchCount;
+        uint32_t baseM, baseN, baseK;
+        uint8_t isBias;
+        uint8_t dbL0c;
+        bool skipSelfBatch;
+    };
+    struct LocalParams {
+        uint32_t rankId;
+        uint32_t rankSize;
+        uint64_t originalM;
+        uint32_t selfRankId;
+        GM_ADDR cGmSelfAddr;
+        bool skipSelfBatch;
+    };
+
     struct Params {
         ProblemShape problemShape;
-        struct BlockMmadParams {
-            GM_ADDR aGmAddr;
-            GM_ADDR bGmAddr;
-            GM_ADDR cGmAddr;
-            GM_ADDR biasGmAddr = nullptr;
-            GM_ADDR scaleAGmAddr;
-            GM_ADDR scaleBGmAddr;
-        } mmadParams;
-        struct L1Params {
-            uint64_t kL1Size;
-            uint32_t scaleKL1;
-            uint8_t nBufferNum;
-        } l1Params;
-        struct BlockSchedulerParams {
-            uint64_t baseM, baseN;
-            uint64_t mTailTile, nTailTile;
-            uint64_t mBaseTailSplitCnt, nBaseTailSplitCnt;
-            uint64_t mTailMain, nTailMain;
-        } schParams;
-        struct QBMMTiling {
-            static constexpr uint8_t BIAS_DISABLED = 0;
-            static constexpr uint8_t BIAS_ENABLED = 1;
-            uint32_t batchCount;
-            uint32_t baseM, baseN, baseK;
-            uint8_t isBias;
-            uint8_t dbL0c;
-            bool skipSelfBatch;
-        } qbmmParams;
-        struct LocalParams {
-            uint32_t rankId;
-            uint32_t rankSize;
-            uint64_t originalM;
-            uint32_t selfRankId;
-            GM_ADDR cGmSelfAddr;
-            bool skipSelfBatch;
-        } localParams;
+        BlockMmadParams mmadParams;
+        L1Params l1Params;
+        BlockSchedulerParams schParams;
+        QBMMTiling qbmmParams;
+        LocalParams localParams;
     };
 
     __aicore__ inline void InitMmad(const Params &params)
