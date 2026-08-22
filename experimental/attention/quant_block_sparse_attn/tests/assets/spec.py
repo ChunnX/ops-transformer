@@ -48,7 +48,9 @@ class QuantBlockSparseAttnSpec:
 
     @staticmethod
     def golden(*args, **kwargs):
-        return _load_impl_module("golden").cpu_quant_block_sparse_attn(*args, **kwargs)
+        return _load_impl_module("golden").cpu_quant_block_sparse_attn(
+            *args, **kwargs
+        )
 
     @staticmethod
     def customize_inputs(*args, **kwargs):

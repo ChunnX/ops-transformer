@@ -58,6 +58,28 @@ def load_cpu_output(case_name, cache_dir=None):
     return data["cpu_out"], data["cpu_lse"]
 
 
+def save_benchmark_output(case_name, cpu_out, cpu_lse, cache_dir=None):
+    path = _path(case_name, "benchmark_output", cache_dir)
+    torch.save({"cpu_out": cpu_out, "cpu_lse": cpu_lse}, path)
+    logger.info("[CACHE] save low-precision CPU benchmark → %s", path)
+
+
+def has_benchmark_output(case_name, cache_dir=None):
+    cache_root = cache_dir or DEFAULT_CACHE_DIR
+    return os.path.exists(
+        os.path.join(cache_root, f"{case_name}_benchmark_output.pt")
+    )
+
+
+def load_benchmark_output(case_name, cache_dir=None):
+    path = _path(case_name, "benchmark_output", cache_dir)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No cached CPU benchmark output: {path}")
+    data = torch.load(path, weights_only=False)
+    logger.info("[CACHE] load low-precision CPU benchmark ← %s", path)
+    return data["cpu_out"], data["cpu_lse"]
+
+
 def save_npu_output(case_name, atten_out, lse_out, cache_dir=None):
     path = _path(case_name, "npu_output", cache_dir)
     torch.save({"atten_out": atten_out, "lse_out": lse_out}, path)
