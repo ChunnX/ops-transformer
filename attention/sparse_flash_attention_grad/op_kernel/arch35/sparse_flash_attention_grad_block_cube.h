@@ -133,7 +133,7 @@ public:
 
     BuffersPolicySingleBuffer<BufferType::L1> qL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1> dYL1Buf;
-    BuffersPolicyDB<BufferType::L1> commonL1Buf; // N>64：逐 tile copy → wait → mmad
+    BuffersPolicyDB<BufferType::L1> commonL1Buf;
 
     // l0ab buffer manage, double buffer
     BufferManager<BufferType::L0A> l0aBufferManager;
@@ -240,6 +240,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                                                                  FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1> dyL1Buffer = dYL1Buf.Get();
+    Buffer<BufferType::L1> vL1Buffer = commonL1Buf.Get();
     Nd2NzParams nd2NzParams;
     if (!runInfo.isS1IdxNoChange) {
         dyL1Buffer.Wait<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -261,7 +262,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
     mm1L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
     uint32_t kLoops = Ceil<int64_t>(constInfo.commonConstInfo.dSizeV, CUBE_BASEK);
     uint32_t realK = CUBE_BASEK;
-    Buffer<BufferType::L1> vL1Buffer = commonL1Buf.Get();
     for (uint32_t k = 0; k < kLoops; ++k) {
         if (k == kLoops - 1) {
             uint32_t tailSize = constInfo.commonConstInfo.dSizeV % CUBE_BASEK;
@@ -440,6 +440,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
+    LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buffer.GetTensor<INPUT_TYPE>();
     constexpr uint32_t baseN = CUBE_BASEN;
     uint32_t realN = baseN;
     uint32_t nLoops = ((uint32_t)constInfo.dTotalSize + baseN - 1) / baseN; // 尾块处理
@@ -451,8 +452,8 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
         Buffer<BufferType::L1> kL1Buffer = commonL1Buf.Get();
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
+        // load right matrix to L1
         kL1Buffer.Wait<HardEvent::MTE1_MTE2>(); // 反向同步
-        LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buffer.GetTensor<INPUT_TYPE>();
         nd2NzParams.ndNum = 1;
         nd2NzParams.nValue = runInfo.commonRunInfo.s2RealSize;
         nd2NzParams.dValue = realN;
