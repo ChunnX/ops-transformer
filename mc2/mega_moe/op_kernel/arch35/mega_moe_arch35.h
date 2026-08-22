@@ -523,10 +523,14 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(u
 {
     uint32_t expertTokenCount = 0U;
     ComputeExpertTokenCountAndNotify<ActivationType, ENABLE_A8W4 || ENABLE_A4W4, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+        tokenDispatchConfig_, commonConfig_, countWorkspace_, params_, tokenDispatchScratch_, expertIdx,
+        expertTokenCount);
     if (expertTokenCount != 0U) {
+        int32_t expertGlobalRowBegin =
+            GetExpertGlobalRowBegin(tokenDispatchScratch_, expertIdx, commonConfig_.worldSize);
         DispatchExpertTokensByRankShard<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-            tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx);
+            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_, syncWorkspaceLayout_,
+            params_, winRankAddr_, tokenDispatchScratch_, expertIdx, expertGlobalRowBegin);
     }
     return expertTokenCount;
 }

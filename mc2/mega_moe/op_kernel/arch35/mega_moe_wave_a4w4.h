@@ -111,7 +111,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
         params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, gmmExecutionConfig_.blockJob,
         expertTokenCount, tokenStartIndexInExpert);
     ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
-        quantCombineConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo, expertTokenCount,
+        quantCombineConfig_, commonConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo, expertTokenCount,
         static_cast<uint32_t>(state.globalTokenStartIndex), state.expertIdx, tokenStartIndexInExpert, sliceTokenCount);
 }
 
