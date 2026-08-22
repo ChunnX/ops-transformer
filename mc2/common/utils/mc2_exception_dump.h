@@ -795,6 +795,11 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         return;
     }
 
+    // for (uint32_t i = 0; i < actualArgsDumpSize / sizeof(uint64_t); i++) {
+    //     uint64_t val = *reinterpret_cast<uint64_t *>(argsBuf.data() + i * sizeof(uint64_t));
+    //     OP_LOGE(OP_NAME, "args[%u] = 0x%lx (offset=%u)", i, val, i * sizeof(uint64_t));
+    // }
+
     auto dumpPathFunc = GetAcldumpGetPathFunc();
     if (dumpPathFunc == nullptr) {
         OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
@@ -902,6 +907,9 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         uint64_t dumpSize = std::min(seg.size, MAX_SEG_DUMP_SIZE);
         std::vector<uint8_t> segBuf(dumpSize, 0);
         void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
+        OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
+                i, seg.type, seg.offset, seg.size, dumpSize,
+                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(srcAddr)));
         if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
                         ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
             OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset, dumpSize);
@@ -916,14 +924,6 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
 }
 
-inline void Mc2DumpWorkspaceContent(aclrtExceptionInfo *args, const char *op,
-                                    uint32_t workspaceGmArgIdx,
-                                    uint32_t workspaceLayoutOffset,
-                                    uint32_t argsOffset = 0U)
-{
-    // 已合并到 Mc2DumpTilingData，此函数保留为空壳以兼容旧调用
-    OP_LOGE(OP_NAME, "Mc2DumpWorkspaceContent is deprecated, use Mc2DumpTilingData instead.");
-}
 } // namespace Mc2Exception
 #endif
 

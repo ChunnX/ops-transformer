@@ -107,6 +107,24 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
+    AscendC::PRINTF("x1 addr: %lu\n", reinterpret_cast<uintptr_t>(x1));
+    AscendC::PRINTF("x2 addr: %lu\n", reinterpret_cast<uintptr_t>(x2));
+    AscendC::PRINTF("bias addr: %lu\n", reinterpret_cast<uintptr_t>(bias));
+    AscendC::PRINTF("x1_scale addr: %lu\n", reinterpret_cast<uintptr_t>(x1_scale));
+    AscendC::PRINTF("x2_scale addr: %lu\n", reinterpret_cast<uintptr_t>(x2_scale));
+    AscendC::PRINTF("comm_scale addr: %lu\n", reinterpret_cast<uintptr_t>(comm_scale));
+    AscendC::PRINTF("x1_offset addr: %lu\n", reinterpret_cast<uintptr_t>(x1_offset));
+    AscendC::PRINTF("x2_offset addr: %lu\n", reinterpret_cast<uintptr_t>(x2_offset));
+    AscendC::PRINTF("y addr: %lu\n", reinterpret_cast<uintptr_t>(y));
+    AscendC::PRINTF("all2all_out addr: %lu\n", reinterpret_cast<uintptr_t>(all2all_out));
+    if ASCEND_IS_AIC {
+        AscendC::PRINTF("[AIC] workspaceGM addr: %lu\n", reinterpret_cast<uintptr_t>(workspaceGM));
+        AscendC::PRINTF("[AIC] tilingGM addr: %lu\n", reinterpret_cast<uintptr_t>(tilingGM));
+    }
+    if ASCEND_IS_AIV {
+        AscendC::PRINTF("[AIV] workspaceGM addr: %lu\n", reinterpret_cast<uintptr_t>(workspaceGM));
+        AscendC::PRINTF("[AIV] tilingGM addr: %lu\n", reinterpret_cast<uintptr_t>(tilingGM));
+    }
     constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
@@ -114,6 +132,15 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
+
+    AscendC::GlobalTensor<DTYPE_X1> x1DumpGm;
+    x1DumpGm.SetGlobalBuffer((__gm__ DTYPE_X1 *)x1);
+    AscendC::DumpTensor(x1DumpGm, 0,
+        tilingData.alltoAllMatmulTilingInfo.rankM * tilingData.alltoAllMatmulTilingInfo.rankK);
+    AscendC::GlobalTensor<DTYPE_X1_SCALE> x1ScaleDumpGm;
+    x1ScaleDumpGm.SetGlobalBuffer((__gm__ DTYPE_X1_SCALE *)x1_scale);
+    AscendC::DumpTensor(x1ScaleDumpGm, 1,
+        tilingData.alltoAllMatmulTilingInfo.x1ScaleOptionalLen / sizeof(DTYPE_X1_SCALE));
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
         using DtypeBias = DTYPE_X1;
@@ -126,6 +153,17 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #else
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
+    AscendC::GlobalTensor<DTYPE_X1> x1DumpGm;
+    x1DumpGm.SetGlobalBuffer((__gm__ DTYPE_X1 *)x1);
+    AscendC::DumpTensor(x1DumpGm, 0,
+        tilingData.alltoAllQuantMatmulTilingInfo.rankM * tilingData.alltoAllQuantMatmulTilingInfo.rankK);
+    {
+        auto &&mxTiling = tilingData.alltoAllQuantMatmulTilingInfo;
+        uint64_t x1ScaleElemCnt = (mxTiling.rankK + 64UL - 1UL) / 64UL * 2UL * mxTiling.rankM;
+        AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGm;
+        x1ScaleDumpGm.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)x1_scale);
+        AscendC::DumpTensor(x1ScaleDumpGm, 1, x1ScaleElemCnt);
+    }
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;

@@ -89,26 +89,26 @@ void AllToAllMatmulTilingBase::BuildWorkspaceLayout()
     uint64_t offset = 0;
     uint32_t idx = 0;
 
-    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-    offset += libApiWorkSpaceSize_;
+    // [0] 系统库预留空间，必须在第一个
+    if (libApiWorkSpaceSize_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        offset += libApiWorkSpaceSize_;
+    }
 
+    // [1] 通信接收区 (commOut), 对应 kernel 中 commOutGM_ = workspaceGM (user workspace起始)
     workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commLen,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
     offset += inferredInfo_.commLen;
 
+    // [2] 转置输出区 (permuteOut), 对应 kernel 中 transOutGM_ = commOutGM_ + commLen (all2all_out为空时)
     if (inferredInfo_.permuteLen > 0) {
         workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteLen,
                                             static_cast<uint8_t>(Mc2Tiling::WS_SEG_PERMUTE_OUT), {}};
         offset += inferredInfo_.permuteLen;
     }
-    if (inferredInfo_.biasLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.biasLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_BIAS), {}};
-        offset += inferredInfo_.biasLen;
-    }
 
-    // Runtime Info 段 (64KB)
+    // [3] 运行时信息段 (64KB)
     workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;

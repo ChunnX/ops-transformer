@@ -94,9 +94,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
             AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
             AscendC::CrossCoreWaitFlag(8);
             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
-            __gm__ volatile uint32_t *badAddr = reinterpret_cast<__gm__ volatile uint32_t *>(0x1234);
-            volatile uint32_t tmp = *badAddr;
-            (void) tmp;
+            
         }
         if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag(9);
@@ -125,6 +123,9 @@ AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeTy
 {
     commStage_->End();
     computeStage_->End();
+    __gm__ volatile uint32_t *badAddr = reinterpret_cast<__gm__ volatile uint32_t *>(0x1234);
+    volatile uint32_t tmp = *badAddr;
+    (void) tmp;
 }
 }; // namespace Mc2Kernel
 
