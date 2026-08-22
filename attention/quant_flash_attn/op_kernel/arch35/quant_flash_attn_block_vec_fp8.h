@@ -533,11 +533,19 @@ public:
         softmaxLseQueue_.template EnQue(lseUb);
         softmaxLseQueue_.DeQue<float>();
 
-        uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-        uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
-        DataCopySoftmaxLse<T, GmFormat::LSE_N2GT, GetOutUbFormat<layout>()>(
-            softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-            {.gSize = constInfo_.realGSize, .t1Size = constInfo_.t1Size});
+        GmCoord lseGmCoord{.bIdx = runInfo.bIdx,
+                           .n2Idx = runInfo.realN2Idx,
+                           .gS1Idx = vecMIdx,
+                           .dIdx = 0,
+                           .gS1DealSize = runInfo.actVecMSize,
+                           .dDealSize = 0};
+
+        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_N2GT;
+        FaGmTensor<T, LSE_FORMAT, int32_t, true> lseGmTensor_;
+        lseGmTensor_.gmTensor = softmaxLseGm_;
+        lseGmTensor_.offsetCalculator.Init(constInfo_.realN2Size, constInfo_.realGSize, *qActSeqLensParser_);
+        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+        copyLseUbToGm_(lseGmTensor_, lseUb, lseGmCoord);
 
         softmaxLseQueue_.FreeTensor(lseUb);
     }
