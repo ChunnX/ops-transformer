@@ -10,7 +10,7 @@
 
 /*!
  * \file matmul_reduce_scatter_v2_qbmm_mx_kernel.h
- * \brief APACE MXFP8/MXFP4 quantized matmul kernel for MatmulReduceScatterV2.
+ * \brief APACE MXFP8/MXFP4 fragment QBMM kernel for MatmulReduceScatterV2.
  */
 
 #pragma once
@@ -23,20 +23,26 @@
 #endif
 
 #include "blaze/gemm/utils/common_utils.h"
-#include "include/tensor_api/tensor.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "include/tensor_api/tensor.h"
+#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
+#include "apace/basic/fragment_tensor/fragment_tensor.h"
+#include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
 
+// A ReduceScatter slice consists of rankDim discontiguous M fragments in the
+// original [rankM, K] input.  FragmentTensor assembles those fragments as one
+// logical M dimension, allowing one block scheduler to distribute all ranks'
+// work across the AIC cores instead of launching one small QBMM per rank.
 template <class ProblemShape, class BlockMmad, class BlockScheduler>
 class MatmulReduceScatterV2QbmmMxKernel {
 public:
-    static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
-    static constexpr bool transA = BlockMmad::TRANS_A;
-    static constexpr bool transB = BlockMmad::TRANS_B;
+    static constexpr bool weightNz = BlockMmad::weightNz;
+    static constexpr bool transA = BlockMmad::transA;
+    static constexpr bool transB = BlockMmad::transB;
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
@@ -54,10 +60,12 @@ public:
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t CACHE_LINE_ALIGN_MASK = IsFp4<AType>() ? 0xff : 0x7f;
     static constexpr int32_t SCALE_C0 = 2;
+    static constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
     using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<C0_SIZE>>;
     using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<C0_SIZE>>;
-    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<
+        LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
     using MakeLayoutScaleA = AscendC::Std::conditional_t<
         transA,
         AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleADNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
@@ -66,6 +74,10 @@ public:
         transB,
         AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<SCALE_C0>>,
         AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<SCALE_C0>>>;
+
+    using FragTensorA = Apace::Basic::FragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>;
+    using FragScaleA = Apace::Basic::FragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>;
+    using FragTensorC = Apace::Basic::FragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>;
 
     struct QBMMTiling {
         enum BiasMode : uint32_t {
@@ -80,17 +92,32 @@ public:
         uint32_t isBias;
     };
 
+    struct FragmentParams {
+        uint32_t rankDim;
+        uint64_t perRankM;
+        uint64_t sliceStart;
+        uint64_t sliceM;
+    };
+
     struct Params {
         ProblemShape problemShape;
         BlockMmadParams mmParams;
         L1Params l1Params;
         BlockSchedulerParams schedulerParams;
         QBMMTiling qbmmParams;
+        FragmentParams fragmentParams;
     };
 
     __aicore__ inline void Run(const Params &params)
     {
         if ASCEND_IS_AIV {
+            return;
+        }
+
+        const auto &fp = params.fragmentParams;
+        const uint64_t totalLogicalM = fp.sliceM * fp.rankDim;
+        if (fp.rankDim == 0 || fp.rankDim > MAX_FRAG || fp.sliceM == 0 ||
+            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) != totalLogicalM) {
             return;
         }
 
@@ -109,6 +136,66 @@ public:
     }
 
 private:
+    __aicore__ inline Apace::Basic::FragmentParam<2> MakeFragParam(
+        uint64_t fragmentSize, uint32_t fragmentCnt, uint64_t shape1) const
+    {
+        Apace::Basic::FragmentParam<2> param{};
+        param.assembledShape[0] = fragmentSize * fragmentCnt;
+        param.assembledShape[1] = shape1;
+        param.fragmentSize = fragmentSize;
+        param.realFragmentSize = fragmentSize;
+        param.assembleAxis = 0;
+        param.fragmentCnt = fragmentCnt;
+        return param;
+    }
+
+    __aicore__ inline void BuildFragmentTensors(const Params &params)
+    {
+        const auto &fp = params.fragmentParams;
+        const uint64_t k = static_cast<uint64_t>(AscendC::Te::Get<MNK_K>(params.problemShape));
+        const uint64_t n = static_cast<uint64_t>(AscendC::Te::Get<MNK_N>(params.problemShape));
+        const uint64_t aRowBytes = IsFp4<AType>() ? CeilDiv(k, 2UL) : k * sizeof(AType);
+        const uint64_t scaleK = CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+        for (uint32_t rankIdx = 0; rankIdx < fp.rankDim; ++rankIdx) {
+            const uint64_t globalMOffset = static_cast<uint64_t>(rankIdx) * fp.perRankM + fp.sliceStart;
+            aFragAddrs_[rankIdx] = params.mmParams.aGmAddr + globalMOffset * aRowBytes;
+            scaleAFragAddrs_[rankIdx] = params.mmParams.scaleAGmAddr +
+                globalMOffset * scaleK * sizeof(AscendC::fp8_e8m0_t);
+            // Inputs stay rank-major. C is slice-major so all rank fragments
+            // consumed by one ReduceScatter are adjacent in the workspace:
+            // [slice][rank][sliceM][N]. Different slices remain disjoint while
+            // their asynchronous communication is in flight.
+            const uint64_t sliceWorkspaceM = fp.sliceStart * fp.rankDim +
+                static_cast<uint64_t>(rankIdx) * fp.sliceM;
+            cFragAddrs_[rankIdx] = params.mmParams.cGmAddr + sliceWorkspaceM * n * sizeof(CType);
+        }
+
+        const bool sameShape = fragmentReady_ && fragmentRankDim_ == fp.rankDim &&
+            fragmentSliceM_ == fp.sliceM && fragmentK_ == k && fragmentN_ == n;
+        if (sameShape) {
+            // The head slices have the same fragment shape.  Match the APACE
+            // AllGather implementation and only update their GM address lists
+            // instead of rebuilding three FragmentTensor objects every round.
+            gmA_.UpdateAddrList(aFragAddrs_);
+            gmScaleA_.UpdateAddrList(scaleAFragAddrs_);
+            gmC_.UpdateAddrList(cFragAddrs_);
+            return;
+        }
+
+        gmA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
+            MakeFragParam(fp.sliceM, fp.rankDim, k), aFragAddrs_);
+        gmScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
+            MakeFragParam(fp.sliceM, fp.rankDim, scaleK), scaleAFragAddrs_);
+        gmC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
+            MakeFragParam(fp.sliceM, fp.rankDim, n), cFragAddrs_);
+        fragmentReady_ = true;
+        fragmentRankDim_ = fp.rankDim;
+        fragmentSliceM_ = fp.sliceM;
+        fragmentK_ = k;
+        fragmentN_ = n;
+    }
+
     template <typename TensorScaleB>
     __aicore__ inline void SetScaleL2Cache(
         const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)
@@ -163,19 +250,12 @@ private:
     __aicore__ inline void Process(const Params &params, BlockScheduler &scheduler)
     {
         using AscendC::Te::Get;
-        const int64_t m = Get<MNK_M>(params.problemShape);
         const int64_t n = Get<MNK_N>(params.problemShape);
         const int64_t k = Get<MNK_K>(params.problemShape);
         const int64_t scaleK = CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
-        auto gmA = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ AType *>(params.mmParams.aGmAddr)),
-            MakeLayoutA{}(m, k));
-        auto gmScaleA = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.mmParams.scaleAGmAddr)),
-            MakeLayoutScaleA{}(m, scaleK));
+        BuildFragmentTensors(params);
+
         auto gmB = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
                 reinterpret_cast<__gm__ BType *>(params.mmParams.bGmAddr)),
@@ -188,10 +268,6 @@ private:
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
                 reinterpret_cast<__gm__ BiasType *>(params.mmParams.biasGmAddr)),
             AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(1L, n));
-        auto gmC = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-                reinterpret_cast<__gm__ CType *>(params.mmParams.cGmAddr)),
-            MakeLayoutC{}(m, n));
 
         auto &mTailTile = params.schedulerParams.mTailTile;
         auto &nTailTile = params.schedulerParams.nTailTile;
@@ -214,23 +290,41 @@ private:
             }
 
             scheduler.GetTileCoord(blockIdx, mPos, nPos);
-            auto blockA = gmA.Slice(AscendC::Te::MakeCoord(mPos, 0L), AscendC::Te::MakeShape(currentM, k));
-            auto blockScaleA = gmScaleA.Slice(
+            auto blockA = gmA_.Slice(
+                AscendC::Te::MakeCoord(mPos, 0L), AscendC::Te::MakeShape(currentM, k));
+            auto blockScaleA = gmScaleA_.Slice(
                 AscendC::Te::MakeCoord(mPos, 0L), AscendC::Te::MakeShape(currentM, scaleK));
-            auto blockB = gmB.Slice(AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(k, currentN));
+            auto blockB = gmB.Slice(
+                AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(k, currentN));
             auto blockScaleB = gmScaleB.Slice(
                 AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(scaleK, currentN));
             auto blockBias = gmBias.Slice(
                 AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(1L, currentN));
-            auto blockC = gmC.Slice(
+            auto blockC = gmC_.Slice(
                 AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(currentM, currentN));
 
-            mmOp_(blockA, blockB, blockScaleA, blockScaleB, blockBias, blockC, singleShape, 0);
+            // The extra shape arguments are retained by the shared fragment
+            // MMAD interface. FragmentTensor already contains the exact MMRS
+            // source and destination addresses for this communication slice.
+            mmOp_(blockA, blockB, blockScaleA, blockScaleB, blockBias, cFragAddrs_,
+                  params.fragmentParams.perRankM, params.fragmentParams.sliceM, 1, 0,
+                  params.fragmentParams.rankDim, n, singleShape, mPos, nPos, 0, blockC);
         }
     }
 
 private:
     BlockMmad mmOp_;
+    FragTensorA gmA_;
+    FragScaleA gmScaleA_;
+    FragTensorC gmC_;
+    GM_ADDR aFragAddrs_[MAX_FRAG]{};
+    GM_ADDR scaleAFragAddrs_[MAX_FRAG]{};
+    GM_ADDR cFragAddrs_[MAX_FRAG]{};
+    bool fragmentReady_{false};
+    uint32_t fragmentRankDim_{0};
+    uint64_t fragmentSliceM_{0};
+    uint64_t fragmentK_{0};
+    uint64_t fragmentN_{0};
 };
 
 } // namespace Kernel

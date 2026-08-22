@@ -48,9 +48,8 @@ public:
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
         ProblemShape, 0, LayoutA, LayoutB, AType>;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
+    using BlockMmad = Blaze::Gemm::Block::QmmMxBlockMmadFragment<
+        0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
     using Kernel = Blaze::Gemm::Kernel::MatmulReduceScatterV2QbmmMxKernel<
         ProblemShape, BlockMmad, BlockScheduler>;
     using Params = typename Kernel::Params;
@@ -58,6 +57,7 @@ public:
     using L1Params = typename Kernel::L1Params;
     using BlockSchedulerParams = typename Kernel::BlockSchedulerParams;
     using QBMMTiling = typename Kernel::QBMMTiling;
+    using FragmentParams = typename Kernel::FragmentParams;
 
     // Follow the proven AllToAll Hcomm pattern: keep the communication dtype
     // as an integral compile-time constant, then cast at the HCCL call site.
@@ -90,9 +90,11 @@ public:
         const auto &commTiling = tilingData_->commTilingData;
         const uint64_t tileCount = static_cast<uint64_t>(commTiling.splitAxisTileCnt);
         const uint64_t tailCount = static_cast<uint64_t>(commTiling.splitAxisTailCnt);
-        const bool invalidTiling = rankDim_ == 0 ||
-            (tileCount > 0 && tilingData_->tileQbmmTilingData.m != commTiling.splitAxisTileSize) ||
-            (tailCount > 0 && tilingData_->tailQbmmTilingData.m != commTiling.splitAxisTailSize);
+        const bool invalidTiling = rankDim_ == 0 || rankDim_ > Apace::Basic::MAX_FRAGMENT_COUNT ||
+            (tileCount > 0 && tilingData_->tileQbmmTilingData.m !=
+                static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankDim_) ||
+            (tailCount > 0 && tilingData_->tailQbmmTilingData.m !=
+                static_cast<uint64_t>(commTiling.splitAxisTailSize) * rankDim_);
         if (invalidTiling) {
             hccl_.Finalize();
             return;
@@ -108,23 +110,17 @@ public:
     }
 
 private:
-    __aicore__ inline void RunMatmul(const QuantMatmulTilingData *tiling, uint64_t globalMOffset)
+    __aicore__ inline void RunMatmul(
+        const QuantMatmulTilingData *tiling, uint64_t sliceStart, uint64_t sliceM, uint64_t perRankM)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
         BlockMmadParams mmParams;
-        const uint64_t aRowBytes = Blaze::Gemm::IsFp4<AType>() ?
-            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(tiling->k), 2UL) :
-            static_cast<uint64_t>(tiling->k) * sizeof(AType);
-        const uint64_t scaleK =
-            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(tiling->k),
-                                 static_cast<uint64_t>(Blaze::Gemm::MXFP_DIVISOR_SIZE)) *
-            Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
-        mmParams.aGmAddr = aGM_ + globalMOffset * aRowBytes;
-        mmParams.scaleAGmAddr = x1ScaleGM_ + globalMOffset * scaleK * sizeof(AscendC::fp8_e8m0_t);
+        mmParams.aGmAddr = aGM_;
+        mmParams.scaleAGmAddr = x1ScaleGM_;
         mmParams.bGmAddr = bGM_;
         mmParams.scaleBGmAddr = x2ScaleGM_;
-        mmParams.cGmAddr = workspaceGM_ + globalMOffset * tiling->n * sizeof(CType);
+        mmParams.cGmAddr = workspaceGM_;
         mmParams.biasGmAddr = biasGM_;
         L1Params l1Params{static_cast<uint64_t>(tiling->stepK) * tiling->baseK,
                           tiling->scaleKL1, tiling->nBufferNum};
@@ -134,7 +130,8 @@ private:
         QBMMTiling qbmmParams{
             tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
-        Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams};
+        FragmentParams fragmentParams{rankDim_, perRankM, sliceStart, sliceM};
+        Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams, fragmentParams};
         kernel_(params);
     }
 
@@ -150,30 +147,27 @@ private:
         const uint64_t perRankM = tileM * tileCnt + tailM * tailCnt;
         const uint64_t sliceM = isTail ? tailM : tileM;
         const uint64_t outputBase = isTail ? tileCnt * tileM * rankN : 0;
-        const uint64_t stride = perRankM * rankN;
 
         for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
             const uint64_t sliceStart = isTail
                 ? tileCnt * tileM + static_cast<uint64_t>(sliceIdx) * tailM
                 : static_cast<uint64_t>(sliceIdx) * tileM;
-            // A ReduceScatter slice contains the same M interval from every
-            // rank segment. Compute those discontiguous row blocks first,
-            // then launch communication immediately. The async handle allows
-            // the next slice's Matmul to overlap the current communication.
-            for (uint32_t rankIdx = 0; rankIdx < rankDim_; ++rankIdx) {
-                const uint64_t globalMOffset = static_cast<uint64_t>(rankIdx) * perRankM + sliceStart;
-                RunMatmul(tiling, globalMOffset);
-            }
+            // FragmentTensor presents the same local-M interval from every
+            // rank as one logical M. A single scheduler can therefore fill all
+            // AIC cores even when one rank's slice is small.
+            RunMatmul(tiling, sliceStart, sliceM, perRankM);
             AscendC::SyncAll();
-            GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankN * sizeof(CType);
+            GM_ADDR sendBuffer = workspaceGM_ + sliceStart * rankDim_ * rankN * sizeof(CType);
             GM_ADDR recvBuffer = yGM_ +
                 (outputBase + static_cast<uint64_t>(sliceIdx) * sliceM * rankN) * sizeof(CType);
-            IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN, stride);
+            // Slice-major C makes the source rank fragments contiguous. Match
+            // the legacy contiguous ReduceScatter convention and use stride 0.
+            IssueReduceScatter(sendBuffer, recvBuffer, sliceM * rankN);
         }
     }
 
     __aicore__ inline void IssueReduceScatter(
-        GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint64_t recvCount, uint64_t stride)
+        GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint64_t recvCount)
     {
         // Keep at most two asynchronous ReduceScatter tasks in flight. Before
         // reusing a slot, wait for the task issued two rounds earlier. This
@@ -189,7 +183,7 @@ private:
         pipelineHandles_[slot] = hccl_.template ReduceScatter<true>(
             sendBuffer, recvBuffer, recvCount,
             static_cast<AscendC::HcclDataType>(outputHcclDataType_),
-            AscendC::HcclReduceOp::HCCL_REDUCE_SUM, stride, 1);
+            AscendC::HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
         ++issuedHandleCount_;
     }
 

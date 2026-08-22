@@ -45,7 +45,6 @@ constexpr uint64_t MXFP8_SIZE_N = 1;
 constexpr uint64_t MX_SCALE_OFFSET = 64;
 constexpr uint64_t EVEN_ALIGN = 2;
 constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-constexpr uint64_t APACE_AICPU_MAX_TILE_CNT = 4;
 constexpr uint64_t PERTENSOR_SCALE_DIM = 1;
 constexpr uint64_t PERBLOCK_SCALE_DIM = 2;
 constexpr uint64_t MX_SCALE_DIM = 3;
@@ -817,24 +816,35 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
     commTiling.nonSplitAxisSize = args_.nValue;
     auto &tileTiling = apaceTilingData_.tileQbmmTilingData;
     auto &tailTiling = apaceTilingData_.tailQbmmTilingData;
+    // One APACE QBMM launch covers the same local-M slice from every rank.
+    // Generate tiling for that assembled logical M so the block scheduler can
+    // distribute work from different rank fragments across all AIC cores.
+    const uint64_t tileLogicalM = tileM * cfg.rankDim;
+    const uint64_t tailLogicalM = tailM * cfg.rankDim;
 
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(tileM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        tilingSwat.GetTilingData(tileLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
         if (cfg.tailCnt > 0) {
-            tilingSwat.GetTilingData(tailM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
         }
     } else {
         // E4M3 and E5M2 have the same B8 storage and share the APACE tiling strategy.
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(tileM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
+        tilingSwat.GetTilingData(tileLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tileTiling);
         if (cfg.tailCnt > 0) {
-            tilingSwat.GetTilingData(tailM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
+            tilingSwat.GetTilingData(tailLogicalM, args_.nValue, args_.kValue, false, args_.isBTrans, tailTiling);
         }
     }
     OP_LOGD(opName_,
-            "APACE MX pipelined tiling: rankM=%u, perRankM=%lu, tileM=%lu x %u, tailM=%u x %u, N=%lu, K=%lu",
-            cfg.rankM, perRankM, tileM, cfg.tileCnt, cfg.tailM, cfg.tailCnt, args_.nValue, args_.kValue);
+            "APACE MX pipelined tiling: rankM=%u, perRankM=%lu, tileM=%lu x %u, logicalTileM=%lu, "
+            "tileBase=[%u,%u,%u], tileUsedCore=%u, tailM=%u x %u, logicalTailM=%lu, "
+            "tailBase=[%u,%u,%u], tailUsedCore=%u, N=%lu, K=%lu",
+            cfg.rankM, perRankM, tileM, cfg.tileCnt, tileLogicalM,
+            tileTiling.baseM, tileTiling.baseN, tileTiling.baseK, tileTiling.usedCoreNum,
+            cfg.tailM, cfg.tailCnt, tailLogicalM,
+            tailTiling.baseM, tailTiling.baseN, tailTiling.baseK, tailTiling.usedCoreNum,
+            args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1032,14 +1042,7 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 {
     if (usingApaceImpl_) {
         MMPlusReduceScatter reduceScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER,
-                                                 SocVersion::SOC950, false,
-                                                 (commMode_ == TPL_AICPU_COMM_MODE), isMxfp4_);
-        if (commMode_ == TPL_AICPU_COMM_MODE) {
-            // APACE AICPU launches one Hcomm task per M slice. Keep the
-            // formulaic split compact to avoid task/scheduler overhead. The
-            // later HCCL-size adjustment may still add slices for correctness.
-            reduceScatterTiling.tilingM_.SetMaxTileCnt(APACE_AICPU_MAX_TILE_CNT);
-        }
+                                                 SocVersion::SOC950, false, isMxfp4_, true);
         reduceScatterTiling.GetTiling();
         CutResult cutRes = reduceScatterTiling.tilingM_.cutRes;
         AlignCutResForApace(cutRes, args_.mValue);
@@ -1057,7 +1060,7 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
-                                                  false, (commMode_ == TPL_AICPU_COMM_MODE));
+                                                  false);
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
     }
@@ -1065,13 +1068,22 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 
 void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_t mValue) const
 {
-    constexpr uint64_t KERNEL_ALIGN_M = 256;
+    // APACE presents one local slice from every rank as one logical M:
+    // logicalM = perRankSliceM * rankDim. Align the M seen by the scheduler to
+    // 256. Aligning perRankSliceM itself to 256 would over-align the logical
+    // problem to 256 * rankDim and leave too few stages for communication to
+    // overlap with the next Matmul slice.
+    constexpr uint64_t APACE_LOGICAL_M_ALIGN = 256;
+    constexpr uint64_t APACE_CUBE_M_ALIGN = 16;
     if (cutRes.longTileLen == 0 || mValue == 0) {
         OP_LOGD(opName_, "AlignCutResForApace skip: longTileLen=%lu, mValue=%lu", cutRes.longTileLen, mValue);
         return;
     }
+    const uint64_t rankDim = std::max(static_cast<uint64_t>(args_.rankDim), uint64_t{1});
+    const uint64_t perRankAlign = mc2tiling::AlignUp(
+        Ops::Base::CeilDiv(APACE_LOGICAL_M_ALIGN, rankDim), APACE_CUBE_M_ALIGN);
     const bool shortTileAtBack = cutRes.shortTileAtBack;
-    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
+    const uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, perRankAlign);
     if (longTile >= mValue) {
         cutRes.longTileLen = mValue;
         cutRes.numLongTile = 1;
@@ -1086,9 +1098,12 @@ void QuantBmmReduceScatterTiling::AlignCutResForApace(CutResult &cutRes, uint64_
     // MMRS has independent QBMM tilings for both groups, so it can preserve
     // the formula model's compute/communication-balanced head/tail order.
     cutRes.shortTileAtBack = shortTileAtBack;
-    OP_LOGD(opName_, "APACE aligned cutRes: longTile=%lu, numLong=%lu, shortTile=%lu, numShort=%lu, atBack=%d",
-            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile,
-            cutRes.shortTileAtBack);
+    cutRes.totalTileCnt = cutRes.numLongTile + cutRes.numShortTile;
+    OP_LOGD(opName_,
+            "APACE logical-M aligned cut: m=%lu, rankDim=%lu, perRankAlign=%lu, "
+            "long=%lu x %lu, short=%lu x %lu, shortAtBack=%d",
+            mValue, rankDim, perRankAlign, cutRes.longTileLen, cutRes.numLongTile,
+            cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
