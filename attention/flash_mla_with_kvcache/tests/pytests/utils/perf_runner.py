@@ -12,7 +12,7 @@
 
 接口与 flash_attn 的 tests/pytests/utils/perf_runner.py 一致（build_case_script /
 run_all_perf / build_batch_script / run_batch_msprof），内核调用段按 MLA 适配：
-metadata 走 flash_mla_metadata，kernel 走 flash_mla_with_kvcache
+metadata 走 flash_mla_with_kvcache_metadata，kernel 走 flash_mla_with_kvcache
 （参数组由 core.data.build_flash_mla_with_kvcache_params 构造，与 NPU 后端同源）。
 """
 
@@ -55,7 +55,7 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
         "import torch, torch_npu",
         f"torch.npu.set_device({device_id})",
         "from core.data import flash_mla_with_kvcache_inputs, build_flash_mla_with_kvcache_params",
-        "from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_metadata",
+        "from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata",
         "device = torch.device('npu:0')",
         f"c = {_serialize_params(case)}",
         f"print('CASE {case_name}  {mode}  runs={runs}')",
@@ -63,7 +63,7 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
         "    inputs = flash_mla_with_kvcache_inputs.generate(",
         "        c, device=device, layout=c.get('layout_q', 'TND'))",
         "    meta_kwargs, kernel_kwargs, _ = build_flash_mla_with_kvcache_params(c, device, inputs)",
-        "    metadata = flash_mla_metadata(**meta_kwargs)",
+        "    metadata = flash_mla_with_kvcache_metadata(**meta_kwargs)",
         "    torch.npu.synchronize()",
         "    flash_mla_with_kvcache(inputs['q'], inputs['k_cache'],",
         "                          metadata=metadata, **kernel_kwargs)",
@@ -77,7 +77,7 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
             "_inputs = flash_mla_with_kvcache_inputs.generate(",
             "    c, device=device, layout=c.get('layout_q', 'TND'))",
             "_meta_kwargs, _kernel_kwargs, _ = build_flash_mla_with_kvcache_params(c, device, _inputs)",
-            "_metadata = flash_mla_metadata(**_meta_kwargs)",
+            "_metadata = flash_mla_with_kvcache_metadata(**_meta_kwargs)",
             "torch.npu.synchronize()",
             f"for _ in range({runs}):",
             "    flash_mla_with_kvcache(_inputs['q'], _inputs['k_cache'],",
@@ -244,7 +244,7 @@ def build_batch_script(
         "import torch, torch_npu",
         f"torch.npu.set_device({device_id})",
         "from core.data import flash_mla_with_kvcache_inputs, build_flash_mla_with_kvcache_params",
-        "from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_metadata",
+        "from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata",
         "device = torch.device('npu:0')",
         f"_hot = {hot_dicts}",
         f"_cold = {cold_dicts}",
@@ -256,7 +256,7 @@ def build_batch_script(
         "        inputs = flash_mla_with_kvcache_inputs.generate(",
         "            c, device=device, layout=c.get('layout_q', 'TND'))",
         "        meta_kwargs, kernel_kwargs, _ = build_flash_mla_with_kvcache_params(c, device, inputs)",
-        "        metadata = flash_mla_metadata(**meta_kwargs)",
+        "        metadata = flash_mla_with_kvcache_metadata(**meta_kwargs)",
         "        torch.npu.synchronize()",
         f"        for _ in range({runs}):",
         "            flash_mla_with_kvcache(inputs['q'], inputs['k_cache'],",
