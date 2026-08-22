@@ -188,6 +188,8 @@ private:
     uint64_t activeBatchChannel_{0};
     uint32_t preparedWriteCount_{0};
     uint32_t batchCommitCount_{0};
+    uint32_t totalWriteNbiCount_{0};
+    uint32_t lastBatchWriteNbiCount_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -294,6 +296,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
     ++batchCommitCount_;
+    lastBatchWriteNbiCount_ = preparedWriteCount_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
@@ -318,6 +321,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
     ++preparedWriteCount_;
+    ++totalWriteNbiCount_;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -417,6 +421,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
     batchCommitCount_ = 0;
+    totalWriteNbiCount_ = 0;
+    lastBatchWriteNbiCount_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
     uint32_t targetRank = epWorldSize_;
@@ -534,8 +540,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
-    AscendC::printf("[MoeEpCombineBatch] rank=%u, aivId=%u, batchCommitCount=%u\n",
-                    rankId_, aivId_, batchCommitCount_);
+    AscendC::printf(
+        "[MoeEpCombineBatch] rank=%u, aivId=%u, batchCommitCount=%u, totalWriteNbiCount=%u, "
+        "lastBatchWriteNbiCount=%u\n",
+        rankId_, aivId_, batchCommitCount_, totalWriteNbiCount_, lastBatchWriteNbiCount_);
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
