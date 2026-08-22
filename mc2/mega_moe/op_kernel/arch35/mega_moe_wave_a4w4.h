@@ -49,6 +49,7 @@ private:
 
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::DispatchMoeExpert;
+    using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
@@ -126,6 +127,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
     DispatchBuffInit();
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
@@ -163,6 +165,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
         ExpertTokenPosition waveBeginPosition = gmm1Position;
         ExpertTokenPosition waveEndPosition = gmm1Position;
         uint32_t currentWaveMGroupCount = 0U;
@@ -211,6 +214,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         }
 
         // Wave 在专家内结束时需包含该专家；在专家边界结束时，waveEndPosition 已指向下一专家。
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM2_COMBINE);
         uint32_t waveGmm2ExpertEndExclusive =
             waveEndPosition.expertIdx + (waveEndPosition.tokenIndexInExpert == 0U ? 0U : 1U);
         for (uint32_t expertIdx = waveBeginPosition.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
