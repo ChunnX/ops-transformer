@@ -187,6 +187,7 @@ private:
     HcommBatchHandle activeBatchHandle_{};
     uint64_t activeBatchChannel_{0};
     uint32_t preparedWriteCount_{0};
+    uint32_t batchCommitCount_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -292,6 +293,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
+    ++batchCommitCount_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
@@ -414,6 +416,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
+    batchCommitCount_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
     uint32_t targetRank = epWorldSize_;
@@ -531,6 +534,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    AscendC::printf("[MoeEpCombineBatch] rank=%u, aivId=%u, batchCommitCount=%u\n",
+                    rankId_, aivId_, batchCommitCount_);
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
