@@ -41,9 +41,8 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
                 return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const bool *doRopePtr = attrs->GetAttrPointer<bool>(ATTR_DO_ROPE_INDEX);
-    const bool doRope = (doRopePtr == nullptr) ? true : *doRopePtr;
     const bool ropeSinEmpty = (ropeSinShape->GetShapeSize() == 0);
+    const bool doRope = !ropeSinEmpty;
     // do_rope=false 且 rope 为空 tensor 时跳过 ropeSin 常规维度校验
     OP_CHECK_IF(
         (!ropeSinEmpty) && ((ropeSinShape->GetDimNum() != DIM_NUM_2) && (ropeSinShape->GetDimNum() != DIM_NUM_3)),
