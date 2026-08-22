@@ -150,8 +150,8 @@ public:
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(
                 l1BufAddrStart + l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        // Each stage keeps two packed 64x16-float L1 slots. Every slot stores at most
-        // four consecutive 16x16 diagonal tiles and occupies 4KB.
+        // Each stage is one packed zN [128,16] tensor (8KB). The two subblocks own
+        // disjoint four-fractal ranges in both the H0 and H1 halves of the stage.
         for (uint32_t i = 0; i < DIAG_BUF_NUM; i++) {
             l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
                 l1DiagAddrStart +
@@ -415,7 +415,7 @@ public:
             // Copy the complete fixed 8KB stage in one LoadData. Unused tile slots are
             // transferred as well, but the MMAD loop only selects valid group/tile indices.
             auto l1DiagStageLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(
-                DIAG_PACKED_COLS, DIAG_STAGE_PACKED_ROWS);
+                DIAG_STAGE_PACKED_ROWS, DIAG_PACKED_COLS);
             auto l1DiagStageTensorTla = tla::MakeTensor(
                 l1DiagTensor[l1DiagBufId], l1DiagStageLayoutTla,
                 tla::MakeCoord(0U, 0U), Arch::PositionL1{});
@@ -560,7 +560,7 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];   // V 段（gather 写入，A=(V)^T 读）
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];   // P 段（softmax 写入，B=(P)^T 读）
-    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // packed 64x16 slots, two groups per stage
+    AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // packed zN [128,16], 8KB per stage
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     // RE 段：GO^T/diag 为 fp32，需 float 的 L0 buffer（PV^T 的 fp8 buffer 元素类型不匹配 float 布局）；

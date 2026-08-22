@@ -257,23 +257,29 @@ public:
                 // P 模式：DataCopy 前 wait（与 P 的 WaitCrossCoreSync(smToMm2Flag) 在 DataCopy 前一致），
                 // 保证 mmadPV 转置里的 RE 用完同 stage L1 diag 才覆写；VF 计算不被 CUBE 消费进度阻塞
                 WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
-                // Pack diagonal 16x16 tiles as consecutive pairs of FP32 16x8 fractals.
-                // The CUBE consumer interprets this memory as zN [16, diagDmRound].
+                // Pack the complete stage as zN [128,16]: all first 16x8 fractals
+                // occupy the first 4KB and all second fractals occupy the last 4KB.
+                // Each subblock owns four fractal slots in both halves of the stage.
                 AscendC::DataCopyParams dataCopyParams;
                 dataCopyParams.blockCount = diagDmRound / 16;
                 dataCopyParams.blockLen = 16;
                 dataCopyParams.srcStride = 2 * (diagDmRound + 1);
-                dataCopyParams.dstStride = 16;
+                dataCopyParams.dstStride = 0;
 
                 constexpr uint32_t FP32_ELEMS_PER_DATABLOCK = 8;
-                constexpr uint32_t DIAG_SUB_BLOCK_SLOT_ELEMS = 64 * 16;
-                uint32_t l1DiagSubBlockOffset = subBlockIdx_ * DIAG_SUB_BLOCK_SLOT_ELEMS;
+                constexpr uint32_t FP32_ELEMS_PER_FRACTAL = 16 * FP32_ELEMS_PER_DATABLOCK;
+                constexpr uint32_t DIAG_TILES_PER_SUB_BLOCK = 64 / 16;
+                constexpr uint32_t DIAG_TILES_PER_STAGE = 2 * DIAG_TILES_PER_SUB_BLOCK;
+                uint32_t l1DiagFirstFractalOffset =
+                    subBlockIdx_ * DIAG_TILES_PER_SUB_BLOCK * FP32_ELEMS_PER_FRACTAL;
+                uint32_t l1DiagSecondFractalOffset =
+                    (DIAG_TILES_PER_STAGE + subBlockIdx_ * DIAG_TILES_PER_SUB_BLOCK) *
+                    FP32_ELEMS_PER_FRACTAL;
                 uint32_t srcSecondFractalOffset =
                     (diagDmRound + 1) * FP32_ELEMS_PER_DATABLOCK;
-                constexpr uint32_t dstSecondFractalOffset = 16 * FP32_ELEMS_PER_DATABLOCK;
 
-                DataCopy(l1DiagTensor[l1DiagSubBlockOffset], diagUbTensor, dataCopyParams);
-                DataCopy(l1DiagTensor[l1DiagSubBlockOffset + dstSecondFractalOffset],
+                DataCopy(l1DiagTensor[l1DiagFirstFractalOffset], diagUbTensor, dataCopyParams);
+                DataCopy(l1DiagTensor[l1DiagSecondFractalOffset],
                     diagUbTensor[srcSecondFractalOffset], dataCopyParams);
                 // MTE3 读完成 → 下一轮覆写前 wait（P 对称组）
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
