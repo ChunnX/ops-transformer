@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""NPU 后端 — m0070 参数组调用 flash_mla_metadata + flash_mla_with_kvcache，支持 eager / 静态图(export) 模式。"""
+"""NPU 后端 — m0070 参数组调用 flash_mla_with_kvcache_metadata + flash_mla_with_kvcache，支持 eager / 静态图(export) 模式。"""
 
 import numpy as np
 import torch
@@ -17,7 +17,7 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_metadata
+    from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
@@ -103,7 +103,7 @@ class _FlashMlaWithKvcacheGraphNetwork(torch.nn.Module):
                 batch_size, max_seqlen_q, max_seqlen_kv, mask_mode,
                 layout_q, layout_kv, layout_out,
                 softmax_scale, head_dim_v, return_softmax_lse):
-        metadata = torch.ops.cann_ops_transformer.flash_mla_metadata(
+        metadata = torch.ops.cann_ops_transformer.flash_mla_with_kvcache_metadata(
             num_heads_q=num_heads_q, num_heads_kv=num_heads_kv, head_dim=head_dim,
             cu_seqlens_q=cu_seqlens_q, cache_seqlens=cache_seqlens, seqused_q=seqused_q,
             batch_size=batch_size, max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
@@ -148,7 +148,7 @@ class NPUBackend(Backend):
     def _run_meta_and_kernel(self, inputs, params):
         from core.data import build_flash_mla_with_kvcache_params
         meta_kwargs, kernel_kwargs, _ = build_flash_mla_with_kvcache_params(params, self._device, inputs)
-        metadata = flash_mla_metadata(**meta_kwargs)
+        metadata = flash_mla_with_kvcache_metadata(**meta_kwargs)
         if self._meta_only:
             print_metadata(metadata)
             t_total = inputs["q"].shape[0]

@@ -36,7 +36,7 @@ def build_flash_mla_with_kvcache_params(p: dict, device: torch.device, inputs: d
                            ) -> Tuple[dict, dict, str]:
     """从 normalized params 构造 (meta_kwargs, kernel_kwargs, out_layout)。
 
-    meta_kwargs  → flash_mla_metadata（AICPU 分核预算）
+    meta_kwargs  → flash_mla_with_kvcache_metadata（AICPU 分核预算）
     kernel_kwargs → flash_mla_with_kvcache（主算子）
     """
     layout_q = p.get("layout_q", "TND")

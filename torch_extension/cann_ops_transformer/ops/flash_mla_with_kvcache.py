@@ -13,7 +13,7 @@ from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
-MLA_METADATA_OP_NAME = "flash_mla_metadata"
+MLA_METADATA_OP_NAME = "flash_mla_with_kvcache_metadata"
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -69,7 +69,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature (m0070 interface: no v, no q_rope/k_rope)."""
         return [
-            "flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
+            "flash_mla_with_kvcache_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cache_seqlens=None, Tensor? seqused_q=None, "
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
@@ -90,7 +90,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
         """
 
         @torch.library.register_fake("cann_ops_transformer::" + MLA_METADATA_OP_NAME)
-        def flash_mla_metadata_meta(
+        def flash_mla_with_kvcache_metadata_meta(
             num_heads_q: int,
             num_heads_kv: int,
             head_dim: int,
@@ -186,7 +186,7 @@ flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
 
 
 @impl(AS_LIBRARY, MLA_METADATA_OP_NAME, "PrivateUse1")
-def flash_mla_metadata(
+def flash_mla_with_kvcache_metadata(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
@@ -212,7 +212,7 @@ def flash_mla_metadata(
     effective_batch_size = batch_size if batch_size is not None and batch_size > 0 else b_size
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
-    mask_mode = 1 if mask_mode is None else mask_mode
+    mask_mode = 0 if mask_mode is None else mask_mode
     layout_q = "TND" if layout_q is None else layout_q
     layout_kv = "NZ" if layout_kv is None else layout_kv
     layout_out = "NTD" if layout_out is None else layout_out
@@ -221,16 +221,16 @@ def flash_mla_metadata(
     metadata_size = _calculate_metadata_size(b_size)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
-    return op_module.flash_mla_metadata(
+    return op_module.flash_mla_with_kvcache_metadata(
         cu_seqlens_q,
         cache_seqlens,
         seqused_q,
-        num_heads_q,
-        num_heads_kv,
-        head_dim,
         effective_batch_size,
         max_seqlen_q,
         max_seqlen_kv,
+        num_heads_q,
+        num_heads_kv,
+        head_dim,
         mask_mode,
         layout_q,
         layout_kv,
@@ -239,11 +239,11 @@ def flash_mla_metadata(
     )
 
 
-_flash_mla_metadata = flash_mla_metadata
+_flash_mla_with_kvcache_metadata = flash_mla_with_kvcache_metadata
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + MLA_METADATA_OP_NAME, None)
-def flash_mla_metadata_fallback(
+def flash_mla_with_kvcache_metadata_fallback(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
@@ -259,7 +259,7 @@ def flash_mla_metadata_fallback(
     layout_out: Optional[str] = None,
 ):
     # 处理所有 tensor 都为 None 的情况（CPU 兜底路径）
-    return _flash_mla_metadata(
+    return _flash_mla_with_kvcache_metadata(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
         head_dim=head_dim,
@@ -333,4 +333,4 @@ def flash_mla_with_kvcache(
 
 
 flash_mla_with_kvcache = torch.ops.cann_ops_transformer.flash_mla_with_kvcache
-flash_mla_metadata = torch.ops.cann_ops_transformer.flash_mla_metadata
+flash_mla_with_kvcache_metadata = torch.ops.cann_ops_transformer.flash_mla_with_kvcache_metadata
