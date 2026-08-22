@@ -48,6 +48,8 @@ public:
                                 GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum)
     {
         initialized_ = false;
+        validBlocksAddr_ = reinterpret_cast<__gm__ int64_t *>(validBlocks);
+        validN_ = ReadValidBlocks();
         if (tilingData_->totalD == 0U || tilingData_->baseD == 0U) {
             return false;
         }
@@ -79,7 +81,6 @@ public:
         }
 
         blockResAddr_ = reinterpret_cast<__gm__ float *>(blockRes);
-        validBlocksAddr_ = reinterpret_cast<__gm__ int64_t *>(validBlocks);
         pseudoQueryAddr_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
         numeratorAddr_ = reinterpret_cast<__gm__ float *>(numerator);
         logitMaxAddr_ = reinterpret_cast<__gm__ float *>(logitMax);
@@ -102,7 +103,7 @@ public:
         const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
                                    ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
         const uint32_t workCount = tilingData_->blockFactor + ((blockIdx < tilingData_->bigCoreNum) ? 1U : 0U);
-        int64_t validNValue = ReadValidBlocks();
+        int64_t validNValue = validN_;
         if (validNValue <= 0) {
             // Section 2.1: values below zero are clipped to zero.  Zero valid
             // blocks produces the identity state of online softmax.
@@ -450,6 +451,7 @@ private:
     uint32_t vLoop_ = 0;
     uint32_t oLoop_ = 0;
     uint32_t statLoop_ = 0;
+    int64_t validN_ = 0;
     uint8_t qBufferNum_ = 1;
     uint8_t vBufferNum_ = 1;
 
