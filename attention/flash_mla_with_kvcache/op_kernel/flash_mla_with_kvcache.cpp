@@ -25,25 +25,18 @@
 #include "kernel_operator_list_tensor_intf.h"
 
 #include "arch35/flash_mla_with_kvcache_template_tiling_key.h"
-// 四件套依赖的公共符号提供者（镜像 FIA 的 flash_attention_noquant_block_vec_base.h 23-28 行，
-// Todo 14 实测：缺这些头会导致 kernel 编译报 unknown type 'S1TemplateType'/'MaskFormat'/SoftMaxShapeInfo 等）
-#include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+// 入口直连 include 面保持最小：公共符号头（util_regbase.h / infer_flash_attention_comm.h，
+// S1/S2/DTemplateType、LayOutTypeEnum 等）、软名前缀头（vf_* / attenmask_gs1.h）与
+// memory_copy_arch35.h（CopyQueryGmToL1 等）均由实际消费它们的 block/type 头随用随含；
+// 与 flash_attn.cpp 同构——FA 亦只直接 include template_tiling_key + 共享 common，其余经 block 头传递。
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
-#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "../../../common/op_kernel/arch35/attenmask_gs1.h"
-#include "arch35/memory_copy_arch35.h"
-#include "arch35/flash_mla_with_kvcache_gm_format.h"
 #include "arch35/flash_mla_with_kvcache_type.h"
-using namespace FaVectorApi;
-using namespace optiling;
+using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert 需在解析期可见 optiling 域（与 FA 入口同款）
 #include "arch35/flash_mla_with_kvcache_kernel_noquant_mla.h"
+
+using namespace FaVectorApi; // 命名空间声明仅在 vf 前缀头（经 kernel 头传递）之后可用
 
 using namespace AscendC;
 using namespace AttentionCommon; // flash_mla_with_kvcache_kernel_noquant_mla.h 内 FLASH_MLA_WITH_KVCACHE_LAYOUT 等符号（继承自 fia 结构）
