@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache.cpp
- * \brief ACLNN wrapper for flash_mla_with_kvcache / flash_mla_metadata (DeepSeek MLA, m0070 interface).
+ * \brief ACLNN wrapper for flash_mla_with_kvcache / flash_mla_with_kvcache_metadata (DeepSeek MLA, m0070 interface).
  *        Interface: q, k_cache, block_table, cache_seqlens, cu_seqlens_q, seqused_q, attn_mask, metadata
  *        + attrs head_dim_v, softmax_scale, mask_mode, max_seqlen_q, max_seqlen_kv,
  *          layout_q, layout_kv, layout_out, return_softmax_lse
@@ -36,7 +36,7 @@ constexpr int64_t MLA_AIV_CORE_NUM = 72;
 constexpr int64_t MLA_META_WORDS_PER_CORE = 16;
 constexpr int64_t MLA_METADATA_ALIGN_BYTES = 4096;
 static_assert(MLA_AIC_CORE_NUM == 36 && MLA_AIV_CORE_NUM == 72 && MLA_META_WORDS_PER_CORE == 16,
-              "MLA metadata buffer constants must match the flash_mla_metadata AICPU producer layout.");
+              "MLA metadata buffer constants must match the flash_mla_with_kvcache_metadata AICPU producer layout.");
 
 int64_t CalculateMlaMetadataSizeWords(int64_t batchSize)
 {
@@ -50,11 +50,11 @@ int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize)
     return ((bytes + MLA_METADATA_ALIGN_BYTES - 1) / MLA_METADATA_ALIGN_BYTES) * MLA_METADATA_ALIGN_BYTES;
 }
 
-at::Tensor FlashMlaMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cacheSeqlens,
-                            const c10::optional<at::Tensor> &sequsedQ, int64_t numHeadsQ, int64_t numHeadsKv,
-                            int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                            int64_t maskMode, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                            const at::Tensor &output)
+at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cacheSeqlens,
+                                       const c10::optional<at::Tensor> &sequsedQ, int64_t batchSize, int64_t maxSeqlenQ,
+                                       int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                       int64_t maskMode, std::string layoutQ, std::string layoutKv, std::string layoutOut,
+                                       const at::Tensor &output)
 {
     // Device inference from the optional seq-lens tensors (sparse_flash_mla precedent).
     at::Device outputDevice = at::Device(std::string("npu"));
@@ -67,12 +67,12 @@ at::Tensor FlashMlaMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c
     }
 
     // Explicit capacity check (B2/D16): batchSize here is the batch size resolved on the Python side
-    // (see flash_mla_with_kvcache.py flash_mla_metadata impl), so the kv==1 worst-case bound is computable.
+    // (see flash_mla_with_kvcache.py flash_mla_with_kvcache_metadata impl), so the kv==1 worst-case bound is computable.
     int64_t requiredBytes = CalculateMlaMetadataSizeBytes(batchSize);
     TORCH_CHECK(static_cast<int64_t>(output.nbytes()) >= requiredBytes,
                 "The metadata tensor is too small: ", output.nbytes(), " bytes, required at least ", requiredBytes,
                 " bytes for batch_size=", batchSize, " (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 int32 words, "
-                "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_metadata.");
+                "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto cacheSeqlensVal = get_valid_tensor(cacheSeqlens, outputDevice);
@@ -86,8 +86,8 @@ at::Tensor FlashMlaMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c
 
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
     // then int attrs, then layouts, then the output buffer.
-    ACLNN_CMD(aclnnFlashMlaMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, numHeadsQ, numHeadsKv, headDim,
-              batchSize, maxSeqlenQ, maxSeqlenKv, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
+    ACLNN_CMD(aclnnFlashMlaMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, batchSize, maxSeqlenQ, maxSeqlenKv,
+              numHeadsQ, numHeadsKv, headDim, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
     return output;
 }
 
@@ -156,7 +156,7 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
         int64_t words = metadata.value().numel();
         TORCH_CHECK(words >= MLA_AIC_CORE_NUM + MLA_AIV_CORE_NUM,
                     "The metadata tensor is too small: ", words, " words, expected the buffer produced by "
-                    "flash_mla_metadata (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
+                    "flash_mla_with_kvcache_metadata (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
@@ -176,6 +176,6 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("flash_mla_with_kvcache", &FlashMlaWithKvcache, "flash_mla_with_kvcache");
-    m.def("flash_mla_metadata", &FlashMlaMetadata, "flash_mla_metadata");
+    m.def("flash_mla_with_kvcache_metadata", &FlashMlaWithKvcacheMetadata, "flash_mla_with_kvcache_metadata");
 }
 } // namespace op_api

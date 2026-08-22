@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument("--device_id", type=int, default=0)
     parser.add_argument("--verbose_diff", action="store_true")
     parser.add_argument("--meta_only", action="store_true",
-                        help="只调用 flash_mla_metadata 并打印分核结果，跳过 kernel")
+                        help="只调用 flash_mla_with_kvcache_metadata 并打印分核结果，跳过 kernel")
     parser.add_argument("--static_graph", action="store_true",
                         help="对每个 case 追加：确定性（同输入两次）+ 静态图(torch.export) vs 动态图等价（M9）")
     parser.add_argument("--result_csv", type=str,

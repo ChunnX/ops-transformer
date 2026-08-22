@@ -177,4 +177,4 @@ if __name__ == "cann_ops_transformer.ops":
 # 上游新发现机制(entry-point/子目录__init__)不覆盖本算子，沿用 C4 的单行 import，
 # 与 discovery 共存；保持 cann_ops_transformer.ops.flash_mla_with_kvcache 运行时契约。
 # ------------------------------------------------------------------ #
-from .flash_mla_with_kvcache import flash_mla_with_kvcache, flash_mla_metadata
+from .flash_mla_with_kvcache import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata
