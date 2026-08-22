@@ -444,6 +444,10 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGradMetadata(
 
 </details>
 
+## 问题定位说明
+
+- AICPU算子内部触发拦截校验或者异常错误，请根据<https://www.hiascend.com/document/detail/zh/canncommercial/latest/maintenref/troubleshooting/troubleshooting_0151.html>中指引进行定界。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
