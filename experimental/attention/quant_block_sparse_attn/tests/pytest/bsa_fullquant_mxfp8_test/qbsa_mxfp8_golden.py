@@ -33,9 +33,21 @@ import time
 import warnings
 
 import torch
-import torch_npu
-import torchair
-from torchair.configs.compiler_config import CompilerConfig
+
+# The CPU reference is also reused by TTK's remote Torch provider.  Keep NPU
+# dependencies optional at import time; NPU-only paths still fail explicitly
+# when they are invoked without the Ascend runtime.
+try:
+    import torch_npu
+except ImportError:
+    torch_npu = None
+
+try:
+    import torchair
+    from torchair.configs.compiler_config import CompilerConfig
+except ImportError:
+    torchair = None
+    CompilerConfig = None
 
 try:
     from . import result_compare_method
@@ -537,8 +549,10 @@ def set_active_case(case):
     )
 
 
-CASE = _load_initial_case()
-set_active_case(CASE)
+_DEFAULT_CASE_PATH = os.path.join(CURRENT_DIR, f"{_DEFAULT_CASE_FILE}.py")
+CASE = _load_initial_case() if os.path.isfile(_DEFAULT_CASE_PATH) else None
+if CASE is not None:
+    set_active_case(CASE)
 
 # ==============================================================================
 # 固定运行常量
@@ -2945,7 +2959,7 @@ def _mxfp8_cv_compare(golden, benchmark, actual, output_name, output_dtype):
     )
     module.display_cv_report(report)
     logger.info(
-        "[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
+        "\n[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
         "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
         "small_count=%d, ErrorCount=%d",
         output_name,

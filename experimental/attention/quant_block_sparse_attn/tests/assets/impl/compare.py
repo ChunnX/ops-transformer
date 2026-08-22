@@ -328,7 +328,7 @@ def _mxfp8_cv_compare(
         )
         cv_module.display_cv_report(report)
         logging.info(
-            "[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
+            "\n[QBSA three-way][%s][NPU] max_relative_error=%.8g, "
             "avg_relative_error=%.8g, relative_error_rmse=%.8g, "
             "small_count=%d, ErrorCount=%d",
             output_name,

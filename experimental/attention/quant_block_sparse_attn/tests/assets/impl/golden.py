@@ -15,7 +15,6 @@
 import importlib.util
 import math
 import sys
-import threading
 from pathlib import Path
 
 import torch
@@ -24,7 +23,6 @@ PYTEST_GOLDEN_MODULE = None
 PYTEST_MXFP8_GOLDEN_MODULE = None
 _MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
 _FP8_MODULE_NAME = "_qbsa_fp8_pytest_golden"
-_MXFP8_CV_STATE = threading.local()
 
 
 # ==================================================================================================
@@ -102,7 +100,7 @@ def cpu_quant_block_sparse_attn(
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
     quant_matmul=False,
-    three_way_compare=False,
+    _mxfp8_high_precision=False,
     **kwargs,
 ):
     """Map the shared 16-input CSV signature to the existing pytest golden."""
@@ -131,7 +129,6 @@ def cpu_quant_block_sparse_attn(
         **kwargs,
     }
     if int(quant_mode) == 2:
-        _MXFP8_CV_STATE.benchmark = None
         return _mxfp8_cpu_golden(
             query,
             key,
@@ -147,7 +144,7 @@ def cpu_quant_block_sparse_attn(
             sparse_block_size_q,
             sparse_block_size_kv,
             quant_matmul=quant_matmul,
-            three_way_compare=three_way_compare,
+            high_precision=_mxfp8_high_precision,
             **common_kwargs,
         )
 
@@ -262,10 +259,10 @@ def _mxfp8_cpu_golden(
     sparse_mode="dense",
     seed=0,
     quant_matmul=False,
-    three_way_compare=False,
+    high_precision=False,
     **kwargs,
 ):
-    """Run two-way golden by default, or prepare both CPU paths for CV compare."""
+    """Run the low-precision default or high-precision MXFP8 CPU golden."""
     module = _mxfp8_load_pytest_golden_module()
     testcase_name = kwargs.get("testcase_name") or "__default__"
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})
@@ -343,29 +340,15 @@ def _mxfp8_cpu_golden(
         data = cached["data"]
         module.set_active_case(case)
 
-    low_precision_out, low_precision_lse = module.cpu_mxfp8_golden(
-        data["query"],
-        data["key"],
-        data["value"],
-        data["q_descale"],
-        data["k_descale"],
-        data["v_descale"],
-        data["p_scale"],
-        data["q_lengths"],
-        data["kv_lengths"],
-        data["cu_seqlens_q"],
-        data["sparse_indices"],
-        data["sparse_seq_len"],
-        data["block_table"],
-        use_quant_matmul=_as_bool(quant_matmul),
+    golden_func = (
+        module.cpu_mxfp8_golden_high_precision
+        if _as_bool(high_precision)
+        else module.cpu_mxfp8_golden
     )
-    low_precision_out = low_precision_out.to(torch.bfloat16)
-    if not _as_bool(three_way_compare):
-        return _format_golden_outputs(
-            low_precision_out, low_precision_lse, return_softmax_lse
-        )
-
-    attention_out, softmax_lse = module.cpu_mxfp8_golden_high_precision(
+    golden_kwargs = {}
+    if not _as_bool(high_precision):
+        golden_kwargs["use_quant_matmul"] = _as_bool(quant_matmul)
+    attention_out, softmax_lse = golden_func(
         data["query"],
         data["key"],
         data["value"],
@@ -379,20 +362,18 @@ def _mxfp8_cpu_golden(
         data["sparse_indices"],
         data["sparse_seq_len"],
         data["block_table"],
+        **golden_kwargs,
     )
     attention_out = attention_out.to(torch.bfloat16)
-    _MXFP8_CV_STATE.benchmark = [
-        low_precision_out,
-        low_precision_lse if return_softmax_lse else None,
-    ]
     return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)
 
 
-def consume_mxfp8_cv_benchmark():
-    """Return the low-precision CPU result paired with the latest MXFP8 golden."""
-    benchmark = getattr(_MXFP8_CV_STATE, "benchmark", None)
-    _MXFP8_CV_STATE.benchmark = None
-    return benchmark
+def cpu_mxfp8_cross_check_golden(*args, **kwargs):
+    """Generate only the FP64 reference used by the dedicated cross-check spec."""
+    if int(kwargs.get("quant_mode", 1)) != 2:
+        raise ValueError("QBSA MXFP8 cross-check spec only supports quant_mode=2")
+    kwargs["_mxfp8_high_precision"] = True
+    return cpu_quant_block_sparse_attn(*args, **kwargs)
 
 
 # ==================================================================================================

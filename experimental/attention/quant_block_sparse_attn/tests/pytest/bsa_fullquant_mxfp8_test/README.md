@@ -66,14 +66,23 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 `--quant_matmul` 与是否开启三方对比相互独立；它只选择低精度 CPU 路径的 matmul 后端。
 
-TTK 同样默认两方对比。只对需要三方对比的 MXFP8 用例，在 CSV 的 `attributes` 字典中增加：
+TTK 同样默认两方对比。三方对比使用独立 TestSpec，并由 TTK 原生远端 Torch
+provider 生成低精度 CPU benchmark；不需要修改 TTK，也不需要在 CSV `attributes`
+中增加额外属性：
 
-```python
-'three_way_compare': True
+```bash
+python3 -m ttk e2e \
+  -i /path/to/qbsa_mxfp8_cases.csv \
+  --plugin /path/to/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_cross_check_spec.py \
+  --compare cross_check \
+  --provider torch
 ```
 
-TTK 中的 `quant_matmul` 属性也只选择低精度 CPU 路径的 matmul 后端，不会自动开启三方对比。
-`quant_mode=1` 的 QBSA-FP8 用例始终保持原有两方比较逻辑。
+执行前需要在 TTK 配置中提供可用的远端 Torch endpoint。该独立插件只接受
+`quant_mode=2`，且远端低精度路径固定使用 CPU `torch.matmul`，因此 cross-check
+CSV 中的 `quant_matmul` 必须省略或设为 `False`。默认两方测试继续使用
+`tests/assets/` 插件；`quant_mode=1` 的 QBSA-FP8 用例不使用此 cross-check 插件，
+其原有两方比较逻辑不变。
 
 QBSA-MXFP8 三方比较的小值域标准为：
 

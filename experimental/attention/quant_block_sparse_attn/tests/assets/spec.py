@@ -27,12 +27,6 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 _impl_cache = {}
 
 
-def _as_bool(value):
-    if isinstance(value, str):
-        return value.strip().lower() not in ("false", "0", "no", "off", "")
-    return bool(value)
-
-
 def _load_impl_module(stem):
     """Lazy-load impl modules to avoid import-time failures."""
     if stem not in _impl_cache:
@@ -54,21 +48,9 @@ class QuantBlockSparseAttnSpec:
 
     @staticmethod
     def golden(*args, **kwargs):
-        golden_impl = _load_impl_module("golden")
-        outputs = golden_impl.cpu_quant_block_sparse_attn(*args, **kwargs)
-        three_way_compare = (
-            int(kwargs.get("quant_mode", 1)) == 2
-            and _as_bool(kwargs.get("three_way_compare", False))
+        return _load_impl_module("golden").cpu_quant_block_sparse_attn(
+            *args, **kwargs
         )
-        benchmark = (
-            golden_impl.consume_mxfp8_cv_benchmark()
-            if three_way_compare
-            else None
-        )
-        # Always overwrite process-local state so a failed earlier case cannot
-        # leak three-way mode into a later two-way/FP8 comparison.
-        _load_impl_module("compare").set_mxfp8_cv_benchmark(benchmark)
-        return outputs
 
     @staticmethod
     def customize_inputs(*args, **kwargs):
