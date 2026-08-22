@@ -356,5 +356,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         AscendC::SyncAll();
         hccl_.Finalize();
     }
+}
 
 } // namespace Apace
