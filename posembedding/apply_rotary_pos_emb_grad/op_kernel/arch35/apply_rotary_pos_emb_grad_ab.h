@@ -17,6 +17,9 @@
  *   - cosb>1: bs=b*s, 每行 N=nQ/nK
  *   - cosb==1: bs=s, B 合并进 N, 每行 N=b*nQ/b*nK (tiling 已把统一后的 totalN 填入 nQ/nK)
  * 数据以扁平 bs_idx 线性访问, BSND/SBND 自动一致 (grad 与 cos 同布局)。
+ * 缓冲布局 (Q/K 在 ProcessNLoop 内串行闭环, in/out/x 队列由双路共享复用):
+ *   - grad/dx/query/key: Q/K 共享队列 × double buffer = 2×BS×N 行 (每张量)
+ *   - cos/sin: 单缓冲 (段首搬入、段尾释放, 下一段搬运在上一段 Free 之后, 双缓冲无法 prefetch)
  * 搬运按 D/2 是否 32B 对齐分两路 (与 BAB 一致):
  *   - D/2 对齐 (dAlign==d): UB 行距与 GM 行距一致, cos/sin/grad/x/dx/部分积
  *     均走整行连续 2D DataCopy (blockLen=行*D), 不再逐半行循环;
@@ -54,6 +57,8 @@ public:
 
 private:
     constexpr static int32_t bufferNum = 2;
+    // cos/sin 每段段首搬入、段尾释放, 下一段 Alloc 在上一段 Free 之后, 双缓冲无法 prefetch, 单缓冲足够
+    constexpr static int32_t cosSinBufferNum = 1;
 
     const ApplyRopeGradRegbaseABParams* tilingData_;
     TPipe* pipe_;
@@ -69,15 +74,14 @@ private:
     GlobalTensor<float> cosWsGm_;
     GlobalTensor<float> sinWsGm_;
 
-    TQue<QuePosition::VECIN, bufferNum> gradQInQue_;
-    TQue<QuePosition::VECIN, bufferNum> gradKInQue_;
-    TQue<QuePosition::VECIN, bufferNum> cosInQue_;
-    TQue<QuePosition::VECIN, bufferNum> sinInQue_;
-    TQue<QuePosition::VECOUT, bufferNum> gradQOutQue_;
-    TQue<QuePosition::VECOUT, bufferNum> gradKOutQue_;
+    // Q/K 在 ProcessNLoop 内串行闭环 (一路 Alloc→Free 完整结束后另一路才开始),
+    // in/out/x 队列由双路共享复用, UB 占用减半 → tiling divisor 8→4, 单 tile 行数翻倍
+    TQue<QuePosition::VECIN, bufferNum> gradXInQue_;
+    TQue<QuePosition::VECIN, cosSinBufferNum> cosInQue_;
+    TQue<QuePosition::VECIN, cosSinBufferNum> sinInQue_;
+    TQue<QuePosition::VECOUT, bufferNum> gradXOutQue_;
 
-    TQue<QuePosition::VECIN, bufferNum> queryInQue_;
-    TQue<QuePosition::VECIN, bufferNum> keyInQue_;
+    TQue<QuePosition::VECIN, bufferNum> xInQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradCosOutQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradSinOutQue_;
 
@@ -152,19 +156,16 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
     cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
     sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
 
-    // UB: cos/sin 各 ubFactorBS 行; grad/dx 各 ubFactorBS*ubFactorN 行 (双缓冲)
-    pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradQInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradKInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradQOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(gradKOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+    // UB: cos/sin 各 1×ubFactorBS 行 (单缓冲); grad/dx 共享队列各 2×ubFactorBS*ubFactorN 行
+    pipe_->InitBuffer(cosInQue_, cosSinBufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
+    pipe_->InitBuffer(sinInQue_, cosSinBufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
+    pipe_->InitBuffer(gradXInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+    pipe_->InitBuffer(gradXOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
 
     if constexpr (kDcosFlag) {
-        // query/key/gradCos/gradSin 与 grad 同形 (ubFactorBS*ubFactorN*dAlign), 仅 dCosFlag=1 时分配
+        // query/key 共享 xInQue_ (与 grad 同形 ubFactorBS*ubFactorN*dAlign), 仅 dCosFlag=1 时分配
         // 注意: nQ/nK 已是统一后的 totalN, 这里按 maxN 分配保证两路都够用
-        pipe_->InitBuffer(queryInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-        pipe_->InitBuffer(keyInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
+        pipe_->InitBuffer(xInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
         pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
         pipe_->InitBuffer(gradSinOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
     }
@@ -264,14 +265,14 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
             if (currQN > 0) {
                 int64_t qGmOffset = bsAbsIdx * tilingData_->nQ * d + absN * d;
                 ProcessN(sinTensor, cosTensor, gradQGm_, gradQOutGm_, queryGm_,
-                         gradQInQue_, gradQOutQue_, queryInQue_,
+                         gradXInQue_, gradXOutQue_, xInQue_,
                          qGmOffset, tilingData_->nQ, currQN, currBS,
                          cosPartial, sinPartial, true, false, wsOffset);
             }
             if (currKN > 0) {
                 int64_t kGmOffset = bsAbsIdx * tilingData_->nK * d + absN * d;
                 ProcessN(sinTensor, cosTensor, gradKGm_, gradKOutGm_, keyGm_,
-                         gradKInQue_, gradKOutQue_, keyInQue_,
+                         gradXInQue_, gradXOutQue_, xInQue_,
                          kGmOffset, tilingData_->nK, currKN, currBS,
                          cosPartial, sinPartial, false, true, wsOffset);
             }
@@ -279,14 +280,14 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
             if (currKN > 0) {
                 int64_t kGmOffset = bsAbsIdx * tilingData_->nK * d + absN * d;
                 ProcessN(sinTensor, cosTensor, gradKGm_, gradKOutGm_, keyGm_,
-                         gradKInQue_, gradKOutQue_, keyInQue_,
+                         gradXInQue_, gradXOutQue_, xInQue_,
                          kGmOffset, tilingData_->nK, currKN, currBS,
                          cosPartial, sinPartial, false, false, wsOffset);
             }
             if (currQN > 0) {
                 int64_t qGmOffset = bsAbsIdx * tilingData_->nQ * d + absN * d;
                 ProcessN(sinTensor, cosTensor, gradQGm_, gradQOutGm_, queryGm_,
-                         gradQInQue_, gradQOutQue_, queryInQue_,
+                         gradXInQue_, gradXOutQue_, xInQue_,
                          qGmOffset, tilingData_->nQ, currQN, currBS,
                          cosPartial, sinPartial, true, true, wsOffset);
             }

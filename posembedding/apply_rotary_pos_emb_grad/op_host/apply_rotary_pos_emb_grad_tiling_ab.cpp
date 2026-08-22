@@ -23,12 +23,18 @@ namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_AB_TILING_PRIORITY = 30000;
 constexpr int64_t AB_DOUBLE_BUFFER = 2;
 constexpr int64_t AB_CONST_TWO = 2;
-// UB 主 tensor 数 × double buffer:
-//   DcosFlag=0: gradQ + gradK + dxQ + dxK = 4 路 × Db(2) = 8 (cos/sin 折算到 (ubFactorN+1) 的 +1)
-//   DcosFlag=1: + query + key + gradCos(float) + gradSin(float)
-constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 16;
-constexpr int64_t AB_UB_DIVISOR_WITH_DCOS_FLOAT_PARTIAL = 20;
-constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 8;
+// UB 占用 (kernel 侧 Q/K 串行闭环共享 in/out/x 队列, cos/sin 单缓冲, 单位: dAlign 行):
+//   DcosFlag=0: cos/sin 1×BS×2 + gradIn 2×BS×N + dxOut 2×BS×N
+//             = (2 + 4N)×BS 行
+//   DcosFlag=1(fp32, partial 同 T 行宽): + xIn 2×BS×N + cosSinPartial 2×2×BS×N
+//             = (2 + 10N)×BS 行
+//   DcosFlag=1(bf16/fp16, partial 为 float, 行宽为 T 的 2 倍): 折算 T 当量
+//             = (2 + 14N)×BS 行
+// tiling 约束 ubFactorBS×(ubFactorN+1) ≤ ubSize/divisor/行字节, 安全条件
+// divisor ≥ (kN+2)/(N+1) 对全部 N 成立, 取上界整数:
+constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 10;
+constexpr int64_t AB_UB_DIVISOR_WITH_DCOS_FLOAT_PARTIAL = 14;
+constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 4;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
