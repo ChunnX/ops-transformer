@@ -698,9 +698,7 @@ def quantize_mxfp8_qk(tensor_fp32, fp8_dtype, group_size=32):
         has_inf,
         torch.full_like(finite_descale, E8M0_MAX_FINITE),
         finite_descale,
-    ).to(
-        torch.float32
-    )
+    ).to(torch.float32)
 
     descale_expanded = descale.repeat_interleave(group_size, dim=-1)[..., :last_dim]
     quantized = (
@@ -741,9 +739,7 @@ def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
         has_inf,
         torch.full_like(finite_descale, E8M0_MAX_FINITE),
         finite_descale,
-    ).to(
-        torch.float32
-    )
+    ).to(torch.float32)
 
     descale_expanded = descale.repeat_interleave(group_size, dim=1)[:, :seq_len, :, :]
     quantized = (
@@ -1527,10 +1523,9 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         q_grouped.permute(1, 0, 2),
         k_grouped.permute(1, 2, 0),
     ).permute(1, 2, 0)
-    group_scale = (
-        q_scale_block[..., :group_count].view(-1, 1, group_count)
-        * k_scale_mat[..., :group_count].view(1, -1, group_count)
-    )
+    group_scale = q_scale_block[..., :group_count].view(
+        -1, 1, group_count
+    ) * k_scale_mat[..., :group_count].view(1, -1, group_count)
     scaled_group_dot = torch.where(
         group_dot == 0,
         torch.zeros_like(group_dot),
