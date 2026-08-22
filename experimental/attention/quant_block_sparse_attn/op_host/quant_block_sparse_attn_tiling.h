@@ -34,6 +34,8 @@ constexpr uint32_t QBSA_BLOCK_SIZE = 128U;
 constexpr uint32_t QBSA_D_SIZE = 128U;
 constexpr uint32_t QBSA_QUANT_MODE_FP8 = 1U;
 constexpr uint32_t QBSA_QUANT_MODE_MXFP8_FULL_QUANT = 2U;
+constexpr uint8_t QBSA_PSCALE_DTYPE_E8M0 = 0U;
+constexpr uint8_t QBSA_PSCALE_DTYPE_FP32 = 1U;
 constexpr uint32_t QBSA_MASK_MODE_NONE = 0U;
 constexpr uint32_t QBSA_MASK_MODE_CAUSAL = 3U;
 constexpr uint32_t QBSA_MASK_MODE_MAX = 4U;
@@ -156,6 +158,7 @@ TILING_DATA_FIELD_DEF(uint8_t, fromFused)
 TILING_DATA_FIELD_DEF(uint8_t, isGqa)
 TILING_DATA_FIELD_DEF(uint8_t, isSoftMaxLseEnable)
 TILING_DATA_FIELD_DEF(uint32_t, pScaleShapeSize)
+TILING_DATA_FIELD_DEF(uint8_t, pScaleDtype)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnInputParamsRegbaseOp, QuantBlockSparseAttnInputParamsRegbase)
 
