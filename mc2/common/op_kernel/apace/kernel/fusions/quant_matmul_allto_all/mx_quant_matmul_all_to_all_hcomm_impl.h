@@ -310,22 +310,40 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
 
     // 逐tile通算掩盖流程:
-    // tile 0: matmul → 异步下发AllToAll
-    // tile 1: Wait(prevHandle) → matmul(与tile0通信并行) → 异步下发AllToAll
-    // ...
-    // tile N-1: Wait(prevHandle) → matmul → 异步下发AllToAll
-    // 末尾: SyncAll → Wait(curHandle) → Wait(prevHandle) → Finalize
+    // InitMmad在循环外只调用一次(避免Blaze模板重复内联导致编译卡死)
+    // for循环内只更新params的GM地址后调用operator()
+
+    Params params;
+    const auto &mmTile = tilingData_->tileQbmmTilingData;
+    SetupParams(mmTile, CalcTileM(0), params);
+    quantMatmulKernelImpl_.InitMmad(params);
 
     for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
         uint32_t curTileM = CalcTileM(tid);
 
-        // pipeline深度2: Wait前一个tile的AllToAll(不阻塞当前tile的matmul)
+        // pipeline深度2: Wait前一个tile的AllToAll
         if (hasPrevHandle_) {
             hccl_.Wait(prevHandle_);
         }
 
+        // 更新当前tile的GM地址偏移(不重新InitMmad)
+        uint64_t tileOffset = CalcTileOffset(tid);
+        uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
+        uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
+        uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+        uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
+
+        params.mmadParams.aGmAddr = x1_ + aByteOffset;
+        params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
+        params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
+        params.problemShape = ProblemShape{
+            static_cast<int64_t>(curTileM),
+            static_cast<int64_t>(perRankN),
+            static_cast<int64_t>(mmTile.k),
+            static_cast<int64_t>(rankDim_)};
+
         // matmul计算当前tile
-        RunMatmulTile(tid, curTileM);
+        quantMatmulKernelImpl_(params);
 
         // 确保matmul结果写入GM
         AscendC::SyncAll();
