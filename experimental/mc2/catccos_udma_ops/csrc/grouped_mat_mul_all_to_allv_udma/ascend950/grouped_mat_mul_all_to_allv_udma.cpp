@@ -26,7 +26,6 @@ namespace {
 enum class KernelVariant {
     kM0_128,
     kM0_256,
-    kM0_256N0_256,
 };
 
 template <class T>
@@ -44,36 +43,22 @@ struct TilingProfile {
     uint32_t commBlockM;
     uint32_t commNpuSplit;
     uint32_t commDataSplit;
-    uint32_t stageRows;
-    uint32_t workspaceStages;
-    uint32_t localCopyTileRows;
-    uint32_t selfCopyCores;
 };
 
 constexpr TilingProfile kDefaultTiling{
-    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16,
-    0, 2, 32, 1};
+    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
 constexpr TilingProfile kK1024N2048Tiling{
-    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16,
-    2048, 2, 16, 4};
+    KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4};
 constexpr TilingProfile kK512N2048Tiling{
-    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 62, 62, 1, 16,
-    2048, 2, 31, 2};
-
-// Dynamic-tiling compatibility mapping for the two records above:
-// MMAD config id 2 is encoded by kM0_256N0_256. The search framework's
-// mSplit=1 is the only supported GMM-AllToAllV value, exportCoreCount is not
-// applicable to this direction, and execution mode is not in the kernel ABI.
+    KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20};
 
 const TilingProfile &SelectTiling(
     uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)
 {
-    // The searched M=131072 is the balanced operating point. The local GMM
-    // input rows equal sum(global_tokens) and may differ across ranks under
-    // imbalanced routing. UDMA peers must nevertheless use the same M0 and
-    // communication schedule, so selection deliberately excludes local M and
-    // depends only on topology and K/N, which are rank-invariant for one
-    // collective launch.
+    // The local GMM input rows equal sum(global_tokens) and may differ across
+    // ranks under imbalanced routing. UDMA peers must nevertheless use the same
+    // M0 and communication schedule, so selection may only depend on topology
+    // and K/N, which are rank-invariant for one collective launch.
     const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
     if (isEightRank256ExpertCase && k == 1024 && n == 2048) {
         return kK1024N2048Tiling;
@@ -85,6 +70,7 @@ const TilingProfile &SelectTiling(
 }
 
 constexpr uint32_t kUbStages = 2;
+constexpr uint32_t kWorkspaceStages = 2;
 constexpr uint32_t kMaxLocalExperts = 32;
 constexpr uint64_t kAscend950UbBytes = 256UL * 1024;
 constexpr uint64_t kUdmaWqeScratchBytes = 256;
@@ -233,34 +219,25 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const TilingProfile &tiling = SelectTiling(
         k, n, static_cast<uint32_t>(worldSize),
         static_cast<uint32_t>(expertNum));
+    TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
+                "AI-core count * comm_interval must be divisible by world_size");
 
     // Target-order staging packs all N tiles of each selected M group into a
     // contiguous [rows, N] buffer, allowing one UDMA request per source rank
     // and communication round.
-    uint64_t stageRows = tiling.stageRows;
-    if (stageRows == 0) {
-        TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
-                    "AI-core count * comm_interval must be divisible by world_size");
-        const uint64_t blockPerComm =
-            static_cast<uint64_t>(blockDim) * tiling.commInterval;
-        const uint64_t tilePerCommInRank =
-            blockPerComm / static_cast<uint64_t>(worldSize);
-        const uint64_t nLoops =
-            (static_cast<uint64_t>(n64) + tiling.n0 - 1) / tiling.n0;
-        TORCH_CHECK(tilePerCommInRank >= nLoops,
-                    "target-order UDMA staging requires AI-core count * comm_interval / "
-                    "world_size >= ceil(n / N0)");
-        const uint64_t groupsPerCommInRank =
-            std::max<uint64_t>(1, tilePerCommInRank / nLoops);
-        stageRows = groupsPerCommInRank * tiling.m0;
-    }
-    TORCH_CHECK(stageRows > 0 && stageRows % tiling.m0 == 0 &&
-                    stageRows <= std::numeric_limits<uint32_t>::max(),
-                "stage_rows must be positive, M0-aligned, and fit uint32");
-    TORCH_CHECK(tiling.workspaceStages == 2 || tiling.workspaceStages == 3,
-                "workspace_stages must be 2 or 3");
+    const uint64_t blockPerComm =
+        static_cast<uint64_t>(blockDim) * tiling.commInterval;
+    const uint64_t tilePerCommInRank = blockPerComm / static_cast<uint64_t>(worldSize);
+    const uint64_t nLoops =
+        (static_cast<uint64_t>(n64) + tiling.n0 - 1) / tiling.n0;
+    TORCH_CHECK(tilePerCommInRank >= nLoops,
+                "target-order UDMA staging requires AI-core count * comm_interval / "
+                "world_size >= ceil(n / N0)");
+    const uint64_t groupsPerCommInRank =
+        std::max<uint64_t>(1, tilePerCommInRank / nLoops);
+    const uint64_t stageRows = groupsPerCommInRank * tiling.m0;
     const uint64_t requiredWorkspaceBytes =
-        static_cast<uint64_t>(tiling.workspaceStages) * stageRows *
+        static_cast<uint64_t>(kWorkspaceStages) * stageRows *
         static_cast<uint64_t>(worldSize) * static_cast<uint64_t>(n64) *
         sizeof(uint16_t);
     TORCH_CHECK(requiredWorkspaceBytes <=
@@ -302,7 +279,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint32_t localCopyColumns =
         TargetOrderLocalCopyColumns(static_cast<uint32_t>(n64));
     const uint32_t localCopyRows =
-        TargetOrderLocalCopyRows(tiling.localCopyTileRows, static_cast<uint32_t>(n64));
+        TargetOrderLocalCopyRows(tiling.commTileM / 2, static_cast<uint32_t>(n64));
     TORCH_CHECK(localCopyRows > 0 && localCopyColumns > 0,
                 "N is too large for target-order local MTE copy staging");
     Catlass::MatrixCoord commBlockShape{
@@ -315,8 +292,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         using SelectedKernel = typename SelectedConfig::Kernel;
         TORCH_CHECK(tiling.m0 == SelectedConfig::kM0 &&
                         tiling.n0 == SelectedConfig::kN0 &&
-                        tiling.k0 == SelectedConfig::kK0 &&
-                        tiling.workspaceStages == SelectedConfig::kWorkspaceStages,
+                        tiling.k0 == SelectedConfig::kK0,
                     "tiling profile does not match the selected kernel instance");
         typename SelectedDeviceOp::Arguments arguments{
             shape,
@@ -335,8 +311,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
             commBlockShape,
             commTileShape,
             static_cast<uint32_t>(outputRows64),
-            static_cast<uint32_t>(stageRows),
-            tiling.selfCopyCores,
         };
 
         SelectedDeviceOp deviceOp;
@@ -351,23 +325,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         };
         at_npu::native::OpCommand::RunOpApi("GroupedMatMulAllToAllVUdma", launch);
     };
-    TORCH_CHECK(tiling.selfCopyCores > 0 &&
-                    static_cast<uint64_t>(worldSize) + tiling.selfCopyCores - 1 <= blockDim,
-                "self_copy_cores exceeds the available AIV worker pool");
-    if (tiling.kernelVariant == KernelVariant::kM0_256N0_256) {
-        if (tiling.workspaceStages == 3) {
-            launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256N0_256WS3Config>{});
-        } else {
-            launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256N0_256Config>{});
-        }
-    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
-        if (tiling.workspaceStages == 3) {
-            launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256WS3Config>{});
-        } else {
-            launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
-        }
-    } else if (tiling.workspaceStages == 3) {
-        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultWS3Config>{});
+    if (tiling.kernelVariant == KernelVariant::kM0_256) {
+        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
     } else {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});
     }

@@ -358,15 +358,12 @@ all peers therefore keep the same M0 and communication schedule. The M column
 below records the balanced workload used for tuning and is not a runtime
 selection predicate. Other K/N shapes and topologies retain the default profile.
 
-| Tuning M | K | N | MMAD id | M0 | N0 | K0 | interval | comm tile M | comm block M | NPU/data split | stage rows | WS stages | local-copy rows | self-copy cores |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|
-| 131072 | 1024 | 2048 | 2 | 256 | 256 | 256 | 8 | 32 | 32 | 1/16 | 2048 | 2 | 16 | 4 |
-| 131072 | 512 | 2048 | 2 | 256 | 256 | 256 | 8 | 62 | 62 | 1/16 | 2048 | 2 | 31 | 2 |
+| Tuning M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 131072 | 1024 | 2048 | 128 | 256 | 256 | 14 | 64 | 64 | 4 | 4 |
+| 131072 | 512 | 2048 | 256 | 128 | 256 | 12 | 16 | 16 | 1 | 20 |
 
 The grouped-matmul host forwards both split values through `commCoreSplit` for
 ABI parity with the tuning record. The target-order scheduler currently does
-not use them to partition transfers. The explicit `localCopyTileRows` supersedes
-the compatibility `commTileM`; MMAD shape, `commInterval`, `commBlockM`,
-`stageRows`, workspace depth, and self-copy core count are effective. The
-search-only `mSplit=1`, `exportCoreCount=0`, and execution mode fields do not
-add runtime controls to this direction.
+not use them to partition transfers; M0, `commInterval`, `commTileM`, and
+`commBlockM` are effective in the selected kernel path.
