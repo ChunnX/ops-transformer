@@ -517,40 +517,37 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddMultiDataToUb(
     const LocalTensor<O> &dstLocal, const GlobalTensor<O> &srcGm, uint32_t dealRowCount, uint32_t dealColCount,
     uint32_t srcSingleRowCount, uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset)
 {
-    uint32_t cnt = dealRowCount * dstSingleRowCount;
-    if (cnt == 0) {
+    if (dealRowCount == 0 || dealColCount == 0 || repeatTimes == 0) {
         return;
     }
-    uint32_t groupSize = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(O));
-    uint32_t loopTimes = CeilDivT(repeatTimes, groupSize);
-    uint64_t srcGmOffset = 0;
-    for (uint32_t idx = 0; idx < loopTimes; idx++) {
-        auto &inputQue = idx % 2 == 0 ? inputQue2 : inputQue3;
-        uint32_t curGroupSize = min(groupSize, (repeatTimes - groupSize * idx));
-        LocalTensor<O> splitLocal = inputQue.AllocTensor<O>();
-        if (srcSingleRowCount == dstSingleRowCount && dstSingleRowCount == dealRowCount) {
-            for (uint32_t groupIdx = 0; groupIdx < curGroupSize; groupIdx++) {
-                DataCopy(splitLocal[groupIdx * cnt], srcGm[srcGmOffset], cnt);
-                srcGmOffset += offset;
-            }
-        } else {
-            for (uint32_t groupIdx = 0; groupIdx < curGroupSize; groupIdx++) {
-                DataCopyAlignGmToUb(splitLocal[groupIdx * cnt], srcGm[srcGmOffset], dealRowCount, dealColCount,
-                                    srcSingleRowCount, dstSingleRowCount);
-                srcGmOffset += offset;
-            }
-        }
+    // A full D x D tile can exceed the 32 KiB input queue. Process bounded
+    // row chunks so every DMA fits and every destination row is initialized.
+    uint32_t maxRowsPerChunk = BUFFER_SIZE_BYTE_32K / (dstSingleRowCount * sizeof(O));
+    maxRowsPerChunk = max(maxRowsPerChunk, 1U);
+    for (uint32_t rowOffset = 0; rowOffset < dealRowCount; rowOffset += maxRowsPerChunk) {
+        uint32_t curRows = min(maxRowsPerChunk, dealRowCount - rowOffset);
+        uint32_t cnt = curRows * dstSingleRowCount;
+        uint64_t dstOffset = static_cast<uint64_t>(rowOffset) * dstSingleRowCount;
 
-        inputQue.EnQue(splitLocal);
-        inputQue.DeQue<O>();
+        for (uint32_t repeatIdx = 0; repeatIdx < repeatTimes; repeatIdx++) {
+            LocalTensor<O> inputLocal = inputQue2.AllocTensor<O>();
+            uint64_t srcOffset = static_cast<uint64_t>(rowOffset) * srcSingleRowCount +
+                                 static_cast<uint64_t>(repeatIdx) * offset;
+            DataCopyAlignGmToUb(inputLocal, srcGm[srcOffset], curRows, dealColCount,
+                                srcSingleRowCount, dstSingleRowCount);
+            inputQue2.EnQue(inputLocal);
+            inputQue2.DeQue<O>();
 
-        PipeBarrier<PIPE_V>();
-        if (idx == 0) {
-            MultiAddVF<true>(dstLocal, splitLocal, dealRowCount, dealColCount, dstSingleRowCount, curGroupSize, cnt);
-        } else {
-            MultiAddVF<false>(dstLocal, splitLocal, dealRowCount, dealColCount, dstSingleRowCount, curGroupSize, cnt);
+            PipeBarrier<PIPE_V>();
+            if (repeatIdx == 0) {
+                MultiAddVF<true>(dstLocal[dstOffset], inputLocal, curRows, dealColCount,
+                                 dstSingleRowCount, 1, cnt);
+            } else {
+                MultiAddVF<false>(dstLocal[dstOffset], inputLocal, curRows, dealColCount,
+                                  dstSingleRowCount, 1, cnt);
+            }
+            inputQue2.FreeTensor(inputLocal);
         }
-        inputQue.FreeTensor(splitLocal);
     }
     PipeBarrier<PIPE_V>();
 }
@@ -1215,9 +1212,19 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
                                           tailSlice.validSeqCnt - tailRows) *
                     constInfo_.headDim;
                 LocalTensor<T> tailKv = tmpBuff2.Get<T>();
-                DataCopyAlignGmToUb(tailKv, kvDBMm1ResGm[tailOffset],
-                                    tailRows, constInfo_.headDim,
-                                    constInfo_.headDim, constInfo_.headDim);
+                if (constInfo_.kBaseNum == 1) {
+                    DataCopyAlignGmToUb(tailKv, kvDBMm1ResGm[tailOffset],
+                                        tailRows, constInfo_.headDim,
+                                        constInfo_.headDim, constInfo_.headDim);
+                } else {
+                    // The incomplete tail is persisted for the next call and
+                    // is not consumed by Pool in this call, so save the full
+                    // K projection rather than its first K partial.
+                    AddMultiDataToUb(tailKv, kvDBMm1ResGm[tailOffset],
+                                     tailRows, constInfo_.headDim,
+                                     constInfo_.headDim, constInfo_.headDim,
+                                     constInfo_.kBaseNum, constInfo_.mm1KvResSize);
+                }
                 event_t eventIdMte2ToV =
                     static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
                 SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
