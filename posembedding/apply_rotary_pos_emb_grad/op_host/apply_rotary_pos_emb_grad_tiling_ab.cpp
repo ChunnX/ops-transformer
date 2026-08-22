@@ -24,11 +24,13 @@ constexpr uint64_t APPLY_ROPE_GRAD_AB_TILING_PRIORITY = 30000;
 constexpr int64_t AB_DOUBLE_BUFFER = 2;
 constexpr int64_t AB_CONST_TWO = 2;
 // UB 主 tensor 数 × double buffer:
-//   DcosFlag=0: gradQ + gradK + dxQ + dxK = 4 路 × Db(2) = 8 (cos/sin 折算到 (ubFactorN+1) 的 +1)
-//   DcosFlag=1: + query + key + gradCos(float) + gradSin(float)
+//   DcosFlag=0: Q/K 串行处理, kernel 侧复用同一对 grad-in/grad-out 队列 (见 ab.h P0 改造),
+//              主 tensor = grad + dx 共 2 路 × Db(2) = 4 (cos/sin 折算到 (ubFactorN+1) 的 +1)
+//   DcosFlag=1: gradQ + gradK + dxQ + dxK = 4 路 × Db(2) = 8,
+//              另加 query + key + gradCos(float) + gradSin(float)
 constexpr int64_t AB_UB_DIVISOR_WITH_DCOS = 16;
 constexpr int64_t AB_UB_DIVISOR_WITH_DCOS_FLOAT_PARTIAL = 20;
-constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 8;
+constexpr int64_t AB_UB_DIVISOR_WITHOUT_DCOS = 4;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
