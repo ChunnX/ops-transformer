@@ -348,7 +348,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     serverId_ = rankId_ / rankPerServer_;
     rankIdInServer_ = rankId_ % rankPerServer_;
     for (int i = 0; i < worldSize_; i++) {
-        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
+        g_winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -368,7 +368,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
-    params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
+    params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
     params_.tilingData = tilingData;
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         gmmToEpilogueFlag_ = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
@@ -2315,7 +2315,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
         if (rankIndex == rankId_) {
             continue;
         }
-        __gm__ int32_t *syncRemoteAddr = (__gm__ int32_t *)(winRankAddr_[rankIndex]) + rankId_ * 16;
+        __gm__ int32_t *syncRemoteAddr = (__gm__ int32_t *)(g_winRankAddr_[rankIndex]) + rankId_ * 16;
         hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount,
                         static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
