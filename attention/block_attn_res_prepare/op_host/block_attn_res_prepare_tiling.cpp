@@ -85,7 +85,7 @@ bool BlockAttnResPrepareTiling::IsCapable()
     return true;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::GetPlatformInfo()
+ge::graphStatus BlockAttnResPrepareTilingBase::GetPlatformInfo()
 {
     auto *platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -116,10 +116,11 @@ ge::graphStatus BlockAttnResPrepareTiling::GetPlatformInfo()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ubSize_ <= UB_RESERVED_BYTES, OP_LOGE(context_->GetNodeName(), "UB size is too small: %lu", ubSize_),
                 return ge::GRAPH_FAILED);
+    workspaceSize_ = systemWorkspaceSize_;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
+ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputShapes()
 {
     const auto *blockResStorageShape = context_->GetInputShape(BLOCK_RES_INDEX);
     const auto *validStorageShape = context_->GetInputShape(VALID_BLOCKS_INDEX);
@@ -164,7 +165,7 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::CheckInputDtypes() const
+ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputDtypes() const
 {
     const auto *blockResDesc = context_->GetInputDesc(BLOCK_RES_INDEX);
     const auto *validDesc = context_->GetInputDesc(VALID_BLOCKS_INDEX);
@@ -179,7 +180,7 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputDtypes() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::GetShapeAttrsInfo()
+ge::graphStatus BlockAttnResPrepareTilingBase::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE(OP_NAME, "tiling context is null"), return ge::GRAPH_FAILED);
     if (CheckInputShapes() != ge::GRAPH_SUCCESS || CheckInputDtypes() != ge::GRAPH_SUCCESS) {
@@ -193,6 +194,29 @@ ge::graphStatus BlockAttnResPrepareTiling::GetShapeAttrsInfo()
                 OP_LOGE(context_->GetNodeName(), "eps must be finite and greater than zero"),
                 return ge::GRAPH_FAILED);
     eps_ = *eps;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(
+    uint64_t totalWorkUnits, uint64_t maxCoreNum, const char *templateName, WorkDistribution &distribution) const
+{
+    OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "%s work units exceed uint32 tiling range", templateName),
+                return ge::GRAPH_FAILED);
+
+    const uint64_t usedCoreNum = std::min(maxCoreNum, totalWorkUnits);
+    OP_CHECK_IF(usedCoreNum == 0U, OP_LOGE(context_->GetNodeName(), "%s used core number is zero", templateName),
+                return ge::GRAPH_FAILED);
+    const uint64_t workUnitsPerCore = totalWorkUnits / usedCoreNum;
+    OP_CHECK_IF(workUnitsPerCore > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "%s work units per core exceed uint32 range", templateName),
+                return ge::GRAPH_FAILED);
+
+    distribution.usedCoreNum = static_cast<uint32_t>(usedCoreNum);
+    distribution.blockFactor = static_cast<uint32_t>(workUnitsPerCore);
+    distribution.bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum);
+    distribution.tailBlockFactor =
+        distribution.blockFactor + ((distribution.bigCoreNum > 0U) ? 1U : 0U);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -245,21 +269,12 @@ bool BlockAttnResPrepareTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
 ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
 {
     const uint64_t totalWorkUnits = totalT_ * totalS_;
-    OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "Vector work units exceed uint32 tiling range"),
-                return ge::GRAPH_FAILED);
-    usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(aivCoreNum_, totalWorkUnits));
-    OP_CHECK_IF(usedCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "used core number is zero"),
-                return ge::GRAPH_FAILED);
-    const uint64_t workUnitsPerCore = totalWorkUnits / usedCoreNum_;
-    OP_CHECK_IF(workUnitsPerCore > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "work units per core exceed uint32 range"),
-                return ge::GRAPH_FAILED);
-
-    const uint32_t blockFactor = static_cast<uint32_t>(workUnitsPerCore);
-    const uint32_t bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum_);
-    const uint32_t tailBlockFactor = blockFactor + ((bigCoreNum > 0) ? 1U : 0U);
-    const bool hasMultipleWorkRounds = tailBlockFactor > 1U;
+    WorkDistribution distribution;
+    if (CalculateWorkDistribution(totalWorkUnits, aivCoreNum_, "Vector", distribution) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    usedCoreNum_ = distribution.usedCoreNum;
+    const bool hasMultipleWorkRounds = distribution.tailBlockFactor > 1U;
 
     OP_CHECK_IF(!SelectVectorBaseD(hasMultipleWorkRounds),
                 OP_LOGE(context_->GetNodeName(), "no Vector baseD satisfies UB capacity"),
@@ -271,9 +286,9 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
     tilingData_.totalWorkUnits = static_cast<uint32_t>(totalWorkUnits);
     tilingData_.totalD = totalD_;
     tilingData_.usedCoreNum = usedCoreNum_;
-    tilingData_.bigCoreNum = bigCoreNum;
-    tilingData_.blockFactor = blockFactor;
-    tilingData_.tailBlockFactor = tailBlockFactor;
+    tilingData_.bigCoreNum = distribution.bigCoreNum;
+    tilingData_.blockFactor = distribution.blockFactor;
+    tilingData_.tailBlockFactor = distribution.tailBlockFactor;
     tilingData_.baseD = baseD_;
     tilingData_.vCacheRows = static_cast<uint8_t>(vCacheRows_);
     tilingData_.qBufferNum = static_cast<uint8_t>(qBufferNum_);
@@ -285,7 +300,7 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::DoLibApiTiling()
+ge::graphStatus BlockAttnResPrepareTilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
@@ -295,33 +310,46 @@ uint64_t BlockAttnResPrepareTiling::GetTilingKey() const
     return BLOCK_ATTN_RES_PREPARE_VECTOR_KEY;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::GetWorkspaceSize()
+ge::graphStatus BlockAttnResPrepareTilingBase::GetWorkspaceSize()
 {
     size_t *workspaceSizes = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(workspaceSizes == nullptr, OP_LOGE(context_->GetNodeName(), "workspace size address is null"),
                 return ge::GRAPH_FAILED);
-    workspaceSizes[0] = static_cast<size_t>(systemWorkspaceSize_);
+    OP_CHECK_IF(workspaceSize_ > std::numeric_limits<size_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "workspace exceeds size_t range"), return ge::GRAPH_FAILED);
+    workspaceSizes[0] = static_cast<size_t>(workspaceSize_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTiling::PostTiling()
+ge::graphStatus BlockAttnResPrepareTilingBase::PostTiling()
 {
     context_->SetBlockDim(usedCoreNum_);
     context_->SetTilingKey(GetTilingKey());
     context_->SetScheduleMode(VECTOR_SCHEDULE_MODE);
+
+    const TilingDataView tilingDataView = GetTilingDataView();
+    const char *templateName = tilingDataView.templateName == nullptr ? "unknown" : tilingDataView.templateName;
+    OP_CHECK_IF(tilingDataView.data == nullptr || tilingDataView.size == 0U,
+                OP_LOGE(context_->GetNodeName(), "%s tiling data is empty", templateName), return ge::GRAPH_FAILED);
     auto *rawTilingData = context_->GetRawTilingData();
     OP_CHECK_IF(rawTilingData == nullptr, OP_LOGE(context_->GetNodeName(), "raw tiling data is null"),
                 return ge::GRAPH_FAILED);
     auto *rawData = rawTilingData->GetData();
     OP_CHECK_IF(rawData == nullptr, OP_LOGE(context_->GetNodeName(), "raw tiling data buffer is null"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTilingData->GetCapacity() < sizeof(BlockAttnResPrepareTilingData),
-                OP_LOGE(context_->GetNodeName(), "raw tiling data capacity is insufficient"),
+    OP_CHECK_IF(rawTilingData->GetCapacity() < tilingDataView.size,
+                OP_LOGE(context_->GetNodeName(), "raw %s tiling data capacity is insufficient", templateName),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(memcpy_s(rawData, rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_)) != EOK,
-                OP_LOGE(context_->GetNodeName(), "copy vector tiling data failed"), return ge::GRAPH_FAILED);
-    rawTilingData->SetDataSize(sizeof(BlockAttnResPrepareTilingData));
+    OP_CHECK_IF(memcpy_s(rawData, rawTilingData->GetCapacity(), tilingDataView.data, tilingDataView.size) != EOK,
+                OP_LOGE(context_->GetNodeName(), "copy %s tiling data failed", templateName),
+                return ge::GRAPH_FAILED);
+    rawTilingData->SetDataSize(tilingDataView.size);
     return ge::GRAPH_SUCCESS;
+}
+
+BlockAttnResPrepareTilingBase::TilingDataView BlockAttnResPrepareTiling::GetTilingDataView() const
+{
+    return {&tilingData_, sizeof(tilingData_), "Vector"};
 }
 
 void BlockAttnResPrepareTiling::DumpTilingInfo()
@@ -466,15 +494,12 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     OP_CHECK_IF(tTileNum > std::numeric_limits<uint64_t>::max() / sTileNum_,
                 OP_LOGE(context_->GetNodeName(), "Cube work count overflows uint64"), return ge::GRAPH_FAILED);
     const uint64_t totalWorkUnits = tTileNum * sTileNum_;
-    OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "Cube work units exceed uint32 tiling range"),
-                return ge::GRAPH_FAILED);
     const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / 2U);
-    usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(mixedCoreNum, totalWorkUnits));
-    OP_CHECK_IF(usedCoreNum_ == 0U || totalWorkUnits / usedCoreNum_ > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "invalid Cube work distribution"), return ge::GRAPH_FAILED);
-    const uint32_t blockFactor = static_cast<uint32_t>(totalWorkUnits / usedCoreNum_);
-    const uint32_t bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum_);
+    WorkDistribution distribution;
+    if (CalculateWorkDistribution(totalWorkUnits, mixedCoreNum, "Cube", distribution) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    usedCoreNum_ = distribution.usedCoreNum;
 
     // MM1 produces [baseS, baseT * N]. AIV and AIC use two E slots to overlap the next token's softmax with the
     // current token's MM2. MM2 Fixpipe writes O directly and therefore needs no output workspace.
@@ -503,9 +528,9 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.usedCoreNum = usedCoreNum_;
     tilingData_.aicCoreNum = static_cast<uint32_t>(aicCoreNum_);
     tilingData_.aivCoreNum = static_cast<uint32_t>(aivCoreNum_);
-    tilingData_.bigCoreNum = bigCoreNum;
-    tilingData_.blockFactor = blockFactor;
-    tilingData_.tailBlockFactor = blockFactor + (bigCoreNum > 0U ? 1U : 0U);
+    tilingData_.bigCoreNum = distribution.bigCoreNum;
+    tilingData_.blockFactor = distribution.blockFactor;
+    tilingData_.tailBlockFactor = distribution.tailBlockFactor;
     tilingData_.baseT = baseT_;
     tilingData_.baseS = baseS_;
     tilingData_.baseD = baseD_;
@@ -533,43 +558,14 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareCubeTiling::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
-
 uint64_t BlockAttnResPrepareCubeTiling::GetTilingKey() const
 {
     return BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY;
 }
 
-ge::graphStatus BlockAttnResPrepareCubeTiling::GetWorkspaceSize()
+BlockAttnResPrepareTilingBase::TilingDataView BlockAttnResPrepareCubeTiling::GetTilingDataView() const
 {
-    size_t *workspaceSizes = context_->GetWorkspaceSizes(1);
-    OP_CHECK_IF(workspaceSizes == nullptr, OP_LOGE(context_->GetNodeName(), "workspace size address is null"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(workspaceSize_ > std::numeric_limits<size_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "Cube workspace exceeds size_t"), return ge::GRAPH_FAILED);
-    workspaceSizes[0] = static_cast<size_t>(workspaceSize_);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus BlockAttnResPrepareCubeTiling::PostTiling()
-{
-    context_->SetBlockDim(usedCoreNum_);
-    context_->SetTilingKey(GetTilingKey());
-    context_->SetScheduleMode(VECTOR_SCHEDULE_MODE);
-    auto *rawTilingData = context_->GetRawTilingData();
-    OP_CHECK_IF(rawTilingData == nullptr || rawTilingData->GetData() == nullptr,
-                OP_LOGE(context_->GetNodeName(), "raw Cube tiling data is null"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTilingData->GetCapacity() < sizeof(BlockAttnResPrepareCubeTilingData),
-                OP_LOGE(context_->GetNodeName(), "raw Cube tiling data capacity is insufficient"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(memcpy_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_)) !=
-                    EOK,
-                OP_LOGE(context_->GetNodeName(), "copy Cube tiling data failed"), return ge::GRAPH_FAILED);
-    rawTilingData->SetDataSize(sizeof(BlockAttnResPrepareCubeTilingData));
-    return ge::GRAPH_SUCCESS;
+    return {&tilingData_, sizeof(tilingData_), "Cube"};
 }
 
 void BlockAttnResPrepareCubeTiling::DumpTilingInfo()
