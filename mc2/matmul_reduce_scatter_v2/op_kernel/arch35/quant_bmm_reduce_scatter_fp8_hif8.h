@@ -75,7 +75,6 @@ private:
     GM_ADDR x2ScaleGM_{nullptr};
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR gmToFloat_{nullptr};
-    __gm__ HcclCombinOpParam *context_{nullptr};
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
@@ -100,7 +99,6 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
@@ -110,7 +108,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     biasGM_ = biasGM;
     x1ScaleGM_ = x1ScaleGM;
     x2ScaleGM_ = x2ScaleGM;
-    rankId_ = context_->rankId;
+    rankId_ = hccl_.GetRankId();
     auto &&cfg = tilingData_->param;
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;
