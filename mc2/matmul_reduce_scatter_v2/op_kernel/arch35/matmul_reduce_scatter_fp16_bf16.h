@@ -57,7 +57,6 @@ private:
     GM_ADDR cGM_;
     GM_ADDR biasGM_;
     GM_ADDR gmToFloat_;
-    __gm__ HcclCombinOpParam *context_;
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
@@ -80,7 +79,6 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
     debugMode_ = tilingData_->debugMode;
@@ -88,7 +86,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = context_->rankId;
+    rankId_ = hccl_.GetRankId();
 
     // 划分workspace
     gmToFloat_ = workspaceGM;
