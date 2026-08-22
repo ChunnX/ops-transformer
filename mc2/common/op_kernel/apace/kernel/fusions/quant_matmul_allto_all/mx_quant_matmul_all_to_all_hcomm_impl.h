@@ -84,7 +84,6 @@ struct PostComputeCommPolicy {
         lastIssuedTileIdx_ = tileIdx;
     }
 
-    // 记录已下发AllToAll的最大tileIdx
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         // 去重: 同一tileIdx只处理一次
@@ -93,15 +92,11 @@ struct PostComputeCommPolicy {
         }
 
         // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
-        // 不能在此处Wait——Blaze kernel内部未做SyncAll,rank间可能不同步,
-        // Wait会导致快的rank等待慢的rank下发AllToAll,形成死锁
         if (tileIdx > 0) {
             uint32_t prevTileIdx = tileIdx - 1;
-            // 主循环(连续递增): 下发prevTileIdx的AllToAll
-            if (prevTileIdx == lastCommTileIdx_ || lastCommTileIdx_ == 0xFFFFFFFF) {
-                IssueAllToAll(prevTileIdx);
-            }
-            // 末尾循环(跳跃): 跳过,在PrepareLastTileAllToAll中处理
+            // 无论主循环还是末尾循环,都下发prevTileIdx的AllToAll
+            // 末尾循环时所有matmul已完成,数据有效
+            IssueAllToAll(prevTileIdx);
         }
         lastCommTileIdx_ = tileIdx;
     }
@@ -252,28 +247,11 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareLastTileAllToAll()
 {
-    // Blaze kernel完成后，下发所有未下发的tile通信
-    // 主循环中WaitTile(tileIdx)下发tileIdx-1，末尾循环跳过的tile在这里补发
-    auto &&commTiling = tilingData_->commTilingData;
-
-    // lastIssuedTileIdx_是主循环中最后一个已下发的tile
-    // 需要下发 lastIssuedTileIdx_+1 到 totalTileCnt_-1 的所有tile
-    uint32_t firstUnissued = commPolicy_.lastIssuedTileIdx_ + 1;
+    // Blaze kernel完成后，下发最后一个tile的AllToAll
+    // WaitTile(tileIdx)下发tileIdx-1，最后一个tile无后续WaitTile触发
     uint32_t lastTileIdx = totalTileCnt_ - 1;
-
-    if (firstUnissued <= lastTileIdx) {
-        // 用batchCnt方式一次性下发所有剩余tile
-        // 每个tile的M=baseM,数据在mmResult中按baseM*rankN步进
-        uint64_t perRankN = commPolicy_.nonSplitAxisSize_ / commPolicy_.rankDim_;
-        uint64_t offset = commPolicy_.CalcTileOffset(firstUnissued);
-        uint32_t totalRemainingM = (lastTileIdx - firstUnissued + 1) * commPolicy_.baseM_;
-
-        commPolicy_.curHandle_ = hccl_.template AlltoAll<true>(
-            mmResultGM_ + offset * commPolicy_.nonSplitAxisSize_ * sizeof(YType),
-            y_ + offset * perRankN * sizeof(YType),
-            perRankN, static_cast<AscendC::HcclDataType>(commPolicy_.yHcclDataType_),
-            perRankN, static_cast<uint8_t>(totalRemainingM));
-        commPolicy_.lastIssuedTileIdx_ = lastTileIdx;
+    if (lastTileIdx != commPolicy_.lastIssuedTileIdx_) {
+        commPolicy_.IssueAllToAll(lastTileIdx);
     }
 
     // Wait所有已下发的AllToAll
@@ -362,8 +340,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     }
 
     // Phase 3: Finalize
-    AscendC::SyncAll();
-    hccl_.Finalize();
     AscendC::SyncAll();
     hccl_.Finalize();
 }
