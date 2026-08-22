@@ -198,14 +198,7 @@ private:
     {
         auto &offsetCalculator = softmaxLseGm.offsetCalculator;
 
-        uint32_t s1Size = 0;
-
-        if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        } else {
-            s1Size = offsetCalculator.GetDimS1();
-        }
-
+        uint32_t s1Size = offsetCalculator.GetDimS1();
         uint64_t gSize = offsetCalculator.GetDimG();
         uint32_t startS1Idx = gmCoord.gS1Idx / gSize;
         uint32_t startGIdx = gmCoord.gS1Idx % gSize;
@@ -233,7 +226,6 @@ private:
         auto &offsetCalculator = softmaxLseGm.offsetCalculator;
 
         uint64_t qActSeqLens = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        ;
         uint64_t s1Size = offsetCalculator.GetDimS1();
         uint64_t startGIdx = gmCoord.gS1Idx / qActSeqLens;
         uint64_t startS1Idx = gmCoord.gS1Idx % qActSeqLens;
