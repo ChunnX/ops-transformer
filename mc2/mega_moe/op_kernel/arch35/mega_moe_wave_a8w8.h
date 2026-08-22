@@ -506,8 +506,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
     GMMAddrInfo gmmAddrInfo{};
     int32_t vecSetSyncCom = 0;
-    int32_t gmTileSequence = 0;
-    GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmTileSequence, gmm1PingPongIdx_};
+    GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType, QuantScaleOutType, false>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
@@ -515,7 +514,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
                                            GMM1_TILE_M, GMM1_INTERLEAVED, true>(
             commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
-            sharedExpertIdx, nullptr, true);
+            sharedExpertIdx, nullptr, nullptr, true);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0;
@@ -530,8 +529,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
     int32_t vecSetSyncCom = 0;
-    int32_t gmTileSequence = 0;
-    GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
+    GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm2GlobalBuffer<ActivationType, Weight1Type, QuantScaleOutType, GMM1_TILE_M>(
@@ -777,9 +775,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (useAllAivCores) {
             activeBufferConfig =
                 PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, bufferConfig, waveCombineScratch_);
-            RunWaveExpertCombineStage<CombineQuantMode, true>(
-                commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_, params_, combineAddrInfo,
-                combineState, combineState.expertIdx, rowSequence);
+            RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, activeBufferConfig,
+                                                              waveCombineScratch_, params_, combineAddrInfo,
+                                                              combineState, combineState.expertIdx, rowSequence);
         } else {
             RunWaveExpertCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, activeBufferConfig,
                                                         waveCombineScratch_, params_, combineAddrInfo, combineState,
@@ -810,8 +808,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertLoopState combineExpertState = CreateExpertLoopState(commonConfig_);
     ExpertLoopState allCoreCombineExpertState = CreateExpertLoopState(commonConfig_);
     int32_t vecSetSyncCom = 0;
-    int32_t gmm1TileSequence = 0;
-    GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1TileSequence, gmm1PingPongIdx_};
+    GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
 
     ExpertTokenPosition waveBeginPosition{};
     ExpertTokenPosition gmm1Position{};
@@ -857,8 +854,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
-        int32_t gmm2TileSequence = 0;
-        GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
+        GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
         ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
                         allCoreCombineExpertIndex, allCoreCombineExpertState);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
