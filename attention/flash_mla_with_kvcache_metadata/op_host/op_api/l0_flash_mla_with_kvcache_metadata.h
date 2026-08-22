@@ -8,17 +8,16 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_FLASH_MLA_METADATA_H
-#define L0_FLASH_MLA_METADATA_H
+#ifndef L0_FLASH_MLA_WITH_KVCACHE_METADATA_H
+#define L0_FLASH_MLA_WITH_KVCACHE_METADATA_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* FlashMlaMetadata(
+const aclTensor* FlashMlaWithKvcacheMetadata(
     const aclTensor* cuSeqlensQOptional,
-    const aclTensor* cuSeqlensKvOptional,
+    const aclTensor* cacheSeqlensOptional,
     const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKvOptional,
     int64_t batchSize,
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKv,
@@ -26,8 +25,6 @@ const aclTensor* FlashMlaMetadata(
     int64_t numHeadsKv,
     int64_t headDim,
     int64_t maskMode,
-    int64_t winLeft,
-    int64_t winRight,
     const char* layoutQ,
     const char* layoutKv,
     const char* layoutOut,
