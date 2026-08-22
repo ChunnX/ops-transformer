@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_mla_metadata_check.h
+ * \file flash_mla_with_kvcache_metadata_check.h
  * \brief MLA metadata checker.
  * Base-size convention (D17/B3): mBaseSize=64 / s2BaseSize=128 are FIXED for MLA - the head fields
  * HEAD_M_BASE_SIZE_INDEX / HEAD_S2_BASE_SIZE_INDEX always carry 64/128 (forced in GenMetadata, not
@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-class FlashMlaMetadataCheck {
+class FlashMlaWithKvcacheMetadataCheck {
 public:
     // m0070 参数序（与 meta.txt 文档一致）：无 cu_seqlens_kv/seqused_kv/win_*
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
@@ -68,7 +68,7 @@ private:
 };
 
 inline aclnnStatus
-FlashMlaMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
+FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
                                    const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
                                    int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                    int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
@@ -88,7 +88,7 @@ FlashMlaMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const ac
 }
 
 inline aclnnStatus
-FlashMlaMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                      int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
                                      const char *layoutQ, const char *layoutKv, const char *layoutOut)
 {
@@ -118,7 +118,7 @@ FlashMlaMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int6
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus FlashMlaMetadataCheck::CheckMask(int64_t maskMode)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode)
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
@@ -130,7 +130,7 @@ inline aclnnStatus FlashMlaMetadataCheck::CheckMask(int64_t maskMode)
 }
 
 inline aclnnStatus
-FlashMlaMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                       const char *layoutQ, const char *layoutKv,
                                       const aclTensor *cuSeqlensQOptional,
                                       const aclTensor *cacheSeqlensOptional,
@@ -157,7 +157,7 @@ FlashMlaMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int
 }
 
 inline aclnnStatus
-FlashMlaMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
+FlashMlaWithKvcacheMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
                                         const aclTensor *cuSeqlensQOptional,
                                         const aclTensor *cacheSeqlensOptional,
                                         const aclTensor *sequsedQOptional)
@@ -177,20 +177,20 @@ FlashMlaMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
     return ACLNN_SUCCESS;
 }
 
-inline bool FlashMlaMetadataCheck::IsTensorExist(const aclTensor *tensor)
+inline bool FlashMlaWithKvcacheMetadataCheck::IsTensorExist(const aclTensor *tensor)
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
            (tensor->GetData() != nullptr);
 }
 
-inline bool FlashMlaMetadataCheck::IsPA(const char *layout)
+inline bool FlashMlaWithKvcacheMetadataCheck::IsPA(const char *layout)
 {
     return (strcmp(layout, "PA_BNBD") == 0 || strcmp(layout, "PA_BBND") == 0 || strcmp(layout, "PA_NZ") == 0 ||
             strcmp(layout, "NZ") == 0);
 }
 
 inline aclnnStatus
-FlashMlaMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
+FlashMlaWithKvcacheMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
 {
     if (seqLens == nullptr) {
         return ACLNN_SUCCESS;

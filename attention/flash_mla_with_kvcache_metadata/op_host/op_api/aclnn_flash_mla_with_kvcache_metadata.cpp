@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file aclnn_flash_mla_metadata.cpp
+ * \file aclnn_flash_mla_with_kvcache_metadata.cpp
  * \brief
  */
 
@@ -34,13 +34,13 @@
 extern "C" {
 #endif
 
-aclnnStatus aclnnFlashMlaMetadataGetWorkspaceSize(
+aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
     int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv, const char *layoutOut,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnFlashMlaMetadata,
+    L2_DFX_PHASE_1(aclnnFlashMlaWithKvcacheMetadata,
                    DFX_IN(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, batchSize, maxSeqlenQ,
                           maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, layoutQ, layoutKv, layoutOut),
                    DFX_OUT(metaData));
@@ -48,7 +48,7 @@ aclnnStatus aclnnFlashMlaMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = FlashMlaMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
+    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
                                                   batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
                                                   headDim, maskMode, layoutQ, layoutKv, layoutOut, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -72,10 +72,10 @@ aclnnStatus aclnnFlashMlaMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnFlashMlaWithKvcacheMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                   aclrtStream stream)
 {
-    L2_DFX_PHASE_2(aclnnFlashMlaMetadata);
+    L2_DFX_PHASE_2(aclnnFlashMlaWithKvcacheMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
