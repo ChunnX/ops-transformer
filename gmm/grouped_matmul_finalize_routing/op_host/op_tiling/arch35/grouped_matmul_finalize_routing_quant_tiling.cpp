@@ -185,8 +185,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
                 OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
     OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
                 OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
-    auto expectedLogitDtype = IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16 ? ge::DT_BF16 : ge::DT_FLOAT;
-    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", expectedLogitDtype),
+    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
                 OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
     if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
