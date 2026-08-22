@@ -32,8 +32,7 @@ namespace optiling {
 
 QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmBasicApiTiling(context)
-{
-}
+{}
 
 bool QGMMInplaceAddBasicApiTiling::IsCapable()
 {
@@ -47,7 +46,7 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
            (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
-                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+                                 static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
@@ -79,8 +78,7 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(
         scaleDimNum < 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum),
-                                     "positive integer"),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum), "positive integer"),
         return false);
 
     auto x1ScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
@@ -168,4 +166,4 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling
