@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FLASH_MLA_METADATA_H
-#define FLASH_MLA_METADATA_H
+#ifndef FLASH_MLA_WITH_KVCACHE_METADATA_H
+#define FLASH_MLA_WITH_KVCACHE_METADATA_H
 
 #include <cstdint>
 #include <cassert>

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_mla_metadata_aicpu.cpp
+ * \file flash_mla_with_kvcache_metadata_aicpu.cpp
  * \brief
  */
 
@@ -19,8 +19,8 @@
 #include <numeric>
 #include <cstdio>
 #include <cmath>
-#include "flash_mla_metadata.h"
-#include "flash_mla_metadata_aicpu.h"
+#include "flash_mla_with_kvcache_metadata.h"
+#include "flash_mla_with_kvcache_metadata_aicpu.h"
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
@@ -30,7 +30,7 @@ constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
 using namespace optiling;
 
 namespace aicpu {
-uint32_t FlashMlaMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t FlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Prepare data failed!");
@@ -45,13 +45,12 @@ uint32_t FlashMlaMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return FA_KERNEL_STATUS_OK;
 }
 
-bool FlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool FlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
-    cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
+    cacheSeqlens_ = ctx.Input(static_cast<uint32_t>(ParamId::cacheSeqlens));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
-    sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -70,8 +69,6 @@ bool FlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
     GetAttrValueOpt(ctx, "mask_mode", maskMode_);
-    GetAttrValueOpt(ctx, "win_left", winLeft_);
-    GetAttrValueOpt(ctx, "win_right", winRight_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
@@ -80,7 +77,7 @@ bool FlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return ParamsInit();
 }
 
-bool FlashMlaMetadataCpuKernel::ParamsInit()
+bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
 {
     InitDeviceInfo();
     InitBaseInfo();
@@ -88,14 +85,14 @@ bool FlashMlaMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-bool FlashMlaMetadataCpuKernel::ParamsCheck()
+bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 {
     KERNEL_CHECK_FALSE(CheckActualQuerySeq(), false, "Check query sequence failed");
     KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
     return true;
 }
 
-bool FlashMlaMetadataCpuKernel::CheckActualQuerySeq()
+bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualQuerySeq()
 {
     isActualSeqlenQAccum_ = false;
     actualSeqlenQ_.clear();
@@ -139,52 +136,31 @@ bool FlashMlaMetadataCpuKernel::CheckActualQuerySeq()
     return true;
 }
 
-bool FlashMlaMetadataCpuKernel::CheckActualKvSeq()
+bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualKvSeq()
 {
+    // cacheSeqlens carries per-batch kv lengths (non-cumulative, no cumulative
+    // branch): the scheduler must treat them as non-cumulative
+    // (isCumulativeKvSeq = false), preserving the previously effective per-batch
+    // kv length semantics.
     isActualSeqlenKvAccum_ = false;
     actualSeqlenKv_.clear();
-    std::vector<int64_t> cuSeqlensKv{};
-    std::vector<int64_t> sequsedKv{};
+    std::vector<int64_t> cacheSeqlens{};
 
-    cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_);
-    sequsedKv = GetTensorDataAsInt64(sequsedKv_);
+    cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_);
 
-    for (size_t i = 0; i < sequsedKv.size(); ++i) {
-        if (sequsedKv[i] < 0) {
-            KERNEL_LOG_ERROR("The elements of sequsedKv must be non-negative, but %zuth element is %ld",
-                             i, sequsedKv[i]);
+    for (size_t i = 0; i < cacheSeqlens.size(); ++i) {
+        if (cacheSeqlens[i] < 0) {
+            KERNEL_LOG_ERROR("The elements of cacheSeqlens must be non-negative, but %zuth element is %ld",
+                             i, cacheSeqlens[i]);
             return false;
         }
     }
 
-    if (!cuSeqlensKv.empty()) {
-        if (cuSeqlensKv[0] != 0) {
-            KERNEL_LOG_ERROR("The first element of cuSeqlensKv must be 0, but got %ld", cuSeqlensKv[0]);
-            return false;
-        }
-    }
-
-    for (size_t i = 1; i < cuSeqlensKv.size(); ++i) {
-        if (cuSeqlensKv[i] < cuSeqlensKv[i - 1]) {
-            KERNEL_LOG_ERROR(
-                "The %zuth element of cuSeqlensKv must not be less than the %zuth element, but got %ld and %ld",
-                i, i - 1, cuSeqlensKv[i], cuSeqlensKv[i - 1]);
-            return false;
-        }
-    }
-
-    if (!sequsedKv.empty()) {
-        isActualSeqlenKvAccum_ = false;
-        actualSeqlenKv_ = sequsedKv;
-    } else if (!cuSeqlensKv.empty()) {
-        isActualSeqlenKvAccum_ = true;
-        actualSeqlenKv_.assign(cuSeqlensKv.begin() + 1, cuSeqlensKv.end());
-    }
-
+    actualSeqlenKv_ = cacheSeqlens;
     return true;
 }
 
-void FlashMlaMetadataCpuKernel::InitDeviceInfo()
+void FlashMlaWithKvcacheMetadataCpuKernel::InitDeviceInfo()
 {
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
@@ -192,7 +168,7 @@ void FlashMlaMetadataCpuKernel::InitDeviceInfo()
     deviceInfo.aivCoreMinNum = aivCoreNum_;
 }
 
-void FlashMlaMetadataCpuKernel::InitLoadBalanceParams()
+void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
 {
     uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
     if (baseInfo.layoutQuery == load_balance::Layout::BSH || baseInfo.layoutQuery == load_balance::Layout::BSND) {
@@ -218,7 +194,7 @@ void FlashMlaMetadataCpuKernel::InitLoadBalanceParams()
     param.fdOn = false;
 }
 
-void FlashMlaMetadataCpuKernel::InitBaseInfo()
+void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
 {
     baseInfo.batchSize = (actualSeqlenQ_.empty()) ? batchSize_ : actualSeqlenQ_.size();
     baseInfo.querySeqSize = maxSeqlenQ_;
@@ -232,8 +208,11 @@ void FlashMlaMetadataCpuKernel::InitBaseInfo()
     }
     baseInfo.attenMaskFlag = (maskMode != load_balance::SparseMode::BUTT);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode);
-    baseInfo.preToken = (winLeft_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winLeft_);
-    baseInfo.nextToken = (winRight_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winRight_);
+    // window attrs removed: window is unlimited, preToken/nextToken are
+    // unconditionally UINT32_MAX (keeps the effective values of the previous
+    // always-(-1) window attrs path).
+    baseInfo.preToken = std::numeric_limits<uint32_t>::max();
+    baseInfo.nextToken = std::numeric_limits<uint32_t>::max();
     baseInfo.layoutQuery = load_balance::ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = load_balance::ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16;
@@ -244,12 +223,12 @@ void FlashMlaMetadataCpuKernel::InitBaseInfo()
     baseInfo.actualQuerySeqSize = actualSeqlenQ_;
 }
 
-bool FlashMlaMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKResult &splitRes)
+bool FlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKResult &splitRes)
 {
     return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
 }
 
-bool FlashMlaMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &splitRes)
+bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &splitRes)
 {
     detail::FaMetadata faMetadata(metadata_->GetData(), splitRes.sectionNum);
     faMetadata.Clear(); // set to all 0
@@ -306,8 +285,8 @@ bool FlashMlaMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &
 }
 
 namespace {
-static const char *kernelType = "FlashMlaMetadata";
-REGISTER_CPU_KERNEL(kernelType, FlashMlaMetadataCpuKernel);
+static const char *kernelType = "FlashMlaWithKvcacheMetadata";
+REGISTER_CPU_KERNEL(kernelType, FlashMlaWithKvcacheMetadataCpuKernel);
 } // namespace
 
 } // namespace aicpu

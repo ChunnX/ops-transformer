@@ -9,12 +9,15 @@
  */
 
 /*!
- * \file flash_mla_metadata_aicpu.h
- * \brief
+ * \file flash_mla_with_kvcache_metadata_aicpu.h
+ * \brief AICPU metadata producer for FlashMlaWithKvcacheMetadata.
+ *        Inputs are 3 tensors: cuSeqlensQ (accumulated), cacheSeqlens (per-batch,
+ *        non-cumulative kv lengths), sequsedQ (per-batch non-cumulative query lengths).
+ *        Window is unlimited: preToken/nextToken are unconditionally UINT32_MAX.
  */
 
-#ifndef FLASH_MLA_METADATA_AICPU_H
-#define FLASH_MLA_METADATA_AICPU_H
+#ifndef FLASH_MLA_WITH_KVCACHE_METADATA_AICPU_H
+#define FLASH_MLA_WITH_KVCACHE_METADATA_AICPU_H
 
 #include <string>
 #include "cpu_context.h"
@@ -24,10 +27,10 @@
 
 namespace aicpu {
 
-class FlashMlaMetadataCpuKernel : public CpuKernel {
+class FlashMlaWithKvcacheMetadataCpuKernel : public CpuKernel {
 public:
-    FlashMlaMetadataCpuKernel() = default;
-    ~FlashMlaMetadataCpuKernel() = default;
+    FlashMlaWithKvcacheMetadataCpuKernel() = default;
+    ~FlashMlaWithKvcacheMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -43,16 +46,13 @@ private:
     void InitDeviceInfo();
     void InitBaseInfo();
     void InitLoadBalanceParams();
-    void LoadActualQuerySeq();
-    void LoadActualKvSeq();
 
 private:
     CpuKernelContext *context_ = nullptr;
     // input tensor
     Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *cuSeqlensKv_ = nullptr;
+    Tensor *cacheSeqlens_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
-    Tensor *sequsedKv_ = nullptr;
     // output tensor
     Tensor *metadata_ = nullptr;
 
@@ -63,9 +63,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
-    int32_t maskMode_ = 1;
-    int32_t winLeft_ = -1;
-    int32_t winRight_ = -1;
+    int32_t maskMode_ = 0;
     std::string layoutQ_ = "BSND";
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
@@ -91,9 +89,8 @@ private:
     enum class ParamId : uint32_t {
         // input
         cuSeqlensQ = 0,
-        cuSeqlensKv = 1,
+        cacheSeqlens = 1,
         sequsedQ = 2,
-        sequsedKv = 3,
         // output
         metaData = 0,
     };

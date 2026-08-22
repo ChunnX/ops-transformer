@@ -17,8 +17,8 @@
  */
 
 
-#ifndef FLASH_MLA_METADATA_CHECK_H
-#define FLASH_MLA_METADATA_CHECK_H
+#ifndef FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H
+#define FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H
 
 #include <unordered_set>
 #include <string>
@@ -33,11 +33,11 @@ extern "C" {
 
 class FlashMlaMetadataCheck {
 public:
-    // m0070 参数序（与 aclnnFlashMlaMetadataGetWorkspaceSize 一致）：无 cu_seqlens_kv/seqused_kv/win_*
+    // m0070 参数序（与 meta.txt 文档一致）：无 cu_seqlens_kv/seqused_kv/win_*
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                          const aclTensor *sequsedQOptional, int64_t numHeadsQ, int64_t numHeadsKv,
-                                          int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                          int64_t maskMode, const char *layoutQ, const char *layoutKv,
+                                          const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                          int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                                          int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
                                           const char *layoutOut, const aclTensor *metadata);
 
 private:
@@ -70,9 +70,9 @@ private:
 
 inline aclnnStatus
 FlashMlaMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                    const aclTensor *sequsedQOptional, int64_t numHeadsQ, int64_t numHeadsKv,
-                                    int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                    int64_t maskMode, const char *layoutQ, const char *layoutKv,
+                                    const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                    int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                                    int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
                                     const char *layoutOut, const aclTensor *metadata)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
@@ -219,4 +219,4 @@ FlashMlaMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTenso
 }
 #endif
 
-#endif // FLASH_MLA_METADATA_CHECK_H
+#endif // FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H
