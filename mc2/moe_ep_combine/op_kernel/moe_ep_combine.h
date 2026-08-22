@@ -75,6 +75,8 @@ static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOM
 // Performance validation only. Modes 1 and 2 intentionally produce incorrect remote payloads.
 // 0: original per-token xGm_ address; 1: fixed xGm_[0] address; 2: fixed address in the local HCCL window.
 static constexpr uint32_t SOURCE_ADDRESS_PERF_TEST_MODE = 2;
+// Performance validation only. Mode 1 writes every remote payload to the same destination address.
+static constexpr uint32_t DESTINATION_ADDRESS_PERF_TEST_MODE = 1;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
@@ -191,6 +193,8 @@ private:
     uint64_t activeBatchChannel_{0};
     bool activeBatchValid_{false};
     uint32_t preparedWriteCount_{0};
+    uint32_t batchCommitCount_{0};
+    uint64_t batchCommitCycles_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -294,7 +298,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     if (preparedWriteCount_ == 0) {
         return;
     }
+    uint64_t commitStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+    batchCommitCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - commitStart;
+    ++batchCommitCount_;
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
     preparedWriteCount_ = 0;
 }
@@ -342,9 +349,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
         } else if constexpr (SOURCE_ADDRESS_PERF_TEST_MODE == 2) {
             tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + sendDataWorkspaceSizePerRank_;
         }
+        GM_ADDR remoteTokenAddr = remoteRankWinAddr + sendTokenOffset;
+        if constexpr (DESTINATION_ADDRESS_PERF_TEST_MODE == 1) {
+            remoteTokenAddr = remoteRankWinAddr;
+        }
         PrepareWrite<DEFAULT_WQE_CONFIG>(
-            commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
-            axisH_ * sizeof(XType));
+            commHandle, winRankAddr_[srcRank], remoteTokenAddr, tokenAddr, axisH_ * sizeof(XType));
         if constexpr (HasTopkWeight == 1) {
             GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
             PrepareWrite<DEFAULT_WQE_CONFIG>(
@@ -449,6 +459,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     activeBatchChannel_ = 0;
     activeBatchValid_ = false;
     preparedWriteCount_ = 0;
+    batchCommitCount_ = 0;
+    batchCommitCycles_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
     uint32_t targetRank = epWorldSize_;
@@ -566,6 +578,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    if (aivId_ == 0) {
+        AscendC::printf(
+            "[MoeEpCombinePerf] rank=%u, fixedSrcMode=%u, fixedDstMode=%u, batchCommitCount=%u, "
+            "batchCommitCycles=%llu\n",
+            rankId_, SOURCE_ADDRESS_PERF_TEST_MODE, DESTINATION_ADDRESS_PERF_TEST_MODE,
+            batchCommitCount_, static_cast<unsigned long long>(batchCommitCycles_));
+    }
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
