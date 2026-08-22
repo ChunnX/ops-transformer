@@ -86,7 +86,7 @@ public:
                 softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
             }
             if (pScale != nullptr) {
-                if (pScaleDtype == MX_PSCALE_DTYPE_FP32) {
+                if (pScaleDtype == optiling::MX_PSCALE_DTYPE_FP32) {
                     GlobalTensor<float> pScaleGmFp32;
                     pScaleGmFp32.SetGlobalBuffer((__gm__ float *)pScale);
                     pScaleValue_ = pScaleGmFp32.GetValue(0);
