@@ -87,6 +87,8 @@ struct PostComputeCommPolicy {
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         // 去重: 同一tileIdx只处理一次
+        // Blaze scheduler按M×N双重循环遍历,N block切换后mPos从0重新开始,
+        // tileIdx=mPos/baseM也会从0重新开始。去重可防止N block切换后重复下发。
         if (tileIdx <= lastCommTileIdx_) {
             return;
         }
@@ -94,9 +96,10 @@ struct PostComputeCommPolicy {
         // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
         if (tileIdx > 0) {
             uint32_t prevTileIdx = tileIdx - 1;
-            // 无论主循环还是末尾循环,都下发prevTileIdx的AllToAll
-            // 末尾循环时所有matmul已完成,数据有效
-            IssueAllToAll(prevTileIdx);
+            // 只下发未下发过的tile(避免末尾循环和N block切换后重复下发)
+            if (prevTileIdx > lastIssuedTileIdx_) {
+                IssueAllToAll(prevTileIdx);
+            }
         }
         lastCommTileIdx_ = tileIdx;
     }
@@ -279,14 +282,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     BlockMmadParams mmadParams;
     mmadParams.aGmAddr = aGMOffset;
     mmadParams.scaleAGmAddr = scaleAOffset;
-    // x2和x2_scale在GM中按rank切分存储: [rankDim*K, N]和[rankDim*scaleKLen, N]
-    // rankSize=1时layoutB=(K,N),Blaze kernel从rankId*K偏移读取
-    // 但rankId=0,所以需要提前在bGmAddr/scaleBGmAddr上偏移到本rank位置
-    uint64_t x2ByteOffset = rankId_ * mmTile.k * sizeof(X2Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    uint64_t x2ScaleByteOffset = rankId_ * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
-    mmadParams.bGmAddr = x2_ + x2ByteOffset;
-    mmadParams.scaleBGmAddr = x2Scale_ + x2ScaleByteOffset;
+    mmadParams.bGmAddr = x2_;
+    mmadParams.scaleBGmAddr = x2Scale_;
     mmadParams.cGmAddr = cGMOffset;
     mmadParams.biasGmAddr = bias_;
 
