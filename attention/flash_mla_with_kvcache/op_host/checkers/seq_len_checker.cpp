@@ -186,7 +186,8 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FlashMlaWithKvcach
                     return ge::GRAPH_FAILED);
     }
 
-    // layout_q is always TND -> cu_seqlens_q always required
+    // cu_seqlens_q is only meaningful for the TND query layout: required when TND,
+    // forbidden otherwise (BNSD/BSND query layouts carry no cumulative seqlens)
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (faInfo.qLayout == FlashMlaWithKvcacheLayout::TND) {
         OP_CHECK_IF(cuSeqlensQTensor == nullptr,

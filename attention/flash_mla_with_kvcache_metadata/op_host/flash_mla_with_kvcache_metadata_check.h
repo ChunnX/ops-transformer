@@ -41,7 +41,8 @@ public:
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
-    // MLA 硬约束（m0070/R1）：kv head num 恒 1；head_dim = qk nope 宽 512；布局限 TND/NZ/NTD；mask {0,3}
+    // MLA 硬约束（m0070）：kv head num 恒 1；head_dim = qk nope 宽 512；mask {0,3}
+    // 布局矩阵：q∈{TND,BNSD,BSND}、kv∈{PA_NZ,NZ,PA_BBND,PA_BNBD}、layoutOut 必须与 layoutQ 一致
     static constexpr int64_t MLA_KV_HEADS = 1;
     static constexpr int64_t MLA_HEAD_DIM = 512;
 
@@ -69,10 +70,10 @@ private:
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                   const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
-                                   int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                   int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
-                                   const char *layoutOut, const aclTensor *metadata)
+                                              const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                              int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                                              int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
+                                              const char *layoutOut, const aclTensor *metadata)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                              layoutQ, layoutKv, layoutOut);
@@ -89,8 +90,8 @@ FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptiona
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                     const char *layoutQ, const char *layoutKv, const char *layoutOut)
+                                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                                const char *layoutQ, const char *layoutKv, const char *layoutOut)
 {
     int64_t MIN_BATCH = 0;
     int64_t MAX_BATCH = 65536;
@@ -107,13 +108,17 @@ FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSe
     CHECK_COND(headDim == MLA_HEAD_DIM, ACLNN_ERR_RUNTIME_ERROR,
                "MLA head_dim (qk nope width) must be %ld, but got %ld", MLA_HEAD_DIM, headDim);
 
-    // R1 限定：q=TND、kv=NZ(PA_NZ 同义)、out=NTD
-    CHECK_COND(strcmp(layoutQ, "TND") == 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layoutQ only supports TND, but got %s", layoutQ);
-    CHECK_COND((strcmp(layoutKv, "NZ") == 0 || strcmp(layoutKv, "PA_NZ") == 0), ACLNN_ERR_RUNTIME_ERROR,
-               "layoutKv only supports NZ/PA_NZ, but got %s", layoutKv);
-    CHECK_COND(strcmp(layoutOut, "NTD") == 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layoutOut only supports NTD, but got %s", layoutOut);
+    static const std::unordered_set<std::string> layoutQSet = {"TND", "BNSD", "BSND"};
+    CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
+               "layoutQ only supports TND, BNSD, BSND, but got %s", layoutQ);
+
+    static const std::unordered_set<std::string> layoutKvSet = {"PA_NZ", "NZ", "PA_BBND", "PA_BNBD"};
+    CHECK_COND(layoutKvSet.count(layoutKv) > 0, ACLNN_ERR_RUNTIME_ERROR,
+               "layoutKv only supports PA_NZ, NZ, PA_BBND, PA_BNBD, but got %s", layoutKv);
+
+    // layoutOut 必须与 layoutQ 一致（输出与 query 同布局）
+    CHECK_COND(strcmp(layoutOut, layoutQ) == 0, ACLNN_ERR_RUNTIME_ERROR,
+               "layout_out must be identical to layout_q, but got layoutOut=%s, layoutQ=%s", layoutOut, layoutQ);
 
     return ACLNN_SUCCESS;
 }
@@ -131,18 +136,23 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode)
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                      const char *layoutQ, const char *layoutKv,
-                                      const aclTensor *cuSeqlensQOptional,
-                                      const aclTensor *cacheSeqlensOptional,
-                                      const aclTensor *sequsedQOptional, const aclTensor *metadata)
+                                                 const char *layoutQ, const char *layoutKv,
+                                                 const aclTensor *cuSeqlensQOptional,
+                                                 const aclTensor *cacheSeqlensOptional,
+                                                 const aclTensor *sequsedQOptional, const aclTensor *metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
 
-    // TND（R1 唯一路由）：cuSeqlensQ 必传
-    CHECK_COND(IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
-               "When layoutQ is TND, cuSeqlensQOptional should be provided, but got null");
+    // cuSeqlensQ：layoutQ 为 TND 时必传，非 TND（BNSD/BSND）时禁传（与主算子 seq_len_checker 判定一致）
+    if (strcmp(layoutQ, "TND") == 0) {
+        CHECK_COND(IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When layoutQ is TND, cuSeqlensQOptional should be provided, but got null");
+    } else {
+        CHECK_COND(!IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
+    }
 
-    // PA_NZ（R1 唯一路由）：cacheSeqlens 必传（每 batch KV cache 长度，seqused_kv 语义）
+    // 分页布局（PA_* 及 NZ 别名）：cacheSeqlens 必传（每 batch KV cache 长度，seqused_kv 语义）
     if (IsPA(layoutKv)) {
         CHECK_COND(IsTensorExist(cacheSeqlensOptional), ACLNN_ERR_RUNTIME_ERROR,
                    "When layoutKv is PA_NZ, cacheSeqlensOptional must be provided");
@@ -158,9 +168,9 @@ FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxS
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
-                                        const aclTensor *cuSeqlensQOptional,
-                                        const aclTensor *cacheSeqlensOptional,
-                                        const aclTensor *sequsedQOptional)
+                                                   const aclTensor *cuSeqlensQOptional,
+                                                   const aclTensor *cacheSeqlensOptional,
+                                                   const aclTensor *sequsedQOptional)
 {
     if (batchSize <= 0) {
         return ACLNN_SUCCESS;
