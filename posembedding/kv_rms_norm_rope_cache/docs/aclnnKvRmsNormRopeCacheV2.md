@@ -118,12 +118,12 @@
    Quant表示前述量化计算过程，对原地更新参数k\_cache和ckv\_cache：
 
   $$
-  k\_cache[scatter\_idx, ...] = Quant[x = rope\_out, scale = k\_scale, offset = k\_offset](b, n, s)
+  k\_cache[scatter\_idx, ...] = Quant\[[x = rope\_out, scale = k\_scale, offset = k\_offset](b, n, s)
   $$
 
   $$
   ckv\_cache[scatter\_idx, ...] = \begin{cases} Quant(x = \operatorname{RmsNorm}(x), scale = v\_scale, offset = v\_offset)[b, n, s], \quad vOptional = None \\
-  Quant[x = vOptional, scale = v\_scale, offset = v\_offset](b, n, s),  \quad vOptional != None
+  Quant\[[x = vOptional, scale = v\_scale, offset = v\_offset](b, n, s),  \quad vOptional != None
   \end{cases}
   $$
 
