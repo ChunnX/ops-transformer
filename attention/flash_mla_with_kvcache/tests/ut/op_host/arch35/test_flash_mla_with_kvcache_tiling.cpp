@@ -120,7 +120,9 @@ TEST(FlashMlaWithKvcacheArch35Tiling, MetadataPassthroughConstantFill)
 
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(BuildTilingContext(param), tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, EncodeMlaTilingKey(false, false));
+    // host 真值（T14 漂移修复：SplitPolicy 恒 flashDecodeFlag_=true，与 flash_attn tiling.cpp:129 对齐，
+    // prefill 也走 isFd=1 派发 → key = 3672322）——key 断言以 host 实测为准
+    EXPECT_EQ(tilingInfo.tilingKey, EncodeMlaTilingKey(false, true));
 
     auto *tiling = reinterpret_cast<const optiling::FlashMlaWithKvcacheTilingData *>(tilingInfo.tilingData.get());
     const optiling::FlashMlaWithKvcacheBaseParams &base = tiling->baseTiling.flashMlaWithKvcacheBaseParams;
@@ -149,12 +151,14 @@ TEST(FlashMlaWithKvcacheArch35Tiling, MetadataPassthroughConstantFill)
     ASSERT_TRUE(ExecuteTiling(BuildTilingContext(multiSection), multiSectionInfo));
     ASSERT_EQ(multiSectionInfo.tilingDataSize, tilingInfo.tilingDataSize);
     EXPECT_EQ(std::memcmp(multiSectionInfo.tilingData.get(), tilingInfo.tilingData.get(),
-                          tilingInfo.tilingDataSize), 0);
+                          tilingInfo.tilingDataSize),
+              0);
 }
 
 // flashDecodeFlag_ 语义（T14/learnings：ACLNN 直调路径 host 侧不能读 GM 的 seq-lens 值——
 // GetData<int32_t>() 返回设备指针，解引用即段错误；与 flash_attn 同策略，按 shape/attr 推导）：
-//   flashDecodeFlag_ = (s1Size <= 1)，即 TND 总 token 数 <= 1（decode 场景 q T=1）。
+//   SplitPolicy 恒置 flashDecodeFlag_=true（metadata 透传 + 兜底两条路径，与 flash_attn tiling.cpp:129
+//   对齐）——prefill/decode 均走 isFd=1 派发；prefill 的 KEY-1 断言已按 host 真值刷新（T14 漂移修复）。
 // CalcWorkspaceSize delta 仍匹配 FIA 公式：
 // (numBlocks*PRE_LOAD(2)*64*512 + 2*numBlocks*2*64*8) * sizeof(float)
 // 注意：varlen 混合 decode 的逐 batch 判断在 ACLNN 路径粒度不足（F6 记录项）；实际长度
@@ -164,7 +168,9 @@ TEST(FlashMlaWithKvcacheArch35Tiling, SeqLensDecodeFlagAndWorkspace)
     FlashMlaWithKvcacheTilingUtParam prefill = MakeBaseMlaParam(192);
     TilingInfo prefillInfo;
     ASSERT_TRUE(ExecuteTiling(BuildTilingContext(prefill), prefillInfo));
-    EXPECT_EQ(prefillInfo.tilingKey, EncodeMlaTilingKey(false, false));
+    // host 真值：SplitPolicy 恒 flashDecodeFlag_=true（与 flash_attn tiling.cpp:129 对齐），
+    // prefill 同样走 isFd=1 派发（T14 漂移修复，key 断言以 host 实测为准）
+    EXPECT_EQ(prefillInfo.tilingKey, EncodeMlaTilingKey(false, true));
     size_t prefillWorkspace = prefillInfo.workspaceSizes.empty() ? 0 : prefillInfo.workspaceSizes[0];
 
     FlashMlaWithKvcacheTilingUtParam decode = MakeBaseMlaParam(1); // q TSIZE=1 -> s1Size<=1 -> decode
@@ -178,7 +184,8 @@ TEST(FlashMlaWithKvcacheArch35Tiling, SeqLensDecodeFlagAndWorkspace)
     constexpr uint64_t lseSize = 8;
     uint64_t expectedDelta =
         (static_cast<uint64_t>(decodeInfo.blockNum) * preLoad * mSize * dVSize +
-         2 * static_cast<uint64_t>(decodeInfo.blockNum) * preLoad * mSize * lseSize) * sizeof(float);
+         2 * static_cast<uint64_t>(decodeInfo.blockNum) * preLoad * mSize * lseSize) *
+        sizeof(float);
     EXPECT_EQ(decodeInfo.workspaceSizes[0], prefillWorkspace + expectedDelta);
 
     auto *tiling = reinterpret_cast<const optiling::FlashMlaWithKvcacheTilingData *>(decodeInfo.tilingData.get());

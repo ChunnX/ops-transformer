@@ -111,7 +111,10 @@ public:
     GlobalTensor<SEQLEN_T> actualSeqLengthsGmQ;
     GlobalTensor<SEQLEN_T> actualSeqLengthsGm;
 
-    ActualSeqLensParser<Q_MODE, SEQLEN_T, true> qActSeqLensParser;
+    // q 侧 parser 的 WITH_ZERO_HEAD 仅对 ACCUM（cu_seqlens，TND）语义成立；BY_BATCH（BSND/BNSD
+    // 逐 batch 定长）无首零头——common/op_kernel/memcopy/parser.h 仅实例化 BY_BATCH,false。
+    static constexpr bool Q_WITH_ZERO_HEAD = (Q_MODE == ActualSeqLensMode::ACCUM);
+    ActualSeqLensParser<Q_MODE, SEQLEN_T, Q_WITH_ZERO_HEAD> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE, SEQLEN_T, false> kvActSeqLensParser;
 
     __aicore__ inline void InitQ(__gm__ uint8_t *cuSeqlensQAddr, __gm__ uint8_t *sequsedQAddr,
@@ -122,9 +125,14 @@ public:
             // 双分支 1（保留，不压平）：无 seqused_q → cu_seqlens_q 差分语义（含首零头累加）
             qActSeqLensParser.Init(actualSeqLengthsGmQ, actualSeqLenSize, s1Size);
         } else {
-            // 双分支 2：有 seqused_q → 按逐 batch 实际长度取值（seqused 长度 = b = actualSeqLenSize - 1）
-            qActSeqLensParser.Init((__gm__ uint8_t *)cuSeqlensQAddr, actualSeqLenSize,
-                                   (__gm__ uint8_t *)sequsedQAddr, actualSeqLenSize - 1);
+            // 双分支 2：有 seqused_q → 按逐 batch 实际长度取值（seqused 长度 = b = actualSeqLenSize - 1）；
+            // BY_BATCH（BSND/BNSD）无 cu_seqlens、无 ACCUM 四参 Init，按 seqused 逐 batch 定长解析
+            if constexpr (Q_WITH_ZERO_HEAD) {
+                qActSeqLensParser.Init((__gm__ uint8_t *)cuSeqlensQAddr, actualSeqLenSize,
+                                       (__gm__ uint8_t *)sequsedQAddr, actualSeqLenSize - 1);
+            } else {
+                qActSeqLensParser.Init((__gm__ uint8_t *)sequsedQAddr, actualSeqLenSize - 1, s1Size);
+            }
         }
     }
 

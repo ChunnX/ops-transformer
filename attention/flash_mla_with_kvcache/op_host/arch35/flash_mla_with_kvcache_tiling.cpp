@@ -293,8 +293,16 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyLayout()
 {
-    // q=TND -> InOutLayoutType_TND_TND（out 布局走 tiling 运行时字段，不占键位）
-    tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
+    // q 布局 -> InOutLayoutType（取值以本算子 op_kernel/arch35/flash_mla_with_kvcache_template_tiling_key.h
+    // 的枚举常量为准：TND_TND=2 / BSH_BSH=1 / BNSD_BNSD=0；勿照抄 flash_attn 的枚举数值——flash_attn
+    // 编号不同：0=BSND/1=BNSD/2=TND）。out 布局走 tiling 运行时字段（kernelOutputLayout），不占键位。
+    if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::TND) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
+    } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BSND) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
+    } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BNSD) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
+    }
 }
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
@@ -303,8 +311,15 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     tilingKeyInfo_.isFd = flashDecodeFlag_;
     tilingKeyInfo_.hasAttenMask = faInfo_->attenMaskFlag;
-    // KV 固定 PA_NZ -> kvLayoutType=3
+    // kv 布局 -> KvLayoutType（取值同 flash_attn 的 UpdateTilingKeyKvLayout 映射；
+    // parser 已将 PA_NZ 归一为 NZ，两者都必须放行）：
+    //   NZ/PA_NZ -> PA_NZ(3)；PA_BNBD -> PA_BNBD(2)；PA_BBND -> PA_BBND(1)
     tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
+    if (faInfo_->kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
+    } else if (faInfo_->kvLayout == FlashMlaWithKvcacheLayout::PA_BBND) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBND;
+    }
 }
 
 void FlashMlaWithKvcacheTilingImpl::GenTilingKey()
