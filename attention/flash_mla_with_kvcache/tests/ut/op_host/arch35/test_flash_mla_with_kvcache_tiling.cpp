@@ -1,5 +1,13 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under
+ * the terms and conditions of CANN Open Software License Agreement Version 2.0
+ * (the "License"). Please refer to the License for details. You may not use
+ * this file except in compliance with the License. THIS SOFTWARE IS PROVIDED ON
+ * AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS
+ * FOR A PARTICULAR PURPOSE. See LICENSE in the root of the software repository
+ * for the full text of the License.
  */
 
 #include <gtest/gtest.h>
@@ -78,6 +86,9 @@ FlashMlaWithKvcacheTilingUtParam MakeBaseMlaParam(int64_t tTokens)
 // Config<<8 | HasAttenMask<<18 | KvLayoutType<<19 | IsFd<<21
 // InOutLayoutType: TND=2 / BSND(BSH)=1 / BNSD=0；KvLayoutType: PA_NZ=3 / PA_BNBD=2 / PA_BBND=1
 // （取值以本算子 template_tiling_key.h 的枚举常量为准，勿照抄 flash_attn 的编号）
+// legacy tiling key 值（T2/T14 记录）：isFd=0 形式 1575170=prefill m0f0 / 1837314=m1f0；
+// isFd=1 形式 3672322 / 3934466，为主链（SplitPolicy 恒 flashDecodeFlag_=true）刷新后的 host 真值。
+// f=0 legacy 值仅公式级保留，host 恒 isFd=1。
 uint64_t EncodeMlaTilingKey(bool hasAttenMask, bool isFd, uint64_t inOutLayoutType = 2, uint64_t kvLayoutType = 3)
 {
     return (inOutLayoutType << 0) | (9ULL << 8) | (static_cast<uint64_t>(hasAttenMask) << 18) |

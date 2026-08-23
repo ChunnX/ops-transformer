@@ -156,8 +156,8 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     void *workspaceAddr = nullptr;
     if (isMla) {
         r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
-                                                  headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
-                                                  &workspaceSize, &executor);
+                                                             headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
+                                                             &workspaceSize, &executor);
     } else {
         // flash_attn_metadata 侧仍为克隆前的旧签名，语义等价映射：cuSeqlensQ 槽=cuT、
         // cacheSeqlens 槽=seqKvT(每 batch kv 长)、其余两个槽=-1。
@@ -208,7 +208,7 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
 static int RunByteGolden(aclrtStream stream)
 {
     // MLA-producer 结构校验（flash_attn_metadata 侧 checker 约束 headDim<=256/kvHeads!=1，
-    // 与 MLA checker（kvHeads==1/headDim==512/TND-PA_NZ-NTD）不交，跨克隆字节 golden 结构上
+    // 与 MLA checker（kvHeads==1/headDim==512/TND-PA_NZ-TND）不交，跨克隆字节 golden 结构上
     // 不再可比，改为对 flash_mla_with_kvcache_metadata 自身的调度完整性做断言：
     //   1) sectionNum>=2（kvS=32768/headDim=512 按 L2 预算逐 batch 切分，实测 8）
     //   2) 头字段 M_BASE_SIZE==64 / S2_BASE_SIZE==128（D17 强制）
@@ -224,7 +224,7 @@ static int RunByteGolden(aclrtStream stream)
     int64_t maskMode = 3;
     const char *layoutQ = "TND";
     const char *layoutKv = "PA_NZ";
-    const char *layoutOut = "NTD";
+    const char *layoutOut = "TND";
 
     int64_t words = CapacityAlignedWords(batch);
     std::vector<int32_t> mlaOut(words, 0);
@@ -442,9 +442,9 @@ static int RunNegativeRuntimeOnly()
         uint64_t ws = 0;
         if (ret == 0) {
             ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
-                                                        17, 1, 512,
-                                                        3, "TND", "PA_NZ", "NTD", metaT, &ws,
-                                                        &executor);
+                                                                   17, 1, 512,
+                                                                   3, "TND", "PA_NZ", "TND", metaT, &ws,
+                                                                   &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
             if (ret == 0) {
                 void *wsAddr = nullptr;
@@ -521,9 +521,9 @@ int main()
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
         ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, batchSize, qS, kvS,
-                                                    numHeads, numKeyValueHeads, headDim,
-                                                    3, "TND", "PA_NZ", "NTD",
-                                                    metadataTensor, &workspaceSize, &executor);
+                                                               numHeads, numKeyValueHeads, headDim,
+                                                               3, "TND", "PA_NZ", "TND",
+                                                               metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
             printf("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize %d\n", ret);
             return -1;
@@ -557,7 +557,7 @@ int main()
         aclrtFree(cuDevSmk);
         aclDestroyTensor(clTmk);
         aclrtFree(clDevSmk);
-        LOG_PRINT("\n==== smoke: flash_mla_with_kvcache_metadata (MLA geometry, TND/PA_NZ/NTD, kvHeads=1) ====\n");
+        LOG_PRINT("\n==== smoke: flash_mla_with_kvcache_metadata (MLA geometry, TND/PA_NZ/TND, kvHeads=1) ====\n");
         int32_t sectionNum = metadataHostData[HEAD_SECTION_NUM_INDEX];
         int32_t mBase = metadataHostData[HEAD_M_BASE_SIZE_INDEX];
         int32_t s2Base = metadataHostData[HEAD_S2_BASE_SIZE_INDEX];
