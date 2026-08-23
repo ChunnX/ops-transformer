@@ -1192,7 +1192,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
         kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     normalizedKvDbOffset_ =
         (static_cast<uint64_t>(info.c1v1DbIdx) * constInfo_.usedCoreNum * 2U +
-         GetBlockIdx()) * constInfo_.mm1KvResSize;
+         GetBlockIdx()) * constInfo_.vec1ResSize;
     normalizedPoolBase_ = compressedCnt_;
 
     KeyPoolVec1SliceIterator<COMP> sliceIterator(tools_);
