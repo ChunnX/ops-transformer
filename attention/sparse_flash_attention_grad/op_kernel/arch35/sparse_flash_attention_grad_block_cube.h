@@ -111,6 +111,7 @@ public:
     constexpr static bool IS_L1_PRELOAD = false;
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
     constexpr static bool IS_DKV_RESIDENT_L0C = false;
+    constexpr static bool IS_CUBE_DUMMY = false;
     constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
 
     constexpr static uint32_t DQ_L0_SPLIT_K = 128;
@@ -331,6 +332,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1> qL1Buffer = qL1Buf.Get();
+    Buffer<BufferType::L1> kL1Buffer = commonL1Buf.Get();
     Nd2NzParams nd2NzParams;
 
     // copy current, when IS_L1_PRELOAD=true, only first loop copy current
@@ -362,7 +364,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
     mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
     uint32_t kLoops = Ceil<int64_t>(constInfo.dTotalSize, CUBE_BASEK);
     uint32_t realK = CUBE_BASEK;
-    Buffer<BufferType::L1> kL1Buffer = commonL1Buf.Get();
     for (uint32_t k = 0; k < kLoops; ++k) {
         if (k == kLoops - 1) {
             uint32_t tailSize = constInfo.dTotalSize % CUBE_BASEK;
@@ -439,7 +440,6 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
-    LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buffer.GetTensor<INPUT_TYPE>();
     constexpr uint32_t baseN = CUBE_BASEN;
     uint32_t realN = baseN;
     uint32_t nLoops = ((uint32_t)constInfo.dTotalSize + baseN - 1) / baseN; // 尾块处理
@@ -449,10 +449,12 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(typename DqkvResPos<T, IS_WRITE_
             realN = tailSize ? tailSize : baseN;
         }
         Buffer<BufferType::L1> kL1Buffer = commonL1Buf.Get();
+        LocalTensor<INPUT_TYPE> kL1Tensor;
         uint64_t gmNOffset = n * baseN;
         Nd2NzParams nd2NzParams;
         // load right matrix to L1
         kL1Buffer.Wait<HardEvent::MTE1_MTE2>(); // 反向同步
+        kL1Tensor = kL1Buffer.GetTensor<INPUT_TYPE>();
         nd2NzParams.ndNum = 1;
         nd2NzParams.nValue = runInfo.commonRunInfo.s2RealSize;
         nd2NzParams.dValue = realN;
@@ -698,6 +700,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvRe
 TEMPLATES_DEF
 class FAGBlockCubeDummy {
 public:
+    constexpr static bool IS_CUBE_DUMMY = true;
     __aicore__ inline FAGBlockCubeDummy(){};
     __aicore__ inline void SetCubeBlockParams(TPipe *pipe, SFagTilingType tilingData,
                                               BufferManager<BufferType::L1> *l1BuffMgr) {};

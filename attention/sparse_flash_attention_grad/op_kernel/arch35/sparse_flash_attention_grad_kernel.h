@@ -43,8 +43,6 @@ private:
     __aicore__ inline void ProcessSoftmax(FagRunInfo &runInfo);
     __aicore__ inline void ProcessMm345(FagRunInfo &runInfo);
     __aicore__ inline void ProcessScatter(FagRunInfo &runInfo);
-    __aicore__ inline void ProcessPreload(FagRunInfo &runInfo, int64_t taskId);
-    __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
     __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId);
 };
 
@@ -64,10 +62,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
     }
+    this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+    if ASCEND_IS_AIV {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+    }
+    this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -76,12 +76,17 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-        this->IterateMmDyV(mm1ResTensor, this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+    }
+    LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    this->IterateMmDyV(mm1ResTensor, this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+    if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-        this->IterateMmQK(mm2ResTensor, this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+    }
+
+    LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    this->IterateMmQK(mm2ResTensor, this->selectedKWorkSpaceGm, this->constInfo, runInfo);
+    if ASCEND_IS_AIC {
         // N<=64: K already in L1 after mm12 CopyKV, release GM ping-pong here.
         if (!IS_DETER && this->constInfo.isHeadNLe64) {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -174,28 +179,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         LocalTensor<CALC_TYPE> dvInTensor = this->mm2ResBuf[scatterBufIdx].template Get<CALC_TYPE>();
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-            this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                      this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        }
+        this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                  this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
         runInfo.taskStep = TASK_SCATTERADD;
     }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
-                                                                                                  int64_t taskId)
-{
-    ProcessGather(runInfo);
-    ProcessMm12(runInfo);
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
-{
-    ProcessSoftmax(runInfo);
-    ProcessMm345(runInfo);
-    ProcessScatter(runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -225,11 +216,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
                 if (taskId >= 0) {
                     this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
-                    ProcessPreload(runInfos[taskId & 1], taskId);
+                    ProcessGather(runInfos[taskId & 1]);
+                    ProcessMm12(runInfos[taskId & 1]);
                 }
 
                 if (taskId > 0) {
-                    ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                    ProcessSoftmax(runInfos[(taskId + 1) & 1]);
+                    ProcessMm345(runInfos[(taskId + 1) & 1]);
+                    ProcessScatter(runInfos[(taskId + 1) & 1]);
                 }
                 taskId++;
             }
@@ -260,7 +254,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
-        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+        ProcessSoftmax(runInfos[(taskId + 1) & 1]);
+        ProcessMm345(runInfos[(taskId + 1) & 1]);
+        ProcessScatter(runInfos[(taskId + 1) & 1]);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -326,10 +322,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                  this->blkCntOffset += this->constInfo.selectedCountOffset) {
                 FagRunInfo &cur = runInfos[taskId % 3];
                 this->SetRunInfo(cur, taskId, i);
-                if (taskId == 0) {
+                if (unlikely(taskId == 0)) {
                     ProcessGather(cur);
                     ProcessMm12(cur);
-                } else if (taskId == 1) {
+                } else if (unlikely(taskId == 1)) {
                     ProcessGather(cur);
                     ProcessMm12(cur);
                     ProcessSoftmax(runInfos[0]);
