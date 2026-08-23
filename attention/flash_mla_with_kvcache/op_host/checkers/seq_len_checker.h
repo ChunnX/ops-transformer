@@ -15,8 +15,9 @@
  * seq-lens contract: the KV side is paged, so the flash_attn
  * KV-side cumulative/used seq-lens inputs do NOT exist; per-batch KV-cache
  * lengths are carried by cache_seqlens (INT32 [b]), which is REQUIRED (paged
- * KV). cu_seqlens_q is REQUIRED when layout_q is TND (always, since TND is
- * the only query layout). seqused_q remains optional [b].
+ * KV). cu_seqlens_q is REQUIRED when layout_q is TND and must be empty
+ * otherwise (BNSD/BSND query layouts carry no cumulative seqlens). seqused_q
+ * remains optional [b].
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_ACTUAL_SEQ_LEN_CHECKER_H
