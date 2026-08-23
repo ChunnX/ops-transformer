@@ -257,7 +257,7 @@ ge::graphStatus KeyPoolTiling::CalcWorkSpace()
         workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
     if (context_->normWeight.desc != nullptr) {
         workspaceSize_ +=
-            workspaceParams_->vec1ResSize * baseParams_->usedCoreNum * 2U *
+            workspaceParams_->mm1KvResSize * baseParams_->usedCoreNum * 2U *
             MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
     }
 

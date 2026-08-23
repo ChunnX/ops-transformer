@@ -419,7 +419,7 @@ __aicore__ inline void KeyPoolKernel<COMP>::InitWorkspace(__gm__ uint8_t *worksp
 
     normalizedKvGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
     offset += static_cast<uint64_t>(constInfo.dbWorkspaceRatio) *
-              constInfo.usedCoreNum * 2U * constInfo.vec1ResSize *
+              constInfo.usedCoreNum * 2U * constInfo.mm1KvResSize *
               sizeof(MM1_OUT_T);
 }
 
