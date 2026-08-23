@@ -490,19 +490,34 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     }
     layoutOut_ = itOut->second;
 
-    // 硬性路由约束：fia*mla 四件套仅验证过 q=TND / kv=PA_NZ / out=NTD。
-    // bsnd/bnsd/连续 KV/非 NTD 输出一律拒绝；"PA_NZ" 归一为 "NZ"（FIA MLA gate 用 FiaLayout::NZ）。
-    if (layoutQ_ != FlashMlaWithKvcacheLayout::TND || layoutOut_ != FlashMlaWithKvcacheLayout::NTD) {
-        OP_LOGE(opName_, "gate: only q=TND, out=NTD supported for flash_mla_with_kvcache, got q=%s out=%s.",
-                LayoutToSerialString(layoutQ_).c_str(), LayoutToSerialString(layoutOut_).c_str());
+    // 路由约束（与 op_host/checkers/common_checker.cpp 的新布局矩阵对齐）：
+    //   q ∈ {TND, BNSD, BSND}；kv 仅分页布局 {PA_NZ, NZ, PA_BBND, PA_BNBD}（连续 KV 不放行）；out 必须等于 q。
+    // "PA_NZ" 归一为 "NZ"（kernel 侧 FiaLayout::NZ 即 PA_NZ，arch35 tiling 断言 kvLayout==NZ）。
+    if (layoutQ_ != FlashMlaWithKvcacheLayout::TND && layoutQ_ != FlashMlaWithKvcacheLayout::BNSD &&
+        layoutQ_ != FlashMlaWithKvcacheLayout::BSND) {
+        std::string reason = "The value of layout_q must be TND/BNSD/BSND";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
+                                              opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (layoutKV_ != FlashMlaWithKvcacheLayout::NZ && layoutKV_ != FlashMlaWithKvcacheLayout::PA_NZ) {
-        OP_LOGE(opName_, "gate: only kv=NZ(PA_NZ, block_table required) supported for flash_mla_with_kvcache, got kv=%s.",
-                LayoutToSerialString(layoutKV_).c_str());
+    if (layoutKV_ != FlashMlaWithKvcacheLayout::PA_NZ && layoutKV_ != FlashMlaWithKvcacheLayout::NZ &&
+        layoutKV_ != FlashMlaWithKvcacheLayout::PA_BBND && layoutKV_ != FlashMlaWithKvcacheLayout::PA_BNBD) {
+        std::string reason =
+            "The value of layout_kv must be PA_NZ/PA_BBND/PA_BNBD (paged KV only, continuous KV is not supported)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
+                                              opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    layoutKV_ = FlashMlaWithKvcacheLayout::NZ;
+    if (layoutOut_ != layoutQ_) {
+        std::string reason = "The value of layout_out must be TND/BNSD/BSND (layout_out must equal layout_q)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
+                                              opParamInfo_.layoutOut, reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    // PA_NZ 归一为 NZ（kernel 侧 FiaLayout::NZ 即 PA_NZ）；PA_BNBD/PA_BBND 保持原枚举
+    if (layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ) {
+        layoutKV_ = FlashMlaWithKvcacheLayout::NZ;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
