@@ -1935,117 +1935,6 @@ def _valid_mask_for_positions(q_indices, positions, q_len, kv_len):
     return pos_tensor <= (q_idx_col + kv_len - q_len)
 
 
-def _new_qk_exp_trace(label, reference=None):
-    trace = {
-        "label": label,
-        "reference": reference,
-        "cursor": {"score": 0, "p_float": 0, "p_e4m3": 0},
-        "total": {"score": 0, "p_float": 0, "p_e4m3": 0},
-        "changed": {"score": 0, "p_float": 0, "p_e4m3": 0},
-        "nonfinite_mismatch": {"score": 0, "p_float": 0},
-        "max_abs": {"score": 0.0, "p_float": 0.0},
-    }
-    if reference is None:
-        trace["captured"] = {"score": [], "p_float": [], "p_e4m3": []}
-    return trace
-
-
-def _trace_qk_exp_tensor(trace, key, tensor):
-    if trace is None:
-        return
-    current = tensor.detach().cpu().contiguous()
-    if key == "p_e4m3":
-        current = current.to(FP8_DTYPE).contiguous().view(torch.uint8)
-
-    reference = trace["reference"]
-    if reference is None:
-        trace["captured"][key].append(current.clone())
-        trace["total"][key] += current.numel()
-        return
-
-    cursor = trace["cursor"][key]
-    reference_items = reference["captured"][key]
-    if cursor >= len(reference_items):
-        raise RuntimeError(f"QK/exp trace {trace['label']} has extra {key} data")
-    expected = reference_items[cursor]
-    trace["cursor"][key] += 1
-    if current.shape != expected.shape:
-        raise RuntimeError(
-            f"QK/exp trace {trace['label']} {key} shape mismatch: "
-            f"current={tuple(current.shape)}, reference={tuple(expected.shape)}"
-        )
-
-    trace["total"][key] += current.numel()
-    if key == "p_e4m3":
-        trace["changed"][key] += int((current != expected).sum().item())
-        return
-
-    current_fp32 = current.to(torch.float32)
-    expected_fp32 = expected.to(torch.float32)
-    finite = torch.isfinite(current_fp32) & torch.isfinite(expected_fp32)
-    if bool(finite.any().item()):
-        finite_diff = torch.abs(current_fp32[finite] - expected_fp32[finite])
-        trace["changed"][key] += int((finite_diff != 0).sum().item())
-        trace["max_abs"][key] = max(
-            trace["max_abs"][key], float(finite_diff.max().item())
-        )
-    same_nonfinite = (
-        (torch.isnan(current_fp32) & torch.isnan(expected_fp32))
-        | (torch.isposinf(current_fp32) & torch.isposinf(expected_fp32))
-        | (torch.isneginf(current_fp32) & torch.isneginf(expected_fp32))
-    )
-    nonfinite_mismatch = ~finite & ~same_nonfinite
-    mismatch_count = int(nonfinite_mismatch.sum().item())
-    trace["nonfinite_mismatch"][key] += mismatch_count
-    trace["changed"][key] += mismatch_count
-
-
-def _finish_qk_exp_trace(trace):
-    reference = trace["reference"]
-    if reference is None:
-        logger.info(
-            "[QK/EXP Trace][%s] captured score=%d, P=%d",
-            trace["label"],
-            trace["total"]["score"],
-            trace["total"]["p_float"],
-        )
-        return
-
-    for key in ("score", "p_float", "p_e4m3"):
-        expected_count = len(reference["captured"][key])
-        if trace["cursor"][key] != expected_count:
-            raise RuntimeError(
-                f"QK/exp trace {trace['label']} consumed {trace['cursor'][key]} "
-                f"of {expected_count} reference {key} chunks"
-            )
-    logger.info(
-        "[QK/EXP Trace][%s] score changed=%d/%d, max_abs=%.9g, nonfinite_mismatch=%d",
-        trace["label"],
-        trace["changed"]["score"],
-        trace["total"]["score"],
-        trace["max_abs"]["score"],
-        trace["nonfinite_mismatch"]["score"],
-    )
-    logger.info(
-        "[QK/EXP Trace][%s] P_float changed=%d/%d, max_abs=%.9g, nonfinite_mismatch=%d",
-        trace["label"],
-        trace["changed"]["p_float"],
-        trace["total"]["p_float"],
-        trace["max_abs"]["p_float"],
-        trace["nonfinite_mismatch"]["p_float"],
-    )
-    p_total = trace["total"]["p_e4m3"]
-    p_changed = trace["changed"]["p_e4m3"]
-    p_percent = 0.0 if p_total == 0 else 100.0 * p_changed / p_total
-    logger.info(
-        "[QK/EXP Trace][%s] P_E4M3 changed=%d/%d (%.9f%%)",
-        trace["label"],
-        p_changed,
-        p_total,
-        p_percent,
-    )
-
-
 def cpu_mxfp8_golden(
     q_fp8,
     k_fp8,
@@ -2061,10 +1950,6 @@ def cpu_mxfp8_golden(
     sparse_seq_len,
     block_table_torch,
     use_quant_matmul=False,
-    use_qk_npu=None,
-    use_softmax_npu=None,
-    use_pv_npu=None,
-    diagnostic_trace=None,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
     layout_q = "TND"
@@ -2106,16 +1991,9 @@ def cpu_mxfp8_golden(
     logger.info(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
-    use_qk_npu = use_quant_matmul if use_qk_npu is None else use_qk_npu
-    use_softmax_npu = (
-        use_quant_matmul if use_softmax_npu is None else use_softmax_npu
-    )
-    use_pv_npu = use_quant_matmul if use_pv_npu is None else use_pv_npu
     logger.info(
-        "[CPU Golden] backends: QK=%s, softmax=%s, PV=%s, MXFP8 group_size=%d",
-        "NPU" if use_qk_npu else "CPU",
-        "NPU" if use_softmax_npu else "CPU",
-        "NPU" if use_pv_npu else "CPU",
+        "[CPU Golden] QK/C2 path: %s, MXFP8 group_size=%d",
+        "npu_quant_matmul" if use_quant_matmul else "torch.matmul (CPU)",
         QUANT_GROUP_SIZE,
     )
 
@@ -2197,13 +2075,11 @@ def cpu_mxfp8_golden(
                         k_scale_mat,
                         head_dim,
                         softmax_scale,
-                        use_qk_npu,
+                        use_quant_matmul,
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                     )
-                    if diagnostic_trace is not None:
-                        _trace_qk_exp_tensor(diagnostic_trace, "score", scores)
 
                     chunk_offsets = []
                     offset = 0
@@ -2238,9 +2114,7 @@ def cpu_mxfp8_golden(
                             subloop_active = _softmax_row_is_active(
                                 local_max, subloop_has
                             )
-                            local_max = _align_up_to_ln2(
-                                local_max, use_softmax_npu
-                            )
+                            local_max = _align_up_to_ln2(local_max, use_quant_matmul)
                             # CUDA fused attention treats a finite negative score
                             # whose ln2-aligned max overflows to -Inf like an empty
                             # softmax contribution.  Positive overflow remains
@@ -2264,7 +2138,7 @@ def cpu_mxfp8_golden(
                             p_subloop = _exp_sub(
                                 s_subloop,
                                 m_subloop.view(nq, 1) - ln_p_scale,
-                                use_softmax_npu,
+                                use_quant_matmul,
                             )
                             p_subloop = torch.where(
                                 vm_subloop & subloop_active.view(nq, 1),
@@ -2272,13 +2146,6 @@ def cpu_mxfp8_golden(
                                 torch.zeros_like(p_subloop),
                             )
                             p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
-                            if diagnostic_trace is not None:
-                                _trace_qk_exp_tensor(
-                                    diagnostic_trace, "p_float", p_subloop
-                                )
-                                _trace_qk_exp_tensor(
-                                    diagnostic_trace, "p_e4m3", p_quant_subloop
-                                )
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -2292,7 +2159,7 @@ def cpu_mxfp8_golden(
                         m_new = m_subloop
                         run_started = m_before_round != neg_inf
                         history_rescale = _exp_sub(
-                            m_before_round, m_new, use_softmax_npu
+                            m_before_round, m_new, use_quant_matmul
                         )
                         history_rescale = torch.where(
                             run_started & torch.isfinite(m_new),
@@ -2316,7 +2183,7 @@ def cpu_mxfp8_golden(
                             nq,
                             l_run,
                             head_dim,
-                            use_pv_npu,
+                            use_quant_matmul,
                         )
 
                         acc = acc * history_rescale.view(nq, 1) + pv
@@ -2352,8 +2219,6 @@ def cpu_mxfp8_golden(
         attention_out.shape,
         softmax_lse.shape,
     )
-    if diagnostic_trace is not None:
-        _finish_qk_exp_trace(diagnostic_trace)
     return attention_out.contiguous(), softmax_lse.contiguous()
 
 
@@ -3031,308 +2896,6 @@ def npu_mxfp8_fa(
     return npu_output, npu_lse
 
 
-def _merge_attention_parts(part_outputs, part_lses):
-    """Reconstruct attention over disjoint KV parts from normalized OUT/LSE."""
-    output_stack = torch.stack(
-        [output.detach().cpu().to(torch.float32) for output in part_outputs], dim=0
-    )
-    lse_stack = torch.stack(
-        [lse.detach().cpu().to(torch.float32) for lse in part_lses], dim=0
-    )
-    finite = torch.isfinite(lse_stack)
-    neg_inf = torch.full_like(lse_stack, float("-inf"))
-    row_max = torch.where(finite, lse_stack, neg_inf).amax(dim=0)
-    safe_delta = torch.where(
-        finite,
-        lse_stack - row_max.unsqueeze(0),
-        neg_inf,
-    )
-    weights = torch.exp(safe_delta)
-    denominator = weights.sum(dim=0)
-    valid = denominator > 0
-    safe_denominator = torch.where(valid, denominator, torch.ones_like(denominator))
-    merged_output = (
-        output_stack * weights.unsqueeze(-1)
-    ).sum(dim=0) / safe_denominator.unsqueeze(-1)
-    merged_output = torch.where(
-        valid.unsqueeze(-1), merged_output, torch.zeros_like(merged_output)
-    )
-    merged_lse = row_max + torch.log(safe_denominator)
-    merged_lse = torch.where(
-        valid, merged_lse, torch.full_like(merged_lse, float("-inf"))
-    )
-    return merged_output, merged_lse, valid
-
-
-def _run_tile_merge_check(
-    fa_inputs,
-    sparse_indices,
-    sparse_seq_len,
-    full_output,
-    full_lse,
-    cpu_output=None,
-    cpu_lse=None,
-):
-    """Split every sparse-list slot into a single-tile run and merge by LSE."""
-    global ENABLE_LSE
-
-    sparse_indices_cpu = torch.as_tensor(sparse_indices, dtype=torch.int32).cpu()
-    sparse_seq_len_cpu = torch.as_tensor(sparse_seq_len, dtype=torch.int32).cpu()
-    part_count = int(sparse_seq_len_cpu.max().item())
-    logger.info("\n[Tile Merge Check] active sparse slots=%d", part_count)
-    if part_count < 2:
-        logger.info(
-            "[Tile Merge Check] SKIP: case has fewer than two active KV tiles"
-        )
-        return None
-    if part_count > 16:
-        raise ValueError(
-            "--tile_merge_check supports at most 16 active KV tiles, "
-            f"but this case has {part_count}"
-        )
-
-    original_enable_lse = ENABLE_LSE
-    part_outputs = []
-    part_lses = []
-    try:
-        # The decomposition formula requires LSE even when the original case
-        # does not request it. Returning LSE must not alter attention OUT.
-        ENABLE_LSE = True
-        if (
-            not original_enable_lse
-            or full_lse is None
-            or full_lse.numel() == 0
-        ):
-            logger.info(
-                "[Tile Merge Check] rerun full sparse list with LSE enabled"
-            )
-            full_output, full_lse = npu_mxfp8_fa(
-                sparse_indices=sparse_indices_cpu,
-                sparse_seq_len=sparse_seq_len_cpu,
-                **fa_inputs,
-            )
-
-        for slot in range(part_count):
-            active = sparse_seq_len_cpu > slot
-            part_indices = torch.full_like(sparse_indices_cpu, -1)
-            part_indices[..., 0] = torch.where(
-                active,
-                sparse_indices_cpu[..., slot],
-                torch.full_like(sparse_indices_cpu[..., slot], -1),
-            )
-            part_seq_len = active.to(torch.int32)
-            logger.info(
-                "\n[Tile Merge Check] run part %d/%d, active lists=%d",
-                slot + 1,
-                part_count,
-                int(active.sum().item()),
-            )
-            part_output, part_lse = npu_mxfp8_fa(
-                sparse_indices=part_indices,
-                sparse_seq_len=part_seq_len,
-                **fa_inputs,
-            )
-            if part_lse is None or part_lse.numel() == 0:
-                raise RuntimeError(
-                    "tile merge check requires non-empty LSE from every part"
-                )
-            part_outputs.append(part_output)
-            part_lses.append(part_lse)
-    finally:
-        ENABLE_LSE = original_enable_lse
-
-    merged_output, merged_lse, merged_valid = _merge_attention_parts(
-        part_outputs, part_lses
-    )
-    full_output_cpu = full_output.detach().cpu()
-    full_lse_cpu = full_lse.detach().cpu().to(torch.float32)
-    compare_rows = merged_valid & torch.isfinite(full_lse_cpu)
-    comparable_count = int(compare_rows.sum().item())
-    logger.info(
-        "\n[Tile Merge Check] comparable finite rows=%d/%d",
-        comparable_count,
-        compare_rows.numel(),
-    )
-    if comparable_count == 0:
-        raise RuntimeError("tile merge check found no comparable finite rows")
-
-    logger.info("\n[Tile Merge Check] Full NPU OUT vs merged single-tile NPU OUT")
-    full_out_result = result_compare_method.check_result(
-        merged_output[compare_rows].to(full_output_cpu.dtype),
-        full_output_cpu[compare_rows],
-    )
-    logger.info("\n[Tile Merge Check] Full NPU LSE vs merged single-tile NPU LSE")
-    full_lse_result = result_compare_method.check_result(
-        merged_lse[compare_rows],
-        full_lse_cpu[compare_rows],
-    )
-
-    cpu_out_result = None
-    cpu_lse_result = None
-    if cpu_output is not None and cpu_lse is not None:
-        cpu_output_cpu = cpu_output.detach().cpu()
-        cpu_lse_cpu = cpu_lse.detach().cpu().to(torch.float32)
-        cpu_rows = merged_valid & torch.isfinite(cpu_lse_cpu)
-        if bool(cpu_rows.any().item()):
-            logger.info(
-                "\n[Tile Merge Check] CPU golden OUT vs merged single-tile NPU OUT"
-            )
-            cpu_out_result = result_compare_method.check_result(
-                cpu_output_cpu[cpu_rows],
-                merged_output[cpu_rows].to(cpu_output_cpu.dtype),
-            )
-            logger.info(
-                "\n[Tile Merge Check] CPU golden LSE vs merged single-tile NPU LSE"
-            )
-            cpu_lse_result = result_compare_method.check_result(
-                cpu_lse_cpu[cpu_rows], merged_lse[cpu_rows]
-            )
-
-    merge_pass = (
-        _result_status(full_out_result) == "Pass"
-        and _result_status(full_lse_result) == "Pass"
-    )
-    if merge_pass:
-        logger.info(
-            "\n[Tile Merge Check] CONCLUSION: PASS. Full execution agrees with "
-            "the LSE merge of single-tile executions; online multi-tile "
-            "rescale is not the primary error source."
-        )
-    else:
-        logger.info(
-            "\n[Tile Merge Check] CONCLUSION: FAIL. Full execution disagrees "
-            "with the LSE merge of single-tile executions; inspect online "
-            "max/sum/rescale state updates."
-        )
-    return {
-        "full_out": full_out_result,
-        "full_lse": full_lse_result,
-        "cpu_out": cpu_out_result,
-        "cpu_lse": cpu_lse_result,
-    }
-
-
-def _run_qk_exp_check(golden_inputs, npu_output, npu_lse):
-    """Separate QK and softmax backend effects while keeping PV on CPU."""
-    variants = (
-        ("A_CPU_QK_CPU_EXP", False, False),
-        ("B_NPU_QK_CPU_EXP", True, False),
-        ("C_CPU_QK_NPU_EXP", False, True),
-        ("D_NPU_QK_NPU_EXP", True, True),
-    )
-    outputs = {}
-    traces = {}
-    reference_trace = None
-
-    logger.info("\n[QK/EXP Check] CPU PV is fixed for all four variants")
-    for label, use_qk_npu, use_softmax_npu in variants:
-        logger.info(
-            "\n[QK/EXP Check] run %s: QK=%s, softmax=%s, PV=CPU",
-            label,
-            "NPU" if use_qk_npu else "CPU",
-            "NPU" if use_softmax_npu else "CPU",
-        )
-        trace = _new_qk_exp_trace(label, reference=reference_trace)
-        output, lse = cpu_mxfp8_golden(
-            use_quant_matmul=False,
-            use_qk_npu=use_qk_npu,
-            use_softmax_npu=use_softmax_npu,
-            use_pv_npu=False,
-            diagnostic_trace=trace,
-            **golden_inputs,
-        )
-        outputs[label] = (output, lse)
-        traces[label] = trace
-        if reference_trace is None:
-            reference_trace = trace
-
-    reference_output, reference_lse = outputs["A_CPU_QK_CPU_EXP"]
-    npu_output_cpu = npu_output.detach().cpu()
-    npu_lse_cpu = None
-    if npu_lse is not None and npu_lse.numel() > 0:
-        npu_lse_cpu = npu_lse.detach().cpu()
-
-    results = {}
-    for label, _, _ in variants:
-        output, lse = outputs[label]
-        logger.info("\n[QK/EXP Check] %s OUT vs actual NPU OUT", label)
-        out_vs_npu = result_compare_method.check_result(output, npu_output_cpu)
-        logger.info("\n[QK/EXP Check] %s LSE vs variant A LSE", label)
-        lse_vs_reference = result_compare_method.check_result(reference_lse, lse)
-        lse_vs_npu = None
-        if npu_lse_cpu is not None:
-            logger.info("\n[QK/EXP Check] %s LSE vs actual NPU LSE", label)
-            lse_vs_npu = result_compare_method.check_result(lse, npu_lse_cpu)
-        results[label] = {
-            "out_vs_npu": out_vs_npu,
-            "lse_vs_reference": lse_vs_reference,
-            "lse_vs_npu": lse_vs_npu,
-        }
-
-    logger.info("\n[QK/EXP Check] SUMMARY (all variants use CPU PV)")
-    logger.info(
-        "%-24s %14s %14s %16s",
-        "Variant",
-        "OUT_vs_NPU",
-        "LSE_vs_A",
-        "P_E4M3_changed",
-    )
-    for label, _, _ in variants:
-        trace = traces[label]
-        logger.info(
-            "%-24s %14s %14s %16d",
-            label,
-            _result_pct(results[label]["out_vs_npu"]),
-            _result_pct(results[label]["lse_vs_reference"]),
-            trace["changed"]["p_e4m3"],
-        )
-
-    qk_changed = traces["B_NPU_QK_CPU_EXP"]["changed"]["p_e4m3"]
-    exp_changed = traces["C_CPU_QK_NPU_EXP"]["changed"]["p_e4m3"]
-    combined_changed = traces["D_NPU_QK_NPU_EXP"]["changed"]["p_e4m3"]
-    logger.info(
-        "[QK/EXP Check] E4M3 boundary changes vs A: QK-only=%d, "
-        "softmax-only=%d, combined=%d",
-        qk_changed,
-        exp_changed,
-        combined_changed,
-    )
-    if qk_changed > 0 and exp_changed == 0:
-        logger.info(
-            "[QK/EXP Check] CONCLUSION: QK accumulation/scale rounding is the "
-            "only isolated stage that changes E4M3 P bins."
-        )
-    elif exp_changed > 0 and qk_changed == 0:
-        logger.info(
-            "[QK/EXP Check] CONCLUSION: FusedExpSub/ln2 alignment is the only "
-            "isolated stage that changes E4M3 P bins."
-        )
-    elif qk_changed > 0 and exp_changed > 0:
-        logger.info(
-            "[QK/EXP Check] CONCLUSION: both QK and softmax backend semantics "
-            "independently move P across E4M3 boundaries; use OUT_vs_NPU to "
-            "identify the dominant stage."
-        )
-    else:
-        logger.info(
-            "[QK/EXP Check] CONCLUSION: neither isolated stage changes E4M3 "
-            "P bins; inspect their interaction or the PV/final-output path."
-        )
-
-    combined_result = results["D_NPU_QK_NPU_EXP"]["out_vs_npu"]
-    if _result_status(combined_result) == "Pass":
-        logger.info(
-            "[QK/EXP Check] NPU QK+softmax with CPU PV matches actual NPU OUT; "
-            "PV accumulation is not the primary source."
-        )
-    else:
-        logger.info(
-            "[QK/EXP Check] NPU QK+softmax with CPU PV still differs from "
-            "actual NPU OUT; PV/final-output semantics remain a candidate."
-        )
-    return results
-
-
 # ==============================================================================
 # Main
 # ==============================================================================
@@ -3523,8 +3086,6 @@ def run_one_case(
     debug=False,
     graph=False,
     use_quant_matmul=False,
-    tile_merge_check=False,
-    qk_exp_check=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -3642,8 +3203,6 @@ def run_one_case(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
 
-    cpu_out = None
-    cpu_lse = None
     if rdv and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir):
         logger.info("\n[Step 2] 复用 CPU Golden")
         logger.info(
@@ -3712,53 +3271,6 @@ def run_one_case(
             sparse_seq_len,
             graph=graph,
         )
-        if qk_exp_check:
-            _run_qk_exp_check(
-                {
-                    "q_fp8": q_fp8,
-                    "k_fp8": k_fp8,
-                    "v_fp8": v_fp8,
-                    "dequant_scale_q": dequant_scale_q,
-                    "dequant_scale_k": dequant_scale_k,
-                    "dequant_scale_v": dequant_scale_v,
-                    "p_scale": p_scale,
-                    "q_lengths": q_lengths,
-                    "kv_lengths": kv_lengths,
-                    "cu_seqlens_q": cu_seqlens_q,
-                    "sparse_indices": sparse_indices,
-                    "sparse_seq_len": sparse_seq_len,
-                    "block_table_torch": block_table_torch,
-                },
-                atten_out,
-                lse_out,
-            )
-        if tile_merge_check:
-            _run_tile_merge_check(
-                {
-                    "q_fp8": q_fp8,
-                    "k_fp8": k_fp8,
-                    "v_fp8": v_fp8,
-                    "dequant_scale_q": dequant_scale_q,
-                    "dequant_scale_k": dequant_scale_k,
-                    "dequant_scale_v": dequant_scale_v,
-                    "p_scale": p_scale,
-                    "atten_mask": atten_mask,
-                    "q_lengths": q_lengths,
-                    "kv_lengths": kv_lengths,
-                    "cu_seqlens_q": cu_seqlens_q,
-                    "cu_seqlens_kv": cu_seqlens_kv,
-                    "seqused_q": seqused_q,
-                    "seqused_kv": seqused_kv,
-                    "block_table_torch": block_table_torch,
-                    "graph": graph,
-                },
-                sparse_indices,
-                sparse_seq_len,
-                atten_out,
-                lse_out,
-                cpu_out,
-                cpu_lse,
-            )
         golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
     else:
         atten_out, lse_out = golden_cache.load_npu_output(
@@ -3885,16 +3397,6 @@ if __name__ == "__main__":
         action="store_true",
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
-    parser.add_argument(
-        "--tile_merge_check",
-        action="store_true",
-        help="诊断多 tile 在线 Softmax：分别运行每个 sparse KV tile，并通过 LSE 离线合并后与完整 NPU 运行比较",
-    )
-    parser.add_argument(
-        "--qk_exp_check",
-        action="store_true",
-        help="诊断 QK 与 Softmax 后端差异：固定 CPU PV，运行 CPU/NPU QK 与 exp 的四种组合并统计 E4M3 P 边界变化",
-    )
     args = parser.parse_args()
 
     use_quant_matmul = args.quant_matmul
@@ -3970,16 +3472,6 @@ if __name__ == "__main__":
         parser.error(
             "--debug can run exactly one case; pass one name through --case_name"
         )
-    if args.tile_merge_check:
-        if len(run_case_ids) != 1:
-            parser.error("--tile_merge_check can run exactly one case")
-        if "npu" not in mode:
-            parser.error("--tile_merge_check requires an execution mode containing npu")
-    if args.qk_exp_check:
-        if len(run_case_ids) != 1:
-            parser.error("--qk_exp_check can run exactly one case")
-        if "npu" not in mode:
-            parser.error("--qk_exp_check requires an execution mode containing npu")
 
     debug_artifacts = _prepare_debug_artifacts(run_case_ids[0]) if args.debug else None
     debug_log_handler = (
@@ -4024,8 +3516,6 @@ if __name__ == "__main__":
                         debug=args.debug,
                         graph=args.aclgraph,
                         use_quant_matmul=use_quant_matmul,
-                        tile_merge_check=args.tile_merge_check,
-                        qk_exp_check=args.qk_exp_check,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
