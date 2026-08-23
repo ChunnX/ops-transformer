@@ -1,0 +1,5177 @@
+{
+  "metadata": {
+    "generator_seed": 20260823,
+    "stc_count": 104,
+    "generalized_count": 2000,
+    "large_case_count": 0,
+    "maximum_sequence_length": 4096,
+    "maximum_estimated_mib": 256.0,
+    "maximum_actual_estimated_mib": 119.019,
+    "regression_case_count": 32,
+    "boundary_case_count": 42,
+    "pytest_output": "D:\\wk_code\\QBSA\\ops-transformer_optimize\\experimental\\attention\\quant_block_sparse_attn\\tests\\pytest\\bsa_fullquant_mxfp8_test\\qbsa_mxfp8_generalized_2000.csv",
+    "ttk_output": "D:\\wk_code\\QBSA\\ops-transformer_optimize\\experimental\\attention\\quant_block_sparse_attn\\tests\\ttk\\bsa_fullquant_mxfp8_test\\qbsa_mxfp8_generalized_2000.csv"
+  },
+  "factor_model": [
+    {
+      "id": "F01",
+      "factor": "固定契约",
+      "levels": "D=128; group=32; quant_mode=2",
+      "allocation": "全部",
+      "framework": "pytest/TTK",
+      "note": "仅 MXFP8；不触碰 FP8"
+    },
+    {
+      "id": "F02",
+      "factor": "布局",
+      "levels": "TND / PA_BNBD / B_N_Qb_Kb / TND",
+      "allocation": "全部",
+      "framework": "pytest/TTK",
+      "note": "当前算子契约"
+    },
+    {
+      "id": "F03",
+      "factor": "B",
+      "levels": "1; 2..31; 32",
+      "allocation": "资源受限循环",
+      "framework": "pytest/TTK",
+      "note": "B=64/128/256 由现有 STC 覆盖"
+    },
+    {
+      "id": "F04",
+      "factor": "N2",
+      "levels": "1..8",
+      "allocation": "均衡循环",
+      "framework": "pytest/TTK",
+      "note": ""
+    },
+    {
+      "id": "F05",
+      "factor": "N1/N2",
+      "levels": "1..16",
+      "allocation": "均衡循环",
+      "framework": "pytest/TTK",
+      "note": "N1<=128"
+    },
+    {
+      "id": "F06",
+      "factor": "S1/S2",
+      "levels": "1..4096",
+      "allocation": "2000 条均受资源上限约束",
+      "framework": "pytest/TTK",
+      "note": "覆盖 64/128/512/1024/2048/4096 前后边界；更大长度留在 STC"
+    },
+    {
+      "id": "F07",
+      "factor": "关系/对齐",
+      "levels": "lt/eq/gt × AA/AU/UA/UU",
+      "allocation": "合法组合",
+      "framework": "pytest/TTK",
+      "note": "eq+UA 不可成立"
+    },
+    {
+      "id": "F08",
+      "factor": "运行时长度",
+      "levels": "uniform/ragged/zero_q/zero_kv",
+      "allocation": "50/46/2/2%",
+      "framework": "pytest/TTK",
+      "note": "总 Q 与最大 KV 非空"
+    },
+    {
+      "id": "F09",
+      "factor": "稀疏块",
+      "levels": "64/128",
+      "allocation": "50/50%",
+      "framework": "pytest/TTK",
+      "note": "Q/KV 相等"
+    },
+    {
+      "id": "F10",
+      "factor": "PA block",
+      "levels": "sparse 的整数倍且 <=1024",
+      "allocation": "循环全覆盖",
+      "framework": "pytest/TTK",
+      "note": "PA_BNBD"
+    },
+    {
+      "id": "F11",
+      "factor": "sparse_mode",
+      "levels": "dense/random",
+      "allocation": "25/75%",
+      "framework": "pytest/TTK",
+      "note": "旧 sparse_pattern 不再作为公开因子"
+    },
+    {
+      "id": "F12",
+      "factor": "blocknum",
+      "levels": "under/equal/over logical pages",
+      "allocation": "70/20/10%",
+      "framework": "pytest/TTK",
+      "note": "允许物理页复用"
+    },
+    {
+      "id": "F13",
+      "factor": "block table width",
+      "levels": "exact/extra",
+      "allocation": "75/25%",
+      "framework": "pytest/TTK",
+      "note": "不得小于单 batch 必需页宽"
+    },
+    {
+      "id": "F14",
+      "factor": "mask/LSE",
+      "levels": "0/3 × on/off",
+      "allocation": "30/70%; 90/10%",
+      "framework": "pytest/TTK",
+      "note": ""
+    },
+    {
+      "id": "F15",
+      "factor": "p_scale",
+      "levels": "none; <=1; 1..100; >100",
+      "allocation": "10%; 72/20/8%",
+      "framework": "pytest/TTK",
+      "note": ""
+    },
+    {
+      "id": "F16",
+      "factor": "softmax_scale",
+      "levels": "none/default/arbitrary",
+      "allocation": "10/80/10%",
+      "framework": "pytest/TTK",
+      "note": "none 在执行时解析为默认值"
+    },
+    {
+      "id": "F17",
+      "factor": "Q/K/V 有限范围",
+      "levels": "unit/e4m3/fp16/fp32_extreme",
+      "allocation": "80/15/4/1%",
+      "framework": "pytest/TTK",
+      "note": "含正/负/跨零/零"
+    },
+    {
+      "id": "F18",
+      "factor": "Q/K/V 非有限范围",
+      "levels": "+inf/-inf/nan/[-inf,inf]",
+      "allocation": "每个张量、每类数值均配单 tile/多 tile",
+      "framework": "pytest/TTK",
+      "note": "定向回归，不随机污染有限值精度分布"
+    },
+    {
+      "id": "F19",
+      "factor": "LSE 行状态",
+      "levels": "合法 KV; 全 -inf; 真 NaN; 人工反量化溢出",
+      "allocation": "单 tile/多 tile 与 1024/1025 归并边界",
+      "framework": "pytest/TTK",
+      "note": "覆盖 NaN/0、跨 tile 在线 softmax 合并问题"
+    },
+    {
+      "id": "F20",
+      "factor": "连续性",
+      "levels": "paired generalized=contiguous; standalone robustness=non-contiguous",
+      "allocation": "不计入配对覆盖率",
+      "framework": "pytest 定向",
+      "note": "当前 TTK CSV 无 stride 字段，避免伪造 pytest/TTK 等价覆盖"
+    },
+    {
+      "id": "F21",
+      "factor": "golden matmul 后端",
+      "levels": "matmul(default)/npu_quant_matmul(--quant_matmul)",
+      "allocation": "执行矩阵",
+      "framework": "pytest/TTK golden",
+      "note": "正常 CSV 不输入 quant_matmul；仅 MXFP8 生效"
+    },
+    {
+      "id": "F22",
+      "factor": "执行模式",
+      "levels": "Eager/ACLGraph",
+      "allocation": "同一 CSV 分别运行",
+      "framework": "TTK",
+      "note": "不复制用例"
+    },
+    {
+      "id": "F23",
+      "factor": "精度日志",
+      "levels": "摘要 + 超阈值误差明细",
+      "allocation": "全部",
+      "framework": "pytest/TTK",
+      "note": "执行观测因子，不计入数据覆盖率"
+    }
+  ],
+  "coverage_rates": {
+    "stc_factor_level": {
+      "hit": 70,
+      "total": 70,
+      "ratio": 1.0
+    },
+    "generalized_factor_level": {
+      "hit": 64,
+      "total": 64,
+      "ratio": 1.0
+    },
+    "combined_factor_level": {
+      "hit": 70,
+      "total": 70,
+      "ratio": 1.0
+    },
+    "stc_pairwise": {
+      "hit": 106,
+      "total": 167,
+      "ratio": 0.6347305389221557
+    },
+    "generalized_pairwise": {
+      "hit": 167,
+      "total": 167,
+      "ratio": 1.0
+    },
+    "combined_pairwise": {
+      "hit": 167,
+      "total": 167,
+      "ratio": 1.0
+    }
+  },
+  "coverage": [
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "1",
+      "count": 57,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "2..31",
+      "count": 37,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "32",
+      "count": 7,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "64",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "128",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "B",
+      "category": "256",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "1",
+      "count": 39,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "2",
+      "count": 16,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "3",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "4",
+      "count": 9,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "5",
+      "count": 6,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "6",
+      "count": 9,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "7",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N2",
+      "category": "8",
+      "count": 9,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "1",
+      "count": 34,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "2",
+      "count": 16,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "3",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "4",
+      "count": 10,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "5",
+      "count": 6,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "6",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "7",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "8",
+      "count": 9,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "9",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "10",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "11",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "12",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "13",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "14",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "15",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "N1/N2",
+      "category": "16",
+      "count": 5,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S bucket",
+      "category": "<=4096",
+      "count": 94,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S bucket",
+      "category": "4097..8192",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S bucket",
+      "category": "8193..16384",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S bucket",
+      "category": "16385..65536",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S relation",
+      "category": "lt",
+      "count": 35,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S relation",
+      "category": "eq",
+      "count": 37,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "S relation",
+      "category": "gt",
+      "count": 32,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "alignment",
+      "category": "AA",
+      "count": 16,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "alignment",
+      "category": "AU",
+      "count": 21,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "alignment",
+      "category": "UA",
+      "count": 6,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "alignment",
+      "category": "UU",
+      "count": 61,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "sparse block",
+      "category": "64",
+      "count": 52,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "sparse block",
+      "category": "128",
+      "count": 52,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "mask",
+      "category": "0",
+      "count": 28,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "mask",
+      "category": "3",
+      "count": 76,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "LSE",
+      "category": "True",
+      "count": 95,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "LSE",
+      "category": "False",
+      "count": 9,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "p_scale",
+      "category": "none",
+      "count": 17,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "p_scale",
+      "category": "<=1",
+      "count": 46,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "p_scale",
+      "category": "1..100",
+      "count": 24,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "p_scale",
+      "category": ">100",
+      "count": 17,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "softmax",
+      "category": "none",
+      "count": 8,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "softmax",
+      "category": "default",
+      "count": 81,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "softmax",
+      "category": "arbitrary",
+      "count": 15,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "runtime lengths",
+      "category": "uniform",
+      "count": 74,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "runtime lengths",
+      "category": "ragged",
+      "count": 28,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "runtime lengths",
+      "category": "zero_q",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "runtime lengths",
+      "category": "zero_kv",
+      "count": 1,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "sparse mode",
+      "category": "dense",
+      "count": 58,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "sparse mode",
+      "category": "random",
+      "count": 46,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "blocknum relation",
+      "category": "under",
+      "count": 50,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "blocknum relation",
+      "category": "equal",
+      "count": 49,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "blocknum relation",
+      "category": "over",
+      "count": 5,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "block table width",
+      "category": "exact",
+      "count": 35,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "block table width",
+      "category": "extra",
+      "count": 69,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "range special",
+      "category": "finite",
+      "count": 89,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "range special",
+      "category": "+inf",
+      "count": 3,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "range special",
+      "category": "-inf",
+      "count": 4,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "range special",
+      "category": "nan",
+      "count": 4,
+      "total": 104
+    },
+    {
+      "suite": "stc_104",
+      "factor": "range special",
+      "category": "[-inf,inf]",
+      "count": 4,
+      "total": 104
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "B",
+      "category": "1",
+      "count": 165,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "B",
+      "category": "2..31",
+      "count": 1801,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "B",
+      "category": "32",
+      "count": 34,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "1",
+      "count": 279,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "2",
+      "count": 255,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "3",
+      "count": 251,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "4",
+      "count": 251,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "5",
+      "count": 241,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "6",
+      "count": 241,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "7",
+      "count": 241,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N2",
+      "category": "8",
+      "count": 241,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "1",
+      "count": 142,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "2",
+      "count": 126,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "3",
+      "count": 125,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "4",
+      "count": 138,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "5",
+      "count": 125,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "6",
+      "count": 128,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "7",
+      "count": 125,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "8",
+      "count": 125,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "9",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "10",
+      "count": 126,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "11",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "12",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "13",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "14",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "15",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "N1/N2",
+      "category": "16",
+      "count": 120,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "S bucket",
+      "category": "<=4096",
+      "count": 2000,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "S relation",
+      "category": "lt",
+      "count": 701,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "S relation",
+      "category": "eq",
+      "count": 646,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "S relation",
+      "category": "gt",
+      "count": 653,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "alignment",
+      "category": "AA",
+      "count": 487,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "alignment",
+      "category": "AU",
+      "count": 496,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "alignment",
+      "category": "UA",
+      "count": 336,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "alignment",
+      "category": "UU",
+      "count": 681,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "sparse block",
+      "category": "64",
+      "count": 1016,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "sparse block",
+      "category": "128",
+      "count": 984,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "mask",
+      "category": "0",
+      "count": 623,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "mask",
+      "category": "3",
+      "count": 1377,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "LSE",
+      "category": "True",
+      "count": 1802,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "LSE",
+      "category": "False",
+      "count": 198,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "p_scale",
+      "category": "none",
+      "count": 201,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "p_scale",
+      "category": "<=1",
+      "count": 1290,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "p_scale",
+      "category": "1..100",
+      "count": 363,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "p_scale",
+      "category": ">100",
+      "count": 146,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "softmax",
+      "category": "none",
+      "count": 200,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "softmax",
+      "category": "default",
+      "count": 1600,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "softmax",
+      "category": "arbitrary",
+      "count": 200,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "runtime lengths",
+      "category": "uniform",
+      "count": 1078,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "runtime lengths",
+      "category": "ragged",
+      "count": 853,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "runtime lengths",
+      "category": "zero_q",
+      "count": 33,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "runtime lengths",
+      "category": "zero_kv",
+      "count": 36,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "sparse mode",
+      "category": "dense",
+      "count": 524,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "sparse mode",
+      "category": "random",
+      "count": 1476,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "blocknum relation",
+      "category": "under",
+      "count": 1332,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "blocknum relation",
+      "category": "equal",
+      "count": 469,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "blocknum relation",
+      "category": "over",
+      "count": 199,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "block table width",
+      "category": "exact",
+      "count": 1506,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "block table width",
+      "category": "extra",
+      "count": 494,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "range special",
+      "category": "finite",
+      "count": 1974,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "range special",
+      "category": "+inf",
+      "count": 6,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "range special",
+      "category": "-inf",
+      "count": 6,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "range special",
+      "category": "nan",
+      "count": 7,
+      "total": 2000
+    },
+    {
+      "suite": "generalized_2000",
+      "factor": "range special",
+      "category": "[-inf,inf]",
+      "count": 7,
+      "total": 2000
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "1",
+      "count": 222,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "2..31",
+      "count": 1838,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "32",
+      "count": 41,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "64",
+      "count": 1,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "128",
+      "count": 1,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "B",
+      "category": "256",
+      "count": 1,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "1",
+      "count": 318,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "2",
+      "count": 271,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "3",
+      "count": 259,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "4",
+      "count": 260,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "5",
+      "count": 247,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "6",
+      "count": 250,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "7",
+      "count": 249,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N2",
+      "category": "8",
+      "count": 250,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "1",
+      "count": 176,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "2",
+      "count": 142,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "3",
+      "count": 133,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "4",
+      "count": 148,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "5",
+      "count": 131,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "6",
+      "count": 129,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "7",
+      "count": 126,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "8",
+      "count": 134,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "9",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "10",
+      "count": 134,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "11",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "12",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "13",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "14",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "15",
+      "count": 121,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "N1/N2",
+      "category": "16",
+      "count": 125,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S bucket",
+      "category": "<=4096",
+      "count": 2094,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S bucket",
+      "category": "4097..8192",
+      "count": 8,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S bucket",
+      "category": "8193..16384",
+      "count": 1,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S bucket",
+      "category": "16385..65536",
+      "count": 1,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S relation",
+      "category": "lt",
+      "count": 736,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S relation",
+      "category": "eq",
+      "count": 683,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "S relation",
+      "category": "gt",
+      "count": 685,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "alignment",
+      "category": "AA",
+      "count": 503,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "alignment",
+      "category": "AU",
+      "count": 517,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "alignment",
+      "category": "UA",
+      "count": 342,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "alignment",
+      "category": "UU",
+      "count": 742,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "sparse block",
+      "category": "64",
+      "count": 1068,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "sparse block",
+      "category": "128",
+      "count": 1036,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "mask",
+      "category": "0",
+      "count": 651,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "mask",
+      "category": "3",
+      "count": 1453,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "LSE",
+      "category": "True",
+      "count": 1897,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "LSE",
+      "category": "False",
+      "count": 207,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "p_scale",
+      "category": "none",
+      "count": 218,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "p_scale",
+      "category": "<=1",
+      "count": 1336,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "p_scale",
+      "category": "1..100",
+      "count": 387,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "p_scale",
+      "category": ">100",
+      "count": 163,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "softmax",
+      "category": "none",
+      "count": 208,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "softmax",
+      "category": "default",
+      "count": 1681,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "softmax",
+      "category": "arbitrary",
+      "count": 215,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "runtime lengths",
+      "category": "uniform",
+      "count": 1152,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "runtime lengths",
+      "category": "ragged",
+      "count": 881,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "runtime lengths",
+      "category": "zero_q",
+      "count": 34,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "runtime lengths",
+      "category": "zero_kv",
+      "count": 37,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "sparse mode",
+      "category": "dense",
+      "count": 582,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "sparse mode",
+      "category": "random",
+      "count": 1522,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "blocknum relation",
+      "category": "under",
+      "count": 1382,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "blocknum relation",
+      "category": "equal",
+      "count": 518,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "blocknum relation",
+      "category": "over",
+      "count": 204,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "block table width",
+      "category": "exact",
+      "count": 1541,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "block table width",
+      "category": "extra",
+      "count": 563,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "range special",
+      "category": "finite",
+      "count": 2063,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "range special",
+      "category": "+inf",
+      "count": 9,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "range special",
+      "category": "-inf",
+      "count": 10,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "range special",
+      "category": "nan",
+      "count": 11,
+      "total": 2104
+    },
+    {
+      "suite": "combined",
+      "factor": "range special",
+      "category": "[-inf,inf]",
+      "count": 11,
+      "total": 2104
+    }
+  ],
+  "pairwise": [
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AA",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AU",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UA",
+      "count": 3
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UU",
+      "count": 20
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AA",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AU",
+      "count": 8
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "UU",
+      "count": 23
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AA",
+      "count": 4
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AU",
+      "count": 7
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UA",
+      "count": 3
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UU",
+      "count": 18
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "True",
+      "count": 27
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "False",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "True",
+      "count": 68
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "False",
+      "count": 8
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "1",
+      "count": 24
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "2",
+      "count": 4
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "7",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "12",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "13",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "14",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "15",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "16",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "1",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "2",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "6",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "9",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "11",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "16",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "1",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "16",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "1",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "4",
+      "count": 3
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "5",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "16",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "1",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "5",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "16",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "1",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "8",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "16",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "1",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "16",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "1",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "2",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "3",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "4",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "5",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "6",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "7",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "8",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "9",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "10",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "11",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "12",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "13",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "14",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "15",
+      "count": 0
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "16",
+      "count": 1
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "1",
+      "count": 17
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "2",
+      "count": 4
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "3",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "4",
+      "count": 3
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "5",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "6",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "7",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "8",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "9",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "10",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "11",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "12",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "13",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "14",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "15",
+      "count": 2
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "16",
+      "count": 4
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "1",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "2",
+      "count": 7
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "3",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "4",
+      "count": 8
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "5",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "6",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "7",
+      "count": 6
+    },
+    {
+      "suite": "stc_104",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "8",
+      "count": 7
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AA",
+      "count": 157
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AU",
+      "count": 183
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UA",
+      "count": 157
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UU",
+      "count": 204
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AA",
+      "count": 169
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AU",
+      "count": 148
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "UU",
+      "count": 329
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AA",
+      "count": 161
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AU",
+      "count": 165
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UA",
+      "count": 179
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UU",
+      "count": 148
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "True",
+      "count": 561
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "False",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "True",
+      "count": 1241
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "False",
+      "count": 136
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "1",
+      "count": 37
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "4",
+      "count": 27
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "5",
+      "count": 20
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "10",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "2",
+      "count": 21
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "6",
+      "count": 23
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "10",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "3",
+      "count": 20
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "4",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "7",
+      "count": 20
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "4",
+      "count": 20
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "8",
+      "count": 20
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "4",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "4",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "4",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "1",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "2",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "3",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "4",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "8",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "1",
+      "count": 94
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "2",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "3",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "4",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "5",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "6",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "7",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "8",
+      "count": 62
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "9",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "10",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "11",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "12",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "13",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "14",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "15",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "16",
+      "count": 61
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "1",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "2",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "3",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "4",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "5",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "6",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "7",
+      "count": 123
+    },
+    {
+      "suite": "generalized_2000",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "8",
+      "count": 123
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AA",
+      "count": 163
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "AU",
+      "count": 189
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UA",
+      "count": 160
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "lt",
+      "right": "UU",
+      "count": 224
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AA",
+      "count": 175
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "AU",
+      "count": 156
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "eq",
+      "right": "UU",
+      "count": 352
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AA",
+      "count": 165
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "AU",
+      "count": 172
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UA",
+      "count": 182
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "S relation × alignment",
+      "left": "gt",
+      "right": "UU",
+      "count": 166
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "True",
+      "count": 588
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "mask × LSE",
+      "left": "0",
+      "right": "False",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "True",
+      "count": 1309
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "mask × LSE",
+      "left": "3",
+      "right": "False",
+      "count": 144
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "1",
+      "count": 61
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "2",
+      "count": 19
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "4",
+      "count": 28
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "5",
+      "count": 21
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "7",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "12",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "13",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "14",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "15",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "1",
+      "right": "16",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "1",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "2",
+      "count": 27
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "4",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "5",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "6",
+      "count": 24
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "9",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "10",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "11",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "2",
+      "right": "16",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "1",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "3",
+      "count": 21
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "5",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "7",
+      "count": 20
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "3",
+      "right": "16",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "1",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "4",
+      "count": 23
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "8",
+      "count": 21
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "4",
+      "right": "16",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "1",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "5",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "5",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "1",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "5",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "8",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "6",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "1",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "5",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "7",
+      "right": "16",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "1",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "2",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "3",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "4",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "5",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "6",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "7",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "8",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "9",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "10",
+      "count": 17
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "11",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "12",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "13",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "14",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "15",
+      "count": 15
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "N2 × N1/N2",
+      "left": "8",
+      "right": "16",
+      "count": 16
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "1",
+      "count": 111
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "2",
+      "count": 66
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "3",
+      "count": 64
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "4",
+      "count": 65
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "5",
+      "count": 64
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "6",
+      "count": 64
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "7",
+      "count": 64
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "8",
+      "count": 64
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "9",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "10",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "11",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "12",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "13",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "14",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "15",
+      "count": 63
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "64",
+      "right": "16",
+      "count": 65
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "1",
+      "count": 129
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "2",
+      "count": 130
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "3",
+      "count": 129
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "4",
+      "count": 131
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "5",
+      "count": 129
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "6",
+      "count": 129
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "7",
+      "count": 129
+    },
+    {
+      "suite": "combined",
+      "factor_pair": "sparse block × PA ratio",
+      "left": "128",
+      "right": "8",
+      "count": 130
+    }
+  ],
+  "large_cases": [],
+  "stc_recommendation": {
+    "update_required": false,
+    "reason": "Current STC is complete for the planned 70 single-factor levels. Its main pairwise gap is N2 x N1/N2; the 2000-case suite fills broad head/shape pairs. Historical NaN/zero and single-tile-versus-multi-tile regressions are duplicated in the generalized suite. quant_matmul remains an execution switch, not a CSV factor."
+  }
+}
