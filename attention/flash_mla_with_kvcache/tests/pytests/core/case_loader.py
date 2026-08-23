@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""用例加载 + 参数规范化（MLA 版，布局限定 TND/NZ/NTD per R1）。"""
+"""用例加载 + 参数规范化（MLA 版，布局限定 TND/NZ/TND，out==q per T11）。"""
 
 import itertools
 import importlib
@@ -38,8 +38,8 @@ def load_case_modules(module_names: List[str]) -> Dict[str, dict]:
 def normalize_params(raw: dict) -> dict:
     """将 test_cases 原始字段补全为计算所需参数。
 
-    MLA 约定（m0070 / R1）：
-      - layout_q="TND"（cu_seqlens_q 必传），layout_kv="PA_NZ"（block_table + cache_seqlens 必传），layout_out="NTD"
+    MLA 约定（m0070 / T11）：
+      - layout_q="TND"（cu_seqlens_q 必传），layout_kv="PA_NZ"（block_table + cache_seqlens 必传），layout_out="TND"（恒等于 layout_q）
       - q/k_cache 最后维 576；kv head num = 1（N2 无意义，恒 1）
       - cache_seqlens = 每 batch 的 KV cache 长度（等价 flash_attn 的 seqused_kv）
     """
@@ -47,9 +47,9 @@ def normalize_params(raw: dict) -> dict:
     layout_q = c.get("layout_q", "TND")
     c["input_layout"] = layout_q
     c.setdefault("layout_kv", "PA_NZ")
-    c.setdefault("layout_out", "NTD")
+    c.setdefault("layout_out", "TND")
     c["N2"] = 1
-    c.setdefault("D", MLA_D_TOTAL // 2)          # qk nope 宽 / head_dim_v
+    c.setdefault("D", MLA_D_TOTAL // 2)  # qk nope 宽 / head_dim_v
     c.setdefault("DV", c["D"])
     c.setdefault("DRope", MLA_D_TOTAL - c["D"])  # 64
     c.setdefault("mask_mode", 0)
@@ -65,8 +65,13 @@ def normalize_params(raw: dict) -> dict:
         s1 = c.get("S1", 1)
         c["cu_seqlens_q"] = list(range(0, b * s1 + 1, s1))
     c["B"] = len(c["cu_seqlens_q"]) - 1
-    c.setdefault("seqused_q", [c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
-                               for i in range(len(c["cu_seqlens_q"]) - 1)])
+    c.setdefault(
+        "seqused_q",
+        [
+            c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
+            for i in range(len(c["cu_seqlens_q"]) - 1)
+        ],
+    )
 
     # KV 侧：cache_seqlens（每 batch 的 cache 长度）
     if "cache_seqlens" not in c:
@@ -107,9 +112,13 @@ def resolve_case_ids(case_id_arg: str, all_cases: Dict) -> List[str]:
     result = []
     missing = []
     for cid in ids:
-        matches = [k for k in all_cases
-                   if k.endswith(f"/{cid}") or k == cid
-                   or k.rsplit("/", 1)[-1].startswith(f"{cid}_")]
+        matches = [
+            k
+            for k in all_cases
+            if k.endswith(f"/{cid}")
+            or k == cid
+            or k.rsplit("/", 1)[-1].startswith(f"{cid}_")
+        ]
         if matches:
             result.extend(matches)
         else:
