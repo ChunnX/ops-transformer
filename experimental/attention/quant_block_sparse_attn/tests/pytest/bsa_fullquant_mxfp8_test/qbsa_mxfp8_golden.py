@@ -1639,7 +1639,12 @@ def _exp_sub(lhs, rhs, use_quant_matmul):
         return _npu_exp_sub(lhs, rhs)
     lhs_fp32 = lhs.to(torch.float32)
     rhs_fp32 = rhs.to(torch.float32)
-    return torch.exp(lhs_fp32 - rhs_fp32)
+    # Match the higher-precision internal subtraction/exp of NPU
+    # FusedExpSub.  Materializing the intermediate in FP32 can put a value
+    # on the other side of an E4M3 probability boundary, especially when a
+    # large QK score is reduced by an almost equal online-softmax maximum.
+    # The FP8 golden uses the same FP64 intermediate for this reason.
+    return torch.exp(lhs_fp32.double() - rhs_fp32.double()).float()
 
 
 def _softmax_row_is_active(local_max, has_valid_position):
