@@ -1495,32 +1495,7 @@ def _align_up_to_ln2(value, use_quant_matmul):
 
 
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
-    """CPU torch.matmul path: FP32 dequant + matmul."""
-    q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
-    k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
-    scores = torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
-
-    # Applying the descales before matmul can introduce a NaN that does not
-    # exist in MXFP8 cube arithmetic.  For example, a finite FP8 value paired
-    # with a large E8M0 descale may dequantize to Inf; multiplying that Inf by
-    # a zero FP8 K element then evaluates as Inf * 0 = NaN on CPU.  Cube first
-    # accumulates the finite FP8 payloads in each 32-element group and applies
-    # the group descales afterwards, so a zero group contribution stays zero.
-    #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial NaNs.  NaNs present in either FP8 payload are
-    # deliberately excluded from repair and therefore continue to propagate.
-    repair_mask = torch.isnan(scores)
-    if not bool(repair_mask.any()):
-        return scores
-
-    payload_has_nan = torch.isnan(q_block).any(dim=-1).view(-1, 1) | torch.isnan(
-        k_mat
-    ).any(dim=-1).view(1, -1)
-    repair_mask &= ~payload_has_nan
-    if not bool(repair_mask.any()):
-        return scores
-
+    """CPU QK matching MX Cube group-scale and operand orientation."""
     group_count = math.ceil(head_dim / QUANT_GROUP_SIZE)
     aligned_head_dim = group_count * QUANT_GROUP_SIZE
     q_payload = q_block[..., :head_dim]
@@ -1532,20 +1507,26 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
 
     q_grouped = q_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
     k_grouped = k_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
+    # QBSA C1 computes K[S2,D] x Q^T[D,M] and transposes the result.  Keep the
+    # same orientation because Cube/BLAS reduction rounding is orientation
+    # dependent even though Q x K^T is algebraically equivalent.
     group_dot = torch.matmul(
-        q_grouped.permute(1, 0, 2),
-        k_grouped.permute(1, 2, 0),
-    ).permute(1, 2, 0)
+        k_grouped.permute(1, 0, 2),
+        q_grouped.permute(1, 2, 0),
+    ).permute(2, 1, 0)
     group_scale = q_scale_block[..., :group_count].view(
         -1, 1, group_count
     ) * k_scale_mat[..., :group_count].view(1, -1, group_count)
+    # Cube applies E8M0 descales after accumulating each 32-element FP8
+    # payload group.  Preserve a zero group contribution when the descale is
+    # infinite; dequantizing operands first would create an artificial 0*Inf
+    # NaN. NaNs originating in Q/K payloads still propagate through group_dot.
     scaled_group_dot = torch.where(
         group_dot == 0,
         torch.zeros_like(group_dot),
         group_dot * group_scale,
     )
-    cube_order_scores = scaled_group_dot.sum(dim=-1) * softmax_scale
-    return torch.where(repair_mask, cube_order_scores, scores)
+    return scaled_group_dot.sum(dim=-1) * softmax_scale
 
 
 def _npu_mxfp8_qk_matmul_impl(q_fp8, k_fp8, q_scale, k_scale, score_scale):
@@ -1905,12 +1886,6 @@ def _positions_from_sparse(
             all_task_positions.append(chunk_positions)
         task_start += blocks_per_task
     return all_task_positions
-
-
-def _expand_d_group_scale(scale, width):
-    return scale.to(torch.float32).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
-        ..., :width
-    ]
 
 
 def _gather_q_block_and_scale(
