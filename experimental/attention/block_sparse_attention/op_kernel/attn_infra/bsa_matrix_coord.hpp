@@ -20,10 +20,7 @@
 
 namespace NpuArch {
 
-template <
-    uint32_t ROW_ = 1,
-    uint32_t COLUMN_ = 1
->
+template <uint32_t ROW_ = 1, uint32_t COLUMN_ = 1>
 struct MatrixShape {
     static constexpr uint32_t ROW = ROW_;
     static constexpr uint32_t COLUMN = COLUMN_;
@@ -31,10 +28,7 @@ struct MatrixShape {
     static constexpr int64_t COUNT = ROW * COLUMN;
 
     HOST_DEVICE
-    static Coord<2> ToCoord()
-    {
-        return MakeCoord(ROW, COLUMN);
-    }
+    static Coord<2> ToCoord() { return MakeCoord(ROW, COLUMN); }
 };
 
 /// MatrixCoord wraps Coord<2, uint32_t> to provide a helper for accessing named dimensions. Classes
@@ -61,15 +55,21 @@ struct MatrixCoord : public Coord<2, uint32_t> {
 
     /// Constructs from Coord<2>
     HOST_DEVICE
-    MatrixCoord(Coord<2, Index> const &coord) : Base(coord) {}
+    MatrixCoord(Coord<2, Index> const &coord)
+        : Base(coord)
+    {}
 
     /// Helper to construct from a row and column
     HOST_DEVICE
-    MatrixCoord(Index row, Index column) : Base(MakeCoord(row, column)) {}
+    MatrixCoord(Index row, Index column)
+        : Base(MakeCoord(row, column))
+    {}
 
     /// Helper to construct from a row and column, which are LongIndex based
     HOST_DEVICE
-    MatrixCoord(LongIndex row, LongIndex column) : Base(MakeCoord(Index(row), Index(column))) {}
+    MatrixCoord(LongIndex row, LongIndex column)
+        : Base(MakeCoord(Index(row), Index(column)))
+    {}
 
     /// Returns the row of the coordinate
     HOST_DEVICE
@@ -89,10 +89,7 @@ struct MatrixCoord : public Coord<2, uint32_t> {
 
     /// Element-wise addition
     HOST_DEVICE
-    MatrixCoord operator+(Base const &b) const
-    {
-        return MatrixCoord(Base::operator+(b));
-    }
+    MatrixCoord operator+(Base const &b) const { return MatrixCoord(Base::operator+(b)); }
 
     /// In-place addition
     HOST_DEVICE

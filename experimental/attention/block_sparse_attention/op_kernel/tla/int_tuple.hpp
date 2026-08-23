@@ -35,8 +35,7 @@ HOST_DEVICE constexpr auto tapply(T &&t, F &&f, G &&g, seq<I...>)
 template <class T0, class T1, class F, class G, int... I>
 HOST_DEVICE constexpr auto tapply(T0 &&t0, T1 &&t1, F &&f, G &&g, seq<I...>)
 {
-    return g(f(get<I>(static_cast<T0 &&>(t0)),
-               get<I>(static_cast<T1 &&>(t1)))...);
+    return g(f(get<I>(static_cast<T0 &&>(t0)), get<I>(static_cast<T1 &&>(t1)))...);
 }
 
 } // end namespace detail
@@ -96,8 +95,7 @@ HOST_DEVICE constexpr auto transform(T0 const &t0, T1 const &t1, F &&f)
     }
 }
 
-template <size_t I, class T,
-          TLA_REQUIRES(tla::is_integral<tla::remove_cvref_t<T>>::value)>
+template <size_t I, class T, TLA_REQUIRES(tla::is_integral<tla::remove_cvref_t<T>>::value)>
 HOST_DEVICE constexpr decltype(auto) get(T &&t) noexcept
 {
     static_assert(I == 0, "Index out of range");

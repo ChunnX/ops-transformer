@@ -10,20 +10,13 @@
 
 #include "../arch35/kernel_utils.hpp"
 
-
 using namespace NpuArch;
 using namespace tla;
 
 namespace BsaKernelArch35 {
 
-template <
-    class EpilogueMask2Idx,
-    class BlockMmadQK,
-    class EpilogueOnlineSoftmax,
-    class BlockMmadPV,
-    class EpilogueRescaleO,
-    Format qFormat,
-    Format kvFormat>
+template <class EpilogueMask2Idx, class BlockMmadQK, class EpilogueOnlineSoftmax, class BlockMmadPV,
+          class EpilogueRescaleO, Format qFormat, Format kvFormat>
 class BsaFullQuantKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
@@ -58,11 +51,9 @@ public:
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
 
     // Methods
-    __aicore__ inline
-    BsaFullQuantKernelArch35() {}
+    __aicore__ inline BsaFullQuantKernelArch35() {}
 
-    __aicore__ inline
-    void operator()(BsaFullQuantKernelParamsArch35 const &params)
+    __aicore__ inline void operator()(BsaFullQuantKernelParamsArch35 const &params)
     {
         __gm__ BlockSparseAttentionTilingData *bsaTilingData =
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
@@ -383,14 +374,8 @@ public:
 #ifdef __DAV_VEC__
                     // Stage 2: Online softmax (computed on VECTOR core)
                     // online softmax
-                    epilogueOnlineSoftmax(
-                        l1PTensorTla,
-                        actualBlockShapeQK,
-                        (gatheredKvSTileIdx == 0),
-                        ubSBufId,
-                        l1PBufId,
-                        mm1ToSmFlag,
-                        smToMm2Flag);
+                    epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, (gatheredKvSTileIdx == 0), ubSBufId,
+                                          l1PBufId, mm1ToSmFlag, smToMm2Flag);
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
@@ -443,8 +428,7 @@ public:
         ReleaseSyncFlags<4, 4, 4>();
     }
 
-    __aicore__ inline
-    void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
+    __aicore__ inline void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
     {
         batch_ = bsaTilingData->batch;
         qHeads_ = bsaTilingData->numHeads;
@@ -471,8 +455,7 @@ public:
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
     }
 
-    __aicore__ inline
-    void CalcOnChipBufTileInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
+    __aicore__ inline void CalcOnChipBufTileInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
     {
         mm1L1TileM_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileM;
         mm1L1TileN_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileN;
@@ -500,9 +483,10 @@ public:
         mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
     }
 
-    __aicore__ inline
-    uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(uint32_t gatheredKvSTileIdx, uint32_t singleMm1L0Stages,
-                                                uint32_t singleMm2L0Stages, uint32_t kvSLoopNum, bool isCurPhaseMm1)
+    __aicore__ inline uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(uint32_t gatheredKvSTileIdx,
+                                                                  uint32_t singleMm1L0Stages,
+                                                                  uint32_t singleMm2L0Stages, uint32_t kvSLoopNum,
+                                                                  bool isCurPhaseMm1)
     {
         uint64_t prefixSumStages;
         if (isCurPhaseMm1) {
@@ -519,11 +503,9 @@ public:
         return prefixSumStages;
     }
 
-    __aicore__ inline
-    void InitCrossCoreDstBuf(
-        AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
-        AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
-        AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
+    __aicore__ inline void InitCrossCoreDstBuf(AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
+                                               AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
+                                               AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
     {
         for (uint32_t i = 0; i < pL1BufNum_; i++) {
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
@@ -543,8 +525,7 @@ public:
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void InitSyncFlags()
+    __aicore__ inline void InitSyncFlags()
     {
 #ifdef __DAV_CUBE__
         // same core sync between pipes
@@ -604,8 +585,7 @@ public:
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void ReleaseSyncFlags()
+    __aicore__ inline void ReleaseSyncFlags()
     {
 #ifdef __DAV_CUBE__
         // same core sync between pipes

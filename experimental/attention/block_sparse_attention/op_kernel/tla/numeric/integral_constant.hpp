@@ -146,14 +146,12 @@ TLA_BINARY_OP(>>);
     { \
         return C<OP(t, u)>{}; \
     } \
-    template <auto t, class U, \
-              TLA_REQUIRES(is_std_integral<U>::value)> \
+    template <auto t, class U, TLA_REQUIRES(is_std_integral<U>::value)> \
     HOST_DEVICE constexpr auto OP(C<t>, U u) \
     { \
         return OP(t, u); \
     } \
-    template <class T, auto u, \
-              TLA_REQUIRES(is_std_integral<T>::value)> \
+    template <class T, auto u, TLA_REQUIRES(is_std_integral<T>::value)> \
     HOST_DEVICE constexpr auto OP(T t, C<u>) \
     { \
         return OP(t, u); \

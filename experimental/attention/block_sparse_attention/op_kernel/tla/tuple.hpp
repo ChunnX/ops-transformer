@@ -124,17 +124,14 @@ template <class T>
 struct is_tuple : decltype(detail::has_tuple_size((T *)0)){};
 
 template <class... T>
-struct tuple_size<tla::tuple<T...>>
-    : std::integral_constant<size_t, sizeof...(T)> {};
+struct tuple_size<tla::tuple<T...>> : std::integral_constant<size_t, sizeof...(T)> {};
 
 template <class... T>
-struct tuple_size<const tla::tuple<T...>>
-    : std::integral_constant<size_t, sizeof...(T)> {};
+struct tuple_size<const tla::tuple<T...>> : std::integral_constant<size_t, sizeof...(T)> {};
 
 // make_tuple
 template <class... T>
-HOST_DEVICE constexpr tuple<T...>
-MakeTuple(T const &...t)
+HOST_DEVICE constexpr tuple<T...> MakeTuple(T const &...t)
 {
     return {t...};
 }

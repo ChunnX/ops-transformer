@@ -112,8 +112,7 @@ HOST_DEVICE constexpr auto MakeLayoutFromTag(LayoutTag const &tag)
 {
     static_assert(std::is_same_v<LayoutTag, NpuArch::layout::RowMajor> ||
                       std::is_same_v<LayoutTag, NpuArch::layout::ColumnMajor> ||
-                      std::is_same_v<LayoutTag, NpuArch::layout::zN> ||
-                      std::is_same_v<LayoutTag, NpuArch::layout::nZ>,
+                      std::is_same_v<LayoutTag, NpuArch::layout::zN> || std::is_same_v<LayoutTag, NpuArch::layout::nZ>,
                   "Unsupported LayoutTag for MakeLayoutFromTag, only support NpuArch::layout::RowMajor or"
                   "NpuArch::layout::ColumnMajor or NpuArch::layout::zN or NpuArch::layout::nZ");
 
@@ -122,9 +121,9 @@ HOST_DEVICE constexpr auto MakeLayoutFromTag(LayoutTag const &tag)
     } else if constexpr (std::is_same_v<LayoutTag, NpuArch::layout::ColumnMajor>) {
         return MakeLayout(MakeShape(tag.shape(0), tag.shape(1)), MakeStride(Int<1>{}, tag.stride(1)));
     } else { // zN or nZ
-        return MakeLayout(MakeShape(MakeShape(tag.shape(0), tag.shape(1)), MakeShape(tag.shape(2), tag.shape(3))),
-                          MakeStride(MakeStride(tag.stride(0), tag.stride(1)),
-                                     MakeStride(tag.stride(2), tag.stride(3))));
+        return MakeLayout(
+            MakeShape(MakeShape(tag.shape(0), tag.shape(1)), MakeShape(tag.shape(2), tag.shape(3))),
+            MakeStride(MakeStride(tag.stride(0), tag.stride(1)), MakeStride(tag.stride(2), tag.stride(3))));
     }
 }
 
@@ -261,16 +260,13 @@ struct iszN {
 };
 
 template <class Element, class Layout>
-struct iszN<Element, Layout,
-            std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                             rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct iszN<Element, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
-    static bool const value = (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
-                               shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
-                               stride<1, 0>(Layout{}) == 1 &&
-                               stride<0, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
+    static bool const value =
+        (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL && shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
+         stride<1, 0>(Layout{}) == 1 && stride<0, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -279,16 +275,13 @@ struct iszZ {
 };
 
 template <class Element, class Layout>
-struct iszZ<Element, Layout,
-            std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                             rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct iszZ<Element, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
-    static bool const value = (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
-                               shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
-                               stride<1, 0>(Layout{}) == 1 &&
-                               stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
+    static bool const value =
+        (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL && shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
+         stride<1, 0>(Layout{}) == 1 && stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -297,16 +290,13 @@ struct isnZ {
 };
 
 template <class Element, class Layout>
-struct isnZ<Element, Layout,
-            std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                             rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct isnZ<Element, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+            std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
-    static bool const value = (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 &&
-                               shape<1, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
-                               stride<0, 0>(Layout{}) == 1 &&
-                               stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
+    static bool const value =
+        (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && shape<1, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
+         stride<0, 0>(Layout{}) == 1 && stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
 };
 
 #if defined(CATLASS_ARCH_A5_ENABLED)
@@ -316,14 +306,12 @@ struct isMxScaleANoTrans {
 };
 
 template <class Layout>
-struct isMxScaleANoTrans<AscendC::fp8_e8m0_t, Layout,
-                         std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                         std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 1 &&
-                                          rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct isMxScaleANoTrans<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 1 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
-    static bool const value =
-        (shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<1, 0>(Layout{}) == 1 &&
-         stride<1, 1>(Layout{}) == ELE_NUM_PER_C0);
+    static bool const value = (shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<1, 0>(Layout{}) == 1 &&
+                               stride<1, 1>(Layout{}) == ELE_NUM_PER_C0);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -332,14 +320,12 @@ struct isMxScaleATrans {
 };
 
 template <class Layout>
-struct isMxScaleATrans<AscendC::fp8_e8m0_t, Layout,
-                       std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                       std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 1 &&
-                                        rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct isMxScaleATrans<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 1 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
-    static bool const value =
-        (shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<1, 0>(Layout{}) == 1 &&
-         stride<0>(Layout{}) == ELE_NUM_PER_C0);
+    static bool const value = (shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<1, 0>(Layout{}) == 1 &&
+                               stride<0>(Layout{}) == ELE_NUM_PER_C0);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -348,14 +334,12 @@ struct isMxScaleBNoTrans {
 };
 
 template <class Layout>
-struct isMxScaleBNoTrans<AscendC::fp8_e8m0_t, Layout,
-                         std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                         std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                                          rank_v<decltype(shape<1>(Layout{}))> == 1>> {
+struct isMxScaleBNoTrans<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 1>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
-    static bool const value =
-        (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<0, 0>(Layout{}) == 1 &&
-         stride<1>(Layout{}) == ELE_NUM_PER_C0);
+    static bool const value = (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<0, 0>(Layout{}) == 1 &&
+                               stride<1>(Layout{}) == ELE_NUM_PER_C0);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -364,14 +348,12 @@ struct isMxScaleBTrans {
 };
 
 template <class Layout>
-struct isMxScaleBTrans<AscendC::fp8_e8m0_t, Layout,
-                       std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                       std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                                        rank_v<decltype(shape<1>(Layout{}))> == 1>> {
+struct isMxScaleBTrans<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 1>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
-    static bool const value =
-        (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<0, 0>(Layout{}) == 1 &&
-         stride<0, 1>(Layout{}) == ELE_NUM_PER_C0);
+    static bool const value = (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && stride<0, 0>(Layout{}) == 1 &&
+                               stride<0, 1>(Layout{}) == ELE_NUM_PER_C0);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -380,16 +362,14 @@ struct isMxScalezZ {
 };
 
 template <class Layout>
-struct isMxScalezZ<AscendC::fp8_e8m0_t, Layout,
-                   std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                   std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                                    rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct isMxScalezZ<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = 32;
-    static bool const value = (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
-                               shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
-                               stride<1, 0>(Layout{}) == 1 &&
-                               stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
+    static bool const value =
+        (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL && shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
+         stride<1, 0>(Layout{}) == 1 && stride<1, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
 };
 
 template <class Element, class Layout, class Enable1 = void, class Enable2 = void>
@@ -398,16 +378,14 @@ struct isMxScalenN {
 };
 
 template <class Layout>
-struct isMxScalenN<AscendC::fp8_e8m0_t, Layout,
-                   std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
-                   std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
-                                    rank_v<decltype(shape<1>(Layout{}))> == 2>> {
+struct isMxScalenN<
+    AscendC::fp8_e8m0_t, Layout, std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>,
+    std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 && rank_v<decltype(shape<1>(Layout{}))> == 2>> {
     static constexpr uint32_t ELE_NUM_PER_C0 = 2;
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = 32;
-    static bool const value = (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 &&
-                               shape<1, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
-                               stride<0, 0>(Layout{}) == 1 &&
-                               stride<0, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
+    static bool const value =
+        (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 && shape<1, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
+         stride<0, 0>(Layout{}) == 1 && stride<0, 1>(Layout{}) == ELE_NUM_PER_FRACTAL);
 };
 #endif
 
@@ -429,8 +407,7 @@ HOST_DEVICE constexpr auto MakeLayout(T const &rows, U const &cols)
                       std::is_same_v<LayoutTag, NpuArch::layout::ColumnMajor> ||
                       std::is_same_v<LayoutTag, NpuArch::layout::VectorLayout> ||
                       std::is_same_v<LayoutTag, NpuArch::layout::zN> ||
-                      std::is_same_v<LayoutTag, NpuArch::layout::nZ> ||
-                      std::is_same_v<LayoutTag, NpuArch::layout::zZ>,
+                      std::is_same_v<LayoutTag, NpuArch::layout::nZ> || std::is_same_v<LayoutTag, NpuArch::layout::zZ>,
                   "Unsupported LayoutTag for MakeLayoutFromTag, only support NpuArch::layout::RowMajor or"
                   "NpuArch::layout::ColumnMajor or NpuArch::layout::zN or NpuArch::layout::nZ or NpuArch::layout::zZ");
 
@@ -447,9 +424,9 @@ HOST_DEVICE constexpr auto MakeLayout(T const &rows, U const &cols)
         return MakeLayout(
             MakeShape(MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{})),
                       MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
-            MakeStride(MakeStride(Int<ELE_NUM_PER_C0>{}, Int<ELE_NUM_PER_FRACTAL>{}),
-                       MakeStride(Int<1>{},
-                                  RoundUp((int64_t)rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{}) * ELE_NUM_PER_C0)));
+            MakeStride(
+                MakeStride(Int<ELE_NUM_PER_C0>{}, Int<ELE_NUM_PER_FRACTAL>{}),
+                MakeStride(Int<1>{}, RoundUp((int64_t)rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{}) * ELE_NUM_PER_C0)));
     } else if constexpr (std::is_same_v<LayoutTag, NpuArch::layout::zZ>) {
         return MakeLayout(
             MakeShape(MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{})),
@@ -487,15 +464,13 @@ HOST_DEVICE constexpr auto MakeMxScaleLayout(T const &rows, U const &cols)
                 MakeShape(rows, MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
                 MakeStride(RoundUp(cols, Int<ELE_NUM_PER_C0>{}), MakeStride(Int<1>{}, Int<ELE_NUM_PER_C0>{})));
         } else {
-            return MakeLayout(
-                MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})), cols),
-                MakeStride(MakeStride(Int<1>{}, cols * ELE_NUM_PER_C0), Int<ELE_NUM_PER_C0>{}));
+            return MakeLayout(MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})), cols),
+                              MakeStride(MakeStride(Int<1>{}, cols * ELE_NUM_PER_C0), Int<ELE_NUM_PER_C0>{}));
         }
     } else if constexpr (std::is_same_v<LayoutTag, NpuArch::layout::ColumnMajor>) {
         if constexpr (!isMxScaleB) {
-            return MakeLayout(
-                MakeShape(rows, MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
-                MakeStride(Int<ELE_NUM_PER_C0>{}, MakeStride(Int<1>{}, rows * ELE_NUM_PER_C0)));
+            return MakeLayout(MakeShape(rows, MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
+                              MakeStride(Int<ELE_NUM_PER_C0>{}, MakeStride(Int<1>{}, rows * ELE_NUM_PER_C0)));
         } else {
             return MakeLayout(
                 MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})), cols),
@@ -503,31 +478,26 @@ HOST_DEVICE constexpr auto MakeMxScaleLayout(T const &rows, U const &cols)
         }
     } else if constexpr (std::is_same_v<LayoutTag, NpuArch::layout::zZ>) {
         return MakeLayout(
-            MakeShape(
-                MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{})),
-                MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
-            MakeStride(
-                MakeStride(
-                    Int<ELE_NUM_PER_C0>{}, RoundUp((int64_t)cols, Int<ELE_NUM_PER_C0>{}) * NpuArch::C0_NUM_PER_FRACTAL),
-                MakeStride(Int<1>{}, Int<ELE_NUM_PER_FRACTAL>{})));
+            MakeShape(MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{})),
+                      MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
+            MakeStride(MakeStride(Int<ELE_NUM_PER_C0>{},
+                                  RoundUp((int64_t)cols, Int<ELE_NUM_PER_C0>{}) * NpuArch::C0_NUM_PER_FRACTAL),
+                       MakeStride(Int<1>{}, Int<ELE_NUM_PER_FRACTAL>{})));
     } else {
         return MakeLayout(
-            MakeShape(
-                MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})),
-                MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(cols, Int<NpuArch::C0_NUM_PER_FRACTAL>{}))),
-            MakeStride(
-                MakeStride(Int<1>{}, Int<ELE_NUM_PER_FRACTAL>{}),
-                MakeStride(
-                    Int<ELE_NUM_PER_C0>{},
-                    RoundUp((int64_t)rows, Int<ELE_NUM_PER_C0>{}) * NpuArch::C0_NUM_PER_FRACTAL)));
+            MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})),
+                      MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(cols, Int<NpuArch::C0_NUM_PER_FRACTAL>{}))),
+            MakeStride(MakeStride(Int<1>{}, Int<ELE_NUM_PER_FRACTAL>{}),
+                       MakeStride(Int<ELE_NUM_PER_C0>{},
+                                  RoundUp((int64_t)rows, Int<ELE_NUM_PER_C0>{}) * NpuArch::C0_NUM_PER_FRACTAL)));
     }
 }
 
 template <class Layout, class ShapeNew>
 HOST_DEVICE constexpr auto MakeLayoutTile(Layout const &layout, ShapeNew const &shapeNew)
 {
-    static_assert(
-        is_tuple<ShapeNew>::value && depth_v<ShapeNew> == 1 && (rank_v<ShapeNew> == 1 || rank_v<ShapeNew> == 2));
+    static_assert(is_tuple<ShapeNew>::value && depth_v<ShapeNew> == 1 &&
+                  (rank_v<ShapeNew> == 1 || rank_v<ShapeNew> == 2));
 
     if constexpr (Layout::depth == 1 && (Layout::rank == 1 || Layout::rank == 2)) {
         return MakeLayout(shapeNew, layout.stride());
@@ -536,36 +506,32 @@ HOST_DEVICE constexpr auto MakeLayoutTile(Layout const &layout, ShapeNew const &
         const uint32_t rows = get<0>(shapeNew);
         const uint32_t cols = get<1>(shapeNew);
         constexpr uint32_t ELE_NUM_PER_C0 = decltype(shape<1, 0>(layout))::value;
-        return MakeLayout(
-            MakeShape(rows, MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
-            layout.stride());
+        return MakeLayout(MakeShape(rows, MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(cols, Int<ELE_NUM_PER_C0>{}))),
+                          layout.stride());
     } else if constexpr (Layout::depth == 2 && Layout::rank == 2 && rank_v<decltype(shape<0>(Layout{}))> == 2 &&
                          rank_v<decltype(shape<1>(Layout{}))> == 1) {
         const uint32_t rows = get<0>(shapeNew);
         const uint32_t cols = get<1>(shapeNew);
         constexpr uint32_t ELE_NUM_PER_C0 = decltype(shape<0, 0>(layout))::value;
-        return MakeLayout(
-            MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})), cols),
-            layout.stride());
+        return MakeLayout(MakeShape(MakeShape(Int<ELE_NUM_PER_C0>{}, CeilDiv(rows, Int<ELE_NUM_PER_C0>{})), cols),
+                          layout.stride());
     } else if constexpr (is_static<decltype(shape<0, 0>(layout))>::value &&
                          is_static<decltype(shape<1, 0>(layout))>::value) {
         const uint32_t rows = get<0>(shapeNew);
         const uint32_t cols = get<1>(shapeNew);
         constexpr uint32_t dstInnerShapeRow = decltype(shape<0, 0>(layout))::value;
         constexpr uint32_t dstInnerShapeCol = decltype(shape<1, 0>(layout))::value;
-        return MakeLayout(
-            MakeShape(MakeShape(Int<dstInnerShapeRow>{}, CeilDiv<dstInnerShapeRow>(rows)),
-                      MakeShape(Int<dstInnerShapeCol>{}, CeilDiv<dstInnerShapeCol>(cols))),
-            layout.stride());
+        return MakeLayout(MakeShape(MakeShape(Int<dstInnerShapeRow>{}, CeilDiv<dstInnerShapeRow>(rows)),
+                                    MakeShape(Int<dstInnerShapeCol>{}, CeilDiv<dstInnerShapeCol>(cols))),
+                          layout.stride());
     } else {
         const uint32_t rows = get<0>(shapeNew);
         const uint32_t cols = get<1>(shapeNew);
         const uint32_t dstInnerShapeRow = shape<0, 0>(layout);
         const uint32_t dstInnerShapeCol = shape<1, 0>(layout);
-        return MakeLayout(
-            MakeShape(MakeShape(dstInnerShapeRow, CeilDiv(rows, dstInnerShapeRow)),
-                      MakeShape(dstInnerShapeCol, CeilDiv(cols, dstInnerShapeCol))),
-            layout.stride());
+        return MakeLayout(MakeShape(MakeShape(dstInnerShapeRow, CeilDiv(rows, dstInnerShapeRow)),
+                                    MakeShape(dstInnerShapeCol, CeilDiv(cols, dstInnerShapeCol))),
+                          layout.stride());
     }
 }
 
@@ -577,9 +543,8 @@ HOST_DEVICE constexpr auto MakeLayoutL0C(T const &rows, U const &cols)
         MakeShape(MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{})),
                   MakeShape(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, CeilDiv(cols, Int<NpuArch::C0_NUM_PER_FRACTAL>{}))),
         MakeStride(MakeStride(Int<NpuArch::C0_NUM_PER_FRACTAL>{}, Int<ELE_NUM_PER_FRACTAL>{}),
-                   MakeStride(
-                       Int<1>{},
-                       RoundUp((int64_t)rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{}) * NpuArch::C0_NUM_PER_FRACTAL)));
+                   MakeStride(Int<1>{}, RoundUp((int64_t)rows, Int<NpuArch::C0_NUM_PER_FRACTAL>{}) *
+                                            NpuArch::C0_NUM_PER_FRACTAL)));
 }
 
 } // end namespace tla
