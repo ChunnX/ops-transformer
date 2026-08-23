@@ -1767,23 +1767,30 @@ def _pv_matmul_cpu(
     )
     p_scale_c2 = e8m0fnu_to_fp32(p_scale_e8m0, "CPU P golden matmul descale")
 
-    # MXFP8 cube first accumulates each 32-element group, applies that
-    # group's P/V descales, and only then merges groups. A single matmul over
-    # fully dequantized V changes the FP32 addition order.
-    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
+    # The Cube accumulates FP8 products into an FP32 L0C matrix.  A CPU BLAS
+    # FP32 matmul is free to use a different reduction tree, which can move
+    # values across the final BF16 rounding boundary.  Use FP64 for the CPU
+    # reference reduction, then round once to the Cube output type (FP32).
+    # Keep the 32-element MX scale groups explicit so descales are applied at
+    # the same logical point as the hardware MX operands.
+    p_c2_fp64 = p_c2.to(torch.float64)
+    p_scale_c2_fp64 = p_scale_c2.to(torch.float64)
+    v_c2_fp64 = v_c2.to(torch.float64)
+    v_scale_c2_fp64 = v_scale_c2.to(torch.float64)
+    pv = torch.zeros((nq, head_dim), dtype=torch.float64)
     for group_idx in range(p_scale_c2.shape[1]):
         group_start = group_idx * QUANT_GROUP_SIZE
         group_end = min(group_start + QUANT_GROUP_SIZE, p_c2.shape[1])
         group_dot = torch.matmul(
-            p_c2[:, group_start:group_end],
-            v_c2[group_start:group_end, :],
+            p_c2_fp64[:, group_start:group_end],
+            v_c2_fp64[group_start:group_end, :],
         )
         pv += (
             group_dot
-            * p_scale_c2[:, group_idx].view(nq, 1)
-            * v_scale_c2[group_idx].view(1, head_dim)
+            * p_scale_c2_fp64[:, group_idx].view(nq, 1)
+            * v_scale_c2_fp64[group_idx].view(1, head_dim)
         )
-    return pv, round_sum
+    return pv.to(torch.float32), round_sum
 
 
 def _pv_matmul_npu(
