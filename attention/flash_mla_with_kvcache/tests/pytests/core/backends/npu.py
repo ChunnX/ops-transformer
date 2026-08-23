@@ -268,7 +268,7 @@ class NPUBackend(Backend):
             meta_kwargs["mask_mode"],
             kw.get("layout_q", "TND"),
             kw.get("layout_kv", "NZ"),
-            kw.get("layout_out", "NTD"),
+            kw.get("layout_out", "TND"),
             kw.get("softmax_scale", 1.0),
             params.get("D", 512),
             kw.get("return_softmax_lse", False),

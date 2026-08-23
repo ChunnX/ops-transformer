@@ -18,8 +18,8 @@
   LSE = log(sum_k exp(S - max_k)) + max_k，形状 (N, T)（flash_attn TND 族约定；FIA 自身为 {t,n,1}，
         以本 golden 为上板对比基准，见 learnings 的 LSE 复核结论）
 
-布局限定 TND/NZ/NTD（R1）：q = [T, N1, 576]，k_cache = [num_blocks, 1, 36, block_size, 16]。
-输出 O = [N1, T, 512]（NTD），LSE = [N1, T]。
+布局限定 TND/NZ/TND（T11 迁移，out 恒等于 q）：q = [T, N1, 576]，k_cache = [num_blocks, 1, 36, block_size, 16]。
+输出 O = [T, N1, 512]（TND），LSE = [N1, T]。
 """
 
 import math
@@ -57,9 +57,19 @@ def _attend(q, k, v, mask, scale):
     return out, x_max, x_sum
 
 
-def mla_forward(q, k_cache, *,
-                cu_seqlens_q, cache_seqlens, block_table, block_size=128,
-                seqused_q=None, mask_mode=0, scale=None, N1=None):
+def mla_forward(
+    q,
+    k_cache,
+    *,
+    cu_seqlens_q,
+    cache_seqlens,
+    block_table,
+    block_size=128,
+    seqused_q=None,
+    mask_mode=0,
+    scale=None,
+    N1=None,
+):
     """全量 MLA 参考计算（fp32 累加）。
 
     Args:
@@ -74,7 +84,7 @@ def mla_forward(q, k_cache, *,
         N1:             query head 数（默认 q.shape[1]）
 
     Returns:
-        (out, lse): out = [N1, T, 512] fp16/bf16（与 q 同 dtype），lse = [N1, T] float32
+        (out, lse): out = [T, N1, 512] fp16/bf16（与 q 同 dtype），lse = [N1, T] float32
     """
     if scale is None:
         scale = 1.0 / math.sqrt(MLA_HEAD_DIM_V)
@@ -86,30 +96,44 @@ def mla_forward(q, k_cache, *,
     # k_cache PA_NZ → [b, n2=1, s2, 576]（重建 576 宽，nope‖rope 合并）
     k_full = _pa_nz_to_batch(k_cache, block_table, cache_seqlens, block_size, b)
 
-    out = torch.zeros(n1, t_total, MLA_HEAD_DIM_V, dtype=dtype)
+    out = torch.zeros(t_total, n1, MLA_HEAD_DIM_V, dtype=dtype)
     lse = torch.zeros(n1, t_total, dtype=torch.float32)
     for i in range(b):
-        q_len = (seqused_q[i] if seqused_q is not None else
-                 int(cu_seqlens_q[i + 1]) - int(cu_seqlens_q[i]))
+        q_len = (
+            seqused_q[i]
+            if seqused_q is not None
+            else int(cu_seqlens_q[i + 1]) - int(cu_seqlens_q[i])
+        )
         kv_len = int(cache_seqlens[i])
         if q_len == 0 or kv_len == 0:
             continue
         q_start = int(cu_seqlens_q[i])
-        qi = q[q_start:q_start + q_len, :, :]                # [q_len, N1, 576]
-        ki = k_full[i, 0, :kv_len, :]                        # [kv_len, 576]
+        qi = q[q_start : q_start + q_len, :, :]  # [q_len, N1, 576]
+        ki = k_full[i, 0, :kv_len, :]  # [kv_len, 576]
 
         mask = _right_down_causal_mask(q_len, kv_len) if mask_mode == 3 else None
         # [q_len, N1, 576] → [N1, q_len, 576]
-        outi, x_maxi, x_sumi = _attend(qi.permute(1, 0, 2), ki.unsqueeze(0),
-                                       ki[..., :MLA_HEAD_DIM_V].unsqueeze(0), mask, scale)
-        out[:, q_start:q_start + q_len, :] = outi.to(dtype)
-        lse[:, q_start:q_start + q_len] = (torch.log(x_sumi) + x_maxi).squeeze(-1)
+        outi, x_maxi, x_sumi = _attend(
+            qi.permute(1, 0, 2),
+            ki.unsqueeze(0),
+            ki[..., :MLA_HEAD_DIM_V].unsqueeze(0),
+            mask,
+            scale,
+        )
+        # [N1, q_len, D] → [q_len, N1, D]（out 恒 TND 布局）
+        out[q_start : q_start + q_len, :, :] = outi.permute(1, 0, 2).to(dtype)
+        lse[:, q_start : q_start + q_len] = (torch.log(x_sumi) + x_maxi).squeeze(-1)
     return out, lse
 
 
 def _pa_nz_to_batch(k_cache, block_table, cache_seqlens, block_size, b):
     """PA_NZ [num_blocks, 1, 36, bs, 16] → [b, 1, s2, 576]（仅取每 batch 的实际 kv 长度）。"""
-    n_kv, d_sub, bs, elem = k_cache.shape[1], k_cache.shape[2], k_cache.shape[3], k_cache.shape[4]
+    n_kv, d_sub, bs, elem = (
+        k_cache.shape[1],
+        k_cache.shape[2],
+        k_cache.shape[3],
+        k_cache.shape[4],
+    )
     d_total = d_sub * elem
     total = [0] * b
     for i in range(b):
@@ -130,6 +154,8 @@ def _pa_nz_to_batch(k_cache, block_table, cache_seqlens, block_size, b):
             if cnt <= 0:
                 continue
             # [1, d_sub, cnt, 16] → [1, cnt, d_sub*16]
-            block_data = kc[blk_id, :, :, :cnt, :].permute(0, 2, 1, 3).reshape(1, cnt, d_total)
+            block_data = (
+                kc[blk_id, :, :, :cnt, :].permute(0, 2, 1, 3).reshape(1, cnt, d_total)
+            )
             result[i, :, start:end, :] = block_data
     return result

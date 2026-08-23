@@ -66,20 +66,22 @@ FlashMlaWithKvcacheTilingUtParam MakeBaseMlaParam(int64_t tTokens)
     p.metadata = TilingContextPara::TensorDescription(
         gert::StorageShape({4096}, {4096}), ge::DT_INT32, ge::FORMAT_ND);
     p.attn_out = TilingContextPara::TensorDescription(
-        gert::StorageShape({8, tTokens, 512}, {8, tTokens, 512}), ge::DT_FLOAT16, ge::FORMAT_ND);
+        gert::StorageShape({tTokens, 8, 512}, {tTokens, 8, 512}), ge::DT_FLOAT16, ge::FORMAT_ND);
     p.layout_q = "TND";
     p.layout_kv = "PA_NZ";
-    p.layout_out = "NTD";
+    p.layout_out = "TND";
     p.softmax_scale = 0.125f;
     return p;
 }
 
 // 5-field key encoding (flash_mla_with_kvcache_template_tiling_key.h bit layout): InOutLayoutType<<0 |
 // Config<<8 | HasAttenMask<<18 | KvLayoutType<<19 | IsFd<<21
-uint64_t EncodeMlaTilingKey(bool hasAttenMask, bool isFd)
+// InOutLayoutType: TND=2 / BSND(BSH)=1 / BNSD=0；KvLayoutType: PA_NZ=3 / PA_BNBD=2 / PA_BBND=1
+// （取值以本算子 template_tiling_key.h 的枚举常量为准，勿照抄 flash_attn 的编号）
+uint64_t EncodeMlaTilingKey(bool hasAttenMask, bool isFd, uint64_t inOutLayoutType = 2, uint64_t kvLayoutType = 3)
 {
-    return (2ULL << 0) | (9ULL << 8) | (static_cast<uint64_t>(hasAttenMask) << 18) | (3ULL << 19) |
-           (static_cast<uint64_t>(isFd) << 21);
+    return (inOutLayoutType << 0) | (9ULL << 8) | (static_cast<uint64_t>(hasAttenMask) << 18) |
+           (kvLayoutType << 19) | (static_cast<uint64_t>(isFd) << 21);
 }
 
 } // namespace
@@ -138,7 +140,7 @@ TEST(FlashMlaWithKvcacheArch35Tiling, MetadataPassthroughConstantFill)
     EXPECT_EQ(base.actualSeqLengthsKVSize, 2); // cache_seqlens elements = b
     EXPECT_EQ(base.isKvContinuous, 0);
     EXPECT_EQ(base.isSoftMaxLseEnable, 0);
-    EXPECT_EQ(base.outputLayout, 5); // KERNEL_LAYOUT_NTD
+    EXPECT_EQ(base.outputLayout, 3); // KERNEL_LAYOUT_TND (out==q, T11 flip from NTD/5)
     EXPECT_EQ(base.coreNum, tilingInfo.blockNum);
 
     // multi-section passthrough: a 2-section-capacity metadata tensor yields byte-identical tiling data
@@ -186,7 +188,16 @@ TEST(FlashMlaWithKvcacheArch35Tiling, SeqLensDecodeFlagAndWorkspace)
         (static_cast<uint64_t>(decodeInfo.blockNum) * preLoad * mSize * dVSize +
          2 * static_cast<uint64_t>(decodeInfo.blockNum) * preLoad * mSize * lseSize) *
         sizeof(float);
-    EXPECT_EQ(decodeInfo.workspaceSizes[0], prefillWorkspace + expectedDelta);
+    // host 真值（T6 后）：prefill/decode 均 isFd=1 且 numBlocks 相同（metadata 透传恒全核调度），
+    // workspace = defaultSysWorkspaceSize + expectedDelta 两路径相等；旧"decode=prefill+delta"
+    // 前提（prefill 无 FD 增量）已随 isFd 恒真失效，改为三者一致的组成校验：
+    //   workspaceSizes[0] == defaultSysWorkspaceSize + expectedDelta == prefillWorkspace
+    uint64_t prefillDelta =
+        (static_cast<uint64_t>(prefillInfo.blockNum) * preLoad * mSize * dVSize +
+         2 * static_cast<uint64_t>(prefillInfo.blockNum) * preLoad * mSize * lseSize) *
+        sizeof(float);
+    EXPECT_EQ(prefillWorkspace - prefillDelta, decodeInfo.workspaceSizes[0] - expectedDelta);
+    EXPECT_EQ(decodeInfo.workspaceSizes[0], prefillWorkspace);
 
     auto *tiling = reinterpret_cast<const optiling::FlashMlaWithKvcacheTilingData *>(decodeInfo.tilingData.get());
     EXPECT_EQ(tiling->baseTiling.flashMlaWithKvcacheWorkspaceParams.accumOutSize,
