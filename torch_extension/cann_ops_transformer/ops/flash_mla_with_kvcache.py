@@ -79,7 +79,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor? attn_mask=None, Tensor? metadata=None, "
             "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
-            'str layout_q="TND", str layout_kv="NZ", str layout_out="NTD", '
+            'str layout_q="TND", str layout_kv="NZ", str? layout_out=None, '
             "bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
 
@@ -126,7 +126,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             max_seqlen_kv: Optional[int] = -1,
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "NZ",
-            layout_out: Optional[str] = "NTD",
+            layout_out: Optional[str] = None,
             return_softmax_lse: Optional[bool] = False,
         ):
             # MLA: attn_out 最后一维 = head_dim_v（nope/value 宽度 512）；q/k_cache 最后维为
@@ -150,30 +150,19 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
                 d_size = head_dim_v
                 softmax_out_size = (b_size, n_size, s_size)
 
-            if layout_out == "TND" or layout_out == "NTD":
-                # MLA 默认 layout_out="NTD"：输出为 (N, T, D)（FIA 约定，fused_infer_attention_score
-                # infershape 的 attentionOutLayout=="NTD" -> {n1, t, outD}）；layout_out="TND" 时输出 (T, N, D)。
+            # D7: 输出布局必须与 query 布局相同（TND/BNSD/BSND），不支持转置；旧默认
+            # layout_out="NTD" 已淘汰（FIA 的 NTD 输出约定），layout_out 缺省时跟随 layout_q。
+            if layout_out is not None:
                 torch._check(
-                    layout_q == "TND",
-                    lambda: f"When the layout of output is {layout_out}, the layout of query must be "
-                    f"TND, but got {layout_q}",
+                    layout_out == layout_q,
+                    lambda: f"layout_out must equal layout_q ({layout_q}), but got {layout_out}",
                 )
-                if layout_out == "NTD":
-                    attention_out_size = (n_size, t_size, d_size)
-                else:
-                    attention_out_size = (t_size, n_size, d_size)
-            elif layout_out == "BNSD":
-                torch._check(
-                    layout_q == "BNSD",
-                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
-                )
-                attention_out_size = (b_size, n_size, s_size, d_size)
-            else:
-                torch._check(
-                    layout_q != "TND",
-                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
-                )
+            if layout_q == "TND":
+                attention_out_size = (t_size, n_size, d_size)
+            elif layout_q == "BSND":
                 attention_out_size = (b_size, s_size, n_size, d_size)
+            else:
+                attention_out_size = (b_size, n_size, s_size, d_size)
 
             return (
                 torch.empty(attention_out_size, dtype=q.dtype, device="meta"),
@@ -199,7 +188,7 @@ def flash_mla_with_kvcache_metadata(
     mask_mode: Optional[int] = 0,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "NZ",
-    layout_out: Optional[str] = "NTD",
+    layout_out: Optional[str] = None,
 ):
     """
     Dispatcher implementation: NPU.
@@ -217,7 +206,7 @@ def flash_mla_with_kvcache_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     layout_q = "TND" if layout_q is None else layout_q
     layout_kv = "NZ" if layout_kv is None else layout_kv
-    layout_out = "NTD" if layout_out is None else layout_out
+    layout_out = layout_q if layout_out is None else layout_out
 
     op_module = flash_mla_with_kvcache_op_builder.load()
     metadata_size = _calculate_metadata_size(b_size)
@@ -295,7 +284,7 @@ def flash_mla_with_kvcache(
     max_seqlen_kv: Optional[int] = -1,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "NZ",
-    layout_out: Optional[str] = "NTD",
+    layout_out: Optional[str] = None,
     return_softmax_lse: Optional[bool] = False,
 ):
     """
@@ -311,6 +300,10 @@ def flash_mla_with_kvcache(
             batch_size = cu_seqlens_q.size(0) - 1
         if batch_size is not None:
             _check_metadata_capacity(metadata, batch_size)
+
+    layout_q = "TND" if layout_q is None else layout_q
+    # D7: 输出布局跟随 query（out==q，不支持转置）；旧默认 "NTD" 已淘汰。
+    layout_out = layout_q if layout_out is None else layout_out
 
     op_module = flash_mla_with_kvcache_op_builder.load()
     return op_module.flash_mla_with_kvcache(
