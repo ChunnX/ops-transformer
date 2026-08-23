@@ -34,6 +34,7 @@ constexpr size_t BLOCK_RESIDUAL_DIM = 3;
 constexpr size_t WEIGHT_1D_DIM = 1;
 constexpr size_t WEIGHT_2D_DIM = 2;
 constexpr size_t ATTR_NEED_BACKWARD_INDEX = 1;
+constexpr int64_t MAX_NUM_BLOCKS = 100;
 
 static ge::graphStatus InferShapeAttnResFwd(InferShapeContext *context)
 {
@@ -72,6 +73,20 @@ static ge::graphStatus InferShapeAttnResFwd(InferShapeContext *context)
     const int64_t hiddenSize = prefixShape->GetDim(1);
     const int64_t numBlocks = blockShape->GetDim(1);
     const int64_t blockCount = numBlocks + 1;
+
+    OP_CHECK_IF(numTokens < 0 || hiddenSize <= 0 || numBlocks < 1 || numBlocks > MAX_NUM_BLOCKS,
+                OP_LOGE(opName, "shape range requires T>=0, H>=1 and 1<=N<=%ld", MAX_NUM_BLOCKS),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockShape->GetDim(0) != numTokens || blockShape->GetDim(2) != hiddenSize,
+                OP_LOGE(opName, "block_residual shape must be [T,N,H]"), return ge::GRAPH_FAILED);
+    const bool projShapeOk =
+        (projShape->GetDimNum() == WEIGHT_1D_DIM && projShape->GetDim(0) == hiddenSize) ||
+        (projShape->GetDimNum() == WEIGHT_2D_DIM && projShape->GetDim(0) == 1 &&
+         projShape->GetDim(1) == hiddenSize);
+    OP_CHECK_IF(!projShapeOk, OP_LOGE(opName, "proj_weight shape must be [H] or [1,H]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(normShape->GetDim(0) != hiddenSize,
+                OP_LOGE(opName, "norm_weight shape must be [H]"), return ge::GRAPH_FAILED);
 
     outShape->SetDimNum(PREFIX_SUM_DIM);
     outShape->SetDim(0, numTokens);

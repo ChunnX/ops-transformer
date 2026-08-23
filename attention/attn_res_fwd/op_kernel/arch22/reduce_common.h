@@ -538,7 +538,7 @@ __aicore__ inline void BroadcastScalarMulTensor(const LocalTensor<float>& dst, c
 
 /*!
  * 小 B Softmax（向量路径：WholeReduceMax/Sum + Brcb + Exp + Div）。
- * 支持 blockCount > 64（N≤99，blockCount=2..100）：
+ * 支持 blockCount > 64（N≤100，blockCount=2..101）：
  *   - max/sum 归约在独立 foldWork 上进行（HalfInterval fold），不破坏 brcMeta 的 score/exp 值。
  * 容量要求：brcPack ≥ metaAlign + ELEM_PER_BLK_FP32 float（brcScratch + foldWork）。
  */

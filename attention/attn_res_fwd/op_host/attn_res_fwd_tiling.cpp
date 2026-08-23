@@ -15,6 +15,7 @@
 #include "attn_res_fwd_tiling.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
@@ -48,6 +49,7 @@ constexpr uint32_t UB_OVERHEAD_BYTES = 32U * 1024U;
 constexpr uint32_t ELEM_PER_BLK_BF16 = 16U;
 constexpr uint32_t ELEM_PER_BLK_FP32 = 8U;
 constexpr uint32_t SCALAR_LOCAL_ELEMS = 8U;
+constexpr uint32_t MAX_NUM_BLOCKS = 100U;
 constexpr uint32_t STAGING_ALIGN_BYTES = 512U;
 
 static inline uint32_t AlignUpU32(uint32_t val, uint32_t align)
@@ -380,9 +382,19 @@ ge::graphStatus AttnResFwdTiling::AnalyzeShapes()
                 OP_LOGE(context_->GetNodeName(), "block_residual dim num must be %zu", BLOCK_RESIDUAL_DIM),
                 return ge::GRAPH_FAILED);
 
-    tilingData_.numTokens = static_cast<uint32_t>(prefixShape.GetDim(0));
-    tilingData_.hiddenSize = static_cast<uint32_t>(prefixShape.GetDim(1));
-    tilingData_.numBlocks = static_cast<uint32_t>(blockShape.GetDim(1));
+    const int64_t numTokens = prefixShape.GetDim(0);
+    const int64_t hiddenSize = prefixShape.GetDim(1);
+    const int64_t numBlocks = blockShape.GetDim(1);
+    constexpr int64_t U32_MAX = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
+    OP_CHECK_IF(numTokens < 0 || numTokens > U32_MAX || hiddenSize <= 0 || hiddenSize > U32_MAX ||
+                    numBlocks < 1 || numBlocks > static_cast<int64_t>(MAX_NUM_BLOCKS),
+                OP_LOGE(context_->GetNodeName(), "shape range requires 0<=T<=UINT32_MAX, 1<=H<=UINT32_MAX, "
+                                                    "and 1<=N<=%u", MAX_NUM_BLOCKS),
+                return ge::GRAPH_FAILED);
+
+    tilingData_.numTokens = static_cast<uint32_t>(numTokens);
+    tilingData_.hiddenSize = static_cast<uint32_t>(hiddenSize);
+    tilingData_.numBlocks = static_cast<uint32_t>(numBlocks);
 
     OP_CHECK_IF(blockShape.GetDim(0) != static_cast<int64_t>(tilingData_.numTokens),
                 OP_LOGE(context_->GetNodeName(), "T mismatch between prefix_sum and block_residual"),
@@ -390,13 +402,12 @@ ge::graphStatus AttnResFwdTiling::AnalyzeShapes()
     OP_CHECK_IF(blockShape.GetDim(2) != static_cast<int64_t>(tilingData_.hiddenSize),
                 OP_LOGE(context_->GetNodeName(), "H mismatch between prefix_sum and block_residual"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tilingData_.numBlocks < 1,
-                OP_LOGE(context_->GetNodeName(), "num_blocks must be >= 1, got %u", tilingData_.numBlocks),
+    const bool projShapeOk =
+        (projShape.GetDimNum() == 1 && projShape.GetDim(0) == hiddenSize) ||
+        (projShape.GetDimNum() == 2 && projShape.GetDim(0) == 1 && projShape.GetDim(1) == hiddenSize);
+    OP_CHECK_IF(!projShapeOk,
+                OP_LOGE(context_->GetNodeName(), "proj_weight shape must be [H] or [1,H]"),
                 return ge::GRAPH_FAILED);
-
-    int64_t projHidden = projShape.GetDim(projShape.GetDimNum() - 1);
-    OP_CHECK_IF(projHidden != static_cast<int64_t>(tilingData_.hiddenSize),
-                OP_LOGE(context_->GetNodeName(), "proj_weight hidden dim mismatch"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(normShape.GetDimNum() != 1 || normShape.GetDim(0) != static_cast<int64_t>(tilingData_.hiddenSize),
                 OP_LOGE(context_->GetNodeName(), "norm_weight shape must be [H]"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

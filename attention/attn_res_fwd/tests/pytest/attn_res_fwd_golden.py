@@ -66,12 +66,18 @@ def prepare_tensors(
     return prefix_sum, block_residual, proj_weight, norm_weight, DEFAULT_NORM_EPS
 
 
-def compute_mere_mare(npu_output: torch.Tensor, golden_output: torch.Tensor) -> Tuple[float, float]:
+def compute_mere_mare(
+    npu_output: torch.Tensor, golden_output: torch.Tensor, diff_thd: float = BF16_MERE_THRESHOLD
+) -> Tuple[float, float]:
     npu_fp32 = npu_output.detach().float().cpu().numpy().reshape(-1)
     golden_fp32 = golden_output.detach().float().cpu().numpy().reshape(-1)
     abs_err = np.abs(npu_fp32 - golden_fp32)
-    denom = np.maximum(np.abs(golden_fp32), 1e-10)
-    rel_err = abs_err / denom
+    # 与 precision_compare.cal_relative_diff_np 保持一致。接近 0 的 golden 若直接作分母，
+    # 一个 BF16 量化步长会被放大成无意义的超大相对误差，造成 data_compare=success 但 MERE 误报。
+    scale = np.maximum(np.abs(npu_fp32), np.abs(golden_fp32))
+    floor = (1.0 / (1 << 14)) / diff_thd
+    denom = np.maximum(scale, floor) + 1e-9
+    rel_err = np.where(abs_err < diff_thd, abs_err, abs_err / denom)
     return float(np.max(rel_err)), float(np.max(abs_err))
 
 
@@ -83,7 +89,7 @@ def compare_with_data_compare(npu_output: torch.Tensor, golden_output: torch.Ten
         pct_thd=diff_thd,
         max_diff_hd=diff_thd,
     )
-    mere, mare = compute_mere_mare(npu_output, golden_output)
+    mere, mare = compute_mere_mare(npu_output, golden_output, diff_thd)
     passed = result == "success" and mere < diff_thd
     return {
         "result": "pass" if passed else "fail",

@@ -48,6 +48,7 @@ static const std::initializer_list<op::DataType> BF16_TYPE_SUPPORT_LIST = {op::D
                                                                            op::DataType::DT_FLOAT16,
                                                                            op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> FLOAT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+constexpr int64_t MAX_NUM_BLOCKS = 100;
 
 static inline bool CheckNotNull(const AttnResFwdParams &params)
 {
@@ -77,19 +78,45 @@ static inline bool CheckDtypeValid(const AttnResFwdParams &params)
     return true;
 }
 
-static inline bool CheckSavedShape(const AttnResFwdParams &params)
+static inline bool CheckShapeValid(const AttnResFwdParams &params)
 {
-    if (!params.needBackward) {
-        return true;
-    }
     const auto &prefixShape = params.prefixSum->GetViewShape();
     const auto &blockShape = params.blockResidual->GetViewShape();
-    if (prefixShape.GetDimNum() != 2 || blockShape.GetDimNum() != 3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "prefix_sum must be 2D and block_residual must be 3D");
+    const auto &projShape = params.projWeight->GetViewShape();
+    const auto &normShape = params.normWeight->GetViewShape();
+    const auto &hiddenShape = params.hiddenStates->GetViewShape();
+    if (prefixShape.GetDimNum() != 2 || blockShape.GetDimNum() != 3 ||
+        (projShape.GetDimNum() != 1 && projShape.GetDimNum() != 2) || normShape.GetDimNum() != 1 ||
+        hiddenShape.GetDimNum() != 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "invalid tensor rank");
         return false;
     }
     const int64_t T = prefixShape.GetDim(0);
+    const int64_t H = prefixShape.GetDim(1);
+    const int64_t N = blockShape.GetDim(1);
     const int64_t B = blockShape.GetDim(1) + 1;
+    if (T < 0 || H <= 0 || N < 1 || N > MAX_NUM_BLOCKS) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shape range requires T>=0, H>=1 and 1<=N<=%ld", MAX_NUM_BLOCKS);
+        return false;
+    }
+    if (blockShape.GetDim(0) != T || blockShape.GetDim(2) != H) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "block_residual shape must be [T,N,H]");
+        return false;
+    }
+    const bool projShapeOk =
+        (projShape.GetDimNum() == 1 && projShape.GetDim(0) == H) ||
+        (projShape.GetDimNum() == 2 && projShape.GetDim(0) == 1 && projShape.GetDim(1) == H);
+    if (!projShapeOk || normShape.GetDim(0) != H) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "proj_weight must be [H] or [1,H], and norm_weight must be [H]");
+        return false;
+    }
+    if (hiddenShape.GetDim(0) != T || hiddenShape.GetDim(1) != H) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hidden_states shape must be [T,H]");
+        return false;
+    }
+    if (!params.needBackward) {
+        return true;
+    }
     const auto &invShape = params.invRms->GetViewShape();
     const auto &probsShape = params.probs->GetViewShape();
     if (invShape.GetDimNum() != 2 || probsShape.GetDimNum() != 2) {
@@ -107,7 +134,7 @@ static inline bool CheckSavedShape(const AttnResFwdParams &params)
 static aclnnStatus CheckParams(AttnResFwdParams &params)
 {
     CHECK_RET(CheckDtypeValid(params), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckSavedShape(params), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeValid(params), ACLNN_ERR_PARAM_INVALID);
     if (params.normEps <= 0.0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "normEps must be > 0");
         return ACLNN_ERR_PARAM_INVALID;
