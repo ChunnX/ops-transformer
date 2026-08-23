@@ -12,7 +12,7 @@ Golden 将“存在稀疏 KV 位置”和“已建立数值 softmax 状态”分
 `0 / -Inf`；V 中的 `NaN/±Inf` 只传播到 `attention_out`，LSE 仍由 Q/K 决定。
 
 STC 的 Q/K/V 数据范围支持标量 `inf`、`-inf`、`nan` 以及区间 `[-inf, inf]`。
-无界区间会在每个 D 向量的不同 MX group 中放入两个无穷端点；`±Inf` 使用 E4M3FN 的 `±448`
+无界区间会在相邻 D 向量的不同 MX group 中分别放入两个无穷端点；`±Inf` 使用 E4M3FN 的 `±448`
 与最大有限 E8M0 descale `2^127` 配对，使 FP32 反量化得到同符号 Inf。`NaN` 保留在
 E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 1）。
 

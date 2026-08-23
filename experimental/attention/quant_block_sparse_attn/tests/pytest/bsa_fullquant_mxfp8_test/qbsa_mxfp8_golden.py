@@ -612,17 +612,26 @@ def _rand_float(shape, generator, data_range=1.0):
     )
     if explicit_bounds and result.numel() > 0:
         if low == float("-inf") and high == float("inf"):
-            # Q/K/V all use D as their last dimension.  Cover both unbounded
-            # endpoints in every vector and place them in different MX groups.
-            # Otherwise MX cube can cancel -448/+448 inside one group before
-            # applying descale, while dequantized CUDA observes -Inf + +Inf =
-            # NaN.  Separating the groups makes both execution orders produce
-            # the same non-finite result.
-            result[..., 0] = low
-            if result.shape[-1] > QUANT_GROUP_SIZE:
-                result[..., QUANT_GROUP_SIZE] = high
+            # Q/K/V all use D as their last dimension.  Put the two endpoints
+            # in adjacent D vectors instead of the same vector: a single QK
+            # dot product containing both -Inf and +Inf has order-dependent
+            # MX group accumulation, while CUDA dequantization yields NaN.
+            # Alternating vectors preserves both endpoints without introducing
+            # that ambiguity.  Use different D groups for V so its two signs
+            # also propagate to different output channels.
+            vectors = result.reshape(-1, result.shape[-1])
+            vectors[0::2, 0] = low
+            if vectors.shape[0] > 1:
+                high_index = (
+                    QUANT_GROUP_SIZE
+                    if result.shape[-1] > QUANT_GROUP_SIZE
+                    else result.shape[-1] - 1
+                )
+                vectors[1::2, high_index] = high
+            elif result.shape[-1] > QUANT_GROUP_SIZE:
+                vectors[0, QUANT_GROUP_SIZE] = high
             elif result.shape[-1] > 1:
-                result[..., 1] = high
+                vectors[0, 1] = high
             else:
                 result.reshape(-1)[-1] = high
             return result
