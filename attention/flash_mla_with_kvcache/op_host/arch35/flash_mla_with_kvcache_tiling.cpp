@@ -92,14 +92,22 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
     if (faInfo_->n1Size < 1 || faInfo_->n1Size > static_cast<int64_t>(arch35MLA::NUM_128)) {
         return false;
     }
-    // layout 约束: query TND / output NTD / KV PA_NZ（parser 已归一 NZ）
-    if (faInfo_->qLayout != FlashMlaWithKvcacheLayout::TND) {
+    // layout 约束（宽矩阵，与 common_checker 的 SinglePara 布局路由一致）:
+    // q ∈ {TND, BNSD, BSND}；out 必须与 q 同布局（不支持转置）；
+    // kv 仅分页布局: NZ / PA_NZ（parser 将 PA_NZ 归一为 NZ，实测两者都必须放行）
+    //              ∪ PA_BNBD / PA_BBND（以原枚举到达），连续 KV 永不放行
+    if (faInfo_->qLayout != FlashMlaWithKvcacheLayout::TND &&
+        faInfo_->qLayout != FlashMlaWithKvcacheLayout::BNSD &&
+        faInfo_->qLayout != FlashMlaWithKvcacheLayout::BSND) {
         return false;
     }
-    if (faInfo_->outLayout != FlashMlaWithKvcacheLayout::NTD) {
+    if (faInfo_->outLayout != faInfo_->qLayout) { // out 必须与 q 一致，不支持转置
         return false;
     }
-    if (faInfo_->kvLayout != FlashMlaWithKvcacheLayout::NZ) {
+    if (faInfo_->kvLayout != FlashMlaWithKvcacheLayout::NZ &&
+        faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_NZ &&
+        faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_BNBD &&
+        faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_BBND) {
         return false;
     }
     return true;
