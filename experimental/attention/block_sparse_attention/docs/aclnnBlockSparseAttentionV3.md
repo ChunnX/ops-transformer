@@ -1,3 +1,5 @@
+# aclnnBlockSparseAttentionV3
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -72,7 +74,7 @@
 
 每个算子分为[两段式接口](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionV3GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionV3"接口执行计算。
 
-```
+```c++
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -86,7 +88,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
-	const aclTensor *pQuantScaleOptional,
+    const aclTensor *pQuantScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -105,7 +107,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3Ge
     aclOpExecutor **executor);
 ```
 
-```
+```c++
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
     void *workspace,
     uint64_t workspaceSize,
@@ -292,7 +294,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
         当配置此输入时：
         <ul>
           <li>当quantMode=1, shape为[batch, headNum, ceilDiv(maxQSeqLength, 128), 1]。</li>
-  		   <li>quantMode=2/3, 约束见<a href="#MXFP4量化模式的量化缩放因子">MXFP4量化模式的量化缩放因子。</a></li>
+          <li>quantMode=2/3, 约束见<a href="#MXFP4量化模式的量化缩放因子">MXFP4量化模式的量化缩放因子。</a></li>
         </ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
@@ -313,7 +315,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
         当配置此输入时：
         <ul>
           <li>当quantMode=1,shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
-  		 <li>quantMode=2/3, 约束见<a href="#MXFP4量化模式的量化缩放因子">MXFP4量化模式的量化缩放因子。</a></li>
+          <li>quantMode=2/3, 约束见<a href="#MXFP4量化模式的量化缩放因子">MXFP4量化模式的量化缩放因子。</a></li>
         </ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
@@ -713,7 +715,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV3(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
-```
+```c++
 #include <iostream>
 #include <vector>
 #include <cstring>
