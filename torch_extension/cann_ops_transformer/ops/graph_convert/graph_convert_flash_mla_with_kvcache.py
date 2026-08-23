@@ -62,14 +62,16 @@ if _TORCHAIR_AVAILABLE:
         max_seqlen_kv: int = -1,
         layout_q: str = "TND",
         layout_kv: str = "NZ",
-        layout_out: str = "NTD",
+        layout_out: Optional[str] = None,
         return_softmax_lse: bool = False,
         deterministic: int = 0,
     ):
         result = q.new_empty(q.size())
         return result
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.flash_mla_with_kvcache.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.flash_mla_with_kvcache.default
+    )
     def convert_flash_mla_with_kvcache(
         q: Tensor,
         k_cache: Tensor,
@@ -86,7 +88,7 @@ if _TORCHAIR_AVAILABLE:
         max_seqlen_kv: int = -1,
         layout_q: str = "TND",
         layout_kv: str = "NZ",
-        layout_out: str = "NTD",
+        layout_out: Optional[str] = None,
         return_softmax_lse: bool = False,
         deterministic: int = 0,
     ):
