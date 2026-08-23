@@ -142,6 +142,14 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    // 输出布局必须与查询布局严格一致（不支持转置；q 无 NTD 形态，故 NTD 输出一律拒绝）
+    if (layoutOutStr != layoutQStr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out",
+                                              layoutOutStr.c_str(),
+                                              "The value of layout_out must be equal to layout_q");
+        return ge::GRAPH_FAILED;
+    }
+
     // q/k_cache 最后维 == head_dim_v + 64（rope 合并语义，静态形状下强制校验）
     int64_t qLastDim = qShape->GetDim(qShape->GetDimNum() - 1);
     if (qLastDim != -1 && qLastDim != expectedLastDim) {
@@ -181,15 +189,9 @@ ge::graphStatus InferShapeFlashMlaWithKvcache(gert::InferShapeContext *context)
         attnOutShape->SetDim(0, seqLenQ); // T总token数
         attnOutShape->SetDim(1, numHeadsQ);
         attnOutShape->SetDim(2, headDimV);
-    } else if (layoutOutStr == "NTD") {
-        // FIA MLA 输出排布：head-major [n, T, head_dim_v]（默认 layout_out）
-        attnOutShape->SetDimNum(3);
-        attnOutShape->SetDim(0, numHeadsQ);
-        attnOutShape->SetDim(1, seqLenQ);
-        attnOutShape->SetDim(2, headDimV);
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out",
-                                              layoutOutStr.c_str(), "The value of layout_out must be in BSND/BNSD/TND/NTD");
+                                              layoutOutStr.c_str(), "The value of layout_out must be in BSND/BNSD/TND");
         return ge::GRAPH_FAILED;
     }
 
