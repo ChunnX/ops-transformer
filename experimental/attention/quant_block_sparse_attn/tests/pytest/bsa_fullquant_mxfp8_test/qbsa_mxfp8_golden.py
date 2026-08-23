@@ -2896,6 +2896,187 @@ def npu_mxfp8_fa(
     return npu_output, npu_lse
 
 
+def _merge_attention_parts(part_outputs, part_lses):
+    """Reconstruct attention over disjoint KV parts from normalized OUT/LSE."""
+    output_stack = torch.stack(
+        [output.detach().cpu().to(torch.float32) for output in part_outputs], dim=0
+    )
+    lse_stack = torch.stack(
+        [lse.detach().cpu().to(torch.float32) for lse in part_lses], dim=0
+    )
+    finite = torch.isfinite(lse_stack)
+    neg_inf = torch.full_like(lse_stack, float("-inf"))
+    row_max = torch.where(finite, lse_stack, neg_inf).amax(dim=0)
+    safe_delta = torch.where(
+        finite,
+        lse_stack - row_max.unsqueeze(0),
+        neg_inf,
+    )
+    weights = torch.exp(safe_delta)
+    denominator = weights.sum(dim=0)
+    valid = denominator > 0
+    safe_denominator = torch.where(valid, denominator, torch.ones_like(denominator))
+    merged_output = (
+        output_stack * weights.unsqueeze(-1)
+    ).sum(dim=0) / safe_denominator.unsqueeze(-1)
+    merged_output = torch.where(
+        valid.unsqueeze(-1), merged_output, torch.zeros_like(merged_output)
+    )
+    merged_lse = row_max + torch.log(safe_denominator)
+    merged_lse = torch.where(
+        valid, merged_lse, torch.full_like(merged_lse, float("-inf"))
+    )
+    return merged_output, merged_lse, valid
+
+
+def _run_tile_merge_check(
+    fa_inputs,
+    sparse_indices,
+    sparse_seq_len,
+    full_output,
+    full_lse,
+    cpu_output=None,
+    cpu_lse=None,
+):
+    """Split every sparse-list slot into a single-tile run and merge by LSE."""
+    global ENABLE_LSE
+
+    sparse_indices_cpu = torch.as_tensor(sparse_indices, dtype=torch.int32).cpu()
+    sparse_seq_len_cpu = torch.as_tensor(sparse_seq_len, dtype=torch.int32).cpu()
+    part_count = int(sparse_seq_len_cpu.max().item())
+    logger.info("\n[Tile Merge Check] active sparse slots=%d", part_count)
+    if part_count < 2:
+        logger.info(
+            "[Tile Merge Check] SKIP: case has fewer than two active KV tiles"
+        )
+        return None
+    if part_count > 16:
+        raise ValueError(
+            "--tile_merge_check supports at most 16 active KV tiles, "
+            f"but this case has {part_count}"
+        )
+
+    original_enable_lse = ENABLE_LSE
+    part_outputs = []
+    part_lses = []
+    try:
+        # The decomposition formula requires LSE even when the original case
+        # does not request it. Returning LSE must not alter attention OUT.
+        ENABLE_LSE = True
+        if (
+            not original_enable_lse
+            or full_lse is None
+            or full_lse.numel() == 0
+        ):
+            logger.info(
+                "[Tile Merge Check] rerun full sparse list with LSE enabled"
+            )
+            full_output, full_lse = npu_mxfp8_fa(
+                sparse_indices=sparse_indices_cpu,
+                sparse_seq_len=sparse_seq_len_cpu,
+                **fa_inputs,
+            )
+
+        for slot in range(part_count):
+            active = sparse_seq_len_cpu > slot
+            part_indices = torch.full_like(sparse_indices_cpu, -1)
+            part_indices[..., 0] = torch.where(
+                active,
+                sparse_indices_cpu[..., slot],
+                torch.full_like(sparse_indices_cpu[..., slot], -1),
+            )
+            part_seq_len = active.to(torch.int32)
+            logger.info(
+                "\n[Tile Merge Check] run part %d/%d, active lists=%d",
+                slot + 1,
+                part_count,
+                int(active.sum().item()),
+            )
+            part_output, part_lse = npu_mxfp8_fa(
+                sparse_indices=part_indices,
+                sparse_seq_len=part_seq_len,
+                **fa_inputs,
+            )
+            if part_lse is None or part_lse.numel() == 0:
+                raise RuntimeError(
+                    "tile merge check requires non-empty LSE from every part"
+                )
+            part_outputs.append(part_output)
+            part_lses.append(part_lse)
+    finally:
+        ENABLE_LSE = original_enable_lse
+
+    merged_output, merged_lse, merged_valid = _merge_attention_parts(
+        part_outputs, part_lses
+    )
+    full_output_cpu = full_output.detach().cpu()
+    full_lse_cpu = full_lse.detach().cpu().to(torch.float32)
+    compare_rows = merged_valid & torch.isfinite(full_lse_cpu)
+    comparable_count = int(compare_rows.sum().item())
+    logger.info(
+        "\n[Tile Merge Check] comparable finite rows=%d/%d",
+        comparable_count,
+        compare_rows.numel(),
+    )
+    if comparable_count == 0:
+        raise RuntimeError("tile merge check found no comparable finite rows")
+
+    logger.info("\n[Tile Merge Check] Full NPU OUT vs merged single-tile NPU OUT")
+    full_out_result = result_compare_method.check_result(
+        merged_output[compare_rows].to(full_output_cpu.dtype),
+        full_output_cpu[compare_rows],
+    )
+    logger.info("\n[Tile Merge Check] Full NPU LSE vs merged single-tile NPU LSE")
+    full_lse_result = result_compare_method.check_result(
+        merged_lse[compare_rows],
+        full_lse_cpu[compare_rows],
+    )
+
+    cpu_out_result = None
+    cpu_lse_result = None
+    if cpu_output is not None and cpu_lse is not None:
+        cpu_output_cpu = cpu_output.detach().cpu()
+        cpu_lse_cpu = cpu_lse.detach().cpu().to(torch.float32)
+        cpu_rows = merged_valid & torch.isfinite(cpu_lse_cpu)
+        if bool(cpu_rows.any().item()):
+            logger.info(
+                "\n[Tile Merge Check] CPU golden OUT vs merged single-tile NPU OUT"
+            )
+            cpu_out_result = result_compare_method.check_result(
+                cpu_output_cpu[cpu_rows],
+                merged_output[cpu_rows].to(cpu_output_cpu.dtype),
+            )
+            logger.info(
+                "\n[Tile Merge Check] CPU golden LSE vs merged single-tile NPU LSE"
+            )
+            cpu_lse_result = result_compare_method.check_result(
+                cpu_lse_cpu[cpu_rows], merged_lse[cpu_rows]
+            )
+
+    merge_pass = (
+        _result_status(full_out_result) == "Pass"
+        and _result_status(full_lse_result) == "Pass"
+    )
+    if merge_pass:
+        logger.info(
+            "\n[Tile Merge Check] CONCLUSION: PASS. Full execution agrees with "
+            "the LSE merge of single-tile executions; online multi-tile "
+            "rescale is not the primary error source."
+        )
+    else:
+        logger.info(
+            "\n[Tile Merge Check] CONCLUSION: FAIL. Full execution disagrees "
+            "with the LSE merge of single-tile executions; inspect online "
+            "max/sum/rescale state updates."
+        )
+    return {
+        "full_out": full_out_result,
+        "full_lse": full_lse_result,
+        "cpu_out": cpu_out_result,
+        "cpu_lse": cpu_lse_result,
+    }
+
+
 # ==============================================================================
 # Main
 # ==============================================================================
@@ -3086,6 +3267,7 @@ def run_one_case(
     debug=False,
     graph=False,
     use_quant_matmul=False,
+    tile_merge_check=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -3203,6 +3385,8 @@ def run_one_case(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
 
+    cpu_out = None
+    cpu_lse = None
     if rdv and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir):
         logger.info("\n[Step 2] 复用 CPU Golden")
         logger.info(
@@ -3271,6 +3455,33 @@ def run_one_case(
             sparse_seq_len,
             graph=graph,
         )
+        if tile_merge_check:
+            _run_tile_merge_check(
+                {
+                    "q_fp8": q_fp8,
+                    "k_fp8": k_fp8,
+                    "v_fp8": v_fp8,
+                    "dequant_scale_q": dequant_scale_q,
+                    "dequant_scale_k": dequant_scale_k,
+                    "dequant_scale_v": dequant_scale_v,
+                    "p_scale": p_scale,
+                    "atten_mask": atten_mask,
+                    "q_lengths": q_lengths,
+                    "kv_lengths": kv_lengths,
+                    "cu_seqlens_q": cu_seqlens_q,
+                    "cu_seqlens_kv": cu_seqlens_kv,
+                    "seqused_q": seqused_q,
+                    "seqused_kv": seqused_kv,
+                    "block_table_torch": block_table_torch,
+                    "graph": graph,
+                },
+                sparse_indices,
+                sparse_seq_len,
+                atten_out,
+                lse_out,
+                cpu_out,
+                cpu_lse,
+            )
         golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
     else:
         atten_out, lse_out = golden_cache.load_npu_output(
@@ -3397,6 +3608,11 @@ if __name__ == "__main__":
         action="store_true",
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
+    parser.add_argument(
+        "--tile_merge_check",
+        action="store_true",
+        help="诊断多 tile 在线 Softmax：分别运行每个 sparse KV tile，并通过 LSE 离线合并后与完整 NPU 运行比较",
+    )
     args = parser.parse_args()
 
     use_quant_matmul = args.quant_matmul
@@ -3472,6 +3688,11 @@ if __name__ == "__main__":
         parser.error(
             "--debug can run exactly one case; pass one name through --case_name"
         )
+    if args.tile_merge_check:
+        if len(run_case_ids) != 1:
+            parser.error("--tile_merge_check can run exactly one case")
+        if "npu" not in mode:
+            parser.error("--tile_merge_check requires an execution mode containing npu")
 
     debug_artifacts = _prepare_debug_artifacts(run_case_ids[0]) if args.debug else None
     debug_log_handler = (
@@ -3516,6 +3737,7 @@ if __name__ == "__main__":
                         debug=args.debug,
                         graph=args.aclgraph,
                         use_quant_matmul=use_quant_matmul,
+                        tile_merge_check=args.tile_merge_check,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
