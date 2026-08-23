@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
-PYTEST_LOADER_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
@@ -131,17 +130,11 @@ _CASE_REQUIRED_RUNTIME_FIELDS = {
 
 
 def _ensure_custom_ops_registered():
-    """Load the same repository adapter used by TTK before calling QBSA APIs."""
+    """Import custom_ops before calling torch.ops.custom QBSA APIs."""
     global _CUSTOM_OPS_IMPORTED
     if _CUSTOM_OPS_IMPORTED:
         return
 
-    # TTK prepends tests/pytest before importing ``custom_ops``.  Do the same
-    # here so standalone pytest runs cannot silently pick a different package
-    # from site-packages and execute another build of the PTA extension.
-    if PYTEST_LOADER_DIR in sys.path:
-        sys.path.remove(PYTEST_LOADER_DIR)
-    sys.path.insert(0, PYTEST_LOADER_DIR)
     try:
         import custom_ops  # noqa: F401
     except ImportError as install_import_error:
@@ -168,10 +161,6 @@ def _ensure_custom_ops_registered():
         raise RuntimeError(
             "torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered after importing custom_ops"
         )
-    logger.info(
-        "[NPU] custom_ops loader=%s",
-        getattr(custom_ops, "__file__", "<registered module without __file__>"),
-    )
     _CUSTOM_OPS_IMPORTED = True
 
 
