@@ -1710,11 +1710,8 @@ def _pv_matmul_cpu(
     head_dim,
     l_run,
 ):
-    """CPU torch.matmul path matching MXFP8 C2 group-scale order."""
-    p_c2_chunks = []
-    p_scale_c2_chunks = []
-    v_c2_chunks = []
-    v_scale_c2_chunks = []
+    """CPU torch.matmul path for C2 PV accumulation."""
+    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
     round_sum = torch.zeros_like(l_run)
     for (
         subloop_start,
@@ -1744,53 +1741,13 @@ def _pv_matmul_cpu(
         v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
             torch.float32
         )
-        subloop_k = subloop_end - subloop_start
-        subloop_group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
-        p_c2_chunks.append(p_quant_subloop)
-        p_scale_c2_chunks.append(
-            subloop_rescale.view(nq, 1).expand(nq, subloop_group_count)
-        )
-        v_c2_chunks.append(v_mat)
-        v_scale_c2_chunks.append(v_scale_mat[::QUANT_GROUP_SIZE])
-        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
-
-    p_c2 = torch.cat(p_c2_chunks, dim=1)
-    p_scale_c2 = torch.cat(p_scale_c2_chunks, dim=1)
-    v_c2 = torch.cat(v_c2_chunks, dim=0)
-    v_scale_c2 = torch.cat(v_scale_c2_chunks, dim=0)
-
-    # VF converts the online-max rescale through BF16 and stores it as E8M0
-    # before C2. Reproduce the effective descale value on CPU.
-    p_scale_e8m0 = fp32_to_e8m0fnu_safe(
-        p_scale_c2.to(torch.bfloat16).to(torch.float32),
-        "CPU P golden matmul descale",
-    )
-    p_scale_c2 = e8m0fnu_to_fp32(p_scale_e8m0, "CPU P golden matmul descale")
-
-    # The Cube accumulates FP8 products into an FP32 L0C matrix.  A CPU BLAS
-    # FP32 matmul is free to use a different reduction tree, which can move
-    # values across the final BF16 rounding boundary.  Use FP64 for the CPU
-    # reference reduction, then round once to the Cube output type (FP32).
-    # Keep the 32-element MX scale groups explicit so descales are applied at
-    # the same logical point as the hardware MX operands.
-    p_c2_fp64 = p_c2.to(torch.float64)
-    p_scale_c2_fp64 = p_scale_c2.to(torch.float64)
-    v_c2_fp64 = v_c2.to(torch.float64)
-    v_scale_c2_fp64 = v_scale_c2.to(torch.float64)
-    pv = torch.zeros((nq, head_dim), dtype=torch.float64)
-    for group_idx in range(p_scale_c2.shape[1]):
-        group_start = group_idx * QUANT_GROUP_SIZE
-        group_end = min(group_start + QUANT_GROUP_SIZE, p_c2.shape[1])
-        group_dot = torch.matmul(
-            p_c2_fp64[:, group_start:group_end],
-            v_c2_fp64[group_start:group_end, :],
-        )
-        pv += (
-            group_dot
-            * p_scale_c2_fp64[:, group_idx].view(nq, 1)
-            * v_scale_c2_fp64[group_idx].view(1, head_dim)
-        )
-    return pv.to(torch.float32), round_sum
+        v_dequant = v_mat * v_scale_mat
+        pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
+        # C2 consumes E4M3-quantized P. Use that same P in the denominator so
+        # a backend-dependent pre-quantization exp value cannot become a
+        # query-row-wide output scale error.
+        round_sum += p_quant_subloop.sum(dim=-1) * subloop_rescale
+    return pv, round_sum
 
 
 def _pv_matmul_npu(
@@ -1847,7 +1804,10 @@ def _pv_matmul_npu(
         )
         v_c2_chunks.append(v_mat)
         v_scale_c2_chunks.append(v_scale_mat[::QUANT_GROUP_SIZE])
-        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+        # Match the MX VF: numerator and denominator both consume P after its
+        # E4M3 cast. Padding groups added below contain zeros and do not alter
+        # this sum.
+        round_sum += p_quant_subloop.sum(dim=-1) * subloop_rescale
 
     p_c2 = torch.cat(p_c2_chunks, dim=1)
     v_c2 = torch.cat(v_c2_chunks, dim=0)
