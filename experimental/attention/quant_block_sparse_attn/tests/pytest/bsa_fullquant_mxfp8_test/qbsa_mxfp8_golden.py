@@ -1743,10 +1743,7 @@ def _pv_matmul_cpu(
         )
         v_dequant = v_mat * v_scale_mat
         pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
-        # C2 consumes E4M3-quantized P. Use that same P in the denominator so
-        # a backend-dependent pre-quantization exp value cannot become a
-        # query-row-wide output scale error.
-        round_sum += p_quant_subloop.sum(dim=-1) * subloop_rescale
+        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
     return pv, round_sum
 
 
@@ -1804,10 +1801,7 @@ def _pv_matmul_npu(
         )
         v_c2_chunks.append(v_mat)
         v_scale_c2_chunks.append(v_scale_mat[::QUANT_GROUP_SIZE])
-        # Match the MX VF: numerator and denominator both consume P after its
-        # E4M3 cast. Padding groups added below contain zeros and do not alter
-        # this sum.
-        round_sum += p_quant_subloop.sum(dim=-1) * subloop_rescale
+        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
 
     p_c2 = torch.cat(p_c2_chunks, dim=1)
     v_c2 = torch.cat(v_c2_chunks, dim=0)
