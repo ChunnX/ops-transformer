@@ -137,13 +137,11 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         if (layoutOut == "TND") {
             attentionOutSize = {tSize, nSize, headDimV};
-        } else if (layoutOut == "NTD") {
-            // MLA 默认 layout_out="NTD": output (N, T, D) per FIA infershape convention
-            // (fused_infer_attention_score_infershape.cpp: attentionOutLayout=="NTD" -> {n1, t, outD}).
-            attentionOutSize = {nSize, tSize, headDimV};
         } else if (layoutOut == "BNSD") {
             attentionOutSize = {bSize, nSize, sSize, headDimV};
         } else {
+            // BSND（out == layout_q，D7）：输出 (B, S, N, D)。旧 NTD 输出约定已淘汰，
+            // checker 已拒绝 layout_out != layout_q（NTD 无对应 query 布局）。
             attentionOutSize = {bSize, sSize, nSize, headDimV};
         }
         softmaxLse = at::empty(softmaxOutSize, q.options().dtype(at::kFloat));
