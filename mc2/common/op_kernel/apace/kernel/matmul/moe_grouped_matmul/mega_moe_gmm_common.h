@@ -8,27 +8,49 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM_COMMON_H
-#define MEGA_MOE_GMM_COMMON_H
+#ifndef APACE_KERNEL_MATMUL_MOE_GROUPED_MATMUL_MEGA_MOE_GMM_COMMON_H
+#define APACE_KERNEL_MATMUL_MOE_GROUPED_MATMUL_MEGA_MOE_GMM_COMMON_H
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
-#include "mega_moe_constants.h"
-#include "mega_moe_types.h"
-#include "mega_moe_utils.h"
+#include "apace/utils/constant.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "../blaze/gemm/block/block_scheduler_swizzle.h"
-#include "../blaze/gemm/block/block_mmad_mx_fp8fp4.h"
-#include "../blaze/prologue/block_prologue_mx_fp8fp4.h"
+#include "apace/block/scheduler/block_scheduler_swizzle.h"
+#include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
+#include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-namespace GmmKernel {
-
 constexpr uint32_t L1_TILE_K = 256U;
+constexpr uint32_t L1_TILE_M_256 = 256U;
+constexpr uint32_t L1_TILE_M_128 = 128U;
+constexpr uint32_t L1_TILE_N = 256U;
+constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
+
+// ProblemShape index constants
+constexpr uint64_t M_VALUE = 0UL;
+constexpr uint64_t N_VALUE = 1UL;
+constexpr uint64_t K_VALUE = 2UL;
+
+// GMM1 interleaved factor
+constexpr uint32_t ACTIVATION_N_HALF = 2U;
+
+struct BlockJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
+
+struct GmmParams {
+    GM_ADDR aGlobal;
+    GM_ADDR bGlobal;
+    GM_ADDR aScaleGlobal;
+    GM_ADDR bScaleGlobal;
+    GM_ADDR cGlobal;
+    GM_ADDR metaInfoGlobal;
+};
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 
@@ -446,7 +468,6 @@ struct GroupMatmulWorkSet {
     TensorC &gmC;
 };
 
-} // namespace GmmKernel
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_GMM_COMMON_H
+#endif // APACE_KERNEL_MATMUL_MOE_GROUPED_MATMUL_MEGA_MOE_GMM_COMMON_H

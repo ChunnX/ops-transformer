@@ -103,7 +103,7 @@ private:
                                                           Gmm1ActivationState &runtimeState);
     __aicore__ inline void ProcessGmm2Wave(ExpertTokenPosition &gmm2Position,
                                            const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
-                                           GMMAddrInfo &gmm2AddrInfo, Gmm2RuntimeState &runtimeState);
+                                           GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig);
@@ -556,15 +556,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedExpertGmm2()
 {
-    int32_t vecSetSyncCom = 0;
     int32_t gmTileSequence = 0;
-    Gmm2RuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         RunSharedExpertGmm2Stage<QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
                                  GMM1_TILE_M, TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
-            commonConfig_, gmmExecutionConfig_, params_, sharedWeightTensorListAddrs_, gmmAddrInfo, runtimeState,
-            sharedExpertIdx, nullptr, true);
+            commonConfig_, gmmExecutionConfig_, params_, sharedWeightTensorListAddrs_, gmmAddrInfo, startBlockIdx_,
+            gmTileSequence, sharedExpertIdx, nullptr, true);
     }
 }
 
@@ -668,7 +666,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
-    GMMAddrInfo &gmm2AddrInfo, Gmm2RuntimeState &runtimeState)
+    GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -704,7 +702,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
         RunMoeExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false,
                               false, GMM1_TILE_M, TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
-            gmmExecutionConfig_, params_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert);
+            gmmExecutionConfig_, params_, gmm2AddrInfo, gmm2WaveProblemShape, startBlockIdx, gmTileSequence, nullptr,
+            isWholeExpert);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
@@ -793,8 +792,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
         int32_t gmm2TileSequence = 0;
-        Gmm2RuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
-        ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
+        ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_, gmm2TileSequence);
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =

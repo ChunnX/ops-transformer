@@ -27,9 +27,6 @@ enum class MegaMoeActSubMode : uint8_t {
     LINEAR = 1U,
 };
 
-constexpr uint64_t M_VALUE = 0UL;
-constexpr uint64_t N_VALUE = 1UL;
-constexpr uint64_t K_VALUE = 2UL;
 constexpr uint64_t IDX_A_OFFSET = 0UL;
 constexpr uint64_t IDX_B_OFFSET = 1UL;
 constexpr uint64_t IDX_A_SCALE_OFFSET = 2UL;
@@ -72,12 +69,6 @@ constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 constexpr uint32_t META_INFO_SIZE = 8U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
-
-constexpr uint32_t L1_TILE_M_256 = 256U;
-constexpr uint32_t L1_TILE_M_128 = 128U;
-constexpr uint32_t L1_TILE_N = 256U;
-constexpr uint32_t L0_TILE_K = 128U;
-constexpr uint32_t ACTIVATION_N_HALF = 2U;
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_CONSTANTS_H

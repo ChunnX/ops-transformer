@@ -17,6 +17,7 @@
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
 #include "adv_api/hcomm/hcomm.h"
+#include "apace/kernel/matmul/moe_grouped_matmul/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
 
@@ -101,10 +102,7 @@ enum class AddrUpdateMode : int32_t {
     GMM2
 };
 
-struct BlockJobContext {
-    uint32_t jobIndex;
-    uint32_t totalJobs;
-};
+// BlockJobContext is now defined in apace/kernel/matmul/moe_grouped_matmul/mega_moe_gmm_common.h
 
 // Count/flag workspace 的物理分区；当前与 BlockJobContext 同值，但其编号由 workspace 生产者和消费者共同约定。
 struct BlockWorkspaceContext {

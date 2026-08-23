@@ -500,14 +500,12 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2(int32_t &gmTileSequence)
 {
     uint32_t startBlockIdx = 0U;
-    int32_t vecSetSyncCom = 0;
-    Gmm2RuntimeState runtimeState{startBlockIdx, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         RunSharedExpertGmm2Stage<QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType, ENABLE_A8W4,
                                  ENABLE_A4W4, GMM1_TILE_M, false, false, false>(
-            commonConfig_, gmmExecutionConfig_, params_, sharedWeightTensorListAddrs_, gmmAddrInfo, runtimeState,
-            sharedExpertIdx);
+            commonConfig_, gmmExecutionConfig_, params_, sharedWeightTensorListAddrs_, gmmAddrInfo, startBlockIdx,
+            gmTileSequence, sharedExpertIdx);
     }
 }
 
@@ -584,8 +582,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
     }
 
     uint32_t gmm2StartBlockIdx = gmm1RuntimeState.startBlockIdx;
-    int32_t gmm2VecSetSyncCom = 0;
-    Gmm2RuntimeState gmm2RuntimeState{gmm2StartBlockIdx, gmm2VecSetSyncCom, gmTileSequence, gmm2PingPongIdx_};
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm2AddrInfo{};
     constexpr bool configureGmm2Output = ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT;
@@ -603,7 +599,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
             gmm2State);
         RunMoeExpertGmm2Stage<CombineQuantMode, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                               ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, TopkWeightsPrefetch, false, false>(
-            gmmExecutionConfig_, params_, gmm2AddrInfo, gmm2State.problemShape, gmm2RuntimeState);
+            gmmExecutionConfig_, params_, gmm2AddrInfo, gmm2State.problemShape, gmm2StartBlockIdx, gmTileSequence);
         ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
             quantCombineConfig_, commonConfig_, quantCombineBufferConfig_, params_, gmm2AddrInfo,
             static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape)),
