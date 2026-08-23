@@ -2114,8 +2114,13 @@ def cpu_mxfp8_golden(
                             subloop_active = _softmax_row_is_active(
                                 local_max, subloop_has
                             )
-                            round_active |= subloop_active
                             local_max = _align_up_to_ln2(local_max, use_quant_matmul)
+                            # CUDA fused attention treats a finite negative score
+                            # whose ln2-aligned max overflows to -Inf like an empty
+                            # softmax contribution.  Positive overflow remains
+                            # active and propagates NaN through sum=0/max=+Inf.
+                            subloop_active &= ~torch.isneginf(local_max)
+                            round_active |= subloop_active
                             subloop_started = m_subloop != neg_inf
                             m_candidate = torch.where(
                                 subloop_started,
@@ -2189,7 +2194,13 @@ def cpu_mxfp8_golden(
                 # 稀疏位置有效与 softmax 数值状态有效需要分别判断。仅包含 -Inf
                 # score 的行保留 CUDA 空输出（0 / -Inf LSE）；softmax 已生效
                 # 且包含 NaN 的行继续传播 NaN，与已有 00011 行为保持一致。
-                row_active = any_position_valid & any_softmax_active
+                # Golden 的未启动 max 状态使用 -Inf 表示 kernel 的
+                # -FLT_MAX sentinel。只有 max 未启动且 sum==0 才是空行；
+                # max=+Inf/sum=0 必须保持 active，以传播 CUDA 的 NaN。
+                row_empty = torch.isneginf(m_run) & (l_run == 0)
+                row_active = (
+                    any_position_valid & any_softmax_active & ~row_empty
+                )
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run

@@ -1,7 +1,7 @@
 {
   "metadata": {
     "generator_seed": 20260823,
-    "stc_count": 104,
+    "stc_count": 111,
     "generalized_count": 2000,
     "large_case_count": 0,
     "maximum_sequence_length": 4096,
@@ -232,494 +232,494 @@
   },
   "coverage": [
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "1",
-      "count": 57,
-      "total": 104
+      "count": 64,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "2..31",
       "count": 37,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "32",
       "count": 7,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "64",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "128",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "B",
       "category": "256",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "1",
-      "count": 39,
-      "total": 104
+      "count": 46,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "2",
       "count": 16,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "3",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "4",
       "count": 9,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "5",
       "count": 6,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "6",
       "count": 9,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "7",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N2",
       "category": "8",
       "count": 9,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "1",
-      "count": 34,
-      "total": 104
+      "count": 41,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "2",
       "count": 16,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "3",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "4",
       "count": 10,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "5",
       "count": 6,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "6",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "7",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "8",
       "count": 9,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "9",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "10",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "11",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "12",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "13",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "14",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "15",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "N1/N2",
       "category": "16",
       "count": 5,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S bucket",
       "category": "<=4096",
-      "count": 94,
-      "total": 104
+      "count": 101,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S bucket",
       "category": "4097..8192",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S bucket",
       "category": "8193..16384",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S bucket",
       "category": "16385..65536",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S relation",
       "category": "lt",
-      "count": 35,
-      "total": 104
+      "count": 37,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S relation",
       "category": "eq",
-      "count": 37,
-      "total": 104
+      "count": 42,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "S relation",
       "category": "gt",
       "count": 32,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "alignment",
       "category": "AA",
       "count": 16,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "alignment",
       "category": "AU",
       "count": 21,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "alignment",
       "category": "UA",
       "count": 6,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "alignment",
       "category": "UU",
-      "count": 61,
-      "total": 104
+      "count": 68,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "sparse block",
       "category": "64",
-      "count": 52,
-      "total": 104
+      "count": 59,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "sparse block",
       "category": "128",
       "count": 52,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "mask",
       "category": "0",
-      "count": 28,
-      "total": 104
+      "count": 35,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "mask",
       "category": "3",
       "count": 76,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "LSE",
       "category": "True",
-      "count": 95,
-      "total": 104
+      "count": 102,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "LSE",
       "category": "False",
       "count": 9,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "p_scale",
       "category": "none",
       "count": 17,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "p_scale",
       "category": "<=1",
-      "count": 46,
-      "total": 104
+      "count": 53,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "p_scale",
       "category": "1..100",
       "count": 24,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "p_scale",
       "category": ">100",
       "count": 17,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "softmax",
       "category": "none",
       "count": 8,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "softmax",
       "category": "default",
       "count": 81,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "softmax",
       "category": "arbitrary",
-      "count": 15,
-      "total": 104
+      "count": 22,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "runtime lengths",
       "category": "uniform",
-      "count": 74,
-      "total": 104
+      "count": 81,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "runtime lengths",
       "category": "ragged",
       "count": 28,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "runtime lengths",
       "category": "zero_q",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "runtime lengths",
       "category": "zero_kv",
       "count": 1,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "sparse mode",
       "category": "dense",
-      "count": 58,
-      "total": 104
+      "count": 65,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "sparse mode",
       "category": "random",
       "count": 46,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "blocknum relation",
       "category": "under",
       "count": 50,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "blocknum relation",
       "category": "equal",
-      "count": 49,
-      "total": 104
+      "count": 56,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "blocknum relation",
       "category": "over",
       "count": 5,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "block table width",
       "category": "exact",
-      "count": 35,
-      "total": 104
+      "count": 42,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "block table width",
       "category": "extra",
       "count": 69,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "range special",
       "category": "finite",
-      "count": 89,
-      "total": 104
+      "count": 96,
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "range special",
       "category": "+inf",
       "count": 3,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "range special",
       "category": "-inf",
       "count": 4,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "range special",
       "category": "nan",
       "count": 4,
-      "total": 104
+      "total": 111
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor": "range special",
       "category": "[-inf,inf]",
       "count": 4,
-      "total": 104
+      "total": 111
     },
     {
       "suite": "generalized_2000",
@@ -1173,1658 +1173,1658 @@
       "suite": "combined",
       "factor": "B",
       "category": "1",
-      "count": 222,
-      "total": 2104
+      "count": 229,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "B",
       "category": "2..31",
       "count": 1838,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "B",
       "category": "32",
       "count": 41,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "B",
       "category": "64",
       "count": 1,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "B",
       "category": "128",
       "count": 1,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "B",
       "category": "256",
       "count": 1,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "1",
-      "count": 318,
-      "total": 2104
+      "count": 325,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "2",
       "count": 271,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "3",
       "count": 259,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "4",
       "count": 260,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "5",
       "count": 247,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "6",
       "count": 250,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "7",
       "count": 249,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N2",
       "category": "8",
       "count": 250,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "1",
-      "count": 176,
-      "total": 2104
+      "count": 183,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "2",
       "count": 142,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "3",
       "count": 133,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "4",
       "count": 148,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "5",
       "count": 131,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "6",
       "count": 129,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "7",
       "count": 126,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "8",
       "count": 134,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "9",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "10",
       "count": 134,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "11",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "12",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "13",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "14",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "15",
       "count": 121,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "N1/N2",
       "category": "16",
       "count": 125,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S bucket",
       "category": "<=4096",
-      "count": 2094,
-      "total": 2104
+      "count": 2101,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S bucket",
       "category": "4097..8192",
       "count": 8,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S bucket",
       "category": "8193..16384",
       "count": 1,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S bucket",
       "category": "16385..65536",
       "count": 1,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S relation",
       "category": "lt",
-      "count": 736,
-      "total": 2104
+      "count": 738,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S relation",
       "category": "eq",
-      "count": 683,
-      "total": 2104
+      "count": 688,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "S relation",
       "category": "gt",
       "count": 685,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "alignment",
       "category": "AA",
       "count": 503,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "alignment",
       "category": "AU",
       "count": 517,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "alignment",
       "category": "UA",
       "count": 342,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "alignment",
       "category": "UU",
-      "count": 742,
-      "total": 2104
+      "count": 749,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "sparse block",
       "category": "64",
-      "count": 1068,
-      "total": 2104
+      "count": 1075,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "sparse block",
       "category": "128",
       "count": 1036,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "mask",
       "category": "0",
-      "count": 651,
-      "total": 2104
+      "count": 658,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "mask",
       "category": "3",
       "count": 1453,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "LSE",
       "category": "True",
-      "count": 1897,
-      "total": 2104
+      "count": 1904,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "LSE",
       "category": "False",
       "count": 207,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "p_scale",
       "category": "none",
       "count": 218,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "p_scale",
       "category": "<=1",
-      "count": 1336,
-      "total": 2104
+      "count": 1343,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "p_scale",
       "category": "1..100",
       "count": 387,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "p_scale",
       "category": ">100",
       "count": 163,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "softmax",
       "category": "none",
       "count": 208,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "softmax",
       "category": "default",
       "count": 1681,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "softmax",
       "category": "arbitrary",
-      "count": 215,
-      "total": 2104
+      "count": 222,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "runtime lengths",
       "category": "uniform",
-      "count": 1152,
-      "total": 2104
+      "count": 1159,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "runtime lengths",
       "category": "ragged",
       "count": 881,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "runtime lengths",
       "category": "zero_q",
       "count": 34,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "runtime lengths",
       "category": "zero_kv",
       "count": 37,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "sparse mode",
       "category": "dense",
-      "count": 582,
-      "total": 2104
+      "count": 589,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "sparse mode",
       "category": "random",
       "count": 1522,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "blocknum relation",
       "category": "under",
       "count": 1382,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "blocknum relation",
       "category": "equal",
-      "count": 518,
-      "total": 2104
+      "count": 525,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "blocknum relation",
       "category": "over",
       "count": 204,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "block table width",
       "category": "exact",
-      "count": 1541,
-      "total": 2104
+      "count": 1548,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "block table width",
       "category": "extra",
       "count": 563,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "range special",
       "category": "finite",
-      "count": 2063,
-      "total": 2104
+      "count": 2070,
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "range special",
       "category": "+inf",
       "count": 9,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "range special",
       "category": "-inf",
       "count": 10,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "range special",
       "category": "nan",
       "count": 11,
-      "total": 2104
+      "total": 2111
     },
     {
       "suite": "combined",
       "factor": "range special",
       "category": "[-inf,inf]",
       "count": 11,
-      "total": 2104
+      "total": 2111
     }
   ],
   "pairwise": [
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "lt",
       "right": "AA",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "lt",
       "right": "AU",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "lt",
       "right": "UA",
       "count": 3
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "lt",
       "right": "UU",
-      "count": 20
+      "count": 22
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "eq",
       "right": "AA",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "eq",
       "right": "AU",
       "count": 8
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "eq",
       "right": "UU",
-      "count": 23
+      "count": 28
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "gt",
       "right": "AA",
       "count": 4
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "gt",
       "right": "AU",
       "count": 7
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "gt",
       "right": "UA",
       "count": 3
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "S relation × alignment",
       "left": "gt",
       "right": "UU",
       "count": 18
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "mask × LSE",
       "left": "0",
       "right": "True",
-      "count": 27
+      "count": 34
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "mask × LSE",
       "left": "0",
       "right": "False",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "mask × LSE",
       "left": "3",
       "right": "True",
       "count": 68
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "mask × LSE",
       "left": "3",
       "right": "False",
       "count": 8
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "1",
-      "count": 24
+      "count": 31
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "2",
       "count": 4
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "7",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "12",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "13",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "14",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "15",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "16",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "1",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "2",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "6",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "9",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "11",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "2",
       "right": "16",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "1",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "3",
       "right": "16",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "1",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "4",
       "count": 3
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "5",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "4",
       "right": "16",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "1",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "5",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "5",
       "right": "16",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "1",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "8",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "6",
       "right": "16",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "1",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "7",
       "right": "16",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "1",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "2",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "3",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "4",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "5",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "6",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "7",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "8",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "9",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "10",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "11",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "12",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "13",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "14",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "15",
       "count": 0
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "N2 × N1/N2",
       "left": "8",
       "right": "16",
       "count": 1
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "1",
-      "count": 17
+      "count": 24
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "2",
       "count": 4
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "3",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "4",
       "count": 3
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "5",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "6",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "7",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "8",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "9",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "10",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "11",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "12",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "13",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "14",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "15",
       "count": 2
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "16",
       "count": 4
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "1",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "2",
       "count": 7
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "3",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "4",
       "count": 8
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "5",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "6",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "7",
       "count": 6
     },
     {
-      "suite": "stc_104",
+      "suite": "stc_111",
       "factor_pair": "sparse block × PA ratio",
       "left": "128",
       "right": "8",
@@ -4025,7 +4025,7 @@
       "factor_pair": "S relation × alignment",
       "left": "lt",
       "right": "UU",
-      "count": 224
+      "count": 226
     },
     {
       "suite": "combined",
@@ -4046,7 +4046,7 @@
       "factor_pair": "S relation × alignment",
       "left": "eq",
       "right": "UU",
-      "count": 352
+      "count": 357
     },
     {
       "suite": "combined",
@@ -4081,7 +4081,7 @@
       "factor_pair": "mask × LSE",
       "left": "0",
       "right": "True",
-      "count": 588
+      "count": 595
     },
     {
       "suite": "combined",
@@ -4109,7 +4109,7 @@
       "factor_pair": "N2 × N1/N2",
       "left": "1",
       "right": "1",
-      "count": 61
+      "count": 68
     },
     {
       "suite": "combined",
@@ -5005,7 +5005,7 @@
       "factor_pair": "sparse block × PA ratio",
       "left": "64",
       "right": "1",
-      "count": 111
+      "count": 118
     },
     {
       "suite": "combined",

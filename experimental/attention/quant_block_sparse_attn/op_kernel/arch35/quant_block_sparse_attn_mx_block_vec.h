@@ -468,12 +468,13 @@ private:
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                                LocalTensor<MM_T> &vec2ResUb)
     {
-        if constexpr (HAS_ATTEN) {
-            // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
-            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
-            FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
-                                                  static_cast<int64_t>(dTemplateAlign64));
-        }
+        // 使用所有 S2 loop 累计后的 max 与 sum 联合判断空行。该处理也必须覆盖无 mask
+        // 场景，因为有限正极值可能形成 max=+Inf/sum=0，此时 CUDA 传播 NaN 而不是输出 0。
+        const uint32_t stateBufIdx = runInfo.mLoop % (PRELOAD_N + 1U);
+        LocalTensor<float> maxUb = softmaxMaxBuf_[stateBufIdx].template Get<float>();
+        LocalTensor<float> sumUb = softmaxSumBuf_[stateBufIdx].template Get<float>();
+        FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, sumUb, runInfo.actVecMSize, constInfo.dSizeV,
+                                              static_cast<int64_t>(dTemplateAlign64));
         // 按 TND token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);

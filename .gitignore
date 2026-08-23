@@ -52,3 +52,7 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# locally generated MXFP8 coverage workbooks
+experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/case_generation/outputs/*.xlsx
+experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/case_generation/outputs/**/*.xlsx

@@ -730,6 +730,8 @@ def render_ttk_csv(cases):
 
 def _standardize_stc(row):
     cu_q = _parse_list(row["cu_seqlens_q"])
+    cu_kv = _parse_list(row["cu_seqlens_kv"])
+    seqused_q = _parse_list(row["seqused_q"])
     kv_lengths = _parse_list(row["seqused_kv"])
     q_lengths = [right - left for left, right in zip(cu_q, cu_q[1:])]
     normalized = dict(row)
@@ -739,6 +741,8 @@ def _standardize_stc(row):
             "N1": int(row["N1"]),
             "N2": int(row["N2"]),
             "cu_seqlens_q": cu_q,
+            "cu_seqlens_kv": cu_kv,
+            "seqused_q": seqused_q,
             "seqused_kv": kv_lengths,
             "S1_max": int(row.get("S1_max") or max(q_lengths)),
             "S2_max": int(row.get("S2_max") or max(kv_lengths)),
@@ -987,10 +991,11 @@ def main():
     if len(large_cases) != LARGE_CASE_COUNT:
         raise AssertionError("generalized suite must not contain large cases")
 
-    stc_coverage, stc_factor_rate = _coverage_rows("stc_104", stc)
+    stc_suite = f"stc_{len(stc)}"
+    stc_coverage, stc_factor_rate = _coverage_rows(stc_suite, stc)
     generalized_coverage, generalized_factor_rate = _coverage_rows("generalized_2000", cases, GENERALIZED_FACTOR_LEVELS)
     combined_coverage, combined_factor_rate = _coverage_rows("combined", stc + cases)
-    stc_pairs, stc_pair_rate = _pairwise_rows("stc_104", stc)
+    stc_pairs, stc_pair_rate = _pairwise_rows(stc_suite, stc)
     generalized_pairs, generalized_pair_rate = _pairwise_rows("generalized_2000", cases)
     combined_pairs, combined_pair_rate = _pairwise_rows("combined", stc + cases)
     coverage = {
