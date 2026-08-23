@@ -13,9 +13,9 @@
 flash_mla_with_kvcache 接口（m0070，无 v / 无独立 q_rope/k_rope）：
     flash_mla_with_kvcache(q, k_cache, block_table, cache_seqlens, cu_seqlens_q, seqused_q, attn_mask, metadata,
               head_dim_v=512, softmax_scale, mask_mode, max_seqlen_q, max_seqlen_kv,
-              layout_q="TND", layout_kv="PA_NZ", layout_out="NTD", return_softmax_lse) -> (attn_out, softmax_lse)
-布局仅支持 TND/NZ/NTD（R1）：q = [total_tokens, N1, 576]，k_cache = PA_NZ [num_blocks, 1, 36, block_size, 16]
-（576 = nope 512 + rope 64，合并进最后维），out = NTD = [N1, total_tokens, 512]。
+              layout_q="TND", layout_kv="PA_NZ", layout_out="TND", return_softmax_lse) -> (attn_out, softmax_lse)
+布局仅支持 TND/NZ/TND（T11 迁移，out 恒等于 q）：q = [total_tokens, N1, 576]，k_cache = PA_NZ [num_blocks, 1, 36, block_size, 16]
+（576 = nope 512 + rope 64，合并进最后维），out = TND = [total_tokens, N1, 512]。
 """
 
 import torch
@@ -43,7 +43,7 @@ def build_flash_mla_with_kvcache_params(
     """
     layout_q = p.get("layout_q", "TND")
     layout_kv = p.get("layout_kv", "PA_NZ")
-    layout_out = p.get("layout_out", "NTD")
+    layout_out = p.get("layout_out", "TND")
     d = p["D"]  # 512（qk nope / head_dim_v）
 
     scale = p.get("scale", 1 / (d**0.5))

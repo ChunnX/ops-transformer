@@ -29,13 +29,15 @@ class CPUBackend(Backend):
     def is_available(self) -> bool:
         return True
 
-    def compute(self, inputs: Dict[str, torch.Tensor],
-                params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    def compute(
+        self, inputs: Dict[str, torch.Tensor], params: Dict[str, Any]
+    ) -> Dict[str, torch.Tensor]:
         from core.backends.cpu_golden import mla_forward
 
         scale = params.get("scale", 1 / (params["D"] ** 0.5))
         out_cpu, lse = mla_forward(
-            inputs["q"], inputs["k_cache"],
+            inputs["q"],
+            inputs["k_cache"],
             cu_seqlens_q=params["cu_seqlens_q"],
             cache_seqlens=params["cache_seqlens"],
             block_table=params["block_table"],
@@ -45,6 +47,12 @@ class CPUBackend(Backend):
             scale=scale,
             N1=params.get("N1"),
         )
+        # T11 迁移：out==q==TND（golden 与设备同布局契约，见 cpu_golden.mla_forward）
+        t_total = int(inputs["q"].shape[0])
+        n1 = int(inputs["q"].shape[1])
+        assert tuple(out_cpu.shape) == (t_total, n1, int(params["D"])), (
+            f"golden out shape {tuple(out_cpu.shape)} != TND ({t_total}, {n1}, {params['D']})"
+        )
         lse = lse.clone()
-        lse[lse.isinf() & (lse > 0)] = float('inf')
+        lse[lse.isinf() & (lse > 0)] = float("inf")
         return {"out": out_cpu, "lse": lse}
