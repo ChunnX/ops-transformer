@@ -171,6 +171,9 @@ private:
     uint32_t cmpRatio_ = 0U;
     uint32_t coff_ = 0U;
     uint32_t compressedCnt_ = 0;
+    uint32_t prevApeDStartIdx_ = 0;
+    uint32_t prevApeDDealSize_ = 0;
+    bool apeIsLoad_ = false;
     bool isExistSeqUsed_ = false;
     bool isExistStartPos_ = false;
     KeyPoolTools<COMP> tools_;
@@ -323,6 +326,10 @@ template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx,
                                                               uint32_t dDealSize)
 {
+    if (apeIsLoad_ && prevApeDStartIdx_ == dStartIdx && prevApeDDealSize_ == dDealSize) {
+        return;
+    }
+
     uint32_t copyRowCount = coff_ * cmpRatio_;
     uint32_t copyColCount = dDealSize;
     uint32_t dstSingleRowCount = dDealSize;
@@ -331,6 +338,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> 
     uint64_t gmOffset = dStartIdx;
 
     DataCopyWithInputQue(apeUb, apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
+
+    prevApeDStartIdx_ = dStartIdx;
+    prevApeDDealSize_ = dDealSize;
+    apeIsLoad_ = true;
 }
 
 template <typename COMP>
@@ -965,23 +976,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::KvMulReduceScore(const LocalTen
                                                                      uint32_t tcDealSize, uint32_t dDealSize)
 {
     if (hasLayerNorm_ && cmpRatio_ == 128U) {
-        const uint32_t rowsPerPool = coff_ * cmpRatio_;
-        LocalTensor<T> productLocal = outputQue1.AllocTensor<T>();
-        for (uint32_t tcIdx = 0; tcIdx < tcDealSize; ++tcIdx) {
-            const uint32_t srcBase = tcIdx * rowsPerPool * dDealSize;
-            const uint32_t dstBase = tcIdx * dDealSize;
-            Mul(dstLocal[dstBase], kvLocal[srcBase], scoreLocal[srcBase], dDealSize);
-            PipeBarrier<PIPE_V>();
-            for (uint32_t rowIdx = 1; rowIdx < rowsPerPool; ++rowIdx) {
-                const uint32_t rowOffset = srcBase + rowIdx * dDealSize;
-                Mul(productLocal, kvLocal[rowOffset], scoreLocal[rowOffset], dDealSize);
-                PipeBarrier<PIPE_V>();
-                Add(dstLocal[dstBase], dstLocal[dstBase], productLocal, dDealSize);
-                PipeBarrier<PIPE_V>();
-            }
-        }
-        outputQue1.FreeTensor(productLocal);
-        return;
+        PipeBarrier<PIPE_ALL>();
     }
     MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, coff_, cmpRatio_, dDealSize, tcDealSize);
 }
@@ -1068,6 +1063,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLapScoreKv(
             static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        PipeBarrier<PIPE_ALL>();
     } else {
         GlobalTensor<T> kvDBMm1ResGm =
             kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
@@ -1192,7 +1188,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
         kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     normalizedKvDbOffset_ =
         (static_cast<uint64_t>(info.c1v1DbIdx) * constInfo_.usedCoreNum * 2U +
-         GetBlockIdx()) * constInfo_.vec1ResSize;
+         GetBlockIdx()) * constInfo_.mm1KvResSize;
     normalizedPoolBase_ = compressedCnt_;
 
     KeyPoolVec1SliceIterator<COMP> sliceIterator(tools_);
@@ -1216,6 +1212,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
             GatherKvForNorm(kvLocal, info, loopInfo, statisticInfo,
                             originSliceInfo, 0U, constInfo_.headDim,
                             needDealTcSize);
+            PipeBarrier<PIPE_ALL>();
             KeyPoolVec1SliceIterator<COMP> normalizedSliceIterator(tools_);
             normalizedSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
             normalizedSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
@@ -1236,6 +1233,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
                         constInfo_.normEps, currentRows,
                         constInfo_.headDim, constInfo_.headDim);
                     inputQue1.FreeTensor(normScratch);
+                    PipeBarrier<PIPE_ALL>();
                     ApplyKeyPoolRotaryPlaceholder(
                         kvLocal[currentOffset], currentRows * constInfo_.headDim);
                 }
@@ -1330,36 +1328,28 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1Run
     LocalTensor<T> scoreLocal = tmpBuff1.Get<T>();
     LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
 
-    // The overlap path consumes the APE tile inside OverLapScoreKv.  KPool
-    // uses COFF::DISABLE, but keep that template path valid for the shared
-    // implementation.  For the normal KPool path, load APE only after all
-    // overlap/cache reads have finished because they reuse the same UB area.
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        CopyInApe(apeUb, dStartIdx, dDealSize);
-    }
     OverLapScoreKv(scoreLocal, kvLocal, info, loopInfo, statisticInfo, originSliceInfo, dStartIdx, dDealSize, dBaseSize,
                    needDealTcSize);
 
     if (statisticInfo.key_poolScCnt > 0) {
-        CopyInApe(apeUb, dStartIdx, dDealSize);
-        // CopyInApe stages GM data through inputQue2 and then writes the
-        // persistent VECCALC tile with an asynchronous UB copy.  The queue
-        // dequeue covers the GM->UB leg; the full barrier also orders the
-        // final UB copy before Vector consumes apeUb.
-        PipeBarrier<PIPE_ALL>();
         AddApeToPooledScore(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         SoftmaxDN(scoreLocal, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         RoundToHiddenDtype(scoreLocal, statisticInfo.key_poolScCnt * cmpRatio_ * dDealSize);
         LocalTensor<T> comperssoredUb = scoreLocal;
+        bool independentReductionOutput = false;
         if (hasLayerNorm_ && cmpRatio_ == 128U) {
-            comperssoredUb = apeUb;
+            comperssoredUb = outputQue1.AllocTensor<T>();
+            independentReductionOutput = true;
         }
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.key_poolScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
         CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.key_poolScCnt, dStartIdx, dDealSize);
+        if (independentReductionOutput) {
+            outputQue1.FreeTensor(comperssoredUb);
+        }
     }
     compressedCnt_ += statisticInfo.key_poolScCnt;
 }
@@ -1510,11 +1500,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeVec1(const Vec1RunInfo &
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {
         uint64_t dBaseOffset = baseOffset + dLoopIdx * splitInfo.dSplitSize;
 
-        // Establish the APE tile before the V1 loop.  OverLapScoreKv may
-        // reuse VECCALC storage during its cache/workspace reads, so the tile
-        // is refreshed again immediately before the gate add below.
         CopyInApe(apeUb, dBaseOffset, splitInfo.dSplitSize);
-        PipeBarrier<PIPE_ALL>();
 
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
         compressedCnt_ = preCompressedCnt + splitInfo.curCompressedCnt;
