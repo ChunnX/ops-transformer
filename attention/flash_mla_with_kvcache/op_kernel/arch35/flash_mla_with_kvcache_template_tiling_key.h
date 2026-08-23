@@ -14,17 +14,17 @@
  *
  * 模板实例化组合继承 fused_infer_attention_score/op_kernel/arch35 的 MLA 分发宏集
  * （fia_arch35_noquant.h 中 dTemplateType == Aligned576 路径 → run_fia_noquant_mla_kernel 实例化集），
- * 并限定到唯一被 fia*mla 四件套验证过的路由：
- *   q = TND（varlen, cu_seqlens_q）、kv = PA_NZ（block_table + cache_seqlens）、out = NTD（运行时 tiling 字段）。
- * **不实例化 BSND/BNSD query、连续/非-NZ KV、非-NTD 输出组合**（checker 拒绝，FIA MLA 从未运行过）。
+ * 覆盖新布局矩阵（与 common_checker / parser / IsCapable 的裁决一致）：
+ *   q ∈ {TND, BSND, BNSD}（out 布局走 tiling 运行时字段）、kv ∈ {PA_NZ, PA_BNBD, PA_BBND}（仅 PA 分页，
+ *   连续 KV 的 KvLayoutType_NO_PA=0 不实例化）、mask ∈ {0,1}、isFd ∈ {0,1}。
  *
  * 实例化集合（SEL 笛卡尔积 × 2 dtype）：
- *   InOutLayoutType ∈ {InOutLayoutType_TND_TND}            (1)
+ *   InOutLayoutType ∈ {InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND} (3)
  *   Config          ∈ {Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512} (1, MLA 唯一配置)
  *   HasAttenMask    ∈ {false, true}                        (2)
- *   KvLayoutType    ∈ {KvLayoutType_PA_NZ}                 (1)
+ *   KvLayoutType    ∈ {KvLayoutType_PA_BBND, KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ} (3, 仅 PA 分页)
  *   IsFd            ∈ {false, true}                        (2)
- *   ⇒ 4 个组合/ dtype × INPUT_T ∈ {half, bfloat16_t}（ORIG_DTYPE_* 编译宏） = 8 个 kernel 实例。
+ *   ⇒ 36 个组合/ dtype × INPUT_T ∈ {half, bfloat16_t}（ORIG_DTYPE_* 编译宏） = 72 个 kernel 实例。
  * 枚举/常量数值与 fia_arch35_template_tiling_key_enum.h 逐值一致（只读参考，不改动）。
  */
 
@@ -203,14 +203,16 @@ static constexpr ConfigParams ConfigValue[] = {
 #define Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 9
 #define PSE_MODE_PSE_NONE_TYPE 9
 #define KvLayoutType_NO_PA 0
+#define KvLayoutType_PA_BBND 1
+#define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
 #define NoQuantMode 31
 
 ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
-                      // InOutLayoutType（位宽 8-bit，key 位 7-0；MLA 限定：仅 2 = InOutLayoutType_TND_TND）
-                      //    0: InOutLayoutType_BNSD_BNSD   （不实例化）
-                      //    1: InOutLayoutType_BSH_BSH     （不实例化）
-                      //    2: InOutLayoutType_TND_TND     （q=TND；out 布局走 tiling 运行时字段）
+                      // InOutLayoutType（位宽 8-bit，key 位 7-0；MLA 实例化 0/1/2 三个值）
+                      //    0: InOutLayoutType_BNSD_BNSD     （q=BNSD）
+                      //    1: InOutLayoutType_BSH_BSH       （q=BSND）
+                      //    2: InOutLayoutType_TND_TND       （q=TND；out 布局走 tiling 运行时字段）
                       //    3: InOutLayoutType_BNSD_BSND   （不实例化）
                       //    4: InOutLayoutType_NTD_NTD     （不实例化）
                       //    5: InOutLayoutType_NTD_TND     （不实例化）
@@ -222,10 +224,10 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       //    0: false
                       //    1: true
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),
-                      // KvLayoutType（位宽 2-bit，key 位 20-19；MLA 限定：仅 3 = KvLayoutType_PA_NZ）
+                      // KvLayoutType（位宽 2-bit，key 位 20-19；MLA 实例化 1/2/3 三个 PA 分页值）
                       //    0: KvLayoutType_NO_PA          （不实例化：连续 KV 从未被 fia MLA 跑过）
-                      //    1: KvLayoutType_PA_BBH         （不实例化）
-                      //    2: KvLayoutType_PA_BNBD        （不实例化）
+                      //    1: KvLayoutType_PA_BBND
+                      //    2: KvLayoutType_PA_BNBD
                       //    3: KvLayoutType_PA_NZ
                       ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
                       // IsFd（位宽 1-bit，key 位 21，flash-decode 分派）
@@ -234,17 +236,24 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       ASCENDC_TPL_BOOL_DECL(IsFd, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE), );
 // tiling key 编码（权威 = AscendC::FastEncodeTilingKeyDirect，DECL 序累积 bitWidth、UINT 记 DECL 值表索引）：
 // key = InOutLayoutType | Config<<8 | HasAttenMask<<18 | KvLayoutType<<19 | IsFd<<21
-//   = 2 | 9<<8 | m<<18 | 3<<19 | f<<21  ⇒  4 个组合 key：1575170(m0f0) / 1837314(m1f0) / 3672322(m0f1) / 3934466(m1f1)
+//  InOutLayoutType: 0=BNSD_BNSD / 1=BSH_BSH / 2=TND_TND（对应 q 布局 BNSD/BSND/TND）
+//  Config: 9 = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512（MLA 唯一配置）
+//  HasAttenMask: 0/1（bit 18）
+//  KvLayoutType: 1=PA_BBND / 2=PA_BNBD / 3=PA_NZ（bit 20-19，分页 KV 三类）
+//  IsFd: 0/1（bit 21）
+//  既有 TND/PA_NZ 四组合 key：1575170（m0f0）/ 1837314（m1f0）/ 3672322（m0f1）/ 3934466（m1f1）保持不变。
 // 注意：各字段注释中的 key 位标注（bit 7-0 / 17-8 / 18 / 20-19 / 21）按上述编码推导；
 // FIA 旧文案的位域标注与其 DECL 参数布局不同，按旧注释推导的 key 与真实编码不符，
 // 会被 asc_opc 以 "None of the given tiling keys are in the supported list" 拒绝。实际编码以本行为准。
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_TND_TND),
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD,
+                             InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512),
         ASCENDC_TPL_BOOL_SEL(HasAttenMask, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),
-        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_NZ),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BBND, KvLayoutType_PA_BNBD,
+                             KvLayoutType_PA_NZ),
         ASCENDC_TPL_BOOL_SEL(IsFd, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashMlaWithKvcacheTilingData)), );
 

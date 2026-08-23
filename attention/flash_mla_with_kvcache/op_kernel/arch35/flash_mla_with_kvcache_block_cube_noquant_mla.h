@@ -62,7 +62,9 @@ public:
     // q/k_cache 为 576 宽单张量（nope 512 + rope 64 合并），无独立 queryRope/keyRope 张量；
     // query 与 key 的 GM stride 布局按 576 宽初始化（偏移切分见 CopyQueryAndRopeTile/CopyKeyAndRopeTile）。
     // seq-lens（cu_seqlens_q/cache_seqlens）为 INT32，ACTLEN_T=uint32_t。
-    FaGmTensor<Q_T, Q_FORMAT, uint32_t, true> queryGm;
+    // WITH_ZERO_HEAD 仅对 TND（cu_seqlens 首零头）成立；BSND/BNSD 走 GM_Q_OUT_BNGSD 3-参实现
+    // （offset_calculator_v2.h，无 WITH_ZERO_HEAD 形参），与 flash_attn IS_TND 同构。
+    FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
     FaGmTensor<KV_T, KV_FORMAT> valueGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -149,7 +151,9 @@ public:
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
                                        uint32_t headDim, GlobalTensor<uint32_t> actualSeqLengthsGmQ,
-                                       uint32_t actualLenQDims, FaGmTensor<Q_T, Q_FORMAT, uint32_t, true> &qGmTensor,
+                                       uint32_t actualLenQDims,
+                                       FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND>
+                                           &qGmTensor,
                                        __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
