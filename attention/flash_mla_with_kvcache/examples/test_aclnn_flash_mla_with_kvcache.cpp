@@ -14,7 +14,7 @@
  *
  * Pipeline per case:
  *   1. aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize / aclnnFlashMlaWithKvcacheMetadata  -> multi-section metadata (INT32)
- *   2. aclnnFlashMlaWithKvcacheGetWorkspaceSize / aclnnFlashMlaWithKvcache                  -> attn_out (NTD) + softmax_lse
+ *   2. aclnnFlashMlaWithKvcacheGetWorkspaceSize / aclnnFlashMlaWithKvcache                  -> attn_out (TND) + softmax_lse
  *   3. independent naive-attention golden (fp64) compared with the
  *      flash_attn pytests thresholds (attention/flash_attn/tests/pytests/utils/compare.py,
  *      check_result: fp16 atol=2.5e-5 rtol=5e-3; bf16 atol=1e-4 rtol=7.8125e-3; failRatio<=0.5%)
@@ -22,7 +22,8 @@
  * Geometry (routing set): q TND [T,n1,576] (nope512+rope64 merged), k_cache PA_NZ
  * (Bn,N_kv,D1,Bs,D0) = (numBlocks,1,36,blockSize,16), block_table [b,maxBlocks], cache_seqlens [b],
  * cu_seqlens_q [b+1], attn_mask INT8 [2048,2048] causal (mask_mode=3 = RIGHT_DOWN), attrs
- * head_dim_v=512, softmax_scale=1/sqrt(512), layout_q=TND layout_kv=NZ layout_out=NTD,
+ * head_dim_v=512, softmax_scale=1/sqrt(512), layout_q=TND layout_kv=NZ layout_out=TND
+ * (D7: output layout must equal the query layout; the legacy NTD output default is gone),
  * return_softmax_lse=1. N_kv=1 (single latent KV head).
  */
 
@@ -448,7 +449,7 @@ int main()
         std::vector<int64_t> cuShape = {cs.batch + 1};
         std::vector<int64_t> maskShape = {2048, 2048};
         std::vector<int64_t> metaShape = {static_cast<int64_t>(in.metadata.size())};
-        std::vector<int64_t> outShape = {cs.numHeadsQ, in.totalTokens, QK_HEAD_DIM}; // NTD = (N,T,D)
+        std::vector<int64_t> outShape = {in.totalTokens, cs.numHeadsQ, QK_HEAD_DIM}; // TND = (T,N,D), out == layout_q
         std::vector<int64_t> lseShape = {cs.numHeadsQ, in.totalTokens};
 
         aclDataType qDtype = cs.dtype; // fp16/bf16 with matching host vector
@@ -478,7 +479,7 @@ int main()
         // ---- 1. metadata op -------------------------------------------------------------
         char layoutQ[] = "TND";
         char layoutKv[] = "PA_NZ";
-        char layoutOut[] = "NTD"; // MLA 输出头主序 (N,T,D)
+        char layoutOut[] = "TND"; // 输出与 query 同布局（D7: out == layout_q, TND = (T,N,D)）
         void *cuDevM = nullptr;
         void *seqKvDevM = nullptr;
         aclTensor *cuTM = nullptr;
@@ -497,8 +498,8 @@ int main()
         // numHeadsQ, numHeadsKv, headDim, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
         // headDim=512: MLA checker 强制 head_dim==512（qk nope 宽）。
         ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.batch, cs.qLens[0], cs.kvLen,
-                                                    cs.numHeadsQ, 1, 512, 3, layoutQ, layoutKv, layoutOut, metaT,
-                                                    &wsSize, &executor);
+                                                               cs.numHeadsQ, 1, 512, 3, layoutQ, layoutKv, layoutOut, metaT,
+                                                               &wsSize, &executor);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             LOG_PRINT("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize failed: %d\n", ret);
             return ret;
@@ -594,8 +595,18 @@ int main()
 
         // ---- 3. golden + compare -----------------------------------------------------------
         GoldenResult golden = ComputeGolden(cs, in, softmaxScale, /*causal=*/true);
-        // actual NTD (N,T,D): flatten [N][T][D]; expect [N][T][D]
-        std::vector<double> expectO(golden.o.begin(), golden.o.end());
+        // Golden is stored [N][T][D] (g.o[(n * T + t) * D]); the kernel output is now TND
+        // (T,N,D) since out must equal layout_q (D7). Reindex golden to [T][N][D] for the
+        // element-wise comparison against the flattened (T,N,D) output.
+        std::vector<double> expectO(golden.o.size());
+        for (int64_t t = 0; t < in.totalTokens; ++t) {
+            for (int64_t n = 0; n < cs.numHeadsQ; ++n) {
+                for (int64_t d = 0; d < QK_HEAD_DIM; ++d) {
+                    expectO[(t * cs.numHeadsQ + n) * QK_HEAD_DIM + d] =
+                        golden.o[(n * in.totalTokens + t) * QK_HEAD_DIM + d];
+                }
+            }
+        }
         double atol = (cs.dtype == ACL_FLOAT16) ? FP16_ATOL : BF16_ATOL;
         double rtol = (cs.dtype == ACL_FLOAT16) ? FP16_RTOL : BF16_RTOL;
         bool okO = CompareWithTolerance("attn_out", expectO, outRounded, 0, 0, atol, rtol);
