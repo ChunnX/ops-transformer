@@ -17,11 +17,10 @@
  *     attn_mask, metadata. No v / q_rope / k_rope; rope is merged into q and
  *     k_cache (last dim 576 = nope 512 + rope 64), k_cache carries BOTH key and
  *     value data (k == v, single latent KV head: kvHeadNum == n2Size == 1).
- *   - Layouts restricted to the FIA-validated set:
- *     q=TND (cu_seqlens_q required), kv=PA_NZ (block_table required),
- *     out=NTD. BSND/BNSD query, continuous KV, non-NTD out are rejected.
- *     Gate mirror: fused_infer_attention_score/op_host/arch35/
- *     fia_tiling_nonquant_mla.cpp:79-109 (IsCapableSparseLayoutCheckMla).
+ *   - Layout matrix: q/out in {TND, BNSD, BSND} (out must equal q, transpose
+ *     is not supported), kv is paged-only {PA_NZ, PA_BBND, PA_BNBD} (plus the
+ *     parser-normalized NZ alias of PA_NZ); continuous KV is rejected.
+ *     TND requires cu_seqlens_q, paged kv requires block_table.
  */
 
 #include <map>
@@ -46,25 +45,32 @@ using namespace arch35MLA;
 using namespace Ops::Base;
 
 // ============================================================================
-// Layout — SinglePara (only the FIA-validated routing set)
+// Layout — SinglePara (routing set of the new layout matrix)
 // ============================================================================
 
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    // the fia*mla four-piece has only ever been
-    // exercised with q=TND / kv=PA_NZ / out=NTD (fia_tiling_nonquant_mla.cpp:99-107).
-    // BSND/BNSD query, continuous KV and any other output layout are rejected.
-    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {FlashMlaWithKvcacheLayout::TND};
-    // kv 侧接受 "NZ" 与 "PA_NZ" 两个别名（默认 layout_kv="NZ"；parser 会把 PA_NZ 归一为 NZ，
+    // q/out share the same tri-set; out is required to equal q (no transpose),
+    // the pairing itself is enforced by LAYOUT_CONSTRAINT_TABLE below.
+    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {FlashMlaWithKvcacheLayout::TND,
+                                                                      FlashMlaWithKvcacheLayout::BNSD,
+                                                                      FlashMlaWithKvcacheLayout::BSND};
+    // kv 侧只接受 paged 布局（仅 PA 分页，KvLayoutType 0 连续 KV 永不放行）。
+    // "NZ" 是 "PA_NZ" 的归一别名（parser 会把 PA_NZ 归一为 NZ，
     // 见 arch35/flash_mla_with_kvcache_tiling.cpp 的 FlashMlaWithKvcacheLayout::NZ 断言 —— 实测两者都必须放行）
-    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_NZ};
-    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {FlashMlaWithKvcacheLayout::NTD};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {FlashMlaWithKvcacheLayout::PA_NZ,
+                                                                       FlashMlaWithKvcacheLayout::NZ,
+                                                                       FlashMlaWithKvcacheLayout::PA_BBND,
+                                                                       FlashMlaWithKvcacheLayout::PA_BNBD};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {FlashMlaWithKvcacheLayout::TND,
+                                                                        FlashMlaWithKvcacheLayout::BNSD,
+                                                                        FlashMlaWithKvcacheLayout::BSND};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
         supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
                                               LayoutToSerialString(faInfo.qLayout).c_str(),
-                                              "The value of layout_q must be TND (BSND/BNSD query is not supported)");
+                                              "The value of layout_q must be TND/BNSD/BSND");
         return ge::GRAPH_FAILED;
     }
 
@@ -72,14 +78,14 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTi
                     supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-                    "The value of layout_kv must be PA_NZ (continuous/other paged KV is not supported)"),
+                    "The value of layout_kv must be PA_NZ/PA_BBND/PA_BNBD (paged KV only, continuous KV is not supported)"),
                 return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
                                               LayoutToSerialString(faInfo.outLayout).c_str(),
-                                              "The value of layout_out must be NTD (non-NTD output is not supported)");
+                                              "The value of layout_out must be TND/BNSD/BSND (layout_out must equal layout_q)");
         return ge::GRAPH_FAILED;
     }
 
@@ -291,10 +297,13 @@ ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingI
                 return ge::GRAPH_FAILED);
 
     const gert::Shape &kShape = faInfo.opParamInfo.kCache.shape->GetStorageShape();
-    const bool isPaNz = (faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ);
-    if (!isPaNz) {
-        // 连续 KV 的 k_cache 最后维 == 576；PA_NZ 5-D [Bn, N, D0, Bs, 16] 由 CheckKVShapeForPageAttention
-        // 的 Bn/N/Bs/D/D0 参数比较覆盖（D0=32/typeSize，shape 级验证）
+    // paged 布局（NZ/PA_NZ 5-D [Bn, N, D0, Bs, 16] 与 PA_BBND/PA_BNBD 4-D）的 k_cache
+    // 最后维由 CheckKVShapeForPageAttention 的 Bn/N/Bs/D 参数比较覆盖（D=576，shape 级验证）
+    const bool isPaLayout = (faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ ||
+                             faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ ||
+                             faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BBND ||
+                             faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD);
+    if (!isPaLayout) {
         int64_t kLastDim = kShape.GetDim(kShape.GetDimNum() - 1);
         OP_CHECK_IF(kLastDim != static_cast<int64_t>(DSIZE_576),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -307,7 +316,7 @@ ge::graphStatus CommonChecker::CheckMlaGeometry(const FlashMlaWithKvcacheTilingI
 }
 
 // ============================================================================
-// Layout — MultiPara constraint table (single valid combo)
+// Layout — MultiPara constraint table (q × paged-kv × out==q)
 // ============================================================================
 
 struct LayoutConstraintConfig {
@@ -315,9 +324,24 @@ struct LayoutConstraintConfig {
     std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts;
 };
 
+// kv 侧只接受 paged 布局（仅 PA 分页，KvLayoutType 0 连续 KV 永不放行）：
+// 三个 PA 布局 + "NZ"（"PA_NZ" 经 parser 归一后的别名 —— parser 在 checker 之前
+// 运行并恒把 PA_NZ 归为 NZ（arch35/flash_mla_with_kvcache_tiling.cpp 断言 NZ），
+// 实测两者都必须放行，故此处与 CheckSingleParaLayout 的 supportedKvLayouts 同步保留）。
+// out 列恒等于 q（不支持转置）。
 static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    // kv 两别名：默认 "NZ"；parser 归一 FlashMlaWithKvcacheLayout::NZ（arch35/flash_mla_with_kvcache_tiling.cpp），PA_NZ 保留
-    {FlashMlaWithKvcacheLayout::TND, {{FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_NZ}, {FlashMlaWithKvcacheLayout::NTD}}},
+    {FlashMlaWithKvcacheLayout::BNSD,
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_BBND,
+       FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::BNSD}}},
+    {FlashMlaWithKvcacheLayout::BSND,
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_BBND,
+       FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::BSND}}},
+    {FlashMlaWithKvcacheLayout::TND,
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::NZ, FlashMlaWithKvcacheLayout::PA_BBND,
+       FlashMlaWithKvcacheLayout::PA_BNBD},
+      {FlashMlaWithKvcacheLayout::TND}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)
@@ -364,9 +388,12 @@ ge::graphStatus CommonChecker::CheckQueryShape(const FlashMlaWithKvcacheTilingIn
     shapeParams.B = static_cast<int64_t>(faInfo.bSize);
     shapeParams.N = static_cast<int64_t>(faInfo.n1Size);
     shapeParams.S = static_cast<int64_t>(faInfo.s1Size);
-    // q TND carries the merged width: nope 512 + rope 64 = 576
+    // q carries the merged width: nope 512 + rope 64 = 576 (identical for TND/BNSD/BSND)
     shapeParams.D = static_cast<int64_t>(faInfo.qkHeadDim + MLA_ROPE_D_DIM_64);
-    shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
+    if (faInfo.qLayout == FlashMlaWithKvcacheLayout::TND) {
+        // T axis exists only in TND; qTSize == 0 is normal for BNSD/BSND (no total-token axis)
+        shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
+    }
     return queryShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
@@ -387,7 +414,9 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FlashMlaWithKv
     shapeParams.Bn = static_cast<int64_t>(faInfo.totalBlockNum);
     shapeParams.N = static_cast<int64_t>(faInfo.n2Size);
     shapeParams.Bs = static_cast<int64_t>(faInfo.blockSize);
-    // k_cache PA_NZ carries the merged width (nope 512 + rope 64); D0 = 32B / elem
+    // paged k_cache carries the merged width (nope 512 + rope 64); D0 = 32B / elem
+    // 仅 PA_NZ/NZ 使用 D0（5-D [Bn,N,D/D0,Bs,D0]）；PA_BBND [Bn,Bs,N,D] 与
+    // PA_BNBD [Bn,N,Bs,D] 为 4-D，D0 参数被 CompareShape 忽略（按布局轴表自动适配）
     shapeParams.D = static_cast<int64_t>(faInfo.qkHeadDim + MLA_ROPE_D_DIM_64);
     shapeParams.D0 = static_cast<int64_t>(kvBlockElemNum);
 
@@ -396,18 +425,22 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FlashMlaWithKv
 
 ge::graphStatus CommonChecker::CheckKVShape(const FlashMlaWithKvcacheTilingInfo &faInfo) const
 {
-    // only PA_NZ KV is supported; block_table drives the paging（kvLayout 可能为归一后的 NZ 别名）
-    if (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ) {
+    // 仅 paged KV（PA_NZ 及其归一别名 NZ、PA_BBND、PA_BNBD）；block_table 驱动分页，
+    // 4-D 布局的 Bn/Bs/N/D 由 CheckKVShapeForPageAttention 的 shape 参数比较覆盖
+    if (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ ||
+        faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BBND ||
+        faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD) {
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
         }
-        std::string reason = "block_table cannot be empty when layout_kv is PA_NZ";
+        std::string reason = "block_table cannot be empty when layout_kv is " +
+                             LayoutToSerialString(faInfo.kvLayout);
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
     std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) +
-                         " is not supported (only PA_NZ KV)";
+                         " is not supported (only paged KV PA_NZ/PA_BBND/PA_BNBD)";
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
                                           LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
     return ge::GRAPH_FAILED;
@@ -421,7 +454,10 @@ ge::graphStatus CommonChecker::CheckAttnOutShape(const FlashMlaWithKvcacheTiling
     shapeParams.S = static_cast<int64_t>(faInfo.s1Size);
     // attn_out carries only the value (nope) width; rope is not part of the output
     shapeParams.D = static_cast<int64_t>(faInfo.vHeadDim);
-    shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
+    if (faInfo.outLayout == FlashMlaWithKvcacheLayout::TND) {
+        // T 轴仅存在于 TND; out==q（约束表保证），BNSD/BSND 下 qTSize==0 属正常
+        shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
+    }
     if (attnOutShapeCmp_->CompareShape(shapeParams, __func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
