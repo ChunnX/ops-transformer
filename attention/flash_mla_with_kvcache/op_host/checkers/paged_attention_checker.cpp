@@ -12,7 +12,7 @@
  * \file paged_attention_checker.cpp
  * \brief Checker for PagedAttention parameters (文档约束: Paged Attention参数组)
  *
- * kv layout is PA_NZ only -> block_table is REQUIRED (INT32, [b, max_blocks]).
+ * kv layout is PA (PA_BBND/PA_BNBD/PA_NZ) -> block_table is REQUIRED (INT32, [b, max_blocks]).
  * Per-batch block counts must be consistent with cache_seqlens: each batch's
  * KV length must fit in its block_table row (len <= dim1 * block_size), which
  * bounds the needed blocks by max_block_num (block_table dim1). The value
@@ -96,7 +96,7 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FlashMlaWithKvca
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     OP_CHECK_IF(blockTableTensor == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
-                                                      "When PagedAttention is enabled (layout_kv is PA_NZ), block_table must not be empty"),
+                                                      "When PagedAttention is enabled (layout_kv is PA_BBND/PA_BNBD/PA_NZ), block_table must not be empty"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -127,11 +127,22 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FlashMlaWithKvcacheT
                                                       "The second dim of block_table (max block num per batch) must be greater than 0"),
                 return ge::GRAPH_FAILED);
 
-    // PA_NZ 场景下 kvcache 非连续stride校验 (dimIndex由parser预计算); k_cache 是唯一 kv buffer
-    if (faInfo.hasViewStride && (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ || faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ)) {
+    // PA 场景下 kvcache 非连续stride校验 (dimIndex由parser预计算); k_cache 是唯一 kv buffer
+    // PA_BBND（batch-block 序）仅允许 dim0 非连续（block 表索引维）；PA_BNBD/PA_NZ（head-block 序）允许 dim0|dim1
+    if (faInfo.hasViewStride && faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BBND) {
+        OP_CHECK_IF((faInfo.keyNonContigDim > 0),
+                    OP_LOGE(faInfo.opName,
+                            "In PA BBND scenarios, k_cache only supports non-contiguous tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            faInfo.keyNonContigDim),
+                    return ge::GRAPH_FAILED);
+    } else if (faInfo.hasViewStride &&
+               (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD ||
+                faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ ||
+                faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ)) {
         OP_CHECK_IF((faInfo.keyNonContigDim > 1),
                     OP_LOGE(faInfo.opName,
-                            "In PA NZ scenarios, k_cache only supports non-contiguous tensors in dimensions 0 or 1, "
+                            "In PA BNBD/NZ scenarios, k_cache only supports non-contiguous tensors in dimensions 0 or 1, "
                             "but the first non-contiguous dimension is index %d.",
                             faInfo.keyNonContigDim),
                     return ge::GRAPH_FAILED);
