@@ -1639,12 +1639,7 @@ def _exp_sub(lhs, rhs, use_quant_matmul):
         return _npu_exp_sub(lhs, rhs)
     lhs_fp32 = lhs.to(torch.float32)
     rhs_fp32 = rhs.to(torch.float32)
-    # Match the higher-precision internal subtraction/exp of NPU
-    # FusedExpSub.  Materializing the intermediate in FP32 can put a value
-    # on the other side of an E4M3 probability boundary, especially when a
-    # large QK score is reduced by an almost equal online-softmax maximum.
-    # The FP8 golden uses the same FP64 intermediate for this reason.
-    return torch.exp(lhs_fp32.double() - rhs_fp32.double()).float()
+    return torch.exp(lhs_fp32 - rhs_fp32)
 
 
 def _softmax_row_is_active(local_max, has_valid_position):
@@ -1715,8 +1710,11 @@ def _pv_matmul_cpu(
     head_dim,
     l_run,
 ):
-    """CPU torch.matmul path for C2 PV accumulation."""
-    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
+    """CPU torch.matmul path matching MXFP8 C2 group-scale order."""
+    p_c2_chunks = []
+    p_scale_c2_chunks = []
+    v_c2_chunks = []
+    v_scale_c2_chunks = []
     round_sum = torch.zeros_like(l_run)
     for (
         subloop_start,
@@ -1746,9 +1744,45 @@ def _pv_matmul_cpu(
         v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
             torch.float32
         )
-        v_dequant = v_mat * v_scale_mat
-        pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
+        subloop_k = subloop_end - subloop_start
+        subloop_group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
+        p_c2_chunks.append(p_quant_subloop)
+        p_scale_c2_chunks.append(
+            subloop_rescale.view(nq, 1).expand(nq, subloop_group_count)
+        )
+        v_c2_chunks.append(v_mat)
+        v_scale_c2_chunks.append(v_scale_mat[::QUANT_GROUP_SIZE])
         round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+
+    p_c2 = torch.cat(p_c2_chunks, dim=1)
+    p_scale_c2 = torch.cat(p_scale_c2_chunks, dim=1)
+    v_c2 = torch.cat(v_c2_chunks, dim=0)
+    v_scale_c2 = torch.cat(v_scale_c2_chunks, dim=0)
+
+    # VF converts the online-max rescale through BF16 and stores it as E8M0
+    # before C2. Reproduce the effective descale value on CPU.
+    p_scale_e8m0 = fp32_to_e8m0fnu_safe(
+        p_scale_c2.to(torch.bfloat16).to(torch.float32),
+        "CPU P golden matmul descale",
+    )
+    p_scale_c2 = e8m0fnu_to_fp32(p_scale_e8m0, "CPU P golden matmul descale")
+
+    # MXFP8 cube first accumulates each 32-element group, applies that
+    # group's P/V descales, and only then merges groups. A single matmul over
+    # fully dequantized V changes the FP32 addition order.
+    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
+    for group_idx in range(p_scale_c2.shape[1]):
+        group_start = group_idx * QUANT_GROUP_SIZE
+        group_end = min(group_start + QUANT_GROUP_SIZE, p_c2.shape[1])
+        group_dot = torch.matmul(
+            p_c2[:, group_start:group_end],
+            v_c2[group_start:group_end, :],
+        )
+        pv += (
+            group_dot
+            * p_scale_c2[:, group_idx].view(nq, 1)
+            * v_scale_c2[group_idx].view(1, head_dim)
+        )
     return pv, round_sum
 
 
