@@ -23,7 +23,7 @@ python test_flash_mla_with_kvcache.py --case_id PREFILL_LSE --static_graph
 |---|---|
 | prefill (FD=false) | PREFILL_NO_MASK / PREFILL_CAUSAL / PREFILL_BF16 / PREFILL_LSE / PREFILL_CAUSAL_LSE |
 | decode (FD path) | DECODE_FD / DECODE_CAUSAL_BF16 / DECODE_LSE |
-| PA (block_table) | 全部（R1 必选路线：q=TND, kv=PA_NZ, out=NTD） |
+| PA (block_table) | 全部（T11 迁移后必选路线：q=TND, kv=PA_NZ, out=TND） |
 | LSE 开关 | return_softmax_lse True/False |
 | 静态图 vs 动态图 | `--static_graph`（确定性 + torch.export 静态子图） |
 | >1-section | SECTION_64B / SECTION_16B_2K（断言 metadata sectionNum>=2） |
