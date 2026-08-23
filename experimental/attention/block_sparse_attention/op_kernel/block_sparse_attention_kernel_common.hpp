@@ -144,8 +144,7 @@ namespace BsaKernelCommon {
         GM_ADDR blockTables;             // 块表
         GM_ADDR actualQseqlen;           // 实际Q序列长度
         GM_ADDR actualKvseqlen;          // 实际KV序列长度
-        
-        
+
         // 输出和工作空间
         GM_ADDR o;                       // 输出张量
         GM_ADDR lse;
@@ -176,4 +175,3 @@ namespace BsaKernelCommon {
     using FASparseKernelParams = BlockSparseAttentionKernelParams;
 }
 #endif // BLOCK_SPARSE_ATTENTION_KERNEL_COMMON_HPP
-
