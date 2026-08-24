@@ -97,9 +97,6 @@ private:
     GM_ADDR mmResultGM_;
 
     AscendC::Hccl<ServerType> hccl_;
-    AscendC::HcclHandle curHandle_{0};
-    AscendC::HcclHandle prevHandle_{0};
-    bool hasPrevHandle_{false};
 
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
@@ -129,7 +126,6 @@ private:
     __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t batchSize,
                                        uint32_t batchRankOffset, uint64_t origM, bool isLocal, Params &params);
     __aicore__ inline void RunRemoteMatmul();
-    __aicore__ inline void RunAllToAll();
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -263,44 +259,6 @@ template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
-QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunAllToAll()
-{
-    for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
-        AscendC::SyncAll<true>();
-
-        uint32_t curTileM = (tid >= tileCnt_) ? tailM_ : tileM_;
-        uint64_t tileOffset = (tid < tileCnt_)
-            ? static_cast<uint64_t>(tid) * tileM_
-            : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-        // HCCL PUT: 从mmResult发送到各卡y_
-        // 远端rank的结果在mmResult中,本rank结果已直接写y_(cGmSelfAddr)
-        // AllToAll发送mmResult中的远端数据,接收其他卡发送的数据到y_
-        uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
-        curHandle_ = hccl_.template AlltoAll<true>(
-            mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType),
-            y_ + tileOffset * axisNPerRank_ * sizeof(YType),
-            sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-            sendCount, 1);
-
-        if (hasPrevHandle_) {
-            hccl_.Wait(prevHandle_);
-        }
-        prevHandle_ = curHandle_;
-        hasPrevHandle_ = true;
-    }
-
-    AscendC::SyncAll();
-    if (hasPrevHandle_) {
-        hccl_.Wait(prevHandle_);
-    }
-    hccl_.Wait(curHandle_);
-
-    AscendC::SyncAll();
-    hccl_.Finalize();
-}
-
 template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
