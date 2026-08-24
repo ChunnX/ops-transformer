@@ -30,17 +30,7 @@ repos:
       - id: check-json
         exclude: .*_runtime_kb\.json$
 
-  # C++ 代码格式化检查
-  - repo: https://gitcode.com/pre-commit-clang/mirrors-clang-format
-    rev: v18.1.8
-    hooks:
-      - id: clang-format
-        files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx|asc)$
-        args:
-          - "--style=file"
-          - "--verbose"
-          - "-i"
-        exclude: ^build/|tests/third_party/
+  # C++ 代码格式化检查 (incremental, 见 local repo 块 scripts/format_cpp_incremental.sh)
 
   # Python 代码检查
   - repo: https://gitcode.com/gh_mirrors/ru/ruff-pre-commit
@@ -67,6 +57,14 @@ repos:
   # OAT 合规性检查 (Open Source Audit Tool)
   - repo: local
     hooks:
+      - id: clang-format
+        name: clang-format (incremental)
+        entry: bash scripts/format_cpp_incremental.sh
+        language: system
+        files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx|asc)$
+        exclude: ^build/|tests/third_party/
+        types: [file]
+        stages: [pre-commit]
       - id: oat-check
         name: OAT Compliance Check
         entry: bash scripts/oat_check.sh
