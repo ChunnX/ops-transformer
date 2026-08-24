@@ -381,12 +381,10 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShapeNZAntiquant(const FiaTil
                                                                      const std::string &shapeStr, uint32_t compareD,
                                                                      int64_t tempD0, int64_t tempD1) const
 {
-    if (tempD0 != NUM_16 && tempD0 != NUM_32) {
+    if (tempD0 != NUM_16 && !(tempD0 == NUM_32 && fiaInfo.inputKvType == ge::DT_INT8)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-            ("When PA_NZ is enabled, the last dim of " + inputName + " must be 16 or 32, but got " +
-             std::to_string(tempD0))
-                .c_str());
+            (inputName + " last dim must be 16, or 32 when kv dtype is INT8, when PA_NZ is enabled").c_str());
         return ge::GRAPH_FAILED;
     }
     uint32_t d0Size = static_cast<uint32_t>(tempD0);
@@ -669,14 +667,6 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
             "In antiquant scenario, when page attention is enabled, block_size must be a multiple of " +
             std::to_string(blockSizeAlign) + " and in range of [" + std::to_string(blockSizeAlign) + ", " +
             std::to_string(BLOCK_SIZE_MAX) + "] if kvCache dtype is " + DataTypeToSerialString(fiaInfo.inputKvType);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                              reasonMsg.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    // D0=32 PA_NZ antiquant: block_size must be 128 or 512
-    if (fiaInfo.kvCacheNzD0 == NUM_32 && fiaInfo.blockSize != NUM_128 && fiaInfo.blockSize != NUM_512) {
-        std::string reasonMsg = "When PA_NZ D0=32 antiquant is enabled, block_size must be 128 or 512, but got " +
-                                std::to_string(fiaInfo.blockSize);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
                                               reasonMsg.c_str());
         return ge::GRAPH_FAILED;

@@ -108,12 +108,11 @@ __aicore__ inline void AntiquantVFW8Nz(LocalTensor<KV_T> &antiqInUb, LocalTensor
                                                                         dealRowCount);
 }
 
-template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize>
 __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T *ubDstAddr,
-                                          __ubuf__ Q_T *ubOffsetAddr, __ubuf__ Q_T *ubScaleAddr, uint32_t dealRowCount)
+                                          __ubuf__ Q_T *ubScaleAddr, uint32_t dealRowCount)
 {
     MicroAPI::RegTensor<KV_T> vKvData;
-    MicroAPI::RegTensor<Q_T> vOffset;
     MicroAPI::RegTensor<Q_T> vScale;
     MicroAPI::RegTensor<Q_T> vRes;
     MicroAPI::RegTensor<half> vCastFp16Res;
@@ -130,9 +129,6 @@ __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q
     const uint16_t colLoopCnt = static_cast<uint16_t>(baseSize / colBaseSize);
 
     for (uint16_t colLoopIdx = 0; colLoopIdx < colLoopCnt; colLoopIdx++) {
-        if constexpr (hasOffset) {
-            MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_NORM>(vOffset, ubOffsetAddr + dealBaseNum * colLoopIdx);
-        }
         MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_NORM>(vScale, ubScaleAddr + dealBaseNum * colLoopIdx);
 
         for (uint16_t rowLoop = 0; rowLoop < rowLoopCnt; rowLoop++) {
@@ -148,29 +144,23 @@ __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q
             } else {
                 MicroAPI::Cast<Q_T, KV_T, castTrait>(vRes, vKvData, kvTypeMaskAll);
             }
-            if constexpr (hasOffset) {
-                MicroAPI::Add<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vOffset, qTypeMaskAll);
-            }
             MicroAPI::Mul<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vRes, vRes, vScale, qTypeMaskAll);
             MicroAPI::StoreAlign<Q_T, MicroAPI::StoreDist::DIST_NORM_B16>(ubDstAddrTmp, vRes, qTypeMaskAll);
         }
     }
 }
 
-template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize>
 __aicore__ inline void AntiquantVFW8NzD032(LocalTensor<KV_T> &antiqInUb, LocalTensor<Q_T> &antiqResUb,
-                                            LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                             LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
     static_assert(baseSize % 32 == 0);
     static_assert(IsSameType<KV_T, int8_t>::value, "antiquant w8 D032, KV_T must be int8_t");
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
-    __ubuf__ Q_T *ubOffsetAddr = (__ubuf__ Q_T *)antiqOffsetUb.GetPhyAddr();
     __ubuf__ Q_T *ubScaleAddr = (__ubuf__ Q_T *)antiqScaleUb.GetPhyAddr();
 
-    AntiquantVFImplW8NzD032<Q_T, KV_T, ANTIQ_PARAMS_T, baseSize, hasOffset>(ubSrcAddr, ubDstAddr, ubOffsetAddr,
-                                                                             ubScaleAddr, dealRowCount);
+    AntiquantVFImplW8NzD032<Q_T, KV_T, ANTIQ_PARAMS_T, baseSize>(ubSrcAddr, ubDstAddr, ubScaleAddr, dealRowCount);
 }
 
 template <typename Q_T, typename KV_T, uint32_t baseSize>
@@ -317,15 +307,13 @@ __aicore__ inline void AntiquantVFW8PerTokenNz(LocalTensor<KV_T> &antiqInUb, Loc
                                                                                 ubScaleAddr, dealRowCount);
 }
 
-template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize>
 __simd_vf__ void AntiquantVFImplW8PerTokenNzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T *ubDstAddr,
-                                                   __ubuf__ Q_T *ubOffsetAddr, __ubuf__ Q_T *ubScaleAddr,
-                                                   uint32_t dealRowCount)
+                                                   __ubuf__ Q_T *ubScaleAddr, uint32_t dealRowCount)
 {
     MicroAPI::RegTensor<KV_T> vKvData;
     MicroAPI::RegTensor<Q_T> vScaleLoaded;
-    MicroAPI::RegTensor<Q_T> vOffsetFirst;
-    MicroAPI::RegTensor<Q_T> vOffsetBack;
+    MicroAPI::RegTensor<Q_T> placeHolder;
     MicroAPI::RegTensor<Q_T> vScaleFirst;
     MicroAPI::RegTensor<Q_T> vScaleBack;
     MicroAPI::RegTensor<Q_T> vRes;
@@ -355,29 +343,27 @@ __simd_vf__ void AntiquantVFImplW8PerTokenNzD032(__ubuf__ uint8_t *ubSrcAddr, __
             __ubuf__ uint8_t *ubSrcTemp = ubSrcAddr + rowStride * rowLoopIdx + colSrcStride * colLoopIdx;
             __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + rowStride * rowLoopIdx + colDstStride * colLoopIdx;
 
-            W8NzQuantAndStore<Q_T, KV_T, hasOffset>(vKvData, vCastFp16Res, vRes, ubSrcTemp + dealBaseNum,
-                                                    vOffsetBack, vScaleBack, ubDstAddrTmp + dealBaseNum,
+            W8NzQuantAndStore<Q_T, KV_T, false>(vKvData, vCastFp16Res, vRes, ubSrcTemp + dealBaseNum,
+                                                    placeHolder, vScaleBack, ubDstAddrTmp + dealBaseNum,
                                                     kvTypeMaskAll, qTypeMaskAll);
 
-            W8NzQuantAndStore<Q_T, KV_T, hasOffset>(vKvData, vCastFp16Res, vRes, ubSrcTemp, vOffsetFirst,
+            W8NzQuantAndStore<Q_T, KV_T, false>(vKvData, vCastFp16Res, vRes, ubSrcTemp, placeHolder,
                                                     vScaleFirst, ubDstAddrTmp, kvTypeMaskAll, qTypeMaskAll);
         }
     }
 }
 
-template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
+template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize>
 __aicore__ inline void AntiquantVFW8PerTokenNzD032(LocalTensor<KV_T> &antiqInUb, LocalTensor<Q_T> &antiqResUb,
-                                                    LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                     LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
     static_assert(baseSize % 32 == 0);
     static_assert(IsSameType<KV_T, int8_t>::value, "antiquant w8 PerToken D032, KV_T must be int8_t");
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
-    __ubuf__ Q_T *ubOffsetAddr = (__ubuf__ Q_T *)antiqOffsetUb.GetPhyAddr();
     __ubuf__ Q_T *ubScaleAddr = (__ubuf__ Q_T *)antiqScaleUb.GetPhyAddr();
-    AntiquantVFImplW8PerTokenNzD032<Q_T, KV_T, ANTIQ_PARAMS_T, baseSize, hasOffset>(ubSrcAddr, ubDstAddr, ubOffsetAddr,
-                                                                                     ubScaleAddr, dealRowCount);
+    AntiquantVFImplW8PerTokenNzD032<Q_T, KV_T, ANTIQ_PARAMS_T, baseSize>(ubSrcAddr, ubDstAddr, ubScaleAddr,
+                                                                            dealRowCount);
 }
 
 template <typename Q_T, typename KV_T, uint32_t baseSize>

@@ -19,6 +19,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "fused_infer_attention_score_tiling_index.h"
+#include "fused_infer_attention_score_tiling_constants.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 #include "fused_infer_attention_score_tiling_utils.h"
 
@@ -1743,8 +1744,8 @@ void FiaInfoParser::GenerateLayoutInfo(FiaTilingInfo &fiaInfo)
     if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && kvLayout_ == FiaLayout::NZ &&
         !kCache_.empty() && kCache_[0] != nullptr) {
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
-        if (keyDimNum == 5U) {
-            fiaInfo.kvCacheNzD0 = static_cast<uint32_t>(kCache_[0]->GetStorageShape().GetDim(4));
+        if (keyDimNum == DIM_NUM_5) {
+            fiaInfo.kvCacheNzD0 = static_cast<uint32_t>(kCache_[0]->GetStorageShape().GetDim(DIM_NUM_4));
         }
     }
 }

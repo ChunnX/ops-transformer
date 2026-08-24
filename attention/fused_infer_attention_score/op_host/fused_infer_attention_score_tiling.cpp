@@ -1031,12 +1031,19 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
 
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16 && tempK->GetStorageShape().GetDim(DIM_4) != 32) ||
                     (tempV->GetStorageShape().GetDim(DIM_4) != 16 && tempV->GetStorageShape().GetDim(DIM_4) != 32),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should be 16 or 32."),
-            return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context->GetNodeName(), "key and value",
+                    ("dim4: " + std::to_string(tempK->GetStorageShape().GetDim(DIM_4)) + " and " +
+                     std::to_string(tempV->GetStorageShape().GetDim(DIM_4))).c_str(),
+                    "key and value last dim must be 16 or 32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) ||
                     (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "The four dimension of kv should be :%ld.", blockSize),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context->GetNodeName(), "key and value",
+                    ("dim3: " + std::to_string(tempK->GetStorageShape().GetDim(DIM_3)) + " and " +
+                     std::to_string(tempV->GetStorageShape().GetDim(DIM_3))).c_str(),
+                    "key and value dim 3 must be equal to block_size"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
