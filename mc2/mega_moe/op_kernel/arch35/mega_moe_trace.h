@@ -38,6 +38,7 @@ constexpr uint32_t A4W4_WAVE_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A4W4_WAVE_TRACE_RECORD_HEADER_WORDS = 4U;
 constexpr uint32_t A4W4_WAVE_TRACE_EVENT_WORDS = 9U;
 constexpr uint32_t A4W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD = 256U;
+constexpr uint64_t A4W4_WAVE_TRACE_OUTPUT_BYTES = 1024ULL * 1024ULL;
 constexpr uint64_t A4W4_WAVE_TRACE_SCRATCH_BYTES = 50ULL * 1024ULL * 1024ULL;
 
 enum class A4W4WaveTraceRole : uint32_t {
@@ -96,11 +97,10 @@ struct A4W4WaveTrace {
         return A4W4_WAVE_TRACE_RECORD_HEADER_WORDS + eventCapacity * A4W4_WAVE_TRACE_EVENT_WORDS;
     }
 
-    __aicore__ inline void Init(GM_ADDR workspaceBase, int64_t workspaceBytes, GM_ADDR outputBase,
-                                uint64_t outputBytes, uint32_t logicalCoreCount, A4W4WaveTraceRole traceRole,
-                                uint32_t logicalCoreIndex, uint32_t tokenCount, uint32_t hiddenSize,
-                                uint32_t intermediateSize, uint32_t topKValue, uint32_t expertCount,
-                                uint32_t epWorldSize)
+    __aicore__ inline void Init(GM_ADDR workspaceBase, int64_t workspaceBytes, GM_ADDR outputBase, uint64_t outputBytes,
+                                uint32_t logicalCoreCount, A4W4WaveTraceRole traceRole, uint32_t logicalCoreIndex,
+                                uint32_t tokenCount, uint32_t hiddenSize, uint32_t intermediateSize, uint32_t topKValue,
+                                uint32_t expertCount, uint32_t epWorldSize)
     {
         coreCount = logicalCoreCount;
         coreIndex = logicalCoreIndex;
@@ -114,26 +114,20 @@ struct A4W4WaveTrace {
 
         const uint32_t recordCount = A4W4_WAVE_TRACE_ROLE_COUNT * coreCount;
         const uint64_t outputWords = outputBytes / sizeof(uint32_t);
-        const uint64_t fixedOutputWords = A4W4_WAVE_TRACE_HEADER_WORDS +
-                                          static_cast<uint64_t>(recordCount) *
-                                              A4W4_WAVE_TRACE_RECORD_HEADER_WORDS;
-        const uint64_t outputEventCapacity = outputWords > fixedOutputWords ?
-                                                 (outputWords - fixedOutputWords) /
-                                                     (static_cast<uint64_t>(recordCount) *
-                                                      A4W4_WAVE_TRACE_EVENT_WORDS) :
-                                                 0U;
-        const uint64_t scratchFixedWords =
-            static_cast<uint64_t>(recordCount) * A4W4_WAVE_TRACE_RECORD_HEADER_WORDS;
+        const uint64_t fixedOutputWords =
+            A4W4_WAVE_TRACE_HEADER_WORDS + static_cast<uint64_t>(recordCount) * A4W4_WAVE_TRACE_RECORD_HEADER_WORDS;
+        const uint64_t outputEventCapacity =
+            outputWords > fixedOutputWords ?
+                (outputWords - fixedOutputWords) / (static_cast<uint64_t>(recordCount) * A4W4_WAVE_TRACE_EVENT_WORDS) :
+                0U;
+        const uint64_t scratchFixedWords = static_cast<uint64_t>(recordCount) * A4W4_WAVE_TRACE_RECORD_HEADER_WORDS;
         const uint64_t scratchWords = A4W4_WAVE_TRACE_SCRATCH_BYTES / sizeof(uint32_t);
-        const uint64_t scratchEventCapacity = scratchWords > scratchFixedWords ?
-                                                  (scratchWords - scratchFixedWords) /
-                                                      (static_cast<uint64_t>(recordCount) *
-                                                       A4W4_WAVE_TRACE_EVENT_WORDS) :
-                                                  0U;
+        const uint64_t scratchEventCapacity =
+            scratchWords > scratchFixedWords ? (scratchWords - scratchFixedWords) /
+                                                   (static_cast<uint64_t>(recordCount) * A4W4_WAVE_TRACE_EVENT_WORDS) :
+                                               0U;
         uint64_t capacity = outputEventCapacity < scratchEventCapacity ? outputEventCapacity : scratchEventCapacity;
-        capacity = capacity < A4W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD ?
-                       capacity :
-                       A4W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD;
+        capacity = capacity < A4W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD ? capacity : A4W4_WAVE_TRACE_MAX_EVENTS_PER_RECORD;
         eventCapacity = static_cast<uint32_t>(capacity);
         enabled = workspaceBase != nullptr && outputBase != nullptr && coreCount != 0U && coreIndex < coreCount &&
                   eventCapacity != 0U && workspaceBytes >= 0;
@@ -155,10 +149,7 @@ struct A4W4WaveTrace {
         processBegin = Now();
     }
 
-    __aicore__ inline void SetWaveMGroupTarget(uint32_t target)
-    {
-        waveMGroupTarget = target;
-    }
+    __aicore__ inline void SetWaveMGroupTarget(uint32_t target) { waveMGroupTarget = target; }
 
     __aicore__ inline void Record(A4W4WaveTraceEvent event, uint32_t waveIndex, uint32_t expertIndex,
                                   uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount,
@@ -168,9 +159,11 @@ struct A4W4WaveTrace {
                            mGroupCount, static_cast<uint32_t>(A4W4WaveTraceEvent::INVALID), beginCycle, endCycle);
     }
 
-    __aicore__ inline CriticalPathWaitTraceContext CreateWaitTraceContext(
-        A4W4WaveTraceEvent waitEvent, A4W4WaveTraceEvent parentEvent, uint32_t waveIndex, uint32_t expertIndex,
-        uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount)
+    __aicore__ inline CriticalPathWaitTraceContext CreateWaitTraceContext(A4W4WaveTraceEvent waitEvent,
+                                                                          A4W4WaveTraceEvent parentEvent,
+                                                                          uint32_t waveIndex, uint32_t expertIndex,
+                                                                          uint32_t tokenStartIndexInExpert,
+                                                                          uint32_t tokenCount, uint32_t mGroupCount)
     {
         CriticalPathWaitTraceContext context{};
         context.writer = eventWriter;
@@ -200,10 +193,9 @@ struct A4W4WaveTrace {
 
         const uint32_t recordIndex = role * coreCount + coreIndex;
         const uint32_t recordWords = RecordWords();
-        __gm__ uint32_t *outputRecord = traceOutput + A4W4_WAVE_TRACE_HEADER_WORDS +
-                                        static_cast<uint64_t>(recordIndex) * recordWords;
-        for (uint32_t word = 0U; word < A4W4_WAVE_TRACE_RECORD_HEADER_WORDS +
-                                               eventCount * A4W4_WAVE_TRACE_EVENT_WORDS;
+        __gm__ uint32_t *outputRecord =
+            traceOutput + A4W4_WAVE_TRACE_HEADER_WORDS + static_cast<uint64_t>(recordIndex) * recordWords;
+        for (uint32_t word = 0U; word < A4W4_WAVE_TRACE_RECORD_HEADER_WORDS + eventCount * A4W4_WAVE_TRACE_EVENT_WORDS;
              ++word) {
             uint32_t value = AscendC::ReadGmByPassDCache(scratchRecord + word);
             AscendC::WriteGmByPassDCache(outputRecord + word, value);
