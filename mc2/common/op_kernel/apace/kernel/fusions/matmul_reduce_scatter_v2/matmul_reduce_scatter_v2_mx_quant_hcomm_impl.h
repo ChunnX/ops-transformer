@@ -93,30 +93,27 @@ public:
         const auto &commTiling = tilingData_->commTilingData;
         const uint32_t tileCount = static_cast<uint32_t>(commTiling.splitAxisTileCnt);
         const uint32_t tailCount = static_cast<uint32_t>(commTiling.splitAxisTailCnt);
-        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM || tileCount == 0 ||
-            (tileCount > 0 && tilingData_->tileQbmmTilingData.m !=
-                static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankDim_) ||
-            (tailCount > 0 && tilingData_->tailQbmmTilingData.m !=
-                static_cast<uint64_t>(commTiling.splitAxisTailSize) * rankDim_);
+        const uint64_t tileM = static_cast<uint64_t>(commTiling.splitAxisTileSize);
+        const uint64_t tailM = static_cast<uint64_t>(commTiling.splitAxisTailSize);
+        const uint64_t perRankM = tileM * tileCount + tailM * tailCount;
+        const uint64_t fullLogicalM = perRankM * rankDim_;
+        const auto &mmTiling = tilingData_->tileQbmmTilingData;
+        const bool invalidTiling = rankDim_ == 0 || rankDim_ > APACE_MAX_RANK_DIM ||
+            tileCount == 0 || tileM == 0 || perRankM == 0 ||
+            (tailCount > 0 && tailM == 0) ||
+            mmTiling.m != fullLogicalM || mmTiling.n != commTiling.nonSplitAxisSize;
         if (invalidTiling) {
             hccl_.Finalize();
             return;
         }
 
-        const uint64_t tileM = static_cast<uint64_t>(commTiling.splitAxisTileSize);
-        const uint64_t tailM = static_cast<uint64_t>(commTiling.splitAxisTailSize);
-        const uint64_t perRankM = tileM * tileCount + tailM * tailCount;
-        Params tileParams;
-        Params tailParams;
-        SetupMatmulParams(tileParams, &tilingData_->tileQbmmTilingData, tileM, perRankM);
-        if (tailCount > 0) {
-            SetupMatmulParams(tailParams, &tilingData_->tailQbmmTilingData, tailM, perRankM);
-        }
+        Params params;
+        SetupMatmulParams(params, &mmTiling, perRankM);
 
-        // One APACE QBMM invocation owns the complete per-rank M. The kernel
-        // iterates communication slices internally and calls IssueSlice after
-        // each slice becomes globally visible in workspace.
-        kernel_.RunSlices(tileParams, tileCount, tailParams, tailCount, *this);
+        // Communication keeps first/second group boundaries, while every
+        // slice shares the one full-M QuantMatmul tiling. RunSlices initializes
+        // BlockMmad once, then exposes a completion point after each slice.
+        kernel_.RunSlices(params, tileM, tileCount, tailM, tailCount, *this);
         WaitPendingReduceScatter();
         hccl_.Finalize();
     }
@@ -132,7 +129,7 @@ public:
 
 private:
     __aicore__ inline void SetupMatmulParams(
-        Params &params, const QuantMatmulTilingData *tiling, uint64_t sliceM, uint64_t perRankM)
+        Params &params, const QuantMatmulTilingData *tiling, uint64_t perRankM)
     {
         ProblemShape problemShape{static_cast<int64_t>(tiling->m), static_cast<int64_t>(tiling->n),
                                   static_cast<int64_t>(tiling->k), 1L};
@@ -152,7 +149,9 @@ private:
         QBMMTiling qbmmParams{
             tiling->baseM, tiling->baseN, tiling->baseK, tiling->dbL0c,
             biasGM_ == nullptr ? QBMMTiling::BIAS_DISABLED : QBMMTiling::BIAS_ENABLED};
-        SliceParams sliceParams{rankDim_, perRankM, 0, sliceM};
+        // The serialized Matmul tiling describes the full logical M. RunSlices
+        // overwrites sliceStart/sliceM when it schedules a communication slice.
+        SliceParams sliceParams{rankDim_, perRankM, 0, perRankM};
         params = {problemShape, mmParams, l1Params, schedulerParams, qbmmParams, sliceParams};
     }
 

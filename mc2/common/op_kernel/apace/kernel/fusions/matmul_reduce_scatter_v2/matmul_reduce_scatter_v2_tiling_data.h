@@ -21,20 +21,19 @@
 #include "../../../tiling/comm_tiling_data.h"
 
 // Hcomm MX quantized Matmul + ReduceScatter tiling data.
-// The head/tail QuantMatmulTilingData entries describe the assembled logical M
-// of one communication slice: sliceM * rankDim. The MMRS QBMM kernel splits a
-// scheduler block at rank boundaries and maps each sub-block to the same
-// local-M interval in every rank segment. CommTilingData
-// describes how the slices cover each rank's output-M range, and
-// nonSplitAxisSize is the output N dimension. Keeping a separate tail tiling
-// lets the kernel pipeline Matmul and ReduceScatter without running the full
-// [rankM, N] Matmul before communication starts. Temporary C uses a
-// [slice][rank][sliceM][N] layout to keep each ReduceScatter input contiguous;
-// the operator inputs remain rank-major.
+// Keep communication slicing and Matmul tiling independent, following the
+// AllToAllMatmul/AllGatherMatmul APACE contract:
+//   * CommTilingData describes the first/second communication groups.
+//   * tileQbmmTilingData describes the complete logical Matmul M
+//     (perRankM * rankDim) and is shared by every communication slice.
+// The MMRS QBMM kernel creates a scheduler for each communication slice so a
+// ReduceScatter can be issued as soon as that slice is complete, while the
+// BlockMmad base shape and L1 configuration come from this single Matmul
+// tiling. Temporary C uses [slice][rank][sliceM][N] order; inputs stay
+// rank-major.
 struct hcommMatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
-    QuantMatmulTilingData tailQbmmTilingData;
 };

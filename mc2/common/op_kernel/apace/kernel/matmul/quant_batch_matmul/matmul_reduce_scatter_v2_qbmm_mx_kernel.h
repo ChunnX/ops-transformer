@@ -106,20 +106,26 @@ public:
         }
 
         const auto &sp = params.sliceParams;
-        const uint64_t logicalM = sp.sliceM * sp.rankDim;
+        const uint64_t fullLogicalM = sp.perRankM * sp.rankDim;
         if (sp.rankDim == 0 || sp.sliceM == 0 || sp.perRankM == 0 ||
             sp.sliceStart + sp.sliceM > sp.perRankM ||
-            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) != logicalM) {
+            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) != fullLogicalM) {
             return;
         }
 
         const bool isBias = params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED;
-        BlockScheduler scheduler(params.problemShape, params.schedulerParams);
+        ProblemShape sliceProblemShape{static_cast<int64_t>(sp.sliceM * sp.rankDim),
+                                       AscendC::Te::Get<MNK_N>(params.problemShape),
+                                       AscendC::Te::Get<MNK_K>(params.problemShape),
+                                       AscendC::Te::Get<MNK_B>(params.problemShape)};
+        BlockSchedulerParams sliceSchedulerParams;
+        SetupSliceSchedulerParams(params.schedulerParams, sliceSchedulerParams);
+        BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
         BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN,
                                params.qbmmParams.baseK, 0};
         mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
                    params.qbmmParams.dbL0C > 1, 1);
-        Process(params, scheduler);
+        Process(params, sliceProblemShape, sliceSchedulerParams, scheduler);
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -127,64 +133,86 @@ public:
         Run(params);
     }
 
-    // Compute all communication slices through one QBMM-kernel invocation.
-    // The head group shares one BlockMmad initialization; an optional tail
-    // group has its own tiling and therefore initializes at most once more.
+    // Compute all communication slices through one QBMM-kernel invocation and
+    // one complete-M QuantMatmul tiling. BlockMmad is initialized once; each
+    // communication slice still owns a scheduler completion boundary.
     // CommPolicy::IssueSlice() is called only after every AIC has completed
     // the current slice, preserving the compute(i) / communication(i-1)
     // overlap required by MatmulReduceScatterV2.
     template <typename CommPolicy>
-    __aicore__ inline void RunSlices(const Params &tileParams, uint32_t tileCount,
-                                     const Params &tailParams, uint32_t tailCount,
+    __aicore__ inline void RunSlices(const Params &params, uint64_t tileM, uint32_t tileCount,
+                                     uint64_t tailM, uint32_t tailCount,
                                      CommPolicy &commPolicy)
     {
         if ASCEND_IS_AIV {
             return;
         }
+        const auto &sp = params.sliceParams;
+        const uint64_t fullLogicalM = sp.perRankM * sp.rankDim;
+        if (sp.rankDim == 0 || sp.perRankM == 0 || tileM == 0 || tileCount == 0 ||
+            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(params.problemShape)) != fullLogicalM) {
+            return;
+        }
+
+        const bool isBias = params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED;
+        BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN,
+                               params.qbmmParams.baseK, 0};
+        mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
+                   params.qbmmParams.dbL0C > 1, 1);
+
         if (tileCount > 0) {
-            RunSliceGroup(tileParams, tileCount, 0, commPolicy);
+            RunSliceGroup(params, tileM, tileCount, 0, commPolicy);
         }
         if (tailCount > 0) {
-            const uint64_t tailStart =
-                static_cast<uint64_t>(tileCount) * tileParams.sliceParams.sliceM;
-            RunSliceGroup(tailParams, tailCount, tailStart, commPolicy);
+            const uint64_t tailStart = static_cast<uint64_t>(tileCount) * tileM;
+            RunSliceGroup(params, tailM, tailCount, tailStart, commPolicy);
         }
     }
 
 private:
-    template <typename CommPolicy>
-    __aicore__ inline void RunSliceGroup(const Params &groupParams, uint32_t sliceCount,
-                                         uint64_t groupStart, CommPolicy &commPolicy)
+    __aicore__ inline void SetupSliceSchedulerParams(
+        const BlockSchedulerParams &fullSchedulerParams,
+        BlockSchedulerParams &sliceSchedulerParams) const
     {
-        const auto &groupSlice = groupParams.sliceParams;
-        const uint64_t groupM = static_cast<uint64_t>(sliceCount) * groupSlice.sliceM;
-        const uint64_t logicalM = groupSlice.sliceM * groupSlice.rankDim;
-        if (groupSlice.rankDim == 0 || groupSlice.sliceM == 0 || groupSlice.perRankM == 0 ||
-            groupStart + groupM > groupSlice.perRankM ||
-            static_cast<uint64_t>(AscendC::Te::Get<MNK_M>(groupParams.problemShape)) != logicalM) {
+        sliceSchedulerParams = fullSchedulerParams;
+        // The serialized scheduler parameters were generated for fullLogicalM.
+        // M-tail merging/splitting cannot be reused for a shorter communication
+        // slice. Keep baseM/baseN/baseK and the N-tail policy, but use the
+        // conservative one-block M-tail policy for every slice scheduler.
+        sliceSchedulerParams.mTailTile = 1;
+        sliceSchedulerParams.mBaseTailSplitCnt = 1;
+        sliceSchedulerParams.mTailMain = 0;
+    }
+
+    template <typename CommPolicy>
+    __aicore__ inline void RunSliceGroup(const Params &baseParams, uint64_t sliceM,
+                                         uint32_t sliceCount, uint64_t groupStart,
+                                         CommPolicy &commPolicy)
+    {
+        const auto &baseSlice = baseParams.sliceParams;
+        const uint64_t groupM = static_cast<uint64_t>(sliceCount) * sliceM;
+        if (baseSlice.rankDim == 0 || sliceM == 0 || baseSlice.perRankM == 0 ||
+            groupStart + groupM > baseSlice.perRankM) {
             return;
         }
 
-        const bool isBias = groupParams.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED;
-        BlockShape l0TileShape{groupParams.qbmmParams.baseM, groupParams.qbmmParams.baseN,
-                               groupParams.qbmmParams.baseK, 0};
-        mmOp_.Init(groupParams.problemShape, l0TileShape, groupParams.l1Params, isBias,
-                   groupParams.qbmmParams.dbL0C > 1, 1);
-
-        Params params = groupParams;
-        const uint64_t n = static_cast<uint64_t>(AscendC::Te::Get<MNK_N>(params.problemShape));
-        GM_ADDR workspaceBase = params.mmParams.cGmAddr;
+        Params params = baseParams;
+        params.sliceParams.sliceM = sliceM;
+        ProblemShape sliceProblemShape{static_cast<int64_t>(sliceM * baseSlice.rankDim),
+                                       AscendC::Te::Get<MNK_N>(params.problemShape),
+                                       AscendC::Te::Get<MNK_K>(params.problemShape),
+                                       AscendC::Te::Get<MNK_B>(params.problemShape)};
+        BlockSchedulerParams sliceSchedulerParams;
+        SetupSliceSchedulerParams(params.schedulerParams, sliceSchedulerParams);
         for (uint32_t sliceIdx = 0; sliceIdx < sliceCount; ++sliceIdx) {
             const uint64_t sliceStart = groupStart +
-                static_cast<uint64_t>(sliceIdx) * groupSlice.sliceM;
+                static_cast<uint64_t>(sliceIdx) * sliceM;
             params.sliceParams.sliceStart = sliceStart;
-            params.mmParams.cGmAddr = workspaceBase +
-                sliceStart * groupSlice.rankDim * n * sizeof(CType);
 
-            BlockScheduler scheduler(params.problemShape, params.schedulerParams);
-            Process(params, scheduler);
+            BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
+            Process(params, sliceProblemShape, sliceSchedulerParams, scheduler);
             AscendC::SyncAll();
-            commPolicy.IssueSlice(sliceStart, groupSlice.sliceM);
+            commPolicy.IssueSlice(sliceStart, sliceM);
         }
     }
 
@@ -239,13 +267,15 @@ private:
         }
     }
 
-    __aicore__ inline void Process(const Params &params, BlockScheduler &scheduler)
+    __aicore__ inline void Process(const Params &params, const ProblemShape &sliceProblemShape,
+                                   const BlockSchedulerParams &sliceSchedulerParams,
+                                   BlockScheduler &scheduler)
     {
         using AscendC::Te::Get;
         const auto &sp = params.sliceParams;
-        const int64_t logicalM = Get<MNK_M>(params.problemShape);
-        const int64_t n = Get<MNK_N>(params.problemShape);
-        const int64_t k = Get<MNK_K>(params.problemShape);
+        const int64_t logicalM = Get<MNK_M>(sliceProblemShape);
+        const int64_t n = Get<MNK_N>(sliceProblemShape);
+        const int64_t k = Get<MNK_K>(sliceProblemShape);
         const int64_t totalInputM = static_cast<int64_t>(sp.perRankM * sp.rankDim);
         const int64_t scaleK =
             CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
@@ -273,14 +303,14 @@ private:
         auto gmC = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
                 reinterpret_cast<__gm__ CType *>(params.mmParams.cGmAddr)),
-            MakeLayoutC{}(logicalM, n));
+            MakeLayoutC{}(totalInputM, n));
 
-        auto &mTailTile = params.schedulerParams.mTailTile;
-        auto &nTailTile = params.schedulerParams.nTailTile;
+        const auto &mTailTile = sliceSchedulerParams.mTailTile;
+        const auto &nTailTile = sliceSchedulerParams.nTailTile;
         if ((scheduler.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
             scheduler.UpdateTailTile(mTailTile, nTailTile);
         }
-        SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN,
+        SetL2Cache(sliceProblemShape, params.qbmmParams.baseM, params.qbmmParams.baseN,
                    params.l1Params.scaleKL1, gmB, gmScaleB);
 
         BlockCoord blockIdx;
@@ -317,8 +347,10 @@ private:
                     AscendC::Te::MakeCoord(inputMPos, 0L), AscendC::Te::MakeShape(subM, k));
                 auto blockScaleA = gmScaleA.Slice(
                     AscendC::Te::MakeCoord(inputMPos, 0L), AscendC::Te::MakeShape(subM, scaleK));
+                const int64_t workspaceMPos = static_cast<int64_t>(
+                    sp.sliceStart * sp.rankDim + static_cast<uint64_t>(logicalMPos));
                 auto blockC = gmC.Slice(
-                    AscendC::Te::MakeCoord(logicalMPos, nPos), AscendC::Te::MakeShape(subM, currentN));
+                    AscendC::Te::MakeCoord(workspaceMPos, nPos), AscendC::Te::MakeShape(subM, currentN));
                 BlockShape subShape{subM, currentN, k, 0};
                 mmOp_(blockA, blockB, blockScaleA, blockScaleB, blockBias, blockC, subShape, 0);
 
