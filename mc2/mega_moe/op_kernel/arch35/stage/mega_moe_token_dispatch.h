@@ -39,6 +39,10 @@ struct TokenDispatchScratch {
     GlobalTensor<int32_t> cumsumInfoGlobalTensor;
     LocalTensor<int32_t> topkIndexTensor;
     LocalTensor<int32_t> sendCntTensor;
+    // Per-rank physical mask scan state for one expert. This is deliberately
+    // isolated from sendCntTensor: counts and scan cursors have independent
+    // ownership and lifetimes even though both are indexed by source rank.
+    LocalTensor<int32_t> rankScanCursorTensor;
     LocalTensor<uint8_t> maskBatchTensor;
     LocalTensor<uint32_t> maskBatchU32Tensor;
     LocalTensor<int32_t> expertTokenCntTensor;
@@ -258,6 +262,9 @@ __aicore__ inline int32_t GetDispatchExpertRankTokenCount(
 
 constexpr int32_t DISPATCH_RANK_SCRATCH_STRIDE = ALIGN_32 / sizeof(int32_t);
 constexpr int32_t DISPATCH_RANK_COUNT_LANE = 0;
+constexpr int32_t DISPATCH_RANK_SCAN_CURSOR_STRIDE = 2;
+constexpr int32_t DISPATCH_RANK_SCAN_ROUTE_BEGIN_LANE = 0;
+constexpr int32_t DISPATCH_RANK_SCAN_MATCHED_COUNT_LANE = 1;
 constexpr int32_t DISPATCH_ROUTE_QUEUE_ALIGN_ITEMS = ALIGN_32 / sizeof(int32_t);
 constexpr uint32_t DISPATCH_ROUTE_RANK_SHIFT = 24U;
 constexpr uint32_t DISPATCH_ROUTE_TOPK_MASK = (1U << DISPATCH_ROUTE_RANK_SHIFT) - 1U;
@@ -303,6 +310,58 @@ struct DispatchOwnedOrdinalRange {
     int32_t endDelta = 0;
     int32_t stride = 1;
 };
+
+// Physical mask position corresponding to a logical per-rank token ordinal.
+// routeBegin is always ALIGN_256 route-item aligned; matchedCount is the
+// number of set mask bits strictly before routeBegin. Keeping both values lets
+// a later segment resume GatherMask without rescanning the expert prefix.
+struct DispatchRankScanCursor {
+    int32_t routeBegin = 0;
+    int32_t matchedCount = 0;
+};
+
+struct DispatchCoreRankPlan {
+    int32_t taskCount = 0;
+    int32_t segmentOrdinalBegin = 0;
+    int32_t segmentOrdinalEnd = 0;
+};
+
+template <typename ActivationType>
+__aicore__ inline void ResetDispatchRankScanCursors(
+    const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch)
+{
+    for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
+        int32_t cursorBase = static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCAN_CURSOR_STRIDE;
+        scratch.rankScanCursorTensor.SetValue(
+            cursorBase + DISPATCH_RANK_SCAN_ROUTE_BEGIN_LANE, 0);
+        scratch.rankScanCursorTensor.SetValue(
+            cursorBase + DISPATCH_RANK_SCAN_MATCHED_COUNT_LANE, 0);
+    }
+}
+
+template <typename ActivationType>
+__aicore__ inline DispatchRankScanCursor LoadDispatchRankScanCursor(
+    const TokenDispatchScratch<ActivationType> &scratch, uint32_t remoteRankIdx)
+{
+    int32_t cursorBase = static_cast<int32_t>(remoteRankIdx) * DISPATCH_RANK_SCAN_CURSOR_STRIDE;
+    return {
+        scratch.rankScanCursorTensor.GetValue(
+            cursorBase + DISPATCH_RANK_SCAN_ROUTE_BEGIN_LANE),
+        scratch.rankScanCursorTensor.GetValue(
+            cursorBase + DISPATCH_RANK_SCAN_MATCHED_COUNT_LANE)};
+}
+
+template <typename ActivationType>
+__aicore__ inline void StoreDispatchRankScanCursor(
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t remoteRankIdx,
+    const DispatchRankScanCursor &cursor)
+{
+    int32_t cursorBase = static_cast<int32_t>(remoteRankIdx) * DISPATCH_RANK_SCAN_CURSOR_STRIDE;
+    scratch.rankScanCursorTensor.SetValue(
+        cursorBase + DISPATCH_RANK_SCAN_ROUTE_BEGIN_LANE, cursor.routeBegin);
+    scratch.rankScanCursorTensor.SetValue(
+        cursorBase + DISPATCH_RANK_SCAN_MATCHED_COUNT_LANE, cursor.matchedCount);
+}
 
 template <typename ActivationType>
 __aicore__ inline void LoadDispatchExpertRankCounts(
@@ -442,8 +501,29 @@ __aicore__ inline bool GetDispatchOwnedOrdinalRange(
     return true;
 }
 
+__aicore__ inline int32_t GetDispatchRankOrdinalBeforeRow(
+    const DispatchRankRoundInterval &interval, int32_t expertRow)
+{
+    if (expertRow <= interval.intervalRowBegin) {
+        return interval.roundBegin;
+    }
+    int32_t intervalRoundCount = interval.roundEnd - interval.roundBegin;
+    int32_t intervalRowCount = intervalRoundCount * interval.activeRankCount;
+    int32_t coveredRowCount = expertRow - interval.intervalRowBegin;
+    if (coveredRowCount >= intervalRowCount) {
+        return interval.roundEnd;
+    }
+    int32_t coveredRoundCount = coveredRowCount / interval.activeRankCount;
+    int32_t partialRoundRows = coveredRowCount % interval.activeRankCount;
+    int32_t ordinal = interval.roundBegin + coveredRoundCount;
+    if (partialRoundRows > interval.rankPosition) {
+        ++ordinal;
+    }
+    return ordinal;
+}
+
 template <typename ActivationType>
-__aicore__ inline int32_t CountDispatchCoreRankTasks(
+__aicore__ inline DispatchCoreRankPlan GetDispatchCoreRankPlan(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
     uint32_t remoteRankIdx, int32_t expertGlobalRowBegin,
     int32_t segmentRowBegin, int32_t segmentRowEnd)
@@ -451,7 +531,9 @@ __aicore__ inline int32_t CountDispatchCoreRankTasks(
     int32_t rankScratchBase = static_cast<int32_t>(remoteRankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
     int32_t rankTokenCount = scratch.sendCntTensor.GetValue(
         rankScratchBase + DISPATCH_RANK_COUNT_LANE);
-    int32_t taskCount = 0;
+    DispatchCoreRankPlan plan{};
+    bool ordinalBeginResolved = false;
+    bool ordinalEndResolved = false;
     int32_t roundBegin = 0;
     int32_t intervalRowBegin = 0;
     while (roundBegin < rankTokenCount && intervalRowBegin < segmentRowEnd) {
@@ -464,14 +546,51 @@ __aicore__ inline int32_t CountDispatchCoreRankTasks(
         if (GetDispatchOwnedOrdinalRange(
                 context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd,
                 0, rankTokenCount, interval, ownedRange)) {
-            taskCount += (ownedRange.endDelta - 1 - ownedRange.firstDelta) /
+            plan.taskCount += (ownedRange.endDelta - 1 - ownedRange.firstDelta) /
                 ownedRange.stride + 1;
         }
-        intervalRowBegin +=
+        int32_t intervalRowEnd = interval.intervalRowBegin +
             (interval.roundEnd - interval.roundBegin) * interval.activeRankCount;
+        if (!ordinalBeginResolved && segmentRowBegin <= intervalRowEnd) {
+            plan.segmentOrdinalBegin = GetDispatchRankOrdinalBeforeRow(
+                interval, segmentRowBegin);
+            ordinalBeginResolved = true;
+        }
+        if (!ordinalEndResolved && segmentRowEnd <= intervalRowEnd) {
+            plan.segmentOrdinalEnd = GetDispatchRankOrdinalBeforeRow(
+                interval, segmentRowEnd);
+            ordinalEndResolved = true;
+        }
+        intervalRowBegin = intervalRowEnd;
         roundBegin = interval.roundEnd;
     }
-    return taskCount;
+    // A rank that exhausted its tokens before either segment boundary
+    // contributes its complete ordinal range to all later logical rows.
+    if (!ordinalBeginResolved) {
+        plan.segmentOrdinalBegin = rankTokenCount;
+    }
+    if (!ordinalEndResolved) {
+        plan.segmentOrdinalEnd = rankTokenCount;
+    }
+    return plan;
+}
+
+template <typename ActivationType>
+__aicore__ inline int32_t LowerBoundDispatchRouteIndex(
+    const TokenDispatchScratch<ActivationType> &scratch,
+    int32_t valueCount, int32_t targetRouteIndex)
+{
+    int32_t lower = 0;
+    int32_t upper = valueCount;
+    while (lower < upper) {
+        int32_t middle = lower + (upper - lower) / 2;
+        if (scratch.validTopkIndexTensor.GetValue(middle) < targetRouteIndex) {
+            lower = middle + 1;
+        } else {
+            upper = middle;
+        }
+    }
+    return lower;
 }
 
 template <typename ActivationType>
@@ -480,9 +599,9 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     uint32_t remoteRankIdx, int32_t expertGlobalRowBegin,
     int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t firstOwnedRow,
-    const DispatchCoreRouteQueue &queue, int32_t expectedTaskCount)
+    const DispatchCoreRouteQueue &queue, const DispatchCoreRankPlan &rankPlan)
 {
-    if (expectedTaskCount <= 0) {
+    if (rankPlan.taskCount <= 0) {
         return 0;
     }
 
@@ -495,12 +614,28 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     GlobalTensor<uint8_t> remoteRankMaskGlobal;
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
-    int32_t matchedRouteCount = 0;
+    int32_t alignedSendTotalNum = Ops::Base::CeilAlign(
+        static_cast<int32_t>(sendTotalNum), static_cast<int32_t>(ALIGN_256));
+    DispatchRankScanCursor scanCursor{};
+    if (segmentRowBegin > 0) {
+        scanCursor = LoadDispatchRankScanCursor(scratch, remoteRankIdx);
+    }
+    bool validScanCursor =
+        scanCursor.routeBegin >= 0 && scanCursor.routeBegin <= alignedSendTotalNum &&
+        scanCursor.routeBegin % static_cast<int32_t>(ALIGN_256) == 0 &&
+        scanCursor.matchedCount >= 0 && scanCursor.matchedCount <= rankTokenCount &&
+        scanCursor.matchedCount <= rankPlan.segmentOrdinalBegin;
+    if (!validScanCursor) {
+        scanCursor = {};
+    }
+    int32_t matchedRouteCount = scanCursor.matchedCount;
     int32_t plannedTaskCount = 0;
+    bool nextCursorStored = false;
 
-    for (int32_t routeBegin = 0;
+    for (int32_t routeBegin = scanCursor.routeBegin;
          static_cast<uint64_t>(routeBegin) < sendTotalNum &&
-         matchedRouteCount < rankTokenCount && plannedTaskCount < expectedTaskCount;
+         matchedRouteCount < rankTokenCount &&
+         (plannedTaskCount < rankPlan.taskCount || !nextCursorStored);
          routeBegin += queue.routeCapacity) {
         int32_t validRouteCount = static_cast<int32_t>(
             sendTotalNum - static_cast<uint64_t>(routeBegin));
@@ -557,6 +692,28 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
                 (interval.roundEnd - interval.roundBegin) * interval.activeRankCount;
             roundBegin = interval.roundEnd;
         }
+        if (!nextCursorStored && batchOrdinalEnd >= rankPlan.segmentOrdinalEnd) {
+            DispatchRankScanCursor nextCursor{};
+            if (rankPlan.segmentOrdinalEnd >= rankTokenCount) {
+                nextCursor = {alignedSendTotalNum, rankTokenCount};
+            } else if (rankPlan.segmentOrdinalEnd == batchOrdinalEnd) {
+                nextCursor = {
+                    routeBegin + validRouteCount,
+                    batchOrdinalEnd};
+            } else {
+                int32_t nextTopkIndex = scratch.validTopkIndexTensor.GetValue(
+                    rankPlan.segmentOrdinalEnd - batchOrdinalBegin);
+                int32_t nextRouteBegin = nextTopkIndex /
+                    static_cast<int32_t>(ALIGN_256) * static_cast<int32_t>(ALIGN_256);
+                int32_t matchedInBatchBeforeNextRoute = LowerBoundDispatchRouteIndex(
+                    scratch, static_cast<int32_t>(batchMatchedRouteCount), nextRouteBegin);
+                nextCursor = {
+                    nextRouteBegin,
+                    batchOrdinalBegin + matchedInBatchBeforeNextRoute};
+            }
+            StoreDispatchRankScanCursor(scratch, remoteRankIdx, nextCursor);
+            nextCursorStored = true;
+        }
         matchedRouteCount = batchOrdinalEnd;
     }
     return plannedTaskCount;
@@ -582,12 +739,12 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
 
     int32_t plannedTotalTaskCount = 0;
     for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
-        int32_t rankTaskCount = CountDispatchCoreRankTasks(
+        DispatchCoreRankPlan rankPlan = GetDispatchCoreRankPlan(
             context, scratch, rankIdx, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
         int32_t plannedTaskCount = PlanDispatchCoreRankRoutes(
             context, params, scratch, localExpertId, rankIdx, expertGlobalRowBegin,
-            segmentRowBegin, segmentRowEnd, firstOwnedRow, queue, rankTaskCount);
-        if (plannedTaskCount != rankTaskCount) {
+            segmentRowBegin, segmentRowEnd, firstOwnedRow, queue, rankPlan);
+        if (plannedTaskCount != rankPlan.taskCount) {
             queue.taskCount = 0;
             return queue;
         }
@@ -875,6 +1032,22 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
+    int32_t segmentRowBegin = static_cast<int32_t>(expertRowOffset);
+    int32_t segmentRowEnd = segmentRowBegin + static_cast<int32_t>(dispatchRowCount);
+    int32_t expertGlobalRowEnd = scratch.cumsumInfoTensor.GetValue(
+        localExpertId * context.common.worldSize + context.common.worldSize - 1U);
+    int32_t expertRowCount = expertGlobalRowEnd - expertGlobalRowBegin;
+    uint64_t remainingOutputRows = static_cast<uint64_t>(expertGlobalRowBegin) < context.maxOutputSize ?
+        context.maxOutputSize - static_cast<uint64_t>(expertGlobalRowBegin) : 0U;
+    if (static_cast<uint64_t>(expertRowCount) > remainingOutputRows) {
+        expertRowCount = static_cast<int32_t>(remainingOutputRows);
+    }
+    // The first segment never consumes a stale cursor. Only a genuinely split
+    // expert needs every core (including a core with no first-segment task) to
+    // clear its private state for a later continuation.
+    if (segmentRowBegin == 0 && segmentRowEnd < expertRowCount) {
+        ResetDispatchRankScanCursors(context, scratch);
+    }
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
@@ -898,8 +1071,6 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
-    int32_t segmentRowBegin = static_cast<int32_t>(expertRowOffset);
-    int32_t segmentRowEnd = segmentRowBegin + static_cast<int32_t>(dispatchRowCount);
     int32_t firstOwnedRow = GetFirstDispatchRowOwnedByCore(
         context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
     if (firstOwnedRow >= segmentRowEnd) {

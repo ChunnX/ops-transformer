@@ -456,6 +456,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor：每 src rank 一个 burst(32B)，共 worldSize*32B。
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
+    // rankScanCursorTensor：独立保存每个 src rank 的两个 int32 cursor 字段；
+    // 整个 tensor 按 32B 对齐，不与 send count 的 lane 复用。
+    uint32_t rankScanCursorTensorSize = Ops::Base::CeilAlign(
+        worldSize_ * 2U * static_cast<uint32_t>(sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
@@ -476,9 +480,15 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     tokenDispatchScratch_.sendCntTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
+    // Tensor 用途：保存当前专家各 source-rank 的 mask routeBegin/matchedCount；
+    // Tensor 大小：worldSize * {routeBegin, matchedCount}，整体按 32B 对齐；
+    // 生命周期跨越该专家的多个 Dispatch wave。
+    uint32_t rankScanCursorTensorAddr = sendCntTensorAddr + sendCntTensorSize;
+    tokenDispatchScratch_.rankScanCursorTensor = LocalTensor<int32_t>(
+        TPosition::VECCALC, rankScanCursorTensorAddr, rankScanCursorTensorSize / sizeof(int32_t));
     // Tensor 用途：DispatchExpertTokens 接收当前 batch 的 mask 切片；
     // Tensor 大小：routeItemsPerBatch / 8 字节，每个 bit 对应一个路由项；
-    uint32_t maskBatchAddr = sendCntTensorAddr + sendCntTensorSize;
+    uint32_t maskBatchAddr = rankScanCursorTensorAddr + rankScanCursorTensorSize;
     uint32_t maskBatchSize =
         static_cast<uint32_t>(routeItemsPerBatch / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     tokenDispatchScratch_.maskBatchTensor =
