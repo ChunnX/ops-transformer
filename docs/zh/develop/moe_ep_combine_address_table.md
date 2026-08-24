@@ -383,7 +383,7 @@ dstStride = 0;
 SendSlot(tokenIndex, targetRank, srcTokenIdx, srcTopKIdx, channelIndex, weight);
 ```
 
-## 7. SendSlot 与通信协议没有改变
+## 7. SendSlot 与通信协议
 
 ### 7.1 远端路径
 
@@ -397,7 +397,9 @@ topkWeights[tokenIndex]（可选）
     -> PrepareWrite(weight/state, ODR=5)
 ```
 
-batch 满 127 个 WQE 时提交，阶段末尾通过 `FlushPreparedWrites()` 提交尾 batch。
+batch 满 127 个 WQE 时提交，但不销毁当前 channel 的 `BatchHandle`；后续 payload、weight 和最终
+ODR=6 flag 继续复用同一个 handle。只有切换 rank/channel 或发送阶段结束时才释放，和 PR 10309
+`SendTokenByChannel()` 在多次 `BatchCommit()` 间复用 handle 的方式一致。
 
 ### 7.2 本地路径
 
@@ -560,7 +562,8 @@ MTE3 写表结构。后续若 prefix 阶段仍成为瓶颈，可进一步用 Vec
 建议至少检查以下条件：
 
 ```text
-sum(rankCount[0..epWorldSize-1]) == 有效 metadata 条目数
+sum(rankCount[0..epWorldSize-1]) == 有效远端 metadata 条目数
+rankCount[rankId] == 0
 rankCount[rank] <= numMaxTokensPerRank * topK
 ```
 
