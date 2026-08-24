@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstddef>
+
 #include "block_attn_res_update.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/make_op_executor.h"
@@ -22,53 +24,77 @@ namespace l0op {
 OP_TYPE_REGISTER(BlockAttnResUpdate);
 
 namespace {
-static bool CheckNotNull(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery,
+constexpr size_t MATRIX_DIM_NUM = 2UL;
+constexpr size_t TOKEN_DIM_INDEX = 0UL;
+constexpr size_t HIDDEN_DIM_INDEX = 1UL;
+
+static bool CheckNotNull(const aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery,
                          const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum,
                          const aclOpExecutor *executor)
 {
-    OP_CHECK(partialBlock != nullptr && delta != nullptr && pseudoQuery != nullptr && numerator != nullptr &&
-                 logitMax != nullptr && expSum != nullptr && executor != nullptr,
-             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate input or executor is nullptr."), return false);
+    OP_CHECK(partialBlockRef != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate partialBlockRef is nullptr."), return false);
+    OP_CHECK(delta != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate delta is nullptr."), return false);
+    OP_CHECK(pseudoQuery != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate pseudoQuery is nullptr."), return false);
+    OP_CHECK(numerator != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate numerator is nullptr."), return false);
+    OP_CHECK(logitMax != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate logitMax is nullptr."), return false);
+    OP_CHECK(expSum != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate expSum is nullptr."), return false);
+    OP_CHECK(executor != nullptr,
+             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate executor is nullptr."), return false);
     return true;
 }
 
-static bool IsAiCoreSupport(const aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery,
+static bool IsAiCoreSupport(const aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery,
                             const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
     auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
     OP_CHECK(npuArch == NpuArch::DAV_3510,
              OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate only supports Ascend950."), return false);
 
-    OP_CHECK(partialBlock->GetDataType() == DataType::DT_FLOAT && delta->GetDataType() == DataType::DT_BF16 &&
-                 pseudoQuery->GetDataType() == DataType::DT_FLOAT &&
-                 numerator->GetDataType() == DataType::DT_FLOAT &&
-                 logitMax->GetDataType() == DataType::DT_FLOAT && expSum->GetDataType() == DataType::DT_FLOAT,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "BlockAttnResUpdate input dtypes are not supported by the AiCore implementation."),
+    OP_CHECK(partialBlockRef->GetDataType() == DataType::DT_FLOAT,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate partialBlockRef dtype must be FLOAT."),
              return false);
+    OP_CHECK(delta->GetDataType() == DataType::DT_BF16,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate delta dtype must be BFLOAT16."), return false);
+    OP_CHECK(pseudoQuery->GetDataType() == DataType::DT_FLOAT,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate pseudoQuery dtype must be FLOAT."), return false);
+    OP_CHECK(numerator->GetDataType() == DataType::DT_FLOAT,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate numerator dtype must be FLOAT."), return false);
+    OP_CHECK(logitMax->GetDataType() == DataType::DT_FLOAT,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate logitMax dtype must be FLOAT."), return false);
+    OP_CHECK(expSum->GetDataType() == DataType::DT_FLOAT,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate expSum dtype must be FLOAT."), return false);
     return true;
 }
 
-static bool IsEmptyWorkload(const aclTensor *partialBlock)
+static bool IsEmptyWorkload(const aclTensor *partialBlockRef)
 {
-    const auto &shape = partialBlock->GetViewShape();
-    return shape.GetDimNum() == 2 && (shape.GetDim(0) == 0 || shape.GetDim(1) == 0);
+    const auto &shape = partialBlockRef->GetViewShape();
+    return shape.GetDimNum() == MATRIX_DIM_NUM &&
+           (shape.GetDim(TOKEN_DIM_INDEX) == 0 || shape.GetDim(HIDDEN_DIM_INDEX) == 0);
 }
 } // namespace
 
 const aclTensor *BlockAttnResUpdate(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
+    aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
     const aclTensor *logitMax, const aclTensor *expSum, float eps, aclOpExecutor *executor)
 {
-    L0_DFX(BlockAttnResUpdate, partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, eps);
+    L0_DFX(BlockAttnResUpdate, partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 
-    OP_CHECK(CheckNotNull(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, executor),
-             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "BlockAttnResUpdate null pointer check failed."), return nullptr);
+    if (!CheckNotNull(partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum, executor)) {
+        return nullptr;
+    }
 
-    OP_CHECK(IsAiCoreSupport(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResUpdate IsAiCoreSupport check failed."), return nullptr);
+    if (!IsAiCoreSupport(partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum)) {
+        return nullptr;
+    }
 
-    if (IsEmptyWorkload(partialBlock)) {
+    if (IsEmptyWorkload(partialBlockRef)) {
         auto emptyH = executor->AllocTensor(delta->GetViewShape(), DataType::DT_BF16, Format::FORMAT_ND);
         OP_CHECK(emptyH != nullptr,
                  OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor for empty output failed."),
@@ -80,13 +106,13 @@ const aclTensor *BlockAttnResUpdate(
     OP_CHECK(h != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockAttnResUpdate AllocTensor failed."), return nullptr);
 
     auto ret = INFER_SHAPE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
-        OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
+        BlockAttnResUpdate, OP_INPUT(partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum),
+        OP_OUTPUT(partialBlockRef, h), OP_ATTR(eps));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return nullptr, "BlockAttnResUpdate InferShape failed.");
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        BlockAttnResUpdate, OP_INPUT(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum),
-        OP_OUTPUT(partialBlock, h), OP_ATTR(eps));
+        BlockAttnResUpdate, OP_INPUT(partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum),
+        OP_OUTPUT(partialBlockRef, h), OP_ATTR(eps));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
                                          "BlockAttnResUpdate ADD_TO_LAUNCHER_LIST_AICORE failed.");
     return h;
