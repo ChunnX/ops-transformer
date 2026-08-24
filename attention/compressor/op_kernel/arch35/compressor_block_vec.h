@@ -1107,7 +1107,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcGroupInfo(const Vec1RunI
     // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
-    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), info.dealScSize);
+    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), info.dealTcNum);
 }
 
 template <typename COMP>
@@ -1117,17 +1117,17 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcTaskDistribution(const V
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
     uint32_t groupNum = splitInfo.vec1GroupNum;
-    uint32_t dealScSize = info.dealScSize;
+    uint32_t dealTcNum = info.dealTcNum;
 
-    if (blockIdx < groupSize * (dealScSize % groupNum)) {
-        splitInfo.dealTcSize = dealScSize / groupNum + 1;
+    if (blockIdx < groupSize * (dealTcNum % groupNum)) {
+        splitInfo.dealTcSize = dealTcNum / groupNum + 1;
         splitInfo.preDealTcSize = splitInfo.dealTcSize * (blockIdx / groupSize);
     } else if (blockIdx < groupSize * groupNum) {
-        splitInfo.dealTcSize = dealScSize / groupNum;
-        splitInfo.preDealTcSize = splitInfo.dealTcSize * (blockIdx / groupSize) + dealScSize % groupNum;
+        splitInfo.dealTcSize = dealTcNum / groupNum;
+        splitInfo.preDealTcSize = splitInfo.dealTcSize * (blockIdx / groupSize) + dealTcNum % groupNum;
     } else {
         splitInfo.dealTcSize = 0;
-        splitInfo.preDealTcSize = dealScSize;
+        splitInfo.preDealTcSize = dealTcNum;
     }
 }
 
@@ -1156,7 +1156,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateIteratorState(const Ve
     }
 
     // 处理当前核实际要跑的任务量
-    sliceIterator.SetNeedDealTcSize(info.dealScSize - splitInfo.preDealTcSize);
+    sliceIterator.SetNeedDealTcSize(info.dealTcNum - splitInfo.preDealTcSize);
     StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
     splitInfo.totalCompressedCnt = splitInfo.curCompressedCnt + statisticInfo.compressorScCnt;
 }
