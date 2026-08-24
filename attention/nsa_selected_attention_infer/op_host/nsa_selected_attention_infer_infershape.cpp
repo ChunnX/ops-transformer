@@ -64,6 +64,10 @@
          auto shapeD2 = valueShape->GetDim(DIM_NUM_3);
          attentionOutShape->SetDim(DIM_NUM_3, shapeD2);
      } else if (inputLayoutStr == "BSH") {
+         if (keyShape->GetDim(DIM_NUM_2) == 0) {
+             OP_LOGE(context, "The H of key shape cannot be 0.");
+             return GRAPH_FAILED;
+         }
          if (queryShape->GetDim(DIM_NUM_2) % keyShape->GetDim(DIM_NUM_2) != 0) {
              OP_LOGE(context, "The H of query shape cannot div  %s.",
                  inputLayoutStr.c_str());
