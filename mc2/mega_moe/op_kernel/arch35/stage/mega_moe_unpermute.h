@@ -35,6 +35,46 @@ struct TokenUnpermuteScratch {
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor;
 };
 
+// metaInfo 在 Dispatch 写入后由 GMM2/Combine 只读，并持续有效到算子结束。
+// 在所有 rank 的 Combine 发送完成后，将稳定的紧凑行 metadata 复制到调试输出尾段：
+// [maxOutputSize, hidden] BF16 + [maxOutputSize, META_INFO_SIZE] INT32。
+__aicore__ inline void ExportGmm2DebugMetaInfo(uint32_t tokenHiddenDim, const Params &params,
+                                               const AivJobContext &job)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!params.tilingData->activationDebug || params.activationDebugOutGmAddr == nullptr || job.totalJobs == 0U) {
+        return;
+    }
+    WorkRange rowRange = TilingByJobContext(params.tilingData->maxOutputSize, job.jobIndex, job.totalJobs, 1U);
+    if (rowRange.count == 0U) {
+        return;
+    }
+
+    GlobalTensor<int32_t> metaInfoSource;
+    metaInfoSource.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
+    uint64_t dataBytes = static_cast<uint64_t>(params.tilingData->maxOutputSize) * tokenHiddenDim *
+                         sizeof(bfloat16_t);
+    GlobalTensor<int32_t> metaInfoDebug;
+    metaInfoDebug.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.activationDebugOutGmAddr + dataBytes));
+
+    constexpr uint32_t ROWS_PER_COPY = 64U;
+    LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, 0U, ROWS_PER_COPY * META_INFO_SIZE);
+    uint64_t rowEnd = rowRange.start + rowRange.count;
+    for (uint64_t rowStart = rowRange.start; rowStart < rowEnd; rowStart += ROWS_PER_COPY) {
+        uint32_t rowCount = static_cast<uint32_t>(rowEnd - rowStart);
+        rowCount = rowCount < ROWS_PER_COPY ? rowCount : ROWS_PER_COPY;
+        uint32_t copyElements = rowCount * META_INFO_SIZE;
+        uint64_t elementOffset = rowStart * META_INFO_SIZE;
+        DataCopy(metaInfoUb, metaInfoSource[elementOffset], copyElements);
+        SyncFuncStatic<HardEvent::MTE2_MTE3, SYNC_EVENT_ID1>();
+        DataCopy(metaInfoDebug[elementOffset], metaInfoUb, copyElements);
+        SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
+    }
+}
+
 // 加载并转换一批 top-k 权重。
 template <typename TopkWeightsType>
 __aicore__ inline void LoadTokenUnpermuteWeights(const MoeStageCommonConfig &common, const Params &params,

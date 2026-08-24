@@ -77,7 +77,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM,
+                                MegaMoeTilingData *tilingData);
 
 private:
     using SendMaskBufferConfig = MegaMoeSendMaskBufferConfig;
@@ -225,7 +226,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     k_ = tilingData->h;
     worldSize_ = tilingData->epWorldSize;
@@ -250,6 +251,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     }
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
+    params_.activationDebugOutGmAddr = activationDebugOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
@@ -263,7 +265,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
                       .actMode = tilingData->actMode,
                       .actSubMode = tilingData->actSubMode,
                       .activationAlpha = tilingData->activationAlpha,
-                      .activationBeta = tilingData->activationBeta});
+                      .activationBeta = tilingData->activationBeta,
+                      .activationDebugGmAddr = nullptr,
+                      .activationDebug = false});
     commonConfig_ = {.rankId = rankId_,
                      .worldSize = worldSize_,
                      .moeExpertPerRank = moeExpertPerRank_,
@@ -470,7 +474,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         .actMode = params_.tilingData->actMode,
         .actSubMode = params_.tilingData->actSubMode,
         .activationAlpha = params_.tilingData->activationAlpha,
-        .activationBeta = params_.tilingData->activationBeta};
+        .activationBeta = params_.tilingData->activationBeta,
+        .activationDebugGmAddr = nullptr,
+        .activationDebug = false};
     sharedEpilogueOp_.Init(epilogueParams);
 
     ProblemShape problemShape;
@@ -610,6 +616,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        ExportGmm2DebugMetaInfo(commonConfig_.tokenHiddenDim, params_, aivJob_);
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
