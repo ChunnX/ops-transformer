@@ -50,7 +50,7 @@ public:
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
-    __aicore__ inline bool NeedDeterExtraSync(const int64_t processNum);
+    __aicore__ inline bool NeedDeterExtraSync();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline ChildClass *GetDerived()
@@ -638,18 +638,11 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetV
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::NeedDeterExtraSync(
-    const int64_t processNum)
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::NeedDeterExtraSync()
 {
-    int64_t maxProcessNum = tilingData->baseParams.formerCoreProcessNNum;
-    if constexpr (IS_TND) {
-        int64_t validT1 = GetValidTndT1Size();
-        if (validT1 <= 0 || usedCoreNum <= 0) {
-            return false;
-        }
-        maxProcessNum = (validT1 + usedCoreNum - 1) / usedCoreNum;
-    }
-    return processNum < maxProcessNum;
+    // Host 按物理 T1 分核，former / remain 只差 1 轮。TND padding 不得再按 packed T1
+    // 另算 maxProcessNum：主循环必须跑完 processBS1ByCore，用这一轮把 remain 核补齐。
+    return processBS1ByCore < tilingData->baseParams.formerCoreProcessNNum;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

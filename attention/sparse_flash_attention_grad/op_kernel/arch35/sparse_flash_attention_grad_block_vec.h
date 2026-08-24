@@ -642,14 +642,17 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
         bS1Index = runInfo.sTaskId * usedCoreNum + idx;
-        if (bS1Index >= tilingData->baseParams.totalSize) {
-            break;
-        }
+        bool invalidIdx = (bS1Index >= tilingData->baseParams.totalSize);
         if constexpr (IS_TND) {
             int64_t validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-            if (bS1Index >= validT1) {
-                break;
-            }
+            invalidIdx = invalidIdx || (bS1Index >= validT1);
+        }
+        if (invalidIdx) {
+            // 不能 break：确定性 scatter 的 SCATTER_VEC_SYNC 是全 Vector barrier，
+            // 提前退出的核会让还在循环里的核 WaitFlag 死等。
+            CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+            continue;
         }
 
         GetBS1Index(bS1Index, bIdx, s1Idx, constInfo);
