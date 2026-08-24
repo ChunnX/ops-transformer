@@ -45,14 +45,14 @@ extern "C" {
  * @return aclnnStatus: 返回状态码。
  */
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
-        const aclTensorList *weight, const aclTensorList *weightScale,
-        const aclTensorList *weightAssistMatrix, const aclTensor *bias,
-        const aclTensor *xScale, const aclTensor *smoothScale,
-        const aclTensor *groupList,  int64_t dequantMode, 
-        int64_t dequantDtype, int64_t quantMode, int64_t groupListType,
-        const aclIntArray *tuningConfigOptional, 
-        aclTensor *output, aclTensor *outputScale,
-        uint64_t *workspaceSize, aclOpExecutor **executor);
+                                                            const aclTensorList *weight, const aclTensorList *weightScale,
+                                                            const aclTensorList *weightAssistMatrix, const aclTensor *bias,
+                                                            const aclTensor *xScale, const aclTensor *smoothScale,
+                                                            const aclTensor *groupList, int64_t dequantMode,
+                                                            int64_t dequantDtype, int64_t quantMode, int64_t groupListType,
+                                                            const aclIntArray *tuningConfigOptional,
+                                                            aclTensor *output, aclTensor *outputScale,
+                                                            uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatmulSwigluQuantV2的第二段接口，用于执行计算。
