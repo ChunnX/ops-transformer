@@ -74,6 +74,12 @@ private:
     // 各 batch 实际 KV 序列长度按 64 向上取整后累加，即 Σ ceil(cu_seqlens_kv[b+1]-cu_seqlens_kv[b], 64)
     int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
 
+    // --- Feature: q/k/v dtype 与 quant_mode 精确匹配校验 ---
+    ge::graphStatus CheckQkvDtype(const QfaTilingInfo &qfaInfo) const;
+
+    // --- Feature: q/out ShapeDim 与 quant_mode 精确匹配校验 ---
+    ge::graphStatus CheckQkvShapeDim(const QfaTilingInfo &qfaInfo) const;
+
     // --- Feature: 非连续 Tensor 支持校验 ---
     // 仅 PA 场景(layout_kv 为 PA_BBND、PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
     // 仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。

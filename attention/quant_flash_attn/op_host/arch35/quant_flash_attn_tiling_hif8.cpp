@@ -28,7 +28,6 @@ using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
 using namespace arch35QFA;
-constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
 
 void QuantFlashAttnTilingHif8Impl::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -124,7 +123,7 @@ void QuantFlashAttnTilingHif8Impl::SplitPolicy()
 
 void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyConfig()
 {
-    tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128_HIF8;
+    tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
 }
 
 void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyLayout()
@@ -155,7 +154,7 @@ void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode = static_cast<uint64_t>(QFA_HIF8_FP32_PREFILL);
+    tilingKeyInfo_.quantMode = static_cast<uint64_t>(QFA_HIF8_FP32);
 }
 
 void QuantFlashAttnTilingHif8Impl::GenTilingKey()
