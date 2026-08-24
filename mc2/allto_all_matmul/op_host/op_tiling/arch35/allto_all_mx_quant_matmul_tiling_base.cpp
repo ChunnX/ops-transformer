@@ -843,7 +843,7 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
 
 /**
  * @brief 构建MX量化专属的workspace布局，与kernel侧实际存放顺序保持一致
- * 顺序: commX1Scale → commOut → transX1Scale → transOut → LIB_API → RUNTIME_INFO
+ * 顺序: LIB_API → commX1Scale → commOut → transX1Scale → transOut → RUNTIME_INFO
  */
 void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
 {

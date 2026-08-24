@@ -101,10 +101,8 @@ def fp8_e4m3_to_float(b: int) -> float:
         val = (mant / 8.0) * (2 ** -6)  # subnormal, bias=7
     elif exp == 0xF and mant == 0x7:
         return float("nan")
-    elif exp == 0xF:
-        return float("inf")
     else:
-        val = (1.0 + mant / 8.0) * (2 ** (exp - 7))  # bias=7
+        val = (1.0 + mant / 8.0) * (2 ** (exp - 7))  # bias=7, exp=0xF & math<7 is finite
     return -val if sign else val
 
 
