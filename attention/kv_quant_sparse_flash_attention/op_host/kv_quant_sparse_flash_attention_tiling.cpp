@@ -294,6 +294,7 @@ void QSFAMlaTiling::CalcVectorizeFlag()
         uint32_t blocksizeFlag = static_cast<uint32_t>((blockSize & (blockSize - 1)) == 0);
         uint32_t sparseBlockCountFlag =
             static_cast<uint32_t>((static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) & (S2_NUM_PER_LOOP - 1U)) == 0U);
+        uint32_t sparseModeFlag = static_cast<uint32_t>(qsfaInfo_->sparseMode == 3U);
         constexpr uint32_t UB_SIZE = 248 * 1024; // UB共256KB，预留8KB
         uint32_t alignedSparseBlockCount = (static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) + S2_NUM_PER_LOOP - 1U) /
                                            S2_NUM_PER_LOOP * S2_NUM_PER_LOOP;
@@ -301,7 +302,8 @@ void QSFAMlaTiling::CalcVectorizeFlag()
             Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int32_t), BYTE_BLOCK) +
             alignedSparseBlockCount * sizeof(int64_t);
-        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag && sparseBlockCountFlag);
+        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag && sparseBlockCountFlag &&
+                                               sparseModeFlag);
     }
 }
 
