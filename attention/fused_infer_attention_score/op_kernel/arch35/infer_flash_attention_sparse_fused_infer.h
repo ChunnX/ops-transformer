@@ -15,7 +15,11 @@
 #ifndef INFER_FLASH_ATTENTION_SPARSE_FUSED_INFER_H
 #define INFER_FLASH_ATTENTION_SPARSE_FUSED_INFER_H
 
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h")
+    #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#else
+    #include "../../../commons/arch35/infer_flash_attention_comm_arch35.h"
+#endif
 
 TEMPLATE_INTF
 __aicore__ inline void InitSparseTokensDefault(const ConstInfo<isInfer, hasRope> &constInfo,
