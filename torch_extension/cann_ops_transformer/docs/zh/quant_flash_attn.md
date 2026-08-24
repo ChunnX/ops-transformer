@@ -752,7 +752,7 @@ mask_mode参数解释
             </td>
             <td rowspan="3">
                 <ul>
-                    <li>                    当前不支持mask_mode=4（SLIDING_WINDOW），MxFP8场景下仅支持mask_mode 0/3</li>
+                    <li>当前不支持mask_mode=4（SLIDING_WINDOW），MxFP8场景下仅支持mask_mode 0/3</li>
                 </ul>
             </td>
         </tr>
