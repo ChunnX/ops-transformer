@@ -480,34 +480,31 @@ public:
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
 
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset =
-                prefixBS1 * constInfo.realN2Size * constInfo.realGSize + runInfo.realN2Idx * constInfo.realGSize;
-            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                                 gmDealRowCount, constInfo);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                       constInfo, s1Size);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-            uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
-                                 runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                        constInfo, s1LeftPaddingSize);
-        } else { // BNSD
-            uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
-                                 runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
-                                                        constInfo, qActSeqLens, s1LeftPaddingSize);
-        }
+        GmCoord lseGmCoord{.bIdx = runInfo.bIdx,
+                           .n2Idx = runInfo.realN2Idx,
+                           .gS1Idx = vecMIdx,
+                           .dIdx = 0,
+                           .gS1DealSize = gmDealRowCount,
+                           .dDealSize = 0};
 
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+            constexpr GmFormat LSE_FORMAT =
+                (layout == LayOutTypeEnum::LAYOUT_TND) ? GmFormat::LSE_TN2G : GmFormat::LSE_N2GT;
+            FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+            lseGmTensor_.gmTensor = softmaxLseGm;
+            lseGmTensor_.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, actualSeqLengthsGmQ,
+                                               constInfo.actualSeqLenSize);
+            CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+            copyLseUbToGm_(lseGmTensor_, lseUb, lseGmCoord);
+        } else { // BSND BSH BNSD
+            constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+            FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+            lseGmTensor_.gmTensor = softmaxLseGm;
+            lseGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
+                                               constInfo.s1Size, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+            CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+            copyLseUbToGm_(lseGmTensor_, lseUb, lseGmCoord);
+        }
         softmaxLseQueue.FreeTensor(lseUb);
     }
 

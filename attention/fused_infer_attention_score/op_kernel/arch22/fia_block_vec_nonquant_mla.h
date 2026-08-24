@@ -62,17 +62,17 @@ public:
     __aicore__ inline void ProcessVec1L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void ProcessVec2L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void
-    Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-         __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-         __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
-         __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-         __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-         __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-         const FusedInferAttentionScoreTilingData *__restrict tilingData);
+    __aicore__ inline void Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+        const FusedInferAttentionScoreTilingData *__restrict tilingData);
     __aicore__ inline void InitParams(const struct AttentionCommon::ConstInfo &constInfo);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> mm2ResInt32Gm);
@@ -224,7 +224,6 @@ private:
     const FusedInferAttentionScoreTilingData *__restrict tilingData = nullptr;
 };
 
-
 template <typename FIAT>
 class FiaBlockVecNonQuantMlaDummy {
 public:
@@ -239,17 +238,17 @@ public:
     __aicore__ inline void ProcessVec1L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void ProcessVec2L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void
-    Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-         __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-         __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
-         __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-         __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-         __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-         const FusedInferAttentionScoreTilingData *__restrict tilingData);
+    __aicore__ inline void Init(
+        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+        const FusedInferAttentionScoreTilingData *__restrict tilingData);
     __aicore__ inline void InitParams(const struct AttentionCommon::ConstInfo &constInfo);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> mm2ResInt32Gm);
@@ -354,7 +353,6 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec1GlobalTensor(Global
     this->mm2ResInt32Gm = mm2ResInt32Gm;
 }
 
-
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::InitVec2GlobalTensor(GlobalTensor<UPDATE_T> vec2ResGm,
                                                                           GlobalTensor<MM2_OUT_T> mm2ResGm)
@@ -435,10 +433,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                             LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
-                                             uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(const AttentionCommon::RunInfo &info,
+                                                                    const MSplitInfo &mSplitInfo,
+                                                                    LocalTensor<T> &mmResUb, TBuf<> &tmpBuf,
+                                                                    uint32_t startRow, uint32_t dealRowCount,
+                                                                    uint32_t columnCount, uint32_t actualColumnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.scaleValue), dealRowCount * columnCount);
 
@@ -514,11 +513,10 @@ FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(const AttentionCommon::RunInfo &inf
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::SoftmaxFlashV2Compute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                    LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
-                                                    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                    uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::SoftmaxFlashV2Compute(
+    const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
+    LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     SoftMaxShapeInfo srcShape{dealRowCount, columnCount, dealRowCount, actualColumnCount};
     SoftMaxTiling newTiling =
@@ -543,11 +541,12 @@ FiaBlockVecNonQuantMla<FIAT>::SoftmaxFlashV2Compute(const AttentionCommon::RunIn
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                             LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
-                                             uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                             uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::AmlaVecCompute(const AttentionCommon::RunInfo &info,
+                                                                    const MSplitInfo &mSplitInfo,
+                                                                    LocalTensor<T> &mmResUb,
+                                                                    LocalTensor<uint8_t> &softmaxTmpUb,
+                                                                    uint32_t startRow, uint32_t dealRowCount,
+                                                                    uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     uint32_t calCount = dealRowCount;
@@ -666,10 +665,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::DealInvalidRows(const Atten
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                  LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
-                                                  uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo &info,
+                                                                         const MSplitInfo &mSplitInfo,
+                                                                         LocalTensor<T> &bmm2ResUb, uint32_t startRow,
+                                                                         uint32_t dealRowCount, uint32_t columnCount,
+                                                                         uint32_t actualColumnCount)
 {
     if (!constInfo.isRowInvalid || !constInfo.attenMaskFlag) {
         return;
@@ -689,12 +689,12 @@ FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo
                                                                     softmaxMaxUb, negativeIntScalar, bmm2ResUb);
 }
 
-
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                   uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                   uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info,
+                                                                          const MSplitInfo &mSplitInfo,
+                                                                          uint32_t startRow, uint32_t dealRowCount,
+                                                                          uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     uint32_t computeSize = dealRowCount * columnCount;
     uint64_t inOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
@@ -828,28 +828,37 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1SingleBuf(const 
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(const AttentionCommon::RunInfo &info, LocalTensor<T> &lseSrc,
-                                                         uint32_t mOffset, const MSplitInfo &mSplitInfo)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(const AttentionCommon::RunInfo &info,
+                                                                                LocalTensor<T> &lseSrc,
+                                                                                uint32_t mOffset,
+                                                                                const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
+    GmCoord lseGmCoord{.bIdx = info.bIdx,
+                       .n2Idx = info.n2Idx,
+                       .gS1Idx = mOffset,
+                       .dIdx = 0,
+                       .gS1DealSize = mSplitInfo.vecDealM,
+                       .dDealSize = 0};
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
-        uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
-        uint64_t bN2Offset =
-            static_cast<uint64_t>(prefixBS1) * constInfo.qHeadNum + static_cast<uint64_t>(info.n2Idx) * constInfo.gSize;
-        DataCopySoftmaxLseTND<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
-    } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
-        uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
-                             static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
-                                          qActSeqLensParser, info.bIdx);
+        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_TN2G;
+        FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+        lseGmTensor_.gmTensor = softmaxLseGm;
+        lseGmTensor_.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, actualSeqLengthsGmQ,
+                                           constInfo.actualLenQDims);
+        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+        copyLseUbToGm_(lseGmTensor_, lseSrc, lseGmCoord);
     } else {
-        uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
-                             static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
-                                          qActSeqLensParser, info.bIdx);
+        constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+        FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+        lseGmTensor_.gmTensor = softmaxLseGm;
+        lseGmTensor_.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                           constInfo.qSeqSize, actualSeqLengthsGmQ, constInfo.actualLenQDims,
+                                           constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
+        CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+        copyLseUbToGm_(lseGmTensor_, lseSrc, lseGmCoord);
     }
 }
 
@@ -977,7 +986,6 @@ __aicore__ inline uint64_t FiaBlockVecNonQuantMla<FIAT>::CalcAccumOffset(uint32_
     return accumTmpOutNum;
 }
 
-
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec2SingleBuf(const AttentionCommon::RunInfo &info,
                                                                           const MSplitInfo &mSplitInfo)
@@ -1039,10 +1047,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec2Inner(const Atte
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow,
-                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &info,
+                                                                       const MSplitInfo &mSplitInfo,
+                                                                       LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+                                                                       uint32_t startRow, uint32_t dealRowCount,
+                                                                       uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1064,10 +1073,11 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2DataCopyOutTrans(const AttentionCommon::RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                                   uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                                   uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Bmm2DataCopyOutTrans(const AttentionCommon::RunInfo &info,
+                                                                          LocalTensor<OUT_T> &attenOutUb,
+                                                                          uint32_t wsMStart, uint32_t dealRowCount,
+                                                                          uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     FaUbTensor<OUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = columnCount};
     GmCoord gmCoord{.bIdx = info.bIdx,
@@ -1142,10 +1152,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Bmm2CastAndCopyOut(
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::Bmm2ResCopyOut(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                             LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t startRow,
-                                             uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::Bmm2ResCopyOut(const AttentionCommon::RunInfo &info,
+                                                                    const MSplitInfo &mSplitInfo,
+                                                                    LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+                                                                    uint32_t startRow, uint32_t dealRowCount,
+                                                                    uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
         if (info.tndIsS2SplitCore) {
@@ -1162,10 +1173,11 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2ResCopyOut(const AttentionCommon::RunInfo &inf
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                   uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                   uint32_t actualColumnCount)
+__aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInfo &info,
+                                                                          const MSplitInfo &mSplitInfo,
+                                                                          uint32_t startRow, uint32_t dealRowCount,
+                                                                          uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
     uint32_t mStart = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
