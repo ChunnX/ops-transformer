@@ -880,11 +880,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
         uint32_t waveLogicalRowCount = 0U;
-        DispatchMte3TraceStats *dispatchTraceStatsPtr = nullptr;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
         uint32_t traceBegin = MegaMoeWaveTraceDetail::Now();
-        DispatchMte3TraceStats dispatchTraceStats{};
-        dispatchTraceStatsPtr = &dispatchTraceStats;
 #endif
         while (waveEnd.expertIdx < moeExpertPerRank_ && waveMGroupCount < mGroupsPerWave_) {
             uint32_t expertRowCount = GetExpertDispatchRowCount(waveEnd.expertIdx);
@@ -919,8 +916,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                                                TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
                 expertGlobalRowBegin,
-                segmentEnd - segmentBegin, segmentBegin,
-                dispatchTraceStatsPtr);
+                segmentEnd - segmentBegin, segmentBegin);
         }
         dispatchCursor = waveEnd;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
@@ -930,19 +926,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             waveLogicalRowCount, waveMGroupCount};
         waveTrace_.Record(MegaMoeWaveTraceEvent::DISPATCH, traceScope,
                           traceBegin, traceEnd);
-        waveTrace_.RecordAggregatedChild(
-            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE, MegaMoeWaveTraceEvent::DISPATCH,
-            traceScope, traceBegin, traceEnd, dispatchTraceStats.transferPipelineCycles);
-        uint32_t waitOffset = 0U;
-        waitOffset = waveTrace_.RecordAggregatedChild(
-            MegaMoeWaveTraceEvent::WAIT_DISPATCH_MTE3_REUSE, MegaMoeWaveTraceEvent::DISPATCH,
-            traceScope, traceBegin, traceEnd, dispatchTraceStats.reuseWaitCycles, waitOffset);
-        waitOffset = waveTrace_.RecordAggregatedChild(
-            MegaMoeWaveTraceEvent::WAIT_DISPATCH_MTE3_DRAIN, MegaMoeWaveTraceEvent::DISPATCH,
-            traceScope, traceBegin, traceEnd, dispatchTraceStats.drainWaitCycles, waitOffset);
-        waveTrace_.RecordAggregatedChild(
-            MegaMoeWaveTraceEvent::WAIT_DISPATCH_READY_SYNC, MegaMoeWaveTraceEvent::DISPATCH,
-            traceScope, traceBegin, traceEnd, dispatchTraceStats.readySyncWaitCycles, waitOffset);
 #endif
     }
     return dispatchCursor;
