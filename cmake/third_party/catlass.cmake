@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-# catlass 版本取 v2.0.0 tag 对应的 commit
+
 set(CATLASS_TAG_ID 769cd40a8716b28650b6bebb08db4834eea4462f)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../catlass")
