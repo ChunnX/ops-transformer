@@ -387,8 +387,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     ascendc_assert(entriesPerRank > 0U, "combine address-table UB is too small, epWorldSize=%u", epWorldSize_);
     LocalTensor<uint32_t> addressEntries = addressTableBuf_.Get<uint32_t>();
     constexpr uint32_t entryElements = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
-    DataCopyParams addressCopyParams{0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES), 0U,
-                                     static_cast<uint16_t>(ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES)};
+    // DataCopyParams uses 32-byte blocks, unlike the byte-based DataCopyPad parameters above.
+    DataCopyParams addressCopyParams{
+        0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES / UB_ALIGN), 0U,
+        static_cast<uint16_t>((ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES) / UB_ALIGN)};
     for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
         uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
         uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
