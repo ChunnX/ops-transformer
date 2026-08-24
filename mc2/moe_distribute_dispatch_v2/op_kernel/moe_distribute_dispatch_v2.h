@@ -635,6 +635,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xOutQueue_.EnQue(xOutTensor_);
         xInQueue_.FreeTensor<XInType>(xInTensor_);
         xOutTensor_ = xOutQueue_.DeQue<XOutType>();
+        PRINTF("[ProcessToken quant] aivId=%u, tokenIndex=%u, topKIndex=%u, expertIndex=%u, "
+               "dstAddr=%lu, copyBytes=%u\n",
+               aivId_, tokenIndex, topKIndex, expertIndex, (uint64_t)outTokenGT.GetAddr(),
+               (uint32_t)hCommuCopyOutParams_.blockLen);
         DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
     } else {
@@ -761,10 +765,16 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Send
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
 
+        uint64_t moeWinBaseAddr = (uint64_t)GetWindAddrByRankId(toRankId);
+        uint64_t moeExpertSlot = epRankId_ * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_;
         GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
                                             (expertPerSizeOnWin_ *
                                              (epRankId_ * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_)) +
                                             hAlignWinSize_ * curExpertCnt); // 计算地址偏移
+        PRINTF("[SendToMoeExpert] aivId=%u, index=%d, tokenIndex=%d, dstExpertId=%u, toRankId=%d, "
+               "curExpertCnt=%d, expertSlot=%lu, winBaseAddr=%lu, finalAddr=%lu, totalWinSizeEp=%lu\n",
+               aivId_, index, tokenIndex, dstExpertId, toRankId, curExpertCnt, moeExpertSlot,
+               moeWinBaseAddr, (uint64_t)rankGM, totalWinSizeEp_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
         ProcessToken(dstWinGMTensor, tokenIndex, topKIndex, padParams, scaleInParams, dstExpertId + sharedExpertNum_);
     }
