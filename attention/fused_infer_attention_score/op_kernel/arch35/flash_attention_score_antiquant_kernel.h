@@ -24,22 +24,34 @@ const int VC_L1_EVENT[2] = {6, 7};
 const int VC_MM1RES_EVENT[2] = {8, 9};
 const int VC_MM2RES_EVENT[2] = {10, 15};
 
-#include "../../../common/op_kernel/arch35/util_regbase.h"
-
-#include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
-#include "../../../common/op_kernel/CopyInL1.h"
-
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/util_regbase.h")
+    #include "../../../common/op_kernel/arch35/util_regbase.h"
+    #include "../../../common/op_kernel/matmul.h"
+    #include "../../../common/op_kernel/FixpipeOut.h"
+    #include "../../../common/op_kernel/CopyInL1.h"
+    #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#else
+    #include "../../../common/arch35/util_regbase.h"
+    #include "../../../common/matmul.h"
+    #include "../../../common/FixpipeOut.h"
+    #include "../../../common/CopyInL1.h"
+    #include "../../../common/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/arch35/flash_attention_score_common_regbase_arch35.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_operator.h"
 #include "flash_attention_score_antiquant_block_vec.h"
 #include "flash_attention_score_antiquant_block_cube.h"
 #include "infer_flash_attention_kvcache_fused_infer.h"
 #include "infer_flash_attention_sparse_fused_infer.h"
-#include "../../../common/op_kernel/arch35/pse_arch35.h"
-#include "../../../common/op_kernel/arch35/attenmask_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/pse_arch35.h")
+    #include "../../../common/op_kernel/arch35/pse_arch35.h"
+    #include "../../../common/op_kernel/arch35/attenmask_arch35.h"
+#else
+    #include "../../../common/arch35/pse_arch35.h"
+    #include "../../../common/arch35/attenmask_arch35.h"
+#endif
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
