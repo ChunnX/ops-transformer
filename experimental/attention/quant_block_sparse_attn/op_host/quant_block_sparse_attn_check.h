@@ -29,8 +29,11 @@ public:
     ge::graphStatus Process();
 
 private:
+    ge::graphStatus CheckAttrs() const;
+    ge::graphStatus CheckSoftmaxScale() const;
     ge::graphStatus CheckDtype() const;
     ge::graphStatus CheckFormat() const;
+    ge::graphStatus CheckScaleDtype() const;
     ge::graphStatus CheckBlockSize() const;
     ge::graphStatus CheckExistence() const;
     ge::graphStatus CheckShapeConsistency() const;
@@ -38,6 +41,7 @@ private:
     ge::graphStatus CheckQuantShape() const;
     ge::graphStatus CheckActualSeqLen() const;
     ge::graphStatus CheckAttenMask() const;
+    ge::graphStatus CheckMXFP8FullQuantShape() const;
 
     const QuantBlockSparseAttnTilingInfo &tilingInfo_;
 };

@@ -29,6 +29,8 @@ str_map_dict = {
     "torch.bfloat16": torch.bfloat16,
     "torch.float16": torch.float16,
     "torch.float8_e4m3fn": torch.float8_e4m3fn,
+    "BF16": torch.bfloat16,
+    "FP16": torch.float16,
 }
 
 
@@ -215,24 +217,24 @@ def save_result(
     # 检查文件是否存在
     result_path.parent.mkdir(parents=True, exist_ok=True)
     if result_path.exists():
-        # 读取现有数据
         df = pd.read_excel(result_path)
-
-        # 检查列名是否一致
         if set(df.columns) != set(row_data.keys()):
-            print("警告：变量名与Excel列名不匹配！")
+            print("信息：列名不一致，将自动对齐（缺失填NaN，新增列自动扩展）")
             print(f"Excel列名: {list(df.columns)}")
             print(f"变量名: {list(row_data.keys())}")
-            print("请检查变量名或Excel文件")
-            return False
-
         # 追加新行
         new_df = pd.DataFrame([row_data])
-        df = pd.concat([df, new_df], ignore_index=True)
+        df = pd.concat([df, new_df], ignore_index=True, sort=False)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
 
+    # ---------- 新增：固定最后两列 ----------
+    # 取出除 result 和 fulfill_percent 外的所有列（保持原有顺序）
+    other_cols = [col for col in df.columns if col not in ("result", "fulfill_percent")]
+    # 重新排列：其他列在前，最后两列固定
+    df = df[other_cols + ["result", "fulfill_percent"]]
+    # -------------------------------------
     # 保存到Excel
     df.to_excel(result_path, index=False)
 
@@ -251,6 +253,14 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
 
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
+        ori_mask_mode = params.get("ori_mask_mode")
+        cmp_mask_mode = params.get("cmp_mask_mode")
+        ori_topk_default = (
+            ["fullK"] if ori_mask_mode is not None and ori_mask_mode == 0 else ["no"]
+        )
+        cmp_topk_default = (
+            ["fullK"] if cmp_mask_mode is not None and cmp_mask_mode == 0 else ["no"]
+        )
         param_values = {
             "testcase_name": params.get("testcase_name", [None]),
             "layout_q": params.get("layout_q", [None]),
@@ -287,8 +297,8 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
             "ori_win_left": params.get("ori_win_left", [None]),
             "ori_win_right": params.get("ori_win_right", [None]),
-            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ["no"]),
-            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", ["no"]),
+            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ori_topk_default),
+            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", cmp_topk_default),
             "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),

@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "sinks_checker.h"
+#include "sinks_checker_quant_flash_attn.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -36,7 +36,7 @@ ge::graphStatus SinksChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
     // 文档约束(单参数校验列): 暂不支持
     // 传入 sinks 时直接报错
     if (qfaInfo.sinksFlag) {
-        OP_LOGE(qfaInfo.opName, "sinks is currently not supported.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "sinks", "provided", "sinks is currently not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

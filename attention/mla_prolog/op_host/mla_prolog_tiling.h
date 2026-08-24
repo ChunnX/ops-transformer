@@ -17,6 +17,7 @@
 #define MLA_PROLOG_TILING_H
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <map>
@@ -118,7 +119,6 @@ constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 constexpr char V1_OP_NAME[]{"MlaProlog"};
 constexpr char V2_OP_NAME[]{"MlaPrologV2"};
 constexpr char V3_OP_NAME[]{"MlaPrologV3"};
-
 
 constexpr uint32_t CACHE_MODE_LEN =
     std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
@@ -374,6 +374,12 @@ struct MlaPrologContext {
     const float *qcQrScale;
     const float *kcScale;
 
+    uint64_t kvCacheStride0 = 0U;
+    uint64_t krCacheStride0 = 0U;
+
+    bool doRopeValue = true; // RoPE 开关：由 ropeSin/ropeCos 是否为空 tensor 推导，V1/V2 默认开启
+    const bool *doRope = nullptr;
+
     size_t *workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
@@ -448,6 +454,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
+    bool enableRope_ = true; // rope开关写入 tiling key ENABLE_ROPE；ropeSin/ropeCos 为空 tensor 时关闭（默认 true）
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

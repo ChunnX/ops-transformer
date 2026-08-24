@@ -37,14 +37,16 @@ ge::graphStatus QfaInfoParser::GetEmptyTensorFlag()
         }
         for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
             if (shape->GetStorageShape().GetDim(i) == 0) {
-                OP_LOGE(opName_, "Tensor %s has empty dimension at axis %zu, size is 0.", name.c_str(), i);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, ToString(shape->GetStorageShape()).c_str(), name.c_str(),
+                                                      ("Tensor " + name + " has empty dimension at axis " +
+                                                       std::to_string(i) + ", size is 0, which is not supported")
+                                                          .c_str());
                 return true;
             }
         }
         return false;
     };
-    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) ||
-        checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
+    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
         checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
         checkEmptyTensor(opParamInfo_.qDescale.shape, Q_DESCALE_NAME) ||
         checkEmptyTensor(opParamInfo_.kDescale.shape, K_DESCALE_NAME) ||
@@ -113,8 +115,7 @@ ge::graphStatus QfaInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QfaInfoParser::GetCuSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
-        OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
-                QfaLayoutToSerialString(layoutQ_).c_str(), CU_SEQLENS_Q_NAME.c_str());
+        OP_LOGE_WITH_INVALID_INPUT(opName_, CU_SEQLENS_Q_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
@@ -139,14 +140,12 @@ ge::graphStatus QfaInfoParser::GetOpName()
 ge::graphStatus QfaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
@@ -262,14 +261,21 @@ void QfaInfoParser::GetMaskParams()
 ge::graphStatus QfaInfoParser::GetQuantMode()
 {
     if (opParamInfo_.quantMode == nullptr) {
-        OP_LOGE(opName_, "quant_mode is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "quant_mode");
         return ge::GRAPH_FAILED;
     }
     int64_t quantModeVal = *opParamInfo_.quantMode;
-    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::MXFP8_FP32)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
-            std::to_string(quantModeVal).c_str(),
-            "quant_mode must be 1 (MXFP8_FP32)");
+    using QM = QfaQuantMode;
+    if (quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal !=
+            static_cast<int64_t>(
+                QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
+                                              "quant_mode must be 1 "
+                                              "(A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
+                                              "6 (A8C8_QK_FP8_"
+                                              "E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_"
+                                              "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);
@@ -307,7 +313,7 @@ void QfaInfoParser::GetInOutDataType()
 
 ge::graphStatus QfaInfoParser::GetBatchSize()
 {
-    if (layoutQ_ == QfaLayout::TND) {
+    if (layoutQ_ == QfaLayout::TND || layoutQ_ == QfaLayout::NTD) {
         return GetCuSeqLenQSize(bSize_);
     } else {
         if (queryShape_->CheckHasShapeB(__func__) != ge::GRAPH_SUCCESS) {
@@ -339,7 +345,7 @@ ge::graphStatus QfaInfoParser::GetQkHeadDim()
 
 ge::graphStatus QfaInfoParser::GetS1Size()
 {
-    if (layoutQ_ == QfaLayout::TND) {
+    if (layoutQ_ == QfaLayout::TND || layoutQ_ == QfaLayout::NTD) {
         s1Size_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
@@ -352,8 +358,8 @@ ge::graphStatus QfaInfoParser::GetS1Size()
 
 void QfaInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == QfaLayout::PA_BBND || layoutKV_ == QfaLayout::PA_BNBD ||
-                       layoutKV_ == QfaLayout::PA_NZ);
+    bool isPaLayout =
+        (layoutKV_ == QfaLayout::PA_BBND || layoutKV_ == QfaLayout::PA_BNBD || layoutKV_ == QfaLayout::PA_NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
@@ -364,12 +370,12 @@ void QfaInfoParser::GetKvStorageMode()
 
 void QfaInfoParser::SetQfaShape()
 {
-    queryShape_ = std::make_shared<QfaTilingShape>(
-        opParamInfo_.query.shape->GetStorageShape(), layoutQ_, QUERY_NAME, opName_);
-    keyShape_ = std::make_shared<QfaTilingShape>(
-        opParamInfo_.key.shape->GetStorageShape(), layoutKV_, KEY_NAME, opName_);
-    valueShape_ = std::make_shared<QfaTilingShape>(
-        opParamInfo_.value.shape->GetStorageShape(), layoutKV_, VALUE_NAME, opName_);
+    queryShape_ =
+        std::make_shared<QfaTilingShape>(opParamInfo_.query.shape->GetStorageShape(), layoutQ_, QUERY_NAME, opName_);
+    keyShape_ =
+        std::make_shared<QfaTilingShape>(opParamInfo_.key.shape->GetStorageShape(), layoutKV_, KEY_NAME, opName_);
+    valueShape_ =
+        std::make_shared<QfaTilingShape>(opParamInfo_.value.shape->GetStorageShape(), layoutKV_, VALUE_NAME, opName_);
 }
 
 ge::graphStatus QfaInfoParser::GetS2SizeForBatchContinuous()
@@ -396,10 +402,11 @@ ge::graphStatus QfaInfoParser::GetBlockNum()
 
 ge::graphStatus QfaInfoParser::GetS2SizeForPageAttention()
 {
-    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+    OP_CHECK_IF(
+        opParamInfo_.blockTable.tensor == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
-                return ge::GRAPH_FAILED);
+                                              "When layout_kv is PA, block_table must be provided but got nullptr"),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -433,8 +440,7 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
     auto itQ = qfaLayoutMap.find(opParamInfo_.layoutQ);
     if (itQ == qfaLayoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -443,8 +449,8 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
         auto itQDescale = qfaLayoutMap.find(opParamInfo_.layoutQDescale);
         if (itQDescale == qfaLayoutMap.end()) {
             std::string reason = "layout_q_descale: " + std::string(opParamInfo_.layoutQDescale) + " is not supported.";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q_descale",
-                opParamInfo_.layoutQDescale, reason.c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q_descale", opParamInfo_.layoutQDescale,
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
         layoutQDescale_ = itQDescale->second;
@@ -453,8 +459,7 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
     auto itKV = qfaLayoutMap.find(opParamInfo_.layoutKV);
     if (itKV == qfaLayoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -462,8 +467,7 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
     auto itOut = qfaLayoutMap.find(opParamInfo_.layoutOut);
     if (itOut == qfaLayoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -476,7 +480,9 @@ ge::graphStatus QfaInfoParser::GetN1Size()
     if (queryShape_ != nullptr && queryShape_->HasShapeN()) {
         n1Size_ = static_cast<uint32_t>(queryShape_->GetShapeN());
     } else {
-        OP_LOGE(opName_, "Failed to get N1 size from query shape.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, QUERY_NAME.c_str(),
+                                              ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                                              "The shape of query must contain the N axis");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -487,7 +493,9 @@ ge::graphStatus QfaInfoParser::GetN2Size()
     if (keyShape_ != nullptr && keyShape_->HasShapeN()) {
         n2Size_ = static_cast<uint32_t>(keyShape_->GetShapeN());
     } else {
-        OP_LOGE(opName_, "Failed to get N2 size from key shape.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, KEY_NAME.c_str(),
+                                              ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                                              "The shape of key must contain the N axis");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -496,24 +504,22 @@ ge::graphStatus QfaInfoParser::GetN2Size()
 ge::graphStatus QfaInfoParser::GetGSize()
 {
     if (n2Size_ == 0U) {
-        OP_LOGE(opName_, "Kv Heads(%ld) should not be zero.", n2Size_);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_key_value_heads", "0",
+                                              "The value of num_key_value_heads must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetActualSeqInfo()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QfaInfoParser::GetActualSeqInfo() { return ge::GRAPH_SUCCESS; }
 
 void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 {
@@ -543,10 +549,7 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
-{
-    qfaInfo.quantMode = quantMode_;
-}
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo) { qfaInfo.quantMode = quantMode_; }
 
 void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
 {
@@ -620,16 +623,28 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
-    if (isDecode && qDescaleDimNum != 5) {
-        OP_LOGE(opName_, "q_descale must be 5D in decode mode(layout_q_descale=N2TGD), but got %uD.",
-                qDescaleDimNum);
-        return ge::GRAPH_FAILED;
-    }
-    if (!isDecode && qDescaleDimNum != 4) {
-        OP_LOGE(opName_, "q_descale must be 4D in prefill mode(layout_q_descale=TND), but got %uD.",
-                qDescaleDimNum);
-        return ge::GRAPH_FAILED;
+    using QM = QfaQuantMode;
+    if (quantMode_ == QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        if (qDescaleDimNum != 2) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                "In GQA_FP8_FULLQUANT scenario, the shape dim of q_descale must be 2D");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
+        if (isDecode && qDescaleDimNum != 5) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                "In MxFP8 decode scenario(layout_q_descale=N2TGD), the shape dim of q_descale must be 5D");
+            return ge::GRAPH_FAILED;
+        }
+        if (!isDecode && qDescaleDimNum != 4) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                "In MxFP8 prefill scenario(layout_q_descale=TND), the shape dim of q_descale must be 4D");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -652,10 +667,6 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
-    if (ge::GRAPH_SUCCESS != GetQuantMode()) {
-        return ge::GRAPH_FAILED;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -667,10 +678,8 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
-        ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() ||
-        ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
@@ -680,7 +689,11 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
     }
     GetKvStorageMode();
     if (emptyTensorFlag_) {
-        OP_LOGE(qfaInfo.opName, "empty tensor is not!");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, "input tensor", "",
+                                              "Empty tensor (containing a dimension of size 0) is not supported");
+        return ge::GRAPH_FAILED;
+    }
+    if (ge::GRAPH_SUCCESS != GetQuantMode()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {

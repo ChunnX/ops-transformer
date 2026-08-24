@@ -15,6 +15,7 @@ import datetime
 import os
 import sys
 import argparse
+import gc
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -354,10 +355,13 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         err_limit = min(len(err_idx), max_error_idx)
         if err_limit > 0:
             err_indices = err_idx[:err_limit]
-            err_tensor = torch.as_tensor(
-                err_indices, dtype=torch.long, device=result_flat.device
+            err_tensor = torch.as_tensor(err_indices, dtype=torch.long)
+            err_r = (
+                result_flat[err_tensor.to(result_flat.device)]
+                .cpu()
+                .to(torch.float32)
+                .numpy()
             )
-            err_r = result_flat[err_tensor].cpu().to(torch.float32).numpy()
             err_c = expect_flat[err_tensor].cpu().to(torch.float32).numpy()
             display_error_output(
                 err_r, err_c, np.arange(err_limit), err_diff[:err_limit]
@@ -384,7 +388,7 @@ def cpu_recurrent_gated_delta_rule(
     q = q.to(torch.float32)
     k = k.to(torch.float32)
     v = v.to(torch.float32)
-    initial_state = state.to(torch.float32)
+    initial_state = state.to(torch.float32).clone()
     beta = beta.to(torch.float32)
     output = torch.empty_like(v).to(torch.float32)
     g = (
@@ -475,6 +479,7 @@ def run_recurrent_gated_delta_rule_eager(
     gamma_k_datarange=[0, 1],
     beta_datarange=[0, 1],
     state_datarange=[-10, 10],
+    state_non_contiguous=False,
 ):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
@@ -585,6 +590,16 @@ def run_recurrent_gated_delta_rule_eager(
     key = key.to("npu:%s" % DEVICE_ID)
     value = value.to("npu:%s" % DEVICE_ID)
     state = state.to("npu:%s" % DEVICE_ID)
+    if state_non_contiguous:
+        padded_state = torch.zeros(
+            block_num, nv, dv + 1, dk, dtype=state.dtype, device=state.device
+        )
+        padded_state[:, :, :dv, :] = state
+        state = padded_state[:, :, :dv, :]
+        print(
+            f"state non-contiguous: shape={state.shape}, strides={state.stride()}, "
+            f"is_contiguous={state.is_contiguous()}"
+        )
     beta = beta.to("npu:%s" % DEVICE_ID)
     act_seq_len = act_seq_len.to("npu:%s" % DEVICE_ID)
     ssm_state_indices = ssm_state_indices.to("npu:%s" % DEVICE_ID)
@@ -598,7 +613,11 @@ def run_recurrent_gated_delta_rule_eager(
 
     # ======================== execute npu finish ================================
     # start run custom ops
-    init_state = state.clone()
+    if state_non_contiguous:
+        init_padded = padded_state.clone()
+        init_state = init_padded[:, :, :dv, :]
+    else:
+        init_state = state.clone()
     npu_out = torch_npu.npu_recurrent_gated_delta_rule(
         query,
         key,
@@ -626,17 +645,35 @@ def run_recurrent_gated_delta_rule_eager(
     # 结果精度对比
     out_data_type = str(npu_out.dtype)
     state_data_type_str = str(npu_state_out.dtype)
+
+    del query, key, value, state, beta, act_seq_len, ssm_state_indices
+    del num_accepted_tokens, g, gk, init_state
+    if state_non_contiguous:
+        del padded_state, init_padded
+    torch.npu.empty_cache()
+
     print(
         "--------------------------------------------------------------check result-------------------------------------------------------------"
     )
-    check_result(cpu_out, npu_out, out_data_type)
+    out_pct, out_result = check_result(cpu_out, npu_out, out_data_type)
     print(
         "--------------------------------------------------------------check state ouput-------------------------------------------------------------"
     )
-    check_result(
+    state_pct, state_result = check_result(
         cpu_state_ouput,
         npu_state_out,
         state_data_type_str,
+    )
+
+    del cpu_out, cpu_state_ouput, npu_out, npu_state_out
+    gc.collect()
+    torch.npu.empty_cache()
+
+    assert out_result == "Pass", (
+        f"output precision check failed: pass_rate={out_pct:.4f}%"
+    )
+    assert state_result == "Pass", (
+        f"state precision check failed: pass_rate={state_pct:.4f}%"
     )
 
 

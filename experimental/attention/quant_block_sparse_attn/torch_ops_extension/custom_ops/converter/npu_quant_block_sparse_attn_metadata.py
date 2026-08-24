@@ -15,7 +15,9 @@ from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
 
-@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attn_metadata.default)
+@register_fx_node_ge_converter(
+    torch.ops.custom.npu_quant_block_sparse_attn_metadata.default
+)
 def convert_npu_quant_block_sparse_attn_metadata(
     sparse_seq_len: Tensor,
     num_heads_q: int,
@@ -31,10 +33,8 @@ def convert_npu_quant_block_sparse_attn_metadata(
     sparse_block_size_k: int = 128,
     quant_mode: int = 1,
     mask_mode: int = 3,
-    max_seqlen_q: int = 0,
-    max_seqlen_kv: int = 0,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BNSD",
+    layout_kv: str = "PA_BNBD",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     meta_outputs: List[TensorSpec] = None,
 ):
@@ -60,8 +60,6 @@ def convert_npu_quant_block_sparse_attn_metadata(
             "sparse_block_size_k": attr.Int(sparse_block_size_k),
             "quant_mode": attr.Int(quant_mode),
             "mask_mode": attr.Int(mask_mode),
-            "max_seqlen_q": attr.Int(max_seqlen_q),
-            "max_seqlen_kv": attr.Int(max_seqlen_kv),
             "layout_q": attr.Str(layout_q),
             "layout_kv": attr.Str(layout_kv),
             "layout_sparse_indices": attr.Str(layout_sparse_indices),

@@ -10,69 +10,189 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""CPU golden adapter for LightningIndexer V2 TTK cases."""
+"""CPU Golden adapter for LightningIndexer V2 TTK cases."""
+
+import importlib.util
+import sys
+from pathlib import Path
 
 import torch
 
+PYTEST_MODULE_NAME = "li_v2_pytest_golden"
+PYTEST_MODULE_FILE = "lightning_indexer_v2_golden.py"
+
 
 class CaseDataStore:
-    """Share one pytest-generated case between input, golden, and compare callbacks."""
+    """Share pytest data in-process and return compact metadata API inputs."""
 
     def __init__(self):
         self.case_data = {}
-        self.topk_scores = None
-        self.index_offsets = None
-        self.score_layout = None
-        self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def clear(self):
         self.case_data.clear()
-        self.topk_scores = None
-        self.index_offsets = None
-        self.score_layout = None
-        self.cu_seqlens_q = None
+        self.active_testcase_name = None
 
     def put(self, testcase_name, data):
         if testcase_name is not None:
-            self.clear()
-            self.case_data = {str(testcase_name): data}
+            self.case_data[str(testcase_name)] = data
 
-    def activate(self, testcase_name):
-        data = self.case_data.get(str(testcase_name)) if testcase_name is not None else None
-        if data is None:
-            raise RuntimeError(
-                "LightningIndexer V2 TTK golden requires customize_inputs "
-                "to generate pytest data first"
-            )
-        self.topk_scores = data["topk_value"]
-        self.index_offsets = data.get("output_idx_offset")
-        self.score_layout = data.get("score_layout")
-        self.cu_seqlens_q = data.get("cu_seqlens_q")
-        return data
+    def get(self, testcase_name):
+        if testcase_name is None:
+            return None
+        return self.case_data.get(str(testcase_name))
+
+    def discard(self, data):
+        for testcase_name, stored in tuple(self.case_data.items()):
+            if stored is data:
+                self.case_data.pop(testcase_name, None)
 
 
 CASE_DATA = CaseDataStore()
 
 
-def get_topk_scores():
-    return CASE_DATA.topk_scores
+def load_pytest_golden():
+    """Load the pytest CPU reference only when the Golden stage needs it."""
+    if PYTEST_MODULE_NAME in sys.modules:
+        return sys.modules[PYTEST_MODULE_NAME]
+    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+    path = pytest_dir / PYTEST_MODULE_FILE
+    inserted = str(pytest_dir) not in sys.path
+    if inserted:
+        sys.path.insert(0, str(pytest_dir))
+    try:
+        spec = importlib.util.spec_from_file_location(PYTEST_MODULE_NAME, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[PYTEST_MODULE_NAME] = module
+        spec.loader.exec_module(module)
+        return module
+    except Exception as exc:
+        sys.modules.pop(PYTEST_MODULE_NAME, None)
+        raise RuntimeError(
+            "Failed to load LightningIndexer V2 pytest Golden module; "
+            f"module={path.resolve()}; original error: {type(exc).__name__}: {exc}"
+        ) from exc
+    finally:
+        if inserted:
+            sys.path.remove(str(pytest_dir))
 
 
-def get_index_offsets():
-    return CASE_DATA.index_offsets
+def get_case_data(testcase_name):
+    return CASE_DATA.get(testcase_name)
 
 
-def get_score_context():
-    return CASE_DATA.score_layout, CASE_DATA.cu_seqlens_q
+def materialize_golden(data):
+    if data.get("cpu_result") is None:
+        load_pytest_golden().generate_cpu_golden(data)
+    return data
 
 
-def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,
-                             testcase_name=None, **kwargs):
-    """Return the CPU outputs produced while generating this exact pytest case."""
-    del q, k, w, kwargs
-    data = CASE_DATA.activate(testcase_name)
+def activate_case_data(testcase_name):
+    data = CASE_DATA.get(testcase_name)
+    if data is None:
+        raise RuntimeError(
+            "LightningIndexer V2 Golden requires pytest data from the input stage"
+        )
+    CASE_DATA.active_testcase_name = str(testcase_name)
+    return materialize_golden(data)
+
+
+def get_compare_data(testcase_name):
+    if testcase_name is None:
+        testcase_name = CASE_DATA.active_testcase_name
+    if testcase_name is None:
+        return None
+    data = CASE_DATA.get(testcase_name)
+    return None if data is None else materialize_golden(data)
+
+
+def set_compare_data(testcase_name, data):
+    name = str(testcase_name)
+    CASE_DATA.active_testcase_name = name
+    CASE_DATA.case_data[name] = data
+
+
+def discard_compare_data(data):
+    CASE_DATA.discard(data)
+    CASE_DATA.active_testcase_name = None
+
+
+def cpu_lightning_indexer_v2(
+    q,
+    k,
+    w,
+    topk,
+    *,
+    return_value=0,
+    testcase_name=None,
+    **kwargs,
+):
+    """Materialize Golden from the exact pytest data produced by input."""
+    del q, k, w, topk, kwargs
+    data = activate_case_data(testcase_name)
     if int(return_value):
         sparse_value = data["cpu_topk_value"]
     else:
         sparse_value = torch.zeros(0, dtype=data["topk_value"].dtype)
     return data["cpu_result"], sparse_value
+
+
+def cpu_aclnn_li_v2(
+    q,
+    k,
+    w,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    seqused_q,
+    seqused_k,
+    cmp_residual_k,
+    block_table,
+    output_idx_offset,
+    metadata,
+    topk,
+    max_seqlen_q,
+    layout_q,
+    layout_k,
+    mask_mode,
+    cmp_ratio,
+    return_value,
+    sparse_indices_out,
+    sparse_values_out,
+    testcase_name=None,
+    **kwargs,
+):
+    """Return the pytest Golden for the ACLNN C API parameter order."""
+    del (
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+        max_seqlen_q,
+        layout_q,
+        layout_k,
+        mask_mode,
+        cmp_ratio,
+        sparse_indices_out,
+    )
+    sparse_indices, sparse_values = cpu_lightning_indexer_v2(
+        q,
+        k,
+        w,
+        topk,
+        return_value=return_value,
+        testcase_name=testcase_name,
+        **kwargs,
+    )
+    if not int(return_value):
+        if sparse_values_out is None:
+            raise ValueError("ACLNN LI_V2 requires the sparseValuesOut tensor slot")
+        sparse_values = torch.zeros(
+            tuple(sparse_values_out.shape), dtype=sparse_values_out.dtype
+        )
+    return sparse_indices, sparse_values

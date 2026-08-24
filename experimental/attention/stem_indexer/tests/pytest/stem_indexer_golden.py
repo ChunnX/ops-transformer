@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import math
+
 import torch
 
 
@@ -21,7 +23,11 @@ K_BLOCK_NUM_RATE_MEDIUM = 0.2
 K_BLOCK_NUM_BIAS_MEDIUM = 30
 K_BLOCK_NUM_RATE_LARGE = 0.1
 K_BLOCK_NUM_BIAS_LARGE = 30
-METADATA_SIZE = 2048
+METADATA_HEADER_SIZE = 16
+METADATA_CORE_STRIDE = 16
+METADATA_AIC_CORE_NUM = 36
+METADATA_AIV_CORE_NUM = 72
+METADATA_ALIGN_SIZE = 4096
 DEFAULT_TOPK_SCORE_PRECISION = 1
 TOPK_SCORE_TYPE_BY_PRECISION = {1: "uint32", 2: "uint16"}
 
@@ -37,8 +43,21 @@ def ceil_div(value, factor):
     return (int(value) + int(factor) - 1) // int(factor)
 
 
+def get_metadata_size(batch_size, kv_heads):
+    max_section_num = int(batch_size) * int(kv_heads)
+    metadata_size = METADATA_HEADER_SIZE + max_section_num * (
+        METADATA_AIC_CORE_NUM + METADATA_AIV_CORE_NUM
+    ) * METADATA_CORE_STRIDE
+    return ceil_div(metadata_size, METADATA_ALIGN_SIZE) * METADATA_ALIGN_SIZE
+
+
 def to_float32(value):
     return float(torch.tensor(value, dtype=torch.float32).item())
+
+
+def fma_float32(multiplier, multiplicand, addend):
+    # Emulate one correctly rounded float32 multiply-add used by the AICore scalar expression.
+    return to_float32(float(multiplier) * float(multiplicand) + float(addend))
 
 
 def parse_special_setting(setting):
@@ -132,7 +151,7 @@ def get_tensor_shapes(case):
     metadata_shape = (
         parse_shape(special["metadata_shape"])
         if "metadata_shape" in special
-        else [METADATA_SIZE]
+        else [get_metadata_size(batch_size, kv_heads)]
     )
     return qflat_shape, kflat_shape, vbias_shape, metadata_shape
 
@@ -190,7 +209,7 @@ def get_metadata_attrs(case):
     return {
         "causal": bool(case["causal"]),
         "stem_block_size": int(case["stem_block_size"]),
-        "dim_qkflat": HEAD_DIM,
+        "dim_qkflat": int(case["stem_stride"]) * HEAD_DIM,
         "window_size": int(case["window_size"]),
     }
 
@@ -220,15 +239,16 @@ def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
 
     s1_pos = q_block_idx + kv_block_num - q_block_num
     decay_len = prompt_block_num - k_start
-    if s1_pos < k_start or decay_len < 1:
+    if s1_pos < k_start or decay_len <= 1:
         return k_start
 
+    k_start_float = to_float32(k_start)
     alpha = to_float32(case["alpha"])
-    k_end = int(to_float32(to_float32(k_start) * alpha))
+    k_end = to_float32(k_start_float * alpha)
     t = to_float32(to_float32(s1_pos - k_start) / to_float32(decay_len - 1))
-    topk_count = int(
-        to_float32(to_float32(k_start) + to_float32(t * to_float32(k_end - k_start)))
-    )
+    decay_delta = to_float32(k_end - k_start_float)
+    interpolated_topk_count = fma_float32(t, decay_delta, k_start_float)
+    topk_count = math.floor(interpolated_topk_count)
     return min(max(topk_count, 1), k_start)
 
 

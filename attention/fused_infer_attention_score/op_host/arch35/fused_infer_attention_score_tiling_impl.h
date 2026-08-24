@@ -17,11 +17,10 @@
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_FUSEDINFERATTENTIONSCORE_IMPL_H_
 #include "register/tilingdata_base.h"
 #include "../../../common/op_host/fia_tiling_base.h"
-#include "../../../common/op_host/fia_tiling_info.h"
+#include "../fia_tiling_info.h"
 #include "tiling/tiling_api.h"  //这个头文件顺序必须在手写的tiling data前
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
+#include "../../op_kernel/arch35/fused_infer_attention_score_template_tiling_key.h"
 
 namespace optiling {
 
@@ -57,9 +56,12 @@ class FusedInferAttentionScoreTilingImpl : public FiaTilingBase {
 public:
     explicit FusedInferAttentionScoreTilingImpl(gert::TilingContext *context) : FiaTilingBase(context) {}
     ~FusedInferAttentionScoreTilingImpl() override = default;
-    void InitTilingInfo(TilingInfo *tilingInfo) override {}
-    bool IsCapable() override {}
-    ge::graphStatus DoOpTiling() override {}
+    void InitTilingInfo(TilingInfo *tilingInfo) override
+    {
+        fiaInfo_ = static_cast<FiaTilingInfo *>(tilingInfo);
+    }
+    bool IsCapable() override { return true; }
+    ge::graphStatus DoOpTiling() override { return DoOpTiling(context_, *fiaInfo_); }
     ge::graphStatus DoOpTiling(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
 
 protected:
@@ -93,10 +95,7 @@ protected:
     ge::graphStatus UpdateTilingKeyInfo(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetWorkspaceNormal(const FiaTilingInfo &fiaInfo, int64_t &curWorkspaceSize);
     ge::graphStatus SetWorkspaceAntiQuant(const FiaTilingInfo &fiaInfo, int64_t &workspaceSize_);
-    ge::graphStatus SetWorkspacePTQuant(const FiaTilingInfo &fiaInfo, int64_t &curWorkspaceSize);
 
-    bool EnableMTE2BmmPipe(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm,
-                           TCubeTiling &bmmTilingData);
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
     void SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo);
     void SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo);
@@ -112,7 +111,6 @@ protected:
                             int64_t token);
     int64_t GetCalcBlockNumsOneHead(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
                                     uint32_t sOuterSize, uint32_t sInnerSize);
-    int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
     void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t maxCoreNums, uint32_t sOuterSize,
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
@@ -155,11 +153,10 @@ protected:
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
     void PrintInputParams(const FiaTilingInfo &fiaInfo);
 
-    PromptFlashAttentionTilingDataV2 pfaTilingData_;
-    IncreFlashAttentionTilingDataRegbase ifaTilingData_;
     FlashAttentionScoreSimplifiedTilingData faRunTilingAdapter_;
     FiaTilingKeyInfo tilingKeyInfo_;
     FiaPlatFormInfo platformInfo_;
+    FiaTilingInfo *fiaInfo_ = nullptr;
     uint32_t nLoopTimes_;
     uint32_t gsSize_;
     uint32_t sOuterFactor_;

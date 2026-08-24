@@ -20,7 +20,7 @@
 #include <memory>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "base_checker_quant_flash_attn.h"
 #include "../qfa_tiling_shape.h"
 
 namespace optiling {
@@ -43,11 +43,28 @@ private:
     ge::graphStatus CheckSingleParaVDescale(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckSingleParaPScale(const QfaTilingInfo &qfaInfo);
 
+    // --- SinglePara: descale shape dim 校验 (按量化场景分发) ---
+    ge::graphStatus CheckQDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleDimMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleDimGqaFp8(const QfaTilingInfo &qfaInfo) const;
+
+    // --- ParaExistence: 场景化必选参数 ---
+    ge::graphStatus CheckParaExistenceGqaFp8(const QfaTilingInfo &qfaInfo) const;
+
     // --- MultiPara: descale shape consistency (descale_shape匹配关系表) ---
     ge::graphStatus CheckDescaleShape(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckQDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShape(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
 
     // --- MultiPara: descale dtype 校验 ---
     // MxFP8 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
@@ -58,12 +75,12 @@ private:
     int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: 非连续 Tensor 支持校验 ---
-    // 仅 PA 场景(layout_kv 为 PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
+    // 仅 PA 场景(layout_kv 为 PA_BBND、PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
     // 仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。
     ge::graphStatus CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: layout 匹配关系校验 (文档: layout匹配关系表) ---
-    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
+    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BBND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
     ge::graphStatus CheckLayoutConstraint(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: q/k/v/attn_out shape 校验 (文档: q/k/v/attn_out shape匹配关系表) ---
@@ -76,6 +93,12 @@ private:
     // 校验实际 shape 与期望 shape 的每个维度是否相等
     ge::graphStatus CheckShapeEqual(const gert::StorageShape &actual, const std::vector<int64_t> &expected,
                                     const std::string &paraName, const char *opName) const;
+
+    // --- Feature: N1/N2/G 上限校验 (全量化场景) ---
+    ge::graphStatus CheckN1SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckN2SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const;
 
 private:
     std::shared_ptr<QfaTilingShapeCompare> queryShapeCmp_ = nullptr;

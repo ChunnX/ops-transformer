@@ -25,7 +25,10 @@
 
 - **接口功能**:
 
-  `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成MxFP8/HiF8/MxFP4量化场景下的全量化注意力计算，训练推理归一化。
+  `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成FP8量化场景下的全量化注意力计算，训练推理归一化。当前支持两类量化场景：
+
+  - **MxFP8场景**（`quant_mode=1`）：Q/K/V 均采用 MXFP8（per-block group 量化），P 采用 FP8_E4M3 per-tensor，Softmax 在 FP32 下计算；
+  - **FP8场景**（`quant_mode=6`）：Q/K 采用 FP8_E4M3 per-token-head 量化，V 采用 FP8_E4M3 per-head 量化，P 采用 FP8_E4M3 per-tensor 量化，Softmax 在 FP32 下计算。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -68,6 +71,10 @@
 > [!NOTE]
 >
 > Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有K、V Batch输入样本序列长度的累加和。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。
+
+> [!NOTE]
+>
+> MxFP8场景（`quant_mode=1`）下，Head-Dim（D），新增支持D=72。D=72在布局、Paged Attention block_size、PA布局等方面有额外约束，详见各参数组约束中的D=72说明。
 
 ## 函数原型
 
@@ -115,10 +122,10 @@ cann_ops_transformer.quant_flash_attn(
     seqused_kv=None,
     p_scale=None,
     sinks=None,
+    attn_mask=None,
     metadata=None,
     softmax_scale=1.0,
     mask_mode=0,
-    attn_mask=None,
     win_left=-1,
     win_right=-1,
     max_seqlen_q=-1,
@@ -130,6 +137,29 @@ cann_ops_transformer.quant_flash_attn(
     return_softmax_lse=False
 ) -> (Tensor, Tensor)
 ```
+
+## 枚举说明
+
+`quant_mode` 与 `mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.quant_flash_attn`：
+
+### quant_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 1 | A8C8 Q/KV MXFP8，P FP8_E4M3 per-tensor，Softmax FP32 |
+| `A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 6 | A8C8 Q/K FP8_E4M3 per-token-head、V FP8_E4M3 per-head、P FP8_E4M3 per-tensor，Softmax FP32|
+
+### mask_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `NO_MASK` | 0 | 全计算模式（默认值） |
+| `CAUSAL` | 3 | Causal 模式 |
+| `SLIDING_WINDOW` | 4 | Sliding Window 模式 |
+
+> [!NOTE]
+>
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前不支持 mask_mode = 4（`SLIDING_WINDOW`）。
 
 ## 基准信息说明
 
@@ -145,9 +175,8 @@ cann_ops_transformer.quant_flash_attn(
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     KV_T     |          输入k/v tensor所有batch序列长度的累加和          |
 |     D     |          输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim         |
-|     G     |          G = Q_N / KV_N，group query attention的组数          |
 |     Bs     |          Paged Attention场景下的KV cache的块大小          |
-|     Bn     |          Paged Attention场景下KV cache的块数，由KV cache中最长序列确定，Bn = ⌈KV cache中最长序列 / Bs⌉          |
+|     Bn     |          Paged Attention场景下KV cache的块数。在k/v的shape中Bn为KV cache物理存储的总块数，Bn = Σ ⌈各batch KV序列长度 / Bs⌉；在block_table的shape中Bn为单个batch的最大块数，Bn = max ⌈各batch KV序列长度 / Bs⌉          |
 
 ## 参数说明
 
@@ -158,16 +187,16 @@ cann_ops_transformer.quant_flash_attn(
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
-| quant_mode | int | 必选 | 量化模式，1表示MxFP8，2表示HiF8，3表示MxFP4 | int32 | - | - | - |
-| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
-| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
-| seqused_q | Tensor | 可选 | q的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
-| seqused_kv | Tensor | 可选 | kv的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
-| v_descale | Tensor | 可选 | v的反量化scale，TND layout下用于校验 | float8_e8m0/float32 | ND | - | ✓ |
+| quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
+| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | q的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | kv的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| v_descale | Tensor | 可选 | v的反量化scale，TND layout下用于校验 | float8_e8m0/float32 | ND | - | × |
 | batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为None | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
-| mask_mode | int | 可选 | 掩码模式 | int32 | - | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
@@ -179,24 +208,24 @@ cann_ops_transformer.quant_flash_attn(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| q | Tensor | 必选 | 公式中的Q | float8_e4m3fn | ND | (Q_T, Q_N, D) | ✓ |
-| k | Tensor | 必选 | 公式中的K | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | ✓ |
-| v | Tensor | 必选 | 公式中的V | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | ✓ |
-| q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0/float32 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li></ul> | ✓ |
-| k_descale | Tensor | 必选 | k的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li></ul> | ✓ |
-| v_descale | Tensor | 必选 | v的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
-| quant_mode | int | 必选 | 量化模式，1表示MxFP8，2表示HiF8，3表示MxFP4 | int32 | - | - | - |
-| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, Bn) | ✓ |
-| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
-| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
-| seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
-| seqused_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
-| p_scale | Tensor | 可选 | P的量化参数 | float32 | ND | (1,) | ✓ |
-| sinks | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | float32 | ND | (Q_N,) | ✓ |
+| q | Tensor | 必选 | 公式中的Q | float8_e4m3fn | ND | (Q_T, Q_N, D) | × |
+| k | Tensor | 必选 | 公式中的K | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | × |
+| v | Tensor | 必选 | 公式中的V | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | × |
+| q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0/float32 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li><li>(Q_N, Q_T)</li></ul> | × |
+| k_descale | Tensor | 必选 | k的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li><li>(Bn, KV_N, Bs)</li></ul> | × |
+| v_descale | Tensor | 必选 | v的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li><li>(KV_N,)</li></ul> | × |
+| quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
+| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, Bn) | × |
+| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| p_scale | Tensor | 可选 | P的量化参数 | float32 | ND | (1,) | × |
+| sinks | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | float32 | ND | (Q_N,) | × |
+| attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | × |
 | metadata | Tensor | 可选 | `quant_flash_attn_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) | x |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - | - |
-| mask_mode | int | 可选 | 掩码模式 | int32 | - | - | - |
-| attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | ✓ |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限，MX FP8场景下为必选且必须大于等于0，其他场景仅支持-1 | int32 | - | - | - |
@@ -219,8 +248,8 @@ cann_ops_transformer.quant_flash_attn(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attn_out | Tensor | 必选 | quant_flash_attn的计算输出。 | bfloat16 | ND | (Q_T, Q_N, D) | ✓ |
-| softmax_lse | Tensor | 可选 | softmax的LSE结果。`return_softmax_lse`为True时，输出shape为(Q_N, Q_T)的Tensor；`return_softmax_lse`为False时，则输出shape为[1]的值为0的Tensor。 | float32 | ND | (Q_N, Q_T) | ✓ |
+| attn_out | Tensor | 必选 | quant_flash_attn的计算输出。 | bfloat16 | ND | (Q_T, Q_N, D) | × |
+| softmax_lse | Tensor | 可选 | softmax的LSE结果。`return_softmax_lse`为True时，输出shape为(Q_N, Q_T)的Tensor；`return_softmax_lse`为False时，则输出空Tensor。 | float32 | ND | (Q_N, Q_T) | × |
 
 ## 约束说明
 
@@ -310,8 +339,9 @@ cann_ops_transformer.quant_flash_attn(
                     <li>65536 > B > 0</li>
                     <li>Q_S ≥ 0；KV_S ≥ 0</li>
                     <li>Q_T ≥ 0、KV_T ≥ 0</li>
-                    <li>D仅支持64或128</li>
+                    <li>D仅支持64、72、128或256；其中D=72仅MxFP8场景支持</li>
                     <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
+                    <li>Q_N ≤ 256；KV_N ≤ 256；Q_N / KV_N ≤ 64</li>
                 </ul>
             </td>
         </tr>
@@ -338,20 +368,22 @@ cann_ops_transformer.quant_flash_attn(
         </tr>
         <tr>
             <td>layout_q</td>
-            <td>支持BSND/TND/BNSD</td>
-            <td rowspan="4">可选属性，默认值为BSND</td>
+            <td>支持TND/NTD</td>
+            <td rowspan="4">当前不支持不传入，未传入将发出拦截报警</td>
+            <td rowspan="4">无</td>
+            <td rowspan="4">无</td>
         </tr>
         <tr>
             <td>layout_q_descale</td>
-            <td>支持BSND/TND/BNSD/N2TGD</td>
+            <td>支持TND/N2TGD/NT</td>
         </tr>
         <tr>
             <td>layout_kv</td>
-            <td>支持BSND/TND/BNSD/PA_BBND/PA_BNBD/PA_NZ</td>
+            <td>支持TND/PA_BNBD/PA_NZ（D=72时不支持PA_NZ，仅支持TND与PA_BNBD）</td>
         </tr>
         <tr>
             <td>layout_out</td>
-            <td>支持BSND/TND/BNSD</td>
+            <td>支持TND</td>
         </tr>
         <tr>
             <td>metadata</td>
@@ -374,9 +406,8 @@ cann_ops_transformer.quant_flash_attn(
 - quant_mode参数解释:
 
     <ul>
-        <li>quant_mode=1，MxFP8</li>
-        <li>quant_mode=2，HiF8</li>
-        <li>quant_mode=3，MxFP4</li>
+        <li>quant_mode=1，A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32（MxFP8场景）</li>
+        <li>quant_mode=6，A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32（FP8场景）</li>
     </ul>
 
     <table style="undefined;table-layout: fixed; width:1625px">
@@ -402,14 +433,14 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>data_type支持int32</li>
-                        <li>支持输入范围为1、2、3</li>
+                        <li>支持输入范围为1、6</li>
                     </ul>
                 </td>
                 <td>必选属性</td>
                 <td>无</td>
                 <td rowspan="5">
                     <ul>
-                        <li>非连续Tensor支持（仅PA场景，KV cache排布为BnNBsD或NZ时）：k、v、k_descale、v_descale仅支持0轴和1轴非连续，其余轴必须连续；非PA场景均不支持非连续</li>
+                        <li>不支持非连续Tensor</li>
                         <li>Layout校验规则见<a href="#layout匹配关系表">layout匹配关系表</a></li>
                         <li>q、k、v、attn_out shape校验规则见<a href="#qkv_attn_out_shape匹配关系表">q/k/v/attn_out shape匹配关系表</a></li>
                     </ul>
@@ -420,7 +451,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim支持4、5</li>
+                        <li>shape dim：MxFP8场景支持4、5；FP8全量化场景支持2</li>
                     </ul>
                 </td>
                 <td rowspan="3">必须存在</td>
@@ -436,7 +467,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim支持4、5、6</li>
+                        <li>shape dim：MxFP8场景支持4、5、6；FP8全量化场景支持3</li>
                     </ul>
                 </td>
             </tr>
@@ -445,7 +476,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim支持4、5、6</li>
+                        <li>shape dim：MxFP8场景支持4、5、6；FP8全量化场景支持1</li>
                     </ul>
                 </td>
             </tr>
@@ -457,7 +488,7 @@ cann_ops_transformer.quant_flash_attn(
                         <li>shape仅支持(1)</li>
                     </ul>
                 </td>
-                <td>可选参数，默认值为[1.0f]</td>
+                <td>可选参数</td>
                 <td>无</td>
             </tr>
         </tbody>
@@ -466,16 +497,18 @@ cann_ops_transformer.quant_flash_attn(
 - layout匹配关系表：<a name="layout匹配关系表"></a>
 
     <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-    <col style="width: 120px">
-    <col style="width: 247px">
-    <col style="width: 132px">
-    <col style="width: 232px">
-    <col style="width: 293px">
+    <col style="width: 110px">
+    <col style="width: 130px">
+    <col style="width: 130px">
+    <col style="width: 180px">
+    <col style="width: 110px">
+    <col style="width: 160px">
     </colgroup>
     <thead>
     <tr>
         <th>quant_mode</th>
         <th>layout_q</th>
+        <th>layout_q_descale</th>
         <th>layout_kv</th>
         <th>layout_out</th>
         <th>layout_softmax_lse</th>
@@ -483,13 +516,30 @@ cann_ops_transformer.quant_flash_attn(
     </thead>
     <tbody>
         <tr>
-            <td>MxFP8</td>
+            <td>quant_mode=1（MxFP8）</td>
             <td>TND</td>
             <td>
-            <li>TND</li>
-            <li>PA_BNBD</li>
-            <li>PA_NZ</li>
+                <ul>
+                    <li>TND（prefill）</li>
+                    <li>N2TGD（decode）</li>
+                </ul>
             </td>
+            <td>
+                <ul>
+                    <li>TND</li>
+                    <li>PA_BBND</li>
+                    <li>PA_BNBD</li>
+                    <li>PA_NZ（D=72时不支持）</li>
+                </ul>
+            </td>
+            <td>TND</td>
+            <td>(Q_N, Q_T)</td>
+        </tr>
+        <tr>
+            <td>quant_mode=6（FP8）</td>
+            <td>NTD</td>
+            <td>NT</td>
+            <td>PA_BNBD</td>
             <td>TND</td>
             <td>(Q_N, Q_T)</td>
         </tr>
@@ -513,7 +563,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="3">MxFP8</td>
+                <td rowspan="3">1</td>
                 <td>q_descale</td>
                 <td>float8_e8m0</td>
             </tr>
@@ -524,6 +574,19 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>v_descale</td>
                 <td>float8_e8m0</td>
+            </tr>
+            <tr>
+                <td rowspan="3">6</td>
+                <td>q_descale</td>
+                <td>float32</td>
+            </tr>
+            <tr>
+                <td>k_descale</td>
+                <td>float32</td>
+            </tr>
+            <tr>
+                <td>v_descale</td>
+                <td>float32</td>
             </tr>
         </tbody>
     </table>
@@ -541,19 +604,26 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <th>quant_mode</th>
                 <th>参数</th>
-                <th>layout_q</th>
+                <th>layout_q_descale</th>
                 <th>shape</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td rowspan="2">MxFP8</td>
+                <td rowspan="2">1</td>
                 <td rowspan="2">q_descale</td>
-                <td rowspan="2">TND</td>
-                <td>(Q_T, Q_N, D/64, 2)<br>用于Prefill场景，仅支持G*Q_S > 80时传入</td>
+                <td>TND</td>
+                <td>(Q_T, Q_N, D/64, 2)<br>用于Prefill场景，推荐G*Q_S > 80时传入</td>
             </tr>
             <tr>
-                <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，仅支持G*Q_S <= 80时传入</td>
+                <td>N2TGD</td>
+                <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>q_descale</td>
+                <td>NT</td>
+                <td>(Q_N, Q_T)<br>per-token-head 量化，layout_q 为 NTD</td>
             </tr>
         </tbody>
     </table>
@@ -577,10 +647,14 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="6">MxFP8</td>
-                <td rowspan="3">k_descale</td>
+                <td rowspan="8">1</td>
+                <td rowspan="4">k_descale</td>
                 <td>TND</td>
                 <td>(KV_T, KV_N, D/64, 2)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs, KV_N, D/64, 2)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -591,9 +665,13 @@ cann_ops_transformer.quant_flash_attn(
                 <td>(Bn, KV_N, Bs/16, D/64, 16, 2)</td>
             </tr>
             <tr>
-                <td rowspan="3">v_descale</td>
+                <td rowspan="4">v_descale</td>
                 <td>TND</td>
                 <td>(KV_T/64, KV_N, D, 2)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs/64, KV_N, D, 2)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -602,6 +680,17 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>PA_NZ</td>
                 <td>(Bn, KV_N, D/16, Bs/64, 16, 2)</td>
+            </tr>
+            <tr>
+                <td rowspan="2">6</td>
+                <td>k_descale</td>
+                <td>PA_BNBD</td>
+                <td>(Bn, KV_N, Bs)<br>per-token-head 量化，强制 PA_BNBD</td>
+            </tr>
+            <tr>
+                <td>v_descale</td>
+                <td>-</td>
+                <td>(KV_N,)<br>per-head 量化，1D</td>
             </tr>
         </tbody>
     </table>
@@ -629,15 +718,19 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="5">MxFP8</td>
+                <td rowspan="6">1</td>
                 <td>q</td>
                 <td>TND</td>
                 <td>(Q_T, Q_N, D)</td>
             </tr>
             <tr>
-                <td rowspan="3">k/v</td>
+                <td rowspan="4">k/v</td>
                 <td>TND</td>
                 <td>(KV_T, KV_N, D)</td>
+            </tr>
+            <tr>
+                <td>PA_BBND</td>
+                <td>(Bn, Bs, KV_N, D)</td>
             </tr>
             <tr>
                 <td>PA_BNBD</td>
@@ -652,6 +745,22 @@ cann_ops_transformer.quant_flash_attn(
                 <td>TND</td>
                 <td>(Q_T, Q_N, D)</td>
             </tr>
+            <tr>
+                <td rowspan="3">6</td>
+                <td>q</td>
+                <td>NTD</td>
+                <td>(Q_N, Q_T, D)</td>
+            </tr>
+            <tr>
+                <td>k/v</td>
+                <td>PA_BNBD</td>
+                <td>(Bn, KV_N, Bs, D)</td>
+            </tr>
+            <tr>
+                <td>attn_out</td>
+                <td>TND</td>
+                <td>(Q_T, Q_N, D)</td>
+            </tr>
         </tbody>
     </table>
 
@@ -659,9 +768,9 @@ cann_ops_transformer.quant_flash_attn(
 
 mask_mode参数解释
 <ul>
-    <li>mask_mode=0，全计算模式（默认值）</li>
-    <li>mask_mode=3，Causal模式</li>
-    <li>mask_mode=4，Window模式</li>
+    <li>mask_mode=0，NO_MASK，全计算模式（默认值）</li>
+    <li>mask_mode=3，CAUSAL，Causal模式</li>
+    <li>mask_mode=4，SLIDING_WINDOW，Window模式</li>
 </ul>
 
 <table style="undefined;table-layout: fixed; width:1625px">
@@ -687,22 +796,22 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>data_type支持int32</li>
-                    <li>支持输入为0/3/4</li>
+                    <li>支持输入为0/3</li>
                 </ul>
             </td>
             <td>
                 可选属性，默认值为0
             </td>
-            <td rowspan="4">
+            <td rowspan="3">
                 <ul>
                     <li>当mask_mode为0时，不支持传入attn_mask</li>
                     <li>当mask_mode为3时，必须传入attn_mask矩阵</li>
-                    <li>当mask_mode为4时，必须传入attn_mask矩阵</li>
+                    <li>当mask_mode不为4时，win_left与win_right必须为-1</li>
                 </ul>
             </td>
-            <td rowspan="4">
+            <td rowspan="3">
                 <ul>
-                    <li>MxFP8仅支持mask_mode取0和3</li>
+                    <li>当前不支持mask_mode=4（SLIDING_WINDOW），MxFP8与FP8全量化场景均仅支持mask_mode 0/3</li>
                 </ul>
             </td>
         </tr>
@@ -710,7 +819,7 @@ mask_mode参数解释
             <td>attn_mask</td>
             <td>
                 <ul>
-                    <li>tensor_type支持int8</li>
+                    <li>tensor_type支持int8/uint8/bool</li>
                     <li>tensor_shape为(2048, 2048)</li>
                 </ul>
             </td>
@@ -769,7 +878,8 @@ mask_mode参数解释
             <td rowspan="6">无</td>
             <td>
                 <ul>
-                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                    <li>当layout_q不为TND且不为NTD时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                    <li>当layout_q为TND/NTD或layout_kv为TND时，不支持传入batch_size</li>
                 </ul>
             </td>
         </tr>
@@ -794,8 +904,8 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_q为TND时，必须传入（此时seqused_q与max_seqlen_q均为可选）</li>
-                    <li>当layout_q不为TND时，不支持传入</li>
+                    <li>当layout_q为TND或NTD时，必须传入（此时seqused_q与max_seqlen_q均为可选）</li>
+                    <li>当layout_q不为TND且不为NTD时，不支持传入</li>
                 </ul>
             </td>
         </tr>
@@ -826,7 +936,7 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                    <li>当layout_q不为TND且不为NTD时，seqused_q与max_seqlen_q至少传入其中一个</li>
                 </ul>
             </td>
         </tr>
@@ -846,6 +956,10 @@ mask_mode参数解释
         </tr>
     </tbody>
 </table>
+
+> [!NOTE]
+>
+> 算子不校验 `seqused_kv` 中的最大值是否与 `max_seqlen_kv` 一致。若同时传入这两个参数，用户需自行保证 `max(seqused_kv) <= max_seqlen_kv`。
 
 #### Paged Attention参数组
 
@@ -877,13 +991,14 @@ mask_mode参数解释
                     <li>值只能为正整数</li>
                 </ul>
             </td>
-            <td>可选参数</td>
+            <td>可选参数；</td>
             <td>无</td>
             <td>
                 <ul>
                     <li>PagedAttention开启情况下，必须传入seqused_kv</li>
                     <li>Paged Attention开启情况下，block_table必须不为空</li>
-                    <li>MxFP8仅支持Bs为512或1024</li>
+                    <li>MxFP8仅支持Bs为64、128、256、512或1024；当D=72时，Bs仅支持512或1024</li>
+                    <li>FP8（quant_mode=6）强制PA场景，block_table必选，且Bs固定为128</li>
                 </ul>
             </td>
         </tr>
@@ -955,7 +1070,7 @@ mask_mode参数解释
             <td>可选属性，默认值为False</td>
             <td rowspan="2">
                 <ul>
-                    <li>当return_softmax_lse为False时，输出shape为[1]的值为0的Tensor</li>
+                    <li>当return_softmax_lse为False时，输出空Tensor</li>
                     <li>当return_softmax_lse为True时，softmax_lse必须非空，输出shape见<a href="#layout匹配关系表">layout匹配关系表</a></li>
                 </ul>
             </td>
@@ -1127,10 +1242,10 @@ mask_mode参数解释
         block_table=block_table,
         cu_seqlens_q=cu_seqlens_q,
         seqused_kv=seqused_kv,
+        attn_mask=attn_mask,
         metadata=metadata,
         softmax_scale=1.0 / (D ** 0.5),
         mask_mode=3,
-        attn_mask=attn_mask,
         win_left=-1,
         win_right=-1,
         layout_q="TND",

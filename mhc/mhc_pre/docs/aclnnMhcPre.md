@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -35,7 +45,10 @@
       [split(w, [n, n]), 0], & alpha.shape=[2]
   \end{cases}\\
   hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
-  hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+  hPost &= \begin{cases}
+      2\sigma(pPost \odot alpha1 + bias1), & alpha.shape=[3] \\
+      2\sigma(pPost \odot alpha1 + bias1) + hcEps, & alpha.shape=[2]
+  \end{cases}\\
   hRes &= \begin{cases}
       pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
       0, & alpha.shape=[2]
@@ -164,7 +177,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hcEps</td>
       <td>可选输入</td>
-      <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
+      <td>h_pre的sigmoid后的eps参数，以及当alpha.shape=[2]时h_post的sigmoid后的eps参数，对应公式中的hcEps。</td>
       <td>建议值：1e-6。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -340,6 +353,9 @@ aclnnStatus aclnnMhcPre(
 
 - 确定性计算：
   - aclnnMhcPre默认确定性实现。
+
+- Batch一致性说明：
+  - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
 
 - 规格约束：
   - n目前支持4、6、8。
