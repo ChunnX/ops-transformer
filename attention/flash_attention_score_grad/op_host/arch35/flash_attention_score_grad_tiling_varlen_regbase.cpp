@@ -19,6 +19,339 @@ using namespace Ops::Transformer::OpTiling;
 using namespace optiling::fag;
 namespace optiling {
 namespace fag {
+inline void GetTNDOuterMN(const FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, int64_t &m, int64_t &n)
+{
+    const int64_t cubeM = p.s1Inner * p.s1CvRatio;
+    const int64_t cubeN = p.s2Inner * p.s2CvRatio;
+    m = CeilDivideBy(p.actualSeqQlen[bIdx], cubeM);
+    n = CeilDivideBy(p.actualSeqKvlen[bIdx], cubeN);
+    if (m < 1) {
+        m = 1;
+    }
+    if (n < 1) {
+        n = 1;
+    }
+}
+
+inline int64_t CalTNDCase0RecRounds(int64_t k, int64_t m, int64_t n)
+{
+    if (n <= 0) {
+        return 0;
+    }
+    if (NUM_TWO * k < m + 1 && k < n) {
+        return std::max(static_cast<int64_t>(0), NUM_TWO * m - NUM_TWO * k + 1);
+    }
+    return m;
+}
+
+inline int64_t CalTNDSingleCausalRounds(int64_t k, int64_t m, int64_t n)
+{
+    const int64_t t = n / (NUM_TWO * k);
+    const int64_t ell = n % (NUM_TWO * k);
+    const int64_t rounds2k = (NUM_TWO * m + 1) * t - NUM_TWO * k * t * t;
+    if (ell == 0) {
+        return rounds2k;
+    }
+    if (t == 0) {
+        return CalTNDCase0RecRounds(k, m, n);
+    }
+    const int64_t l = m - NUM_TWO * k * t;
+    const int64_t phaseCount = CeilDivideBy(ell, k);
+    int64_t roundsTail = 0;
+    for (int64_t s = 0; s < phaseCount; ++s) {
+        roundsTail += std::max(static_cast<int64_t>(0), l - s * k);
+    }
+    return rounds2k + roundsTail;
+}
+
+inline int64_t GetTNDPairBatchCount(int64_t n1)
+{
+    return (n1 % NUM_TWO == 0) ? n1 : (n1 - 1);
+}
+
+inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
+{
+    if (m < n) {
+        n = m;
+    }
+    virtM = NUM_TWO * m - n + 1;
+    virtN = n;
+}
+
+inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
+{
+    if (m > n) {
+        m = n;
+    }
+    virtM = m;
+    virtN = (m == n) ? (n + 1) : (NUM_TWO * n - m + NUM_THREE);
+}
+
+inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, bool &isSmall,
+                                bool &useLine, int64_t &soloPairRounds)
+{
+    const int64_t cols = virtN * pairCount;
+    isSmall = (pairCount > 0 && cols > 0 && cols < k);
+    if (isSmall || pairCount <= 0 || cols <= 0) {
+        useLine = false;
+        soloPairRounds = 0;
+        return;
+    }
+    useLine = true;
+    soloPairRounds = CeilDivideBy(cols, k) * virtM;
+}
+
+struct TNDRunShape {
+    int64_t m = 1;
+    int64_t n = 1;
+    int64_t p = 0;
+    int64_t q = 0;
+    int64_t kind = 0;
+};
+
+inline bool SameTNDRunShape(const TNDRunShape &a, const TNDRunShape &b)
+{
+    return a.m == b.m && a.n == b.n && a.p == b.p && a.q == b.q && a.kind == b.kind;
+}
+
+inline TNDRunShape MakeTNDCausalRunShape(const FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, bool leftUp)
+{
+    TNDRunShape s;
+    GetTNDOuterMN(p, bIdx, s.m, s.n);
+    if (leftUp) {
+        if (s.m < s.n) {
+            s.n = s.m;
+        }
+        s.kind = 2;
+    } else {
+        if (s.m > s.n) {
+            s.m = s.n;
+        }
+        s.kind = 3;
+    }
+    return s;
+}
+
+inline void GetTNDBandMN(FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, int64_t &m, int64_t &n, int64_t &bandP,
+                         int64_t &bandQ)
+{
+    GetTNDOuterMN(p, bIdx, m, n);
+    int64_t actualS1Token = 0;
+    int64_t actualS2Token = 0;
+    CalcleActualToken(p, bIdx, actualS1Token, actualS2Token);
+    const int64_t cubeM = p.s1Inner * p.s1CvRatio;
+    const int64_t cubeN = p.s2Inner * p.s2CvRatio;
+    bandP = CeilDivideBy(actualS1Token, cubeM) + 1;
+    bandQ = CeilDivideBy(actualS2Token, cubeN) + 1;
+    bandP = bandP > m ? m : bandP;
+    bandQ = bandQ > n ? n : bandQ;
+    if (bandP < 0) {
+        n = n + bandP;
+        bandQ = bandP + bandQ;
+        bandP = 1;
+    } else if (bandQ < 0) {
+        m = m + bandQ;
+        bandP = bandP + bandQ;
+        bandQ = 1;
+    }
+    int64_t actualM = m;
+    int64_t actualN = n;
+    if (bandP + bandQ <= m) {
+        const int64_t l1 = bandQ - 1;
+        const int64_t l2 = std::min(n - bandQ + 1, m + NUM_TWO - bandP - bandQ);
+        const int64_t l3 = std::max(static_cast<int64_t>(0), std::min(bandP + n - m - 1, bandP + bandQ - NUM_TWO));
+        actualM = (l3 == 0) ? (bandP + bandQ + l2 - NUM_TWO) : m;
+        actualN = l1 + l2 + l3;
+    } else {
+        actualM = m;
+        actualN = std::min(m - 1 + bandQ, n);
+    }
+    m = actualM;
+    n = actualN;
+}
+
+inline TNDRunShape MakeTNDBandRunShape(FuzzyBaseInfoParamsRegbase &p, int64_t bIdx)
+{
+    TNDRunShape s;
+    GetTNDBandMN(p, bIdx, s.m, s.n, s.p, s.q);
+    s.kind = (s.p >= s.m) ? 43 : 4;
+    return s;
+}
+
+inline int64_t CountTNDSameShapeRun(FuzzyBaseInfoParamsRegbase &p, int64_t start, bool leftUp, bool isBand,
+                                    TNDRunShape &shape)
+{
+    shape = isBand ? MakeTNDBandRunShape(p, start) : MakeTNDCausalRunShape(p, start, leftUp);
+    int64_t end = start;
+    while (end + 1 < p.b) {
+        const TNDRunShape next = isBand ? MakeTNDBandRunShape(p, end + 1) : MakeTNDCausalRunShape(p, end + 1, leftUp);
+        if (!SameTNDRunShape(next, shape)) {
+            break;
+        }
+        end += 1;
+    }
+    return end - start + 1;
+}
+
+inline void CopyTNDPrefix(const std::vector<int64_t> &src, int64_t *dst, size_t dstLen)
+{
+    std::fill(dst, dst + dstLen, static_cast<int64_t>(0));
+    const size_t n = std::min(src.size(), dstLen);
+    std::copy(src.begin(), src.begin() + static_cast<long>(n), dst);
+}
+
+inline void StoreTNDPrefix(const std::vector<int64_t> &raw, int64_t step, int64_t tailValue, int64_t *dst)
+{
+    std::vector<int64_t> sliced = SliceVector(raw, step);
+    sliced.push_back(tailValue);
+    CopyTNDPrefix(sliced, dst, 132);
+}
+
+inline int64_t CalTNDBandWideCols(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t nNew = std::min(m - 1 + q, n);
+    const int64_t l1 = m - p;
+    const int64_t l2 = p + q - m;
+    const int64_t l3 = nNew - l1 - l2;
+    const int64_t foldCols = std::max(static_cast<int64_t>(0), l3 - p + 1);
+    return nNew - foldCols;
+}
+
+inline int64_t CalTNDBandNarrowRounds(int64_t k, int64_t n1, int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t l1 = q - 1;
+    const int64_t l2 = std::min(n - q + 1, m + NUM_TWO - p - q);
+    const int64_t l3 = std::max(static_cast<int64_t>(0), std::min(p + n - m - 1, p + q - NUM_TWO));
+    int64_t overlap = 0;
+    int64_t nNew = l1 + l2 + l3;
+    if (l3 != 0 && p <= l3) {
+        overlap = std::min(l3 - p + 1, l1);
+    }
+    const int64_t seg = p + q - 1;
+    return seg * CeilDivideBy((nNew - overlap) * n1 + overlap, k);
+}
+
+inline void CalcleTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p)
+{
+    p.splitAxis = SplitAxisEnum::BN2GS1S2;
+    const int64_t k = static_cast<int64_t>(p.aicNum);
+    const int64_t n1 = p.n2;
+    const int64_t pairCountOne = GetTNDPairBatchCount(n1) / NUM_TWO;
+    const bool leftUp = (p.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL));
+    const bool isBand = (p.sparseMode == static_cast<uint32_t>(SparseMode::BAND));
+
+    std::vector<int64_t> prefixSolo = {0};
+    std::vector<int64_t> prefixPool = {0};
+    std::vector<int64_t> prefixSingle = {0};
+    int64_t poolMMax = 0;
+    int64_t poolNMax = 0;
+    int64_t singleMMax = 0;
+    int64_t singleNMax = 0;
+
+    int64_t i = 0;
+    while (i < p.b) {
+        TNDRunShape shape;
+        const int64_t groupSize = CountTNDSameShapeRun(p, i, leftUp, isBand, shape);
+        const int64_t total = n1 * groupSize;
+        const int64_t runPairs = total / NUM_TWO;
+        const bool runHasSingle = (total % NUM_TWO == 1);
+        int64_t runSolo = 0;
+        int64_t poolArea = 0;
+        int64_t singleArea = 0;
+
+        if (!isBand) {
+            int64_t virtM = 0;
+            int64_t virtN = 0;
+            if (leftUp) {
+                GetTNDLeftUpVirt(shape.m, shape.n, virtM, virtN);
+            } else {
+                GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
+            }
+            bool isSmall = false;
+            bool useLine = false;
+            int64_t pairRounds = 0;
+            ClassifyTNDPairCols(k, virtM, virtN, runPairs, isSmall, useLine, pairRounds);
+            if (isSmall) {
+                poolArea = virtM * virtN;
+                poolMMax = std::max(poolMMax, virtM);
+                poolNMax = std::max(poolNMax, virtN);
+                if (n1 % NUM_TWO == 1) {
+                    singleArea = shape.m * shape.n;
+                    singleMMax = std::max(singleMMax, shape.m);
+                    singleNMax = std::max(singleNMax, shape.n);
+                }
+            } else {
+                const int64_t singleRounds = runHasSingle ?
+                    (leftUp ? CalTNDSingleCausalRounds(k, shape.m, shape.n) : CeilDivideBy(shape.n, k) * shape.m) : 0;
+                runSolo = pairRounds + singleRounds;
+            }
+        } else if (shape.kind == 43) {
+            bool isSmall = false;
+            bool useLine = false;
+            int64_t pairRounds = 0;
+            ClassifyTNDPairCols(k, shape.m, shape.n, total, isSmall, useLine, pairRounds);
+            if (isSmall) {
+                poolArea = shape.m * shape.n;
+                poolMMax = std::max(poolMMax, shape.m);
+                poolNMax = std::max(poolNMax, shape.n);
+            } else {
+                runSolo = pairRounds;
+            }
+        } else if (shape.p + shape.q <= shape.m) {
+            runSolo = CalTNDBandNarrowRounds(k, total, shape.m, shape.n, shape.p, shape.q);
+        } else {
+            const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
+            bool isSmall = false;
+            bool useLine = false;
+            int64_t pairRounds = 0;
+            ClassifyTNDPairCols(k, shape.m, denseN, total, isSmall, useLine, pairRounds);
+            if (isSmall) {
+                poolArea = shape.m * denseN;
+                poolMMax = std::max(poolMMax, shape.m);
+                poolNMax = std::max(poolNMax, denseN);
+            } else {
+                runSolo = pairRounds;
+            }
+        }
+
+        const int64_t soloEnd = prefixSolo.back() + runSolo;
+        for (int64_t runIdx = 0; runIdx < groupSize; ++runIdx) {
+            prefixSolo.push_back(soloEnd);
+            prefixPool.push_back(prefixPool.back() + poolArea);
+            prefixSingle.push_back(prefixSingle.back() + singleArea);
+        }
+        i += groupSize;
+    }
+
+    const int64_t rLine = prefixSolo.back();
+    const int64_t poolCopies = isBand ? n1 : pairCountOne;
+    const int64_t rPool = (prefixPool.back() > 0 && poolCopies > 0) ?
+        std::max(CeilDivideBy(prefixPool.back() * poolCopies, k), std::max(poolMMax, poolNMax)) :
+        0;
+    const int64_t rSingle = (prefixSingle.back() > 0) ?
+        std::max(CeilDivideBy(prefixSingle.back(), k), std::max(singleMMax, singleNMax)) :
+        0;
+
+    p.deterMaxRound = rLine + rPool + rSingle;
+    StoreTNDPrefix(prefixSolo, p.deterPrefixStep, rLine, p.deterPrefix0);
+    StoreTNDPrefix(prefixPool, p.deterPrefixStep, rPool, p.deterPrefix1);
+    StoreTNDPrefix(prefixSingle, p.deterPrefixStep, rSingle, p.deterPrefix2);
+
+    std::vector<int64_t> deterPrefix = {0};
+    std::vector<int64_t> deterPrefixAlign = {0};
+    for (int64_t bIdx = 0; bIdx < p.b; bIdx++) {
+        deterPrefix.push_back(deterPrefix.back() + p.actualSeqQlen[bIdx] * p.actualSeqKvlen[bIdx]);
+        deterPrefixAlign.push_back(
+            deterPrefixAlign.back() +
+            p.actualSeqQlen[bIdx] *
+                AlignTo(p.actualSeqKvlen[bIdx], static_cast<int64_t>(ConstAxisTemplateNum::NUM16)));
+    }
+    deterPrefix = SliceVector(deterPrefix, p.deterPrefixStep);
+    deterPrefixAlign = SliceVector(deterPrefixAlign, p.deterPrefixStep);
+    std::copy(deterPrefix.begin(), deterPrefix.end(), p.deterPrefix);
+    std::copy(deterPrefixAlign.begin(), deterPrefixAlign.end(), p.deterPrefixAlign);
+}
+
 class FlashAttentionScoreGradTilingVarlenRegbase : public FlashAttentionScoreGradTilingNormalRegbase {
 public:
     explicit FlashAttentionScoreGradTilingVarlenRegbase(gert::TilingContext *curContext_) : FlashAttentionScoreGradTilingNormalRegbase(curContext_)
@@ -53,6 +386,16 @@ protected:
         std::fill(std::begin(fBaseParams.deterPrefix0), std::end(fBaseParams.deterPrefix0), static_cast<int64_t>(0));
         std::fill(std::begin(fBaseParams.deterPrefix1), std::end(fBaseParams.deterPrefix1), static_cast<int64_t>(0));
         std::fill(std::begin(fBaseParams.deterPrefix2), std::end(fBaseParams.deterPrefix2), static_cast<int64_t>(0));
+
+        if (fBaseParams.g == 1 &&
+            (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) ||
+             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
+             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) &&
+            (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) ||
+             fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND))) {
+            CalcleTNDSparseDeterParam(fBaseParams);
+            return;
+        }
 
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
