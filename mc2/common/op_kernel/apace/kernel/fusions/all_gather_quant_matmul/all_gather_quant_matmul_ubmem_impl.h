@@ -13,7 +13,7 @@
  * \brief AllGather + QuantMatmul fusion implementation.
  *
  * Flow:
- *   AIV: AllGatherProcess (CopyLocalData → SyncAll → WriteStatus → ReadStatus → ExecuteAllGather → CrossCoreSetFlag(9))
+ *   AIV: AllGatherProcess (CopyLocalData → SyncAll → WriteStatus → ReadStatus → ExecuteAllGather → CrossCoreSetFlag)
  *   AIC: MatmulProcess (ComputeSelfAddrs → rewrite aGmAddr/scaleAGmAddr → baseline GemmUniversal::Run)
  *
  * The matmul part delegates entirely to Blaze's kernel_qbmm_mx.h baseline.
@@ -131,7 +131,10 @@ private:
     {
         return (GM_ADDR)(hcclContext_->windowsIn[rankId] + DATA_START_OFFSET);
     }
-    __aicore__ inline GM_ADDR WinStatusAddr(uint32_t rankId) { return (GM_ADDR)(hcclContext_->windowsIn[rankId]); }
+    __aicore__ inline GM_ADDR WinStatusAddr(uint32_t rankId)
+    {
+        return (GM_ADDR)(hcclContext_->windowsIn[rankId]);
+    }
 
 private:
     __gm__ Apace::HcclOpParam *hcclContext_{nullptr};
@@ -179,8 +182,8 @@ private:
 };
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void
-AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::AllGatherProcess(const Params &params)
+__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue,
+                                                     BlockScheduler>::AllGatherProcess(const Params &params)
 {
     AllGatherInit(params);
     CopyLocalData();
@@ -191,8 +194,8 @@ AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSched
 }
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::AllGatherInit(
-    const Params &params)
+__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue,
+                                                     BlockScheduler>::AllGatherInit(const Params &params)
 {
     hcclContext_ = (__gm__ Apace::HcclOpParam *)params.hcclContext;
     tilingData_ = (__gm__ QuantMatmulTilingData *)params.tilingGM;
@@ -274,8 +277,8 @@ __aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, Bl
 }
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::MatmulProcess(
-    Params &params)
+__aicore__ inline void
+AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::MatmulProcess(Params &params)
 {
     __gm__ QuantMatmulTilingData *tilingData = (__gm__ QuantMatmulTilingData *)params.tilingGM;
 
@@ -300,7 +303,8 @@ __aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, Bl
 }
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::CopyLocalData()
+__aicore__ inline void
+AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::CopyLocalData()
 {
     GM_ADDR localWinGm = WinDataAddr(curRankId_);
     uint64_t selfDataOffset = curRankId_ * xSize_;
@@ -514,7 +518,8 @@ AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSched
 }
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::ReadStatus()
+__aicore__ inline void
+AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::ReadStatus()
 {
     uint32_t offset = aivId_ * FLOAT_UB_ALIGN_NUM;
     GM_ADDR statusAddr = WinStatusAddr(curRankId_) + offset * sizeof(float);
@@ -545,8 +550,9 @@ __aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, Bl
 }
 
 template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::ReadDataBlock(
-    uint64_t curXOffset, uint32_t mCnt, uint32_t bufIdx)
+__aicore__ inline void AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue,
+                                                     BlockScheduler>::ReadDataBlock(uint64_t curXOffset, uint32_t mCnt,
+                                                                                    uint32_t bufIdx)
 {
     if (remoteRankId_ == curRankId_) {
         return;
