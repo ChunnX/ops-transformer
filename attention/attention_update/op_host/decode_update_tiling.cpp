@@ -91,6 +91,9 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context)
     uint32_t blockDims = 0;
     uint32_t coreNum = compileInfo->coreNum;
     blockDims = std::min<uint32_t>((totalLength + MIN_BLOCK_LENGTH - 1UL) / MIN_BLOCK_LENGTH, coreNum);
+    if (blockDims == 0) {
+        blockDims = 1;
+    }
 
     DecodeUpdateTilingData tilingData;
     tilingData.set_formerNum(static_cast<uint32_t>(totalLength % blockDims));

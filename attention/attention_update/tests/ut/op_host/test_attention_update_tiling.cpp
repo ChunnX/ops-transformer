@@ -88,6 +88,17 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp1)
                     "12884901892 137438953480 256 549755813889 ", {SYS_WORKSPACE_SIZE});
 }
 
+TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0EmptyTotalLength)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT, 0, 1, {{0}, {0}}, {{0, 128}, {0, 128}},
+                                       {{0, 128}, {0, 128}});
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, 10010);
+    EXPECT_EQ(tilingInfo.blockNum, 1U);
+}
+
 TEST_F(AttentionUpdateTilingTest, AscendCFloatUpdateType1Sp1)
 {
     auto compileInfo = AscendCCompileInfo();
