@@ -438,8 +438,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
     constexpr uint32_t COMM_BUF_SIZE = 2U * 64U * 1024U;
+    uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
+    if (maxByPong < 1U) { maxByPong = 1U; }
+    if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
     uint32_t castFp32BufSize =
-        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * gradSubBatch_, UB_ALIGN) * UB_ALIGN;
+        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
     uint32_t uniqueBufSize = COMM_BUF_SIZE + castFp32BufSize;
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
@@ -886,8 +889,11 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
             sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
+            uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
+            if (maxByPong < 1U) { maxByPong = 1U; }
+            if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
             uint32_t castFp32BufSize =
-                Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * gradSubBatch_, UB_ALIGN) * UB_ALIGN;
+                Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
             sortPool_.InitBuffer(castFp32Buf_, castFp32BufSize);
             uniqueScatter_.SetCastFp32Buf(castFp32Buf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
