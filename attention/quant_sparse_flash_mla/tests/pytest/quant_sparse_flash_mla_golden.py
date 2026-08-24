@@ -1829,12 +1829,9 @@ def generate_and_save_testdata(
     return input_data
 
 
-def generate_cpu_golden(input_data, batch_consistency=None):
+def generate_cpu_golden(input_data):
     """Calculate QSMLA CPU Golden from input-stage state without new random data."""
     state = input_data["golden_state"]
-    if batch_consistency is None:
-        batch_consistency = state.get("batch_consistency", False)
-    state["batch_consistency"] = batch_consistency
     test_qsmla = GeneralizedSFAQuant(
         state["layout_q"],
         state["layout_kv"],
@@ -1886,7 +1883,7 @@ def generate_cpu_golden(input_data, batch_consistency=None):
         state["ori_topk_length"],
         state["cmp_topk_length"],
         state["return_softmax_lse"],
-        batch_consistency,
+        state["batch_consistency"],
     )
     state["cpu_output"] = cpu_output
     state["cpu_lse"] = cpu_lse
