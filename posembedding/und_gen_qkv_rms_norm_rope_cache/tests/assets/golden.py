@@ -18,24 +18,23 @@
   - ``tests/st/arch35/ttk_kernel_*.csv``：TTK kernel 用例，经 ``__spec__`` 注册的
     ``UndGenQkvRmsNormRopeCacheTestSpec`` 接入
 
-    python3 -m ttk kernel -i <csv> --plugin <此文件> --compare close
+    python3 -m ttk kernel -i <csv> --plugin <此文件>
 
-    判据用 `close`（TTK 的默认值，显式带上是为了不受调用方改默认值影响）：
-    `|a-g| <= atol + rtol*|g|`，rtol/atol/ptol 由 CSV 的 `precision_tolerances` /
-    `absolute_precision` 逐输出给出：rtol=2^-7（2 个 bf16 ULP）、atol=2^-13、
-    ptol=0（不容许任何一个元素超标）。
-    不要换成相对误差类判据：本算子的输出里存在 golden 恰好为 0、NPU 给出 2^-23
-    量级的元素（RoPE 低半与高半两项相消），相对误差会被算成接近 1，而张量本身的
-    典型量级是 0.4，这点绝对偏差没有意义。
+    判据由 spec 自带（`TOLERANCE` + `compare`），不再依赖命令行 `--compare`：
+    cross_check / L1，标杆用 golden 自身，理由见 `TOLERANCE` 上方的注释。
+    **不要回退到 stat_rel_err 这类纯相对误差判据**：本算子的输出里存在 golden 恰好
+    为 0、NPU 给出 2^-23 量级的元素（RoPE 低半与高半两项相消），相对误差会被算成
+    接近 1，而张量本身的典型量级是 0.4，这点绝对偏差没有意义；cross_check 把这些
+    位置分流进 small 分支按绝对误差计数，正是为此。
 
   - ``tests/st/arch35/ttk_aclnn_*.csv``：TTK aclnn 用例，经 ``AclnnUndGenQkvRmsNormRopeCacheTestSpec``
     接入（与 kernel 侧的契约差异见该类上方的注释）
 
     export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
-    python3 -m ttk aclnn -i <csv> --plugin <此文件> --compare close
+    python3 -m ttk aclnn -i <csv> --plugin <此文件>
 
-    aclnn 侧同样带 `--compare close`，原因与 kernel 侧相同；容差也一样由该 CSV 的
-    `precision_tolerances` / `absolute_precision` 逐输出给出（输出为 q / k_cache / v_cache 三个）。
+    aclnn 侧判据与 kernel 侧同源（同一个 `TOLERANCE` / `_cross_check`），输出仍是
+    q / k_cache / v_cache 三个。
 
 张量约定
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
@@ -49,13 +48,10 @@
   v_cache       bf16 [num_blocks, block_size, Hv, D]（逻辑 shape）
   q             bf16 [total, Hq, D]
 
-两个 spec 类都不声明 ``tolerance``：本算子要的 ``isclose`` 是 TTK 的框架增强判据，
-只能经 CLI 的 ``--compare close`` 指定，写进 ``Spec.tolerance`` 会被 validator 拒绝
-（它只收 2.1 官方的 stat_rel_err / binary_equal / cross_check / quant 四个）。
-
 纯 CPU torch 实现，不依赖 NPU。
 """
 
+import logging
 import zlib
 
 import torch
@@ -723,17 +719,81 @@ def _gen_index_values(arrays, kwargs):
     return slots, cat, positions
 
 
+# --------------------------------------------------------------------------- #
+# 精度判据：cross_check，标杆用 golden 自身
+# --------------------------------------------------------------------------- #
+# 为什么标杆就是 golden：cross_check 的三个比值走 safe_div(num, den, small_value)，
+# 分母被 max(den, small_value) 夹底。本算子输出 bf16，而任何算得准的实现在最后一次
+# 落 bf16 时的相对误差上限**恰好**就是 2^-8 —— 也就是 bf16 的 small_value 本身。
+# 于是无论标杆写成什么样，分母都落在地板上、不参与判定，另写一份独立实现只是徒增
+# 一份要维护的代码。判据等效于：
+#   large 位（|golden| >= 2^-8）：|NPU-golden|/|golden| <= mare_ratio × 2^-8
+#   small 位：|NPU-golden| > 2^-16 的元素个数 <= 2
+# level 取默认的 L1（mare 5 / mere 1.5 / rmse 1.5）。L2 用不了：正常情况下 mare 会
+# 顶到 2.00（NPU 与 golden 相差 1 个 ULP 且落在二进制区间底部时的必然值），而 L2 的
+# 上限正好也是 2.0，零余量。
+#
+# 框架自带的 third_party 通路只在 XPU（竞品 GPU）场景供数（op/profiling.py 的
+# _run_xpu_and_workspace），本地跑拿不到，所以这里自己调 CrossCheckComparison —— 与
+# attention/compressor、attention/chunk_gated_delta_rule 两个算子的做法一致。
+try:
+    from ttk.core_modules.comparison.cross_check import CrossCheckComparison
+    from ttk.core_modules.comparison.resolve import resolve_tolerance
+
+    _TTK_CROSS_CHECK_AVAILABLE = True
+except ImportError:                      # 不在 ops-test-kit 环境里（如直接跑本文件自检）
+    _TTK_CROSS_CHECK_AVAILABLE = False
+
+TOLERANCE = {"bfloat16": {"standard": "cross_check", "level": "L1"}}
+
+
+def _dtype_name(array):
+    """numpy（bf16 由 ml_dtypes 承载）或 torch 张量 -> resolve_tolerance 认的 dtype 名。"""
+    import numpy as np
+
+    if isinstance(array, torch.Tensor):
+        return str(array.dtype).rsplit(".", 1)[-1]
+    return np.dtype(array.dtype).name
+
+
+def _cross_check(*outputs):
+    """outputs = (NPU_0..NPU_n-1, golden_0..golden_n-1)，逐输出返回 compare 契约的 dict。
+
+    判据 dtype 取 **NPU 输出**而不是 golden：cross_check 场景 TTK 会开
+    golden_mode=Promote 把输入抬一档（bf16→fp32），golden 因此是 fp32，
+    按它查表会 miss 掉 TOLERANCE 里的 bfloat16 而回落 stat_rel_err。
+    算子的输出精度只由 NPU 侧决定，本来也该按它定判据。
+    """
+    if not _TTK_CROSS_CHECK_AVAILABLE:
+        raise RuntimeError("ttk.core_modules.comparison 不可用：请在 ops-test-kit checkout 下运行")
+    half = len(outputs) // 2
+    results = []
+    for idx, (npu, gold) in enumerate(zip(outputs[:half], outputs[half:])):
+        dtype_str = _dtype_name(npu)
+        params = resolve_tolerance(TOLERANCE, None, None, [dtype_str], None)[0].params
+        precision, log, is_pass, metrics = CrossCheckComparison(
+            npu, gold, idx, dtype_str, params, third_party=gold).compare()
+        # 自定义 compare 的 metrics 不会进结果 CSV 的 precision_metrics 列
+        # （custom.py:compare_with_hooks 对自定义分支恒返回 {}），比值只能靠日志留痕
+        logging.info("[cross_check] output %d %s %s", idx, precision, metrics.get("result"))
+        results.append({"pass": is_pass, "precision": precision,
+                        "metrics": metrics, "error_info": None if is_pass else log})
+    return results
+
+
 class UndGenQkvRmsNormRopeCacheTestSpec:
     """UndGenQkvRmsNormRopeCache 的 kernel / GEIR 通路测试规范。
 
     参数序与 op_host/und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
     张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，属性走 kwargs。
 
-    未声明 tolerance：本算子要的 `isclose` 是框架增强判据，只能经 CLI 的
-    `--compare close` 指定（Spec.tolerance 仅收 2.1 官方四标准，见 TTK
-    ttk/test_spec/validator.py 的 _SPEC_TOLERANCE_STANDARDS）。为什么不能换成
-    stat_rel_err 这类相对误差判据，见本文件头部的说明。
+    判据见上方 TOLERANCE：cross_check / L1，标杆即 golden 自身。
     """
+
+    tolerance = TOLERANCE
+
+    def compare(*outputs, **kwargs):
+        return _cross_check(*outputs)
 
     def customize_inputs(und_qkv,
                          und_weights_q,
@@ -866,8 +926,13 @@ class AclnnUndGenQkvRmsNormRopeCacheTestSpec:
 
     形参名与 aclnn 头文件一一对应共 18 个，逐个声明只会让签名比正文还长，
     故按 README「`*args` 收集未消费条目」的写法按位置接收，拆分见 _aclnn_split_args。
-    未声明 tolerance 的原因同 kernel 侧。
+    判据同 kernel 侧。
     """
+
+    tolerance = TOLERANCE
+
+    def compare(*outputs, **kwargs):
+        return _cross_check(*outputs)
 
     def customize_inputs(*args, **kwargs):
         """索引改写，取值规则与 kernel 侧完全一致（共用 _gen_index_values）。
