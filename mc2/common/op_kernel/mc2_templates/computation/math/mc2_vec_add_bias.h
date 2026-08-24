@@ -13,6 +13,11 @@
  * \brief Vector Add Bias: add 1D bias [N] to matmul result [M, N] in-place (single card).
  * Buffer management reference fp8_dynamic_quant_pertoken.h: TBuf 在 Init 统一分配,
  * Destroy 统一释放; 手动 event 同步 MTE2→V→MTE3 流水, 避免异步搬运未完成时释放 buffer。
+ *
+ * 分核策略:
+ *   M_SPLIT  — 数据维度分区: 每核分到 [mStart, mEnd) × 全 N, UB 内按 TILE_M × TILE_N 迭代
+ *   N_SPLIT  — 数据维度分区: 每核分到 全 M × [nStart, nEnd), UB 内按 TILE_M × TILE_N 迭代
+ *   MN_SPLIT — tile 索引分区: 每核分到一组 (mTile, nTile), 保持原有 tile 迭代逻辑
  */
 
 #ifndef MC2_VEC_ADD_BIAS_H
@@ -56,7 +61,7 @@ protected:
 
     static constexpr uint32_t ELEMS_PER_BLOCK = 32 / sizeof(MatmulDataType);
     static constexpr uint32_t ELEMS_PER_REPEAT = 256 / sizeof(MatmulDataType);
-    static constexpr uint32_t TILE_M = (sizeof(MatmulDataType) <= 2) ? 128 : 64;
+    static constexpr uint32_t TILE_M = 64;
     static constexpr uint32_t TILE_N = 256;
     static constexpr uint32_t BUFFER_NUM = 2;    // 双缓冲
     static constexpr uint32_t AIV_PER_AIC = 2;
@@ -80,11 +85,14 @@ protected:
     AscendC::TEventID copyOutEvent_[BUFFER_NUM];  // MTE3: UB→GM 完成
     AscendC::TEventID biasInEvent_[BUFFER_NUM];   // MTE2: bias 完成
 
+    // M_SPLIT / N_SPLIT: 数据维度分区范围
+    uint32_t myMStart_ = 0, myMEnd_ = 0;
+    uint32_t myNStart_ = 0, myNEnd_ = 0;
+    // MN_SPLIT: tile 索引分区
     uint32_t tileMCnt_ = 0, tileNCnt_ = 0;
     uint32_t tailM_ = 0, tailN_ = 0;
     uint32_t usedCoreNum_ = 0;
     uint32_t nTileStart_ = 0, nTileEnd_ = 0;
-    uint32_t mTilesPerCore_ = 0, nTilesPerCore_ = 0;
     uint32_t myTileStart_ = 0, myTileEnd_ = 0;
 
     static __aicore__ inline uint32_t TileSize(uint32_t idx, uint32_t cnt, uint32_t tail, uint32_t full)
@@ -100,67 +108,77 @@ protected:
 
     __aicore__ inline void CalcSplit()
     {
-        tileMCnt_ = Ceil(context_.M, TILE_M);
-        tileNCnt_ = Ceil(context_.N, TILE_N);
-        if (tileMCnt_ == 0 || tileNCnt_ == 0) {
-            usedCoreNum_ = 0;
-            return;
-        }
-        tailM_ = context_.M - static_cast<uint64_t>(tileMCnt_ - 1) * TILE_M;
-        tailN_ = context_.N - static_cast<uint64_t>(tileNCnt_ - 1) * TILE_N;
         usedCoreNum_ = static_cast<uint32_t>(GetBlockNum()) * AIV_PER_AIC;
 
-        if constexpr (MODE == SplitMode::N_SPLIT) {
-            if (tileNCnt_ < usedCoreNum_) usedCoreNum_ = tileNCnt_;
-            nTilesPerCore_ = Ceil(tileNCnt_, usedCoreNum_);
-        } else if constexpr (MODE == SplitMode::MN_SPLIT) {
+        if constexpr (MODE == SplitMode::MN_SPLIT) {
+            // MN_SPLIT: tile 索引分区 (保持原有逻辑)
+            tileMCnt_ = Ceil(context_.M, TILE_M);
+            tileNCnt_ = Ceil(context_.N, TILE_N);
+            if (tileMCnt_ == 0 || tileNCnt_ == 0) {
+                usedCoreNum_ = 0;
+                return;
+            }
+            tailM_ = context_.M - static_cast<uint64_t>(tileMCnt_ - 1) * TILE_M;
+            tailN_ = context_.N - static_cast<uint64_t>(tileNCnt_ - 1) * TILE_N;
             uint64_t total64 = static_cast<uint64_t>(tileMCnt_) * static_cast<uint64_t>(tileNCnt_);
             uint32_t total = static_cast<uint32_t>(total64);
             if (total < usedCoreNum_) usedCoreNum_ = total;
             uint32_t per = Ceil(total, usedCoreNum_);
             myTileStart_ = static_cast<uint32_t>(GetBlockIdx()) * per;
             myTileEnd_ = (myTileStart_ + per > total) ? total : myTileStart_ + per;
-        } else {
-            if (tileMCnt_ < usedCoreNum_) usedCoreNum_ = tileMCnt_;
-            mTilesPerCore_ = Ceil(tileMCnt_, usedCoreNum_);
-        }
-        CalcNRange();
-    }
-
-    __aicore__ inline void CalcNRange()
-    {
-        if constexpr (MODE == SplitMode::N_SPLIT) {
-            nTileStart_ = static_cast<uint32_t>(GetBlockIdx()) * nTilesPerCore_;
-            nTileEnd_ = (nTileStart_ + nTilesPerCore_ > tileNCnt_) ? tileNCnt_ : nTileStart_ + nTilesPerCore_;
-        } else if constexpr (MODE == SplitMode::MN_SPLIT) {
             nTileStart_ = myTileStart_ / tileMCnt_;
             nTileEnd_ = (myTileEnd_ == 0) ? 0 : (myTileEnd_ - 1) / tileMCnt_ + 1;
         } else {
-            nTileStart_ = 0;
-            nTileEnd_ = tileNCnt_;
+            // M_SPLIT / N_SPLIT: 数据维度分区, 每核至少分到 1 行/列
+            if (context_.M == 0 || context_.N == 0) {
+                usedCoreNum_ = 0;
+                return;
+            }
+            uint32_t coreId = static_cast<uint32_t>(GetBlockIdx());
+
+            if constexpr (MODE == SplitMode::M_SPLIT) {
+                uint32_t mPerCore = Ceil(static_cast<uint32_t>(context_.M), usedCoreNum_);
+                myMStart_ = coreId * mPerCore;
+                myMEnd_ = (myMStart_ + mPerCore > context_.M) ?
+                    static_cast<uint32_t>(context_.M) : (myMStart_ + mPerCore);
+                myNStart_ = 0;
+                myNEnd_ = static_cast<uint32_t>(context_.N);
+            } else {
+                // N_SPLIT
+                uint32_t nPerCore = Ceil(static_cast<uint32_t>(context_.N), usedCoreNum_);
+                myNStart_ = coreId * nPerCore;
+                myNEnd_ = (myNStart_ + nPerCore > context_.N) ?
+                    static_cast<uint32_t>(context_.N) : (myNStart_ + nPerCore);
+                myMStart_ = 0;
+                myMEnd_ = static_cast<uint32_t>(context_.M);
+            }
         }
     }
 
+    // --- MN_SPLIT: tile 索引迭代 ---
+
     __aicore__ inline TileRange GetMRange(uint32_t nTile) const
     {
-        if constexpr (MODE == SplitMode::M_SPLIT) {
-            return {static_cast<uint64_t>(GetBlockIdx()), usedCoreNum_, mTilesPerCore_};
-        } else if constexpr (MODE == SplitMode::N_SPLIT) {
-            return {0, 1, tileMCnt_};
-        } else {
-            uint32_t base = nTile * tileMCnt_;
-            uint32_t lo = (base < myTileStart_) ? (myTileStart_ - base) : 0;
-            uint32_t hi = (base + tileMCnt_ > myTileEnd_) ? (myTileEnd_ - base) : tileMCnt_;
-            return {lo, 1, (hi > lo) ? (hi - lo) : 0};
-        }
+        uint32_t base = nTile * tileMCnt_;
+        uint32_t lo = (base < myTileStart_) ? (myTileStart_ - base) : 0;
+        uint32_t hi = (base + tileMCnt_ > myTileEnd_) ? (myTileEnd_ - base) : tileMCnt_;
+        return {lo, 1, (hi > lo) ? (hi - lo) : 0};
+    }
+
+    // --- Bias 加载 ---
+
+    __aicore__ inline void LoadBias(uint32_t nStart, uint32_t len, uint32_t bufIdx)
+    {
+        DataCopyExtParams params{1, static_cast<uint32_t>(static_cast<uint64_t>(len) * sizeof(BiasDataType)), 0, 0, 0};
+        DataCopyPad(biasTile_[bufIdx], biasGm_[nStart], params, PadParams<BiasDataType>());
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[bufIdx]);
     }
 
     __aicore__ inline void LoadBiasTile(uint32_t nTile, uint32_t bufIdx)
     {
+        uint32_t nStart = nTile * TILE_N;
         uint32_t len = TileSize(nTile, tileNCnt_, tailN_, TILE_N);
-        DataCopyExtParams params{1, static_cast<uint32_t>(static_cast<uint64_t>(len) * sizeof(BiasDataType)), 0, 0, 0};
-        DataCopyPad(biasTile_[bufIdx], biasGm_[static_cast<uint64_t>(nTile) * TILE_N], params, PadParams<BiasDataType>());
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[bufIdx]);
+        LoadBias(nStart, len, bufIdx);
     }
 
     // Cast(可选) + 返回 Add 使用的 bias tensor, 整个 M 循环复用
@@ -221,16 +239,15 @@ protected:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutEvent_[bufIdx]);
     }
 
-    __aicore__ inline void ProcessMTile(uint32_t mTile, uint32_t nTile,
-                                        const LocalTensor<MatmulDataType> &bias, uint32_t curTileN, uint32_t bufIdx)
+    __aicore__ inline void ProcessMTile(uint64_t offset, uint32_t curTileM, uint32_t curTileN,
+                                        const LocalTensor<MatmulDataType> &bias, uint32_t bufIdx)
     {
-        uint32_t curTileM = TileSize(mTile, tileMCnt_, tailM_, TILE_M);
-        uint64_t offset = static_cast<uint64_t>(mTile) * TILE_M * context_.N +
-                          static_cast<uint64_t>(nTile) * TILE_N;
         CopyIn(offset, curTileM, curTileN, bufIdx);
         Compute(bias, curTileM, curTileN, bufIdx);
         CopyOut(offset, curTileM, curTileN, bufIdx);
     }
+
+    // --- MN_SPLIT: tile 索引迭代 ---
 
     __aicore__ inline void ProcessNTile(uint32_t nTile, uint32_t biasBufIdx, uint32_t nextBiasBufIdx)
     {
@@ -245,8 +262,48 @@ protected:
         for (uint64_t i = 0; i < mr.count; i++) {
             uint32_t mTile = static_cast<uint32_t>(i * mr.step + mr.start);
             if (mTile >= tileMCnt_) break;
-            ProcessMTile(mTile, nTile, bias, curTileN, matmulBufIdx);
+            uint32_t curTileM = TileSize(mTile, tileMCnt_, tailM_, TILE_M);
+            uint64_t offset = static_cast<uint64_t>(mTile) * TILE_M * context_.N +
+                              static_cast<uint64_t>(nTile) * TILE_N;
+            ProcessMTile(offset, curTileM, curTileN, bias, matmulBufIdx);
             matmulBufIdx ^= 1;  // pingpong
+        }
+    }
+
+    // --- M_SPLIT / N_SPLIT: 数据维度迭代 ---
+
+    __aicore__ inline void ProcessRange()
+    {
+        if (static_cast<uint32_t>(GetBlockIdx()) >= usedCoreNum_) return;
+        if (myMStart_ >= myMEnd_ || myNStart_ >= myNEnd_) return;
+
+        uint32_t biasBufIdx = 0;
+        uint32_t firstN = (myNEnd_ - myNStart_ < TILE_N) ? (myNEnd_ - myNStart_) : TILE_N;
+        LoadBias(myNStart_, firstN, biasBufIdx);
+
+        for (uint32_t nPos = myNStart_; nPos < myNEnd_; nPos += TILE_N) {
+            uint32_t curTileN = (nPos + TILE_N > myNEnd_) ? (myNEnd_ - nPos) : TILE_N;
+            uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[biasBufIdx]);
+
+            uint32_t nextNPos = nPos + TILE_N;
+            if (nextNPos < myNEnd_) {
+                uint32_t nextLen = (nextNPos + TILE_N > myNEnd_) ? (myNEnd_ - nextNPos) : TILE_N;
+                LoadBias(nextNPos, nextLen, nextBiasBufIdx);
+            }
+
+            LocalTensor<MatmulDataType> bias = PrepareBias(biasBufIdx, curTileN);
+
+            uint32_t matmulBufIdx = 0;
+            for (uint32_t mPos = myMStart_; mPos < myMEnd_; mPos += TILE_M) {
+                uint32_t curTileM = (mPos + TILE_M > myMEnd_) ? (myMEnd_ - mPos) : TILE_M;
+                uint64_t offset = static_cast<uint64_t>(mPos) * context_.N + nPos;
+                ProcessMTile(offset, curTileM, curTileN, bias, matmulBufIdx);
+                matmulBufIdx ^= 1;  // pingpong
+            }
+
+            biasBufIdx = nextBiasBufIdx;
         }
     }
 };
@@ -301,12 +358,16 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
 {
     if (static_cast<uint32_t>(GetBlockIdx()) >= usedCoreNum_) return;
 
-    uint32_t biasBufIdx = 0;
-    LoadBiasTile(nTileStart_, biasBufIdx);
-    for (uint32_t n = nTileStart_; n < nTileEnd_; n++) {
-        uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
-        ProcessNTile(n, biasBufIdx, nextBiasBufIdx);
-        biasBufIdx = nextBiasBufIdx;
+    if constexpr (MODE == SplitMode::MN_SPLIT) {
+        uint32_t biasBufIdx = 0;
+        LoadBiasTile(nTileStart_, biasBufIdx);
+        for (uint32_t n = nTileStart_; n < nTileEnd_; n++) {
+            uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
+            ProcessNTile(n, biasBufIdx, nextBiasBufIdx);
+            biasBufIdx = nextBiasBufIdx;
+        }
+    } else {
+        ProcessRange();
     }
 }
 
