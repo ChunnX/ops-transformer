@@ -35,9 +35,9 @@
 
 #pragma once
 
+#include "include/tensor_api/tensor.h"
 #include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
-#include "include/tensor_api/tensor.h"
 #include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"

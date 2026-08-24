@@ -24,9 +24,9 @@
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
      ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_hcomm_impl.h"
 #include "all_gather_quant_bmm.h"
 #include "all_gather_quant_bmm_perblock.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_hcomm_impl.h"
 #endif
 
 using namespace Mc2Tiling;
