@@ -131,7 +131,9 @@ protected:
             tailN_ = context_.N - static_cast<uint64_t>(tileNCnt_ - 1) * TILE_N;
             uint64_t total64 = static_cast<uint64_t>(tileMCnt_) * static_cast<uint64_t>(tileNCnt_);
             uint32_t total = static_cast<uint32_t>(total64);
-            if (total < usedCoreNum_) usedCoreNum_ = total;
+            if (total < usedCoreNum_) {
+                usedCoreNum_ = total;
+            }
             uint32_t per = Ceil(total, usedCoreNum_);
             myTileStart_ = static_cast<uint32_t>(GetBlockIdx()) * per;
             myTileEnd_ = (myTileStart_ + per > total) ? total : myTileStart_ + per;
@@ -335,7 +337,9 @@ protected:
         uint32_t matmulBufIdx = 0;
         for (uint64_t i = 0; i < mr.count; i++) {
             uint32_t mTile = static_cast<uint32_t>(i * mr.step + mr.start);
-            if (mTile >= tileMCnt_) break;
+            if (mTile >= tileMCnt_) {
+                break;
+            }
             uint32_t curTileM = TileSize(mTile, tileMCnt_, tailM_, TILE_M);
             uint64_t offset = static_cast<uint64_t>(mTile) * TILE_M * context_.N +
                               static_cast<uint64_t>(nTile) * TILE_N;
@@ -348,9 +352,6 @@ protected:
 
     __aicore__ inline void ProcessRange()
     {
-        if (static_cast<uint32_t>(GetBlockIdx()) >= usedCoreNum_) return;
-        if (myMStart_ >= myMEnd_ || myNStart_ >= myNEnd_) return;
-
         uint32_t biasBufIdx = 0;
         uint32_t firstN = (myNEnd_ - myNStart_ < TILE_N) ? (myNEnd_ - myNStart_) : TILE_N;
         LoadBias(myNStart_, firstN, biasBufIdx);
@@ -426,6 +427,14 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
         tPipe_->InitBuffer(biasFp32Buf_, static_cast<uint32_t>(
             static_cast<uint64_t>(TILE_N) * sizeof(float)));
     }
+}
+
+template <typename MatmulDataType, typename BiasDataType, uint32_t SplitModeVal>
+__aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>::Process()
+{
+    if (static_cast<uint32_t>(GetBlockIdx()) >= usedCoreNum_) {
+        return;
+    }
 
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
         copyInEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
@@ -434,29 +443,23 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
         biasInEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutEvent_[i]);
     }
-}
-
-template <typename MatmulDataType, typename BiasDataType, uint32_t SplitModeVal>
-__aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>::Process()
-{
-    if (static_cast<uint32_t>(GetBlockIdx()) >= usedCoreNum_) return;
 
     if constexpr (MODE == SplitMode::MN_SPLIT) {
-        uint32_t biasBufIdx = 0;
-        LoadBiasTile(nTileStart_, biasBufIdx);
-        for (uint32_t n = nTileStart_; n < nTileEnd_; n++) {
-            uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
-            ProcessNTile(n, biasBufIdx, nextBiasBufIdx);
-            biasBufIdx = nextBiasBufIdx;
+        if (nTileStart_ < nTileEnd_) {
+            uint32_t biasBufIdx = 0;
+            LoadBiasTile(nTileStart_, biasBufIdx);
+            for (uint32_t n = nTileStart_; n < nTileEnd_; n++) {
+                uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
+                ProcessNTile(n, biasBufIdx, nextBiasBufIdx);
+                biasBufIdx = nextBiasBufIdx;
+            }
         }
     } else {
-        ProcessRange();
+        if (myMStart_ < myMEnd_ && myNStart_ < myNEnd_) {
+            ProcessRange();
+        }
     }
-}
 
-template <typename MatmulDataType, typename BiasDataType, uint32_t SplitModeVal>
-__aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>::Destroy()
-{
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutEvent_[i]);
         tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent_[i]);
@@ -465,6 +468,9 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
         tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(biasInEvent_[i]);
     }
 }
+
+template <typename MatmulDataType, typename BiasDataType, uint32_t SplitModeVal>
+__aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>::Destroy() {}
 
 #ifndef DEFINE_MC2_ADD_BIAS_FOR_MATH_COMPUTATION
 #define DEFINE_MC2_ADD_BIAS_FOR_MATH_COMPUTATION(MatmulDataType, BiasDataType, SplitModeVal, AddBiasType) \

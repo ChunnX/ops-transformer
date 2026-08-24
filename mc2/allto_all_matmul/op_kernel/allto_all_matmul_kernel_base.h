@@ -45,7 +45,6 @@ private:
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
-
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool SEP_BIAS>
 __aicore__ inline void
     AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingDataType, SEP_BIAS>::Init(
