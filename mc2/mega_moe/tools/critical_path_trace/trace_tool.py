@@ -81,7 +81,7 @@ EVENT_TRACE_POINTS = {
     ),
     7: (
         "ProcessMoeExpertStages：调用 RunGmm2CombineForExpert 前",
-        "RunGmm2CombineForExpert 返回后的 Combine 完成边界",
+        "RunGmm2CombineForExpert 返回并完成 Combine 发送的 MTE3_S 后",
     ),
     8: (
         "GMM1 AIC：进入 WaitForGmm1InputReady 前",

@@ -338,10 +338,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                         sliceTokenStartIndexInExpert, sliceTokenCount, waitTraceContextPtr);
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
                 if constexpr (g_coreType == AIV) {
-                    if (GetSubBlockIdx() == 0U) {
-                        // GMM2 prologue 通过 MTE3 写 L1，读取 Scalar 时间戳前先等待写入真正完成。
-                        SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID0>();
-                    }
+                    // AIV0 prologue 通过 MTE3 写 L1，AIV1 Combine 通过 MTE3 发送结果；读取 Scalar
+                    // 时间戳前等待对应搬运真正完成，避免阶段时长只包含异步指令的下发时间。
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID0>();
                 }
                 trace_.Record(stageEvent, waveIndex, gmm2State.expertIdx, sliceTokenStartIndexInExpert, sliceTokenCount,
                               Ops::Base::CeilDiv(sliceTokenCount, GMM1_TILE_M), stageBegin, A4W4WaveTrace::Now());

@@ -184,7 +184,7 @@ GMM/Activation/Combine 事件按 Wave 内的专家 token 切片记录。Dispatch
 - AIV1 Dispatch/Combine 和 AIV0 Activation 复用各阶段已有的完成发布边界；
 - generic AIV0 的 C/V 等待在 begin 前和 wait 后各增加一次 trace-only `V_S`，使 Scalar 时间戳对应
   PIPE_V 真正进入并退出等待的边界；
-- AIV0 GMM2 prologue 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
+- AIV0 GMM2 prologue 与 AIV1 Combine 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
 
 ## 4. 当前有意保留的限制
 
