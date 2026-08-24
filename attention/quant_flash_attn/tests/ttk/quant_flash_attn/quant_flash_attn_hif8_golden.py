@@ -362,11 +362,10 @@ def _compute_s_block(Qi, Kj, deq_scale_q, deq_scale_k, softmax_scale, Qri=None, 
     return S_ij * softmax_scale
 
 
-def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2, INV_LN2):
+def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
-    m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
     m_block_j = torch.max(mi, m_block_j)
     m_block_j_copy = m_block_j - ln_p_scale
 
@@ -395,8 +394,6 @@ def cpu_hif8_golden(
     HIF8: S1=128, S2=256, 每轮 C1V1 处理 1 个 K block (256) + 1 个 V block (256)
     """
     EPSILON = 1e-20
-    LN2 = 0.6931471824645996
-    INV_LN2 = 1.4426950216293335
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 256
@@ -482,7 +479,7 @@ def cpu_hif8_golden(
             )
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
-                S_ij, mask_j, mi, si, oi, ln_p_scale, LN2, INV_LN2
+                S_ij, mask_j, mi, si, oi, ln_p_scale
             )
 
             Vj = V_BLOCKS[j]
