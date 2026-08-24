@@ -50,6 +50,7 @@ private:
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::DispatchMoeExpert;
     using MegaMoeBase::exceptionDump_;
+    using MegaMoeBase::gmmLoopCount_;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
