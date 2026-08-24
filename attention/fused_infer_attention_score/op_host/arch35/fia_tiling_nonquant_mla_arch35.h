@@ -59,7 +59,8 @@ class FiaTilingNonQuantMlaArch35 : public FiaTilingBase {
 public:
     explicit FiaTilingNonQuantMlaArch35(gert::TilingContext *context)
         : FiaTilingBase(context)
-    {}
+    {
+    }
     ~FiaTilingNonQuantMlaArch35() override = default;
 
 protected:
@@ -90,7 +91,6 @@ private:
     void InitImplParam();
     int64_t GetActSeqLenMla(const gert::Tensor *tensor, uint32_t dims, FiaLayout layout, uint32_t bIdx);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
-    bool IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
     void PrintAllTilingData();
@@ -111,7 +111,6 @@ private:
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;
-    bool isRowInvalidOpenAuto_ = false;
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
     uint64_t tilingKey_ = 0;

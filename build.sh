@@ -798,10 +798,6 @@ function collect_rpm_deb_package() {
 }
 
 function build_package(){
-    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
-        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
-        return 0
-    fi
     if [[ "${PACKAGE_TYPE}" == "all" ]]; then
         local saved_pkg_type="${PACKAGE_TYPE}"
         local option=""
@@ -831,10 +827,6 @@ function build_host(){
 }
 
 function build_kernel(){
-    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
-        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
-        return 0
-    fi
     build ops_transformer_kernel
 }
 

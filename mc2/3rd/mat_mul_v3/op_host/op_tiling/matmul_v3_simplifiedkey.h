@@ -66,7 +66,7 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
         .append(std::to_string(outputDataType));
     errno_t err = strcat_s(simplifiedKey, DEST_MAX, simpleKeyTemp.c_str());
     if (err != 0) {
-        OP_LOGE(context->GetNodeName(), "strcat_s failed with error code %d.", err);
+        std::cerr << "Error: strcat_s failed with error code " << err << std::endl;
         return ge::GRAPH_FAILED;
     }
 
