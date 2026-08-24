@@ -788,6 +788,16 @@ public:
                                                        const at::Tensor &sendCounts, const at::Tensor &recvCounts,
                                                        const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
 
+    // Stateless static method for training backward (graph-mode compatible).
+    // Outputs: gradUnique [maxR, H], uniqueLocalEntry [maxR], numUnique [1] (NOT narrowed).
+    // Caller is responsible for narrowing by numUnique.item() outside the graph.
+    using EngramFetchGradOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
+    static EngramFetchGradOutput EngramFetchGrad(const at::Tensor &context, const at::Tensor &gradFetched,
+                                                 const at::Tensor &perm, const at::Tensor &sendCounts,
+                                                 const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+                                                 const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
+                                                 int64_t numMaxTokensPerRank, int64_t rankSize);
+
     bool IsWithGrad() const { return withGrad_; }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
@@ -1066,6 +1076,29 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tens
         uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
     }
     return {gradUnique, uniqueLocalEntry};
+}
+
+// EngramFetchGrad - stateless static method for training backward (graph-mode compatible).
+ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
+    const at::Tensor &context, const at::Tensor &gradFetched, const at::Tensor &perm, const at::Tensor &sendCounts,
+    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry, const at::Tensor &numRecv, int64_t numEntries,
+    int64_t commBufferSize, int64_t numMaxTokensPerRank, int64_t rankSize)
+{
+    int64_t hidden = gradFetched.size(1);
+    TORCH_CHECK(rankSize > 0 && numMaxTokensPerRank <= INT64_MAX / rankSize,
+                "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
+                ", rankSize=", rankSize);
+    int64_t maxR = numMaxTokensPerRank * rankSize;
+
+    auto gradUnique =
+        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+
+    ACLNN_CMD(aclnnEngramFetchGrad, context, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
+              gradUnique, uniqueLocalEntry, numUnique, numEntries, commBufferSize);
+
+    return std::make_tuple(gradUnique, uniqueLocalEntry, numUnique);
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -1371,10 +1404,24 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                     pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
-        .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad, pybind11::arg("gradFetched").noconvert(),
-             pybind11::arg("perm").noconvert(), pybind11::arg("sendCounts").noconvert(),
-             pybind11::arg("recvCounts").noconvert(), pybind11::arg("recvLocalEntry").noconvert(),
-             pybind11::arg("numRecv").noconvert())
+        .def("engram_fetch_grad",
+             static_cast<std::tuple<at::Tensor, at::Tensor> (Mc2Api::ElasticBuffer::*)(
+                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
+                 const at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetchGrad),
+             pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
+             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
+             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert())
+        .def_static(
+            "engram_fetch_grad_op",
+            static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
+                const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
+                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, int64_t)>(
+                &Mc2Api::ElasticBuffer::EngramFetchGrad),
+            pybind11::arg("context"), pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
+            pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
+            pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert(),
+            pybind11::arg("numEntries"), pybind11::arg("commBufferSize"), pybind11::arg("numMaxTokensPerRank"),
+            pybind11::arg("rankSize"))
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
