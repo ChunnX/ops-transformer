@@ -57,7 +57,6 @@ private:
     Tensor *metadata_ = nullptr;
 
     // input attr
-    int32_t batchSize_ = 0;
     int32_t maxSeqlenQ_ = -1;
     int32_t maxSeqlenKv_ = -1;
     int32_t numHeadsQ_ = 0;
@@ -66,8 +65,6 @@ private:
     int32_t headDimV_ = 0;
     int32_t maskMode_ = 0;
     std::string layoutQ_ = "BSND";
-    std::string layoutKv_ = "BSND";
-    std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U; // 36: default aic num
     int32_t aivCoreNum_ = 72U; // 72: default aiv num

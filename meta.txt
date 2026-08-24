@@ -1,0 +1,19 @@
+flash_mla_with_kvcache_metadata (aclnnFlashMlaWithKvcacheMetadata)
+
+inputs:
+cache_seqlens -> tensor (必传 required, int32 1D (batch_size,); batch_size 由该张量长度 size(0) 推导)
+cu_seqlens_q -> tensor (optional, int32 1D (batch_size+1,), layout_q=TND 时必传)
+seqused_q -> tensor (optional, int32 1D (batch_size,))
+
+参数:
+max_seqlen_q -> int64 (>=0 或 -1)
+max_seqlen_kv -> int64 (>=0 或 -1；与 cache_seqlens 至少提供一个)
+num_heads_q -> int64 (>0)
+num_heads_kv -> int64 (=1, MLA 硬约束)
+head_dim_qk -> int64 (=576, 默认576, qk nope+rope 总宽; MLA 硬约束)
+head_dim_v -> int64 (=512, 默认512, value 宽; MLA 硬约束)
+mask_mode -> int64 ({0,3}: 0=无 mask, 3=causal)
+layout_q -> string (="BSND")
+
+output:
+metadata -> tensor

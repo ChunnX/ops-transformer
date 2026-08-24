@@ -494,11 +494,12 @@ int main()
         }
         uint64_t wsSize = 0;
         aclOpExecutor *executor = nullptr;
-        // 17 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, batchSize, maxSeqlenQ, maxSeqlenKv,
-        // numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut, metaData...)
+        // 14 参契约 (cuSeqlensQ, cacheSeqlens, sequsedQ, maxSeqlenQ, maxSeqlenKv,
+        // numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ, metaData...)
+        // layout_kv/layout_out 已从 metadata 算子删除；batch 由必传的 cacheSeqlens 长度推导；
         // headDimQk=576（q/k_cache 最后维：nope 512 + rope 64）；headDimV=512。
-        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.batch, cs.qLens[0], cs.kvLen,
-                                                               cs.numHeadsQ, 1, 576, 512, 3, layoutQ, layoutKv, layoutOut, metaT,
+        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTM, seqKvTM, nullptr, cs.qLens[0], cs.kvLen,
+                                                               cs.numHeadsQ, 1, 576, 512, 3, layoutQ, metaT,
                                                                &wsSize, &executor);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
             LOG_PRINT("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize failed: %d\n", ret);

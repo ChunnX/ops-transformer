@@ -1,4 +1,4 @@
-# flash\_mla\_with\_kvcache
+# flash_mla_with_kvcache
 
 ## 产品支持情况
 
@@ -59,7 +59,7 @@
 
 > [!NOTE]
 >
-> 本接口仅支持有限布局组合（R1）：`layout_q="TND"` + `layout_kv="NZ"`（PA_NZ）+ `layout_out="NTD"`，且`num_heads_kv==1`（单latent KV头）。其中B（Batch）表示输入样本批量大小、Q_T表示所有query batch序列长度的累加和、Q_N表示heads_q、D表示头维（nope部分512，整体576含rope64）。
+> query（q）支持TND、BNSD、BSND三种布局；KV缓存（k_cache）仅支持Paged Attention（PA）分页布局（PA_NZ、PA_BBND、PA_BNBD），不支持连续KV；输出（attn_out）与q保持相同布局，不支持转置。其中B（Batch）表示输入样本批量大小、Q_S表示seqlen_q、Q_N表示heads_q、Q_T表示所有query batch序列长度的累加和、D表示头维（nope部分512，整体576含rope64）。
 
 ## 函数原型
 
@@ -67,20 +67,17 @@
 
 ```python
 cann_ops_transformer.flash_mla_with_kvcache_metadata(
-    batch_size=None,
-    max_seqlen_q=None,
-    max_seqlen_kv=None,
+    cache_seqlens,
     num_heads_q,
     num_heads_kv,
-    head_dim,
-    mask_mode=None,
-    layout_q=None,
-    layout_kv=None,
-    layout_out=None,
-    *,
     cu_seqlens_q=None,
-    cache_seqlens=None,
-    seqused_q=None
+    seqused_q=None,
+    max_seqlen_q=None,
+    max_seqlen_kv=None,
+    head_dim_qk=576,
+    head_dim_v=512,
+    mask_mode=None,
+    layout_q="BSND",
 ) -> Tensor
 ```
 
@@ -101,7 +98,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
     max_seqlen_kv=-1,
     layout_q="TND",
     layout_kv="NZ",
-    layout_out="NTD",
+    layout_out=None,
     return_softmax_lse=False
 ) -> (Tensor, Tensor)
 ```
@@ -112,40 +109,38 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导 | int32 | - | - |
-| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
-| max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
+| cache_seqlens | Tensor | 必选 | 每batch的KV缓存实际长度（seqused_kv语义），batch大小由它的长度推导，不再单独传batch_size | int32 | ND | (B,) |
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数，MLA场景固定为1 | int32 | - | - |
-| head_dim | int | 必选 | 每个注意力头的维度（qk nope部分，512） | int32 | - | - |
-| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3，取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
-| layout_q | string | 可选 | 定义输入q张量的布局格式，仅支持"TND" | string | - | - |
-| layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持"NZ" | string | - | - |
-| layout_out | string | 可选 | 定义输出张量的布局格式，仅支持"NTD" | string | - | - |
 | cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) |
-| cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
+| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
+| max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
+| head_dim_qk | int | 可选 | 每个注意力头的qk维度（nope 512 + rope 64，默认576） | int32 | - | - |
+| head_dim_v | int | 可选 | value（输出）宽度，默认512 | int32 | - | - |
+| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3），其余取值将被拒绝 | int32 | - | - |
+| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"TND"/"BNSD"/"BSND"，默认为"BSND" | string | - | - |
 
 ### flash_mla_with_kvcache
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| q | Tensor | 必选 | 公式中的q（含RoPE，最后64维为rope） | bfloat16/float16 | ND | (Q_T, Q_N, 576) |
-| k_cache | Tensor | 必选 | 共享KV缓存（Key与Value同一份输入，最后64维为rope） | bfloat16/float16 | ND | (num_blocks, 1, D//16, block_size, 16)、即PA_NZ布局，(num_blocks, 1, 块, 576) |
-| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, max_num_blocks_per_seq) |
+| q | Tensor | 必选 | 公式中的q（含RoPE，最后64维为rope） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, 576)</li><li>BNSD -> (B, Q_N, Q_S, 576)</li><li>BSND -> (B, Q_S, Q_N, 576)</li></ul> |
+| k_cache | Tensor | 必选 | 共享KV缓存（Key与Value同一份输入，最后64维为rope），仅支持Paged Attention（PA）分页布局 | bfloat16/float16 | ND | <ul><li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li><li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li><li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li></ul> |
+| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射，k_cache为PA分页布局时必须传入 | int32 | ND | (B, max_num_blocks_per_seq) |
 | cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) |
 | cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0；layout_q为TND时必传 | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
-| attn_mask | Tensor | 可选 | 掩码矩阵（RIGHT_DOWN模式下配合使用） | int8 | ND | (2048, 2048) |
+| attn_mask | Tensor | 可选 | 掩码矩阵（mask_mode为3时必传） | int8 | ND | (2048, 2048) |
 | metadata | Tensor | 可选 | `flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
-| head_dim_v | int | 可选 | nope（value）部分宽度，恒为512（=576−64，即 k_cache 最后维减去 rope 宽度）；传入其它值将被拒绝 | int32 | - | - |
+| head_dim_v | int | 可选 | nope（value）部分宽度，仅支持512 | int32 | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
-| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3，取值与fused_infer_attention_score的sparse_mode约定一致），其余取值将被拒绝 | int32 | - | - |
+| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3），其余取值将被拒绝 | int32 | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
-| layout_q | string | 可选 | 定义输入q张量的布局格式，仅支持"TND" | string | - | - |
-| layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持"NZ" | string | - | - |
-| layout_out | string | 可选 | 定义输出张量的布局格式，仅支持"NTD" | string | - | - |
+| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"TND"/"BNSD"/"BSND" | string | - | - |
+| layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持PA分页布局"NZ"/"PA_BBND"/"PA_BNBD" | string | - | - |
+| layout_out | string | 可选 | 定义输出张量的布局格式，必须与layout_q保持一致，不支持转置 | string | - | - |
 | return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - |
 
 ## 返回值说明
@@ -160,22 +155,25 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出 | bfloat16/float16 | ND | layout_out为"NTD"（默认）时：(Q_N, Q_T, D)；layout_out为"TND"时：(Q_T, Q_N, D)。D=head_dim_v |
-| softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | (Q_N, Q_T) |
+| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出，布局与q保持一致（不支持转置） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, D)</li><li>BNSD -> (B, Q_N, Q_S, D)</li><li>BSND -> (B, Q_S, Q_N, D)</li></ul>D=head_dim_v |
+| softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | <ul><li>TND -> (Q_N, Q_T)</li><li>BNSD/BSND -> (B, Q_N, Q_S)</li></ul> |
 
 **说明**
 
-- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度0/1由layout_out决定：NTD为(Q_N, Q_T)，TND为(Q_T, Q_N)（NTD语义与fused_infer_attention_score的outLayout="NTD"一致）。
-- softmax_lse：return_softmax_lse为True时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为False时，则输出shape为[1]的值为0的Tensor。
+- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度排布与layout_q保持一致，不支持转置。
+- softmax_lse：return_softmax_lse为True时，layout_q为TND输出shape为(Q_N, Q_T)，layout_q为BNSD/BSND时输出shape为(B, Q_N, Q_S)；return_softmax_lse为False时，则输出shape为[1]的值为0的Tensor。
 
 ## 约束说明
 
 - 参数cu_seqlens_q、cache_seqlens、seqused_q、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - flash_mla_with_kvcache_metadata和flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - metadata由`flash_mla_with_kvcache_metadata`生成后原样传入`flash_mla_with_kvcache`；用户自建过小的metadata缓冲区将被容量校验拒绝。
-- 本接口的布局路由（R1）限定为：`layout_q="TND"`（需传cu_seqlens_q）、`layout_kv="NZ"`（PA_NZ，需传block_table）、`layout_out="NTD"`；其余布局组合（BSND/BNSD查询、连续KV、非NTD输出等）一律由算子校验拒绝。
-- `num_heads_kv`必须为1（单latent KV头）；`head_dim_v`必须为512；`q`与`k_cache`最后维必须为576（= head_dim_v 512 + rope 64），不允许512宽输入。
-- 掩码仅支持NO_MASK与RIGHT_DOWN（右下三角/因果类）两种模式，其余mask_mode取值将被拒绝。
+- layout_q支持TND、BNSD、BSND三种布局；layout_out必须与layout_q保持一致，不支持转置（layout_out与layout_q不一致将被校验拒绝）。
+- **KV缓存仅支持Paged Attention（PA）分页布局**：layout_kv仅支持"NZ"（PA_NZ）、"PA_BBND"、"PA_BNBD"，且必须传入`block_table`；不支持连续KV布局，其余布局一律由算子校验拒绝。
+- **q与k_cache的最后维（D）必须为576**（= head_dim_v 512 + rope 64），不允许512宽输入。
+- **head_dim_v必须为512**（nope/value部分宽度，即 k_cache 最后维576减去rope宽度64）；传入其它值将被拒绝。
+- `num_heads_kv`必须为1（单latent KV头）。
+- 掩码仅支持NO_MASK（0）与RIGHT_DOWN（3，右下三角/因果类）两种模式，其余mask_mode取值将被拒绝；具体约束与flash_attn一致（mask_mode为0时不支持传入attn_mask，mask_mode为3时必须传入attn_mask矩阵）。
 - 空Tensor（必有输入的任一轴shape为0）将被全部拦截报错。
 
 ### 特性参数组
@@ -189,7 +187,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_out      | ATTR(OPTIONAL) |   string   |
-|                      |      metadata        |      INPUT(OPTIONAL)      | Tensor   |
+|                      |        metadata        |      INPUT(OPTIONAL)      | Tensor   |
 |                      |     attn_out     |     OUTPUT     |   Tensor   |
 |      Mask参数组      |       mask_mode       | ATTR(OPTIONAL) |   int   |
 |                      |      attn_mask      | INPUT(OPTIONAL) |   Tensor   |
@@ -210,12 +208,431 @@ cann_ops_transformer.flash_mla_with_kvcache(
 | :---------: | :---------------------------------------------------------: |
 |      B      |                Batch,表示输入样本批量大小                |
 |     Q_N     |        输入q tensor的头数，对应q shape中的N        |
-|     Q_T     |          输入q tensor所有batch序列长度的累加和          |
+|     Q_S     |        输入q tensor的序列长度，对应q shape中的S（layout_q为BNSD/BSND时）        |
+|     Q_T     |          输入q tensor所有batch序列长度的累加和（layout_q为TND时）          |
 |     D     |          输出attn_out隐藏层最小的单元尺寸headdim（=head_dim_v=512）         |
+
+### 参数组约束
+
+#### 公共参数组
+
+- 入参为空的场景处理：
+  - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
+  - 触发空tensor的用例将全部拦截报错。
+
+- q、k_cache、attn_out校验:
+
+    <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+    <col style="width: 147px">
+    <col style="width: 232px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>一致性校验</th>
+    <th>特性交叉校验</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>q</td>
+        <td>
+            <ul>
+                <li>tensor_type支持bfloat16和float16</li>
+                <li>TND -> (Q_T, Q_N, 576)</li>
+                <li>BNSD -> (B, N_Q, S_Q, 576)</li>
+                <li>BSND -> (B, S_Q, N_Q, 576)</li>
+                <li>最后维（D）必须为576（head_dim_v 512 + rope 64），不允许512宽输入</li>
+            </ul>
+        </td>
+        <td rowspan="3">
+            必须存在
+        </td>
+        <td rowspan="3">
+            <ul>
+                <li>q、k_cache、attn_out的数据类型需相同</li>
+                <li>q与k_cache的最后维（D）必须相等，且必须为576</li>
+                <li>layout_out必须与layout_q保持一致，不支持转置</li>
+                <li>Layout校验规则见layout匹配关系表</li>
+            </ul>
+        </td>
+        <td rowspan="3">
+            轴校验：
+            <ul>
+                <li>65536 > B > 0</li>
+                <li>Q_T > 0</li>
+                <li>Q_N > 0</li>
+                <li>Q_S > 0</li>
+                <li>num_heads_kv必须为1（单latent KV头）</li>
+                <li>q与k_cache的D必须为576</li>
+                <li>head_dim_v必须为512</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>k_cache</td>
+        <td>
+            <ul>
+                <li>tensor_type支持bfloat16和float16</li>
+                <li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)，D=576</li>
+                <li>PA_BBND -> (num_blocks, block_size, KV_N, D)，D=576</li>
+                <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)，D=576</li>
+                <li>仅支持Paged Attention（PA）分页缓存布局，不支持连续KV布局</li>
+                <li>KV_N恒为1（单latent KV头）</li>
+                <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                <li>非连续Tensor约束：
+                    <ul>
+                        <li>PA_BBND：仅dim0支持非连续</li>
+                        <li>PA_BNBD/PA_NZ：dim0或dim1支持非连续</li>
+                    </ul>
+                </li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>attn_out</td>
+        <td>
+            <ul>
+                <li>data_type支持bfloat16和float16</li>
+                <li>shape维度支持3、4</li>
+                <li>输出D与head_dim_v保持一致（512）</li>
+            </ul>
+        </td>
+    </tr>
+    </tbody>
+    </table>
+
+- layout匹配关系表：
+
+    <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 232px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>layout_q</th>
+        <th>layout_kv</th>
+        <th>layout_out</th>
+        <th>layout_softmax_lse</th>
+    </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>TND</td>
+            <td rowspan="3">
+            <li>PA_NZ（"NZ"）</li>
+            <li>PA_BBND</li>
+            <li>PA_BNBD</li>
+            </td>
+            <td>TND</td>
+            <td>(Q_N, Q_T)</td>
+        </tr>
+        <tr>
+            <td>BNSD</td>
+            <td>BNSD</td>
+            <td>(B, Q_N, Q_S)</td>
+        </tr>
+        <tr>
+            <td>BSND</td>
+            <td>BSND</td>
+            <td>(B, Q_N, Q_S)</td>
+        </tr>
+    </tbody>
+    </table>
+
+- metadata校验:
+
+    <table style="undefined;table-layout: fixed; width:1625px">
+        <colgroup>
+            <col style="width: 147px">
+            <col style="width: 232px">
+            <col style="width: 232px">
+            <col style="width: 293px">
+            <col style="width: 185px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>参数</th>
+                <th>单参数校验</th>
+                <th>存在性校验</th>
+                <th>一致性校验</th>
+                <th>特性交叉校验</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>metadata</td>
+                <td>
+                    <ul>
+                        <li>tensor_type仅支持int32</li>
+                        <li>shape由flash_mla_with_kvcache_metadata动态计算</li>
+                        <li>容量上界为((36+72)×batch_size×1+1)×16，对齐4096</li>
+                    </ul>
+                </td>
+                <td>可选参数，不传入时不启用负载均衡调度优化</td>
+                <td>无</td>
+                <td>传入时需与flash_mla_with_kvcache_metadata生成的结果一致，用户自建过小的metadata缓冲区将被容量校验拒绝</td>
+            </tr>
+        </tbody>
+    </table>
+
+#### Mask参数组
+
+mask_mode参数解释，具体约束与flash_attn一致
+<ul>
+    <li>mask_mode=0，NO_MASK模式（全计算，默认值）</li>
+    <li>mask_mode=3，RIGHT_DOWN模式（右下三角/因果类）</li>
+</ul>
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>mask_mode</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>仅支持0（NO_MASK）与3（RIGHT_DOWN）两种取值，默认值为0，其余取值将被拒绝</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为0
+            </td>
+            <td rowspan="2">
+                <ul>
+                    <li>当mask_mode为0时，不支持传入attn_mask</li>
+                    <li>当mask_mode为3时，必须传入attn_mask矩阵</li>
+                </ul>
+            </td>
+            <td rowspan="2">
+                <ul>
+                    <li>无</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>attn_mask</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持int8</li>
+                    <li>tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048的下三角矩阵对角线全0</li>
+                </ul>
+            </td>
+            <td>
+                当mask_mode为3时必传
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+#### SeqLengths参数组
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>seqused_q</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持int32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>seqused_q中的值需小于等于max_seqlen_q</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td rowspan="4">无</td>
+            <td rowspan="4">无</td>
+        </tr>
+        <tr>
+            <td>cache_seqlens</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持int32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>表示每batch的KV缓存实际长度（seqused_kv语义）</li>
+                    <li>cache_seqlens中的值需小于等于max_seqlen_kv</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_q</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持int32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列</li>
+                    <li>第一个元素为0且最后一个元素等于Q_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
+                    <li>当layout_q不为TND时，cu_seqlens_q不支持传入</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>max_seqlen_q</td>
+            <td rowspan="2">
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>默认值为-1</li>
+                </ul>
+            </td>
+            <td rowspan="2">
+                <ul>
+                    <li>可选参数</li>
+                </ul>
+            </td>
+            <td rowspan="2">
+                <ul>
+                    <li>值必须大于等于-1；传入时必须等于实际的最大序列长度，否则行为未定义</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>max_seqlen_kv</td>
+        </tr>
+    </tbody>
+</table>
+
+#### Paged Attention参数组
+
+KV缓存仅支持Paged Attention（PA）分页布局，block_table不为空时开启Paged Attention。
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>block_table</td>
+            <td>
+                <ul>
+                    <li>tensor_type仅支持int32</li>
+                    <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
+                    <li>值只能为正整数</li>
+                    <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>k_cache仅支持Paged Attention（PA）分页缓存布局（PA_NZ/PA_BBND/PA_BNBD），不支持连续KV布局</li>
+                    <li>k_cache为PA分页布局时，block_table必须不为空</li>
+                </ul>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+#### SoftmaxLSE参数组
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>return_softmax_lse</td>
+            <td>
+                <ul>
+                    <li>data_type仅支持BOOL</li>
+                    <li>值仅支持True和False，True代表开启softmax_lse，False代表关闭softmax_lse</li>
+                </ul>
+            </td>
+            <td>可选属性，默认值为False</td>
+            <td rowspan="2">
+                <ul>
+                    <li>当return_softmax_lse为False时，输出shape为[1]的值为0的Tensor</li>
+                    <li>当return_softmax_lse为True时，输出shape见layout匹配关系表</li>
+                </ul>
+            </td>
+            <td>无</td>
+        </tr>
+        <tr>
+            <td>softmax_lse</td>
+            <td>
+                <ul>
+                    <li>data_type仅支持float32</li>
+                </ul>
+            </td>
+            <td>无</td>
+            <td>无</td>
+        </tr>
+    </tbody>
+</table>
 
 ## 调用示例
 
-- flash_mla_with_kvcache_metadata + flash_mla_with_kvcache联合调用示例（TND / PA_NZ / NTD，RIGHT_DOWN掩码）
+- flash_mla_with_kvcache_metadata + flash_mla_with_kvcache联合调用示例（TND / PA_NZ / TND，RIGHT_DOWN掩码）
 
     ```python
     import torch
@@ -242,20 +659,20 @@ cann_ops_transformer.flash_mla_with_kvcache(
     cu_seqlens_q = torch.tensor([0, 4, 8], dtype=torch.int32, device="npu")
     cache_seqlens = torch.tensor([8, 8], dtype=torch.int32, device="npu")
     block_table = torch.zeros(B, 2, dtype=torch.int32, device="npu")
+    # mask_mode=3（RIGHT_DOWN/因果）时必须传入 attn_mask：2048*2048 下三角矩阵，对角线全0
+    attn_mask = torch.tril(torch.ones(2048, 2048, dtype=torch.int8, device="npu"))
+    attn_mask = attn_mask.fill_diagonal_(0)
 
     metadata = cann_ops_transformer.ops.flash_mla_with_kvcache_metadata(
-        batch_size=B,
-        max_seqlen_q=S,
-        max_seqlen_kv=S,
+        cache_seqlens=cache_seqlens,
         num_heads_q=Q_N,
         num_heads_kv=KV_N,
-        head_dim=HEAD_DIM_NOPE,
-        mask_mode=3,  # RIGHT_DOWN/因果（与 fused_infer_attention_score 的 sparse_mode 约定一致）
-        layout_q="TND",
-        layout_kv="NZ",
-        layout_out="NTD",
         cu_seqlens_q=cu_seqlens_q,
-        cache_seqlens=cache_seqlens,
+        max_seqlen_q=S,
+        max_seqlen_kv=S,
+        head_dim_qk=HEAD_DIM_NOPE,
+        mask_mode=3,  # RIGHT_DOWN/因果
+        layout_q="TND",
     )
 
     attn_out, softmax_lse = cann_ops_transformer.ops.flash_mla_with_kvcache(
@@ -264,6 +681,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
         block_table=block_table,
         cache_seqlens=cache_seqlens,
         cu_seqlens_q=cu_seqlens_q,
+        attn_mask=attn_mask,
         metadata=metadata,
         head_dim_v=HEAD_DIM_NOPE,
         softmax_scale=1.0 / (HEAD_DIM_NOPE ** 0.5),
@@ -272,11 +690,11 @@ cann_ops_transformer.flash_mla_with_kvcache(
         max_seqlen_kv=S,
         layout_q="TND",
         layout_kv="NZ",
-        layout_out="NTD",
+        layout_out="TND",
         return_softmax_lse=False,
     )
     torch_npu.npu.synchronize()
-    assert attn_out.shape == (Q_N, Q_T, HEAD_DIM_NOPE)
+    assert attn_out.shape == (Q_T, Q_N, HEAD_DIM_NOPE)
     assert attn_out.dtype == q.dtype
     assert torch.isfinite(attn_out.float()).all().item()
     ```

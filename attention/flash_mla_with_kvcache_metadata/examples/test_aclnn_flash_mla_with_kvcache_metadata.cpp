@@ -155,8 +155,8 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     uint64_t workspaceSize = 0;
     void *workspaceAddr = nullptr;
     if (isMla) {
-        r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
-                                                             headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut, metaT,
+        r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
+                                                             headDimQk, headDimV, maskMode, layoutQ, metaT,
                                                              &workspaceSize, &executor);
     } else {
         // flash_attn_metadata 侧仍为克隆前的旧签名，语义等价映射：cuSeqlensQ 槽=cuT、
@@ -442,10 +442,10 @@ static int RunNegativeRuntimeOnly()
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
-ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
-                                                               17, 1, 576, 512,
-                                                               3, "TND", "PA_NZ", "TND", metaT, &ws,
-                                                               &executor);
+            ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, 8, 32768,
+                                                                   17, 1, 576, 512,
+                                                                   3, "TND", metaT, &ws,
+                                                                   &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
             if (ret == 0) {
                 void *wsAddr = nullptr;
@@ -521,9 +521,9 @@ int main()
         aclOpExecutor *executor = nullptr;
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
-        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, batchSize, qS, kvS,
+        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, qS, kvS,
                                                                numHeads, numKeyValueHeads, headDim,
-                                                               3, "TND", "PA_NZ", "TND",
+                                                               3, "TND",
                                                                metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
             printf("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize %d\n", ret);
