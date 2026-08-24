@@ -26,7 +26,9 @@ static ge::graphStatus InferShapeAllGatherMatmulV2(gert::InferShapeContext *cont
 {
     OP_LOGE_IF(AllGatherMatmulCommonInferShape(context, GATHER_OUT_V2) != GRAPH_SUCCESS, GRAPH_FAILED,
                context->GetNodeName(), "infer shape execute failed.");
-    const bool *isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(AG_IS_AMAX_OUT);
+    auto attrs = context->GetAttrs();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const bool *isAmaxOut = attrs->GetAttrPointer<bool>(AG_IS_AMAX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, isAmaxOut);
     gert::Shape *amaxOutShape = context->GetOutputShape(2);
     OPS_CHECK_NULL_WITH_CONTEXT(context, amaxOutShape);
@@ -42,13 +44,20 @@ static ge::graphStatus InferShapeAllGatherMatmulV2(gert::InferShapeContext *cont
 
 static ge::graphStatus InferDataTypeAllGatherMatmulV2(gert::InferDataTypeContext *context)
 {
+    auto attrs = context->GetAttrs();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     // 如果是bf16/fp16 输入和输出保持一致，如果是fp8 则使用y_dtype
-    auto d_type = context->GetInputDataType(0);
+    const auto d_type = context->GetInputDataType(0);
     auto y_dtype = d_type;
     if ((y_dtype == ge::DataType::DT_FLOAT16) || (y_dtype == ge::DataType::DT_BF16)) {
         y_dtype = context->GetInputDataType(0);
     } else {
-        y_dtype = static_cast<ge::DataType>(*context->GetAttrs()->GetAttrPointer<int64_t>(Y_DTYPE));
+        const int64_t *yDtypePtr =attrs->GetInt(Y_DTYPE);
+        if (yDtypePtr == nullptr || *yDtypePtr == static_cast<uint64_t>(ge::DataType::DT_UNDEFINED)) {
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "yDtype", "DT_UNDEFINED", "valid dtype value");
+            return ge::GRAPH_FAILED;
+        }
+        y_dtype = static_cast<ge::DataType>(*yDtypePtr);
     }
     context->SetOutputDataType(0, y_dtype);
     context->SetOutputDataType(1, d_type);
