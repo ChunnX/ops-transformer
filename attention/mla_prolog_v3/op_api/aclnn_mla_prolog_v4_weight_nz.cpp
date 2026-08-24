@@ -93,7 +93,10 @@ public:
         return true;
     }
 
-    bool IsTensorNotNull() const { return inner_ == nullptr; }
+    bool IsTensorNotNull() const
+    {
+        return inner_ == nullptr;
+    }
 
 private:
     const aclTensor *inner_;
