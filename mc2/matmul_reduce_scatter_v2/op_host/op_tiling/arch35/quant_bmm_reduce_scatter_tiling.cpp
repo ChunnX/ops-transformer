@@ -534,8 +534,10 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
     SetRcsTilingData(MutableRCSTilingDataA5());
 
     if (usingApaceImpl_) {
-        // APACE MX owns its Matmul and communication split. Do not enter the
-        // shared formulaic tiling path used by the registered legacy buffer.
+        // APACE MX owns its Matmul tiling data, but reuses the existing MMRS
+        // formula model on a local TilingArgs copy to balance computation and
+        // communication. The registered legacy tiling data and split path are
+        // not modified.
         MC2_CHECK_LOG_RET(opName_, DoApaceMxTiling());
         myWorkSpaceSize_ = libApiWorkSpaceSize_;
     } else {
@@ -814,22 +816,31 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
                             mmTiling.baseM, mmTiling.baseN, mmTiling.usedCoreNum),
                     return ge::GRAPH_FAILED);
 
-    // APACE-private split: keep one phase large enough to occupy the AICs and
-    // align phaseLogicalM (sliceM * rankDim) to baseM. This replaces the shared
-    // MMPlusReduceScatter formula model without changing the legacy classes.
+    // Reuse the existing MMRS formula model for APACE only. The model works on
+    // per-rank M and chooses the main tile length by balancing the predicted
+    // Matmul and ReduceScatter time. Keep args_ unchanged so the legacy path is
+    // unaffected by APACE-specific tiling.
     const uint64_t rankDim = cfg.rankDim;
+    mc2tiling::TilingArgs formulaArgs = args_;
+    formulaArgs.mValue = perRankM;
+    formulaArgs.rankTileNum = rankDim;
+    MMPlusReduceScatter formulaTiling(formulaArgs, static_cast<uint32_t>(rankDim),
+                                      KernelType::REDUCE_SCATTER, SocVersion::SOC950, false,
+                                      (commMode_ == TPL_AICPU_COMM_MODE));
+    formulaTiling.GetTiling();
+    const CutResult &formulaCut = formulaTiling.tilingM_.cutRes;
+    OP_TILING_CHECK(formulaCut.longTileLen == 0 || formulaCut.numLongTile == 0,
+                    OP_LOGE(opName_, "invalid APACE MX formula split: longTileM=%lu, longTileCnt=%lu",
+                            formulaCut.longTileLen, formulaCut.numLongTile),
+                    return ge::GRAPH_FAILED);
+
+    // Match AllToAllMatmul APACE: align the formula-selected main block for the
+    // kernel, then rebuild equal main blocks plus at most one tail block. This
+    // keeps the number of phases driven by compute/communication balancing,
+    // rather than by rankDim.
     const uint64_t phaseAlign = static_cast<uint64_t>(mmTiling.baseM) /
                                 std::gcd(static_cast<uint64_t>(mmTiling.baseM), rankDim);
-    const uint64_t nBlockCnt = Ops::Base::CeilDiv(args_.nValue, static_cast<uint64_t>(mmTiling.baseN));
-    const uint64_t mBlockCntForFullCore =
-        Ops::Base::CeilDiv(static_cast<uint64_t>(mmTiling.usedCoreNum), nBlockCnt);
-    const uint64_t minPhaseLogicalM = mBlockCntForFullCore * mmTiling.baseM;
-    const uint64_t minPhaseMRaw = Ops::Base::CeilDiv(minPhaseLogicalM, rankDim);
-    const uint64_t minPhaseM = mc2tiling::AlignUp(minPhaseMRaw, phaseAlign);
-    const uint64_t maxPhaseCntForCompute = std::max<uint64_t>(1, perRankM / std::max<uint64_t>(1, minPhaseM));
-    const uint64_t targetPhaseCnt = std::min<uint64_t>(rankDim, maxPhaseCntForCompute);
-
-    uint64_t tileM = mc2tiling::AlignUp(Ops::Base::CeilDiv(perRankM, targetPhaseCnt), phaseAlign);
+    uint64_t tileM = mc2tiling::AlignUp(formulaCut.longTileLen, phaseAlign);
     tileM = std::min(tileM, perRankM);
 
     const uint64_t bytesPerM = args_.nValue * static_cast<uint64_t>(args_.outputDtypeSize);
@@ -854,7 +865,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
     const uint64_t tailM = perRankM % tileM;
     const uint64_t tailCnt = tailM == 0 ? 0 : 1;
     OP_TILING_CHECK(tileCnt == 0 || tileM * tileCnt + tailM * tailCnt != perRankM,
-                    OP_LOGE(opName_, "invalid APACE MX private split: perRankM=%lu, tileM=%lu x %lu, "
+                    OP_LOGE(opName_, "invalid APACE MX formula split: perRankM=%lu, tileM=%lu x %lu, "
                             "tailM=%lu x %lu", perRankM, tileM, tileCnt, tailM, tailCnt),
                     return ge::GRAPH_FAILED);
 
@@ -873,9 +884,13 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoApaceMxTiling()
     commTiling.nonSplitAxisSize = args_.nValue;
 
     OP_LOGD(opName_,
-            "APACE MX private split: rankM=%u, perRankM=%lu, fullLogicalM=%lu, phaseAlign=%lu, "
-            "commTileM=%lu x %lu, commTailM=%lu x %lu, base=[%u,%u,%u], usedCore=%u, N=%lu, K=%lu",
-            cfg.rankM, perRankM, fullLogicalM, phaseAlign, tileM, tileCnt, tailM, tailCnt,
+            "APACE MX formula split: rankM=%u, perRankM=%lu, fullLogicalM=%lu, phaseAlign=%lu, "
+            "formula=[longM=%lu x %lu, shortM=%lu x %lu, shortAtBack=%d], "
+            "comm=[tileM=%lu x %lu, tailM=%lu x %lu], base=[%u,%u,%u], usedCore=%u, N=%lu, K=%lu",
+            cfg.rankM, perRankM, fullLogicalM, phaseAlign,
+            formulaCut.longTileLen, formulaCut.numLongTile, formulaCut.shortTileLen,
+            formulaCut.numShortTile, formulaCut.shortTileAtBack,
+            tileM, tileCnt, tailM, tailCnt,
             mmTiling.baseM, mmTiling.baseN, mmTiling.baseK, mmTiling.usedCoreNum,
             args_.nValue, args_.kValue);
     return ge::GRAPH_SUCCESS;
