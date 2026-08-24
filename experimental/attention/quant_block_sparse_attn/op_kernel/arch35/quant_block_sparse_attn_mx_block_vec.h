@@ -277,7 +277,8 @@ public:
             } else {
                 // 最后一个 tile 完成 update 与归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                // MXFP8 keeps OUT at zero when the accumulated softmax denominator is zero.
+                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
