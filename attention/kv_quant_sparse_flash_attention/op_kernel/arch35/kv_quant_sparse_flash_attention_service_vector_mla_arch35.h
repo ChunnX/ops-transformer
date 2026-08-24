@@ -1181,12 +1181,12 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTe
                                                                          int64_t alignNum, ConstInfo &constInfo)
 {
     static constexpr int64_t numPerBlock = 32;
-    DataCopyExtParams dataCopyParams;
+    DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1U; // 每次处理1行
-    dataCopyParams.blockLen = validS2 * sizeof(int64_t);
-    dataCopyParams.srcStride = 0U;
-    dataCopyParams.dstStride = 0U;
-    DataCopyPad(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
+    dataCopyParams.blockLen = ((validS2 + alignNum - 1) / alignNum * alignNum) * sizeof(int64_t) / numPerBlock;
+    dataCopyParams.srcGap = 0U;
+    dataCopyParams.dstGap = 0U;
+    DataCopy(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
