@@ -315,7 +315,8 @@ void MhcPreBackwardTiling::SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm)
 {
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
     mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm.SetCType(matmul_tiling::TPosition::VECIN, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    mm.SetCType(matmul_tiling::TPosition::VECIN, matmul_tiling::CubeFormat::ND_ALIGN,
+                matmul_tiling::DataType::DT_FLOAT);
     mm.SetBias(false);
     mm.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N, N_ * N_ + 2 * N_);
     mm.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_);

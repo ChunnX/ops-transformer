@@ -144,7 +144,7 @@ struct V0V1Buffers {
 
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
-using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND, float>;
+using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
 using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, CFG_NORM,
                                  MatmulCallBackFunc<nullptr, nullptr, nullptr>, Impl::Detail::SplitNMatmulPolicy>;
