@@ -50,6 +50,7 @@ constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
 constexpr uint32_t M_LOC_IDX = 4;
+constexpr uint32_t ACTIVATION_DEBUG_IDX = 5;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
@@ -137,6 +138,8 @@ public:
         uint8_t actSubMode{static_cast<uint8_t>(ActSubMode::DEFAULT)};
         float activationAlpha{1.0f};
         float activationBeta{1.0f};
+        GM_ADDR activationDebugGmAddr{nullptr};
+        bool activationDebug{false};
         Arguments() = default;
     };
 
@@ -200,11 +203,16 @@ private:
 
     __aicore__ inline void CopyScaleFromUb2GmCompact(uint64_t blockCount, uint64_t offset,
                                                      AscendC::LocalTensor<int8_t> &src);
+    __aicore__ inline void CopyActivationDebugFromUb2Gm(uint64_t blockCount, uint64_t offset,
+                                                        AscendC::LocalTensor<bfloat16_t> &src);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
     GM_ADDR yGmAddr_{nullptr};
     GM_ADDR yScaleGmAddr_{nullptr};
+    AscendC::GlobalTensor<bfloat16_t> activationDebugGlobal_;
+    GM_ADDR activationDebugGmAddr_{nullptr};
+    bool activationDebug_{false};
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -252,6 +260,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     actSubMode_ = params.actSubMode;
     activationAlpha_ = params.activationAlpha;
     activationBeta_ = params.activationBeta;
+    activationDebugGmAddr_ = params.activationDebugGmAddr;
+    activationDebug_ = params.activationDebug && params.activationDebugGmAddr != nullptr;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -292,7 +302,30 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     if constexpr (g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
+        if (activationDebug_) {
+            activationDebugGlobal_.SetGlobalBuffer(
+                reinterpret_cast<__gm__ bfloat16_t *>(activationDebugGmAddr_) + Get<ACTIVATION_DEBUG_IDX>(baseOffset));
+        }
     }
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyActivationDebugFromUb2Gm(
+    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<bfloat16_t> &src)
+{
+    if (!activationDebug_) {
+        return;
+    }
+    uint64_t nSrcAligned =
+        Ops::Base::CeilAlign(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
+    AscendC::DataCopyExtParams params{1, 0, 0, 0, 0};
+    params.blockCount = static_cast<uint16_t>(blockCount);
+    params.blockLen = static_cast<uint32_t>(singleN_ * sizeof(bfloat16_t));
+    params.srcStride = static_cast<uint32_t>((nSrcAligned - singleN_) * sizeof(bfloat16_t) /
+                                             AscendC::ONE_BLK_SIZE);
+    params.dstStride = static_cast<uint32_t>((n_ - singleN_) * sizeof(bfloat16_t));
+    AscendC::DataCopyPad(activationDebugGlobal_[offset], src, params);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -738,6 +771,19 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     VFDoActivationForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+    if (activationDebug_) {
+        constexpr uint32_t PONG_BF16_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
+        if constexpr (IsInterleaved_) {
+            if (pingpongIdx == 1U) {
+                AscendC::LocalTensor<bfloat16_t> debugPong = gluRes_[PONG_BF16_ELEMS];
+                CopyActivationDebugFromUb2Gm(singleM_, yOffset, debugPong);
+            } else {
+                CopyActivationDebugFromUb2Gm(singleM_, yOffset, gluRes_);
+            }
+        } else {
+            CopyActivationDebugFromUb2Gm(singleM_, yOffset, gluRes_);
+        }
+    }
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
     if constexpr (IsInterleaved_) {
         constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
