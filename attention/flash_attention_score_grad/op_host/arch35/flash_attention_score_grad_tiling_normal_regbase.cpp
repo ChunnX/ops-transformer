@@ -45,9 +45,62 @@ struct DeterBandScheduleParams {
     int64_t q = 0;
 };
 
+struct GQADenseScheduleResult {
+    int64_t baseRound = 0;
+    int64_t selectedRound = 0;
+    int64_t basePeriod = 0;
+    int64_t selectedPeriod = 0;
+};
+
 int64_t PositiveCeilDiv(int64_t dividend, int64_t divisor)
 {
     return dividend / divisor + static_cast<int64_t>(dividend % divisor != 0);
+}
+
+int64_t PositiveGcd(int64_t lhs, int64_t rhs)
+{
+    while (rhs > 0) {
+        const int64_t remainder = lhs % rhs;
+        lhs = rhs;
+        rhs = remainder;
+    }
+    return lhs;
+}
+
+GQADenseScheduleResult SelectGQADenseSchedule(int64_t k, int64_t m, int64_t n, int64_t b, int64_t g)
+{
+    GQADenseScheduleResult result;
+    if (k <= 0 || m <= 0 || n <= 0 || b <= 0 || g <= 1) {
+        return result;
+    }
+
+    k = std::min({k, b * g * m, b * n});
+    result.baseRound = std::max({PositiveCeilDiv(b * n * g, k), PositiveCeilDiv(n, m), g});
+    result.selectedRound = result.baseRound;
+    const int64_t batchHeadNum = b * g;
+    result.basePeriod = batchHeadNum / PositiveGcd(batchHeadNum, result.baseRound);
+    result.selectedPeriod = result.basePeriod;
+    if (result.baseRound % g == 0) {
+        return result;
+    }
+
+    const int64_t candidateRound = PositiveCeilDiv(result.baseRound, g) * g;
+    const int64_t candidatePeriod = batchHeadNum / PositiveGcd(batchHeadNum, candidateRound);
+    const int64_t totalId = b * n * g;
+    const int64_t candidateInvalid = k * candidateRound - totalId;
+    // Aligning R to g can shorten the batch/head traversal period. Only accept it when the extra
+    // rounds and invalid IDs are bounded and m has enough row offsets for the new period.
+    const bool roundCostOk = (candidateRound - result.baseRound) * GQA_DENSE_PERCENT_BASE <=
+                             result.baseRound * GQA_DENSE_MAX_ROUND_GROWTH_PERCENT;
+    const bool invalidCostOk =
+        candidateInvalid * GQA_DENSE_PERCENT_BASE <= k * candidateRound * GQA_DENSE_MAX_INVALID_PERCENT;
+    const bool localityBetter = candidatePeriod < result.basePeriod && candidatePeriod < k;
+    const bool rowOffsetEnough = PositiveCeilDiv(k, candidatePeriod) <= m;
+    if (roundCostOk && invalidCostOk && localityBetter && rowOffsetEnough) {
+        result.selectedRound = candidateRound;
+        result.selectedPeriod = candidatePeriod;
+    }
+    return result;
 }
 
 int64_t CalcCausalSingleBatchRound(int64_t k, int64_t causalSize)
@@ -99,14 +152,15 @@ DeterBandScheduleResult SelectDeterBandSchedule(int64_t k, int64_t m, int64_t n,
     int64_t bandBlocks = 0;
     if (p + q <= m) {
         l1 = q - 1;
-        l2 = std::min(n - q + 1, m + 2 - p - q);
-        l3 = std::max<int64_t>(0, std::min(p + n - m - 1, p + q - 2));
-        bandBlocks = (2 * p - 2 + q) * l1 / 2 + (p + q - 1) * l2 + (p + q - 2) * l3 - l3 * (l3 - 1) / 2;
+        l2 = std::min(n - q + 1, m + NUM_TWO - p - q);
+        l3 = std::max<int64_t>(0, std::min(p + n - m - 1, p + q - NUM_TWO));
+        bandBlocks = (NUM_TWO * p - NUM_TWO + q) * l1 / NUM_TWO + (p + q - 1) * l2 + (p + q - NUM_TWO) * l3 -
+                     l3 * (l3 - 1) / NUM_TWO;
     } else {
         l1 = m - p;
         l2 = p + q - m;
         l3 = std::min(n - q, m - 1);
-        bandBlocks = (p + m - 1) * l1 / 2 + m * l2 + (2 * m - 1 - l3) * l3 / 2;
+        bandBlocks = (p + m - 1) * l1 / NUM_TWO + m * l2 + (NUM_TWO * m - 1 - l3) * l3 / NUM_TWO;
     }
 
     const int64_t pairCount = std::max<int64_t>(0, std::min(l1, l3 - p + 1));
@@ -135,12 +189,12 @@ DeterBandScheduleResult SelectDeterBandSchedule(int64_t k, int64_t m, int64_t n,
     // because transposing Mode03 would break the fixed-core-per-original-column requirement.
     const int64_t lowerCausalSize = m + q - 1;
     const int64_t upperCausalSize = n + p - 1;
-    const int64_t lowerWaste = lowerCausalSize * (lowerCausalSize + 1) / 2 - bandBlocks;
-    const int64_t upperWaste = upperCausalSize * (upperCausalSize + 1) / 2 - bandBlocks;
+    const int64_t lowerWaste = lowerCausalSize * (lowerCausalSize + 1) / NUM_TWO - bandBlocks;
+    const int64_t upperWaste = upperCausalSize * (upperCausalSize + 1) / NUM_TWO - bandBlocks;
     bool useLowerCausal =
         bandBlocks > 0 && lowerWaste >= 0 && lowerWaste <= upperWaste && lowerWaste <= (bandBlocks - 1) / 10;
     if (useLowerCausal) {
-        const int64_t causalPairCount = b / 2;
+        const int64_t causalPairCount = b / NUM_TWO;
         const int64_t causalK = std::min(k, lowerCausalSize * causalPairCount);
         // CalCausalSwizzleIndex uses the dense swizzle internally, so do not select it when that
         // helper would reduce the active-core count below k.
@@ -170,8 +224,7 @@ BlockScheduleResult SelectBlockSchedule(const FuzzyBaseInfoParamsRegbase &params
         return result;
     }
 
-    const bool causalCond =
-        params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) && params.isS1S2Same;
+    const bool causalCond = params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL);
     const bool rightDownBandCond = params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
                                    params.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
     result.isSplitByBlockIdx = canSplitByBlockIdx && (((params.b * params.n2) & 1) == 0) && params.g == 1 &&
@@ -1147,6 +1200,18 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
     } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
                fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         CalcleBandDeterParam(fBaseParams);
+    } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+               fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
+               fBaseParams.g > 1) {
+        const GQADenseScheduleResult schedule =
+            SelectGQADenseSchedule(static_cast<int64_t>(fBaseParams.aicNum), fBaseParams.s1Outer, fBaseParams.s2Outer,
+                                   fBaseParams.b * fBaseParams.n2, fBaseParams.g);
+        fBaseParams.deterMaxRound = schedule.selectedRound * fBaseParams.s1Outer;
+        OP_LOGI(context_,
+                "Select deterministic GQA DENSE round, baseR=[%ld], selectedR=[%ld], period=[%ld->%ld], "
+                "maxRound=[%ld]",
+                schedule.baseRound, schedule.selectedRound, schedule.basePeriod, schedule.selectedPeriod,
+                fBaseParams.deterMaxRound);
     }
     if (needChangeSplitItemMode1 || needChangeSplitItemMode2) {
         fBaseParams.s1Outer = s1Outer;

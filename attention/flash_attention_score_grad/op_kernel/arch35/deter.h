@@ -239,11 +239,11 @@ __aicore__ inline void CalDenseSwizzleIndex(int64_t k, int64_t m, int64_t n, int
 }
 
 __aicore__ inline void CalGQADenseIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t core_id, int64_t round_id,
-                                        int64_t g, CoordinateInfo &coordinate)
+                                        int64_t g, CoordinateInfo &coordinate, int64_t denseRound = 0)
 {
     coordinate.batchId = -1;
     k = Min(Min(k, b * g * m), b * n);
-    int64_t R = Max(Max(Ceil<int64_t>(b * n * g, k), Ceil<int64_t>(n, m)), g);
+    int64_t R = denseRound > 0 ? denseRound : Max(Max(Ceil<int64_t>(b * n * g, k), Ceil<int64_t>(n, m)), g);
     if (core_id < 1 || core_id > k || round_id < 1 || round_id > R * m) {
         return;
     }
@@ -700,6 +700,69 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     } else {
         coordinate.batchId = -1;
     }
+}
+
+__aicore__ inline int64_t CalLeftUpCausalSwizzleMaxRound(int64_t k, int64_t m, int64_t n, int64_t b)
+{
+    int64_t pairCount = b >> 1;
+    if (k <= 0 || m <= 0 || n <= 0 || pairCount <= 0) {
+        return 0;
+    }
+
+    int64_t virtualM = m;
+    int64_t virtualN = m + 1;
+    int64_t activeK = Min(k, m * pairCount);
+    if (m > n) {
+        virtualM = NUM_TWO * m - n + 1;
+        virtualN = n;
+        activeK = Min(k, n * pairCount);
+    }
+    return virtualM * Ceil<int64_t>(virtualN * pairCount, activeK);
+}
+
+__aicore__ inline void CalLeftUpCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r,
+                                                   CoordinateInfo &coordinate)
+{
+    coordinate.batchId = -1;
+    int64_t pairCount = b >> 1;
+    if (k <= 0 || m <= 0 || n <= 0 || pairCount <= 0 || j < 1 || r < 1) {
+        return;
+    }
+
+    if (m <= n) {
+        int64_t activeK = Min(k, m * pairCount);
+        if (j > activeK) {
+            return;
+        }
+        CalCausalSwizzleIndex(activeK, m, m, b, j, r, coordinate);
+        return;
+    }
+
+    int64_t virtualM = NUM_TWO * m - n + 1;
+    int64_t activeK = Min(k, n * pairCount);
+    if (j > activeK) {
+        return;
+    }
+    int64_t columnId = (r - 1) / virtualM * activeK + j - 1;
+    if (columnId >= n * pairCount) {
+        return;
+    }
+
+    int64_t pairId = columnId / n + 1;
+    int64_t virtualS2 = columnId % n + 1;
+    int64_t virtualS1 = (r - 1) % virtualM + 1;
+    int64_t oddBatchLen = m - virtualS2 + 1;
+    if (virtualS1 <= oddBatchLen) {
+        coordinate.batchId = NUM_TWO * pairId - 1;
+        coordinate.s1Idx = virtualS2 + virtualS1 - 1;
+        coordinate.s2Idx = virtualS2;
+        return;
+    }
+
+    int64_t evenBatchOffset = virtualS1 - oddBatchLen;
+    coordinate.batchId = NUM_TWO * pairId;
+    coordinate.s1Idx = m - evenBatchOffset + 1;
+    coordinate.s2Idx = n - virtualS2 + 1;
 }
 
 __aicore__ inline void CalGQACausalIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r, int64_t g,
