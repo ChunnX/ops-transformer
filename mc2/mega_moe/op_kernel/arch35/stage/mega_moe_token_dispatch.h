@@ -791,7 +791,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t dispatchRowCount,
-    uint32_t expertRowOffset);
+    uint32_t expertRowOffset = 0U);
 
 // Dispatch one expert segment from the current core's compact task table.
 // Planning, topk resolution and execution are all proportional to this core's
@@ -982,7 +982,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t dispatchRowCount,
-    uint32_t expertRowOffset = 0U)
+    uint32_t expertRowOffset)
 {
     if (dispatchRowCount == 0U) {
         return;
