@@ -49,8 +49,10 @@ struct QuantMatmulAllToAllPipelineContext {
  *
  * The legacy pipeline contains an AIV transpose stage between computation and
  * communication. The Apace matmul writes rank-major data directly, so this
- * pipeline executes both stages on AIC. SyncAll<false>() waits for every Cube
- * core to finish writing GM before AIC block 0 submits the Hcomm task.
+ * pipeline executes both stages on AIC. SyncAll() follows the cube-only APACE
+ * implementation and waits for every AIC core to finish writing GM before
+ * AIC block 0 submits the Hcomm task. Do not use SyncAll<false>() here: that
+ * mode also synchronizes with AIV cores, which are not launched by this path.
  */
 template <typename ComputationType, typename CommunicationType, typename ContextType>
 class QuantMatmulAllToAllPipeline {
@@ -77,7 +79,7 @@ public:
         for (uint32_t index = 0; index < taskCnt; ++index) {
             if ASCEND_IS_AIC {
                 computeStage_->Process(index);
-                AscendC::SyncAll<false>();
+                AscendC::SyncAll();
                 commStage_->Process(index);
             }
         }
