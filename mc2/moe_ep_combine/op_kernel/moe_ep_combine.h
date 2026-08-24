@@ -175,6 +175,7 @@ private:
 
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
+    LocalTensor<XType> tokenTensor_;
     LocalTensor<uint32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint32_t> stateResetTensor_;
@@ -318,12 +319,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalToke
 
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams copyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    LocalTensor<XType> tokenTensor = xQueue_.AllocTensor<XType>();
-    DataCopyPad(tokenTensor, xGm_[tokenIndex * axisH_], copyParams, padParams);
-    xQueue_.EnQue(tokenTensor);
-    tokenTensor = xQueue_.DeQue<XType>();
-    DataCopyPad(outToken, tokenTensor, copyParams);
-    xQueue_.FreeTensor<XType>(tokenTensor);
+    DataCopyPad(tokenTensor_, xGm_[tokenIndex * axisH_], copyParams, padParams);
+    xQueue_.EnQue(tokenTensor_);
+    tokenTensor_ = xQueue_.DeQue<XType>();
+    DataCopyPad(outToken, tokenTensor_, copyParams);
+    xQueue_.FreeTensor<XType>(tokenTensor_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -460,7 +460,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-
+        tokenTensor_ = xQueue_.AllocTensor<XType>();
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
             uint32_t tokenIndex = static_cast<uint32_t>(chunkStart) + i;
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
