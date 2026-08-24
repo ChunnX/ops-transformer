@@ -153,7 +153,10 @@ gert::TilingContextPara MakeTndPara(optiling::SparseLightningIndexerGradKLLossCo
 
 class SparseLightningIndexerGradKLLossTilingRegbase : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "SparseLightningIndexerGradKLLossTilingRegbase SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "SparseLightningIndexerGradKLLossTilingRegbase SetUp" << std::endl;
+    }
 
     static void TearDownTestCase()
     {
