@@ -17,16 +17,58 @@
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 
+#include "ffn_layout.h"
+
 using namespace ge;
 namespace ops {
 
 static ge::graphStatus InferShapeFFN(gert::InferShapeContext *context)
 {
+    // 布局识别需要激活类型（swiglu 的隐藏宽是 w1 边长的一半）
+    bool isSwiglu = false;
+    const auto *attrs = context->GetAttrs();
+    if (attrs != nullptr) {
+        const char *act = attrs->GetAttrPointer<char>(0);
+        if (act != nullptr) {
+            // 与 aclnn GetActiveType 同语义：大小写不敏感、长度精确匹配 "swiglu"
+            constexpr char swigluName[] = "swiglu";
+            size_t i = 0;
+            while (i < sizeof(swigluName) - 1 &&
+                   tolower(static_cast<unsigned char>(act[i])) == swigluName[i]) {
+                ++i;
+            }
+            isSwiglu = (i == sizeof(swigluName) - 1) && (act[i] == '\0');
+        }
+    }
     auto in_shape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, in_shape);
     auto out_shape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, out_shape);
     *out_shape = *in_shape;
+    // 输出最后一维 = weight2 的 N：
+    //  - canonical [K, N]：N 在最后一维（arch22 原语义）
+    //  - linear [N, K]（out, in）：N 在倒数第二维（arch35 与 PyTorch Linear 对齐）
+    // 按 x 的 K 与 weight2 的维度关系自动识别，避免 N != K 的 shape 被误判为非法。
+    auto weight2_shape = context->GetInputShape(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weight2_shape);
+    auto weight1_shape = context->GetInputShape(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weight1_shape);
+    size_t xDimNum = in_shape->GetDimNum();
+    size_t w1DimNum = weight1_shape->GetDimNum();
+    size_t w2DimNum = weight2_shape->GetDimNum();
+    if (xDimNum > 0 && w1DimNum >= 2 && w2DimNum >= 2) {
+        int64_t xK = in_shape->GetDim(xDimNum - 1);
+        int64_t w1d0 = weight1_shape->GetDim(w1DimNum - 2);
+        int64_t w1d1 = weight1_shape->GetDim(w1DimNum - 1);
+        int64_t w2d0 = weight2_shape->GetDim(w2DimNum - 2);
+        int64_t w2d1 = weight2_shape->GetDim(w2DimNum - 1);
+        // 布局识别走公共规则（ffn_layout.h）；INVALID/全方阵按 canonical 计算，
+        // 非法组合由 aclnn/tiling 层拦截报错。
+        const bool isLinear = ffnlayout::FfnDetectLayout(w1d0, w1d1, w2d0, w2d1, xK, isSwiglu) ==
+                              ffnlayout::FfnLayout::LINEAR;
+        int64_t n = isLinear ? w2d0 : w2d1;
+        out_shape->SetDim(xDimNum - 1, n);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

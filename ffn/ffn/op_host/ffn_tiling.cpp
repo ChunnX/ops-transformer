@@ -14,6 +14,7 @@
  */
 #include <alog_pub.h>
 #include "ffn_tiling.h"
+#include "ffn_arch35_tiling.h"
 
 #include <algorithm>
 #include <climits>
@@ -24,27 +25,20 @@
 #include "log/log.h" 
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
+#include "op_host/tiling_util.h"
 #include "platform/platform_info.h"
+
+#include "matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_aswt_tiling.h"
+#include "matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.h"
+#include "matmul/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_data.h"
+
+constexpr int64_t SIMT_UB_SIZE_BYTE = 40960;
 
 using namespace ge;
 using namespace AscendC;
 
 
 namespace optiling {
-enum class ActiveType {
-    FASTGELU = 0,
-    RELU,
-    SILU,
-    GELU,
-    GEGLU,
-    SWIGLU,
-    REGLU,
-    INVALID_TYPE
-};
-
-constexpr size_t FFN_ATTR_INDEX_ACTIVATION = 0;
-constexpr size_t FFN_ATTR_INDEX_INNER_PRECISE = 1;
-constexpr size_t FFN_ATTR_INDEX_TOKENS_INDEX_FLAG = 3;
 
 constexpr uint64_t ONE_MATMUL = 2 * 1000;
 constexpr uint64_t HIGH_PERFORMANCE_KEY = 0;
@@ -79,8 +73,6 @@ constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t WEIGHT1_INDEX = 1;
 constexpr uint32_t WEIGHT2_INDEX = 2;
 constexpr uint32_t TOKENS_ARR_INDEX = 3;
-constexpr uint32_t BIAS1_INDEX = 4;
-constexpr uint32_t BIAS2_INDEX = 5;
 constexpr uint32_t DEQSCALE1_INDEX = 8;
 constexpr uint32_t SCALE_INDEX = 6;
 constexpr uint32_t ANTIQUANT_SCALE1_INDEX = 10;
@@ -182,20 +174,6 @@ static bool IsPrivateFormat(ge::Format format)
     }
     return false;
 }
-
-struct FFNCompileInfo {
-    uint32_t blockDim;
-    uint32_t coreNum;
-    uint32_t aivCoreNum;
-    uint32_t aicCoreNum;
-    uint64_t ubSize;
-    uint64_t l1Size;
-    uint64_t l0ASize;
-    uint64_t l0BSize;
-    uint64_t l0CSize;
-    uint64_t sysWorkspaceSize;
-    platform_ascendc::SocVersion socVersion;
-};
 
 class FFNTiling {
 public:
@@ -328,6 +306,9 @@ private:
     bool isQuantBf16 = false;
     bool isMsdCase = false;
     bool is310P = false;
+    bool isAscend950 = false;
+    bool isFfnTransB_ = false;
+    bool isRegbase = false;
     uint32_t minBaseNShape = MATMUL_MIN_SHAPE;
     bool isTilingDataValid = false;
 
@@ -347,6 +328,9 @@ void FFNTiling::Init()
     isQuantBf16 = false;
     isMsdCase = false;
     is310P = false;
+    isAscend950 = false;
+    isFfnTransB_ = false;
+    isRegbase = false;
     minBaseNShape = MATMUL_MIN_SHAPE;
     isTilingDataValid = false;
 }
@@ -563,6 +547,30 @@ ge::graphStatus FFNTiling::GetInputShape(const gert::TilingContext *context)
             k1 = xShape->GetStorageShape().GetDim(0) * xShape->GetStorageShape().GetDim(DIMS_3);
             n1 = weight1Shape->GetStorageShape().GetDim(0) * weight1Shape->GetStorageShape().GetDim(DIMS_3);
             n2 = weight2Shape->GetStorageShape().GetDim(0) * weight2Shape->GetStorageShape().GetDim(DIMS_3);
+        } else if (isAscend950) {
+            // arch35 fused：布局识别统一在 ffn_arch35_tiling.cpp（与 infershape/aclnn 同规则）
+            const int64_t w1Dim0 = weight1Shape->GetStorageShape().GetDim(0);
+            const int64_t w1Dim1 = weight1Shape->GetStorageShape().GetDim(1);
+            const int64_t w2Dim0 = weight2Shape->GetStorageShape().GetDim(0);
+            const int64_t w2Dim1 = weight2Shape->GetStorageShape().GetDim(1);
+            bool isLinearW = false;
+            const bool isSwigluAct =
+                tilingData.ffnBaseParams.get_activeType() == static_cast<uint32_t>(ActiveType::SWIGLU);
+            if (!FFNArch35Tiling::DetectLayout(context, weight1Shape, weight2Shape,
+                                               static_cast<int64_t>(k1), isSwigluAct, isLinearW)) {
+                return ge::GRAPH_FAILED;
+            }
+            if (isLinearW) {
+                // linear [N, K]（out, in）
+                isFfnTransB_ = true;
+                n1 = static_cast<uint32_t>(w1Dim0);
+                n2 = static_cast<uint32_t>(w2Dim0);
+            } else {
+                // canonical [K, N]
+                isFfnTransB_ = false;
+                n1 = static_cast<uint32_t>(w1Dim1);
+                n2 = static_cast<uint32_t>(w2Dim1);
+            }
         } else {
             n1 = weight1Shape->GetStorageShape().GetDim(1);
             n2 = weight2Shape->GetStorageShape().GetDim(1);
@@ -589,6 +597,8 @@ ge::graphStatus FFNTiling::CheckAndGetBasicInfo(gert::TilingContext *context, co
 {
     const uint32_t coreNum = compileInfoPtr->coreNum;
     is310P = compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND310P;
+    isAscend950 = compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND950;
+    isRegbase = compileInfoPtr->isRegbase;
 
     OP_CHECK_IF(
         (coreNum == 0 || compileInfoPtr->ubSize == 0 || compileInfoPtr->l1Size == 0 || compileInfoPtr->l0CSize == 0 ||
@@ -673,6 +683,29 @@ ge::graphStatus FFNTiling::RunFusionKernelTiling(gert::TilingContext *context)
     }
 
     SetTilingBaseParams(context, compileInfoPtr, aicNum);
+
+    // arch35 (ascend950)：只支持 fused gelu 路径，不适用时直接失败，不再回落旧 tiling key。
+    // 其他 SoC（arch22/310P 等）继续走原逻辑，不受影响。
+    if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND950) {
+        FFNArch35TilingParams params{};
+        params.activeType = tilingData.ffnBaseParams.get_activeType();
+        params.expertNum = expertNum;
+        params.bs = bs;
+        params.k1 = k1;
+        params.n1 = n1;
+        params.n2 = n2;
+        params.isFfnTransB = isFfnTransB_;
+        params.xDataType = xDataType;
+        params.xDataTypeSize = xDataTypeSize;
+        ge::graphStatus fusedRet = FFNArch35Tiling::Tiling(context, compileInfoPtr, tilingData, params);
+        if (fusedRet == ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_SUCCESS;
+        }
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                    "FFN on ascend950 only supports arch35 fused gelu path "
+                                    "(bf16, activation=gelu, bias1/bias2 present, no expert)");
+        return ge::GRAPH_FAILED;
+    }
 
     if (n1 != 0 && tilingData.ffnBaseParams.get_activeType() >= static_cast<uint32_t>(ActiveType::GEGLU)) {
         OP_CHECK_IF(FFNGlu(context, compileInfoPtr->ubSize, compileInfoPtr->l1Size, compileInfoPtr->l0CSize, aivNum) !=
@@ -2010,6 +2043,10 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFFN(gert::TilingParseContext *c
                                                                 compileInfoPtr->aivCoreNum);
     compileInfoPtr->sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+        compileInfoPtr->isRegbase = true;
+        compileInfoPtr->ubSize -= SIMT_UB_SIZE_BYTE;
+    }
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfoPtr->l0ASize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfoPtr->l0BSize);
