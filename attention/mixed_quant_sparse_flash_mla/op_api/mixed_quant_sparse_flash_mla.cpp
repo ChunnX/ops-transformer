@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "quant_flash_attn.h"
+#include "mixed_quant_sparse_flash_mla.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 
@@ -16,9 +16,9 @@ using namespace op;
 
 namespace l0op {
 
-OP_TYPE_REGISTER(QuantFlashAttn);
+OP_TYPE_REGISTER(MixedQuantSparseFlashMla);
 
-const std::array<const aclTensor *, 2> QuantFlashAttn(
+const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
     const aclTensor *blockTableOptional,
@@ -38,7 +38,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     bool returnSoftmaxLse,
     aclOpExecutor *executor)
 {
-    L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
+    L0_DFX(MixedQuantSparseFlashMla, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
            cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
            quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
@@ -75,7 +75,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     auto attentionOutAlloc = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(QuantFlashAttn,
+    auto ret = INFER_SHAPE(MixedQuantSparseFlashMla,
                            OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                                     cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional,
@@ -84,12 +84,12 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
                            OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                                    layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantFlashAttn InferShape failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantSparseFlashMla InferShape failed.");
         return {nullptr, nullptr};
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        QuantFlashAttn,
+        MixedQuantSparseFlashMla,
         OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                  cuSeqlensQOptional, cuSeqlensKvOptional,
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
@@ -97,7 +97,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
         OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                 layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantFlashAttn launch kernel failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantSparseFlashMla launch kernel failed.");
         return {nullptr, nullptr};
     }
 

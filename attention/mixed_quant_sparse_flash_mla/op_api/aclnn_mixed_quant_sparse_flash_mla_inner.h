@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_QUANT_FLASH_ATTN_INNER_H_
-#define ACLNN_QUANT_FLASH_ATTN_INNER_H_
+#ifndef ACLNN_MIXED_QUANT_SPARSE_FLASH_MLA_INNER_H_
+#define ACLNN_MIXED_QUANT_SPARSE_FLASH_MLA_INNER_H_
 #define ACLNN_API __attribute__((visibility("default")))
 
 #include "aclnn/aclnn_base.h"
@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
+extern aclnnStatus aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
     const aclTensor *blockTableOptional,
@@ -35,13 +35,13 @@ extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
     const aclTensor *attnOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern aclnnStatus aclnnInnerMixedQuantSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             const aclrtStream stream);
 
-void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
+void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
-void QuantFlashAttnProcessSinks(const aclTensor *&sinksOptional);
+void MixedQuantSparseFlashMlaProcessSinks(const aclTensor *&sinksOptional);
 
 #ifdef __cplusplus
 }

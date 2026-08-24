@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_quant_flash_attn_inner.h"
+#include "aclnn_mixed_quant_sparse_flash_mla_inner.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 
@@ -20,7 +20,7 @@ extern "C" {
 
 namespace {
 
-void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
+void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (!returnSoftmaxLse) {
@@ -34,7 +34,7 @@ void QuantFlashAttnProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *sof
     }
 }
 
-void QuantFlashAttnProcessSinks(const aclTensor *&sinksOptional)
+void MixedQuantSparseFlashMlaProcessSinks(const aclTensor *&sinksOptional)
 {
     if (sinksOptional != nullptr) {
         const auto &shape = sinksOptional->GetViewShape();

@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file aclnn_quant_flash_attn.cpp
+ * \file aclnn_mixed_quant_sparse_flash_mla.cpp
  * \brief
  */
 
-#include "aclnn_quant_flash_attn.h"
+#include "aclnn_mixed_quant_sparse_flash_mla.h"
 
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
-#include "aclnn_quant_flash_attn_inner.h"
+#include "aclnn_mixed_quant_sparse_flash_mla_inner.h"
 
 using namespace op;
 
@@ -45,7 +45,7 @@ static aclnnStatus CheckTensorContiguous(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
+aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
     const aclTensor *blockTableOptional,
@@ -62,21 +62,21 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    OP_LOGD("start aclnnQuantFlashAttnGetWorkspaceSize");
+    OP_LOGD("start aclnnMixedQuantSparseFlashMlaGetWorkspaceSize");
 
-    QuantFlashAttnProcessSinks(sinksOptional);
+    MixedQuantSparseFlashMlaProcessSinks(sinksOptional);
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
 
-    QuantFlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
+    MixedQuantSparseFlashMlaProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
     aclnnStatus ret = CheckTensorContiguous(k, v, kDescale, vDescale);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
         return ret;
     }
-    ret = aclnnInnerQuantFlashAttnGetWorkspaceSize(
+    ret = aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
         q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
         cuSeqlensQOptional, cuSeqlensKvOptional,
         sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
@@ -91,10 +91,10 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnMixedQuantSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                 const aclrtStream stream)
 {
-    return aclnnInnerQuantFlashAttn(workspace, workspaceSize, executor, stream);
+    return aclnnInnerMixedQuantSparseFlashMla(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
