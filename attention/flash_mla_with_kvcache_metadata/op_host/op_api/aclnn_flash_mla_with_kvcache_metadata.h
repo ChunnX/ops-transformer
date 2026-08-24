@@ -19,12 +19,12 @@ extern "C" {
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
-    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashMlaWithKvcacheMetadata(void *workspace, uint64_t workspaceSize,
-                                                                         aclOpExecutor *executor, aclrtStream stream);
+                                                                                    aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
