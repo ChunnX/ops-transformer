@@ -151,12 +151,13 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
   tmpTensor：空间为mrgDst+mrgSrc
  */
 __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
-                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor,
+                                 bool exhaustedSuspension = false)
 {
     AscendC::MrgSort4Info params;
     params.elementLengths[0] = mrgSrcNum;
     params.elementLengths[1] = mrgDstNum;
-    params.ifExhaustedSuspension = false;
+    params.ifExhaustedSuspension = exhaustedSuspension;
     params.validBit = 0b0011;
     params.repeatTimes = 1;
 
