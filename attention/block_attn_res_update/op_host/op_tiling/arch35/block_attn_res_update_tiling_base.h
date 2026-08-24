@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include "op_host/tiling_base.h"
-#include "block_attn_res_update_tiling.h"
 
 namespace optiling {
 namespace block_attn_res_update {
@@ -32,11 +31,12 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus CheckContext();
 
-    const char *opName_ = nullptr;
     uint64_t tSize_ = 0;
     uint32_t dSize_ = 0;
     float eps_ = 0.0F;
-    BlockAttnResUpdateCompileInfo compileInfo_{};
+    uint64_t ubSize_ = 0;
+    uint32_t aivNum_ = 0;
+    const char *opName_ = nullptr;
 };
 
 } // namespace block_attn_res_update

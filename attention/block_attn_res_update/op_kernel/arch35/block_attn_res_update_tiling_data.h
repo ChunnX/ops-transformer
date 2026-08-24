@@ -16,15 +16,16 @@
 #pragma pack(push, 8)
 struct alignas(8) BlockAttnResUpdateTilingData {
     uint32_t dSize;
-    // All used cores except the last process tPerCore T indices.
+    // All participating cores except the last process tPerCore rows along T.
     uint32_t tPerCore;
-    // The last used core processes the remaining T indices.
+    // The last participating core processes the remaining rows along T.
     uint32_t lastTPerCore;
-    // Maximum T size processed by one UB tile.
+    // Maximum number of T rows processed by one UB tile.
     uint32_t tileT;
     // Element stride between FP32 stats planes, aligned to a 32-byte boundary.
     uint32_t statsTStride;
     float eps;
+    // Host-computed reciprocal of D used by the RMS normalization.
     float invD;
     uint16_t usedCoreNum;
 };

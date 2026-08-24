@@ -36,11 +36,13 @@ namespace {
 constexpr const char *OP_NAME = "BlockAttnResUpdate";
 constexpr const char *SOC_VERSION = "Ascend950";
 constexpr const char *NPU_ARCH = "3510";
-constexpr uint64_t L2_SIZE = 128UL * 1024UL * 1024UL;
 constexpr size_t MIN_INPUT_COLUMN_COUNT = 25UL;
 constexpr size_t SUCCESS_COLUMN_COUNT = 36UL;
 
-ge::DataType ParseDtype(const std::string &value) { return ops::ut::ParseGeDtype(ops::ut::Trim(value)); }
+ge::DataType ParseDtype(const std::string &value)
+{
+    return ops::ut::ParseGeDtype(ops::ut::Trim(value));
+}
 
 gert::StorageShape ParseShape(const std::string &value)
 {
@@ -50,12 +52,7 @@ gert::StorageShape ParseShape(const std::string &value)
 struct BlockAttnResUpdateTilingCase {
     void Run() const
     {
-        optiling::BlockAttnResUpdateCompileInfo compileInfo{};
-        compileInfo.ubSize = ubSize;
-        compileInfo.l2Size = L2_SIZE;
-        compileInfo.aivNum = aivNum;
-        compileInfo.aicNum = aivNum / 2U;
-        compileInfo.npuArch = NpuArch::DAV_3510;
+        const uint32_t aicNum = aivNum / 2U;
 
         std::vector<gert::TilingContextPara::OpAttr> attrs;
         if (eps != "DEFAULT") {
@@ -75,8 +72,7 @@ struct BlockAttnResUpdateTilingCase {
                                          {ParseShape(partialRefShape), partialRefDtype, ge::FORMAT_ND},
                                          {ParseShape(hShape), hDtype, ge::FORMAT_ND},
                                      },
-                                     attrs, &compileInfo, NPU_ARCH, compileInfo.aicNum, compileInfo.ubSize,
-                                     tilingDataCapacity);
+                                     attrs, nullptr, NPU_ARCH, aicNum, ubSize, tilingDataCapacity);
 
         TilingInfo actual;
         const bool actualResult = ExecuteTiling(para, actual);
@@ -277,7 +273,10 @@ TEST(BlockAttnResUpdateTilingDirect, RejectsNullContexts)
     EXPECT_EQ(opImpl->tiling_parse(nullptr), ge::GRAPH_FAILED);
 }
 
-TEST_P(BlockAttnResUpdateTilingTest, CsvDrivenCase) { GetParam().Run(); }
+TEST_P(BlockAttnResUpdateTilingTest, CsvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(BLOCK_ATTN_RES_UPDATE_ASCEND950, BlockAttnResUpdateTilingTest,
                          testing::ValuesIn(GetTilingCases().cases), MakeParamName);
