@@ -251,8 +251,8 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
         const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
         pScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
         if (pScaleShapeSize > 0U && info.opParamInfo.pScale.desc != nullptr) {
-            const ge::DataType dtype = info.opParamInfo.pScale.desc->GetDataType();
-            pScaleDtype = (dtype == ge::DT_FLOAT) ? MX_PSCALE_DTYPE_FP32 : MX_PSCALE_DTYPE_E8M0;
+            if (info.opParamInfo.pScale.desc->GetDataType() == ge::DT_FLOAT)
+                pScaleDtype = MX_PSCALE_DTYPE_FP32;
         }
     }
     scaleParams.pScaleShapeSize = pScaleShapeSize;
