@@ -2627,8 +2627,8 @@ custom::graphStatus IFATiling::CalcNumBlocks()
         }
     }
     aicNum = 28;
-    aicNum = 56;
-    ifaContext_->numBlocks = ascendcPlatform->CalcTschBlockDim(aivcNum, aicNum, aivNum); // 暂时与当前代码一致
+    aivNum = 56;
+    ifaContext_->numBlocks = ascendcPlatform->CalcTschBlockDim(aivNum, aicNum, aivNum); // 暂时与当前代码一致
     OP_LOGI(ifaContext_->opName, "IFA block dim: %u aiv Num: %u aic Num: %u.", ifaContext_->numBlocks, aivNum, aicNum);
     return custom::graphStatus::GRAPH_SUCCESS;
 }
