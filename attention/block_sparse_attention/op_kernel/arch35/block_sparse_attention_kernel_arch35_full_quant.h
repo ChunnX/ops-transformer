@@ -658,7 +658,13 @@ public:
         uint32_t embedPerSubCore = RoundUp(embed_, 32);
         uint32_t pExtraElemNum = 0;
         if constexpr (transposedMm1) {
-            pExtraElemNum = Max(qBaseTilePerSubCore, kvBaseTilePerSubCore);
+            if constexpr (AscendC::IsSameType<ElementP, fp8_e4m3fn_t>::value) {
+                // FP8 StoreAlign leaves exactly one 32-byte DataBlock gap in each P stage.
+                constexpr uint32_t P_UB_BANK_CONFLICT_PADDING_BYTES = 32;
+                pExtraElemNum = P_UB_BANK_CONFLICT_PADDING_BYTES / sizeof(ElementP);
+            } else {
+                pExtraElemNum = Max(qBaseTilePerSubCore, kvBaseTilePerSubCore);
+            }
         }
         uint32_t sStartOffset = 0;
         uint32_t pStartOffset = sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;

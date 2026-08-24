@@ -61,7 +61,12 @@ public:
         scaleValue = AscendC::ToBfloat16(scaleValue_);
         MIN_VALUE = AscendC::ToBfloat16(-3.389531390315715675e+38);
 
-        uint32_t pExtraElemNum = Max(uBufTileHelper.qBaseTilePerSubCore, uBufTileHelper.kvBaseTilePerSubCore);
+        // FP8 StoreAlign splits P into two regions with one 32-byte DataBlock gap
+        // between them to avoid UB bank conflict.
+        constexpr uint32_t P_UB_BANK_CONFLICT_PADDING_BYTES = 32;
+        uint32_t pExtraElemNum = FULL_QUANT_FP8 ?
+            P_UB_BANK_CONFLICT_PADDING_BYTES / sizeof(ElementOutput) :
+            Max(uBufTileHelper.qBaseTilePerSubCore, uBufTileHelper.kvBaseTilePerSubCore);
         for (uint32_t i = 0; i < UB_S_P_BUF_STAGES; i++) {
             lsUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
                 uBufTileHelper.sStartOffset +
