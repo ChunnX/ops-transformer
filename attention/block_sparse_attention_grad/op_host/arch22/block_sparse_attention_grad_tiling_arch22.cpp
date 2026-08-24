@@ -599,11 +599,20 @@ public:
     {}
 
 protected:
-    bool IsCapable() override { return true; }
+    bool IsCapable() override
+    {
+        return true;
+    }
 
-    ge::graphStatus GetShapeAttrsInfo() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus GetPlatformInfo() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetPlatformInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
     ge::graphStatus DoOpTiling() override
     {
@@ -617,13 +626,25 @@ protected:
         return ge::GRAPH_SUCCESS;
     }
 
-    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus GetWorkspaceSize() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus PostTiling() override { return tiling_.SetTilingData(context_, tilingData_); }
+    ge::graphStatus PostTiling() override
+    {
+        return tiling_.SetTilingData(context_, tilingData_);
+    }
 
-    uint64_t GetTilingKey() const override { return tilingKey_; }
+    uint64_t GetTilingKey() const override
+    {
+        return tilingKey_;
+    }
 
 private:
     BSAGradTiling tiling_;
