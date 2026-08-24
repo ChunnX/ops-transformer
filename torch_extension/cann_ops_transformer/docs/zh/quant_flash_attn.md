@@ -548,6 +548,14 @@ cann_ops_transformer.quant_flash_attn(
             <td>TND/BSND/BNSD</td>
             <td>(Q_N, Q_T)</td>
         </tr>
+        <tr>
+            <td>quant_mode=7（HIF8）</td>
+            <td>TND/BSND/BNSD</td>
+            <td>TND</td>
+            <td>TND/BSND/BNSD</td>
+            <td>TND/BSND/BNSD</td>
+            <td>(Q_N, Q_T)</td>
+        </tr>
     </tbody>
     </table>
 
@@ -597,6 +605,19 @@ cann_ops_transformer.quant_flash_attn(
                 <td>v_descale</td>
                 <td>float32</td>
             </tr>
+            <tr>
+                <td rowspan="3">7</td>
+                <td>q_descale</td>
+                <td>float32</td>
+            </tr>
+            <tr>
+                <td>k_descale</td>
+                <td>float32</td>
+            </tr>
+            <tr>
+                <td>v_descale</td>
+                <td>float32</td>
+            </tr>
         </tbody>
     </table>
 
@@ -627,6 +648,12 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>N2TGD</td>
                 <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>q_descale</td>
+                <td>TND</td>
+                <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
             <tr>
                 <td>7</td>
@@ -701,6 +728,17 @@ cann_ops_transformer.quant_flash_attn(
                 <td>-</td>
                 <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
+            <tr>
+                <td rowspan="2">7</td>
+                <td>k_descale</td>
+                <td>-</td>
+                <td>(1,)<br>per-tensor 量化，1D</td>
+            </tr>
+            <tr>
+                <td>v_descale</td>
+                <td>-</td>
+                <td>(1,)<br>per-tensor 量化，1D</td>
+            </tr>
         </tbody>
     </table>
 
@@ -748,6 +786,30 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>PA_NZ</td>
                 <td>(Bn, KV_N, D/32, Bs, 32)</td>
+            </tr>
+            <tr>
+                <td>attn_out</td>
+                <td>TND</td>
+                <td>(Q_T, Q_N, D)</td>
+            </tr>
+            <tr>
+                <td rowspan="5">7</td>
+                <td>q</td>
+                <td>TND</td>
+                <td>(Q_T, Q_N, D)</td>
+            </tr>
+            <tr>
+                <td rowspan="3">k/v</td>
+                <td>TND</td>
+                <td>(KV_T, KV_N, D)</td>
+            </tr>
+            <tr>
+                <td>BSND</td>
+                <td>(B, KV_S, KV_N, D)</td>
+            </tr>
+            <tr>
+                <td>BNSD</td>
+                <td>(B, KV_N, KV_S, D)</td>
             </tr>
             <tr>
                 <td>attn_out</td>
