@@ -867,7 +867,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1N
                 queryScaleUb = this->queryScaleQue[runInfo.multiCoreIdxMod2].template AllocTensor<T>();
                 deScaleQOffset = runInfo.queryOffset / constInfo.dSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
                 if (runInfo.halfS1RealSize % 8 == 0) { // datacopy参数count限制32字节对齐，8*sizeof(float)=32
-                    DataCopy(queryScaleUb, this->deScaleQGm[deScaleQOffset], (runInfo.halfS1RealSize + 7) >> 3 << 3);
+                    DataCopy(queryScaleUb, this->deScaleQGm[deScaleQOffset], runInfo.halfS1RealSize);
                 } else if (runInfo.halfS1RealSize > 0) {
                     DataCopyExtParams dataCopyExtParams;
                     dataCopyExtParams.blockCount = 1;
