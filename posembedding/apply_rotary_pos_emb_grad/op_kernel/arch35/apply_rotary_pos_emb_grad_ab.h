@@ -76,6 +76,10 @@ private:
     GlobalTensor<T> gradKOutGm_;
     GlobalTensor<float> cosWsGm_;
     GlobalTensor<float> sinWsGm_;
+    // P2 directPartial 模式: cosWs/sinWs 实参为 gradCosOut/gradSinOut (apt.cpp 传入),
+    // 部分积 UB 内归约后经 cast 直写 GM 输出, 不再经过 workspace + Phase2 Reduce
+    GlobalTensor<T> gradCosOutGm_;
+    GlobalTensor<T> gradSinOutGm_;
 
     TQue<QuePosition::VECIN, bufferNum> gradQInQue_;
     TQue<QuePosition::VECIN, bufferNum> gradKInQue_;
@@ -93,6 +97,9 @@ private:
     TQue<QuePosition::VECIN, bufferNum> keyInQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradCosOutQue_;
     TQue<QuePosition::VECOUT, bufferNum> gradSinOutQue_;
+    // P2 directPartial 模式: cos/sin 部分积改用 TBuf (纯向量生命周期, 无跨 pipe 同步),
+    // 单 blob 容纳两路 (cos 在前 sin 在后), footprint <= 原 DB=2 双队列, 不改变 UB 除数预算
+    TBuf<TPosition::VECCALC> partialBuf_;
 
     int64_t blockIdx_ = 0;
     int64_t dAlign_ = 0;
@@ -106,6 +113,7 @@ private:
     int64_t ubFactorBS_ = 0;
     int64_t ubFactorN_ = 0;
     int64_t maxN_ = 0;         // max(nQ, nK) 统一后
+    bool directPartial_ = false; // host 侧判定: blockNumN==1 且单 N tile, 部分积核内归约直写
 
 private:
     __aicore__ inline void PrePareParams();
@@ -137,6 +145,11 @@ private:
         const LocalTensor<T>& gradIn, const LocalTensor<T>& gradOut, const LocalTensor<T>& xIn,
         const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial,
         uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum, bool isAccumulate);
+    // P2: 部分积核内归约直写 — 对 [ubFactorBS × validN] 的部分积缓冲按 N 行寄存器累加,
+    // cast 为 T 后借用 gradQOutQue_ 空闲 buffer 直写 gradCosOut/gradSinOut
+    __aicore__ inline void WritePartialDirect(
+        const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial,
+        int64_t bsAbsIdx, uint32_t currBS, uint32_t validN);
 };
 
 // =================================================================
@@ -174,6 +187,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
     gradKOutGm_.SetGlobalBuffer((__gm__ T*)gradKeyOut);
     cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
     sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
+    // P2: directPartial 时 cosWs/sinWs 实参为 gradCosOut/gradSinOut, 绑定为 T 类型输出
+    directPartial_ = (tilingData_->directPartial != 0);
+    if (directPartial_) {
+        gradCosOutGm_.SetGlobalBuffer((__gm__ T*)cosWs);
+        gradSinOutGm_.SetGlobalBuffer((__gm__ T*)sinWs);
+    }
 
     // UB: cos/sin 各 ubFactorBS 行; DcosFlag=0 时 Q/K 复用同一对 grad/dx 队列 (UB 除数 4),
     // DcosFlag=1 时保持 Q/K 独立四队列 + query/key/partial (UB 除数 16/20)
@@ -195,8 +214,15 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
         // 注意: nQ/nK 已是统一后的 totalN, 这里按 maxN 分配保证两路都够用
         pipe_->InitBuffer(queryInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
         pipe_->InitBuffer(keyInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
-        pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
-        pipe_->InitBuffer(gradSinOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
+        if (directPartial_) {
+            // P2: 部分积改用 TBuf 单 blob (cos 前 sin 后, 各 ubFactorBS*ubFactorN*partialDAlign float),
+            // 总量 = 原 DB=2 双队列的一半, UB 预算只会更宽松, 除数公式不变
+            pipe_->InitBuffer(partialBuf_,
+                2 * ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
+        } else {
+            pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
+            pipe_->InitBuffer(gradSinOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
+        }
     }
 }
 
@@ -291,8 +317,14 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
 
         LocalTensor<float> cosPartial, sinPartial;
         if constexpr (kDcosFlag) {
-            cosPartial = gradCosOutQue_.AllocTensor<float>();
-            sinPartial = gradSinOutQue_.AllocTensor<float>();
+            if (directPartial_) {
+                // P2: TBuf 纯向量生命周期, cos 在前 sin 在后 (各 ubFactorBS*ubFactorN*partialDAlign)
+                cosPartial = partialBuf_.Get<float>();
+                sinPartial = cosPartial[ubFactorBS_ * ubFactorN_ * partialDAlign_];
+            } else {
+                cosPartial = gradCosOutQue_.AllocTensor<float>();
+                sinPartial = gradSinOutQue_.AllocTensor<float>();
+            }
         }
 
         // workspace 部分积偏移 (按统一 maxN 线性, 与 Phase2 reduce 的 partSize = b*s*maxN*d 对齐)
@@ -332,15 +364,21 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
             }
         }
 
-        // 写出 cos/sin 部分积到 workspace (Q+K 已在 UB 内累加), 供 Phase2 reduce
+        // 写出 cos/sin 部分积: direct 模式核内归约直写输出, 否则写 workspace 供 Phase2 reduce
         if constexpr (kDcosFlag) {
             if (currQN > 0 || currKN > 0) {
+                // 写回范围须覆盖 SET 路的完整区间 (nQ<nK 时 K 先 SET 覆盖 [0,currKN)), 与 BAB 一致
+                uint32_t wsCurrN = static_cast<uint32_t>(max(currQN, currKN));
+                if (directPartial_) {
+                    // P2: 每核独占完整 N 范围(单 N tile), 部分 [0, wsCurrN) 行已含 Q+K 全部贡献,
+                    // UB 内按 N 行归约 + cast 直写 gradCosOut/gradSinOut, 免 ws 往返/SyncAll/Reduce;
+                    // TBuf 张量纯向量生命周期, 无需 EnQue/Free
+                    WritePartialDirect(cosPartial, sinPartial, bsAbsIdx, currBS, wsCurrN);
+                } else {
                 gradCosOutQue_.EnQue(cosPartial);
                 gradSinOutQue_.EnQue(sinPartial);
                 cosPartial = gradCosOutQue_.DeQue<float>();
                 sinPartial = gradSinOutQue_.DeQue<float>();
-                // 写回范围须覆盖 SET 路的完整区间 (nQ<nK 时 K 先 SET 覆盖 [0,currKN)), 与 BAB 一致
-                uint32_t wsCurrN = static_cast<uint32_t>(max(currQN, currKN));
                 if (dHalfAligned_) {
                     // D/2 对齐: UB 行距(ubFactorN_*d) 与 GM 行距(maxN*d) 均为整行,
                     // srcStride/dstStride 各自补齐行差, 一次 2D 搬运 currBS 行
@@ -366,6 +404,7 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ProcessNLoop(
                 }
                 gradCosOutQue_.FreeTensor(cosPartial);
                 gradSinOutQue_.FreeTensor(sinPartial);
+                }
             }
         }
     }
@@ -742,6 +781,79 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::ComputeGradWithCos
             }
         }
     }
+}
+
+// =================================================================
+// WritePartialDirect — P2 部分积核内归约直写 (仅 directPartial 模式)
+//
+// 部分积缓冲布局与 ComputeGradWithCosSinVF 一致: [ubFactorBS × ubFactorN] 行 float,
+// 行距 partialDAlign_ (前后半各 d/2, 半行距 partialDAlign_/2);
+// 行 [0, validN) 为有效行 (SET 路覆盖区间, Q/K 贡献已在 VF 内按行累加完毕)。
+//
+// 归约: 每 bs 行内按 N 做寄存器累加 (acc = row0 + row1 + ... + row(validN-1)),
+// Load 之间无同地址依赖、Add 仅依赖各自 Load + 前一 Add, 可流水;
+// 写出: cast f32->T 后按 packed 行距 d 存入借用缓冲, 一次 MTE3 2D 搬运直写 GM。
+//
+// 借用 gradQOutQue_ (VECOUT, T 类型) 此刻空闲的 DB buffer 作 cast 暂存:
+// 容量 ubFactorN_*dAlign_ >= 2*d (AB 模板 bn_>=2), 不新增 UB 预算;
+// EnQue/DeQue 提供 V->MTE3 同步 (与 ws 写回同一套队列语义)。
+// =================================================================
+template <typename T, bool kDcosFlag>
+__aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::WritePartialDirect(
+    const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial,
+    int64_t bsAbsIdx, uint32_t currBS, uint32_t validN)
+{
+    int64_t d = tilingData_->d;
+    uint16_t dHalf = static_cast<uint16_t>(d / HALF_COEF);
+    uint16_t halfPartialDAlign = static_cast<uint16_t>(partialDAlign_ / HALF_COEF);
+    uint32_t dByteSize = static_cast<uint32_t>(d * sizeof(T));
+    uint16_t repeatTimes = Ops::Base::CeilDiv(dHalf, static_cast<uint16_t>(VL_FLOAT32_SIZE));
+    // CCE 向量循环归纳变量要求 uint16_t; currBS<=ubFactorBS, validN<=ubFactorN<=4095, 均在范围内
+    uint16_t bsCnt = static_cast<uint16_t>(currBS);
+    uint16_t nCnt = static_cast<uint16_t>(validN);
+    __local_mem__ float* cosUb = (__local_mem__ float*)cosPartial.GetPhyAddr();
+    __local_mem__ float* sinUb = (__local_mem__ float*)sinPartial.GetPhyAddr();
+
+    LocalTensor<T> castT = gradQOutQue_.AllocTensor<T>();
+    __local_mem__ T* castUb = (__local_mem__ T*)castT.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> acc1, acc2, tmp1, tmp2;
+        Reg::MaskReg preg;
+        for (uint16_t half = 0; half < static_cast<uint16_t>(HALF_COEF); half++) { // 0:cos, 1:sin
+            __local_mem__ float* srcUb = (half == 0) ? cosUb : sinUb;
+            __local_mem__ T* dstBase = castUb + static_cast<int64_t>(half) * ubFactorBS_ * d;
+            for (uint16_t bs = 0; bs < bsCnt; bs++) {
+                __local_mem__ float* row0 = srcUb + bs * ubFactorN_ * partialDAlign_;
+                __local_mem__ T* dstRow = dstBase + bs * d;
+                for (uint16_t i = 0; i < repeatTimes; i++) {
+                    uint32_t updateCnt = dHalf;
+                    preg = Reg::UpdateMask<float>(updateCnt);
+                    int32_t offset = i * VL_FLOAT32_SIZE;
+                    ops::LoadTwoTensorForDtypeT<float>(
+                        row0, row0, acc1, acc2, preg, preg, offset, halfPartialDAlign + offset);
+                    for (uint16_t n = 1; n < nCnt; n++) {
+                        __local_mem__ float* rowN = srcUb + (bs * ubFactorN_ + n) * partialDAlign_;
+                        ops::LoadTwoTensorForDtypeT<float>(
+                            rowN, rowN, tmp1, tmp2, preg, preg, offset, halfPartialDAlign + offset);
+                        Add(acc1, acc1, tmp1, preg);
+                        Add(acc2, acc2, tmp2, preg);
+                    }
+                    // f32->T cast + packed 存行 (前半在 [0,d/2), 后半在 [d/2,d)), 供连续 2D 搬运
+                    ops::StoreOneTensorForDtypeT<T>(dstRow, acc1, preg, offset);
+                    ops::StoreOneTensorForDtypeT<T>(dstRow, acc2, preg, dHalf + offset);
+                }
+            }
+        }
+    }
+    gradQOutQue_.EnQue(castT);
+    castT = gradQOutQue_.DeQue<T>();
+    int64_t castRowCnt = ubFactorBS_ * d;
+    DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currBS), dByteSize, 0, 0, 0};
+    DataCopyPad(gradCosOutGm_[bsAbsIdx * d], castT, copyOutParams);
+    DataCopyPad(gradSinOutGm_[bsAbsIdx * d], castT[castRowCnt], copyOutParams);
+    gradQOutQue_.FreeTensor(castT);
 }
 } // namespace ApplyRotaryPosEmbGrad
 #endif // APPLY_ROTARY_POS_EMB_GRAD_AB_H
