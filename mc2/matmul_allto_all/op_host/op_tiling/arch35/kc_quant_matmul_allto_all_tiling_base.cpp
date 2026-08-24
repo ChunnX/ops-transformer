@@ -491,9 +491,9 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     }
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
-    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
-            x2TransposeFlag, biasDType, commMode, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF);
+    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE,ADDBIASSPLITMODE: [%d,%d,%d,%d,0], TilingKey is [%lu].",
+            KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode, tilingKey);
     return tilingKey;
 }
 
