@@ -103,6 +103,29 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_prob_none_bf16)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+TEST_F(MoeTokenUnpermuteWithEp, test_infershape_prob_none_empty_range)
+{
+    gert::StorageShape permuted_tokens_shape = {{8, 2}, {8, 2}};
+    gert::StorageShape sorted_indices_shape = {{8}, {8}};
+    std::vector<int64_t> empty_range;
+
+    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
+    {
+        {permuted_tokens_shape, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+    },
+    {
+        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },
+    {
+        {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+        {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(empty_range)},
+        {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({})},
+    });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{8, 2}});
+}
+
 TEST_F(MoeTokenUnpermuteWithEp, test_infershape_fp16)
 {
     std::vector<int64_t> range({0, 49152});
