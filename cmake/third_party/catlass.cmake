@@ -14,6 +14,9 @@ if(EXISTS "${CANN_3RD_LIB_PATH}/catlass")
                          ${CANN_3RD_LIB_PATH}/catlass REALPATH)
   message(STATUS "Find catlass source dir: ${CATLASS_SOURCE_PATH}")
 else()
+  if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/catlass-subbuild")
+    file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/build/_deps/catlass-subbuild)
+  endif()
   include(FetchContent)
 
   FetchContent_Declare(
