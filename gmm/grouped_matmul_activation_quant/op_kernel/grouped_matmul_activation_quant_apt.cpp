@@ -34,7 +34,6 @@ __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR gr
 {
     REGISTER_NONE_TILING;
     (void)bias;
-    TPipe tPipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
