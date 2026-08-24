@@ -8,7 +8,7 @@
 
 /*!
  * \file mhc_pre_backward_mm_policy.h
- * \brief MHC C0 VECIN Split-M copy-out policy.
+ * \brief MHC C0 VECIN Split-N copy-out policy.
  */
 
 #ifndef ASCENDC_MHC_PRE_BACKWARD_MM_POLICY_H
@@ -223,11 +223,11 @@ private:
 };
 
 template <const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-class MhcPreBackwardMatmulPolicy
+class MhcPreBackwardSplitNMatmulPolicy
     : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
 public:
     using CopyCubeOut = MhcPreBackwardCustomCopyCubeOut<
-        IMPL, A_TYPE, B_TYPE, C_TYPE, MM_CFG, AscendC::McgShfMode::DUAL_DST_SPLIT_M>;
+        IMPL, A_TYPE, B_TYPE, C_TYPE, MM_CFG, AscendC::McgShfMode::DUAL_DST_SPLIT_N>;
 };
 
 } // namespace MhcPreBackwardUtils
