@@ -34,6 +34,7 @@ const aclTensor* QuantFlashAttnMetadata(
     const char* layoutQDescale,
     const char* layoutKv,
     const char* layoutOut,
+    bool isGradEnable,
     const char* socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
