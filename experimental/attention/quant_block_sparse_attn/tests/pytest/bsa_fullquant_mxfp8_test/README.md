@@ -2,9 +2,10 @@
 
 本目录用于运行 QuantBlockSparseAttn 的 MXFP8 full-quant golden/NPU 对比用例。
 
-Golden 模拟 kernel 的 softmax 状态，不再使用额外的 `has_valid_position` 判断：在线 max 从
-`-FLT_MAX` 开始，最终 `max == -FLT_MAX && sum == 0` 才是空行。若某行的所有合法 QK score
-均为 `-Inf`，则与 kernel 一致保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
+Golden 模拟 master kernel 的 softmax 状态，不再使用额外的 `has_valid_position` 判断：在线 max 从
+`-FLT_MAX` 开始；OUT 以 `max == -FLT_MAX` 判断空行，LSE 还会将 `sum == 0` 映射为
+`EMPTY_LSE`。若某行的所有合法 QK score 均为 `-Inf`，则与 kernel 一致保留
+`attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
 触发的有效 softmax 行仍传播 `NaN`。为了兼容旧版算子和已生成的 golden，MXFP8 的
 `EMPTY_LSE` 使用 FP32 `-FLT_MAX`（`-3.4028235e+38`）；该语义同时适用于单 tile
 和多 tile 的最终归一化。

@@ -2188,11 +2188,11 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
-                # Match the unchanged kernel output path: only max sentinel
-                # together with sum=0 is empty. A non-empty sum=0 state is an
-                # abnormal active row and RowInvalidUpdateVF writes NaN to OUT.
-                row_empty = ~_softmax_row_is_active(m_run) & (l_run == 0)
-                row_active = ~row_empty
+                # Match the master kernel's two output rules independently:
+                # OUT validity follows the max sentinel, while LSE additionally
+                # maps every sum=0 row to -FLT_MAX.
+                row_active = _softmax_row_is_active(m_run)
+                lse_active = row_active & (l_run != 0)
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 zero_sum_nonempty = row_active & (l_run == 0)
@@ -2204,13 +2204,13 @@ def cpu_mxfp8_golden(
                 lse = torch.log(safe_l) + m_run
 
                 for local_idx in range(nq):
-                    if not bool(row_active[local_idx].item()):
-                        continue
                     out_idx = q_base + q_start + local_idx
-                    attention_out[out_idx, head_idx] = attn[local_idx].to(
-                        torch.bfloat16
-                    )
-                    softmax_lse[out_idx, head_idx] = lse[local_idx]
+                    if bool(row_active[local_idx].item()):
+                        attention_out[out_idx, head_idx] = attn[local_idx].to(
+                            torch.bfloat16
+                        )
+                    if bool(lse_active[local_idx].item()):
+                        softmax_lse[out_idx, head_idx] = lse[local_idx]
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
