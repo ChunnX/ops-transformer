@@ -2918,19 +2918,22 @@ def _cache_case_name(case_id, case_name_arg, total_case_num):
     return f"{case_name_arg}_{safe_case_id}"
 
 
-def _cpu_golden_cache_name(case_name, p_scale):
-    """Key CPU golden by the effective E8M0 P-scale byte.
+def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
+    """Key CPU golden by matmul backend and the effective E8M0 P-scale byte.
 
-    This intentionally avoids pre-fix CPU cache files whose golden may have
-    consumed the original FP32 P scale.
+    Including the backend prevents CPU torch.matmul and npu_quant_matmul
+    golden outputs from reusing each other's cache. It also intentionally
+    avoids pre-fix cache files whose key did not encode the backend.
     """
+    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    cache_prefix = f"{case_name}_{backend}_p_scale_e8m0"
     if p_scale is None or p_scale.numel() == 0:
-        return f"{case_name}__pse8_default"
+        return f"{cache_prefix}_default"
     p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "CPU cache P scale")
     raw = p_scale_e8m0.contiguous().view(torch.uint8).reshape(-1)
     if raw.numel() != 1:
         raise ValueError(f"P scale must contain one E8M0 value, got {raw.numel()}")
-    return f"{case_name}__pse8_{int(raw.item()):02x}"
+    return f"{cache_prefix}_{int(raw.item()):02x}"
 
 
 def _safe_debug_case_name(case_name):
@@ -3190,7 +3193,7 @@ def run_one_case(
     # and NPU receive the exact same E8M0 P-scale tensor.
     if p_scale is not None and p_scale.numel() > 0:
         p_scale = fp32_to_e8m0fnu_safe(p_scale, "Shared P scale")
-    cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale)
+    cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul)
     logger.info("[CACHE] CPU golden key=%s", cpu_cache_name)
 
     _, mfu_time = _log_attention_compute_stats(
