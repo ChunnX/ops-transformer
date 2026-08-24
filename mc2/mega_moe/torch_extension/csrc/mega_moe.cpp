@@ -146,7 +146,10 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
 
-int64_t CeilAlign(int64_t val, int64_t align) { return (val + align - 1) / align * align; }
+int64_t CeilAlign(int64_t val, int64_t align)
+{
+    return (val + align - 1) / align * align;
+}
 
 // A2 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
