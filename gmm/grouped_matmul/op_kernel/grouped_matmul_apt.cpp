@@ -164,6 +164,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                                  \
     do {                                                                                                               \
+        TPipe tPipe;                                                                                                   \
         templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2> op;  \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
@@ -175,6 +176,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_MIX_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                              \
     do {                                                                                                               \
+        TPipe tPipe;                                                                                                   \
         templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, wFormat, transposeX1,            \
                       transposeX2, DTYPE_L0C_LOCAL>                                                                    \
             op;                                                                                                        \
@@ -192,6 +194,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
         if ASCEND_IS_AIC {                                                                                             \
+            TPipe tPipe;                                                                                               \
             templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat, transposeX1, transposeX2>  \
                 op;                                                                                                    \
             op.Init(x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_,      \
@@ -216,7 +219,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GmmCgmctPerTileKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,        \
                               yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,    \
-                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
+                                                        &gmmQuantParams_, &mmTilingData_);                             \
     } while (0)
 
 #if IS_BLAZE
@@ -226,7 +229,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
-                                                       &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
+                                                       &gmmQuantParams_, &mmTilingData_);                              \
     } while (0)
 #else
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
@@ -235,13 +238,14 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,   \
                          cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,    \
-                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
+                                                        &gmmQuantParams_, &mmTilingData_);                             \
     } while (0)
 #endif
 
 #if defined(V310_GMM_QUANT_S4S4) && IS_BLAZE
 #define GMM_S4S4_IMPL_CLASS(xLayout, wLayout, yLayout) \
     do { \
+        TPipe tPipe; \
         GET_TILING_DATA_MEMBER(GMMS4S4IntQuantTilingData, gmmS4S4Params, gmmS4S4Params_, tiling); \
         GET_TILING_DATA_MEMBER(GMMS4S4IntQuantTilingData, mmTilingData, mmTilingData_, tiling); \
         GmmS4S4Kernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
@@ -263,7 +267,9 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
                                           GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
 {
+#if !defined(V310_GMM_QUANT)
     TPipe tPipe;
+#endif
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     GM_ADDR user1 = GetUserWorkspace(workspace);
