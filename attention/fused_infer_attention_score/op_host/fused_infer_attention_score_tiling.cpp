@@ -2303,10 +2303,6 @@ static bool IsDynamicInputDim0StrideCompatible(const gert::TilingContext *contex
         if (!IsTensorDim0StrideCompatible(storageShape, strides)) {
             return false;
         }
-        if (tensorIndex == 0 && context->InputIsView(inputIndex) &&
-            (strides == nullptr || strides->GetDimNum() == 0)) {
-            return false;
-        }
     }
     return true;
 }
