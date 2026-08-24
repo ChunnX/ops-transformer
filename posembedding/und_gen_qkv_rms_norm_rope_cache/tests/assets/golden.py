@@ -77,7 +77,9 @@ BLOCK_SIZE = 128
 # 工具
 def make_cos_sin_cache(max_pos, head_dim, device="cpu", base=10000.0):
     """构造 cos_sin_cache [max_pos, head_dim]，前半 cos 后半 sin（与竞品一致）。"""
-    inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim)
+    )
     freqs = torch.outer(torch.arange(max_pos, device=device).float(), inv_freq)
     return torch.cat([freqs.cos(), freqs.sin()], dim=-1).contiguous()
 
@@ -114,7 +116,9 @@ def _normalize_qkv(x, num_heads_total, name):
     if x is None:
         return None
     if x.dim() == 2:
-        assert x.shape[1] % num_heads_total == 0, f"{name} 的 hidden 无法被 N={num_heads_total} 整除"
+        assert x.shape[1] % num_heads_total == 0, (
+            f"{name} 的 hidden 无法被 N={num_heads_total} 整除"
+        )
         x = x.reshape(x.shape[0], num_heads_total, x.shape[1] // num_heads_total)
     assert x.dim() == 3, f"{name} 期望 3D [T, N, D]，实得 {tuple(x.shape)}"
     assert x.shape[1] == num_heads_total, (
@@ -127,7 +131,9 @@ def _normalize_positions(positions, total):
     """positions 支持 [3, total] 与 [total]（单序列，三轴广播）。"""
     if positions.dim() == 1:
         positions = positions.unsqueeze(0).expand(3, -1)
-    assert positions.shape == (3, total), f"positions 期望 [3, {total}]，实得 {tuple(positions.shape)}"
+    assert positions.shape == (3, total), (
+        f"positions 期望 [3, {total}]，实得 {tuple(positions.shape)}"
+    )
     return positions.to(torch.int64)
 
 
@@ -184,12 +190,16 @@ def golden_dense(
     else:
         assert cat_indices.dtype in (torch.int64, torch.int32), "cat_indices 应为 int64"
         src = cat_indices.to(torch.int64)
-    assert int(src.min()) >= 0 and int(src.max()) < und_len + gen_len, "cat_indices 越界"
+    assert int(src.min()) >= 0 and int(src.max()) < und_len + gen_len, (
+        "cat_indices 越界"
+    )
 
     is_und = src < und_len
 
     # ---- index：按 src_t 从 und/gen 两段各自 gather，不做 concat ----
-    rows = torch.empty(total, num_heads_total, head_dim, dtype=torch.float32, device=device)
+    rows = torch.empty(
+        total, num_heads_total, head_dim, dtype=torch.float32, device=device
+    )
     if bool(is_und.any()):
         rows[is_und] = und_qkv[src[is_und]].float()
     if bool((~is_und).any()):
@@ -198,8 +208,8 @@ def golden_dense(
 
     # ---- split（N 维切 Q/K/V）----
     q = rows[:, :num_heads_q, :]
-    k = rows[:, num_heads_q:num_heads_q + num_heads_k, :]
-    v = rows[:, num_heads_q + num_heads_k:, :]
+    k = rows[:, num_heads_q : num_heads_q + num_heads_k, :]
+    v = rows[:, num_heads_q + num_heads_k :, :]
 
     # ---- rmsnorm（按 token 选 und/gen 权重）----
     und_wq = und_weights_q.float()
@@ -215,15 +225,15 @@ def golden_dense(
     # ---- MRoPE：三轴 cos/sin 按 axisLut 合并成一份，再做标准 RoPE ----
     half = head_dim // 2
     positions = _normalize_positions(positions, total)
-    axis = mrope_axis_map(head_dim, mrope_section).to(device)          # [half]
-    pos_sel = positions[axis]                                          # [half, total]
-    pos_sel = pos_sel.transpose(0, 1).contiguous()                     # [total, half]
+    axis = mrope_axis_map(head_dim, mrope_section).to(device)  # [half]
+    pos_sel = positions[axis]  # [half, total]
+    pos_sel = pos_sel.transpose(0, 1).contiguous()  # [total, half]
     assert int(pos_sel.min()) >= 0 and int(pos_sel.max()) < cos_sin_cache.shape[0], (
         "positions 超出 cos_sin_cache 的 max_pos 范围"
     )
     col = torch.arange(half, dtype=torch.int64, device=device).unsqueeze(0)  # [1, half]
     cos_sin_f32 = cos_sin_cache.float()
-    cos = cos_sin_f32[pos_sel, col]                                    # [total, half]
+    cos = cos_sin_f32[pos_sel, col]  # [total, half]
     sin = cos_sin_f32[pos_sel, col + half]
     q = _rope(q, cos, sin)
     k = _rope(k, cos, sin)
@@ -235,7 +245,9 @@ def golden_dense(
 # 分页 KV Cache 写入 / 读回
 def _check_cache(cache, name):
     """cache 固定为连续 BBND：[num_blocks, block_size, N, D]。"""
-    assert cache.dim() == 4, f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
+    assert cache.dim() == 4, (
+        f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
+    )
     assert cache.is_contiguous(), f"{name} 必须内存连续（BBND），本算子不支持非连续布局"
     return cache
 
@@ -243,9 +255,13 @@ def _check_cache(cache, name):
 def _scatter_cache(cache, slot_mapping, data):
     """按 slot_mapping 原地写入；data: [total, N, D]（已是 cache 的 dtype）。"""
     num_blocks, block_size = cache.shape[0], cache.shape[1]
-    assert slot_mapping.dtype in (torch.int64, torch.int32), "slot_mapping 应为 int64（兼容 int32）"
+    assert slot_mapping.dtype in (torch.int64, torch.int32), (
+        "slot_mapping 应为 int64（兼容 int32）"
+    )
     slot = slot_mapping.to(torch.int64)
-    assert int(slot.min()) >= 0 and int(slot.max()) < num_blocks * block_size, "slot_mapping 越界"
+    assert int(slot.min()) >= 0 and int(slot.max()) < num_blocks * block_size, (
+        "slot_mapping 越界"
+    )
     cache[slot // block_size, slot % block_size] = data
     return cache
 
@@ -321,6 +337,7 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
     q_out = q_f32.to(torch.bfloat16)
     return q_out, k_out, v_out
 
+
 # TTK 插件：输入构造与 golden 注册
 # k_cache / v_cache 是原地更新：IR 里输出名与输入名相同，TTK 会据此自动填
 # output_inplace_indexes，kernel CSV 不必显式给出。
@@ -365,7 +382,7 @@ def _torch_to_np(tensor, like_dtype):
 def _seed_of(kwargs):
     """按用例名派生种子：同一条用例每次跑拿到同一组索引，便于复现。"""
     name = str(kwargs.get("testcase_name", "und_gen_qkv_rms_norm_rope_cache"))
-    return abs(hash(name)) % (2 ** 31)
+    return abs(hash(name)) % (2**31)
 
 
 def _gen_index_values(arrays, kwargs):
@@ -444,25 +461,27 @@ def ttk_input(*inputs, **kwargs):
     return arrays
 
 
-def ttk_golden(und_qkv,
-               und_weights_q,
-               und_weights_k,
-               cos_sin_cache,
-               k_cache,
-               v_cache,
-               slot_mapping,
-               positions,
-               gen_qkv=None,
-               gen_weights_q=None,
-               gen_weights_k=None,
-               cat_indices=None,
-               **kwargs):
-    '''Kernel golden for und_gen_qkv_rms_norm_rope_cache.
+def ttk_golden(
+    und_qkv,
+    und_weights_q,
+    und_weights_k,
+    cos_sin_cache,
+    k_cache,
+    v_cache,
+    slot_mapping,
+    positions,
+    gen_qkv=None,
+    gen_weights_q=None,
+    gen_weights_k=None,
+    cat_indices=None,
+    **kwargs,
+):
+    """Kernel golden for und_gen_qkv_rms_norm_rope_cache.
 
     参数序与 @und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
     张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，kwargs 带算子属性。
     返回写入 slot 后的整块 (q, k_cache, v_cache)。
-    '''
+    """
     mrope_section = kwargs.get("mrope_section", None)
     if mrope_section is not None:
         mrope_section = list(mrope_section)
@@ -517,10 +536,14 @@ def _aclnn_split_args(args):
             % (TTK_INPUT_NUM + ACLNN_ATTR_NUM, len(args))
         )
     tensors = list(args[:TTK_INPUT_NUM])
-    hq, hk, hv, eps, sec = args[TTK_INPUT_NUM:TTK_INPUT_NUM + ACLNN_ATTR_NUM]
-    attrs = dict(num_heads_q=int(hq), num_heads_k=int(hk), num_heads_v=int(hv),
-                 norm_eps=float(eps),
-                 mrope_section=(list(sec) if sec is not None else None))
+    hq, hk, hv, eps, sec = args[TTK_INPUT_NUM : TTK_INPUT_NUM + ACLNN_ATTR_NUM]
+    attrs = dict(
+        num_heads_q=int(hq),
+        num_heads_k=int(hk),
+        num_heads_v=int(hv),
+        norm_eps=float(eps),
+        mrope_section=(list(sec) if sec is not None else None),
+    )
     return tensors, attrs
 
 
@@ -567,25 +590,19 @@ def aclnn_golden(*args, **kwargs):
     ref = tensors[IDX_K_CACHE]
     if isinstance(ref, torch.Tensor):
         return q_t.to(ref.dtype), k_t.to(ref.dtype), v_t.to(ref.dtype)
-    return (_torch_to_np(q_t, ref.dtype),
-            _torch_to_np(k_t, ref.dtype),
-            _torch_to_np(v_t, ref.dtype))
+    return (
+        _torch_to_np(q_t, ref.dtype),
+        _torch_to_np(k_t, ref.dtype),
+        _torch_to_np(v_t, ref.dtype),
+    )
 
 
 __input__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_input"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"
-    }
+    "kernel": {"und_gen_qkv_rms_norm_rope_cache": "ttk_input"},
+    "aclnn": {"aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"},
 }
 
 __golden__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_golden"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"
-    }
+    "kernel": {"und_gen_qkv_rms_norm_rope_cache": "ttk_golden"},
+    "aclnn": {"aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"},
 }

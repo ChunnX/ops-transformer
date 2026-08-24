@@ -37,7 +37,9 @@ import sys
 import torch
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "tests"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "tests")
+)
 from assets.golden import (  # noqa: E402
     BLOCK_SIZE,
     HEAD_COMBOS,
@@ -61,13 +63,14 @@ def _npu_modules():
         _NPU = (torch_npu, cann_ops_transformer.ops)
     return _NPU
 
+
 # bf16 输出的比对判据，与 tests/st/arch35 两个 TTK CSV 的 precision_tolerances /
 # absolute_precision 取同一套值，口径统一：
 #   rtol=2^-7 —— |golden|>1e-3 处的分歧上限，恰为 2 个 bf16 ULP
 #   atol=2^-13 —— 覆盖 |golden|<=1e-3 的长尾（绝对差 <=7.6e-6）与 RoPE 两项相消出的近零点
 # 判据本身不放松：下面 ok = (bad == 0)，不容许任何一个元素超标。
-RTOL = 2 ** -7
-ATOL = 2 ** -13
+RTOL = 2**-7
+ATOL = 2**-13
 
 
 # --------------------------------------------------------------------------- #
@@ -286,14 +289,20 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         cat_indices = torch.arange(total - 1, -1, -1, dtype=torch.int64, device=device)
     elif cat_mode == "all_und":
         # 全部指向 und 段：undMask 恒为全 1，只走 und 的 gamma
-        cat_indices = torch.randint(0, und_len, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            0, und_len, (total,), dtype=torch.int64, device=device
+        )
     elif cat_mode == "all_gen":
         # 全部指向 gen 段：undMask 恒为 0，只走 gen 的 gamma
         assert gen_len > 0, "all_gen 需要 gen_len > 0"
-        cat_indices = torch.randint(und_len, total, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            und_len, total, (total,), dtype=torch.int64, device=device
+        )
     elif cat_mode == "dup":
         # 允许重复源：同一个源 token 被多个输出位置引用（接口只约束值域，不约束唯一性）
-        cat_indices = torch.randint(0, total, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            0, total, (total,), dtype=torch.int64, device=device
+        )
     else:  # shuffled：und/gen 交错，模拟真实 cat_indices
         cat_indices = torch.randperm(total, device=device).to(torch.int64)
     assert cat_mode == "none" or gen_len > 0 or und_len == total
@@ -307,23 +316,36 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         slot_mapping = torch.arange(total - 1, -1, -1, dtype=torch.int64, device=device)
     elif slot_mode == "high":
         # 贴着容量上界写，覆盖最大 slot = Bn*Bs-1 这个边界行
-        slot_mapping = torch.arange(capacity - total, capacity, dtype=torch.int64, device=device)
+        slot_mapping = torch.arange(
+            capacity - total, capacity, dtype=torch.int64, device=device
+        )
     else:
         slot_mapping = torch.randperm(capacity, device=device)[:total].to(torch.int64)
 
     case = dict(
-        und_qkv=(torch.randn(und_len, n, d, dtype=torch.bfloat16, device=device) * x_scale),
+        und_qkv=(
+            torch.randn(und_len, n, d, dtype=torch.bfloat16, device=device) * x_scale
+        ),
         und_weights_q=torch.randn(d, dtype=torch.bfloat16, device=device),
         und_weights_k=torch.randn(d, dtype=torch.bfloat16, device=device),
         cos_sin_cache=make_cos_sin_cache(max_pos, d, device=device),
         k_cache=init(k_shape, dtype=torch.bfloat16, device=device),
         v_cache=init(v_shape, dtype=torch.bfloat16, device=device),
         slot_mapping=slot_mapping,
-        positions=torch.randint(0, max_pos, (3, total), dtype=torch.int64, device=device),
-        gen_qkv=((torch.randn(gen_len, n, d, dtype=torch.bfloat16, device=device) * x_scale)
-                 if gen_len > 0 else None),
-        gen_weights_q=(torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None),
-        gen_weights_k=(torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None),
+        positions=torch.randint(
+            0, max_pos, (3, total), dtype=torch.int64, device=device
+        ),
+        gen_qkv=(
+            (torch.randn(gen_len, n, d, dtype=torch.bfloat16, device=device) * x_scale)
+            if gen_len > 0
+            else None
+        ),
+        gen_weights_q=(
+            torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None
+        ),
+        gen_weights_k=(
+            torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None
+        ),
         cat_indices=cat_indices,
         num_heads_q=hq,
         num_heads_k=hk,
@@ -331,11 +353,20 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         norm_eps=norm_eps,
         mrope_section=spec["mrope_section"],
     )
-    case["_meta"] = dict(name=spec["name"], total=total, heads=(hq, hk, hv),
-                         num_blocks=num_blocks, block_size=bs, seed=seed,
-                         max_pos=max_pos, norm_eps=norm_eps, x_scale=x_scale,
-                         cat=cat_mode, slot_mode=slot_mode,
-                         mrope_section=spec["mrope_section"])
+    case["_meta"] = dict(
+        name=spec["name"],
+        total=total,
+        heads=(hq, hk, hv),
+        num_blocks=num_blocks,
+        block_size=bs,
+        seed=seed,
+        max_pos=max_pos,
+        norm_eps=norm_eps,
+        x_scale=x_scale,
+        cat=cat_mode,
+        slot_mode=slot_mode,
+        mrope_section=spec["mrope_section"],
+    )
     return case
 
 
@@ -345,8 +376,10 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
 # 自检：仅验证 case 集构造与 golden 可跑通（纯 CPU，不涉及 NPU）
 # --------------------------------------------------------------------------- #
 def _self_check(include_big=False):
-    print(f"golden case set (headDim={HEAD_DIM}, block_size={BLOCK_SIZE}, heads in "
-          f"{{{HEAD_COMBOS[0]}, {HEAD_COMBOS[1]}}})")
+    print(
+        f"golden case set (headDim={HEAD_DIM}, block_size={BLOCK_SIZE}, heads in "
+        f"{{{HEAD_COMBOS[0]}, {HEAD_COMBOS[1]}}})"
+    )
     for spec in TYPICAL_CASES:
         total = spec["und_len"] + spec["gen_len"]
         if spec["big"] and not include_big:
@@ -357,40 +390,106 @@ def _self_check(include_big=False):
         q, k_cache, v_cache = golden_und_gen_qkv_rms_norm_rope_cache(**case)
         assert q.shape == (total, meta["heads"][0], HEAD_DIM)
         assert q.dtype == torch.bfloat16
-        print(f"  [OK]   {meta['name']:<22} T={total:<6} heads={meta['heads']} "
-              f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)}")
+        print(
+            f"  [OK]   {meta['name']:<22} T={total:<6} heads={meta['heads']} "
+            f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)}"
+        )
     print("golden self-check PASS")
 
 
 WHITEBOX_CASES = (
     # T=38：每核 1 token（T < 56 核），容量只余 1 个槽位
-    dict(name="w_t38_bs39_capfull",     heads=(8, 1, 1),  und_len=33,   gen_len=5,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         block_size=39,  extra_blocks=0),
+    dict(
+        name="w_t38_bs39_capfull",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=5,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=39,
+        extra_blocks=0,
+    ),
     # T 等于 AIV 核数：每核 1 个 token 且余数为 0，多核切分的边界
-    dict(name="w_t56_bs33_h16",         heads=(16, 2, 2), und_len=40,   gen_len=16,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
-         block_size=33,  extra_blocks=0),
+    dict(
+        name="w_t56_bs33_h16",
+        heads=(16, 2, 2),
+        und_len=40,
+        gen_len=16,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 24, 24],
+        big=False,
+        block_size=33,
+        extra_blocks=0,
+    ),
     # 质数 block_size + 容量只余 2 个槽位
-    dict(name="w_t379_bs127_h16",       heads=(16, 2, 2), und_len=334,  gen_len=45,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
-         block_size=127, extra_blocks=0),
+    dict(
+        name="w_t379_bs127_h16",
+        heads=(16, 2, 2),
+        und_len=334,
+        gen_len=45,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 24, 24],
+        big=False,
+        block_size=127,
+        extra_blocks=0,
+    ),
     # Bn*Bs == T：cache 被 slot_mapping 铺满，无未命中行
-    dict(name="w_t520_bs40_cap_exact",  heads=(8, 1, 1),  und_len=479,  gen_len=41,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
-         block_size=40,  extra_blocks=0),
+    dict(
+        name="w_t520_bs40_cap_exact",
+        heads=(8, 1, 1),
+        und_len=479,
+        gen_len=41,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 24, 24],
+        big=False,
+        block_size=40,
+        extra_blocks=0,
+    ),
     # ubFactor 被 UB 容量夹住（N=20 时上界 10）+ 大质数 block_size
-    dict(name="w_t1356_bs431_h16",      heads=(16, 2, 2), und_len=1129, gen_len=227,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
-         block_size=431, extra_blocks=0),
+    dict(
+        name="w_t1356_bs431_h16",
+        heads=(16, 2, 2),
+        und_len=1129,
+        gen_len=227,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 24, 24],
+        big=False,
+        block_size=431,
+        extra_blocks=0,
+    ),
     # ubFactor 被 UB 容量夹住（N=10 时上界 18）
-    dict(name="w_t1696_bs178_h8",       heads=(8, 1, 1),  und_len=1503, gen_len=193,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
-         block_size=178, extra_blocks=0),
+    dict(
+        name="w_t1696_bs178_h8",
+        heads=(8, 1, 1),
+        und_len=1503,
+        gen_len=193,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 24, 24],
+        big=False,
+        block_size=178,
+        extra_blocks=0,
+    ),
     # Qwen3-VL 4B TP1 图像 prefill 的真实配置：sec=[24,20,20]、max_pos 取到 32K
-    dict(name="w_qwen3vl_t2096_sec242020", heads=(16, 2, 2), und_len=2048, gen_len=48,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[24, 20, 20], big=False,
-         block_size=256, extra_blocks=7, max_pos=32768),
+    dict(
+        name="w_qwen3vl_t2096_sec242020",
+        heads=(16, 2, 2),
+        und_len=2048,
+        gen_len=48,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[24, 20, 20],
+        big=False,
+        block_size=256,
+        extra_blocks=7,
+        max_pos=32768,
+    ),
 )
 
 
@@ -413,7 +512,10 @@ def compare(name, got, ref):
     max_rel = (diff / denom).max().item()
     bad = (diff > (ATOL + RTOL * ref_f.abs())).sum().item()
     ok = bad == 0
-    return ok, f"{name}: max_abs={max_abs:.5f} max_rel={max_rel:.5f} 不达标元素={bad}/{ref_f.numel()}"
+    return (
+        ok,
+        f"{name}: max_abs={max_abs:.5f} max_rel={max_rel:.5f} 不达标元素={bad}/{ref_f.numel()}",
+    )
 
 
 def run_case(spec, verbose=True):
@@ -423,10 +525,21 @@ def run_case(spec, verbose=True):
 
     # ---- golden（CPU float32）----
     ref_q, ref_k, ref_v = golden_dense(
-        case["und_qkv"], case["gen_qkv"], case["und_weights_q"], case["und_weights_k"],
-        case["gen_weights_q"], case["gen_weights_k"], case["cos_sin_cache"],
-        case["positions"], case["cat_indices"], hq, hk, hv,
-        case["norm_eps"], case["mrope_section"])
+        case["und_qkv"],
+        case["gen_qkv"],
+        case["und_weights_q"],
+        case["und_weights_k"],
+        case["gen_weights_q"],
+        case["gen_weights_k"],
+        case["cos_sin_cache"],
+        case["positions"],
+        case["cat_indices"],
+        hq,
+        hk,
+        hv,
+        case["norm_eps"],
+        case["mrope_section"],
+    )
 
     # ---- NPU ----
     k_cache_in, v_cache_in = case["k_cache"], case["v_cache"]
@@ -434,17 +547,30 @@ def run_case(spec, verbose=True):
     v_cache = v_cache_in.clone().npu()
     _, ops = _npu_modules()
     q = ops.und_gen_qkv_rms_norm_rope_cache(
-        case["und_qkv"].npu(), case["und_weights_q"].npu(), case["und_weights_k"].npu(),
-        case["cos_sin_cache"].npu(), k_cache, v_cache,
-        case["slot_mapping"].npu(), case["positions"].npu(),
-        _to_npu(case["gen_qkv"]), _to_npu(case["gen_weights_q"]), _to_npu(case["gen_weights_k"]),
+        case["und_qkv"].npu(),
+        case["und_weights_q"].npu(),
+        case["und_weights_k"].npu(),
+        case["cos_sin_cache"].npu(),
+        k_cache,
+        v_cache,
+        case["slot_mapping"].npu(),
+        case["positions"].npu(),
+        _to_npu(case["gen_qkv"]),
+        _to_npu(case["gen_weights_q"]),
+        _to_npu(case["gen_weights_k"]),
         _to_npu(case["cat_indices"]),
-        num_heads_q=hq, num_heads_k=hk, num_heads_v=hv,
-        norm_eps=case["norm_eps"], mrope_section=case["mrope_section"] or [])
+        num_heads_q=hq,
+        num_heads_k=hk,
+        num_heads_v=hv,
+        norm_eps=case["norm_eps"],
+        mrope_section=case["mrope_section"] or [],
+    )
     torch.npu.synchronize()
 
     # ---- 接口连通性（硬断言）----
-    assert q.shape == (total, hq, HEAD_DIM), f"q shape {tuple(q.shape)} != {(total, hq, HEAD_DIM)}"
+    assert q.shape == (total, hq, HEAD_DIM), (
+        f"q shape {tuple(q.shape)} != {(total, hq, HEAD_DIM)}"
+    )
     assert q.dtype == torch.bfloat16, f"q dtype {q.dtype}"
     assert k_cache.shape == k_cache_in.shape and v_cache.shape == v_cache_in.shape
     assert k_cache.dtype == torch.bfloat16 and v_cache.dtype == torch.bfloat16
@@ -472,8 +598,10 @@ def run_case(spec, verbose=True):
             extra.append(f"eps={meta['norm_eps']:g}")
         if meta["max_pos"] != 4096:
             extra.append(f"max_pos={meta['max_pos']}")
-        print(f"  [{meta['name']:<22}] 接口 OK  T={total:<6} heads=({hq},{hk},{hv}) bs={meta['block_size']:<4} "
-              f"未命中槽保持原值={untouched_ok}  {' '.join(extra)}")
+        print(
+            f"  [{meta['name']:<22}] 接口 OK  T={total:<6} heads=({hq},{hk},{hv}) bs={meta['block_size']:<4} "
+            f"未命中槽保持原值={untouched_ok}  {' '.join(extra)}"
+        )
 
     # ---- 数值精度（对 golden）----
     results = [
@@ -490,16 +618,29 @@ def run_case(spec, verbose=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="UndGenQkvRmsNormRopeCache torch 接口测试")
+    parser = argparse.ArgumentParser(
+        description="UndGenQkvRmsNormRopeCache torch 接口测试"
+    )
     parser.add_argument("--full", action="store_true", help="包含 T=64K 的大 case")
     parser.add_argument("--case", default=None, help="只跑指定 case 名")
-    parser.add_argument("--generalized", action="store_true",
-                        help="只跑泛化集（mrope_section / cat / slot / seed / eps / max_pos 的覆盖补充）")
-    parser.add_argument("--whitebox", action="store_true",
-                        help="只跑白盒集（KV Cache 容量下界 / 非 2 的幂 block_size / Qwen3-VL 轴切分）")
-    parser.add_argument("--all-sets", action="store_true", help="典型集 + 泛化集 + 白盒集一起跑")
-    parser.add_argument("--cpu", action="store_true",
-                        help="只在 CPU 上验证 case 集构造与 golden 可跑通，不碰 NPU")
+    parser.add_argument(
+        "--generalized",
+        action="store_true",
+        help="只跑泛化集（mrope_section / cat / slot / seed / eps / max_pos 的覆盖补充）",
+    )
+    parser.add_argument(
+        "--whitebox",
+        action="store_true",
+        help="只跑白盒集（KV Cache 容量下界 / 非 2 的幂 block_size / Qwen3-VL 轴切分）",
+    )
+    parser.add_argument(
+        "--all-sets", action="store_true", help="典型集 + 泛化集 + 白盒集一起跑"
+    )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help="只在 CPU 上验证 case 集构造与 golden 可跑通，不碰 NPU",
+    )
     args = parser.parse_args()
 
     if args.cpu:
@@ -507,8 +648,10 @@ def main():
         return 0
 
     torch_npu, _ = _npu_modules()
-    print(f"device: {torch.npu.get_device_name(0)}, torch {torch.__version__}, "
-          f"torch_npu {torch_npu.__version__}")
+    print(
+        f"device: {torch.npu.get_device_name(0)}, torch {torch.__version__}, "
+        f"torch_npu {torch_npu.__version__}"
+    )
     if args.generalized:
         pool = list(GENERALIZED_CASES)
     elif args.whitebox:
@@ -527,8 +670,10 @@ def main():
 
     results = [run_case(s) for s in specs]
     print(f"\n接口连通性: {len(results)}/{len(results)} PASS")
-    print(f"数值精度:   {sum(results)}/{len(results)} PASS"
-          f"{'' if all(results) else '  <-- 预期全 PASS，出现 FAIL 即为回退'}")
+    print(
+        f"数值精度:   {sum(results)}/{len(results)} PASS"
+        f"{'' if all(results) else '  <-- 预期全 PASS，出现 FAIL 即为回退'}"
+    )
     return 0 if all(results) else 1
 
 
