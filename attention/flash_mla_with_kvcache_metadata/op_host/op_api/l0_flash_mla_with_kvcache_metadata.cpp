@@ -28,28 +28,28 @@ OP_TYPE_REGISTER(FlashMlaWithKvcacheMetadata);
 
 const aclTensor *FlashMlaWithKvcacheMetadata(const aclTensor *cuSeqlensQOptional,
                                              const aclTensor *cacheSeqlensOptional,
-                                             const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                             const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
                                              int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                              int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-                                             const char *layoutKv, const char *layoutOut, const char *socVersion,
+                                             const char *socVersion,
                                              int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData,
                                              aclOpExecutor *executor)
 {
-    L0_DFX(FlashMlaWithKvcacheMetadata, cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, batchSize,
-           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut,
+    L0_DFX(FlashMlaWithKvcacheMetadata, cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
+           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ,
            socVersion, aicCoreNum, aivCoreNum, metaData);
 
     static internal::AicpuTaskSpace space("FlashMlaWithKvcacheMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         FlashMlaWithKvcacheMetadata,
-        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_kv", "num_heads_q", "num_heads_kv", "head_dim_qk",
-                       "head_dim_v", "mask_mode", "layout_q", "layout_kv", "layout_out", "soc_version", "aic_core_num",
+        OP_ATTR_NAMES({"max_seqlen_q", "max_seqlen_kv", "num_heads_q", "num_heads_kv", "head_dim_qk",
+                       "head_dim_v", "mask_mode", "layout_q", "soc_version", "aic_core_num",
                        "aiv_core_num"}),
         OP_INPUT(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional),
         OP_OUTPUT(metaData),
-        OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ,
-                layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum));
+        OP_ATTR(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ,
+                socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FlashMlaWithKvcacheMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
