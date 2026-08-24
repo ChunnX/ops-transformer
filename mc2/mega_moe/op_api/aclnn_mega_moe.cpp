@@ -105,7 +105,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams,
-    int64_t topoType, int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    int64_t topoType, int64_t rankNumPerServer, int64_t topkWeightsType, bool activationDebug,
+    int64_t activationDebugSize, aclTensor *yOut, aclTensor *expertTokenNumsOut, aclTensor *activationDebugOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
@@ -120,11 +121,16 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(activationParams, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(activationDebugOut, return ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID, "moeExpertNum must be > 0, got %ld.", moeExpertNum);
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
     CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
                maxRecvTokenNum);
+    CHECK_COND(activationDebugSize >= 0, ACLNN_ERR_PARAM_INVALID,
+               "activationDebugSize must be >= 0, got %ld.", activationDebugSize);
+    CHECK_COND(!activationDebug || GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201,
+               ACLNN_ERR_PARAM_INVALID, "activationDebug is currently supported only on arch35.");
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -193,8 +199,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
         combineQuantMode, const_cast<char *>(commAlg), numMaxTokensPerRank, const_cast<char *>(activation),
-        activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut,
-        expertTokenNumsOut, workspaceSize, executor);
+        activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType,
+        activationDebug, activationDebugSize, yOut, expertTokenNumsOut, activationDebugOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
