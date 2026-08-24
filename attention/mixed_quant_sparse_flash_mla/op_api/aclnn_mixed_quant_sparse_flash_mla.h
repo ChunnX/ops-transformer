@@ -26,46 +26,37 @@ extern "C" {
  * @brief First phase of aclnnMixedQuantSparseFlashMla: calculate workspace size.
  * @domain aclnn_ops_train_infer
  *
- * @param q                   [IN]  query tensor. Dtype FP8_E4M3 (quant_mode=1).
- *                                  Layout determined by layoutQ: BSND/BNSD/TND.
- * @param k                   [IN]  key tensor. Same dtype as q. Layout determined by layoutKv.
- * @param v                   [IN]  value tensor. Same dtype as q. Layout determined by layoutKv.
- * @param qDescale            [IN]  query descale tensor. Dtype E8M0 (quant_mode=1).
- *                                  Shape depends on quantization granularity.
- * @param kDescale            [IN]  key descale tensor. Dtype E8M0 (quant_mode=1).
- * @param vDescale            [IN]  value descale tensor. Dtype E8M0 (quant_mode=1).
- * @param blockTableOptional  [IN]  optional. Block index table for paged attention, INT32.
- *                                  shape=(B, max_num_blocks_per_seq). Required when layout_kv is PA_*.
- * @param pScaleOptional      [IN]  optional. P scale tensor for per-token scaling.
- * @param cuSeqlensQOptional  [IN]  optional. Query cumulative sequence lengths, INT32.
- *                                  shape=(B+1,). Effective in TND variable-length scenario.
- * @param cuSeqlensKvOptional [IN]  optional. KV cumulative sequence lengths, INT32.
- *                                  shape=(B+1,).
- * @param sequsedQOptional    [IN]  optional. Actual query sequence lengths per batch, INT32.
- *                                  shape=(B,). Effective in padded batch mode.
- * @param sequsedKvOptional   [IN]  optional. Actual KV sequence lengths per batch, INT32.
- *                                  shape=(B,).
- * @param sinksOptional       [IN]  optional. Learnable sink attention weights, FLOAT32.
- * @param attnMaskOptional    [IN]  optional. Attention mask, INT8.
- * @param metadataOptional    [IN]  optional. Pre-computed tiling metadata, INT32.
- *                                  When non-null, tiling side skips split calculation.
- * @param quantMode           [IN]  ATTR. Quantization mode. INT.
- *                                  1: MXFP8 softmax FP32; 2: MXFP8 softmax BF16 (reserved).
- * @param softmaxScale        [IN]  ATTR. Softmax scaling factor. DOUBLE. 0.0 means 1/sqrt(D).
- * @param maskMode            [IN]  ATTR. Mask mode. INT.
- *                                  0: no mask; 1: causal; 2: anti-causal;
- *                                  3: prefix/band; 4: sliding window (uses winLeft/winRight).
- * @param winLeft             [IN]  ATTR. Left window size (maskMode=4). INT.
- * @param winRight            [IN]  ATTR. Right window size (maskMode=4). INT.
- * @param maxSeqlenQ          [IN]  ATTR. Max query sequence length. INT. -1 for auto.
- * @param maxSeqlenKV         [IN]  ATTR. Max KV sequence length. INT. -1 for auto.
- * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND". STRING.
- * @param layoutQDescale      [IN]  ATTR. Q descale layout: "BSND"/"BNSD"/"TND"/"N2TGD". STRING.
- * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ". STRING.
- * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND". STRING.
- * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. BOOL. True=output, False=no.
- *                                  Training forward pass set True, inference set False.
- * @param attnOut             [OUT] Required output. Attention result, BF16, layout by layoutOut.
+ * @param q                         [IN]  query tensor, BF16.
+ * @param oriKvOptional             [IN]  optional original KV tensor, FLOAT8_E4M3FN.
+ * @param cmpKvOptional             [IN]  optional compressed KV tensor, FLOAT8_E4M3FN.
+ * @param oriSparseIndicesOptional  [IN]  optional original KV sparse indices, INT32.
+ * @param cmpSparseIndicesOptional  [IN]  optional compressed KV sparse indices, INT32.
+ * @param oriBlockTableOptional     [IN]  optional original KV block table, INT32.
+ * @param cmpBlockTableOptional     [IN]  optional compressed KV block table, INT32.
+ * @param cuSeqlensQOptional        [IN]  optional query cumulative sequence lengths, INT32.
+ * @param cuSeqlensOriKvOptional    [IN]  optional original KV cumulative sequence lengths, INT32.
+ * @param cuSeqlensCmpKvOptional    [IN]  optional compressed KV cumulative sequence lengths, INT32.
+ * @param sequsedQOptional          [IN]  optional actual query sequence lengths, INT32.
+ * @param sequsedOriKvOptional      [IN]  optional actual original KV sequence lengths, INT32.
+ * @param sequsedCmpKvOptional      [IN]  optional actual compressed KV sequence lengths, INT32.
+ * @param cmpResidualKvOptional     [IN]  optional compressed KV residual lengths, INT32.
+ * @param oriTopkLengthOptional     [IN]  optional original KV top-k lengths, INT32.
+ * @param cmpTopkLengthOptional     [IN]  optional compressed KV top-k lengths, INT32.
+ * @param sinksOptional             [IN]  optional attention sink weights, FLOAT32.
+ * @param metadataOptional          [IN]  optional pre-computed tiling metadata, INT32.
+ * @param quantMode                 [IN]  ATTR. Quantization mode.
+ * @param ropeHeadDim               [IN]  ATTR. RoPE head dimension.
+ * @param softmaxScale              [IN]  ATTR. Softmax scaling factor.
+ * @param cmpRatio                  [IN]  ATTR. Compressed KV ratio.
+ * @param oriMaskMode               [IN]  ATTR. Original KV mask mode.
+ * @param cmpMaskMode               [IN]  ATTR. Compressed KV mask mode.
+ * @param oriWinLeft                [IN]  ATTR. Original KV left window size.
+ * @param oriWinRight               [IN]  ATTR. Original KV right window size.
+ * @param layoutQOptional           [IN]  ATTR. Query layout.
+ * @param layoutKvOptional          [IN]  ATTR. KV layout.
+ * @param topkValueMode             [IN]  ATTR. Top-k value mode.
+ * @param returnSoftmaxLse          [IN]  ATTR. Whether to output softmax LSE.
+ * @param attnOut                   [OUT] Required attention output, BF16.
  * @param softmaxLseOptional  [OUT] Optional output. Softmax log-sum-exp, FLOAT32.
  *                                  Valid when returnSoftmaxLse=True.
  * @param workspaceSize       [OUT] Workspace size in bytes.
@@ -73,19 +64,17 @@ extern "C" {
  * @return aclnnStatus. ACLNN_SUCCESS on success.
  */
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-    bool returnSoftmaxLse,
+    const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
+    const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
+    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
+    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
+    const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

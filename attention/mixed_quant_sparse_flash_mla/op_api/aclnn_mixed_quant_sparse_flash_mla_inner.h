@@ -19,19 +19,17 @@ extern "C" {
 #endif
 
 extern aclnnStatus aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-    bool returnSoftmaxLse,
+    const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
+    const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
+    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
+    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
+    const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

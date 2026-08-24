@@ -19,54 +19,73 @@ namespace l0op {
 OP_TYPE_REGISTER(MixedQuantSparseFlashMla);
 
 const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale,
-    int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-    bool returnSoftmaxLse,
+    const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
+    const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
+    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
+    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
+    const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
     aclOpExecutor *executor)
 {
-    L0_DFX(MixedQuantSparseFlashMla, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
-           cuSeqlensQOptional, cuSeqlensKvOptional,
-           sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
-           quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-           layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse);
+    L0_DFX(MixedQuantSparseFlashMla, q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional,
+           cmpSparseIndicesOptional, oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional,
+           cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional,
+           sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
+           sinksOptional, metadataOptional, quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode,
+           cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse);
 
-    if (blockTableOptional == nullptr) {
-        blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (oriKvOptional == nullptr) {
+        oriKvOptional = executor->AllocTensor(DataType::DT_FLOAT8_E4M3FN, Format::FORMAT_ND, Format::FORMAT_ND);
     }
-    if (pScaleOptional == nullptr) {
-        pScaleOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (cmpKvOptional == nullptr) {
+        cmpKvOptional = executor->AllocTensor(DataType::DT_FLOAT8_E4M3FN, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (oriSparseIndicesOptional == nullptr) {
+        oriSparseIndicesOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (cmpSparseIndicesOptional == nullptr) {
+        cmpSparseIndicesOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (oriBlockTableOptional == nullptr) {
+        oriBlockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (cmpBlockTableOptional == nullptr) {
+        cmpBlockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
     if (cuSeqlensQOptional == nullptr) {
         cuSeqlensQOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
-    if (cuSeqlensKvOptional == nullptr) {
-        cuSeqlensKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (cuSeqlensOriKvOptional == nullptr) {
+        cuSeqlensOriKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (cuSeqlensCmpKvOptional == nullptr) {
+        cuSeqlensCmpKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
     if (sequsedQOptional == nullptr) {
         sequsedQOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
-    if (sequsedKvOptional == nullptr) {
-        sequsedKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (sequsedOriKvOptional == nullptr) {
+        sequsedOriKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (sequsedCmpKvOptional == nullptr) {
+        sequsedCmpKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (cmpResidualKvOptional == nullptr) {
+        cmpResidualKvOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (oriTopkLengthOptional == nullptr) {
+        oriTopkLengthOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (cmpTopkLengthOptional == nullptr) {
+        cmpTopkLengthOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
     if (sinksOptional == nullptr) {
         sinksOptional = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    }
-    if (attnMaskOptional == nullptr) {
-        attnMaskOptional = executor->AllocTensor(DataType::DT_INT8, Format::FORMAT_ND, Format::FORMAT_ND);
     }
     if (metadataOptional == nullptr) {
         metadataOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -76,13 +95,16 @@ const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(MixedQuantSparseFlashMla,
-                           OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
-                                    cuSeqlensQOptional, cuSeqlensKvOptional,
-                                    sequsedQOptional, sequsedKvOptional, sinksOptional,
-                                    attnMaskOptional, metadataOptional),
+                           OP_INPUT(q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional,
+                                    cmpSparseIndicesOptional, oriBlockTableOptional, cmpBlockTableOptional,
+                                    cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional,
+                                    sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
+                                    cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
+                                    sinksOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                           OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
+                           OP_ATTR(quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode,
+                                   oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode,
+                                   returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantSparseFlashMla InferShape failed.");
         return {nullptr, nullptr};
@@ -90,12 +112,13 @@ const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MixedQuantSparseFlashMla,
-        OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
-                 cuSeqlensQOptional, cuSeqlensKvOptional,
-                 sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
+        OP_INPUT(q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional, cmpSparseIndicesOptional,
+                 oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional, cuSeqlensOriKvOptional,
+                 cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
+                 cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, sinksOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-        OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
+        OP_ATTR(quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+                layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantSparseFlashMla launch kernel failed.");
         return {nullptr, nullptr};
