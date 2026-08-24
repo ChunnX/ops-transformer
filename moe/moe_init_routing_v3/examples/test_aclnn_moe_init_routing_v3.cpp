@@ -127,7 +127,7 @@ int main()
     std::vector<float> scaleHostData = {0.3423, 0.1652, 0.2652};
     std::vector<float> offsetHostData = {1.8369};
 
-    std::vector<int8_t> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalHostData = {0, 0, 0, 0};
     std::vector<float> expandedScaleOutOptionalHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -139,11 +139,11 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(offsetHostData, scaleShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
+    ret = CreateAclTensor(offsetHostData, offsetShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
     ret = CreateAclTensor(
-        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_INT8, &expandedXOut);
+        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandedRowIdxOutHostData,
         expandedRowIdxOutShape,
@@ -202,15 +202,15 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto expandedXSize = GetShapeSize(expandedXOutShape);
-    std::vector<int8_t> expandedXData(expandedXSize, 0);
+    std::vector<float> expandedXData(expandedXSize, 0);
     ret = aclrtMemcpy(expandedXData.data(),
         expandedXData.size() * sizeof(expandedXData[0]),
         expandedXOutDeviceAddr,
-        expandedXSize * sizeof(int8_t),
+        expandedXSize * sizeof(float),
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedXSize; i++) {
-        LOG_PRINT("expandedXData[%ld] is: %d\n", i, expandedXData[i]);
+        LOG_PRINT("expandedXData[%ld] is: %f\n", i, expandedXData[i]);
     }
     auto expandedRowIdxSize = GetShapeSize(expandedRowIdxOutShape);
     std::vector<int> expandedRowIdxData(expandedRowIdxSize, 0);
@@ -224,15 +224,15 @@ int main()
         LOG_PRINT("expandedRowIdxData[%ld] is: %d\n", i, expandedRowIdxData[i]);
     }
     auto expertTokensBeforeCapacitySize = GetShapeSize(expertTokensCountOrCumsumOutOptionalShape);
-    std::vector<int> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
+    std::vector<int64_t> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
     ret = aclrtMemcpy(expertTokenIdxData.data(),
         expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]),
         expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        expertTokensBeforeCapacitySize * sizeof(int32_t),
+        expertTokensBeforeCapacitySize * sizeof(int64_t),
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
-        LOG_PRINT("expertTokenIdxData[%ld] is: %d\n", i, expertTokenIdxData[i]);
+        LOG_PRINT("expertTokenIdxData[%ld] is: %ld\n", i, expertTokenIdxData[i]);
     }
 
     auto dynamicQuantScaleSize = GetShapeSize(expandedScaleOutOptionalShape);

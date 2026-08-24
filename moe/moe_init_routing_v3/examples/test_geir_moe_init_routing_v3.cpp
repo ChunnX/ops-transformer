@@ -322,9 +322,29 @@ int main(int argc, char *argv[])
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
-        int32_t *result = (int32_t*)output_data_i;
-        for (int64_t j = 0; j < output_shape; j++) {
-            LOG_PRINT("result[%ld] is: %d\n", j, result[j]);
+        DataType outputDtype = output[i].GetTensorDesc().GetDataType();
+        if (outputDtype == ge::DT_FLOAT) {
+            auto *result = (float *)output_data_i;
+            for (int64_t j = 0; j < output_shape; j++) {
+                LOG_PRINT("result[%ld] is: %f\n", j, result[j]);
+            }
+        } else if (outputDtype == ge::DT_FLOAT16) {
+            auto *result = (uint16_t *)output_data_i;
+            for (int64_t j = 0; j < output_shape; j++) {
+                LOG_PRINT("result[%ld] is: %u\n", j, result[j]);
+            }
+        } else if (outputDtype == ge::DT_INT32) {
+            auto *result = (int32_t *)output_data_i;
+            for (int64_t j = 0; j < output_shape; j++) {
+                LOG_PRINT("result[%ld] is: %d\n", j, result[j]);
+            }
+        } else if (outputDtype == ge::DT_INT64) {
+            auto *result = (int64_t *)output_data_i;
+            for (int64_t j = 0; j < output_shape; j++) {
+                LOG_PRINT("result[%ld] is: %ld\n", j, result[j]);
+            }
+        } else {
+            LOG_PRINT("unsupported dtype for printing\n");
         }
     }
 
