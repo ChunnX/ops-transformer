@@ -552,14 +552,22 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 
+    __aicore__ inline __attribute__((always_inline)) void operator()(GM_ADDR partialBlock, GM_ADDR delta,
+                                                                     GM_ADDR pseudoQuery, GM_ADDR numerator,
+                                                                     GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR h,
+                                                                     const BlockAttnResUpdateTilingData *tilingData)
+    {
+        Init(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, h, tilingData);
+        Process();
+    }
+
+private:
     __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR partialBlock, GM_ADDR delta, GM_ADDR pseudoQuery,
                                                                GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
                                                                GM_ADDR h,
                                                                const BlockAttnResUpdateTilingData *tilingData)
     {
         tilingData_ = tilingData;
-        blockIdx_ = AscendC::GetBlockIdx();
-        InitCoreRange();
 
         partialBlockGm_ = reinterpret_cast<__gm__ float *>(partialBlock);
         deltaGm_ = reinterpret_cast<__gm__ bfloat16_t *>(delta);
@@ -573,11 +581,15 @@ public:
 
     __aicore__ inline __attribute__((always_inline)) void Process()
     {
-        if (blockIdx_ >= tilingData_->usedCoreNum || coreTSize_ == 0) {
+        const uint32_t blockIdx = AscendC::GetBlockIdx();
+        const uint32_t usedCoreNum = tilingData_->usedCoreNum;
+        if (blockIdx >= usedCoreNum) {
             return;
         }
 
-        const uint32_t coreTSize = coreTSize_;
+        const uint32_t tPerCore = tilingData_->tPerCore;
+        const int64_t coreTStart = static_cast<int64_t>(blockIdx) * static_cast<int64_t>(tPerCore);
+        const uint32_t coreTSize = (blockIdx + 1U == usedCoreNum) ? tilingData_->lastTPerCore : tPerCore;
         const uint32_t dSize = tilingData_->dSize;
         const uint32_t tileT = tilingData_->tileT;
         const uint32_t dAlignFp32 = (dSize + BARU_FP32_ALIGN_MASK) & ~BARU_FP32_ALIGN_MASK;
@@ -597,32 +609,30 @@ public:
                                           static_cast<uint32_t>(hasDTail) * (dSize & BARU_VREG_FP32_MASK);
         const float eps = tilingData_->eps;
         const float invD = tilingData_->invD;
-        const int64_t coreTDim = static_cast<int64_t>(coreTSize);
-        const int64_t dDim = static_cast<int64_t>(dSize);
-        const int64_t tileTDim = static_cast<int64_t>(tileT);
-        const int64_t dAlignFp32Dim = static_cast<int64_t>(dAlignFp32);
-        const int64_t dAlignBf16Dim = static_cast<int64_t>(dAlignBf16);
-        const int64_t statsTStrideDim = static_cast<int64_t>(statsTStride);
-        const int64_t coreGmOffset = coreTStart_ * static_cast<int64_t>(dSize);
-
-        auto matrixGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(coreTDim, dDim);
-        auto statsGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, coreTDim);
-        auto queryGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, dDim);
+        auto matrixGmLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(coreTSize), static_cast<int64_t>(dSize));
+        auto statsGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(coreTSize));
+        auto queryGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(dSize));
         auto partialBlockGm =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(partialBlockGm_ + coreGmOffset), matrixGmLayout);
-        auto deltaGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(deltaGm_ + coreGmOffset), matrixGmLayout);
-        auto numeratorGm =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(numeratorGm_ + coreGmOffset), matrixGmLayout);
-        auto logitMaxGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(logitMaxGm_ + coreTStart_), statsGmLayout);
-        auto expSumGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(expSumGm_ + coreTStart_), statsGmLayout);
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(partialBlockGm_ + coreTStart * static_cast<int64_t>(dSize)),
+                           matrixGmLayout);
+        auto deltaGm = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(deltaGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
+        auto numeratorGm = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(numeratorGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
+        auto logitMaxGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(logitMaxGm_ + coreTStart), statsGmLayout);
+        auto expSumGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(expSumGm_ + coreTStart), statsGmLayout);
         auto pseudoQueryGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(pseudoQueryGm_), queryGmLayout);
-        auto hGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(hGm_ + coreGmOffset), matrixGmLayout);
+        auto hGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(hGm_ + coreTStart * static_cast<int64_t>(dSize)),
+                                  matrixGmLayout);
 
-        auto fp32UbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(tileTDim, dAlignFp32Dim);
-        auto bf16UbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(tileTDim, dAlignBf16Dim);
-        auto statsUbLayout =
-            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(BARU_STATS_PLANE_NUM), statsTStrideDim);
-        auto queryUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, dAlignFp32Dim);
+        auto fp32UbLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(tileT), static_cast<int64_t>(dAlignFp32));
+        auto bf16UbLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(tileT), static_cast<int64_t>(dAlignBf16));
+        auto statsUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(BARU_STATS_PLANE_NUM),
+                                                                     static_cast<int64_t>(statsTStride));
+        auto queryUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(dAlignFp32));
         auto pseudoQueryUbMem = Te::MakeMemPtr<Te::Location::UB, float>(0);
         auto pseudoQueryUb = Te::MakeTensor(pseudoQueryUbMem, queryUbLayout);
 
@@ -636,7 +646,7 @@ public:
             const uint32_t remainingT = coreTSize - tileTStart;
             const uint32_t currentTSize = remainingT < tileT ? remainingT : tileT;
             const int64_t tileTStartDim = static_cast<int64_t>(tileTStart);
-            const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), dDim);
+            const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), static_cast<int64_t>(dSize));
             const auto statsTileShape = Te::MakeShape(1L, static_cast<int64_t>(currentTSize));
 
             auto partialBlockGmTile = partialBlockGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
@@ -736,18 +746,6 @@ public:
         }
     }
 
-private:
-    __aicore__ inline __attribute__((always_inline)) void InitCoreRange()
-    {
-        if (blockIdx_ >= tilingData_->usedCoreNum) {
-            coreTStart_ = 0;
-            coreTSize_ = 0;
-            return;
-        }
-        coreTStart_ = static_cast<int64_t>(blockIdx_) * static_cast<int64_t>(tilingData_->tPerCore);
-        coreTSize_ = (blockIdx_ == tilingData_->usedCoreNum - 1U) ? tilingData_->lastTPerCore : tilingData_->tPerCore;
-    }
-
     __aicore__ inline __attribute__((always_inline)) void InitUbLayout()
     {
         const uint32_t dSize = tilingData_->dSize;
@@ -767,10 +765,6 @@ private:
     uint64_t partialUbBytes_ = 0;
     uint64_t deltaHUbBytes_ = 0;
     uint64_t bufferUbBytes_ = 0;
-
-    int64_t coreTStart_ = 0;
-    uint32_t blockIdx_ = 0;
-    uint32_t coreTSize_ = 0;
 
     const BlockAttnResUpdateTilingData *tilingData_ = nullptr;
     __gm__ float *partialBlockGm_ = nullptr;
