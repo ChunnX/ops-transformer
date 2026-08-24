@@ -16,7 +16,7 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
-std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuMegaMoe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
     const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
     int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
@@ -31,7 +31,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
     std::vector<float> activationParams, c10::optional<int64_t> dispatchQuantOutDtype,
     c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
-    c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
+    c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType, bool activationDebug,
+    int64_t activationDebugSize)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -102,6 +103,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
 
     at::Tensor y;
     y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+    at::Tensor activationDebugOut = at::empty(
+        {activationDebug ? activationDebugSize : 0}, x.options().dtype(at::kBFloat16));
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};
@@ -129,9 +132,10 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
               sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
               moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
               combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
-              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
+              rankNumPerServerValue, topkWeightsType, activationDebug, activationDebugSize, y, expertTokenNums,
+              activationDebugOut);
 
-    return std::tie(y, expertTokenNums);
+    return std::tie(y, expertTokenNums, activationDebugOut);
 }
 
 namespace {
