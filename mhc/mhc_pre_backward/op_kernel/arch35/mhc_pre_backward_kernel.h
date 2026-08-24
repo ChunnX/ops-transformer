@@ -1055,24 +1055,25 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         hPreGatherOffsetBuf_.SetValue(i, i * N_ * sizeof(P));
     }
 
-    // 确定处理范围 （1C2V 模式）
-    uint32_t vecIdx = blockIdx_ % VEC_CORE_VECIDX_MOD;
+    // 确定处理范围（库式 Split-M：两个 AIV 共享完整 N block，各处理一半 BS 行）。
+    uint32_t vecIdx = GetSubBlockIdx();
     uint32_t buffId = 0;
-    // ND方向切分：每个ND block大小为nDBlockSize_，在1C2V模式下，每个V核处理一半
+    // ND 方向不再由两个 AIV 切分；Split-M 的两个 AIV 都需要完整 N block。
     for (uint32_t offsetNDBase = dealStartND_; offsetNDBase < dealEndND_; offsetNDBase += ND_BLOCK_SIZE) {
-        // 根据vecIdx选择处理ND block的前半部分(0)或后半部分(1)
-        uint32_t offsetND = offsetNDBase + (ND_BLOCK_SIZE / 2) * vecIdx;
-        uint32_t copySizeND = offsetND < dealEndND_ ? Min(ND_BLOCK_SIZE / 2, dealEndND_ - offsetND) : 0;
+        uint32_t offsetND = offsetNDBase;
+        uint32_t copySizeND = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
-        // BS方向切分：与C0保持一致，按SINGLE_M切分
+        // BS 方向与 Split-M C0 输出保持一致：两个 AIV 各处理当前 tile 的一半行。
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            // 库式单队列同步：等待 CUBE 写完共享 VECIN buffer。
+            uint32_t halfBS = CeilDiv(currentBSBlock, uint32_t(2));
+            uint32_t bsStart = offsetBS + Min(vecIdx * halfBS, currentBSBlock);
+            uint32_t bsEnd = offsetBS + Min((vecIdx + 1) * halfBS, currentBSBlock);
+            // 库式单队列同步：两个 AIV 都必须为每个 C0 tile 完成一次握手。
             WaitForCube();
-            if (copySizeND > 0) {
-                ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId,
-                          c0OutUb_);
+            if (bsStart < bsEnd && copySizeND > 0) {
+                ProcessV2(offsetND, copySizeND, bsStart, bsEnd, sumBuf, buffId, c0OutUb_);
             }
             NotifyCube();
             buffId++;
@@ -1085,7 +1086,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             fp32ExtCopyParams.blockLen = copySizeND * sizeof(P);
             fp32ExtCopyParams.srcStride = 0;
             fp32ExtCopyParams.dstStride = 0;
+            SetAtomicAdd<P>();
             DataCopyPad(gammaGradGm_[offsetND], sumBuf, fp32ExtCopyParams);
+            SetAtomicNone();
         }
         vecOutQueueSmall_.FreeTensor(sumBuf);
     }
@@ -1421,9 +1424,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     fp32ExtCopyParams.dstStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
 
     uint64_t offset = workspaceBuf_.GetXRsOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
-    uint32_t vecIdx = blockIdx_ % 2;
     offset += (bsChunkStart - bsStart) * ND_BLOCK_SIZE;
-    offset += vecIdx * (ND_BLOCK_SIZE / 2);
+    // Split-M 的 bsStart 已经是当前 AIV 在完整 C0 tile 中的行起点。
+    // 将该行起点恢复为 tile 内的全局行偏移，保证 C1 看到完整 [SINGLE_M, N] workspace。
+    uint32_t bsTileStart = (bsStart / SINGLE_M) * SINGLE_M;
+    offset += (bsStart - bsTileStart) * ND_BLOCK_SIZE;
 
     DataCopyPad(workSpaceGm_[offset], gammaOutUb_, fp32ExtCopyParams);
     vecOutQueue1_.FreeTensor(gammaOutUb_);
@@ -1448,8 +1453,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                            LocalTensor<P> &sumBuf, LocalTensor<P> &c0OutUb)
 {
-    // SplitN输出在每个AIV内按[BS, copySizeND]连续排布，直接取当前BS chunk。
-    xRsGradMmInBuf_ = c0OutUb[(bsChunkStart - bsStart) * copySizeND];
+    // Split-M 输出在每个 AIV 内按 [BS/2, ND_BLOCK_SIZE] 排布，读取当前 BS chunk。
+    xRsGradMmInBuf_ = c0OutUb[(bsChunkStart - bsStart) * ND_BLOCK_SIZE];
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xRsGradMmUbAddr = (__ubuf__ P *)xRsGradMmUb_.GetPhyAddr();
@@ -1465,7 +1470,9 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
         Mul(xRsGradMmInBuf_, xRsFp32Buf_, xRsGradMmInBuf_, copySizeND * currentChunkSize);
         LocalTensor<P> reduceSumBuf = xRsFp32Buf_;
         PipeBarrier<PIPE_V>();
-        if (bsChunkStart == 0) {
+        // 两个 AIV 的首个 tile 分别从 bsStart=0 和 bsStart=halfBS 开始，
+        // 因此不能只用全局 bsChunkStart==0 判断 sumBuf 是否首次写入。
+        if (bsStart < SINGLE_M && bsChunkStart == bsStart) {
             ReduceSum<P, Pattern::Reduce::RA, true>(sumBuf, xRsGradMmInBuf_, srcReduceShape, true);
         } else {
             ReduceSum<P, Pattern::Reduce::RA, true>(reduceSumBuf, xRsGradMmInBuf_, srcReduceShape, true);
