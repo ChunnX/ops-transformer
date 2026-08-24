@@ -173,6 +173,25 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MxQuantMatmulAllToAllTilingBase::GetWorkspaceSize()
+{
+    if (!usingApaceImpl_) {
+        return MatmulAllToAllTilingBase::GetWorkspaceSize();
+    }
+
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
+    SetUserWorkSpace();
+
+    // Blaze writes the rank-major Hcomm input directly, so only one M*N result
+    // buffer is required. The former equally-sized transpose buffer is removed.
+    inferredInfo.permuteLen = 0;
+    workspaces[0] = libApiWorkSpaceSize_ + inferredInfo.mmResultLen;
+    OP_LOGD(opName_, "Apace direct workspace size=%lu, mmResultLen=%lu, permuteLen=0.",
+            workspaces[0], inferredInfo.mmResultLen);
+    return ge::GRAPH_SUCCESS;
+}
+
 /**
  * @brief 量化场景校验参数的DType
  *
@@ -1007,7 +1026,6 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(MatmulAllToAllApaceTili
     tilingInfo.rankDim = contextInfo.args_.rankDim;
     tilingInfo.aicCoreNum = contextInfo.args_.aicCoreNum;
     tilingInfo.mmResultLen = inferredInfo.mmResultLen;
-    tilingInfo.permuteLen = inferredInfo.permuteLen;
     tilingInfo.hcclDataType =
         static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType));
 }
@@ -1015,30 +1033,31 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(MatmulAllToAllApaceTili
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
 {
     const bool transB = contextInfo.args_.isBTrans;
+    const uint64_t rankN = contextInfo.args_.nValue / contextInfo.args_.rankDim;
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
         if (inferredInfo.tileCnt > 0) {
-            tilingSwat.GetTilingData(inferredInfo.tileM, contextInfo.args_.nValue, contextInfo.args_.kValue, false,
+            tilingSwat.GetTilingData(inferredInfo.tileM, rankN, contextInfo.args_.kValue, false,
                                     transB, hcommTilingData_.tileQbmmTilingData);
         }
         if (inferredInfo.tailCnt > 0) {
-            tilingSwat.GetTilingData(inferredInfo.tailM, contextInfo.args_.nValue, contextInfo.args_.kValue, false,
+            tilingSwat.GetTilingData(inferredInfo.tailM, rankN, contextInfo.args_.kValue, false,
                                     transB, hcommTilingData_.tailQbmmTilingData);
         }
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         if (inferredInfo.tileCnt > 0) {
-            tilingSwat.GetTilingData(inferredInfo.tileM, contextInfo.args_.nValue, contextInfo.args_.kValue, false,
+            tilingSwat.GetTilingData(inferredInfo.tileM, rankN, contextInfo.args_.kValue, false,
                                     transB, hcommTilingData_.tileQbmmTilingData);
         }
         if (inferredInfo.tailCnt > 0) {
-            tilingSwat.GetTilingData(inferredInfo.tailM, contextInfo.args_.nValue, contextInfo.args_.kValue, false,
+            tilingSwat.GetTilingData(inferredInfo.tailM, rankN, contextInfo.args_.kValue, false,
                                     transB, hcommTilingData_.tailQbmmTilingData);
         }
     }
-    OP_LOGD(opName_, "Apace MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu K=%lu N=%lu.",
+    OP_LOGD(opName_, "Apace direct MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu K=%lu fullN=%lu rankN=%lu.",
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt,
-            contextInfo.args_.kValue, contextInfo.args_.nValue);
+            contextInfo.args_.kValue, contextInfo.args_.nValue, rankN);
     return ge::GRAPH_SUCCESS;
 }
 

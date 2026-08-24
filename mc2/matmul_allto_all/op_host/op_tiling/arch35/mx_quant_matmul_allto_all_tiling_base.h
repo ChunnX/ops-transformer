@@ -27,7 +27,7 @@
 #include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_data.h"
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_key.h"
-#include "apace/kernel/fusions/matmul_all_to_all_quant_matmul/matmul_all_to_all_tiling_data.h"
+#include "apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace MC2Tiling {
@@ -55,6 +55,7 @@ protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     CutResult GetTilingResult() override;
     ge::graphStatus CheckOpInputInfo();

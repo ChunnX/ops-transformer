@@ -10,7 +10,7 @@
 
 /*!
  * \file matmul_all_to_all_mx_quant_matmul_hcomm_impl.h
- * \brief Apace Blaze computation stage for the MatmulAlltoAll Hcomm pipeline.
+ * \brief Apace Blaze computation stage for the QuantMatmulAllToAll Hcomm pipeline.
  */
 
 #pragma once
@@ -21,22 +21,96 @@
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/matmul_all_to_all_qbmm_mx_kernel.h"
 #include "../../../../mc2_templates/computation/matmul/mc2_mx_quant_matmul.h"
+#include "../../../../mc2_templates/communication/primitives/hccl_primitives.h"
 #include "../../../tiling/quant_matmul_tiling_data.h"
 
 namespace Apace {
 
+// Apace writes the matmul result directly in the rank-major layout consumed by
+// Hcomm. These fields describe that output layout; no AIV transpose buffer is
+// involved in this path.
+struct QuantMatmulAllToAllMxAdditionalData {
+    GM_ADDR x1Scale;
+    GM_ADDR x2Scale;
+    uint64_t x1ScaleOffset;
+    uint64_t fullN;
+    uint64_t rankStride;
+    uint32_t rankDim;
+};
+
+template <typename ComputationContextType>
+struct QuantMatmulAllToAllPipelineContext {
+    ComputationContextType *computationContext;
+    MC2KernelTemplate::MC2AlltoAllContext *communicationContext;
+};
+
+/**
+ * Apace-specific two-stage pipeline: Blaze matmul -> Hcomm AllToAll.
+ *
+ * The legacy pipeline contains an AIV transpose stage between computation and
+ * communication. The Apace matmul writes rank-major data directly, so this
+ * pipeline only keeps the cross-core completion handshake before Hcomm reads GM.
+ */
+template <typename ComputationType, typename CommunicationType, typename ContextType>
+class QuantMatmulAllToAllPipeline {
+public:
+    __aicore__ inline QuantMatmulAllToAllPipeline(ComputationType *computeStage, CommunicationType *commStage)
+        : computeStage_(computeStage), commStage_(commStage)
+    {}
+
+    __aicore__ inline void Init()
+    {
+        computeStage_->Init();
+        commStage_->Init();
+    }
+
+    __aicore__ inline void GetContext(ContextType *context)
+    {
+        context->computationContext = computeStage_->GetContextPtr();
+        context->communicationContext = commStage_->GetContextPtr();
+    }
+
+    __aicore__ inline void Process(uint32_t taskCnt)
+    {
+        commStage_->PrepareAll(taskCnt);
+        for (uint32_t index = 0; index < taskCnt; ++index) {
+            if ASCEND_IS_AIC {
+                computeStage_->Process(index);
+                AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
+                AscendC::CrossCoreWaitFlag(8);
+                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
+            }
+            if ASCEND_IS_AIV {
+                AscendC::CrossCoreWaitFlag(9);
+                AscendC::SyncAll<true>();
+                commStage_->Process(index);
+            }
+        }
+    }
+
+    __aicore__ inline void End()
+    {
+        computeStage_->End();
+        commStage_->End();
+    }
+
+private:
+    ComputationType *computeStage_;
+    CommunicationType *commStage_;
+};
+
 /**
  * This class intentionally implements the same Init/GetContextPtr/Process/End
- * contract as the legacy MC2 computation component.  That lets the Apace Blaze
- * matmul reuse MatmulAlltoAll's proven transpose and Hcomm stages unchanged.
+ * contract as the legacy MC2 computation component. Its Blaze kernel writes
+ * [rank, M, N/rank] directly so Hcomm can consume the result without transpose.
  */
 template <typename X1Type, typename X2Type, typename YType>
-class MatmulAllToAllMxQuantMatmulComputation {
+class QuantMatmulAllToAllMxComputation {
 public:
     using TilingType = QuantMatmulTilingData;
-    using ContextType = MC2KernelTemplate::MC2MMContext<MC2KernelTemplate::MXQuantMMAdditionalData, TilingType>;
+    using ContextType = MC2KernelTemplate::MC2MMContext<QuantMatmulAllToAllMxAdditionalData, TilingType>;
 
-    explicit __aicore__ inline MatmulAllToAllMxQuantMatmulComputation(AscendC::TPipe *pipe)
+    explicit __aicore__ inline QuantMatmulAllToAllMxComputation(AscendC::TPipe *pipe)
     {
         (void)pipe;
     }
@@ -70,7 +144,7 @@ private:
 };
 
 template <typename X1Type, typename X2Type, typename YType>
-__aicore__ inline void MatmulAllToAllMxQuantMatmulComputation<X1Type, X2Type, YType>::Process(uint32_t taskIndex)
+__aicore__ inline void QuantMatmulAllToAllMxComputation<X1Type, X2Type, YType>::Process(uint32_t taskIndex)
 {
     const TilingType &mmTile = *context_.tilingDataPtr;
     GM_ADDR aGM = context_.baseData.aGM + taskIndex * context_.baseData.aOffset;
@@ -92,21 +166,23 @@ __aicore__ inline void MatmulAllToAllMxQuantMatmulComputation<X1Type, X2Type, YT
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
                           context_.baseData.biasGM != nullptr};
-    Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams};
+    Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams,
+                  context_.additionalData.fullN, context_.additionalData.rankStride,
+                  context_.additionalData.rankDim};
     kernel_(params);
 }
 
 } // namespace Apace
 
-#ifndef DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT
+#ifndef DEFINE_APACE_CONTEXT_FOR_QUANT_MATMUL_ALL_TO_ALL_MX
 // The macro argument must not be named ContextType. Otherwise the preprocessor
 // also rewrites the nested ::ContextType on the right-hand side.
-#define DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(ContextTypeAlias)                                 \
+#define DEFINE_APACE_CONTEXT_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(ContextTypeAlias)                                       \
     using ContextTypeAlias =                                                                                          \
-        typename Apace::MatmulAllToAllMxQuantMatmulComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>::ContextType
+        typename Apace::QuantMatmulAllToAllMxComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>::ContextType
 #endif
 
-#ifndef DEFINE_APACE_MATMUL_FOR_MATMUL_ALL_TO_ALL_MX_QUANT
-#define DEFINE_APACE_MATMUL_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(ComputationType)                                         \
-    using ComputationType = Apace::MatmulAllToAllMxQuantMatmulComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>
+#ifndef DEFINE_APACE_COMPUTATION_FOR_QUANT_MATMUL_ALL_TO_ALL_MX
+#define DEFINE_APACE_COMPUTATION_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(ComputationType)                                    \
+    using ComputationType = Apace::QuantMatmulAllToAllMxComputation<DTYPE_X1, DTYPE_X2, DTYPE_Y>
 #endif

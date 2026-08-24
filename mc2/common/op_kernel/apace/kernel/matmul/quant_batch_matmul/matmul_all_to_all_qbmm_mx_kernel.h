@@ -36,10 +36,9 @@ using namespace AscendC;
 using AscendC::Te::Get;
 
 /**
- * The kernel computes one ordinary [M, K] x [K, N] MX matmul.  Communication
- * is deliberately outside this class: MatmulAlltoAll must first produce ND
- * output, then let the existing AIV transpose stage regroup N/rank columns
- * before Hcomm AllToAll sends them.
+ * The kernel computes [M, K] x [K, fullN] one destination rank at a time.
+ * Each rank's [M, fullN/rankDim] result is written directly to a rank-major
+ * Hcomm send buffer, removing the former AIV transpose stage.
  */
 template <class ProblemShape, class BlockMmad, class BlockScheduler>
 class MatmulAllToAllQbmmMxKernel {
@@ -88,6 +87,9 @@ public:
         L1Params l1Params;
         BlockSchedulerParams schedulerParams;
         QBMMTiling qbmmParams;
+        uint64_t fullN;
+        uint64_t rankStride;
+        uint32_t rankDim;
     };
 
     __aicore__ inline void operator()(const Params &params)
@@ -137,7 +139,12 @@ template <class ProblemShape, class BlockMmad, class BlockScheduler>
 __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>::Run(
     const Params &params)
 {
-    BlockScheduler scheduler(params.problemShape, params.schedulerParams);
+    const int64_t rankN = Te::Get<MNK_N>(params.problemShape);
+    const int64_t fullN = static_cast<int64_t>(params.fullN);
+    if (params.rankDim == 0 || fullN != rankN * static_cast<int64_t>(params.rankDim)) {
+        return;
+    }
+
     BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
     const bool isBias = params.qbmmParams.isBias != 0;
     mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias, params.qbmmParams.dbL0C > 1, 1U);
@@ -147,13 +154,13 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
         Te::Get<MNK_M>(params.problemShape),
         Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
             MXFP_MULTI_BASE_SIZE);
-    auto layoutB = MakeLayoutB{}(Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
+    auto layoutB = MakeLayoutB{}(Te::Get<MNK_K>(params.problemShape), fullN);
     auto layoutScaleB = MakeLayoutScaleB{}(
         Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
             MXFP_MULTI_BASE_SIZE,
-        Te::Get<MNK_N>(params.problemShape));
-    auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
-    auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Te::Get<MNK_N>(params.problemShape));
+        fullN);
+    auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), rankN);
+    auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, fullN);
 
     auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ AType *>(params.mmParams.aGmAddr)), layoutA);
     auto gmScaleA = Te::MakeTensor(
@@ -163,42 +170,50 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmParams.scaleBGmAddr)),
         layoutScaleB);
-    auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ CType *>(params.mmParams.cGmAddr)), layoutC);
     auto gmBias = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(params.mmParams.biasGmAddr)), layoutBias);
 
-    if ((scheduler.GetEndBlockIdx() + 1) * params.schedulerParams.mTailTile *
-            params.schedulerParams.nTailTile <= AscendC::GetBlockNum()) {
-        scheduler.UpdateTailTile(params.schedulerParams.mTailTile, params.schedulerParams.nTailTile);
-    }
-
-    BlockCoord blockIdx;
-    int64_t mPos = 0;
-    int64_t nPos = 0;
     const int64_t scaleKLen = Blaze::Gemm::CeilDiv(
         Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    while (scheduler.GetTileIdx(blockIdx)) {
-        BlockShape singleShape = scheduler.template GetBlockShape<
-            QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
-        if (Te::Get<IDX_M_TILEIDX>(singleShape) <= 0 || Te::Get<IDX_N_TILEIDX>(singleShape) <= 0) {
-            return;
+    for (uint32_t rankIdx = 0; rankIdx < params.rankDim; ++rankIdx) {
+        BlockScheduler scheduler(params.problemShape, params.schedulerParams);
+        if ((scheduler.GetEndBlockIdx() + 1) * params.schedulerParams.mTailTile *
+                params.schedulerParams.nTailTile <= AscendC::GetBlockNum()) {
+            scheduler.UpdateTailTile(params.schedulerParams.mTailTile, params.schedulerParams.nTailTile);
         }
-        scheduler.GetTileCoord(blockIdx, mPos, nPos);
-        SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN,
-                   params.l1Params.scaleKL1, gmB, gmScaleB, gmC);
 
-        auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0L),
-                                  Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-        auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mPos, 0L),
-                                            Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
-        auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, nPos),
-                                  Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, nPos),
-                                            Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
-        auto gmBlockC = gmC.Slice(Te::MakeCoord(mPos, nPos),
-                                  Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
-        auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, Get<MNK_N>(singleShape)));
-        mmOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
+        auto gmRankC = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ CType *>(params.mmParams.cGmAddr) +
+                                              rankIdx * params.rankStride),
+            layoutC);
+        BlockCoord blockIdx;
+        int64_t mPos = 0;
+        int64_t nPos = 0;
+        while (scheduler.GetTileIdx(blockIdx)) {
+            BlockShape singleShape = scheduler.template GetBlockShape<
+                QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
+            if (Te::Get<IDX_M_TILEIDX>(singleShape) <= 0 || Te::Get<IDX_N_TILEIDX>(singleShape) <= 0) {
+                return;
+            }
+            scheduler.GetTileCoord(blockIdx, mPos, nPos);
+            const int64_t fullNPos = static_cast<int64_t>(rankIdx) * rankN + nPos;
+            SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN,
+                       params.l1Params.scaleKL1, gmB, gmScaleB, gmRankC);
+
+            auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0L),
+                                      Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
+            auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mPos, 0L),
+                                                Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
+            auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, fullNPos),
+                                      Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
+            auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, fullNPos),
+                                                Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
+            auto gmBlockC = gmRankC.Slice(Te::MakeCoord(mPos, nPos),
+                                          Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+            auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, fullNPos),
+                                            Te::MakeShape(1L, Get<MNK_N>(singleShape)));
+            mmOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
+        }
     }
 }
 

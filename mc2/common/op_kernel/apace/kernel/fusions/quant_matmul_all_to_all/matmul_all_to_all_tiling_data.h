@@ -21,8 +21,8 @@
 #include "../../../tiling/comm_tiling_data.h"
 
 // The legacy operator tiling structure is intentionally not extended.  The Apace
-// branch owns a compact payload whose fields match its Blaze + transpose + Hcomm
-// pipeline directly.
+// branch owns a compact payload whose fields match its Blaze + Hcomm direct
+// pipeline. Blaze already emits the rank-major communication layout.
 struct MatmulAllToAllApaceTilingInfo {
     uint32_t tileM{0};
     uint32_t tileCnt{0};
@@ -34,7 +34,6 @@ struct MatmulAllToAllApaceTilingInfo {
     uint32_t rankDim{0};
     uint32_t aicCoreNum{0};
     uint64_t mmResultLen{0};
-    uint64_t permuteLen{0};
     uint64_t hcclDataType{0};
 };
 

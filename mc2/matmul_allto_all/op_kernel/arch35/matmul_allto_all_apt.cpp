@@ -26,8 +26,8 @@
 #include "matmul_allto_all_tiling_data.h"
 #include "kc_quant_matmul_allto_all_arch35.h"
 #include "mx_quant_matmul_allto_all_arch35.h"
-#include "../../../common/op_kernel/apace/kernel/fusions/matmul_all_to_all_quant_matmul/matmul_all_to_all_tiling_data.h"
-#include "../../../common/op_kernel/apace/kernel/fusions/matmul_all_to_all_quant_matmul/matmul_all_to_all_mx_quant_matmul_hcomm_impl.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_mx_quant_matmul_hcomm_impl.h"
 
 using AscendC::HcclServerType;
 using AscendC::TPipe;
@@ -105,19 +105,16 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL
 #define MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, pipe, ServerType)                                             \
     do {                                                                                                               \
-        DEFINE_APACE_MATMUL_CONTEXT_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(MxComputationContextType);                         \
-        DEFINE_APACE_MATMUL_FOR_MATMUL_ALL_TO_ALL_MX_QUANT(MxComputationType);                                        \
+        DEFINE_APACE_CONTEXT_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationContextType);                               \
+        DEFINE_APACE_COMPUTATION_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationType);                                  \
         MxComputationType matmulImplName(&pipe);                                                                       \
-        /* Matmul output is ND. AIV regroups N/rank columns before AllToAll. */                                        \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
-        TransposeType transposeImplName(&pipe);                                                                        \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, hcommMatmulAllToAllTilingData,        \
                                           MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
-        using SchedulerContextType = MatmulAlltoAllPipelineContext<MxComputationContextType>;                          \
-        using SchedulerType =                                                                                          \
-            MatmulAlltoAllPipeLine<MxComputationType, TransposeType, CommunicationType, SchedulerContextType>;         \
-        SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
+        using SchedulerContextType = Apace::QuantMatmulAllToAllPipelineContext<MxComputationContextType>;             \
+        using SchedulerType = Apace::QuantMatmulAllToAllPipeline<                                                     \
+            MxComputationType, CommunicationType, SchedulerContextType>;                                               \
+        SchedulerType SchedulerImpl(&matmulImplName, &commImplName);                                                   \
         Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,                                    \
                                                 hcommMatmulAllToAllTilingData, true>                                   \
             op(&SchedulerImpl);                                                                                        \
