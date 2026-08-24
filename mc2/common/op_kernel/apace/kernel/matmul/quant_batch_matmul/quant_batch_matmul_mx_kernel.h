@@ -52,9 +52,9 @@ public:
   using TypeScaleA = ::fp8_e8m0_t;
   using TypeScaleB = ::fp8_e8m0_t;
 
-  static constexpr bool weightNz = BlockMmad::weightNz;
-  static constexpr bool transA = BlockMmad::transA;
-  static constexpr bool transB = BlockMmad::transB;
+  static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
+  static constexpr bool transA = BlockMmad::TRANS_A;
+  static constexpr bool transB = BlockMmad::TRANS_B;
   static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
   static constexpr int64_t kCacheLineAlignMask = IsFp4<AType>() ? 0xff : 0x7f;
   static constexpr int32_t SCALE_C0 = 2;
