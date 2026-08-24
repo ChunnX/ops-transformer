@@ -30,9 +30,9 @@ public:
 
     __aicore__ inline void Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId, uint32_t numRanks,
                                 int32_t numEntriesPerRank, int64_t hiddenDim, int64_t hiddenBytes, int32_t inputDtype,
-                                int32_t outputDtype, AscendC::TPipe *pipe, AscendC::TBuf<> &pingBuf,
-                                AscendC::TBuf<> &pongBuf, AscendC::TBuf<> &indicesBuf, AscendC::TBuf<> &tempBuf,
-                                AscendC::TBuf<> &statusBuf, AscendC::TBuf<> &gradSumBuf);
+                                int32_t outputDtype, AscendC::TPipe *pipe, AscendC::TBuf<> &entryBuf,
+                                AscendC::TBuf<> &gradBuf, AscendC::TBuf<> &indicesBuf, AscendC::TBuf<> &tempBuf,
+                                AscendC::TBuf<> &statusBuf, AscendC::TBuf<> &castFp32Buf);
 
     __aicore__ inline void ZeroGradUnique(uint32_t numRecv, GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM);
 
@@ -46,7 +46,7 @@ public:
 
     __aicore__ inline void WriteNumUniqueZero(GM_ADDR numUniqueOutGM);
 
-    __aicore__ inline void SetGradSumBuf(AscendC::TBuf<> &gradSumBuf) { gradSumBuf_ = &gradSumBuf; }
+    __aicore__ inline void SetCastFp32Buf(AscendC::TBuf<> &castFp32Buf) { castFp32Buf_ = &castFp32Buf; }
 
     __aicore__ inline void SetGradSubBatch(uint32_t batch) { gradSubBatch_ = batch; }
 
@@ -97,12 +97,12 @@ private:
     int32_t inputDtype_{0};
     int32_t outputDtype_{0};
     AscendC::TPipe *pipe_{nullptr};
-    AscendC::TBuf<> *pingBuf_{nullptr};
-    AscendC::TBuf<> *pongBuf_{nullptr};
+    AscendC::TBuf<> *entryBuf_{nullptr};
+    AscendC::TBuf<> *gradBuf_{nullptr};
     AscendC::TBuf<> *indicesBuf_{nullptr};
     AscendC::TBuf<> *tempBuf_{nullptr};
     AscendC::TBuf<> *statusBuf_{nullptr};
-    AscendC::TBuf<> *gradSumBuf_{nullptr};
+    AscendC::TBuf<> *castFp32Buf_{nullptr};
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
 
     int32_t myPreCoreOffset_{0};
@@ -110,12 +110,12 @@ private:
 };
 
 __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId,
-                                                   uint32_t numRanks, int32_t numEntriesPerRank, int64_t hiddenDim,
-                                                   int64_t hiddenBytes, int32_t inputDtype, int32_t outputDtype,
-                                                   AscendC::TPipe *pipe, AscendC::TBuf<> &pingBuf,
-                                                   AscendC::TBuf<> &pongBuf, AscendC::TBuf<> &indicesBuf,
-                                                   AscendC::TBuf<> &tempBuf, AscendC::TBuf<> &statusBuf,
-                                                   AscendC::TBuf<> &gradSumBuf)
+                                                    uint32_t numRanks, int32_t numEntriesPerRank, int64_t hiddenDim,
+                                                    int64_t hiddenBytes, int32_t inputDtype, int32_t outputDtype,
+                                                    AscendC::TPipe *pipe, AscendC::TBuf<> &entryBuf,
+                                                    AscendC::TBuf<> &gradBuf, AscendC::TBuf<> &indicesBuf,
+                                                    AscendC::TBuf<> &tempBuf, AscendC::TBuf<> &statusBuf,
+                                                    AscendC::TBuf<> &castFp32Buf)
 {
     aivId_ = aivId;
     totalBlocks_ = totalBlocks;
@@ -127,12 +127,12 @@ __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t tota
     inputDtype_ = inputDtype;
     outputDtype_ = outputDtype;
     pipe_ = pipe;
-    pingBuf_ = &pingBuf;
-    pongBuf_ = &pongBuf;
+    entryBuf_ = &entryBuf;
+    gradBuf_ = &gradBuf;
     indicesBuf_ = &indicesBuf;
     tempBuf_ = &tempBuf;
     statusBuf_ = &statusBuf;
-    gradSumBuf_ = &gradSumBuf;
+    castFp32Buf_ = &castFp32Buf;
 }
 
 __aicore__ inline void EngramFetchGradUnique::RunCount(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
@@ -198,7 +198,7 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
     }
 
     if (start < end) {
-        AscendC::LocalTensor<float> zeroBuf = pongBuf_->Get<float>();
+        AscendC::LocalTensor<float> zeroBuf = gradBuf_->Get<float>();
         uint32_t tileFloats = Mc2Kernel::TILE_BYTES / sizeof(float);
         AscendC::Duplicate<float>(zeroBuf, 0.0f, tileFloats);
         SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
@@ -389,7 +389,7 @@ __aicore__ inline void EngramFetchGradUnique::AtomicAddGrad(AscendC::GlobalTenso
                                                             AscendC::LocalTensor<float> &srcT, uint32_t subStart,
                                                             uint32_t subLen)
 {
-    AscendC::LocalTensor<int32_t> pingInt32 = pingBuf_->Get<int32_t>();
+    AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * Mc2Kernel::ENTRY_BATCH_CAP];
     constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
     uint32_t totalBytes = static_cast<uint32_t>(hiddenDim_) * sizeof(float);
@@ -415,10 +415,10 @@ __aicore__ inline void EngramFetchGradUnique::ScatterGradSubBatch(uint32_t subSt
                                                                   GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM,
                                                                   GM_ADDR recvGradGM)
 {
-    AscendC::LocalTensor<int32_t> pingInt32 = pingBuf_->Get<int32_t>();
+    AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> recvIdxBuf = pingInt32[2 * Mc2Kernel::ENTRY_BATCH_CAP];
-    AscendC::LocalTensor<uint8_t> gradRaw = pongBuf_->Get<uint8_t>();
-    AscendC::LocalTensor<float> gradFp32 = gradSumBuf_->Get<float>();
+    AscendC::LocalTensor<uint8_t> gradRaw = gradBuf_->Get<uint8_t>();
+    AscendC::LocalTensor<float> gradFp32 = castFp32Buf_->Get<float>();
     GM_ADDR atomicDstBase = (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) ? gradUniqueOutGM : gradUniqueFp32GM;
     AscendC::GlobalTensor<float> atomicDstGM;
     atomicDstGM.SetGlobalBuffer((__gm__ float *)atomicDstBase);
@@ -463,7 +463,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
                                                                      GM_ADDR sortCompanionGM)
 {
     AscendC::LocalTensor<int32_t> entryUb = indicesBuf_->Get<int32_t>();
-    AscendC::LocalTensor<int32_t> pingInt32 = pingBuf_->Get<int32_t>();
+    AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> compUb = pingInt32;
     AscendC::LocalTensor<int32_t> uniqueUb = pingInt32[Mc2Kernel::ENTRY_BATCH_CAP];
     AscendC::LocalTensor<int32_t> recvIdxBuf = pingInt32[2 * Mc2Kernel::ENTRY_BATCH_CAP];
@@ -500,7 +500,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
 __aicore__ inline void EngramFetchGradUnique::WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
                                                                GM_ADDR uniqueLocalEntryOutGM)
 {
-    AscendC::LocalTensor<int32_t> pingInt32 = pingBuf_->Get<int32_t>();
+    AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> uniqueUb = pingInt32[Mc2Kernel::ENTRY_BATCH_CAP];
     AscendC::GlobalTensor<int32_t> uniqueEntryOutGM;
     uniqueEntryOutGM.SetGlobalBuffer((__gm__ int32_t *)uniqueLocalEntryOutGM);
@@ -614,7 +614,7 @@ __aicore__ inline void EngramFetchGradUnique::CastGradUniquePerCore(GM_ADDR segC
     AscendC::GlobalTensor<uint8_t> gradUniqueOutGMT;
     gradUniqueOutGMT.SetGlobalBuffer((__gm__ uint8_t *)gradUniqueOutGM);
 
-    AscendC::LocalTensor<float> fp32Tile = pingBuf_->Get<float>();
+    AscendC::LocalTensor<float> fp32Tile = entryBuf_->Get<float>();
     uint32_t tileLen = Mc2Kernel::TILE_BYTES / sizeof(float);
 
     uint32_t off = start;
@@ -630,14 +630,14 @@ __aicore__ inline void EngramFetchGradUnique::CastGradUniquePerCore(GM_ADDR segC
         SyncFunc<AscendC::HardEvent::MTE2_V>(*pipe_);
 
         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-            AscendC::LocalTensor<bfloat16_t> outTile = pongBuf_->Get<bfloat16_t>();
+            AscendC::LocalTensor<bfloat16_t> outTile = gradBuf_->Get<bfloat16_t>();
             AscendC::Cast(outTile, fp32Tile, AscendC::RoundMode::CAST_RINT, thisLen);
             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
             AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(thisLen * sizeof(bfloat16_t)), 0U, 0U};
             AscendC::DataCopyPad(gradUniqueOutGMT[static_cast<uint64_t>(off) * sizeof(bfloat16_t)],
                                  outTile.ReinterpretCast<uint8_t>(), outParams);
         } else {
-            AscendC::LocalTensor<half> outTile = pongBuf_->Get<half>();
+            AscendC::LocalTensor<half> outTile = gradBuf_->Get<half>();
             AscendC::Cast(outTile, fp32Tile, AscendC::RoundMode::CAST_RINT, thisLen);
             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
             AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(thisLen * sizeof(half)), 0U, 0U};
@@ -677,16 +677,16 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv,
     gradUniqueOutGM_u.SetGlobalBuffer((__gm__ uint8_t *)gradUniqueOutGM);
 
     AscendC::LocalTensor<int32_t> entryUb = indicesBuf_->Get<int32_t>();
-    AscendC::LocalTensor<int32_t> compUb = pingBuf_->Get<int32_t>();
+    AscendC::LocalTensor<int32_t> compUb = entryBuf_->Get<int32_t>();
     uint32_t hiddenDim = static_cast<uint32_t>(hiddenDim_);
     uint32_t hiddenBytesU32 = static_cast<uint32_t>(hiddenBytes_);
-    AscendC::LocalTensor<float> accumFp32 = gradSumBuf_->Get<float>();
+    AscendC::LocalTensor<float> accumFp32 = castFp32Buf_->Get<float>();
 
     AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
     AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
 
     uint32_t gradBufHalf = Mc2Kernel::TILE_BYTES / 2U;
-    AscendC::LocalTensor<uint8_t> gradPing = pongBuf_->Get<uint8_t>();
+    AscendC::LocalTensor<uint8_t> gradPing = gradBuf_->Get<uint8_t>();
     AscendC::LocalTensor<uint8_t> gradPong = gradPing[gradBufHalf];
 
     event_t evtMte2V0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
@@ -761,7 +761,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv,
                         AscendC::PipeBarrier<PIPE_V>();
                         SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
                         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-                            AscendC::LocalTensor<bfloat16_t> outTile = pongBuf_->Get<bfloat16_t>();
+                            AscendC::LocalTensor<bfloat16_t> outTile = gradBuf_->Get<bfloat16_t>();
                             AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                             AscendC::PipeBarrier<PIPE_V>();
                             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
@@ -772,7 +772,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv,
                             AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(),
                                                  outParams);
                         } else {
-                            AscendC::LocalTensor<half> outTile = pongBuf_->Get<half>();
+                            AscendC::LocalTensor<half> outTile = gradBuf_->Get<half>();
                             AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                             AscendC::PipeBarrier<PIPE_V>();
                             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
@@ -907,7 +907,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv,
             AscendC::PipeBarrier<PIPE_V>();
             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
             if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
-                AscendC::LocalTensor<bfloat16_t> outTile = pongBuf_->Get<bfloat16_t>();
+                AscendC::LocalTensor<bfloat16_t> outTile = gradBuf_->Get<bfloat16_t>();
                 AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                 AscendC::PipeBarrier<PIPE_V>();
                 SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
@@ -915,7 +915,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv,
                 uint64_t outOff = static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(bfloat16_t);
                 AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(), outParams);
             } else {
-                AscendC::LocalTensor<half> outTile = pongBuf_->Get<half>();
+                AscendC::LocalTensor<half> outTile = gradBuf_->Get<half>();
                 AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                 AscendC::PipeBarrier<PIPE_V>();
                 SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
