@@ -25,8 +25,9 @@ using std::map;
 namespace optiling {
 class CommonChecker : public BaseChecker {
 public:
-    CommonChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    CommonChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~CommonChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -61,8 +62,8 @@ private:
     ge::graphStatus CheckQueryKeyConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiAttr(const FiaTilingInfo &fiaInfo);
-    void GetQueryDimAndOutDim(const gert::StorageShape* queryShape, const gert::StorageShape* outShape,
-        const std::string &layoutStr, int64_t &tmpQueryDim, int64_t &outDim, uint32_t i);
+    void GetQueryDimAndOutDim(const gert::StorageShape *queryShape, const gert::StorageShape *outShape,
+                              const std::string &layoutStr, int64_t &tmpQueryDim, int64_t &outDim, uint32_t i);
 
     // enableNonQuant 相关校验函数
     ge::graphStatus CheckNonQuantDataType(const FiaTilingInfo &fiaInfo);

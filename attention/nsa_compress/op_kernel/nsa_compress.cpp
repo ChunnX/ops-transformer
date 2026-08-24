@@ -18,7 +18,6 @@
 #include "nsa_compress_tiling.h"
 #include "nsa_compress_kernel.h"
 
-
 using namespace NASCompress;
 
 namespace NASCompress {

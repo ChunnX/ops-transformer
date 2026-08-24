@@ -25,8 +25,9 @@ namespace optiling {
 
 class SystemPrefixChecker : public BaseChecker {
 public:
-    SystemPrefixChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    SystemPrefixChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~SystemPrefixChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -47,10 +48,10 @@ private:
     // feature
     ge::graphStatus CheckUnSupportFeature(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureAntiquantS1Gt1(const FiaTilingInfo &fiaInfo,
-        int64_t keyAntiquantMode, int64_t valueAntiquantMode);
-    ge::graphStatus CheckFeatureAntiquantS1Eq1(const FiaTilingInfo &fiaInfo,
-        int64_t keyAntiquantMode, int64_t valueAntiquantMode);
+    ge::graphStatus CheckFeatureAntiquantS1Gt1(const FiaTilingInfo &fiaInfo, int64_t keyAntiquantMode,
+                                               int64_t valueAntiquantMode);
+    ge::graphStatus CheckFeatureAntiquantS1Eq1(const FiaTilingInfo &fiaInfo, int64_t keyAntiquantMode,
+                                               int64_t valueAntiquantMode);
 
     // multipara
 private:
