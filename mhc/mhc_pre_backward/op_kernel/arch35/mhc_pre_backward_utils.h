@@ -18,7 +18,6 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_backward_mm_policy.h"
 
 namespace MhcPreBackwardUtils {
 
@@ -143,12 +142,12 @@ struct V0V1Buffers {
     uint32_t gatherLength;
 };
 
-using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
+using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
+using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
+using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND, float>;
 using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, CFG_NORM,
-                                 MatmulCallBackFunc<nullptr, nullptr, nullptr>, MhcPreBackwardSplitNMatmulPolicy>;
+                                 MatmulCallBackFunc<nullptr, nullptr, nullptr>, Impl::Detail::SplitNMatmulPolicy>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
