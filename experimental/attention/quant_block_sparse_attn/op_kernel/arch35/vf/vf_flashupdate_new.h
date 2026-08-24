@@ -258,8 +258,7 @@ __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T> &dstTensor, con
         dstUb, curUb, preUb, expMaxUb, expSumUb, m, d, deScaleV, deScaleVPre);
 }
 
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre,
-          bool zeroWhenSumZero>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool zeroWhenSumZero>
 __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                                  __ubuf__ float *expMaxUb, __ubuf__ float *expSumUb, const uint16_t m,
                                                  const uint16_t d, const float deScaleV, const float deScaleVPre,
@@ -337,8 +336,7 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
     }
 }
 
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre,
-          bool zeroWhenSumZero>
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre, bool zeroWhenSumZero>
 __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                               const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                               const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
@@ -585,8 +583,8 @@ __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T> &dstTensor, const
 
 template <typename T>
 __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *maxUb, __ubuf__ float *sumUb,
-                                           const uint16_t m, const uint16_t d, int64_t dSize,
-                                           const uint32_t pltTailD, const uint16_t hasTail)
+                                           const uint16_t m, const uint16_t d, int64_t dSize, const uint32_t pltTailD,
+                                           const uint16_t hasTail)
 {
     constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
     const uint16_t dLoops = d / floatRepSize;
