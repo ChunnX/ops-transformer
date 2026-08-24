@@ -54,10 +54,9 @@ ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vecto
     } else if (!IsSameShape(q_shape[1], k_shape[1] * q_group, v_shape[1] * q_group)) {
         OP_LOGE(context->GetNodeName(), "q_group * kv_head_num must same as q_head_num.");
         return ge::GRAPH_FAILED;
-    } else if (!IsSameShape(q_shape[2], k_shape[2], v_shape[2])) {
-        OP_LOGE(context->GetNodeName(), "q_seq_len must be same as k_seq_len and v_seq_len.");
-        return ge::GRAPH_FAILED;
-    } else if (!IsSameShape(q_shape[3], k_shape[3], v_shape[3])) {
+    }
+    // 注：q/k/v 的 seq_len（q_shape[2]）允许不等长（Q 与 K/V 序列可不同），无需校验。
+    if (!IsSameShape(q_shape[3], k_shape[3], v_shape[3])) {
         OP_LOGE(context->GetNodeName(), "q_head_dim must be same as k_head_dim and v_head_dim.");
         return ge::GRAPH_FAILED;
     }
@@ -311,6 +310,28 @@ protected:
         uint32_t kvBlockNum = (maxKvSeq + blockShapeY_ - 1) / blockShapeY_;
         uint32_t maxBlockNum = std::max(qBlockNum, kvBlockNum);
         uint8_t hasPerBlockSizeMask = (maskType_ == 1) ? 1 : 0;
+
+        // maskType=1 时强校验 attenMaskOptional shape 必须严格为 [B, N, maxBlockNum, 2]（int32）。
+        // kernel 侧 GetPerBlockSizeMaskValue 按固定 stride(maxBlockNum) 索引，dim2 多/少都不允许：
+        //   dim2 < maxBlockNum 会越界读；dim2 > maxBlockNum 会导致 b/n>0 时错位读（静默错误）。
+        if (maskType_ == 1) {
+            auto attenMaskOptional = context_->GetOptionalInputTensor(7);
+            auto &maskShape = attenMaskOptional->GetStorageShape();
+            if (maskShape.GetDim(0) != static_cast<int64_t>(batch_num_) ||
+                maskShape.GetDim(1) != static_cast<int64_t>(q_head_num_) ||
+                maskShape.GetDim(2) != static_cast<int64_t>(maxBlockNum) ||
+                maskShape.GetDim(3) != 2) {
+                OP_LOGE(context_->GetNodeName(),
+                        "attenMaskOptional shape must be [%d, %d, %u, 2], got [%ld, %ld, %ld, %ld].",
+                        batch_num_, q_head_num_, maxBlockNum, maskShape.GetDim(0), maskShape.GetDim(1),
+                        maskShape.GetDim(2), maskShape.GetDim(3));
+                return ge::GRAPH_FAILED;
+            }
+            if (attenMaskOptional->GetDataType() != ge::DT_INT32) {
+                OP_LOGE(context_->GetNodeName(), "attenMaskOptional dtype must be INT32 when maskType=1.");
+                return ge::GRAPH_FAILED;
+            }
+        }
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
