@@ -17,12 +17,8 @@
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_v2_template_tiling_key.h"
 
-// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
-#ifndef isA6
-#define isA6 0
-#endif
-
-#if isA6
+// A6: __NPU_ARCH__ 9201(芯片121) / 9202(芯片122)
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
     #include "arch920r1/lightning_indexer_v2_kernel_arch920r1.h"
 #elif (__CCE_AICORE__ == 310)
     #include "arch35/lightning_indexer_v2_kernel_arch35.h"
@@ -54,7 +50,7 @@ __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_
 {
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-#if isA6
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

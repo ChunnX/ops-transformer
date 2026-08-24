@@ -16,11 +16,6 @@
 #include "lightning_indexer_v2_tiling.h"
 #include "../op_kernel/lightning_indexer_v2_template_tiling_key.h"
 
-// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
-#ifndef isA6
-#define isA6 0
-#endif
-
 using namespace ge;
 using namespace AscendC;
 using std::map;
@@ -184,8 +179,7 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     // TODO: 待确认A6的NpuArch枚举值后取消注释
-    // isA6Arch_ = (npuArch_ == NpuArch::DAV_XXX);
-    if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510) && !isA6Arch_) {
+    if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510) && (npuArch_ != NpuArch::DAV_9201)) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -296,7 +290,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", std::string(opParamInfo_.layOut).c_str(),
                                                       "Layout_q only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                      (std::string(opParamInfo_.layOut)) != (std::string(opParamInfo_.layOutKey))),
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
@@ -411,7 +405,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "seqused_k",
                                                              "When layout_k is PA_BSND, seqused_k must not be null"),
                     return ge::GRAPH_FAILED);
-        if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+        if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
             OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                             opName_, "cu_seqlens_k", "When layout_k is PA_BBND, cu_seqlens_k must not be provided"),
@@ -434,7 +428,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cu_seqlens_k",
                                                              "When layout_k is TND, cu_seqlens_k must not be null"),
                     return ge::GRAPH_FAILED);
-        if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+        if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
             OP_CHECK_IF(opParamInfo_.cuSeqlensK.desc->GetDataType() != ge::DT_INT32,
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                             opName_, "cu_seqlens_k",
@@ -468,7 +462,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
     }
     // =============== cmpResidualK 校验 ===============
     // cmpRatio 不等于 1 且 maskMode 不等于 0 时 cmpResidualK 必传
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio != 1 && opParamInfo_.maskMode != nullptr &&
             *opParamInfo_.maskMode != 0) {
             OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor == nullptr,
@@ -517,7 +511,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                                                              "When layout_q is TND, cu_seqlens_q must not be null"),
                     return ge::GRAPH_FAILED);
         // cuSeqlensQ 维度 & 类型校验
-        if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+        if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
             if (kLayout_ == DataLayout::PA_BBND) {
                 // k为PA_BBND必传sequsedK, 用sequsedK的维度校验
                 OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor->GetStorageShape().GetShapeSize() !=
@@ -557,7 +551,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
             }
         }
     } else {
-        if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+        if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
             // BSND: cu_seqlens_q 不传, seqused_q 可选
             OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor != nullptr,
                         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
@@ -574,7 +568,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
         }
     }
 
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         // outputIdxOffset数据类型校验
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF(opParamInfo_.outputIdxOffset.desc->GetDataType() != ge::DT_INT32,
@@ -606,7 +600,7 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                     opName_, "block_table",
                     std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum()).c_str(), "2"),
                 return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(
             ((kLayout_ == DataLayout::PA_BBND) || (kLayout_ == DataLayout::BSND)) &&
                 (opParamInfo_.key.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR),
@@ -639,7 +633,7 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "q", std::to_string(qShapeDim).c_str(),
                                              std::to_string(qExpectShapeDim).c_str()),
                 return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             uint32_t outputIdxOffsetShapeDim = opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDimNum();
             OP_CHECK_IF((outputIdxOffsetShapeDim != qExpectShapeDim - 1),
@@ -753,7 +747,7 @@ ge::graphStatus LIV2InfoParser::GetGSize()
                                                "The head num of q must be a multiple of the head num of k");
     }
     gSize_ = n1Size_ / n2Size_;
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q and k",
@@ -915,7 +909,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
                         std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (*opParamInfo_.returnValue == 1) {
             if (opParamInfo_.valuesOut.shape != nullptr) {
                 OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize),
@@ -1063,7 +1057,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check cmp_residual_k-------------------
-    if (npuArch_ == NpuArch::DAV_3510 || isA6Arch_) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (opParamInfo_.cmpResidualK.tensor != nullptr) {
             OP_CHECK_IF(
                 (opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
@@ -1082,7 +1076,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                         std::to_string(*opParamInfo_.topk) + " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check sparse_values------------------
-    if ((npuArch_ == NpuArch::DAV_3510 || isA6Arch_) && *opParamInfo_.returnValue == 1) {
+    if ((npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) && *opParamInfo_.returnValue == 1) {
         OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "k and sparse_values",
@@ -1207,7 +1201,8 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     constexpr uint32_t S1_BASE_SIZE = 8;              // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 8192;          // TopK选取个数
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510 || isA6Arch_) {
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510 ||
+        ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
         constexpr uint32_t li3510S1Base = 4;
         constexpr uint32_t li3510S2Base = 128;
         workspaceSize += li3510S1Base * ((tilingInfo->s2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *

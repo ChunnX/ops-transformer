@@ -17,11 +17,6 @@
 
 #include "basic_api/kernel_basic_intf.h"
 
-// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
-#ifndef isA6
-#define isA6 0
-#endif
-
 namespace liV2Vector1 {
 template <typename T>
 struct UIntSortTraits;
@@ -232,7 +227,8 @@ __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regA
 }
 
 // A6: relu在cube随路做(fixpipe reluEn)，vec1不做relu; A5: relu在vec1做
-#ifdef isA6
+// A6: __NPU_ARCH__ 9201(芯片121) / 9202(芯片122)
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
 template <typename T, size_t N, bool ApplyRelu = false>
 #else
 template <typename T, size_t N, bool ApplyRelu = true>

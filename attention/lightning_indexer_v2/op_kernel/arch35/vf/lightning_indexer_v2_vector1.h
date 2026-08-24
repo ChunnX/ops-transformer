@@ -18,11 +18,6 @@
 #include "kernel_operator.h"
 #include "common/lightning_indexer_v2_vector1_base.h"
 
-// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
-#ifndef isA6
-#define isA6 0
-#endif
-
 namespace liV2Vector1 {
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
@@ -203,7 +198,8 @@ __simd_callee__ inline void ReduceSum2LoopBody(AscendC::MicroAPI::RegTensor<floa
         BroadcastLane(regwBrc[0], regW[0], i);
         BroadcastLane(regwBrc[1], brcWeight_, i);
 
-#ifndef isA6
+// A6: relu在cube随路做，vec1不做; A6: __NPU_ARCH__ 9201/9202
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
         AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
         AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);

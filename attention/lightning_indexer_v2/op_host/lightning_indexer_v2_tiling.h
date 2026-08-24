@@ -238,8 +238,6 @@ public:
     int32_t blockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     NpuArch npuArch_ = NpuArch::DAV_2201;
-    // A6 NpuArch检测：待确认A6的NpuArch枚举值后在GetNpuInfo中添加 (npuArch_ == NpuArch::DAV_XXX)
-    bool isA6Arch_ = false;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
     ge::DataType weightsType_ = ge::DT_FLOAT16;
