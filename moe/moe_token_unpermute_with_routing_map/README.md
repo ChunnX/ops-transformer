@@ -4,7 +4,7 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
@@ -160,14 +160,14 @@
       <td>outIndex</td>
       <td>输出</td>
       <td>对应公式中的`outIndex`。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>permuteTokenId</td>
       <td>输出</td>
       <td>对应公式中的`permuteTokenId`。</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
