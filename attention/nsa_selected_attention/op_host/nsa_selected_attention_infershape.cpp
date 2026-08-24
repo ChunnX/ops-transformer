@@ -30,6 +30,16 @@ constexpr size_t VALUE_INPUT_INDEX = 2;
 constexpr size_t TOPK_INDICES_INPUT_INDEX = 3;
 constexpr size_t INPUT_LAYOUT_ATTR_INDEX = 3;
 
+static bool HasZeroDim(const gert::Shape *shape)
+{
+    for (size_t i = 0; i < shape->GetDimNum(); ++i) {
+        if (shape->GetDim(i) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 ge::graphStatus InferShapeNsaSelectedAttention(gert::InferShapeContext *context)
 {
     OP_LOGI(context, "Enter NsaSelectedAttention runtime infershape impl.");
@@ -44,6 +54,21 @@ ge::graphStatus InferShapeNsaSelectedAttention(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
     const gert::Shape *topkIndicesShape = context->GetInputShape(TOPK_INDICES_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIndicesShape);
+
+    // 校验输入shape，当输入的某一维度为0时进行拦截
+    OP_CHECK_IF(HasZeroDim(queryShape),
+                OP_LOGE(context->GetNodeName(), "query shape contains 0 dim, it is invalid."),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(HasZeroDim(keyShape),
+                OP_LOGE(context->GetNodeName(), "key shape contains 0 dim, it is invalid."),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(HasZeroDim(valueShape),
+                OP_LOGE(context->GetNodeName(), "value shape contains 0 dim, it is invalid."),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(HasZeroDim(topkIndicesShape),
+                OP_LOGE(context->GetNodeName(), "topkIndices shape contains 0 dim, it is invalid."),
+                return GRAPH_FAILED);
+
     auto attrs = context->GetAttrs();
     const auto *queryDesc = context->GetInputDesc(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryDesc);
