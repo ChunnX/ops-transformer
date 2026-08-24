@@ -224,3 +224,24 @@ TEST_F(InplacePartialRotaryMulGradTilingTest, B_BROADCAST_BSN_fp32)
     vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
 }
+
+TEST_F(InplacePartialRotaryMulGradTilingTest, rejects_out_of_range_empty_partial_slice)
+{
+    gert::TilingContextPara tilingPara(
+        "InplacePartialRotaryMulGrad",
+        {
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 1, 4}, {1, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 1, 1, 4}, {1, 1, 1, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 2, 2, 4}, {2, 2, 2, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({5, 5})},
+        },
+        &compileInfo_, kSocVersion, k950CoreNum, k950UbSize);
+
+    ExecuteTestCase(tilingPara, ge::GRAPH_FAILED);
+}
