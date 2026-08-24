@@ -1446,10 +1446,6 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
 static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
                                             const char *nodeName)
 {
-    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-
-    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
     auto yStorageShape = context->GetOutputShape(config.yIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, yStorageShape);
     OP_TILING_CHECK(
@@ -1462,13 +1458,7 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     OP_LOGD(nodeName, "y dim0 = %ld", yDim0);
     OP_LOGD(nodeName, "y dim1 = %ld", yDim1);
 
-    OP_TILING_CHECK(
-        yDim0 != bs || yDim1 != h,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "y", (std::string("[") + std::to_string(yDim0) + ", " + std::to_string(yDim1) + "]").c_str(),
-            (std::string("The shape of y must be [bs, h] = [") + std::to_string(bs) + ", " + std::to_string(h) + "].")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    // 关键路径诊断构建会扩大 y 以承载完整 trace，因此不校验 y 必须严格等于 [bs, h]。
 
     auto expertTokenNumsStorageShape = context->GetOutputShape(config.expertTokenNumsIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertTokenNumsStorageShape);

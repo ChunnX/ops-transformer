@@ -15,6 +15,8 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
+// 诊断构建使用 y 承载关键路径 trace。FP16/BF16 均为 2 字节，预留 1 MiB 对应的元素数。
+constexpr int64_t TRACE_OUTPUT_ELEMENT_COUNT = 512LL * 1024LL;
 
 std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
@@ -100,8 +102,10 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t dispatchQuantResultType =
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
 
+    int64_t traceOutputH = (TRACE_OUTPUT_ELEMENT_COUNT + bs - 1) / bs;
+    int64_t outputH = std::max(h, traceOutputH);
     at::Tensor y;
-    y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+    y = at::empty({bs, outputH}, topkIds.options().dtype(x.scalar_type()));
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};

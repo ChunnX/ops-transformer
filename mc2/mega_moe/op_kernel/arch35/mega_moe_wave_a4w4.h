@@ -90,8 +90,7 @@ private:
 
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline A4W4WaveTraceEvent
-MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1TraceEvent() const
+__aicore__ inline A4W4WaveTraceEvent MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1TraceEvent() const
 {
     if constexpr (g_coreType == AIC) {
         return A4W4WaveTraceEvent::GMM1;
@@ -100,8 +99,7 @@ MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1TraceEvent() const
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline A4W4WaveTraceEvent
-MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1WaitTraceEvent() const
+__aicore__ inline A4W4WaveTraceEvent MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1WaitTraceEvent() const
 {
     if constexpr (g_coreType == AIC) {
         return A4W4WaveTraceEvent::WAIT_FOR_DISPATCH;
@@ -110,8 +108,7 @@ MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm1WaitTraceEvent() const
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline A4W4WaveTraceEvent
-MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm2TraceEvent() const
+__aicore__ inline A4W4WaveTraceEvent MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm2TraceEvent() const
 {
     if constexpr (g_coreType == AIC) {
         return A4W4WaveTraceEvent::GMM2;
@@ -120,8 +117,7 @@ MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm2TraceEvent() const
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline A4W4WaveTraceEvent
-MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm2WaitTraceEvent() const
+__aicore__ inline A4W4WaveTraceEvent MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::GetGmm2WaitTraceEvent() const
 {
     if constexpr (g_coreType == AIC) {
         return A4W4WaveTraceEvent::WAIT_FOR_ACTIVATION;
@@ -209,8 +205,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             uint32_t dispatchedWaveMGroupCount = 0U;
             while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
-                uint32_t dispatchBegin =
-                    dispatchPosition.tokenIndexInExpert == 0U ? A4W4WaveTrace::Now() : 0U;
+                uint32_t dispatchBegin = dispatchPosition.tokenIndexInExpert == 0U ? A4W4WaveTrace::Now() : 0U;
 #endif
                 uint32_t expertTokenCount =
                     dispatchPosition.tokenIndexInExpert == 0U ?
@@ -253,8 +248,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
-                    uint32_t dispatchBegin =
-                        dispatchPosition.tokenIndexInExpert == 0U ? A4W4WaveTrace::Now() : 0U;
+                    uint32_t dispatchBegin = dispatchPosition.tokenIndexInExpert == 0U ? A4W4WaveTrace::Now() : 0U;
 #endif
                     uint32_t expertTokenCount =
                         dispatchPosition.tokenIndexInExpert == 0U ?
@@ -349,9 +343,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID0>();
                     }
                 }
-                trace_.Record(stageEvent, waveIndex, gmm2State.expertIdx, sliceTokenStartIndexInExpert,
-                              sliceTokenCount, Ops::Base::CeilDiv(sliceTokenCount, GMM1_TILE_M), stageBegin,
-                              A4W4WaveTrace::Now());
+                trace_.Record(stageEvent, waveIndex, gmm2State.expertIdx, sliceTokenStartIndexInExpert, sliceTokenCount,
+                              Ops::Base::CeilDiv(sliceTokenCount, GMM1_TILE_M), stageBegin, A4W4WaveTrace::Now());
 #endif
             }
         }
@@ -371,10 +364,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     if constexpr (g_coreType == AIV) {
         traceRole = GetSubBlockIdx() == 0U ? A4W4WaveTraceRole::AIV0 : A4W4WaveTraceRole::AIV1;
     }
-    uint64_t outputBytes = static_cast<uint64_t>(commonConfig_.tokenNum) * commonConfig_.tokenHiddenDim *
-                           static_cast<uint64_t>(sizeof(OutputType));
     trace_.Init(params_.workspaceInfo.dispatchRevDataPtr, params_.workspaceInfo.workspaceSize, params_.y2GmAddr,
-                outputBytes, gmmExecutionConfig_.blockJob.totalJobs, traceRole,
+                A4W4_WAVE_TRACE_OUTPUT_BYTES, gmmExecutionConfig_.blockJob.totalJobs, traceRole,
                 gmmExecutionConfig_.blockJob.jobIndex, commonConfig_.tokenNum, commonConfig_.tokenHiddenDim,
                 commonConfig_.gmm1OutputDim, commonConfig_.topK, commonConfig_.moeExpertPerRank,
                 commonConfig_.worldSize);
