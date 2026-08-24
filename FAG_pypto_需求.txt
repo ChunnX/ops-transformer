@@ -1,0 +1,1 @@
+还有两个功能需求，1、Q/do/atten_out/dx的headnum都为N2*G，K/V的headnum为N2，输出中dv和dk是N2，dq是N2*G，也就是支持N不相等的情况 2、Q/K/dq/dk的headdim是192，V/do/y/dv的headdim是128，也就是D不等长。以上两个需求ASC版本的FAG都有实现，请参考ASC版本用pyptopro开发
