@@ -181,6 +181,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(localFlagGMTensor, statusTensor_, flagCopyParams);
     SyncFunc<HardEvent::MTE3_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
+    DataSyncBarrier<MemDsbT::DDR>();
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
