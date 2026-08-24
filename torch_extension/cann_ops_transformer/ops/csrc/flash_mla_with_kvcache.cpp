@@ -52,9 +52,9 @@ int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize)
 
 at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cacheSeqlens,
                                        const c10::optional<at::Tensor> &sequsedQ, int64_t batchSize, int64_t maxSeqlenQ,
-                                       int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                       int64_t maskMode, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                                       const at::Tensor &output)
+                                       int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
+                                       int64_t headDimV, int64_t maskMode, std::string layoutQ, std::string layoutKv,
+                                       std::string layoutOut, const at::Tensor &output)
 {
     // Device inference from the optional seq-lens tensors (sparse_flash_mla precedent).
     at::Device outputDevice = at::Device(std::string("npu"));
@@ -87,7 +87,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
     // then int attrs, then layouts, then the output buffer.
     ACLNN_CMD(aclnnFlashMlaWithKvcacheMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDim, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
+              numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
     return output;
 }
 

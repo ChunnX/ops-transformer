@@ -62,7 +62,8 @@ private:
     int32_t maxSeqlenKv_ = -1;
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
-    int32_t headDim_ = 0;
+    int32_t headDimQk_ = 0;
+    int32_t headDimV_ = 0;
     int32_t maskMode_ = 0;
     std::string layoutQ_ = "BSND";
     std::string layoutKv_ = "BSND";
