@@ -402,6 +402,74 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
 
+// 诊断 trace 的通用定长事件写入器。正常 kernel 路径不创建 writer，不产生额外 GM 写入。
+struct CriticalPathTraceEventWriter {
+    __gm__ uint32_t *record = nullptr;
+    uint32_t *eventCount = nullptr;
+    uint32_t *truncated = nullptr;
+    uint32_t eventCapacity = 0U;
+    uint32_t recordHeaderWords = 0U;
+    uint32_t eventWords = 0U;
+
+    __aicore__ inline bool IsEnabled() const
+    {
+        return record != nullptr && eventCount != nullptr && truncated != nullptr && eventWords >= 9U;
+    }
+
+    __aicore__ inline void Record(uint32_t eventType, uint32_t iterationIndex, uint32_t logicalUnitIndex,
+                                  uint32_t unitStart, uint32_t unitCount, uint32_t workCount,
+                                  uint32_t parentEventType, uint32_t beginCycle, uint32_t endCycle)
+    {
+        if (!IsEnabled()) {
+            return;
+        }
+        if (*eventCount >= eventCapacity) {
+            *truncated = 1U;
+            return;
+        }
+        __gm__ uint32_t *dst = record + recordHeaderWords + static_cast<uint64_t>(*eventCount) * eventWords;
+        AscendC::WriteGmByPassDCache(dst + 0U, eventType);
+        AscendC::WriteGmByPassDCache(dst + 1U, iterationIndex);
+        AscendC::WriteGmByPassDCache(dst + 2U, logicalUnitIndex);
+        AscendC::WriteGmByPassDCache(dst + 3U, unitStart);
+        AscendC::WriteGmByPassDCache(dst + 4U, unitCount);
+        AscendC::WriteGmByPassDCache(dst + 5U, workCount);
+        AscendC::WriteGmByPassDCache(dst + 6U, parentEventType);
+        AscendC::WriteGmByPassDCache(dst + 7U, beginCycle);
+        AscendC::WriteGmByPassDCache(dst + 8U, endCycle);
+        ++(*eventCount);
+    }
+};
+
+// 描述一个阶段内的依赖等待；每次真实等待写成独立的起止区间。
+struct CriticalPathWaitTraceContext {
+    CriticalPathTraceEventWriter writer{};
+    uint32_t waitEventType = 0U;
+    uint32_t parentEventType = 0U;
+    uint32_t iterationIndex = 0U;
+    uint32_t logicalUnitIndex = 0U;
+    uint32_t unitStart = 0U;
+    uint32_t unitCount = 0U;
+    uint32_t workCount = 0U;
+};
+
+__aicore__ inline uint32_t BeginWaitInterval(CriticalPathWaitTraceContext *context)
+{
+    return context == nullptr || !context->writer.IsEnabled() ?
+               0U :
+               static_cast<uint32_t>(AscendC::GetSystemCycle());
+}
+
+__aicore__ inline void EndWaitInterval(CriticalPathWaitTraceContext *context, uint32_t beginCycle)
+{
+    if (context == nullptr || !context->writer.IsEnabled()) {
+        return;
+    }
+    context->writer.Record(context->waitEventType, context->iterationIndex, context->logicalUnitIndex,
+                           context->unitStart, context->unitCount, context->workCount, context->parentEventType,
+                           beginCycle, static_cast<uint32_t>(AscendC::GetSystemCycle()));
+}
+
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_UTILS_H
