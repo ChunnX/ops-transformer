@@ -260,7 +260,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8BaseTilingProcess()
     }
 
     if (baseN == 0) {
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tling Failed!");
+        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tiling Failed!");
         return ge::GRAPH_FAILED;
     }
 
@@ -321,7 +321,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8L1OptTilingProcess()
     }
 
     if (baseN == 0) {
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tling Failed!");
+        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tiling Failed!");
         return ge::GRAPH_FAILED;
     }
 

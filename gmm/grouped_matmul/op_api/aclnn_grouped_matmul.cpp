@@ -574,7 +574,7 @@ static aclnnStatus CheckGroupListCommonTensor(const gmm::GroupedMatmulParams &gm
                        gmmParams.groupTensorOptional->GetViewShape().GetDim(1));
         }
         CHECK_COND(groupListSize <= MAX_GROUP_LIST_SIZE_TENSOR, ACLNN_ERR_PARAM_INVALID,
-                   "When groupList type is tenosr, size of groupList %ld should be less than or equal to %ld.",
+                   "When groupList type is tensor, size of groupList %ld should be less than or equal to %ld.",
                    groupListSize, MAX_GROUP_LIST_SIZE_TENSOR);
         CHECK_COND(
             (groupListSize == static_cast<int64_t>(groupNum) && groupNum > 1) || groupNum == 1, ACLNN_ERR_PARAM_INVALID,
@@ -776,7 +776,7 @@ static aclnnStatus CheckOptionalTensorList(const gmm::GroupedMatmulParams &gmmPa
         // Check the first dimension, batch size must match the group size.
         uint64_t batchSize = tensor0Shape.GetDim(0);
         CHECK_COND(batchSize == numTotal, ACLNN_ERR_PARAM_INVALID,
-                   "%s batch size[%lu] should be euqal "
+                   "%s batch size[%lu] should be equal "
                    "with groupList length[%lu].",
                    tensorType.c_str(), batchSize, numTotal);
         // Check tensor’s Ndim must match weight’s Ndim.

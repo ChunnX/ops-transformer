@@ -57,7 +57,7 @@ constexpr const char *GetStatusString(Status status)
         case Status::tileShapeErrorExceedsLimit:
             return "[ERROR] L1 or L0 tile shape error, mnk config exceed limit.\n";
         case Status::l1L0ErrorExceedsLimit:
-            return "[ERROR] L1/L0 tile shape m can't greater than 128 and n can't grater than 256.\n";
+            return "[ERROR] L1/L0 tile shape m can't greater than 128 and n can't greater than 256.\n";
         case Status::l1L0ErrorNotAlign:
             return "[ERROR] L1/L0 tile shape m/n/k should be an integral multiple of 16.\n";
         case Status::l1MnL0MnErrorNotSame:

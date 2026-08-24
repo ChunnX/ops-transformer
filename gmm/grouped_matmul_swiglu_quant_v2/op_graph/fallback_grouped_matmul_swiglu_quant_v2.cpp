@@ -174,7 +174,7 @@ static graphStatus PrepareAclTensor(const OpExecuteContext *host_api_ctx, const 
     } else {
         tensor = GeTensor2AclTensor(host_api_ctx->GetOptionalInputTensor(index), enableTranspose, index, enableNZ);
     }
-    OP_CHECK_IF(tensor == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareAclTensor fialed"), return GRAPH_FAILED);
+    OP_CHECK_IF(tensor == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareAclTensor failed"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -189,7 +189,7 @@ static graphStatus PrepareAclTensorVector(const OpExecuteContext *host_api_ctx, 
             break;
         }
         auto inputAcl = GeTensor2AclTensor(inputGe, enableTranspose, index, enableNZ);
-        OP_CHECK_IF(inputAcl == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareAclTensorVector fialed"), return GRAPH_FAILED);
+        OP_CHECK_IF(inputAcl == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareAclTensorVector failed"), return GRAPH_FAILED);
         tensorVector.push_back(inputAcl);
         cnt++;
     }
@@ -200,7 +200,7 @@ static graphStatus PrepareOutputTensor(const OpExecuteContext *host_api_ctx,
                                              const gert::Tensor* &tensor, size_t index)
 {
     tensor = host_api_ctx->GetOutputTensor(index);
-    OP_CHECK_IF(tensor == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareOutputTensor fialed"), return GRAPH_FAILED);
+    OP_CHECK_IF(tensor == nullptr, OP_LOGE("GroupedMatmulSwigluQuantV2 aclnnfallback", "PrepareOutputTensor failed"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 

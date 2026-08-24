@@ -871,7 +871,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantDtype() const
         if (unlikely(pertokenScaleDtype != ge::DT_FLOAT8_E8M0)) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 GetAclnnName(), "perTokenScale", op::ToString(pertokenScaleDtype).GetString(),
-                "The dype of pertokenScale must be float8_e8m0, " + GetDataFlowString());
+                "The dtype of pertokenScale must be float8_e8m0, " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

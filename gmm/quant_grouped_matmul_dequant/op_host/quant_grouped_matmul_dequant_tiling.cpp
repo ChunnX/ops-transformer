@@ -72,7 +72,7 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext *context)
         shape = weight_scale->GetStorageShape();
         OP_CHECK_IF(
             shape.GetDimNum() != NUMBER_2,
-            OP_LOGE(context->GetNodeName(), "QuantMatmulDequant get weight_scale shape ndim is not 1, please check."),
+            OP_LOGE(context->GetNodeName(), "QuantMatmulDequant get weight_scale shape ndim is not 2, please check."),
             return false);
         OP_CHECK_IF(
             _Params.originE != (uint64_t)shape.GetDim(0),
@@ -220,7 +220,7 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext *context)
                 return false);
     OP_CHECK_IF(
         _Params.originN != (uint64_t)shape.GetDim(1),
-        OP_LOGE(context->GetNodeName(), "QuantMatmulDequant get m-dim of y and y_scale not match, please check."),
+        OP_LOGE(context->GetNodeName(), "QuantMatmulDequant get n-dim of y and weight_scale not match, please check."),
         return false);
     return true;
 }

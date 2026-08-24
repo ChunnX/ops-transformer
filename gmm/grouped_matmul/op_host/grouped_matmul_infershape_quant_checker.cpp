@@ -365,7 +365,7 @@ must be equal to the N value in weight [%ld] divided by 128.",
         OP_CHECK_IF(perTokenKDim != scaleKDim || scaleKDim != expectScaleKValue,
                     OP_LOGE(context->GetNodeName(),
                             "When quantification mode is G-B quantification, and groupType is 0 (split \
-M), the K dim of per_token_scale [%ld] should equal the K dim of scalel [%ld], and its value should be equal to the K \
+M), the K dim of per_token_scale [%ld] should equal the K dim of scale [%ld], and its value should be equal to the K \
 dim of weight [%ld] divided by 128, rounded up to the next integer.",
                             perTokenKDim, scaleNDim, weightNDim_),
                     return ge::GRAPH_FAILED);
@@ -659,7 +659,7 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckScenarioValidForDtype(const gert
     if (gmmAttrs.groupType == GMM_SPLIT_K) {
         OP_CHECK_IF(xDtype == ge::DT_INT8 || scaleDtype == ge::DT_INT64 || scaleDtype == ge::DT_UINT64,
                     OP_LOGE(context->GetNodeName(), "When split k, x with int8 dtype or scale with int64/uint64 dtype \
-is not supported, but the acutal x dtype is [%s] and actual scale dtype is [%s].",
+is not supported, but the actual x dtype is [%s] and actual scale dtype is [%s].",
                             ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                             ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString()),
                     return ge::GRAPH_FAILED);

@@ -524,7 +524,7 @@ static ge::graphStatus CheckOptionalTensorList(gert::InferShapeContext* context,
         OP_CHECK_IF(CheckDimNumAndPerGroupNum(context, isAntiquantInt4, {tensorDimNum, 3, k}, tensor0Shape, tensorType) != GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "CheckDimNumAndPerGroupNum failed."), return GRAPH_FAILED);
         OP_CHECK_IF(static_cast<size_t>(tensor0Shape->GetDim(0)) != groupNum, OP_LOGE(context->GetNodeName(), "%s batch size[%ld] should be "
-                  "euqal with groupList length[%lu].", tensorType.c_str(), tensor0Shape->GetDim(0), groupNum), return GRAPH_FAILED);
+                  "equal with groupList length[%lu].", tensorType.c_str(), tensor0Shape->GetDim(0), groupNum), return GRAPH_FAILED);
         // tensor's N axis size should equal with weight's N axis.
         int64_t weightNDimValue = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(weightNDimIdx);
         int64_t tensorNDimValue = tensor0Shape->GetDim(tensorDimNum - 1);
@@ -1139,7 +1139,7 @@ static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext*
     int64_t groupListSize = groupTensorOptionalShape->GetDim(0);
     OP_CHECK_IF(groupListSize > GMM_MAX_GROUP_LIST_SIZE_TENSOR,
               OP_LOGE(context->GetNodeName(),
-                        "When groupList type is tenosr, size of groupList %ld should be less than or equal to %ld.",
+                        "When groupList type is tensor, size of groupList %ld should be less than or equal to %ld.",
                         groupListSize, GMM_MAX_GROUP_LIST_SIZE_TENSOR),
               return GRAPH_FAILED);
     OP_CHECK_IF(!((groupListSize == groupNum && groupNum > 1) || groupNum == 1),
